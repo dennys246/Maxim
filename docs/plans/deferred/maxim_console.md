@@ -4,8 +4,8 @@
 > **Proposed homing (owner to confirm):** alongside Session S (the pulse seam) / post-1.3.3 console work (proposed 2026-10-18, owner to confirm).
 
 > **Pointer 2026-10-29:** the "localhost app" topology and the open auth question below are superseded by
-> [console_tunnel_hardening.md](console_tunnel_hardening.md): the bind stays loopback, and remote reach is a TLS proxy
-> plus a paired, scoped device ([phone_device.md](phone_device.md) PD2).
+> [console_tunnel_hardening.md](console_tunnel_hardening.md): `maxim serve` stays loopback-bound and remote reach is a TLS proxy
+> plus a paired, scoped device; a device embedder (the Reachy app) binds its LAN under A9 ([phone_device.md](phone_device.md) PD2).
 
 **Status:** Shell plan, drafted 2026-07-23. Sibling to the Reachy app plans; this one generalizes them. The Reachy app becomes the **first consumer** of the shared kit defined here.
 **Scope:** A general **localhost web console** (`maxim serve`) to configure, run, and observe Maxim — for *any* use (headless chat, sim, DM, config, diagnostics, memory), not just a robot. Plus the **shared UI kit** (components + design system + event client) that both the console and the Reachy app compose. Presentation layer only — **all logic stays in pymaxim behind `api.py`**.

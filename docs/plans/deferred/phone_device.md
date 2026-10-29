@@ -10,8 +10,9 @@ feasibility and testing, bio-faithful value and sequencing). Its reports live on
 the same disclosed gap as O6. Every load-bearing code claim was re-checked before this file was written: the
 loopback bind (`console/server.py::run_serve`), the control fields in the wire whitelist
 (`agents/bus.py::_PERCEPT_WIRE_FIELDS`), and the phone app as the motivating goal of
-[console_tunnel_hardening.md](console_tunnel_hardening.md). One reviewer claim was wrong and is not used: there is
-no LAN bind; A9 trusts extra origins, while the server still binds loopback only. **Pre-merge round (Executor,
+[console_tunnel_hardening.md](console_tunnel_hardening.md). **Corrected 2026-10-29 (pulse):** the first draft called a reviewer's "LAN bind (A9)" wrong. It was right:
+`maxim serve` binds loopback only, and a device EMBEDDER (the Reachy app) binds its own LAN interface under A9
+(console_tunnel_hardening.md §Non-goals and A9). PD2 now says so. **Pre-merge round (Executor,
 Architecture, Wire integrity) folded 2026-10-29;** the owner decisions the folds took are listed in §Fold decisions.
 
 **Companion plans, authoritative in their own areas:** [embodied_device.md](../embodied_device.md) (one owner per
@@ -28,7 +29,7 @@ device contract; `embody()`; the embodied census) · [console_tunnel_hardening.m
 | # | Decision |
 |---|---|
 | PD1 | **The phone attaches through `embody()` as a device, and is not a second robot body.** Its outputs (speaker, haptics, notifications) are in the embodied census, so the atonia gate can inhibit them. It never registers a `maxim.robots` controller: it has no motor command whose consequence Maxim senses. So M76's second-body tripwire, [second_body_staging.md](second_body_staging.md) and the microduck plan stay asleep. |
-| PD2 | **Remote reach is cloudflared only** for v1: one path to harden, and the one the tunnel plan was written for. `tailscale serve` is recorded as "not now, additive later", not as rejected. `maxim serve` keeps its loopback bind as an invariant; there is no LAN bind. |
+| PD2 | **Remote reach is cloudflared only** for v1: one path to harden, and the one the tunnel plan was written for. `tailscale serve` is recorded as "not now, additive later", not as rejected. The bind rule is console_tunnel_hardening's, unchanged: **desktop `maxim serve` binds loopback only; a device embedder (the Reachy app) binds its own LAN interface under A9**, behind the Host/Origin allowlists (`build_app(extra_trusted_origins=…)`) and bearer auth, with Pollen's dashboard as its trust boundary. **A phone is always a client, never an embedder:** it reaches a desktop leader only through the tunnel. It may reach a robot's LAN console as a plain-HTTP client for the UI, but its sensors need a secure origin, so sensing waits for a TLS path on that console. Moving the robot behind the tunnel is not intended. |
 | PD3 | **Atonia with a device attached is planned now** (§Atonia with a device attached), so `embody()` and the gate are not redesigned later. It is designed now and built after the atonia gate ships and `embody()` exists. The pre-merge round found it is a larger reversal than first drafted (the open problems are recorded there); nothing here changes the gate as shipped. |
 | PD4 | **Phase 0 is homed in 1.3.5.** This re-homes console_tunnel_hardening's PR 3 (admission control), a recorded 1.3.3 move that did not ship. No remote reach ships before it. |
 | PD5 | **The camera stays in scope** as user-directed perception ("look at this"), not as an orienting sensor: the agent cannot point it. Frames reach the operator's own leader only. |
@@ -203,7 +204,7 @@ evidence (embodied_device §3).
 
 ## Security shape
 
-- Loopback bind stays an invariant; all remote reach is a TLS proxy to loopback (PD2).
+- Desktop `maxim serve` stays loopback-bound, and remote reach to it is a TLS proxy to loopback; a device embedder's LAN bind follows A9 (PD2).
 - Phones never hold the operator token. Scopes: `sensor` (percept ingest only), `talk` (talk and the clean `/ws`
   tier), `admin` (setup, probe, diagnose; host only). An unknown route defaults to `admin`.
 - Phone-supplied fields are ignored for identity and trust: the device id, scope and trust come from the token; the
