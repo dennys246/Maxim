@@ -84,8 +84,8 @@
       "missing": 536
     },
     "maxim/integration": {
-      "percent": 71.4,
-      "missing": 430
+      "percent": 74.6,
+      "missing": 404
     },
     "maxim/interactive": {
       "percent": 34.9,
@@ -140,8 +140,8 @@
       "missing": 221
     },
     "maxim/similarity": {
-      "percent": 71.2,
-      "missing": 444
+      "percent": 82.6,
+      "missing": 292
     },
     "maxim/simulation": {
       "percent": 75.1,
