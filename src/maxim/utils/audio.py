@@ -59,16 +59,21 @@ def _check_local_audio() -> bool:
     """Whether local audio playback can actually play: sounddevice imports AND an output device exists.
 
     Truthful for #1437 (R1): on Linux, ``import sounddevice`` raises ``OSError`` (not ``ImportError``)
-    when the PortAudio library is missing, which used to escape this check, and a machine with
-    sounddevice but no output device (a headless box) used to report available. Cached per process.
+    when the PortAudio library is missing, and its own ``PortAudioError`` when PortAudio cannot start
+    (Ubuntu 26 with no sound server); both used to escape this check. A machine with sounddevice but no
+    output device (a headless box) used to report available. Cached per process.
     """
     global _local_audio_available
     if _local_audio_available is not None:
         return _local_audio_available
 
+    from maxim.utils.optional_deps import import_refused
+
     try:
         import sounddevice as sd
-    except (ImportError, OSError) as e:  # OSError: the PortAudio system library is missing
+    except Exception as e:
+        if not import_refused(e, "sounddevice"):
+            raise
         _local_audio_available = False
         logger.debug("Local audio not available (sounddevice: %s)", e)
         return False
@@ -100,8 +105,9 @@ def play_audio_local(
     """
     if not _check_local_audio():
         logger.warning(
-            "Local audio not available (sounddevice, the PortAudio library, or an output device is missing). "
-            "Install with: pip install 'pymaxim[tts]'; on Linux also the PortAudio library (apt install libportaudio2)."
+            "Local audio not available (sounddevice, the PortAudio library, a sound server, or an output device "
+            "is missing). Install with: pip install 'pymaxim[tts]'; on Linux also the PortAudio library "
+            "(apt install libportaudio2) and a running sound server (PulseAudio or PipeWire)."
         )
         return False
 

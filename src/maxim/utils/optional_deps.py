@@ -185,14 +185,32 @@ def optional_dependency_available(import_name: str) -> bool:
     absence of the dependency is a normal, expected condition rather than a
     setup error. Never logs.
 
-    A package whose import raises ``OSError`` counts as unavailable: ``sounddevice``
-    raises it on Linux when the PortAudio system library is missing (#1437).
+    A package that is installed but cannot load on this machine counts as unavailable
+    (:func:`import_refused` says which import errors mean that, #1437).
     """
     try:
         importlib.import_module(import_name)
         return True
-    except (ImportError, OSError):
-        return False
+    except Exception as exc:
+        if import_refused(exc, import_name):
+            return False
+        raise
+
+
+def import_refused(exc: BaseException, import_name: str) -> bool:
+    """Whether *exc*, raised by importing *import_name*, means the dependency is unavailable on this machine.
+
+    ``ImportError`` (not installed), ``OSError`` (a system library is missing: ``sounddevice`` without
+    PortAudio on Linux), or an exception the package itself defines, raised because it is installed but
+    refused to initialise here: ``sounddevice`` raises its own ``PortAudioError`` from import when
+    PortAudio cannot start, as on Ubuntu 26 with no sound server (#1437). Any other exception is a defect
+    and the caller re-raises it. "The package" is the top-level name, so for a namespace package
+    (``google.genai``) an exception from any ``google.*`` module counts.
+    """
+    if isinstance(exc, (ImportError, OSError)):
+        return True
+    package = import_name.split(".", 1)[0]
+    return type(exc).__module__.split(".", 1)[0] == package
 
 
 def optional_dependency_installed(import_name: str) -> bool:

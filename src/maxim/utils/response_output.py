@@ -410,9 +410,10 @@ def build_speech_output(
         local = LocalSpeaker(sample_rate=int(engine.sample_rate))
         if not local.is_available:
             raise SpeechOutputUnavailable(
-                "no local speaker can play (sounddevice, the PortAudio library, or an output device is missing)",
+                "no local speaker can play (sounddevice, the PortAudio library, a sound server, or an output "
+                "device is missing)",
                 "Install it with `pip install 'pymaxim[tts]'`; on Linux also the PortAudio library "
-                "(e.g. `apt install libportaudio2`).",
+                "(e.g. `apt install libportaudio2`) and a running sound server (PulseAudio or PipeWire).",
             )
         if speaker is None:
             speaker = local

@@ -210,6 +210,8 @@ def _require_extras_importable(config: pytest.Config) -> None:
     ``pyproject.toml`` does not declare is a typo, and refused too."""
     import importlib
 
+    from maxim.utils.optional_deps import import_refused
+
     required = sorted({e.strip() for e in (config.getoption("--require-extras") or "").split(",") if e.strip()})
     for extra in required:
         if extra not in _optional_dependencies():
@@ -217,7 +219,9 @@ def _require_extras_importable(config: pytest.Config) -> None:
         for name in extra_import_names(extra):
             try:
                 importlib.import_module(name)
-            except ImportError as exc:
+            except Exception as exc:  # a package that refuses to load here (#1437) refuses the lane too
+                if not import_refused(exc, name):
+                    raise
                 raise pytest.UsageError(
                     f"--require-extras: the '{extra}' extra is required on this lane, but '{name}' does not import: {exc}"
                 ) from exc

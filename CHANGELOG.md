@@ -141,9 +141,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a corrupt model refuses there, not at the first sentence), and local speakers are checked whenever speech will
   play on them (`MAXIM_TTS_LOCAL`, or a robot run with no SDK handle). `--tts-model` now defaults to
   `MAXIM_TTS_MODEL`, then the default voice. `LocalSpeaker` reports availability truthfully (a missing PortAudio
-  library or no output device is "unavailable", not a crash), and `optional_dependency_available` treats a package
-  whose import raises `OSError` as unavailable. The `tts` extra now includes `sounddevice` (on Linux it needs the
-  PortAudio library, `apt install libportaudio2`), and the leader's install probe for the `audio` extra checks
+  library, no sound server or no output device is "unavailable", not a crash), and `optional_dependency_available`
+  treats a package that is installed but cannot load on this machine as unavailable: an import raising `OSError`,
+  or the package's own exception (`sounddevice` raises its `PortAudioError` from import on Ubuntu 26 when no
+  PulseAudio server answers); the rule is `optional_deps.import_refused`, and any other import error stays loud.
+  The `tts` extra now includes `sounddevice` (on Linux it needs the PortAudio library, `apt install libportaudio2`,
+  and a running sound server), and the leader's install probe for the `audio` extra checks
   `faster_whisper`, the extra's own package, instead of `sounddevice`.
 
 - **Experiment harness follow-ups** ([#1038](https://github.com/dennys246/Maxim/issues/1038),

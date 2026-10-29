@@ -346,7 +346,6 @@ def _portaudio_cannot_initialise(monkeypatch):
     monkeypatch.setattr(audio, "_local_audio_available", None)
 
 
-@pytest.mark.xfail(strict=True, reason="tts nightly 2026-10-28: an import-time PortAudioError escapes the check")
 def test_portaudio_that_cannot_initialise_means_no_local_speaker(monkeypatch):
     import maxim.utils.audio as audio
 
@@ -354,7 +353,6 @@ def test_portaudio_that_cannot_initialise_means_no_local_speaker(monkeypatch):
     assert audio.LocalSpeaker().is_available is False
 
 
-@pytest.mark.xfail(strict=True, reason="tts nightly 2026-10-28: an import-time PortAudioError escapes the probe")
 def test_a_package_that_refuses_to_initialise_is_not_available(monkeypatch):
     from maxim.utils.optional_deps import optional_dependency_available
 
@@ -362,7 +360,6 @@ def test_a_package_that_refuses_to_initialise_is_not_available(monkeypatch):
     assert optional_dependency_available("sounddevice") is False
 
 
-@pytest.mark.xfail(strict=True, reason="tts nightly 2026-10-28: `--tts` crashes untyped on a box with no sound server")
 def test_a_tts_request_with_no_sound_server_refuses_typed(monkeypatch):
     from maxim.utils.response_output import SpeechOutputUnavailable, build_speech_output
 
