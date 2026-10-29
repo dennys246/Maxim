@@ -133,10 +133,28 @@ class AgenticRuntimeMixin:
                     body_ref,
                 )
                 return None, None
-            return body_ref, registry
         except Exception as e:
             self.log.warning("Failed to build ComponentRegistry for body=%r: %s. Running bodiless.", body_ref, e)
             return None, None
+
+        # #1496: a bad orient delta in the body YAML (non-finite, or over the
+        # ±90 deg cap) makes the robot run BODILESS with one ERROR, before any
+        # backend is built. Outside both handlers above: only MotionRefused is
+        # caught here, so any other parse error propagates as it does from
+        # build_executor. `instantiate` runs on the same registry instance
+        # build_executor receives, so both read one cached spec.
+        from maxim.exceptions import MotionRefused
+        from maxim.hardware.reachy.motor_backend import validate_orient_deltas
+
+        try:
+            validate_orient_deltas(registry.instantiate(body_ref))
+        except MotionRefused as e:
+            import logging
+
+            log: logging.Logger = getattr(self, "log", logging.getLogger(__name__))
+            log.error("robots.yaml body=%r refused: %s. Running bodiless.", body_ref, e)
+            return None, None
+        return body_ref, registry
 
     def _maybe_start_doa_feed(self, executor: Any, stop_event: "threading.Event") -> None:
         """Start the live DoA → azimuth feed when three gates all pass.
@@ -436,33 +454,8 @@ class AgenticRuntimeMixin:
         from maxim.utils.response_output import ResponseOutput
 
         sandbox_path = Path(self.home_dir) / "sandbox"
-        tts_engine = None
-        speaker_fn = None
-
-        # Check if TTS is enabled (set via environment or config)
-        if os.environ.get("MAXIM_TTS_ENABLED", "").lower() in ("1", "true", "yes"):
-            try:
-                from maxim.models.audio.tts import TTSEngine
-                from maxim.utils.audio import _check_local_audio
-
-                tts_model = os.environ.get("MAXIM_TTS_MODEL", "en_US-lessac-medium")
-                tts_engine = TTSEngine(model_name=tts_model)
-                if tts_engine.is_available:
-                    speaker_fn = self.speak  # Uses Reachy speaker with local fallback
-                    self.log.info("TTS enabled with model: %s", tts_model)
-
-                    # Check local audio availability for fallback
-                    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
-                    if prefer_local:
-                        self.log.info("TTS using local audio (MAXIM_TTS_LOCAL=1)")
-                    elif _check_local_audio():
-                        self.log.info("Local audio available as fallback for remote connections")
-                else:
-                    self.log.warning("TTS model not found, TTS disabled")
-                    tts_engine = None
-            except Exception as e:
-                self.log.warning("Failed to initialize TTS: %s", e)
-                tts_engine = None
+        # Spoken responses: built (or refused) once in live(), before awaken(), by build_speech_output (#1437)
+        tts_engine, speaker_fn = getattr(self, "_speech_output", (None, None))
 
         response_output = ResponseOutput(
             sandbox_path=sandbox_path,

@@ -120,7 +120,7 @@ def test_the_extras_import_names_come_from_pyproject():
 
     assert extra_import_names("console") == ("fastapi", "uvicorn", "websockets")
     assert extra_import_names("sign") == ("cryptography", "rfc8785")
-    assert extra_import_names("tts") == ("piper",)  # piper-tts, mapped
+    assert extra_import_names("tts") == ("piper", "sounddevice")  # piper-tts, mapped; sounddevice (#1437)
     modules_of: dict[str, set[str]] = {}
     for module, dists in packages_distributions().items():
         for dist in dists:

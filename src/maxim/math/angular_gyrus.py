@@ -384,6 +384,7 @@ class AngularGyrus(StoreFileOwnership, MemoryLayer):
             self.start_fresh_keeping_copy(load_path)
             return
         self._claim_store_file(load_path)
+        self._note_store_file_loaded()
         logger.debug("Angular gyrus loaded %d records from %s", len(self._records), load_path)
 
     def _load_payload(self, data: Any, load_path: str) -> None:

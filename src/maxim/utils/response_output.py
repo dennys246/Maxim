@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.utils.optional_deps import OptionalDependencyError, require_optional_dependency
+
 # Audio utilities deferred to call site to avoid eager numpy/scipy loading
 
 if TYPE_CHECKING:
@@ -326,6 +328,100 @@ class ResponseOutput:
         except Exception as e:
             self.logger.warning("TTS failed: %s", e)
             return False
+
+
+_TTS_TRUTHY = ("1", "true", "yes", "on")
+_DEFAULT_VOICE = "en_US-lessac-medium"
+
+
+class SpeechOutputUnavailable(RuntimeError):
+    """Spoken responses were requested (``--tts`` or ``MAXIM_TTS_ENABLED``) but cannot play.
+
+    Raised at startup by :func:`build_speech_output`, so a session never runs believing it speaks
+    when it cannot (#1437). ``fix_hint`` names what to install or download.
+    """
+
+    def __init__(self, reason: str, fix_hint: str) -> None:
+        self.fix_hint = fix_hint
+        super().__init__(f"Spoken responses were requested but cannot play: {reason}. {fix_hint}")
+
+
+def build_speech_output(
+    *,
+    requested: bool,
+    model_name: str | None,
+    sink: Callable[..., bool] | None,
+    log: logging.Logger,
+    sink_plays_locally: bool = False,
+) -> tuple[Any | None, Callable[..., bool] | None]:
+    """The one place spoken responses are set up, for every entry point (#1437).
+
+    Speech is on when ``requested`` (the ``--tts`` flag) or ``MAXIM_TTS_ENABLED`` is truthy; otherwise
+    this returns ``(None, None)`` and logs nothing. When on, it returns ``(tts_engine, speaker)``
+    ready for :class:`ResponseOutput`:
+
+    - the voice is ``model_name``, else ``MAXIM_TTS_MODEL``, else the default voice;
+    - the speaker is ``sink`` when the caller has one (the robot's device sink,
+      ``MediaLoopMixin.speak``), else this machine's local speakers (:class:`LocalSpeaker`);
+    - local speakers are checked whenever speech will play on them: no sink, ``MAXIM_TTS_LOCAL``,
+      or ``sink_plays_locally`` (``utils.audio.device_speech_plays_locally``: no SDK handle, or a
+      ``no_media`` backend);
+    - the voice is loaded here, so a corrupt model refuses at start, not at the first sentence.
+
+    Raises:
+        SpeechOutputUnavailable: the ``tts`` extra (piper) is not installed, the voice model is
+            missing or will not load, or speech would play locally and no local speaker can. It
+            never logs "enabled" for a path that cannot play. ``cli.main`` renders it with its
+            ``fix_hint`` and exits 2.
+    """
+    import os
+
+    enabled = requested or os.environ.get("MAXIM_TTS_ENABLED", "").strip().lower() in _TTS_TRUTHY
+    if not enabled:
+        return None, None
+    try:
+        require_optional_dependency("piper", feature="spoken responses (--tts / MAXIM_TTS_ENABLED)")
+    except OptionalDependencyError as e:
+        raise SpeechOutputUnavailable("the tts extra (piper) is not installed", e.fix_hint) from e
+    from maxim.models.audio.tts import TTSEngine
+
+    voice = model_name or os.environ.get("MAXIM_TTS_MODEL") or _DEFAULT_VOICE
+    engine = TTSEngine(model_name=voice)
+    if not engine.is_available:
+        raise SpeechOutputUnavailable(
+            f"the voice model {voice!r} is not downloaded",
+            "Download it with `python -m maxim.models.download --tts`.",
+        )
+    try:
+        engine.load()  # also sets the voice's real sample rate, which the local speaker needs
+    except Exception as e:  # onnxruntime's load errors (InvalidProtobuf, ...) derive from Exception; re-raised typed
+        raise SpeechOutputUnavailable(
+            f"the voice model {voice!r} could not be loaded ({type(e).__name__}: {e})",
+            "Re-download it with `python -m maxim.models.download --tts`.",
+        ) from e
+    from maxim.utils.audio import tts_local_requested
+
+    speaker = sink
+    prefer_local = tts_local_requested()
+    where = "local speakers (MAXIM_TTS_LOCAL)" if prefer_local else "the robot's speaker"
+    if speaker is None or prefer_local or sink_plays_locally:
+        from maxim.utils.audio import LocalSpeaker
+
+        local = LocalSpeaker(sample_rate=int(engine.sample_rate))
+        if not local.is_available:
+            raise SpeechOutputUnavailable(
+                "no local speaker can play (sounddevice, the PortAudio library, a sound server, or an output "
+                "device is missing)",
+                "Install it with `pip install 'pymaxim[tts]'`; on Linux also the PortAudio library "
+                "(e.g. `apt install libportaudio2`) and a running sound server (PulseAudio or PipeWire).",
+            )
+        if speaker is None:
+            speaker = local
+            where = "local speakers"
+        elif not prefer_local:
+            where = "local speakers (no robot SDK handle, or a no_media backend)"
+    log.info("TTS enabled with voice %s, speaking through %s", voice, where)
+    return engine, speaker
 
 
 # Convenience function for quick CLI output

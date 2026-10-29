@@ -18,6 +18,8 @@ from typing import Any
 
 import numpy as np
 
+from maxim.embodied_runtime.movement import SyncResult
+from maxim.exceptions import MotionRefused
 from maxim.inference.transcribe_audio import create_task_file
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.logging import warn
@@ -139,7 +141,12 @@ def motor_worker(
                         # This corrects any drift between our tracking and reality
                         synced = maxim.sync_head_position()
 
-                        if synced:
+                        if synced is SyncResult.NON_FINITE:
+                            # #1496: the pose is unknown, so a blind reset would
+                            # move from it. Skip, and stop retrying every move.
+                            maxim.log.error("Hardware pose is not finite; skipping the blind reset to center")
+                            ik_failure_count = 0
+                        elif synced:
                             maxim.log.info(
                                 "Synced position from hardware: yaw=%.1f°, pitch=%.1f°", maxim.yaw, maxim.pitch
                             )
@@ -159,11 +166,12 @@ def motor_worker(
                         else:
                             # Sync failed, fall back to blind reset
                             maxim.log.warning("Hardware sync failed, blind reset to center")
-                            maxim.yaw = 0.0
-                            maxim.pitch = 0.0
                             from maxim.motion.movement import move_head
 
                             move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5, controller=getattr(maxim, "_robot", None))
+                            # Mirror after a dispatch that did not raise (#1496).
+                            maxim.yaw = 0.0
+                            maxim.pitch = 0.0
                             ik_failure_count = 0
 
                         last_ik_reset_time = now
@@ -210,6 +218,12 @@ def motor_worker(
                             except Exception as bounds_err:
                                 maxim.log.debug("Failed to record bounds outcome: %s", bounds_err)
 
+        except MotionRefused as e:
+            # A refused motion is bad input, not a lost connection (#1496): no
+            # connection-failure count, and the mirror re-reads the real pose
+            # (sync never raises; a non-finite readback keeps the mirror).
+            maxim.log.error("Motor command refused: %s", e)
+            maxim.sync_head_position()
         except Exception as e:
             warn("Motor command failed: %s", e, logger=maxim.log)
             maxim._note_connection_failure("motor", e)

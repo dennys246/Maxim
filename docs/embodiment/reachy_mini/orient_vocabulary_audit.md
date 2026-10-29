@@ -57,14 +57,15 @@ the LLM while being motorless no-ops.
 8. **`SimulatedController` defaults its limits to the real controller's
    constants** (review fold, sim-hardware parity) and clamps roll/pitch too.
    Explicit tighter limits (Exp 49's measured ~±22°) still win.
-9. **CI grep** restricts raw `mini.(goto_target|set_target|look_at_image)`
-   dispatch to the sanctioned primitives (structural enforcement — the next
-   hand-rolled dispatch fails CI, not a hardware session).
+9. **CI lint** restricts raw SDK motion dispatch to the sanctioned primitives
+   (structural enforcement — the next hand-rolled dispatch fails CI, not a
+   hardware session). Since #1496 that is `scripts/lint_motion_safety.py`,
+   which also bans the NaN-to-limit clamp idiom on the motion path.
 
 Regression guard: [tests/unit/test_reachy_workspace_safety.py](../../../tests/unit/test_reachy_workspace_safety.py)
 (verified to fail against the pre-fold code) +
 [tests/unit/test_reachy_head_frame.py](../../../tests/unit/test_reachy_head_frame.py) +
-the CI grep in `.github/workflows/test.yml`.
+[scripts/lint_motion_safety.py](../../../scripts/lint_motion_safety.py) in CI (it replaced the inline grep, #1496).
 
 ### The 65° provenance conflict (flagged, resolved by H1)
 

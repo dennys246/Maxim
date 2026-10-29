@@ -32,6 +32,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from maxim.decisions.causal_link import (
@@ -1965,6 +1966,46 @@ class NAc(StoreFileOwnership):
             for link in links:
                 if memory_id in link.memory_ids:
                     link.memory_ids.remove(memory_id)
+
+    def prune_ec_keys(self, valid_node_ids: Collection[str]) -> int:
+        """Drop the biases and fears keyed on an EC node not in ``valid_node_ids``; returns how many (#1438 PR 1a).
+
+        In place, under ``_lock`` (a dump/``load_state`` round trip would lose a credit landing in between): the
+        per-node ``reward_bias``, ``cluster_reward_bias`` / ``cluster_reward_source`` and ``cluster_fear``, plus the
+        inherent markers of the pruned cluster biases (a dangling marker could bless a later foreign bias at the same
+        key as decay-exempt; ``hivemind/merge.py::prune_nac_cluster_biases``, whose rule this is). Markers are not
+        counted, as there. The loaders' prune pass (``MemoryHub._prune_dangling_refs``) is the caller."""
+        pruned = 0
+        with self._lock:
+            for bias_key in [k for k in self._reward_bias if k[1] not in valid_node_ids]:
+                del self._reward_bias[bias_key]
+                pruned += 1
+            for table in (self._cluster_reward_bias, self._cluster_fear):
+                for cluster_key in [k for k in table if k[1] not in valid_node_ids]:
+                    del table[cluster_key]
+                    pruned += 1
+            for source_key in [k for k in self._cluster_reward_source if k[1] not in valid_node_ids]:
+                del self._cluster_reward_source[source_key]
+                pruned += 1
+            self._inherent_bias_keys = {k for k in self._inherent_bias_keys if k[1] in valid_node_ids}
+        return pruned
+
+    def prune_memory_refs(self, valid_ids: Collection[str]) -> int:
+        """Drop every causal link's ``memory_ids`` entry not in ``valid_ids``; returns how many (#1438 PR 1a).
+
+        The loaders' prune pass (``MemoryHub._prune_dangling_refs``): those ids flow into semantic promotion, which
+        writes them into ATL and the cross-layer graph. IMAGINED links are left alone (plan §5: imagination-tagged
+        links are not pruned; they decay on their own schedule)."""
+        pruned = 0
+        with self._lock:
+            for links in self._links.values():
+                for link in links:
+                    if link.imagined:
+                        continue
+                    kept = [memory_id for memory_id in link.memory_ids if memory_id in valid_ids]
+                    pruned += len(link.memory_ids) - len(kept)
+                    link.memory_ids[:] = kept
+        return pruned
 
     # ─────────────────────────────────────────────────────────────────────────
     # MAINTENANCE
