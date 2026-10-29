@@ -59,6 +59,7 @@ from _provenance import (  # noqa: E402
     evidence_out_paths_or_exit,
     in_process_code_provenance,
     instrument_check_authorizes,
+    apparatus_check_stamp,
     is_gated_path,
     stamp_harness_header,
     stamp_harness_row,
@@ -1241,8 +1242,7 @@ def _run(args: argparse.Namespace) -> int:
     if record_problem is not None and not args.allow_dirty:
         print(f"[FAIL] apparatus record {apparatus_used['path']} is not committed on main: {record_problem}")
         return 3
-    if record_problem is not None:
-        provenance = {**provenance, "allow_dirty": True}
+    apparatus_check, provenance = apparatus_check_stamp(gated, record_problem, provenance)  # both stamps, one builder
     refusal = instrument_check_authorizes(apparatus)
     if refusal is not None:
         print(f"[FAIL] apparatus record {apparatus_used['path']} does not authorize a run: {refusal}")
@@ -1293,7 +1293,7 @@ def _run(args: argparse.Namespace) -> int:
         apparatus=apparatus,
         apparatus_path=apparatus_used["path"],
         apparatus_sha256=apparatus_used["sha256"],
-        apparatus_check={"gated": gated, "problem": record_problem, "allow_dirty": record_problem is not None},
+        apparatus_check=apparatus_check,
         geom=geom,
         build_geom=build_geom,
         probe_cap_s=probe_cap_s,
