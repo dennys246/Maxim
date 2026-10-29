@@ -620,7 +620,12 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   three things hold. First, `start_simulation_mode`, `run_agentic_loop` and `execute_and_learn` are each at most
   1,000 lines, and so is everything split or moved out of them and every def in their three files (item
   `1323.functions-1000`; owner decision 2026-10-16, #1323, which retired the earlier 200-line bound; 200 or ~500 is
-  reassessed for 1.5 at the 1.4 release; the function-length pins stay, so none may grow). Second, the five
+  reassessed for 1.5 at the 1.4 release; the function-length pins stay, so none may grow). That reassessment
+  names `agent_loop.py::_run_agentic_loop_body`, the whole former loop body that #1507 split out of
+  `run_agentic_loop` (2026-10-27; pinned at 2,411 then, 2,349 on 2026-10-29). It is not in the debt snapshot and
+  has no `accepted_new_debt` record, by owner decision 2026-10-29: it stays unaccepted so the gate keeps pressing on
+  the decomposition. So 1.4.0 ships only once it is under the 200-line pin threshold or accepted then. Accepted or
+  not, the 1.5 bound is set on it at the 1.4 release (register row O21). Second, the five
   orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) are
   complete: in the golden, with direct-assertion evidence, their golden case passing. (That they land BEFORE the
   slice that moves their code is enforced by that slice's review and roadmap_1_3_x.md §"Characterization owed",
