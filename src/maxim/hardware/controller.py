@@ -27,10 +27,15 @@ canonical reference implementation.
 from __future__ import annotations
 
 import logging
+import math
+import numbers
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
+from maxim.exceptions import MotionRefused
 from maxim.hardware.capabilities import (
     RobotCapabilities,
     RobotConnectionState,
@@ -42,6 +47,104 @@ if TYPE_CHECKING:
     from maxim.embodiment.audio_localization import DoAReader
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "MOTION_DURATION_MAX_S",
+    "MOTION_DURATION_MIN_S",
+    "MotionRefused",
+    "MotionTarget",
+    "PixelTarget",
+    "RobotController",
+    "clamp_finite",
+    "floor_duration",
+    "normalize_method",
+    "require_duration",
+    "require_finite",
+]
+
+# ── Motion validation (#1496): no non-finite, out-of-range-duration or instant
+# command reaches a motor. One copy, used at entry (MotionTarget / PixelTarget,
+# Selfy, the tools), at every clamp, and at the last mile before each SDK call.
+# docs/plans/motion_finite_1496.md.
+
+MOTION_DURATION_MIN_S = 0.1
+MOTION_DURATION_MAX_S = 10.0
+
+# Canonical interpolation names. ``cartoon`` is refused: it overshoots its
+# target by 10%, past any clamp. Aliases keep their historical meanings.
+_METHOD_ALIASES = {
+    "minimum_jerk": "minimum_jerk",
+    "minjerk": "minimum_jerk",
+    "min_jerk": "minimum_jerk",
+    "linear": "linear",
+    "ease_in_out": "ease_in_out",
+    "ease": "ease_in_out",
+}
+
+
+def require_finite(field_name: str, value: Any) -> float:
+    """Return ``value`` as a plain finite float, or raise ``MotionRefused(kind="non_finite")``.
+
+    Rejects bools and strings (internal entries carry numbers; the tool boundary
+    converts LLM strings itself). The result is a plain ``float``, so Decimal and
+    numpy scalars do not survive.
+    """
+    if isinstance(value, (bool, str, np.bool_)):
+        raise MotionRefused("invalid", f"{field_name} must be a number, got {value!r}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as e:
+        raise MotionRefused("invalid", f"{field_name} is not a number: {value!r}") from e
+    if not math.isfinite(number):
+        raise MotionRefused("non_finite", f"{field_name} is not finite: {value!r}")
+    return number
+
+
+def require_duration(value: Any) -> float:
+    """An explicit duration: finite and within [0.1 s, 10 s] inclusive, else refused."""
+    duration = require_finite("duration", value)
+    if not MOTION_DURATION_MIN_S <= duration <= MOTION_DURATION_MAX_S:
+        raise MotionRefused(
+            "duration",
+            f"duration {duration!r} s is outside [{MOTION_DURATION_MIN_S}, {MOTION_DURATION_MAX_S}] s",
+        )
+    return duration
+
+
+def floor_duration(value: Any) -> float:
+    """A default or derived duration: refused if non-finite, otherwise lifted into range.
+
+    Only for durations the caller did not choose explicitly (decision 5).
+    """
+    duration = require_finite("duration", value)
+    return _bounded(duration, MOTION_DURATION_MIN_S, MOTION_DURATION_MAX_S)
+
+
+def clamp_finite(field_name: str, value: Any, lo: float, hi: float) -> float:
+    """Refuse a non-finite value (or bound), then clamp. For COMMAND clamps only.
+
+    Replaces the ``max(-L, min(L, x))`` idiom, which turns NaN into a finite
+    limit. Measurement clamps discard a non-finite value instead of refusing.
+    """
+    lo_f = require_finite(f"{field_name} lower bound", lo)
+    hi_f = require_finite(f"{field_name} upper bound", hi)
+    return _bounded(require_finite(field_name, value), lo_f, hi_f)
+
+
+def _bounded(value: float, lo: float, hi: float) -> float:
+    """``value`` limited to [lo, hi]; callers have already proven all three finite."""
+    if value < lo:
+        return lo
+    return hi if value > hi else value
+
+
+def normalize_method(method: Any) -> str:
+    """Canonical interpolation name, or ``MotionRefused(kind="method")``."""
+    key = method.strip().lower().replace("-", "_") if isinstance(method, str) else None
+    canonical = _METHOD_ALIASES.get(key) if key is not None else None
+    if canonical is None:
+        raise MotionRefused("method", f"interpolation method {method!r} is not one of {sorted(set(_METHOD_ALIASES))}")
+    return canonical
 
 
 @dataclass
@@ -93,8 +196,19 @@ class MotionTarget:
     # Motion duration in seconds
     duration: float = 1.0
 
-    # Motion method (e.g., "linear", "minimum_jerk")
+    # Motion method (e.g., "linear", "minimum_jerk"); normalised to the canonical name.
     method: str = "minimum_jerk"
+
+    def __post_init__(self) -> None:
+        # #1496: refuse at construction. The dataclass is mutable, so the
+        # controller re-checks every field at the last mile as well.
+        for name in ("head_roll", "head_pitch", "head_yaw", "body_yaw"):
+            value = getattr(self, name)
+            if value is not None:
+                setattr(self, name, require_finite(name, value))
+        self.extras = {key: require_finite(f"extras[{key!r}]", val) for key, val in self.extras.items()}
+        self.duration = require_duration(self.duration)
+        self.method = normalize_method(self.method)
 
 
 @dataclass(slots=True)
@@ -104,6 +218,21 @@ class PixelTarget:
     u: int  # X coordinate (0 = left)
     v: int  # Y coordinate (0 = top)
     duration: float = 0.5
+
+    def __post_init__(self) -> None:
+        self.u = _require_pixel("u", self.u)
+        self.v = _require_pixel("v", self.v)
+        self.duration = require_duration(self.duration)
+
+
+def _require_pixel(field_name: str, value: Any) -> int:
+    """A finite integral pixel coordinate (an int, or a float with no fraction)."""
+    if isinstance(value, numbers.Integral) and not isinstance(value, bool):
+        return int(value)
+    number = require_finite(field_name, value)
+    if not number.is_integer():
+        raise MotionRefused("invalid", f"{field_name} must be a whole pixel, got {value!r}")
+    return int(number)
 
 
 class RobotController(ABC):
@@ -267,17 +396,15 @@ class RobotController(ABC):
         """Center the head to look straight ahead.
 
         Returns:
-            True if motion command accepted.
+            True if motion command accepted; False when it was refused, like
+            ``goto_target`` (a bad duration is logged, not raised; #1496).
         """
-        return self.goto_target(
-            MotionTarget(
-                head_roll=0.0,
-                head_pitch=0.0,
-                head_yaw=0.0,
-                body_yaw=0.0,
-                duration=duration,
-            )
-        )
+        try:
+            target = MotionTarget(head_roll=0.0, head_pitch=0.0, head_yaw=0.0, body_yaw=0.0, duration=duration)
+        except MotionRefused as e:
+            logger.error("center_vision refused: %s", e)
+            return False
+        return self.goto_target(target)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Lifecycle
