@@ -193,21 +193,21 @@ class TestRetainedAxesDoNotRatchet:
             "from the biased readback instead of held at the commanded value."
         )
 
-    def test_head_only_commands_use_last_commanded_body_for_composition(self):
-        """After a body command, head-only follow-ups must compose the world
-        head yaw against the COMMANDED body angle, not the biased achieved
-        one — otherwise the body bias leaks into the head world target."""
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): R1, the daemon composes a head-only move against its PRESENT body (F2)",
+    )
+    def test_head_only_commands_compose_against_the_readback_body(self):
+        """Inverted by #1499 (R1, F2). With ``body_yaw=None`` the daemon holds the body at its PRESENT position and
+        solves the head against it, so composing against the commanded body put the world head target off by the
+        body's lag. The readback body composes; a 4° lag is inside the divergence tolerance, so it is not refused.
+        The head axes the caller leaves out still come from the stash (the H1 F1 rule, pinned above)."""
         ctl, fake = _make_controller(body_bias=math.radians(4.0))
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        assert ctl.goto_target(MotionTarget(head_yaw=0.2)) is True
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5))
+        assert ctl.goto_target(MotionTarget(head_yaw=0.2))
 
         _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(0.5 + 0.2, abs=1e-9), (
-            "head world yaw composed against the achieved body "
-            f"({math.degrees(world_yaw_cmd):.1f}° instead of "
-            f"{math.degrees(0.7):.1f}°) — body fill-in must come from the "
-            "last commanded body value."
-        )
+        assert world_yaw_cmd == pytest.approx(0.5 + math.radians(4.0) + 0.2, abs=1e-9)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -228,17 +228,22 @@ class TestReadbackSeeding:
         assert roll_cmd == pytest.approx(0.15, abs=1e-9)
         assert pitch_cmd == pytest.approx(-0.1, abs=1e-9)
 
-    def test_stash_survives_unreadable_pose_after_first_command(self):
-        """Once axes have been commanded, an unreadable pose must not block a
-        body-only command — the stash knows what was last commanded (the
-        refuse-to-guess rule narrows to the SEED case)."""
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): R2, an unreadable reference refuses; the stash no longer stands in for it",
+    )
+    def test_an_unreadable_pose_refuses_and_keeps_the_stash(self):
+        """Inverted by #1499 (R2). Every rate and path check starts from a fresh readback, so with none the move
+        is refused rather than composed from the stash. The stash survives the refusal untouched."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_roll=0.1)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_roll=0.1))
+        stash = dict(ctl._last_commanded)
+        n_calls = len(fake.calls)
         ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(body_yaw=0.4)) is True
-        roll_cmd, _, world_yaw_cmd = fake.commanded_eulers()
-        assert roll_cmd == pytest.approx(0.1, abs=1e-9)
-        assert world_yaw_cmd == pytest.approx(0.3 + 0.4, abs=1e-9)
+        fake.rest_fails = True  # the fresh-read seam (the build's fake migration honours it)
+        assert not ctl.goto_target(MotionTarget(body_yaw=0.4))
+        assert len(fake.calls) == n_calls
+        assert ctl._last_commanded == stash
 
     def test_first_command_with_unreadable_pose_still_refuses(self):
         """The executor-lens E2 rule is intact where it matters: no stash +
@@ -279,28 +284,36 @@ class TestReadbackSeeding:
 
 
 class TestOutOfBandInvalidation:
-    def test_look_at_pixel_clears_head_axes(self):
-        """look_at_image moves the head outside the stash's sight — the next
-        fill-in must re-seed head axes from the readback, not re-command a
-        pose from before the look-at."""
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): 5.2, look_at is computed with perform_movement=False and dispatched through goto_target",
+    )
+    def test_look_at_pixel_dispatches_through_the_controller(self):
+        """Inverted by #1499 (5.2, F1). look_at no longer moves the head out of band through the SDK (which also
+        sends the body to 0); it is computed with ``perform_movement=False`` and dispatched as a head-only
+        ``goto_target``, so the stash records its axes like any other controller command."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_pitch=0.1)) is True
-        assert ctl.look_at_pixel(PixelTarget(u=100, v=100)) is True
-        assert ctl.goto_target(MotionTarget(head_roll=0.05)) is True
-        _, pitch_cmd, world_yaw_cmd = fake.commanded_eulers()
-        # Achieved after look_at: pitch 0.1+0.2, world yaw 0.3+0.3.
-        assert pitch_cmd == pytest.approx(0.3, abs=1e-9)
-        assert world_yaw_cmd == pytest.approx(0.6, abs=1e-9)
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_pitch=0.1))
+        n_calls = len(fake.calls)
+        assert ctl.look_at_pixel(PixelTarget(u=100, v=100))
+        assert len(fake.calls) == n_calls + 1
+        assert fake.calls[-1].get("body_yaw") is None
+        assert "head_rel_yaw" in ctl._last_commanded
 
-    def test_look_at_pixel_keeps_body_stash(self):
-        """look_at_image does not move the body — its stashed commanded value
-        stays authoritative."""
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): 5.2, look_at never commands the body (F1: the SDK's look_at sent it to 0)",
+    )
+    def test_look_at_pixel_never_commands_the_body(self):
+        """Inverted by #1499 (5.2, F1). Every dispatch a look_at makes is head-only, so the body stays where it is."""
         ctl, fake = _make_controller(body_bias=math.radians(4.0))
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        assert ctl.look_at_pixel(PixelTarget(u=100, v=100)) is True
-        assert ctl.goto_target(MotionTarget(head_yaw=0.0)) is True
-        _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(0.5, abs=1e-9)
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5))
+        body_before = fake.body_yaw
+        n_calls = len(fake.calls)
+        assert ctl.look_at_pixel(PixelTarget(u=100, v=100))
+        assert len(fake.calls) > n_calls
+        assert all(c.get("body_yaw") is None for c in fake.calls[n_calls:])
+        assert fake.body_yaw == body_before
 
     def test_forget_commanded_clears_everything_by_default(self):
         ctl, _fake = _make_controller()
@@ -348,13 +361,20 @@ class TestBodySeedRefusal:
         assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is False
         assert fake.calls == []
 
-    def test_body_stash_unblocks_unreadable_pose(self):
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): R1/R2, the body stash is no longer a composition source",
+    )
+    def test_a_body_stash_does_not_unblock_an_unreadable_pose(self):
+        """Inverted by #1499 (R1, R2). The body stash only detects divergence now; it never substitutes for a
+        readback, so an unreadable pose refuses even after a body command."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5))
+        n_calls = len(fake.calls)
         ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
-        _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(0.6, abs=1e-9)
+        fake.rest_fails = True
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.1))
+        assert len(fake.calls) == n_calls
 
 
 class TestMoveHeadInvalidation:
@@ -385,12 +405,20 @@ class TestMoveHeadInvalidation:
             "re-seeding from where the gaze left the head."
         )
 
-    def test_move_head_without_controller_still_dispatches(self):
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): 5.4, standalone move_head requires motion_lock= (forgetting it is a TypeError)",
+    )
+    def test_standalone_move_head_needs_the_motion_lock(self):
+        """Inverted by #1499 (5.4; round-5 S2). The standalone path (scripts with no controller) still dispatches,
+        but only under a lock the caller passes; forgetting it is a TypeError, not a silent unlocked move."""
         from maxim.motion.movement import move_head
 
         fake = _BiasedFakeMini()
-        move_head(fake, 0, 0, 0, 0, 0, 10.0, 0.5)
-        assert fake.calls, "controller=None (workers.py legacy callers) must keep working"
+        with pytest.raises(TypeError):
+            move_head(fake, 0, 0, 0, 0, 0, 10.0, 0.5)
+        move_head(fake, 0, 0, 0, 0, 0, 10.0, 0.5, motion_lock=threading.RLock())
+        assert fake.calls
 
 
 class TestLifecycleClearWiring:
@@ -446,24 +474,29 @@ class TestAutomaticBodyYawMode:
     would go stale without bound. The body axis must stay readback-driven
     in that mode."""
 
-    def test_body_is_never_stashed(self):
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): O6, a controller in automatic_body_yaw mode refuses every dispatch",
+    )
+    def test_auto_body_yaw_mode_refuses_a_body_command(self):
+        """Inverted by #1499 (O6). With the daemon moving the body behind us, the path and rate checks no longer
+        describe what the motors do, so the controller refuses motion in that mode (construction raises too)."""
         ctl, fake = _make_controller()
         ctl._automatic_body_yaw = True
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        assert "body_yaw" not in ctl._last_commanded
+        assert not ctl.goto_target(MotionTarget(body_yaw=0.5))
+        assert fake.calls == []
 
-    def test_head_only_composes_against_readback_body(self):
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): O6, a controller in automatic_body_yaw mode refuses every dispatch",
+    )
+    def test_auto_body_yaw_mode_refuses_a_head_only_command(self):
+        """Inverted by #1499 (O6): head-only moves are refused in that mode too."""
         ctl, fake = _make_controller()
         ctl._automatic_body_yaw = True
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        # Daemon moved the body since (auto mode); readback reflects it.
         fake.body_yaw = 0.9
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
-        _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(1.0, abs=1e-9), (
-            "auto-body-yaw mode must compose against the READBACK body — a "
-            "stashed commanded body goes stale on every daemon adjustment."
-        )
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.1))
+        assert fake.calls == []
 
 
 class TestDivergenceWarning:

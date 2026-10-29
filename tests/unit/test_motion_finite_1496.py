@@ -685,12 +685,27 @@ def test_a_failed_pose_read_counts_as_missing_not_refused():
     mini.head_raise = False
     mini.joints_raise = True
     require_present_pose_finite(mini)
-    move_head(mini, 0, 0, 0, 0, 0, 5, 0.5)  # today's body-read fallback is unchanged (#1499 owns it)
-    assert len(mini.motion_calls()) == 1
     bad = _Mini()
     bad.head = np.array([[1.0, None, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=object)
     with pytest.raises(_refused()):
         require_present_pose_finite(bad)
+
+
+@pytest.mark.xfail(
+    strict=True, reason="#1499 PR 1 (motion_path_model.md v8 §7): R2, a failed body read refuses the move"
+)
+def test_a_failed_body_read_refuses_the_move():
+    """Split out of the test above, and inverted by #1499 (R2): the body-read fallback #1496 left in place is gone."""
+    from maxim.motion.movement import move_head
+
+    mini = _Mini()
+    mini.joints_raise = True
+    mini.rest_fails = True
+    try:
+        move_head(mini, 0, 0, 0, 0, 0, 5, 0.5, motion_lock=threading.RLock())
+    except _refused():
+        pass
+    assert mini.motion_calls() == []
 
 
 def test_the_ws_transport_drops_non_finite_poses(monkeypatch):

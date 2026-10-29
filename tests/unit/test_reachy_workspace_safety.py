@@ -394,23 +394,37 @@ class TestMoveHeadFrameComposition:
         assert roll == pytest.approx(math.radians(40.0), abs=1e-6)
         assert pitch == pytest.approx(-math.radians(40.0), abs=1e-6)
 
-    def test_body_read_failure_falls_back_to_zero(self):
+    @pytest.mark.xfail(
+        strict=True, reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): R2, no body readback refuses"
+    )
+    def test_a_body_read_failure_refuses(self):
+        """Inverted by #1499 (R2). Composing against a guessed body of 0 is the head-frame trap; with no body
+        readback the move is refused (a typed refusal, or no dispatch), never sent."""
+        import threading
+
+        from maxim.exceptions import MotionRefused
+
         class _NoJointsMini(_FakeMini):
             def get_current_joint_positions(self):
                 raise RuntimeError("joint read failed")
 
         fake = _NoJointsMini()
-        move_head(fake, 0, 0, 0, 0, 0, 20.0, 0.5)
-        (call,) = fake.calls
-        assert _world_yaw_of(call["head"]) == pytest.approx(math.radians(20.0), abs=1e-6)
+        fake.rest_fails = True
+        try:
+            move_head(fake, 0, 0, 0, 0, 0, 20.0, 0.5, motion_lock=threading.RLock())
+        except MotionRefused:
+            pass
+        assert fake.calls == []
 
     def test_workers_recovery_recenter_is_body_relative(self):
         """workers.py's IK-failure recovery calls move_head(mini, 0,...,0) —
         with the frame fix this now means 'centered on the body', never a
         world-zero demand against a turned body during IK distress."""
+        import threading
+
         body = math.radians(-150.0)
         fake = _FakeMini(body_yaw=body)
-        move_head(fake, 0, 0, 0, 0, 0, 0, 0.5)
+        move_head(fake, 0, 0, 0, 0, 0, 0, 0.5, motion_lock=threading.RLock())
         (call,) = fake.calls
         assert _world_yaw_of(call["head"]) == pytest.approx(body, abs=1e-6)
 
