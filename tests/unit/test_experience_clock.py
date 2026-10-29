@@ -347,10 +347,10 @@ def test_a_session_that_used_memory_on_a_frozen_clock_is_loud():
         ec=EntorhinalCortex(),
         _allow_raw=True,
     )
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     with pytest.raises(ExperienceClockStalled):
-        hub.on_session_end_lightweight()
+        hub.on_session_end_lightweight(ticket)
 
 
 # The scripted harnesses that call propose_via_substrate WITHOUT the loop, and so must advance

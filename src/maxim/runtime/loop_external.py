@@ -7,7 +7,8 @@ accepted, logged and never shown to the model. Here:
 - :class:`ExternalInbox` holds those messages: bounded, de-duplicated by Twilio ``MessageSid``, the sender replaced by
   a per-session alias (owner decision 2026-10-28: no phone number ever reaches a prompt or a log).
 - :func:`inbound_comms_subscription` subscribes it on the loop agent's bus for exactly the run's lifetime. The
-  wrapper enters it around the body today, and inside the run's session claim once H's bounded-stop PR 0 lands.
+  wrapper enters it in the same ``with`` as the run's ``bio_session`` claim (#1438 PR 0), so it closes before the
+  session ends.
 - The inbox is the ``InboundFeed`` the request carries. The prompt builder reads :meth:`ExternalInbox.held` when it
   BUILDS the prompt, records which messages survived the fit whole, and dispatch acknowledges them only when the
   model's turn is ACTED ON (``tool_dispatch.execute_and_learn``). A message leaves only then, or after

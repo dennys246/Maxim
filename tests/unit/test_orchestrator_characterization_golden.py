@@ -137,6 +137,7 @@ session snapshot deleted; the imagination teardown's ``clear_ephemeral`` deleted
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -168,12 +169,36 @@ from tests.unit._orch_harness import (  # noqa: E402
 
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "orchestrator_characterization_golden_v1.json"
 _TRACES: dict[str, dict[str, Any]] = {}
+# The agent loops' DEBUG lines per arm, printed with a golden mismatch: an input held behind a planning job, then
+# taken or left stranded (#1488's lost-wake-up question, seen only under CI load; never compared).
+_LOOP_LOGS: dict[str, list[str]] = {}
+_LOOP_LOGGERS = ("maxim.runtime.agent_loop", "maxim.runtime.loop_controller")
+
+
+class _LoopLog(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(logging.DEBUG)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(f"{record.relativeCreated / 1000:8.2f}s {record.threadName} {record.getMessage()[:160]}")
 
 
 def _trace(arm: str, tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     """One run per arm per test session: the golden test and the direct assertions read the same run."""
     if arm not in _TRACES:
-        trace = run_arm(arm, tmp_path_factory.mktemp(f"orch_{arm}"))
+        handler = _LoopLog()
+        levels = {name: logging.getLogger(name).level for name in _LOOP_LOGGERS}
+        for name in _LOOP_LOGGERS:
+            logging.getLogger(name).addHandler(handler)
+            logging.getLogger(name).setLevel(logging.DEBUG)
+        try:
+            trace = run_arm(arm, tmp_path_factory.mktemp(f"orch_{arm}"))
+        finally:
+            for name, level in levels.items():
+                logging.getLogger(name).removeHandler(handler)
+                logging.getLogger(name).setLevel(level)
+            _LOOP_LOGS[arm] = handler.lines
         trace.pop("_elapsed_s")
         _TRACES[arm] = json.loads(canonical_json(trace))
     return _TRACES[arm]
@@ -193,7 +218,9 @@ def test_orchestrator_run_matches_the_golden(arm: str, tmp_path_factory: pytest.
     assert_this_checkout()  # a worktree without PYTHONPATH would otherwise test main's code
     got = _trace(arm, tmp_path_factory)
     want = _fixture()["arms"][arm]
-    assert canonical_json(got) == canonical_json(want), _first_difference(got, want)
+    if canonical_json(got) != canonical_json(want):
+        loop_log = "\n".join(_LOOP_LOGS.get(arm, [])[-150:])
+        pytest.fail(f"{_first_difference(got, want)}\n--- agent loop log, last 150 lines (#1488) ---\n{loop_log}")
 
 
 # ── direct assertions (each is also in the golden; these say what the golden means) ──

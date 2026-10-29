@@ -146,8 +146,8 @@ MemoryHub
     │   ├── NeuralSemanticLSH (async embedder)
     │   └── EmbeddingStore (storage)
     └── Session lifecycle
-        ├── on_session_start() → load embeddings
-        └── on_session_end() → save embeddings
+        ├── on_session_start(owner=...) → load embeddings
+        └── on_session_end(ticket) → save embeddings
 ```
 
 ## Performance
@@ -176,8 +176,8 @@ Embeddings persist across sessions:
 
 ```python
 # Automatic via MemoryHub
-hub.on_session_start()  # Loads embeddings
-hub.on_session_end()    # Saves embeddings
+ticket = hub.on_session_start(owner=me)  # Loads embeddings (on a fresh open)
+hub.on_session_end(ticket)               # Saves embeddings (only the opener's ticket ends it)
 
 # Manual
 ec._embedding_store.save("~/.maxim/util/semantic_embeddings.npz")
@@ -212,8 +212,8 @@ else:
 
 1. **Enable GPU**: Use CUDA for real-time performance
 2. **Use async**: Keep `async_embedding=True` for non-blocking capture
-3. **Load on start**: Call `on_session_start()` to load cached embeddings
-4. **Save on end**: Call `on_session_end()` to persist new embeddings
+3. **Load on start**: Call `on_session_start(owner=...)` to load cached embeddings (keep the ticket)
+4. **Save on end**: Call `on_session_end(ticket)` to persist new embeddings
 5. **Check availability**: Use `is_semantic_available()` before enabling
 
 ## Benchmarks Validated

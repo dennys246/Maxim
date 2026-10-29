@@ -11,7 +11,6 @@ import os
 # through maxim/__init__'s self-engage. The autouse latch-reset fixture below would be too late for that.
 os.environ.pop("MAXIM_OFFLINE", None)
 
-from maxim.memory.encoding import EncodingSignals
 import atexit
 import functools
 import os
@@ -54,6 +53,11 @@ else:
     os.environ["TORCH_HOME"] = str(_TEST_ISOLATION_ROOT / "torch")
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+# The first maxim import, deliberately AFTER the HOME/XDG redirect above: importing maxim reads
+# ~/.config/maxim/profiles.yml, which must be the isolated one, never the developer's (guard:
+# tests/unit/test_conftest_isolation_order.py).
+from maxim.memory.encoding import EncodingSignals  # noqa: E402
 
 # No test reaches the network (roadmap 1.3.1): outbound TCP and non-loopback DNS raise; loopback,
 # IP-literal lookups and UDP connect stay allowed. `@pytest.mark.allow_network` lifts this in-process guard only;
@@ -296,6 +300,16 @@ _OFFLINE_ENV_KEYS = (
     "YOLO_OFFLINE",
     "MAXIM_OFFLINE",
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_stop_request():
+    """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield."""
+    from maxim.utils.cancellation import clear_stop_request
+
+    clear_stop_request()
+    yield
+    clear_stop_request()
 
 
 @pytest.fixture(autouse=True)

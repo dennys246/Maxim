@@ -414,15 +414,27 @@ class _Hub:
 
         self.nac = nac
         self.situation_cue = NO_SITUATION_CUE
+        self.ends: list[bool] = []
 
-    def on_session_start(self) -> dict[str, Any]:
+    # #1438 PR 0: the session API takes an owner and hands back a ticket that every end must present.
+    def on_session_start(self, *, owner: Any, live: bool = False, deadline_s: float | None = None) -> Any:
+        self._ticket = SimpleNamespace(generation=1, owner=owner, start_stats={})
+        return self._ticket
+
+    def _end(self, ticket: Any) -> dict[str, Any]:
+        # Recorded, not asserted: end_bio_session logs a raising end at WARNING, so the driver checks ``ends``.
+        self.ends.append(ticket is not None and ticket is getattr(self, "_ticket", None))
+        self._ticket = None
         return {}
 
-    def on_session_end(self) -> dict[str, Any]:
-        return {}
+    def on_session_end(self, ticket: Any) -> dict[str, Any]:
+        return self._end(ticket)
 
-    def on_session_end_lightweight(self) -> dict[str, Any]:
-        return {}
+    def on_session_end_lightweight(self, ticket: Any) -> dict[str, Any]:
+        return self._end(ticket)
+
+    def release_session_claim(self, ticket: Any) -> None:
+        return None
 
     def record_plan_outcome(self, **kw: Any) -> None:
         return None
@@ -513,6 +525,7 @@ def _run_agent_fallback(
     (tmp_path / "ws").mkdir(exist_ok=True)
     state = RuntimeState()
     state.data["mode"] = "active"
+    hub = _Hub(nac)
     AL.run_agentic_loop(
         _Agent(),
         FileSystemEnv(str(tmp_path / "ws")),
@@ -521,7 +534,7 @@ def _run_agent_fallback(
         build_decision_engine(),
         executor,
         autonomy_controller=controller,
-        memory_hub=_Hub(nac),
+        memory_hub=hub,
         aut_mode="substrate-primary",
         max_steps=actions + 3,
         target_hz=200.0,
@@ -529,6 +542,7 @@ def _run_agent_fallback(
         stop_event=threading.Event(),
     )
     assert calls["execute"] == actions, calls  # every proposed action reached the executor
+    assert hub.ends == [True], f"the loop's own session end did not run exactly once, on its own ticket: {hub.ends}"
     return nac, [kw for kw in recorded if kw.get("tool_name") == TOOL]
 
 

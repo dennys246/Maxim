@@ -471,10 +471,10 @@ def _hub(strategy: str):
 @pytest.mark.parametrize("closer", ["on_session_end", "on_session_end_lightweight"])
 def test_a_stalled_clock_is_loud_on_both_session_end_paths(closer):
     hub = _hub("strength")
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     with pytest.raises(ExperienceClockStalled) as caught:
-        getattr(hub, closer)()
+        getattr(hub, closer)(ticket)
     assert caught.value.captures == 1
     assert caught.value.results is not None, "the diagnostic cost the caller its session results"
 
@@ -483,35 +483,35 @@ def test_a_stalled_clock_is_loud_on_both_session_end_paths(closer):
 def test_activations_alone_are_enough_to_make_a_stalled_clock_loud(closer):
     hub = _hub("strength")
     mid = hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
-    hub.on_session_start()  # the capture happened BEFORE this session
+    ticket = hub.on_session_start(owner=object())  # the capture happened BEFORE this session
     hub.hippocampus.activate([mid], source="tool")
     with pytest.raises(ExperienceClockStalled) as caught:
-        getattr(hub, closer)()
+        getattr(hub, closer)(ticket)
     assert (caught.value.captures, caught.value.activations) == (0, 1)
 
 
 def test_an_advanced_clock_is_silent():
     hub = _hub("strength")
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     hub.hippocampus.experience_clock.advance(1)
-    assert hub.on_session_end_lightweight()["lightweight"] is True
+    assert hub.on_session_end_lightweight(ticket)["lightweight"] is True
 
 
 def test_an_honestly_empty_session_is_silent():
     """Nothing happened, so nothing should have aged. Raising here would make every idle shutdown
     a failure and the assert something nobody reads."""
     hub = _hub("strength")
-    hub.on_session_start()
-    assert hub.on_session_end_lightweight()["lightweight"] is True
+    ticket = hub.on_session_start(owner=object())
+    assert hub.on_session_end_lightweight(ticket)["lightweight"] is True
 
 
 @pytest.mark.parametrize("strategy", ["access_based", "importance_based", "composite"])
 def test_the_assert_never_fires_for_a_model_that_does_not_run_on_experience(strategy):
     hub = _hub(strategy)
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
-    assert hub.on_session_end_lightweight()["lightweight"] is True
+    assert hub.on_session_end_lightweight(ticket)["lightweight"] is True
 
 
 def test_the_configured_s_base_reaches_the_SCORER_not_only_the_stamp():
@@ -541,12 +541,12 @@ def test_a_resumed_session_is_still_watched():
 
     hub = _hub("strength")  # fresh process: nothing has driven this clock
     assert hub.hippocampus.experience_clock.advanced_us() == 0
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.load_state(state)  # --resume-sim: the clock comes back reading 4 s
     assert hub.hippocampus.experience_clock.now_us() == 4 * SECOND
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     with pytest.raises(ExperienceClockStalled):
-        hub.on_session_end_lightweight()
+        hub.on_session_end_lightweight(ticket)
 
 
 def test_the_snapshot_is_taken_from_the_session_not_assumed_to_be_zero():
@@ -554,10 +554,10 @@ def test_the_snapshot_is_taken_from_the_session_not_assumed_to_be_zero():
     it DURING the session. Pins the snapshot itself, which a clock starting at 0 cannot."""
     hub = _hub("strength")
     hub.hippocampus.experience_clock.advance(9 * SECOND)
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     with pytest.raises(ExperienceClockStalled):
-        hub.on_session_end_lightweight()
+        hub.on_session_end_lightweight(ticket)
 
 
 def test_a_load_is_not_experience_but_a_real_advance_still_is():
@@ -620,15 +620,17 @@ def test_the_stall_is_logged_before_it_is_raised(caplog):
     import logging
 
     hub = _hub("strength")
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
     with caplog.at_level(logging.ERROR), pytest.raises(ExperienceClockStalled):
-        hub.on_session_end_lightweight()
+        hub.on_session_end_lightweight(ticket)
     assert any("stalled" in r.getMessage() and r.levelno >= logging.ERROR for r in caplog.records)
 
 
-@pytest.mark.parametrize("module", ["maxim.runtime.bio_integration", "maxim.simulation.interactive"])
-def test_the_two_sim_paths_name_the_exception_before_their_broad_handler(module):
+# #1438 PR 0: interactive.py no longer ends the session (it waits for the loop's bio_session end, a non-owner), so
+# bio_integration's end_bio_session is the one sim path left that catches the stall.
+@pytest.mark.parametrize("module", ["maxim.runtime.bio_integration"])
+def test_the_session_end_names_the_exception_before_its_broad_handler(module):
     """A typed handler, ahead of the ``except Exception`` that would bury it -- and it uses
     ``exc.results``, so the diagnostic does not also cost the run its session telemetry."""
     import ast
@@ -661,7 +663,7 @@ def test_the_gate_reads_a_capability_not_a_strategy_name():
     assert '"strength"' not in source and "'strength'" not in source
 
     hub = _hub("access_based")
-    hub.on_session_start()
+    ticket = hub.on_session_start(owner=object())
     hub.hippocampus.capture(encoding=EncodingSignals.unmeasured("loop"))
 
     class _OwnModel(AccessBasedStrategy):
@@ -669,4 +671,4 @@ def test_the_gate_reads_a_capability_not_a_strategy_name():
 
     hub.hippocampus._build_base_strategy = lambda: _OwnModel()  # a strategy the codebase never names
     with pytest.raises(ExperienceClockStalled):
-        hub.on_session_end_lightweight()
+        hub.on_session_end_lightweight(ticket)

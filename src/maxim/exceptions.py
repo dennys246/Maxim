@@ -261,6 +261,23 @@ class RunDirAmbiguous(MaximMemoryError, ValueError):
     """
 
 
+class SessionRefusal(MaximMemoryError, RuntimeError):
+    """A memory-session claim was refused (#1438): the one class a loop's caller catches (PR 1/2 map it to a 409 or
+    exit 2). Its subclasses say why."""
+
+
+class SessionHeld(SessionRefusal):
+    """A memory session is held by a live loop, so another owner cannot claim it (#1438 PR 0).
+
+    Raised by ``integration.session_ownership.SessionOwnership.claim`` (through ``MemoryHub.on_session_start``) when
+    a running agent loop holds the hub's session. It propagates as a typed abort of the loop that tried to claim it.
+    """
+
+
+class SessionStillEnding(SessionRefusal):
+    """A memory session is still ending and did not finish within the claimer's deadline (#1438 PR 0)."""
+
+
 class MemoryCapacityError(MaximMemoryError):
     """Memory capacity limit exceeded."""
 
@@ -463,6 +480,9 @@ __all__ = [
     "RunDirNotFound",
     "RunDirAmbiguous",
     "MemoryCapacityError",
+    "SessionRefusal",
+    "SessionHeld",
+    "SessionStillEnding",
     # Planning
     "PlanningError",
     "ConstraintViolation",

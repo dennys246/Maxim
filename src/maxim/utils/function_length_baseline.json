@@ -129,11 +129,6 @@
       "lines": 209
     },
     {
-      "file": "src/maxim/runtime/agent_factory.py",
-      "qualname": "AgentFactory.create_full_agent",
-      "lines": 204
-    },
-    {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_deliberation_cycles",
       "lines": 235
@@ -146,7 +141,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2208
+      "lines": 2178
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -211,12 +206,12 @@
     {
       "file": "src/maxim/simulation/interactive.py",
       "qualname": "run_interactive_sim",
-      "lines": 260
+      "lines": 248
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 2869
+      "lines": 2862
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
@@ -389,7 +384,12 @@
     "_main_impl tightened 1588 -> 1562 on 2026-10-26 (#1485 / #1403, rule T): the role-detection block moved to cli.py::_detect_role_or_warn, which re-raises ConfigDirUnreadable instead of warning past an unreadable config dir. Merged with #1468/#1454's 1588 the same day: 1562.",
     "_main_impl tightened 1562 -> 1518 on 2026-10-27 (#1391/#1392/#1394/#1395, rule T): the scenario-validation report moved to cli.py::_report_scenario_validation, carrying the switch to simulation/validation.py::validate_finished_run (snapshot and tool stats on the CLI path). Merged with #1466's 1583, #1468/#1454's 1588 and #1485's 1562: 1518.",
     "_main_impl tightened 1588 -> 1548 on 2026-10-26 (#1338, advisor item 6; rule T): server mode moved to cli.py::_run_server_mode, its LLM start to cli.py::_start_server_llm, which reports NOT READY instead of printing ready (the process stays up while a LeaderProxy runs; solo server mode exits 1); an unused LeaderRefusal import went with it. Merged with #1485's 1562 on 2026-10-27, after #1485 landed first: 1522. Merged with #1503's 1518 the same day: 1478.",
+    "_run_agentic_loop_body tightened 2379 -> 2359 on 2026-10-28 (#1438 PR 0, rule T): the session end, the Default Network stop and the consolidation resolution left the body for runtime/bio_integration.py::bio_session, which run_agentic_loop now wraps the body in; the D13 abort is returned and raised by the wrapper after the session ends.",
+    "_run_agentic_loop_body tightened 2359 -> 2349 on 2026-10-28 (#1438 PR 0, mypy fold): the D13 abort's construction moved to the module-level _planning_liveness_abort in agent_loop.py, so the body ends in one explicit return (mypy: Missing return statement).",
+    "start_simulation_mode tightened 2869 -> 2862 and AgentFactory.create_full_agent 204 -> 195 (unpinned) on 2026-10-28 (#1438 PR 0, rule T): /new's memory consolidation moved to orchestrator.py::_await_aut_session_end_before_new (it now WAITS for the AUT loop's own session end, as a non-owner), and the bio-stack adoption + session open to agent_factory.py::_adopt_bio_stack.",
+    "run_interactive_sim tightened 260 -> 248 on 2026-10-28 (#1438 PR 0, rule T): the end-of-conversation session close moved to interactive.py::_await_conversation_session_end, which waits (a non-owner) for the last turn's loop to end the session it owns.",
     "_run_agentic_loop_body tightened 2379 -> 2208 and LLMWorker._process_request 259 -> 252 on 2026-10-28 (#1481, rule T; Session A's grants): the section 6 submit try/finally moved whole to loop_external.submit_tick_context with the two submits' shared arguments built once by loop_external.planning_submit_shared_kwargs (autonomy_level stays per call), and the Wire 1 variance-annotation block moved verbatim to loop_planning.annotate_tool_variance (AST-identical); _process_request's proposal sim-log moved to llm_worker._sim_log_proposal_built, paying for the two inbound fields; execute_and_learn 384 -> 374: its conversation-history after-effect moved verbatim to tool_dispatch._record_turn_after_effects (the seed of #1150's after-effects step), which carries the inbound acknowledgement.",
-    "_main_impl tightened 1478 -> 1468 on 2026-10-29 (#1481, rule T; Session A's grant): the comms-stack block moved to cli.py::_build_cli_comms, carrying its build_comms_stack(bus=) -> (agent=) edit; AgenticRuntimeMixin._start_agentic_runtime 865 -> 854 the same way (its comms block moved to AgenticRuntimeMixin._build_runtime_comms)."
+    "_main_impl tightened 1478 -> 1468 on 2026-10-29 (#1481, rule T; Session A's grant): the comms-stack block moved to cli.py::_build_cli_comms, carrying its build_comms_stack(bus=) -> (agent=) edit; AgenticRuntimeMixin._start_agentic_runtime 865 -> 854 the same way (its comms block moved to AgenticRuntimeMixin._build_runtime_comms).",
+    "_run_agentic_loop_body re-pinned 2349 -> 2178 on 2026-10-29 at the merge of main (#1438 PR 0, #1525) into #1481: PR 0's pin plus #1481's rule-T extractions above; the inbound subscription now nests in run_agentic_loop's bio_session with statement, so the body gained only its inbound_inbox parameter."
   ]
 }

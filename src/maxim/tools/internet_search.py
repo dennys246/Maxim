@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any
+import urllib.parse
 from urllib.parse import quote_plus, urlparse
 
 from maxim.tools.base import Tool, ToolResult
@@ -20,40 +21,6 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HTTP Connection Pool (for performance)
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Try to use urllib3 for connection pooling (saves 100-300ms per request)
-_http_pool_manager = None
-_http_pool_lock = threading.Lock()
-_URLLIB3_AVAILABLE = False
-
-try:
-    import urllib3
-
-    _URLLIB3_AVAILABLE = True
-except ImportError:
-    urllib3 = None  # type: ignore
-
-
-def _get_http_pool():
-    """Get or create the shared HTTP connection pool manager."""
-    global _http_pool_manager
-    if not _URLLIB3_AVAILABLE:
-        return None
-    if _http_pool_manager is None:
-        with _http_pool_lock:
-            if _http_pool_manager is None:
-                _http_pool_manager = urllib3.PoolManager(
-                    num_pools=4,
-                    maxsize=4,
-                    timeout=urllib3.Timeout(connect=5.0, read=10.0),
-                    retries=urllib3.Retry(total=1, backoff_factor=0.5),
-                )
-    return _http_pool_manager
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -299,6 +266,14 @@ def _search_duckduckgo(
     return [], failure
 
 
+def _is_duckduckgo_host(url: str) -> bool:
+    """True when ``url``'s HOST is duckduckgo.com or a subdomain of it (an exact host match, never a substring:
+    ``notduckduckgo.com`` or ``duckduckgo.com.example`` are someone else's results). Scheme-relative ``//host/...``
+    links, which the HTML page uses, are parsed as such."""
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return host == "duckduckgo.com" or host.endswith(".duckduckgo.com")
+
+
 def _search_duckduckgo_lite(
     query: str,
     max_results: int = 5,
@@ -306,9 +281,15 @@ def _search_duckduckgo_lite(
 ) -> list[dict[str, str]]:
     """Search DuckDuckGo using the HTML version.
 
-    This scrapes the HTML search results page.
-    Uses connection pooling when urllib3 is available for better performance.
+    This scrapes the HTML search results page, through ``maxim.utils.http`` like every outbound call
+    (the bounded download, the caller's timeout and the proxy settings apply). Failures RAISE, so
+    ``_search_duckduckgo`` records that the search broke instead of reporting "nothing matched": a
+    transport or HTTP error, and any status other than 200 -- DuckDuckGo answers a suspected bot with a
+    202 challenge page, and ``fetch_url`` does not follow redirects. Known limit: a 200 page whose layout
+    changed parses to zero results and is indistinguishable here from a real no-match.
     """
+    from maxim.utils import http as _http
+
     results: list[dict[str, str]] = []
 
     # Use the HTML search page (not lite, which may be deprecated)
@@ -321,67 +302,49 @@ def _search_duckduckgo_lite(
         "Accept-Language": "en-US,en;q=0.5",
     }
 
-    try:
-        # Try to use connection pool for better performance
-        pool = _get_http_pool()
-        if pool is not None:
-            response = pool.request("GET", search_url, headers=headers)
-            html = response.data.decode("utf-8", errors="ignore")
-        else:
-            # Fall back to maxim.utils.http (httpx under the hood)
-            from maxim.utils import http as _http
+    response = _http.fetch_url(
+        search_url,
+        method="GET",
+        headers=headers,
+        timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
+        max_bytes=2_000_000,  # untrusted remote; bounds the download (#825)
+    )
+    if response.status != 200:
+        raise RuntimeError(f"DuckDuckGo HTML search returned HTTP {response.status}")
+    html = response.content.decode("utf-8", errors="ignore")
 
-            maxim_resp = _http.fetch_url(
-                search_url,
-                method="GET",
-                headers=headers,
-                timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
-                max_bytes=2_000_000,  # untrusted remote; bounds the download (#825)
+    logger.debug(f"DuckDuckGo HTML response length: {len(html)}")
+
+    # Parse results from HTML using pre-compiled patterns (module level)
+    links = _LINK_PATTERN.findall(html)
+    if not links:
+        logger.debug("Primary pattern found no results, trying fallback")
+        links = _FALLBACK_LINK_PATTERN.findall(html)
+
+    snippets = _SNIPPET_PATTERN.findall(html)
+    if not snippets:
+        snippets = _SNIPPET_FALLBACK_PATTERN.findall(html)
+
+    logger.debug(f"Found {len(links)} links and {len(snippets)} snippets")
+
+    for url, title in links:
+        if len(results) >= max_results:
+            break
+        # Unwrap DuckDuckGo's redirect link (//duckduckgo.com/l/?uddg=<target>) BEFORE filtering: it is how the
+        # HTML page usually links a result, and filtering first dropped every one of them.
+        if "uddg=" in url:
+            # parse_qs already percent-decodes the value; decoding it again would corrupt a target holding %26.
+            url = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("uddg", [url])[0]
+        if _is_duckduckgo_host(url):
+            continue  # DuckDuckGo's own links (ads, settings)
+        snippet = snippets[len(results)] if len(results) < len(snippets) else ""
+        results.append(
+            _make_search_result(
+                title=title.strip(),
+                url=url.strip(),
+                snippet=snippet.strip(),
             )
-            html = maxim_resp.content.decode("utf-8", errors="ignore")
-
-        logger.debug(f"DuckDuckGo HTML response length: {len(html)}")
-
-        # Parse results from HTML using pre-compiled patterns (module level)
-        links = _LINK_PATTERN.findall(html)
-        if not links:
-            logger.debug("Primary pattern found no results, trying fallback")
-            links = _FALLBACK_LINK_PATTERN.findall(html)
-
-        snippets = _SNIPPET_PATTERN.findall(html)
-        if not snippets:
-            snippets = _SNIPPET_FALLBACK_PATTERN.findall(html)
-
-        logger.debug(f"Found {len(links)} links and {len(snippets)} snippets")
-
-        # Filter out DuckDuckGo internal links
-        filtered_links = [
-            (url, title)
-            for url, title in links
-            if not url.startswith("//duckduckgo.com") and "duckduckgo.com" not in url
-        ]
-
-        for i, (url, title) in enumerate(filtered_links[:max_results]):
-            snippet = snippets[i] if i < len(snippets) else ""
-            # Clean up the URL (sometimes it's a redirect URL)
-            if "uddg=" in url:
-                # Extract actual URL from DuckDuckGo redirect
-                import urllib.parse
-
-                parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
-                actual_url = parsed.get("uddg", [url])[0]
-                url = urllib.parse.unquote(actual_url)
-
-            results.append(
-                _make_search_result(
-                    title=title.strip(),
-                    url=url.strip(),
-                    snippet=snippet.strip(),
-                )
-            )
-
-    except Exception as e:
-        logger.warning(f"DuckDuckGo HTML search error: {e}")
+        )
 
     return results
 
