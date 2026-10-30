@@ -7,7 +7,11 @@
 > announcer; `maxim serve` still signs in by token; see the 1.3.0 CHANGELOG's "Correction to 1.2.1").
 > The re-vendor target it names, `src/maxim/console/ui_dist`, is gitignored and vendored at release
 > time only — it does not exist in a checkout, and the contract is now 0.5.0.
-> **ACTIVE (homed) 2026-10-18; the file stays under `deferred/` because src cites this path** (`src/maxim/console/server.py`, `src/maxim/tunnel/keys.py`). Deferred 2026-09-19 until the console/UI line was scheduled; that trigger fired, and **PR 3 (admission control) is homed in 1.3.3** (`roadmap_1_3_x.md` §1.3.3, "Recorded 1.3.3 moves").
+> **ACTIVE (homed) 2026-10-18; the file stays under `deferred/` because src cites this path** (`src/maxim/console/server.py`, `src/maxim/tunnel/keys.py`). Deferred 2026-09-19 until the console/UI line was scheduled; that trigger fired, and PR 3 (admission control) was homed in 1.3.3 (`roadmap_1_3_x.md` §1.3.3, "Recorded 1.3.3 moves") and did not ship there; see the re-homing below.
+> **Re-homed 2026-10-29 (owner):** PR 3 (admission control) did not ship in 1.3.3; it is homed in **1.3.5** as
+> [phone_device.md](phone_device.md) P0-2. Two PR 4 items are pulled forward with it: M3 (talk's tool gate, P0-4) and
+> the principal seam under the tier table (P0-3). PR 4's per-device tokens fire with that plan's Phase 1.
+
 **Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth, A1–A8)
 MERGED #613 and RELEASED in 1.1.4 (contract 0.4.0; one A7 sharpening: disk tokens are re-read
 per request so rotation bites with NO restart); A9 device handoff MERGED #616 (released in
