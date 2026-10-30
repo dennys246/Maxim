@@ -739,9 +739,6 @@ class LLMWorker:
         # in the worker thread on its next checkpoint check.
         cancel_event = threading.Event()
         cancel_token = set_cancel_event(cancel_event)
-        # This worker abandons its own call when the process stop is requested (its stop event is registered with
-        # it, #1438 PR 1b), so the router runs the call inline rather than abandoning it a second time.
-        abandons_token = mark_abandons_on_stop()
         # Plan 4 A.2: bind the typed RequestContext into the utils/http
         # contextvar so (a) outbound X-Maxim-* headers on internal
         # endpoints populate correctly, (b) the peer backend's
@@ -756,6 +753,11 @@ class LLMWorker:
         normalized_ctx = _normalize_request_context(request_context)
         context_token = set_context(normalized_ctx)
         try:
+            # This worker abandons its own call when the process stop is requested (its stop event is registered
+            # with it, #1438 PR 1b), so the router runs the call inline rather than abandoning it a second time. Set
+            # inside the try, so the finally always resets it: a leaked marker would exempt this thread's later
+            # direct router calls from the stop's abandon.
+            abandons_token = mark_abandons_on_stop()
             # copy_context() snapshots the current context (including the
             # cancellation binding we just set). ctx.run(worker_fn, *args)
             # executes worker_fn inside that captured context in the

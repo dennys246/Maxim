@@ -641,3 +641,35 @@ def test_g2b_a_refusal_after_the_load_releases_the_sims_serving_registration(mon
     with pytest.raises(StopStillPending):
         start_simulation_mode(goal="stop test", max_turns=1)
     assert set(SP._ACTIVE) == before, "a refused sim left its serving registration behind"
+
+
+def test_an_unmarked_callers_own_cancel_reaches_the_backend_through_the_helper() -> None:
+    import maxim.utils.cancellation as cancellation
+
+    router = _bare_router()
+    router._routing_policy = SimpleNamespace(max_session_cost=0)
+    router._inference_lock = threading.Lock()
+    router._pending_auto_drains = []
+    router._auto_drain_callback = None
+    started, cancelled = threading.Event(), threading.Event()
+
+    def _dispatch(*_a: Any, **_k: Any) -> tuple[str, None]:
+        started.set()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            ev = cancellation.current_cancel_event()
+            if ev is not None and ev.is_set():
+                cancelled.set()
+                break
+            time.sleep(0.01)
+        return "", None
+
+    router._complete_text_locked = _dispatch
+    own = threading.Event()
+    token = cancellation.set_cancel_event(own)
+    try:
+        threading.Timer(0.3, own.set).start()  # the caller's own timeout fires mid-call
+        router._complete_text("s", "u", temperature=0.0, max_tokens=8)
+    finally:
+        cancellation.reset_cancel_event(token)
+    assert started.is_set() and cancelled.is_set(), "the caller's own cancel never reached the backend's checkpoint"

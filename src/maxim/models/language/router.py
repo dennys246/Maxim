@@ -976,8 +976,11 @@ class LLMRouter:
     ) -> tuple[str, dict[str, Any] | None]:
         import contextvars
 
-        from maxim.utils.cancellation import reset_cancel_event, set_cancel_event, yield_requested
+        from maxim.utils.cancellation import current_cancel_event, reset_cancel_event, set_cancel_event, yield_requested
 
+        # An unmarked caller's own cancel event (bound for its timeout) is forwarded: the helper's checkpoints read the
+        # router's event, so that caller's cancel must reach it too.
+        outer = current_cancel_event()
         cancel_event = threading.Event()
         token = set_cancel_event(cancel_event)
         try:
@@ -1000,6 +1003,8 @@ class LLMRouter:
         threading.Thread(target=ctx.run, args=(_run,), name=name, daemon=True).start()
         try:
             while not done.wait(0.5):
+                if outer is not None and outer.is_set():
+                    cancel_event.set()  # forward the caller's own cancel; keep waiting for the dispatch to unwind
                 if yield_requested():
                     cancel_event.set()  # the backend's next checkpoint unwinds the orphan
                     logger.info("LLM call abandoned: a process stop is requested")
@@ -2036,6 +2041,9 @@ Return JSON exactly like:
         Raises:
             ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
                 failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
+            LLMCallStopped: (a ``ModelInferenceError``) no text while a process stop is requested: the call was
+                refused or abandoned at the stop (#1438 PR 1c). A real failure that coincides with a stop reads as
+                one too; the process is stopping either way.
         """
         from maxim.exceptions import LeaderRefusal, LLMCallStopped, ModelInferenceError
         from maxim.utils.cancellation import yield_requested
