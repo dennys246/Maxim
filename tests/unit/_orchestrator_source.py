@@ -37,7 +37,8 @@ end updates them consciously:
     ``_finish_runner`` in §9) are walk-only, and move to ``orchestrator_tree()`` when a slice splits
     the function.
   - ``test_narrator_reliability.py::test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_exempt``
-    (``_is_observe_only = `` before ``FinishSimulationTool(``; §5).
+    (``_is_observe_only = `` before ``FinishSimulationTool(``; §5; since #1259 the tool is built in
+    ``_register_narrator_sim_tools``, a later part, so the order holds as long as that part follows the function).
   - ``test_planning_liveness.py::TestDeadAutIsSurfaced::test_aut_worker_terminates_the_sim_on_loop_failure``
     (a ``split()`` region of the ``sim.aut`` worker §8). It holds as long as the region moves whole. (Its §11
     neighbour, ``test_519_abort_clock_is_nudge_proof``, became an AST check on ``StallDetector`` in the §11 slice.)
@@ -100,6 +101,8 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("sim_teardown.py", "_emit_report_json"),
     ("sim_teardown.py", "_end_stopped_run"),
     ("sim_teardown.py", "print_run_report"),
+    # #1259 (2026-10-30, rule T): the narrator's simulation-tool registrations, the finish tool's stop_event with them
+    ("orchestrator.py", "_register_narrator_sim_tools"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one

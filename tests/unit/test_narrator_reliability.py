@@ -15,6 +15,7 @@ The red-gate commit marked these strict xfail; the fix flips them.
 from __future__ import annotations
 
 import inspect
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -151,11 +152,14 @@ def test_finish_below_an_explicit_cap_is_refused_and_at_the_cap_is_not() -> None
     bridge = SimpleNamespace(
         turn_count=3, finish_context={}, finish=lambda: finished.append(True), get_all_actions=lambda: []
     )
-    tool = FinishSimulationTool(bridge=bridge, min_turns=8)
+    stop = threading.Event()
+    tool = FinishSimulationTool(bridge=bridge, stop_event=stop, min_turns=8)
     out = tool.execute(status="completed", reason="the garden is lovely", summary="done")
     assert not out.success and "8" in (out.error or out.output) and finished == []
+    assert not stop.is_set(), "a refused finish does not end the run (#1259)"
     bridge.turn_count = 8
     assert tool.execute(status="completed", reason="done", summary="done").success and finished
+    assert stop.is_set()
 
 
 def test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_exempt() -> None:

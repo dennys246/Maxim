@@ -481,6 +481,63 @@ def _restore_aut_from_session(
     return record
 
 
+def _register_narrator_sim_tools(
+    orch_registry: Any,
+    bridge: Any,
+    orchestrator_source: Any,
+    spawn_tool: Any,
+    stop_event: threading.Event,
+    llm_router: Any,
+    goal: str,
+    continuous: bool,
+    _aut_embodiment: Any,
+    _aut_entity_map: Any,
+    *,
+    min_turns: int,
+) -> None:
+    """The narrator's simulation tools, registered in roster order (moved out of ``start_simulation_mode``, #1259).
+    ``min_turns`` is the finish floor: 0 lets an observer end the session at any time."""
+    from maxim.simulation.tools import (
+        AnalyzeResultsTool,
+        CheckCompletionTool,
+        DamageComponentTool,
+        ExtendSimulationTool,
+        FinishSimulationTool,
+        InjectPainTool,
+        ObserveActionsTool,
+        OrchestratorActorTool,
+        SendMessageTool,
+        SetEntitySensorTool,
+        SimRespondTool,
+    )
+
+    orch_registry.register(SendMessageTool(bridge=bridge, embodiment=_aut_embodiment))
+    orch_registry.register(ObserveActionsTool(bridge=bridge))
+    orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
+    orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
+    orch_registry.register(InjectPainTool(bridge=bridge))
+    # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
+    # OrchestratorActorTool: scene entity affordances against the AUT —
+    # writes target_effect deltas through the SEM mechanics path.
+    # Only registered when embodiment is active (--embodiment flag).
+    if _aut_embodiment is not None:
+        orch_registry.register(OrchestratorActorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+        orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+        orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+    orch_registry.register(spawn_tool)
+    orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
+    orch_registry.register(
+        FinishSimulationTool(
+            bridge=bridge,
+            orchestrator_source=orchestrator_source,
+            spawn_tool=spawn_tool,
+            stop_event=stop_event,  # the narrator's finish ends the run (#1259)
+            min_turns=min_turns,
+        )
+    )
+    orch_registry.register(SimRespondTool())
+
+
 def _select_aut_prompt_handler(prompt_handler: Any, stop_event: Any) -> tuple[Any, Any]:
     """``(aut_handler, sim_handler)`` -- the handler the AUT's ``request_interaction`` tool asks, and the
     interactive SimPromptHandler the stdin reader must coordinate with (None unless one was built).
@@ -700,21 +757,7 @@ def start_simulation_mode(
     from maxim.simulation.bridge import SimulationBridge
     from maxim.simulation.conversational_source import ConversationalSource
     from maxim.simulation.introspection import Observer
-    from maxim.simulation.tools import (
-        AnalyzeResultsTool,
-        CheckCompletionTool,
-        DamageComponentTool,
-        ExtendSimulationTool,
-        FinishSimulationTool,
-        InjectPainTool,
-        InspectAUTTool,
-        ObserveActionsTool,
-        OrchestratorActorTool,
-        SendMessageTool,
-        SetEntitySensorTool,
-        SimRespondTool,
-        SpawnSubSimulationTool,
-    )
+    from maxim.simulation.tools import DamageComponentTool, InspectAUTTool, SetEntitySensorTool, SpawnSubSimulationTool
 
     _refuse_a_stop_then_reset_llm_cancellation()
     start_time = time.time()
@@ -1430,30 +1473,19 @@ def start_simulation_mode(
         sandbox_dirs=sandbox_dirs,
     )
     _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
-    orch_registry.register(SendMessageTool(bridge=bridge, embodiment=_aut_embodiment))
-    orch_registry.register(ObserveActionsTool(bridge=bridge))
-    orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
-    orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
-    orch_registry.register(InjectPainTool(bridge=bridge))
-    # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
-    # OrchestratorActorTool: scene entity affordances against the AUT —
-    # writes target_effect deltas through the SEM mechanics path.
-    # Only registered when embodiment is active (--embodiment flag).
-    if _aut_embodiment is not None:
-        orch_registry.register(OrchestratorActorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-        orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-        orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-    orch_registry.register(spawn_tool)
-    orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
-    orch_registry.register(
-        FinishSimulationTool(
-            bridge=bridge,
-            orchestrator_source=orchestrator_source,
-            spawn_tool=spawn_tool,
-            min_turns=0 if _is_observe_only else min_finish_turns,  # an observer may always end the session
-        )
+    _register_narrator_sim_tools(
+        orch_registry,
+        bridge,
+        orchestrator_source,
+        spawn_tool,
+        stop_event,
+        llm_router,
+        goal,
+        continuous,
+        _aut_embodiment,
+        _aut_entity_map,
+        min_turns=0 if _is_observe_only else min_finish_turns,
     )
-    orch_registry.register(SimRespondTool())
     aut_introspector = Observer(
         hippocampus=aut_hippocampus,
         nac=aut_nac,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
 import time
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
@@ -1636,6 +1637,12 @@ class FinishSimulationTool(Tool):
     detected, OR when you determine the run has failed and you want
     to abort early. Triggers clean shutdown: AUT grace period,
     orchestrator exit. A report is generated in all cases.
+
+    The finish is a real stop (#1259): the tool sets the run's ``stop_event``, the one a campaign runner's finish sets
+    (``orchestrator._finish_runner``), so the narrator loop exits and teardown starts. Before that it signalled only the
+    bridge and the narrator's percept source, and the run waited out the source's 180 s exhaustion grace while the stall
+    detector nudged the finished narrator. ``stop_event`` is required, so a construction that forgets it is a
+    ``TypeError``, not a run that never stops.
     """
 
     # Structured outcome labels so downstream tooling can aggregate
@@ -1679,10 +1686,17 @@ class FinishSimulationTool(Tool):
     }
 
     def __init__(
-        self, bridge: Any, orchestrator_source: Any = None, spawn_tool: Any = None, *, min_turns: int = 0
+        self,
+        bridge: Any,
+        orchestrator_source: Any = None,
+        spawn_tool: Any = None,
+        *,
+        stop_event: threading.Event,
+        min_turns: int = 0,
     ) -> None:
         super().__init__()
         self._bridge = bridge
+        self._stop_event = stop_event
         self._orchestrator_source = orchestrator_source
         self._spawn_tool = spawn_tool
         # The operator's explicit turn cap (--sim-max-turns): a run that asked for N turns is not ended early by
@@ -1734,6 +1748,9 @@ class FinishSimulationTool(Tool):
         # Signal orchestrator to stop
         if self._orchestrator_source is not None:
             self._orchestrator_source.finish()
+        # ...and end the run: the narrator loop stops on this (#1259). The finish_context above outranks the stop
+        # when the report resolves its finish reason, so the run reports the narrator's status, not a cancel.
+        self._stop_event.set()
 
         return ToolOutput(
             success=True,
