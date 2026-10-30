@@ -8,8 +8,9 @@
   - `~/.config/maxim/profiles.yml` is merged when a profile is first looked up, not when `models/language/config.py`
     is imported. A malformed file still raises `ConfigurationError`, now on every lookup instead of once at import,
     so a caller that swallows the first error cannot silently lose your profiles for the rest of the run. Every run
-    still stops on it up front, when it builds its model, before choosing one. `maxim doctor` now runs and reports
-    the bad file instead of crashing.
+    still refuses it up front, before choosing a model: every `maxim` run mode exits 2 with `UserProfilesInvalid`,
+    naming the file and the fix, and the API and `create` raise it. The repair commands (`maxim doctor`, `config`,
+    `model`, ...) still run, and `maxim doctor` now reports the bad file instead of crashing.
   - New profile accessors: `get_profile`, `iter_profiles` and `profile_aliases` in `maxim.models.language.config`,
     and `maxim.models.download.llm_models()`. `maxim.models.LLM_MODELS` stays importable and now includes your
     `profiles.yml` downloads. Every internal reader moved to these. `maxim --list-models` output is unchanged.

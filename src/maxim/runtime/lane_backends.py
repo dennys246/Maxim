@@ -2049,16 +2049,12 @@ def _restore_persisted_profile(has_peer_config: bool, logger: Any | None) -> Non
 
 
 def _require_valid_user_profiles() -> None:
-    """The run's ONE fail-fast point for a malformed ``profiles.yml`` (#1315 step 0a; owner decision 2026-10-30).
+    """``build_primary_router``'s first step: :func:`maxim.models.language.config.require_valid_user_profiles`.
+    Its profile reads sit behind ``except Exception`` fallbacks (tier detection's ``profile_available`` would answer
+    "no local file" and quietly pick a smaller model), so a malformed ``profiles.yml`` is refused before any of them."""
+    from maxim.models.language.config import require_valid_user_profiles
 
-    The merge runs on the first profile lookup now, not at import, and ``build_primary_router``'s profile reads sit
-    behind ``except Exception`` fallbacks: tier detection's ``profile_available`` would answer "no local file" and
-    quietly pick a smaller model. So this raises ``ConfigurationError`` first, before any of them, on every run path
-    (CLI, API, ``create``, the orchestrators, the embodied runtime, the console all build their LLM here).
-    """
-    from maxim.models.language.config import _ensure_user_profiles
-
-    _ensure_user_profiles()
+    require_valid_user_profiles()
 
 
 def _capabilities_or_detected(capabilities: Any | None) -> Any:

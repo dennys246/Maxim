@@ -114,7 +114,10 @@ gates could not pass, and a hostile `XDG_CONFIG_HOME` would be parsed before `op
 > - **Review fold (owner decision 2026-10-30): one fail-fast seam.** On main a malformed `profiles.yml` raised at
 >   import. Lazily, ~15 `except Exception` profile reads swallowed it, and tier detection silently picked a smaller
 >   model (wire W1, reproduced). `build_primary_router` now calls `_require_valid_user_profiles()` first, so every run
->   path refuses up front. `maxim doctor` runs and reports instead of crashing. Also folded: conftest merges the
+>   path refuses up front. The delta round (D1) found that CLI agentic, embodied, research and foundry never reach
+>   it, so the owner added a second caller in `cli._main_impl`, before the mode dispatch. Both now call the public
+>   `config.require_valid_user_profiles()`, which raises a typed `UserProfilesInvalid`, and `cli.main` renders it
+>   (exit 2, file and fix). `maxim doctor` runs and reports instead of crashing. Also folded: conftest merges the
 >   isolated profiles once, at collection, and a re-entrant merge raises. Declined: hiding `__getattr__` from mypy
 >   (executor F5). The mypy ratchet counts `if not TYPE_CHECKING:` as a suppression in each init, so a misspelt lazy
 >   name still types as `Any`, as it would with any PEP 562 module. Reviews: `docs/plans/reviews/step0a/`.

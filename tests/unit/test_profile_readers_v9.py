@@ -440,3 +440,118 @@ def test_the_private_table_scan_sees_each_kind_of_reference(tmp_path: Path) -> N
         "y = d.LLM_MODELS\n"
     )
     assert sorted(_private_table_uses(probe)) == [(2, "_PROFILE_ALIASES"), (4, "_PROFILE_ALIASES"), (5, "LLM_MODELS")]
+
+
+# ── step 0a: the lazy hooks themselves, in-process ────────────────────────
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+def test_each_lazy_name_resolves_to_its_defining_object_and_unknown_names_raise(package: str) -> None:
+    """Every ``_LAZY`` entry resolves, through the package's ``__getattr__``, to the object its module defines; an
+    unknown name raises ``AttributeError`` (so ``hasattr`` and ``from pkg import <submodule>`` keep working); and
+    ``dir()`` lists the lazy names before any is touched."""
+    import importlib
+
+    mod = importlib.import_module(package)
+    lazy: dict[str, str] = vars(mod)["_LAZY"]
+    for name, module in lazy.items():
+        assert mod.__getattr__(name) is getattr(importlib.import_module(module), name), f"{package}.{name}"
+    with pytest.raises(AttributeError):
+        mod.__getattr__("no_such_name_step0a")
+    assert set(lazy) <= set(dir(mod))
+
+
+def test_the_moved_goal_agent_alias_and_the_public_llm_models_still_resolve() -> None:
+    """``maxim.agents.base.GoalAgent`` (the historical home) and ``maxim.models.LLM_MODELS`` stay public, through
+    module ``__getattr__``s; anything else still raises ``AttributeError``."""
+    import maxim.agents.base as base
+    import maxim.models as models
+    from maxim.agents.goal_agent import GoalAgent
+    from maxim.models import download
+
+    assert base.__getattr__("GoalAgent") is GoalAgent
+    assert models.__getattr__("LLM_MODELS") is download.llm_models()
+    for mod in (base, models):
+        with pytest.raises(AttributeError):
+            mod.__getattr__("no_such_name_step0a")
+
+
+def test_a_re_entrant_profile_merge_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A lookup made from inside the merge is refused, instead of re-running the merge without end."""
+    from maxim.models.language import config
+
+    monkeypatch.setattr(config, "_user_profiles_loaded", False)
+    monkeypatch.setattr(config, "_user_profiles_merging", True)
+    with pytest.raises(RuntimeError, match="re-entered"):
+        config.require_valid_user_profiles()
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"), [("claude-sonnet-4-6", True), ("qwen2.5-14b", False), ("no-such-profile", False)]
+)
+def test_lane_profile_is_cloud_answers_from_the_profile_table(profile: str, expected: bool) -> None:
+    """The cloud-lane skip reads the lane's profile through ``get_profile`` (step 0a, rule T extraction), with or
+    without a logger."""
+    from types import SimpleNamespace
+
+    from maxim.runtime.lane_backends import _lane_profile_is_cloud
+
+    cfg = SimpleNamespace(model_profile=profile)
+    assert _lane_profile_is_cloud(cfg, "large", None) is expected
+    assert _lane_profile_is_cloud(cfg, "large", __import__("logging").getLogger("step0a")) is expected
+
+
+def test_lane_profile_is_cloud_survives_a_broken_profile_read_without_a_logger() -> None:
+    """A failing read is logged when a logger is given and never raises through a missing one (step 0a review N7)."""
+    from maxim.runtime.lane_backends import _lane_profile_is_cloud
+
+    class _Boom:
+        @property
+        def model_profile(self) -> str:
+            raise RuntimeError("profile unavailable")
+
+    assert _lane_profile_is_cloud(_Boom(), "large", None) is False
+
+
+_CLI_BODY = textwrap.dedent(
+    r"""
+    import sys, json, io, contextlib
+    CFG = json.load(open(sys.argv[1]))
+    sys.path.insert(0, CFG["src"])
+    sys.dont_write_bytecode = True
+    import maxim
+    from maxim.cli import main
+    OUT = {"maxim_file": maxim.__file__, "runs": {}}
+    for label, argv in CFG["commands"].items():
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            try:
+                rc = main(argv)
+                raised = None
+            except BaseException as e:  # noqa: BLE001
+                rc, raised = None, type(e).__name__
+        OUT["runs"][label] = {"rc": rc, "raised": raised, "stderr": err.getvalue()[-2000:]}
+    print(CFG["marker"] + json.dumps(OUT), flush=True)
+    """
+)
+
+
+def test_a_malformed_profiles_file_stops_cli_runs_but_not_the_repair_commands(tmp_path: Path) -> None:
+    """Agentic mode never builds through ``build_primary_router`` (its router comes from ``ExecAgent``, whose
+    fallback would run the loop with no LLM), so the CLI refuses a malformed ``profiles.yml`` before its mode
+    dispatch: exit 2, naming the file and the fix (delta review D1; owner decision 2026-10-30). The commands that
+    repair a broken setup dispatch above that check and still run (Session A's condition)."""
+    commands = {
+        "agentic": ["--mode", "agentic", "--interactive", "false"],
+        "doctor": ["doctor", "--json"],
+        "config": ["config", "get", "llm.profile"],
+    }
+    out = _run(tmp_path, _CLI_BODY, MALFORMED_YML, commands=commands)
+    runs = out["runs"]
+    agentic = runs["agentic"]
+    assert agentic["rc"] == 2 and agentic["raised"] is None, agentic
+    assert "UserProfilesInvalid" in agentic["stderr"] and "profiles.yml" in agentic["stderr"], agentic["stderr"]
+    assert "maxim doctor" in agentic["stderr"], f"the refusal does not say how to recover: {agentic['stderr']}"
+    for label in ("doctor", "config"):
+        assert runs[label]["raised"] is None, f"`maxim {' '.join(commands[label])}` raised: {runs[label]}"
+        assert "UserProfilesInvalid" not in runs[label]["stderr"], runs[label]

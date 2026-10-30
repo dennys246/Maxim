@@ -118,6 +118,17 @@ _PREIMPORT: tuple[str, ...] = (
     "maxim.utils.agent_output",
     "maxim.utils.paths",
     "maxim.utils.singleton",
+    # imported lazily since #1315 step 0a: the eager maxim.agents init used to load these in passing
+    "maxim.agents.context_pool",
+    "maxim.agents.statistician_agent",
+    "maxim.agents.working_memory",
+    "maxim.math",
+    "maxim.math.angular_gyrus",
+    "maxim.math.ips",
+    "maxim.math.linalg",
+    "maxim.math.math_types",
+    "maxim.math.types",
+    "maxim.math.workspace",
     # imported only under pytest's isolated HOME (the conftest environment)
     "maxim.peer",
     "maxim.peer.cli",

@@ -1112,6 +1112,16 @@ _user_profiles_lock = threading.RLock()  # re-entrant, so a nested ensure reache
 _user_profiles_merging = False
 
 
+def require_valid_user_profiles() -> None:
+    """A run's fail-fast check of ``profiles.yml`` (#1315 step 0a; owner decisions 2026-10-30): merge it now, or
+    raise ``ConfigurationError``. The merge otherwise runs at the first profile lookup, and many lookups sit behind
+    ``except Exception`` fallbacks that would turn a malformed file into a run without the model it asked for. Its
+    callers are the run entry points, before anything reads a profile: ``cli._main_impl`` before its mode dispatch,
+    and ``runtime/lane_backends.py::build_primary_router`` (the API, ``create``, the orchestrators and the console
+    build their LLM there). ``maxim doctor`` does not call it: it reports the file instead."""
+    _ensure_user_profiles()
+
+
 def _ensure_user_profiles() -> None:
     """Merge the user's profiles once per process (idempotent, thread-safe). The loader validates the whole file
     before it touches any table, so a failed attempt leaves the tables unchanged and the next access retries."""
@@ -1124,12 +1134,19 @@ def _ensure_user_profiles() -> None:
         if _user_profiles_merging:  # the merge looked a profile up: refuse instead of re-running it without end
             raise RuntimeError("_ensure_user_profiles re-entered during the profiles.yml merge")
         # Imported here: download.py imports this module, and the loader is only needed on the first access.
+        from maxim.exceptions import ConfigDirUnreadable, ConfigurationError, UserProfilesInvalid
         from maxim.models.download import LLM_MODELS
         from maxim.models.language.profile_loader import apply_user_profiles
 
         _user_profiles_merging = True
         try:
             apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+        except ConfigurationError as exc:
+            if isinstance(exc, ConfigDirUnreadable):  # its own typed error, rendered by cli.main (#1403)
+                raise
+            from maxim.models.language.profile_loader import profiles_config_path
+
+            raise UserProfilesInvalid(f"cannot load {profiles_config_path()}: {exc}") from exc
         finally:
             _user_profiles_merging = False
         _user_profiles_loaded = True

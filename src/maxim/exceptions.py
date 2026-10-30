@@ -362,6 +362,18 @@ class ConfigDirUnreadable(ConfigurationError):
     """
 
 
+class UserProfilesInvalid(ConfigurationError):
+    """The user's ``profiles.yml`` cannot be loaded (malformed YAML, a schema error, an unreadable file), so no run
+    can know which models it may use (#1315 step 0a).
+
+    Raised by ``models/language/config.py::_ensure_user_profiles`` and refused up front by
+    ``require_valid_user_profiles`` at every run entry point. The message names the file; ``fix_hint`` says how to
+    recover. ``maxim doctor`` still runs and reports the specific error.
+    """
+
+    fix_hint = "Fix the file, or move it aside, then run `maxim doctor` to check it."
+
+
 class ComponentNotFoundError(ConfigurationError):
     """Requested SEM component template does not exist.
 
