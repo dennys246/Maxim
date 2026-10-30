@@ -38,9 +38,9 @@ end updates them consciously:
     the function.
   - ``test_narrator_reliability.py::test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_exempt``
     (``_is_observe_only = `` before ``FinishSimulationTool(``; §5).
-  - ``test_planning_liveness.py::TestOrchestratorWiringPins::test_519_abort_clock_is_nudge_proof`` and
-    ``TestDeadAutIsSurfaced::test_aut_worker_terminates_the_sim_on_loop_failure`` (``split()`` regions of
-    the stall detector §11 and the ``sim.aut`` worker §8). They hold as long as each region moves whole.
+  - ``test_planning_liveness.py::TestDeadAutIsSurfaced::test_aut_worker_terminates_the_sim_on_loop_failure``
+    (a ``split()`` region of the ``sim.aut`` worker §8). It holds as long as the region moves whole. (Its §11
+    neighbour, ``test_519_abort_clock_is_nudge_proof``, became an AST check on ``StallDetector`` in the §11 slice.)
   - ``test_planning_liveness.py::...::test_orchestrator_opts_in_and_aut_does_not`` (the region after the
     narrator loop call's ``percept_source=orchestrator_source``; §12).
   - ``tests/integration/test_persistent_agent_campaign.py::TestNonePathUnchanged::test_injection_branch_gates_are_wired``
@@ -70,7 +70,8 @@ PARTS: tuple[tuple[str, str], ...] = (
     # #1454's interim prompt fix (2026-10-26, rule T): the interactive post-sim report view + new-goal prompt
     ("orchestrator.py", "_show_report_and_post_sim_prompt"),
     # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
-    # methods, by name: each is one def in that file) and the nudge-example builder that was nested beside it
+    # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
+    # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it
     ("stall_detector.py", "_build_stall_nudge_example"),
     ("stall_detector.py", "__init__"),
     ("stall_detector.py", "_now"),

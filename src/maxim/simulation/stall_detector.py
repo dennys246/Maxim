@@ -7,8 +7,15 @@ Every reading of "now" the detector makes goes through :attr:`StallDetector.CLOC
 and turn-progress timers, the nudge cooldown, and the ages of in-flight LLM calls it asks the call registry about
 (``stall_threshold.stall_suppression(now=...)``). A test that swaps the class attribute moves all of them together,
 so it reaches the idle threshold, or judges a held call wedged by age, without waiting the wall-clock time; the poll
-cadence (``stop_event.wait``) stays on the wall clock. The orchestrator characterization harness uses it for the
-stall arm (#1259, #1488).
+cadence (``stop_event.wait``) and the hard abort's forced-exit sleep stay on the wall clock. #1259 re-homes the
+orchestrator characterization harness's stall arm onto it.
+
+THE CLOCK'S CONTRACT: it must be the wall clock plus an offset (``time.time() + k``), and the offset must stay below
+the call registry's stale-entry TTL (``llm_call_registry._STALE_ENTRY_TTL_S``, 1800 s). The registry stamps every
+in-flight call with ``time.time()``: on a clock from another base (``time.monotonic``, or a fake starting at 0) every
+call age is wrong, so a held call stays "busy" forever or is pruned as stale, silently. Swap the class attribute;
+a global ``monkeypatch.setattr(time, "time", ...)`` no longer reaches the detector, which captured ``time.time``
+when the module was imported.
 
 Three triggers:
 
@@ -77,10 +84,13 @@ def _build_stall_nudge_example(
 
 class StallDetector:
     """One run's stall detector. ``run()`` is the ``sim.stall`` thread's target; it returns when ``stop_event`` is set,
-    or after it has ended the run itself (max turns, or the D12 hard abort)."""
+    or after it has ended the run itself (max turns, or the D12 hard abort).
 
-    # The detector's one clock (module docstring). A staticmethod, so a plain function swapped in by a test is not
-    # bound as a method.
+    ``run()`` calls ``_configure()`` first: the thresholds and the abort clock are read when the THREAD starts, as the
+    closure read them, so ``_poll()`` needs a ``_configure()`` before it (a test calls both)."""
+
+    # The detector's one clock (module docstring, THE CLOCK'S CONTRACT: wall clock plus an offset under 1800 s). A
+    # staticmethod, so a plain function swapped in by a test is not bound as a method.
     CLOCK: ClassVar[Callable[[], float]] = staticmethod(time.time)
 
     def __init__(
@@ -120,7 +130,7 @@ class StallDetector:
         # advance. Drives the action-count ping-pong trigger.
         self._last_orch_action_count = 0
         self._nudge_count = 0
-        self._last_nudge_time = 0.0
+        self._last_nudge_time = float("-inf")  # no nudge yet: the cooldown never holds back the first, on any clock
         self._max_turn_warned = False
         self._last_diversity_turn = 0
 

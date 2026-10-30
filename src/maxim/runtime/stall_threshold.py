@@ -216,7 +216,9 @@ def stall_suppression(
     - ``(False, None)``: nothing is in flight: a real stall candidate.
 
     ``now`` (default: the wall clock) is the time the call ages are read at: the detector's own clock, so a test that
-    advances it ages the in-flight calls with its idle timer (``simulation/stall_detector.py``).
+    advances it ages the in-flight calls with its idle timer (``simulation/stall_detector.py``). It must be on ``time.time``'s
+    epoch (the registry stamps its entries with it), and less than the registry's 1800 s stale-entry TTL ahead of the
+    wall clock, or a held call reads as "nothing in flight" rather than wedged.
     """
     from maxim.agents.llm_types import PLANNING_LANE
     from maxim.runtime import llm_call_registry as reg
