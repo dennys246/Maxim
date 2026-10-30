@@ -32,6 +32,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
+from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section
 
 if TYPE_CHECKING:
     pass
@@ -1048,6 +1049,7 @@ class PromptBuilder:
     def build_prompt(self, request: LLMRequest) -> str:
         """Build prompt from request."""
         context = request.context
+        request.inbound_frame_ids = {}  # #1481: this build's frames only (a retry never keeps a stale nonce)
 
         # Check for action followup
         action_followup_input = ""
@@ -1069,7 +1071,9 @@ class PromptBuilder:
                 else ""
             )
             correction = build_followup_retry_correction(request)
-            return "\n\n".join(part for part in (prompt, deferred, correction) if part)
+            inbound = self._inbound_text(request)  # #1481: the follow-up bypasses the budgeter, so it states its rule
+            inbound = framed_section(inbound, wording=INBOUND_WORDING) if inbound else ""
+            return "\n\n".join(part for part in (prompt, deferred, inbound, correction) if part)
 
         # Check for pending user input
         user_question = ""
@@ -1225,6 +1229,13 @@ class PromptBuilder:
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
+        budgeter.add(  # #1481: inbound comms, framed; dropped whole under pressure, and then not acknowledged
+            "inbound_messages",
+            self._inbound_text(request),
+            SectionPriority.IMPORTANT,
+            source="data",
+            frame_wording=INBOUND_WORDING,
+        )
         self._add_deliberation_transcript_section(budgeter, request.context, response_reserve)
         self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context, tools=set(request.available_tools))
@@ -1249,6 +1260,46 @@ class PromptBuilder:
             )
 
         return f"TOOL_PROMPT|{stable_text}{PROMPT_SEGMENT_DELIMITER}{dynamic_text}"
+
+    def _inbound_text(self, request: LLMRequest) -> str:
+        """The held inbound comms as frames, one per message, oldest first, within ~10% of the context in tokens
+        (owner decision 2026-10-28). A message that does not fit stays held for the next prompt; a first message larger
+        than the cap is truncated to fit, never skipped (delta1 N5). The alias sits in the frame header (``tool=``), so
+        a body line cannot impersonate the sender (delta B3). Records each frame's nonce on the request; the worker
+        keeps the ids whose frame reaches the text sent whole. Empty when nothing is held, so the prompt is unchanged."""
+        import secrets
+
+        feed = request.inbound_feed
+        # Only a NEW turn's first build may evict a message shown in K un-acted turns (code delta D1): a retry rebuild
+        # (the request already counted) or a deliberation continuation never does.
+        entries = feed.held(evict=not request.inbound_counted) if feed is not None else []
+        if not entries:
+            return ""
+        cap = max(1, self._n_ctx // 10)
+        counter = self._token_counter
+        lines = ["=== Inbound Messages (held until you act on them) ==="]
+        used = counter.count_tokens(lines[0])
+        for entry in entries:
+            nonce = secrets.token_hex(4)
+            label = f"comms:{entry.channel}:{entry.alias}"
+            frame = frame_tool_output(label, entry.content, external=True, nonce=nonce)
+            tokens = counter.count_tokens(frame)
+            if used + tokens > cap:
+                if len(lines) > 1:
+                    break
+                keep = max(1, int(len(entry.content) * (cap - used) / max(tokens, 1)) - 40)
+                while True:  # shrink until the frame fits (the estimate can overshoot: code review E-NIT3)
+                    body = f"{entry.content[:keep]}\n[... truncated to fit the prompt]"
+                    frame = frame_tool_output(label, body, external=True, nonce=nonce)
+                    tokens = counter.count_tokens(frame)
+                    if used + tokens <= cap or keep <= 1:
+                        break
+                    keep = max(1, keep * 3 // 4)
+                logger.info("Inbound message from %s truncated to fit the prompt", entry.alias)
+            lines.append(frame)
+            used += tokens
+            request.inbound_frame_ids[nonce] = entry.id
+        return "\n".join(lines) if len(lines) > 1 else ""
 
     # ── _build_tool_aware_prompt section helpers ──────────────────────────
 

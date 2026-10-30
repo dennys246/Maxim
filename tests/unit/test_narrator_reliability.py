@@ -298,7 +298,7 @@ def test_the_worker_carries_held_inputs_into_the_follow_up_prompt() -> None:
 def test_a_failed_submit_releases_the_inputs_it_carried() -> None:
     from collections import deque
 
-    from maxim.runtime.agent_loop import _release_unsent_deferred_inputs
+    from maxim.runtime.loop_external import _release_unsent_deferred_inputs  # its home since #1481
 
     processed = deque(["a", "checkpoint"], maxlen=20)
     _release_unsent_deferred_inputs(processed, ["checkpoint"], submitted=True)

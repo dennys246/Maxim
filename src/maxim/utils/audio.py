@@ -56,21 +56,36 @@ _local_audio_lock = threading.Lock()
 
 
 def _check_local_audio() -> bool:
-    """Check if local audio playback is available."""
+    """Whether local audio playback can actually play: sounddevice imports AND an output device exists.
+
+    Truthful for #1437 (R1): on Linux, ``import sounddevice`` raises ``OSError`` (not ``ImportError``)
+    when the PortAudio library is missing, and its own ``PortAudioError`` when PortAudio cannot start
+    (Ubuntu 26 with no sound server); both used to escape this check. A machine with sounddevice but no
+    output device (a headless box) used to report available. Cached per process.
+    """
     global _local_audio_available
     if _local_audio_available is not None:
         return _local_audio_available
 
+    from maxim.utils.optional_deps import import_refused
+
     try:
-        import sounddevice as sd  # noqa: F401
-
-        _local_audio_available = True
-        logger.debug("Local audio playback available (sounddevice)")
-    except ImportError:
+        import sounddevice as sd
+    except Exception as e:
+        if not import_refused(e, "sounddevice"):
+            raise
         _local_audio_available = False
-        logger.debug("Local audio not available (install sounddevice: pip install sounddevice)")
-
-    return _local_audio_available
+        logger.debug("Local audio not available (sounddevice: %s)", e)
+        return False
+    try:
+        sd.query_devices(kind="output")
+    except (sd.PortAudioError, ValueError) as e:  # no default output device
+        _local_audio_available = False
+        logger.debug("Local audio not available (no output device: %s)", e)
+        return False
+    _local_audio_available = True
+    logger.debug("Local audio playback available (sounddevice)")
+    return True
 
 
 def play_audio_local(
@@ -89,7 +104,11 @@ def play_audio_local(
         True if playback started successfully, False otherwise.
     """
     if not _check_local_audio():
-        logger.warning("Local audio not available. Install with: pip install sounddevice")
+        logger.warning(
+            "Local audio not available (sounddevice, the PortAudio library, a sound server, or an output device "
+            "is missing). Install with: pip install 'pymaxim[tts]'; on Linux also the PortAudio library "
+            "(apt install libportaudio2) and a running sound server (PulseAudio or PipeWire)."
+        )
         return False
 
     if samples is None or len(samples) == 0:
@@ -346,6 +365,22 @@ def push_to_started_player(
     return _push_to_started_player(media, samples, sample_rate, log, None)
 
 
+def tts_local_requested() -> bool:
+    """``MAXIM_TTS_LOCAL``: play the robot's speech on this machine's speakers. One parser for every reader."""
+    return os.environ.get("MAXIM_TTS_LOCAL", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def device_speech_plays_locally(mini: Any) -> bool:
+    """Whether :func:`push_audio_to_device` would play on this machine's speakers, as known at start (#1437).
+
+    The decision table's local routes that hold for the whole run: ``MAXIM_TTS_LOCAL``, no SDK handle,
+    or a ``no_media`` backend. (WebRTC before its send chain exists is transient, so it is not counted.)
+    """
+    if tts_local_requested() or mini is None:
+        return True
+    return _backend_of(getattr(mini, "media", None)) == _NO_MEDIA
+
+
 def push_audio_to_device(
     mini: Any,
     samples: np.ndarray,
@@ -392,7 +427,7 @@ def push_audio_to_device(
     if samples is None or np.ndim(samples) == 0 or len(samples) == 0:
         return False
 
-    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
+    prefer_local = tts_local_requested()
 
     if not prefer_local and mini is not None:
         media = getattr(mini, "media", None)

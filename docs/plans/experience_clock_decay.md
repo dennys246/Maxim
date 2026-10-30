@@ -230,7 +230,7 @@ drift reaches the GL2a record and is netted out). `_loop_live_tick` calls `advan
 **both** modes. `tick_embodiment_drift`'s substrate-primary early return goes, `evaluate_failures`
 becomes evaluate-only, and `_last_poll` (and the pause leak) is deleted.
 - **Public behaviour change:** `maxim.create.embodiment()` documents `.evaluate_failures()` as the
-  tick. S4 updates that docstring and adds a CHANGELOG `[Unreleased]` line plus an API note.
+  tick. S4 updates that docstring and adds a `changelog.d/` fragment (M83 step 3; formerly an `[Unreleased]` line) plus an API note.
 - **Out-of-loop callers must call `advance()` themselves** (Q4; no wall-clock fallback). Each one is
   migrated in S4 with its own world dt:
   - `runtime/substrate_proposal.py::propose_via_substrate`'s `evaluate_failures()` (today's

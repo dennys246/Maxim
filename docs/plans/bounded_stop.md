@@ -141,6 +141,63 @@ direct `on_session_end` callers, and `AgentInstance.shutdown` ends whatever is o
 
 ## 5. PR 1 (#1438): the library
 
+**As built (2026-10-29): split into PR 1a and PR 1b (owner decision).** PR 1a is the memory side: the session end
+below, the store locks, the loaders' prune pass, the `Deadline` parameter, and #1520. PR 1b is the stop side:
+`StopRequest` wiring and LLM-worker abandon, the cancelling console/handle waits, `start_simulation_mode(stop_event=)`,
+the console lifespan and `console.stop_budget_s` (config 1.3 → 1.4), and the sim tail. PR 0 ships in the same release
+as both. PR 1a departs from the text below as follows:
+
+- **No quiesce-and-skip, and the session never stays ENDING** (owner decision 2026-10-29, after a design pass showed
+  a late writer would wedge the hub for the rest of the process, and that percept threads and synchronous captures
+  write EC and the embedding store where no session end can stop them). EC and the `EmbeddingStore` got their own
+  leaf locks, and ATL's ref writes, reinforce and iteration go through ATL's lock. Phase a flushes the writers, best
+  effort and logged, producers before consumers (capture workers, extractor, embedder; the embedder is drained, not
+  stopped, since nothing restarts it), and never skips a store.
+- **#1520: owed after-steps** (owner decision 2026-10-29). A shutdown that must wait for a live loop hands its
+  after-steps to that generation's end (`SessionOwnership.defer_until_ended`). An abandon drops them, naming each at
+  ERROR (owner decision 2026-10-29).
+- **Loaders prune NAc and ATL, not SCN or EC signatures:** SCN's ids mix in the tool-pain bridge's persistent event
+  signatures, and EC's `register` is an open id space no shipped path fills with hippocampus ids. They prune once per
+  hub, and only against a target that READ its file (an empty target makes everything look dangling). NAc is pruned
+  in place under its lock (`NAc.prune_ec_keys`), never by a dump/load round trip.
+- **The plan manager and provenance end after consolidation;** the hippocampus `.backup` is taken in phase b (the
+  previous session's file; sleep's own auto-save used to make it).
+- **The console and the pool bound only their wait for a loop** (`AgentInstance.shutdown(loop_wait=)`); the
+  agent's own end stays unbounded until 1b's `console.stop_budget_s` (owner decision 2026-10-29).
+- **The cross-layer graph is pathless in every shipped builder** (never saved or loaded); #1530 owns it. Unlocked readers of EC and ATL state outside them: #1532; the
+  `EmbeddingStore` save: #1531.
+
+**As built, PR 1b (2026-10-30): split again into 1b (the stop side) and 1c (the sim side) (owner decision).** A design
+pass and two delta rounds (approach note in the session record) changed the text below as follows:
+
+- **uvicorn re-raises a signal only AFTER lifespan shutdown** (`Server.capture_signals`, 0.40), so "flag handlers
+  installed before `uvicorn.run`" cannot arm the stop in time. `maxim serve` runs `console/server.py::_MaximServer`,
+  whose `handle_exit` only records the signal and whose `shutdown` (run before uvicorn closes connections) makes the
+  request; `timeout_graceful_shutdown` bounds uvicorn's own wait (unbounded before). Exit codes stay PR 2's.
+- **Only process owners request the stop** (owner decision 2026-10-30): the lifespan, `_drain_and_stop_handle` and
+  the serve path. `MaximHandle.stop(deadline=)` makes no request, so a per-handle stop in an embedder stops nothing
+  else. The owner clears the request (`clear_stop_request(expected=)`) only after a stop that finished; an overrun
+  leaves it set and the next lifespan start refuses (`StopStillPending`), which replaces the refuse-rebuild rule the
+  text assumed (it was never built).
+- **A loop's clean exit under a stop is bounded by the stop's deadline and never abandoned** (owner decision
+  2026-10-30): persist always, consolidate within the bound.
+- **Registry, not a `stop_event=` parameter:** loops register their own stop event for the run, `LLMWorker.start`
+  registers its event (after its clear, so a worker started under a request is born stopped), and the backend
+  registers its `request_shutdown`/`reset_shutdown` pair as hooks; request and clear hooks run under one lock so a
+  clear never re-arms the backend under a newer request. Campaigns stop through the same registry in 1c.
+- **`yielded` is a typed abort** (owner decision 2026-10-30), in `SIMULATION_ABORT_FINISH_REASONS`, outranking the
+  statuses the stop causes; it moved into 1b because 1b's stop already ends a campaign's AUT loop.
+- **The drain runs on a daemon thread**, never `asyncio.to_thread` (joined for up to 300 s at loop close).
+- **Not built:** `runtime.yield_timeout_s` (no consumer; PR 2 adds what it needs).
+- **Known limit (#1536):** a per-handle `MaximHandle.stop(deadline=)` with no process request bounds its waits and
+  `AgentInstance.shutdown`, but not the session end of a Talk loop that owns the session (`bio_session`'s clean exit
+  reads only the process request). The console's own stop is bounded; the per-session bound is the issue's.
+- **An embedder running its own `uvicorn.run`** (not `maxim serve`) gets no signal-time request and an unbounded
+  uvicorn graceful wait before the lifespan's budget starts: say so in the note to pulse.
+- **1c:** stop checks in the DM and generative runners (their loops never check one, and direct router calls are not
+  abandoned), the tail order with an early and a late report save, the bounded AUT join with a share and a reserve,
+  refusal at start, the post-sim stdin prompt, `wait_ready` honouring a stop, and the reset re-check.
+
 - **`utils/deadline.py::Deadline`:** frozen and monotonic. It has `remaining()`, `expired()`, `share(fraction of
   remaining)` and `sub(seconds)` (both clamped to the parent), and `Deadline.none()`. Never persisted.
 - **`StopRequest`** in `utils/cancellation.py`, the neutral home: memory, runtime, console and the CLI import it, and

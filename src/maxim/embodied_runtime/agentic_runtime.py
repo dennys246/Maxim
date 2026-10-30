@@ -260,6 +260,23 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("DoA feed not started: %s", e, logger=self.log)
 
+    def _build_runtime_comms(self, agent: Any, nac: Any) -> Any:
+        """The embodied runtime's comms stack, when ``MAXIM_COMMS_ENABLED``: wired to the agent, so its inbound messages
+        land on the bus the run's loop watches (#1481). Returns the gateway, or None. Moved from
+        ``_start_agentic_runtime`` (rule T)."""
+        gateway = None
+        if os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes"):
+            try:
+                from maxim.runtime.bootstrap import build_comms_stack
+
+                gateway, _conv_manager = build_comms_stack(
+                    agent=agent,
+                    nac=nac,
+                )
+            except Exception as e:
+                warn("Failed to build comms stack: %s", e, logger=self.log)
+        return gateway
+
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
 
@@ -454,33 +471,8 @@ class AgenticRuntimeMixin:
         from maxim.utils.response_output import ResponseOutput
 
         sandbox_path = Path(self.home_dir) / "sandbox"
-        tts_engine = None
-        speaker_fn = None
-
-        # Check if TTS is enabled (set via environment or config)
-        if os.environ.get("MAXIM_TTS_ENABLED", "").lower() in ("1", "true", "yes"):
-            try:
-                from maxim.models.audio.tts import TTSEngine
-                from maxim.utils.audio import _check_local_audio
-
-                tts_model = os.environ.get("MAXIM_TTS_MODEL", "en_US-lessac-medium")
-                tts_engine = TTSEngine(model_name=tts_model)
-                if tts_engine.is_available:
-                    speaker_fn = self.speak  # Uses Reachy speaker with local fallback
-                    self.log.info("TTS enabled with model: %s", tts_model)
-
-                    # Check local audio availability for fallback
-                    prefer_local = os.environ.get("MAXIM_TTS_LOCAL", "").lower() in ("1", "true", "yes")
-                    if prefer_local:
-                        self.log.info("TTS using local audio (MAXIM_TTS_LOCAL=1)")
-                    elif _check_local_audio():
-                        self.log.info("Local audio available as fallback for remote connections")
-                else:
-                    self.log.warning("TTS model not found, TTS disabled")
-                    tts_engine = None
-            except Exception as e:
-                self.log.warning("Failed to initialize TTS: %s", e)
-                tts_engine = None
+        # Spoken responses: built (or refused) once in live(), before awaken(), by build_speech_output (#1437)
+        tts_engine, speaker_fn = getattr(self, "_speech_output", (None, None))
 
         response_output = ResponseOutput(
             sandbox_path=sandbox_path,
@@ -499,18 +491,7 @@ class AgenticRuntimeMixin:
 
         state.data["internet_access"] = effective_internet_enabled(allow_internet)
 
-        # Build comms stack if enabled (MAXIM_COMMS_ENABLED env)
-        gateway = None
-        if os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes"):
-            try:
-                from maxim.runtime.bootstrap import build_comms_stack
-
-                gateway, _conv_manager = build_comms_stack(
-                    bus=agent_bus,
-                    nac=nac,
-                )
-            except Exception as e:
-                warn("Failed to build comms stack: %s", e, logger=self.log)
+        gateway = self._build_runtime_comms(agent, nac)  # MAXIM_COMMS_ENABLED env
 
         _t_tools = time.time()
         # Pass maxim=None when headless so robot tools get no-op stubs

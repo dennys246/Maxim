@@ -115,7 +115,7 @@ class AgentPool:
         with self._lock:
             instance = self._agents.pop(agent_id, None)
         if instance is not None:
-            instance.shutdown(deadline_s=deadline.remaining() if deadline is not None else None)
+            instance.shutdown(loop_wait=deadline)
             if self._bus is not None:
                 try:
                     self._bus.unregister(agent_id)

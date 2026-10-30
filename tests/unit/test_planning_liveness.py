@@ -588,7 +588,8 @@ class TestLoopWiringPins:
         assert "return PlanningLivenessExhausted(" in inspect.getsource(agent_loop._planning_liveness_abort)
         wrapper = ast.parse(textwrap.dedent(inspect.getsource(agent_loop.run_agentic_loop))).body[0]
         [session_block] = [n for n in wrapper.body if isinstance(n, ast.With)]
-        assert "bio_session" in ast.unparse(session_block.items[0].context_expr)
+        # The same `with` also registers the loop's stop event with the process stop request (#1438 PR 1b).
+        assert any("bio_session" in ast.unparse(item.context_expr) for item in session_block.items)
         [deferred_raise] = [n for n in ast.walk(wrapper) if isinstance(n, ast.Raise)]
         assert deferred_raise.lineno > session_block.end_lineno
 

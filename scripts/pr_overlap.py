@@ -3,7 +3,8 @@
 
 ``main`` requires branches to be up to date (classic protection, ``strict``), and merge queues are not offered on a
 personal-account repository. So every merge makes each other open PR BEHIND, its update restarts a ~40 min CI run, and
-a PR that shares a hot file with the one that landed (``CHANGELOG.md``, ``scripts/coverage_floors.json``,
+a PR that shares a hot file with the one that landed (``CHANGELOG.md``, which only a release bump edits since M83 step 3's
+``changelog.d/`` fragments, ``scripts/coverage_floors.json``,
 ``src/maxim/utils/function_length_baseline.json``) also conflicts or must re-pin. This script makes that visible
 before anyone clicks merge. For every open PR against ``main`` it prints:
 

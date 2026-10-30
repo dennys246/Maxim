@@ -121,19 +121,14 @@ def _ec_snapshot(ec: Any | None) -> dict[str, Any]:
     if ec is None:
         return {"node_count": 0, "available": False}
     try:
-        node_count = getattr(ec, "substrate_node_count", 0)
         # Don't dump full embeddings — that would balloon the JSONL.
         # The node count + modality histogram is enough for Phase 0
         # cluster-formation analysis; embeddings are persisted via
-        # standard EC save() at session end.
-        modalities: dict[str, int] = {}
-        nodes = getattr(ec, "_substrate_nodes", None)
-        if isinstance(nodes, dict):
-            for _emb_mod in nodes.values():
-                # Stored as ``(embedding, modality)`` per EC.register_substrate_node
-                if isinstance(_emb_mod, tuple) and len(_emb_mod) >= 2:
-                    mod = str(_emb_mod[1])
-                    modalities[mod] = modalities.get(mod, 0) + 1
+        # standard EC save() at session end. One locked EC snapshot (#1438):
+        # percepts register nodes on other threads while this runs, so the
+        # count and the histogram come from the same moment.
+        modalities = {str(mod): n for mod, n in ec.substrate_modality_counts().items()}
+        node_count = sum(modalities.values())
         return {
             "node_count": int(node_count),
             "modalities": modalities,

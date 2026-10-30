@@ -279,24 +279,37 @@ def bio_session(
         _close_session(session, consolidation="lightweight", bound=bound)
         raise
     else:
-        _close_session(session, consolidation=session.resolved_consolidation(), bound=None)
+        # A clean exit under a process stop (the loop yielded) is bounded by that stop's deadline: the end persists
+        # whatever the bound and consolidates only within it (owner decision 2026-10-30, #1438 PR 1b). Read once.
+        stop = current_stop()
+        _close_session(
+            session,
+            consolidation=session.resolved_consolidation(),
+            bound=stop.deadline if stop is not None else None,
+            abandon_if_expired=False,
+        )
 
 
 def _close_session(
-    session: BioSession, *, consolidation: Literal["full", "lightweight"], bound: Deadline | None
+    session: BioSession,
+    *,
+    consolidation: Literal["full", "lightweight"],
+    bound: Deadline | None,
+    abandon_if_expired: bool = True,
 ) -> None:
     """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error.
 
-    The Default Network and this session's capture worker stop on EVERY path; only the persist is gated on the bound.
-    A bound that expired before the persist could start abandons the generation (closed, nothing persisted), so the
-    session never stays OPEN with nobody able to end it."""
+    The Default Network and this session's capture worker stop on EVERY path. On the abnormal path
+    (``abandon_if_expired``) a bound that expired before the persist could start abandons the generation (closed,
+    nothing persisted), so the session never stays OPEN with nobody able to end it. A clean exit never abandons: it
+    persists under any bound (``end_session`` saves first) and the bound only limits consolidation."""
     try:
         if session.stop_default_network is not None:
             try:
                 session.stop_default_network()
             except Exception:
                 log_swallowed_exception(site="bio_integration.py:_close_session:stop_default_network")
-        if bound is not None and bound.expired():
+        if abandon_if_expired and bound is not None and bound.expired():
             if session.capture is not None:
                 session.capture.stop.set()  # no flush: the bound is spent
             if session.memory_hub is not None and session.ticket is not None:
@@ -309,6 +322,7 @@ def _close_session(
             hippocampus=session.hippocampus,
             capture=session.capture,
             consolidation=consolidation,
+            deadline=bound,
         )
     finally:
         if session.memory_hub is not None and session.ticket is not None:
@@ -322,8 +336,10 @@ def end_bio_session(
     hippocampus: Any | None,
     capture: Any | None = None,
     consolidation: Literal["full", "lightweight"] = "full",
+    deadline: Deadline | None = None,
 ) -> None:
-    """Drain and stop this session's capture worker, save the hippocampus, and end the MemoryHub session as owner.
+    """Drain and stop this session's capture worker and end the MemoryHub session as owner; the hub's end saves the
+    hippocampus with the stores keyed on its ids (#1438 PR 1a), and only a session with no hub to end saves it here.
 
     The consolidation flavor is an **explicit choice** (HANDLE seam, part b): ``"full"`` runs the blocking
     sleep/replay + bridge consolidation (``on_session_end``); ``"lightweight"`` persists NAc decay + embeddings +
@@ -331,16 +347,25 @@ def end_bio_session(
     lightweight loses consolidation silently; wrongly full is a slightly slow shutdown that is loud and harmless.
 
     ``ticket`` is the session's (``bio_session``); ``None`` means no hub session to end. ``capture`` is the worker this
-    session started; only it is stopped, never another loop's on the same Hippocampus.
+    session started; only it is stopped, never another loop's on the same Hippocampus. ``deadline`` bounds the
+    flush and the hub's session end (which saves first, then consolidates only within it).
     """
     use_lightweight = consolidation == "lightweight"
-    # Drain async capture queue and save hippocampus
+    # Drain this session's async capture queue and stop its worker, within the bound.
     if hippocampus is not None:
         try:
-            hippocampus.flush(timeout=5.0)
-            hippocampus.stop_capture_worker(capture)
+            hippocampus.stop_capture_worker(capture, timeout=deadline.cap(5.0) if deadline is not None else 5.0)
         except Exception as e:
             logger.warning("Failed to flush/stop the hippocampus capture worker: %s", e)
+    _end_hub_session(memory_hub, ticket, deadline=deadline, lightweight=use_lightweight)
+    # The hub's end saves the hippocampus (#1438 PR 1a). Save it here only when that did not cover it: no hub, no
+    # ticket, a hub on another hippocampus, or an end that did not reach its save (a stale ticket, a raise).
+    if hippocampus is not None and (
+        memory_hub is None
+        or ticket is None
+        or memory_hub.hippocampus is not hippocampus
+        or memory_hub.hippocampus_unsaved()
+    ):
         try:
             if hasattr(hippocampus, "config") and hippocampus.config.persistence_path:
                 hippocampus.save()
@@ -350,14 +375,20 @@ def end_bio_session(
         except Exception as e:
             logger.warning("Failed to save hippocampus: %s", e)
 
+
+def _end_hub_session(
+    memory_hub: Any | None, ticket: SessionTicket | None, *, deadline: Deadline | None, lightweight: bool
+) -> None:
+    """End the MemoryHub session as its owner (``end_bio_session``'s middle step)."""
+    use_lightweight = lightweight
     # End the MemoryHub session as its owner. Sim mode skips hippocampus.sleep() (expensive replay) but still
     # persists NAc decay, semantic embeddings, and subsystem state so learning is not lost.
     if memory_hub is not None and ticket is not None:
         try:
             if use_lightweight:
-                session_stats = memory_hub.on_session_end_lightweight(ticket)
+                session_stats = memory_hub.on_session_end_lightweight(ticket, deadline=deadline)
             else:
-                session_stats = memory_hub.on_session_end(ticket)
+                session_stats = memory_hub.on_session_end(ticket, deadline=deadline)
             log_agentic(
                 "memory_hub",
                 "session_end",
@@ -372,8 +403,8 @@ def end_bio_session(
             # cost us the telemetry line.
             logger.error("MemoryHub session ended on a stalled experience clock: %s", e)
             log_agentic("memory_hub", "session_end", e.results or {}, level="INFO")
-        except Exception as e:
-            logger.warning("Failed to end MemoryHub session: %s", e)
+        except Exception:
+            log_swallowed_exception(site="bio_integration.py:_end_hub_session")
 
 
 # ── Episode observation (P3a binding in production) ──────────────────

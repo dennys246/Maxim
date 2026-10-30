@@ -86,7 +86,7 @@ reads), one row:
 
 **Search scope:** `src/`, `scripts/`, `tests/`, `scenarios/`, the YAML asset directories, `.github/workflows/` (CI greps
 name symbols), `pyproject.toml` entry points, and the claim surfaces: `docs/agents/` briefs, `CLAUDE.md`,
-`CHANGELOG.md`, `docs/user/`, `docs/wiring/` and `DECISIONS.md`. Search string literals and registries as well
+`CHANGELOG.md` and `changelog.d/`, `docs/user/`, `docs/wiring/` and `DECISIONS.md`. Search string literals and registries as well
 as symbol names. Mark test-only producers and consumers: a test-only caller has masked zero production callers
 repeatedly (D58, D43, #908).
 

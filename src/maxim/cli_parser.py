@@ -9,6 +9,21 @@ import argparse
 import os
 
 
+def _add_tts_arguments(group: argparse._ArgumentGroup) -> None:
+    """``--tts`` and ``--tts-model``: spoken responses, on the CLI or the robot (#1437)."""
+    group.add_argument(
+        "--tts",
+        action="store_true",
+        help="Speak responses (also MAXIM_TTS_ENABLED); refuses at start, exit 2, when it cannot play.",
+    )
+    group.add_argument(
+        "--tts-model",
+        type=str,
+        default=None,  # None: MAXIM_TTS_MODEL, else the default voice
+        help="TTS voice model name (default: $MAXIM_TTS_MODEL, else en_US-lessac-medium).",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="maxim",
@@ -240,17 +255,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5.0,
         help="Seconds per transcription chunk (default: 5.0).",
     )
-    hw.add_argument(
-        "--tts",
-        action="store_true",
-        help="Enable text-to-speech for spoken responses (requires piper-tts).",
-    )
-    hw.add_argument(
-        "--tts-model",
-        type=str,
-        default="en_US-lessac-medium",
-        help="TTS voice model name (default: en_US-lessac-medium).",
-    )
+    _add_tts_arguments(hw)
     hw.add_argument(
         "--comms",
         action="store_true",

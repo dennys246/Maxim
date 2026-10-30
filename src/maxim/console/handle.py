@@ -40,6 +40,8 @@ import threading
 from pathlib import Path
 from typing import Any, Literal
 
+from maxim.utils.deadline import Deadline
+
 logger = logging.getLogger(__name__)
 
 
@@ -216,6 +218,7 @@ class MaximHandle:
         )
         self.agent_id = agent_id
         self._stopped = False
+        self._stop_result: bool | None = None  # the first stop's outcome (None while it runs)
         # One campaign at a time — the persistent substrate is not
         # re-entrant across concurrent sims (shared Hippocampus/NAc).
         self._campaign_lock = threading.Lock()
@@ -522,8 +525,8 @@ class MaximHandle:
         thread.start()
         return bridge
 
-    def _stop_talk_loop(self, *, join_s: float = 20.0, required: bool = False) -> None:
-        """End the talk loop if one is running (idempotent).
+    def _stop_talk_loop(self, *, join_s: float = 20.0, required: bool = False) -> bool:
+        """End the talk loop if one is running (idempotent). False when it was still alive after ``join_s``.
 
         ``required=True`` RAISES if the loop has not exited within ``join_s``.
         Callers about to start a second loop on the same bio-stack must pass
@@ -569,6 +572,7 @@ class MaximHandle:
                 worker.stop()
             except Exception:
                 logger.debug("talk LLMWorker.stop() raised", exc_info=True)
+        return thread is None or not thread.is_alive()
 
     def _run_sim(self, **kwargs: Any) -> Any:
         """Shared sim-invocation body: one-at-a-time lock, non-interactive
@@ -673,10 +677,12 @@ class MaximHandle:
         self,
         *,
         consolidation: Literal["full", "lightweight"] = "full",
+        deadline: Deadline | None = None,
         campaign_wait_s: float = 60.0,
         talk_join_s: float = 20.0,
-    ) -> None:
-        """Shut the persistent agent down with an EXPLICIT consolidation flavor.
+    ) -> bool:
+        """Shut the persistent agent down with an EXPLICIT consolidation flavor; True when everything it waited for
+        finished (the campaign lock taken, the talk loop gone, the session end reached), else False.
 
         ``"full"`` (default): blocking sleep/replay consolidation +
         hippocampus/NAc/cerebellum saves — the right flavor for a persistent
@@ -693,27 +699,46 @@ class MaximHandle:
         ``_stop_talk_loop``); together they let a caller with its own deadline
         — a machine's stop grace, an operator's "end session" — choose short
         waits without changing the lifespan's long defaults.
+
+        ``deadline`` (#1438 PR 1b): each wait becomes ``min(its cap, a share of what is left)`` and the agent's own
+        end gets the rest. It makes NO process stop request (owner decision 2026-10-30: only the process owners do —
+        the console lifespan and its drain), so an embedder stopping one handle stops nothing else. A second call
+        returns the first stop's result once it finished, and False while it still runs.
         """
         if self._stopped:
-            return
-        acquired = self._campaign_lock.acquire(timeout=campaign_wait_s)
+            return self._stop_result is True
+        campaign_s = deadline.share(0.3).cap(campaign_wait_s) if deadline is not None else campaign_wait_s
+        acquired = self._campaign_lock.acquire(timeout=campaign_s)
         if not acquired:
             logger.warning(
                 "MaximHandle.stop(): campaign still running after %.0fs wait — "
                 "proceeding with shutdown; the campaign loop owns the memory "
                 "session, so shutdown waits (bounded) for its end (#1438)",
-                campaign_wait_s,
+                campaign_s,
             )
         try:
             if self._stopped:  # settled while we waited
-                return
+                return self._stop_result is True
             self._stopped = True
             # End the live talk loop BEFORE shutdown so its own session-end
             # settles first: the loop owns the session (#1438 PR 0), and
             # shutdown only ends a session its instance still holds, else it
             # waits for the loop's end, bounded here so stop() stays bounded.
-            self._stop_talk_loop(join_s=talk_join_s)
-            self.instance.shutdown(consolidation=consolidation, deadline_s=talk_join_s)
+            with self._talk_lock:
+                talk_thread = self._talk_thread
+            talk_s = deadline.share(0.25).cap(talk_join_s) if deadline is not None else talk_join_s
+            self._stop_talk_loop(join_s=talk_s)
+            if deadline is None:
+                ended = self.instance.shutdown(consolidation=consolidation, loop_wait=Deadline.after(talk_join_s))
+            else:  # the loop's own end is bounded by the same stop (bio_session), so wait for it within the rest
+                ended = self.instance.shutdown(consolidation=consolidation, deadline=deadline, loop_wait=deadline)
+            # Judged AFTER the shutdown's wait: a talk loop that outlived its join share usually ends inside that wait
+            # (its own session end), and a stop that finished in budget must not read as an overrun.
+            if talk_thread is not None and talk_thread.is_alive():
+                talk_thread.join(timeout=deadline.cap(0.5) if deadline is not None else 0.5)
+            talk_done = talk_thread is None or not talk_thread.is_alive()
+            self._stop_result = bool(acquired and talk_done and ended is True)
+            return self._stop_result
         finally:
             if acquired:
                 self._campaign_lock.release()

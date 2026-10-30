@@ -376,5 +376,103 @@
         "proxy.max_concurrent": "unset"
       }
     }
+  ],
+  "1.4": [
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "llm": {
+          "profile": "mistral-7b",
+          "n_ctx": 8192
+        },
+        "cloud": {
+          "enabled": false
+        }
+      },
+      "expect": {
+        "llm.profile": "set",
+        "llm.n_ctx": "set",
+        "cloud.enabled": "set",
+        "llm.enabled": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "llm": {
+          "profile": null,
+          "n_ctx": 8192
+        }
+      },
+      "expect": {
+        "llm.profile": "unset",
+        "llm.n_ctx": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "lanes": {
+          "large": {
+            "future_knob": 1
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "set",
+        "lanes.large.remote_url": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "lanes": {
+          "large": {
+            "remote_url": "http://leader:8100"
+          }
+        }
+      },
+      "expect": {
+        "lanes.large.extra": "unset",
+        "lanes.large.remote_url": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "cloud": null,
+        "llm": {
+          "profile": "mistral-7b"
+        }
+      },
+      "expect": {
+        "cloud.enabled": "unset",
+        "llm.profile": "set"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "proxy": {
+          "allow_remote_update": false
+        }
+      },
+      "expect": {
+        "proxy.allow_remote_update": "set",
+        "proxy.max_concurrent": "unset"
+      }
+    },
+    {
+      "probe": {
+        "_format_version": "1.4",
+        "console": {
+          "stop_budget_s": 15.0
+        }
+      },
+      "expect": {
+        "console.stop_budget_s": "set",
+        "console.port": "unset"
+      }
+    }
   ]
 }

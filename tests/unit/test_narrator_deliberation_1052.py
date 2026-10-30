@@ -111,7 +111,8 @@ def test_the_loop_says_it_deliberates_only_when_it_has_a_pipeline() -> None:
     from tests.unit._loop_source import loop_source
 
     src = loop_source()  # the loop's modules (1.3.2 decomposition)
-    planning_submit = src[src.index("submitted = llm_worker.submit_context(") :][:2500]
+    # The planning submit's call site (since #1481 the try/finally lives in loop_external.submit_tick_context).
+    planning_submit = src[src.index("submitted = submit_tick_context(") :][:2500]
     assert "deliberation_available=bio_enrichment_pipeline is not None" in planning_submit
 
 
@@ -183,6 +184,7 @@ def test_every_submit_in_the_loop_states_the_deliberation_fact() -> None:
         named = {k.arg for k in call.keywords if k.arg}
         for k in call.keywords:
             if k.arg is None and isinstance(k.value, ast.Name):
-                source = dicts[unpacked.get(k.value.id, k.value.id)]
-                named |= {kw.arg for kw in source.keywords}
+                source = dicts.get(unpacked.get(k.value.id, k.value.id))
+                if source is not None:  # a dict(...) literal; ``**shared`` (#1481) carries no deliberation keyword
+                    named |= {kw.arg for kw in source.keywords}
         assert "deliberation_available" in named, ast.unparse(call)[:120]

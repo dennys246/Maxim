@@ -21,16 +21,28 @@ ENDING                anyone                              waits for ``end_done``
 
 "Live" is hub state: a claim made with ``live=True`` that its context manager has not yet released
 (:meth:`SessionOwnership.release_live`). It is never inferred from the owner's kind.
+
+**Owed after-steps (#1520, owner decision 2026-10-29).** A closer that must wait for a loop's end (``AgentInstance
+.shutdown`` while a loop holds the session) hands the steps it may not run before that end (stop the hub's workers,
+save the cerebellum) to the generation it waits for: :meth:`SessionOwnership.defer_until_ended`. The ENDER runs them
+in :meth:`SessionOwnership.finish_end`, in its own thread, while the state is still ENDING (so no claim opens a
+session over them), then closes the generation. They attach only to a generation that WILL end: ENDING, or OPEN and
+held by a live loop. An OPEN generation no loop holds may be handed over (its ticket would go stale and never end),
+so there the caller runs its steps itself.
 """
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from maxim.exceptions import SessionHeld, SessionStillEnding
+
+logger = logging.getLogger(__name__)
 
 # A claimer that passes no deadline still never waits forever on an ending session.
 ENDING_WAIT_CAP_S = 60.0
@@ -53,6 +65,9 @@ class SessionTicket:
     fresh: bool = False
     # What the hub restored at a fresh open (counts per store); empty for a handover or an idempotent claim.
     start_stats: dict = field(default_factory=dict, repr=False)
+    # Steps a waiting closer handed to this generation's end (#1520), by name; run once by finish_end.
+    after_end: dict[str, Callable[[], None]] = field(default_factory=dict, repr=False)
+    after_end_started: bool = field(default=False, repr=False)
 
 
 class SessionOwnership:
@@ -128,9 +143,12 @@ class SessionOwnership:
         return self._ticket
 
     def abandon(self, ticket: SessionTicket) -> None:
-        """Close a generation whose open failed half-way, so no orphaned OPEN session outlives a raising opener."""
+        """Close a generation WITHOUT persisting: an open that failed half-way, or a closer whose stop bound expired.
+
+        Owed after-steps are DROPPED, each named at ERROR (owner decision 2026-10-29): they persist (a hippocampus
+        save without its EC/NAc pair, the cerebellum), and an abandon is the point where the bound is already spent."""
         if self.begin_end(ticket):
-            self.finish_end(ticket)
+            self.finish_end(ticket, run_after_steps=False)
 
     def release_live(self, ticket: SessionTicket) -> None:
         """The loop's context manager let go of its claim; a stale ticket changes nothing."""
@@ -146,15 +164,47 @@ class SessionOwnership:
             self._state = "ENDING"
             return True
 
-    def finish_end(self, ticket: SessionTicket) -> None:
-        """ENDING -> CLOSED, then wake every waiter on ``end_done``."""
+    def finish_end(self, ticket: SessionTicket, *, run_after_steps: bool = True) -> None:
+        """Run the generation's owed after-steps (still ENDING), then ENDING -> CLOSED, then wake every waiter.
+
+        The close is in a ``finally``: a step that raises (even a ``BaseException``) never leaves the session ENDING.
+        ``run_after_steps=False`` (:meth:`abandon`) drops them, naming each at ERROR.
+        """
         with self._lock:
             if ticket is not self._ticket or self._state != "ENDING":
                 return
-            self._state = "CLOSED"
-            self._ticket = None
-            self._live = False
-        ticket.end_done.set()
+            ticket.after_end_started = True
+            steps = list(ticket.after_end.items())
+        if not run_after_steps:
+            for name, _step in steps:
+                logger.error("session after-step %r NOT run: the session was abandoned (its stop bound expired)", name)
+            steps = []
+        try:
+            for name, step in steps:
+                try:
+                    step()
+                except Exception as e:  # one step's failure must not cost the others
+                    logger.warning("session after-step %r failed: %s", name, e, exc_info=True)
+        finally:
+            with self._lock:
+                self._state = "CLOSED"
+                self._ticket = None
+                self._live = False
+            ticket.end_done.set()
+
+    def defer_until_ended(self, name: str, step: Callable[[], None]) -> bool:
+        """Hand ``step`` to the end of the generation that WILL end (ENDING, or OPEN under a live loop); see the module
+        docstring. True when it was handed over (a step of the same ``name`` already handed over counts: a second
+        ``shutdown`` adds nothing); False when the caller must run it itself (no session, an OPEN session no loop holds,
+        or after-steps already running)."""
+        with self._lock:
+            ticket = self._ticket
+            if ticket is None or ticket.after_end_started:
+                return False
+            if self._state == "OPEN" and not self._live:
+                return False
+            ticket.after_end.setdefault(name, step)
+            return True
 
     def wait_ended(self, *, deadline_s: float | None = None) -> bool:
         """For a non-owner closer: wait until no session is open or ending, within the deadline (else the cap).

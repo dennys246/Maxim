@@ -250,6 +250,23 @@ jobs:
           python -m pip install --upgrade pip packaging
           python3 scripts/extras_matrix.py pins --extra ${{ matrix.extra }} --resolution ${{ matrix.resolution }} -o extras-pins.txt
 
+      - name: Install the PortAudio system library and a sound server (tts)
+        # The tts extra's sounddevice (local speakers for `maxim --tts`, #1437) raises OSError on import without
+        # PortAudio, and its own PortAudioError with no sound server: Ubuntu 26's PortAudio links libpulse and
+        # Pa_Initialize() fails hard when no PulseAudio server answers. A headless daemon (its automatic null sink)
+        # outlives this step; its socket is a filesystem path, so the network namespace reaches it.
+        if: matrix.extra == 'tts' && (github.event_name != 'pull_request' || steps.scope.outputs.run == 'true')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libportaudio2 pulseaudio
+          if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+            export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg-runtime"
+            mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          fi
+          pulseaudio --start --exit-idle-time=-1
+          pactl info
+
       - name: Install only the extra (and pytest)
         if: github.event_name != 'pull_request' || steps.scope.outputs.run == 'true'
         # A fresh interpreter: nothing but the extra's closure may be installed (verify checks it). NOT `|| echo`.
@@ -1396,15 +1413,19 @@ jobs:
         run: |
           python3 scripts/lint_mypy_ratchet.py
 
-      - name: '[Unreleased] entry on a src change (versioning policy, roadmap 16.10)'
+      - name: CHANGELOG fragments (versioning policy, roadmap 16.10; M83 step 3)
         # The owed half of the versioning policy: lint_version_sync enforces "main
-        # ahead of PyPI"; this enforces the pair — a diff touching src/maxim/*.py
-        # must grow CHANGELOG's [Unreleased] (release transactions, which add a new
-        # version header, are exempt). Diff-scoped, so it lives beside the atomic-io
-        # ratchet where origin/main is available. Positive control:
-        # tests/unit/test_lint_unreleased_on_src_change.py.
+        # ahead of PyPI"; this enforces the pair. A diff touching src/ adds a
+        # changelog.d/<slug>.<kind>.md fragment (never an [Unreleased] line, which made
+        # CHANGELOG.md the commonest conflict between parallel PRs); a version bump
+        # consumes every fragment exactly once via `assemble`. Replaces the two lints
+        # lint_unreleased_on_src_change and lint_unreleased_declared. Diff-scoped, so
+        # on a pull request "no base ref" is a hard error (D37); on a push it judges
+        # each first-parent unit. Design and four adversarial rounds:
+        # docs/plans/changelog_fragments_m83_approach.md. Positive control:
+        # tests/unit/test_changelog_fragments.py.
         run: |
-          python3 scripts/lint_unreleased_on_src_change.py
+          python3 scripts/changelog_fragments.py check
 
       - name: Pinned config.json schema is append-only (#856)
         # tests/fixtures/config_schema_by_version.json pins every config field path per
@@ -1540,22 +1561,6 @@ jobs:
           # FLOORS_BEATEN clears. Spec: docs/plans/archive/baseline_floors_b1_evidence.md §3.
           # Positive controls: tests/unit/test_lint_bf2_obligation.py. Backlog M46/M50.
           python3 scripts/lint_bf2_obligation.py
-
-      - name: A post-tag src/ commit declares itself (roadmap 1.1.x item 16.10)
-        run: |
-          # The versioning policy has two halves. "main is ahead of PyPI; the
-          # bump happens in the release transaction" is enforced by the
-          # "Version sync" step above. "CHANGELOG.md accumulates under
-          # [Unreleased]" was convention only — and one day after the v1.1.0
-          # tag, #561/#562 changed runtime/agent_loop.py and motor_backend.py
-          # with no bump and an empty [Unreleased]. This step is the other
-          # half: a branch touching src/ must either bump the version or add
-          # an [Unreleased] content line.
-          # Diff-scoped, so it inherits the D37 rule — on a pull request,
-          # "no base ref" is a hard error (exit 2), never a silent skip.
-          # Positive control: tests/unit/test_lint_unreleased_declared.py
-          # builds fixture repos in the #561/#562 shape and asserts the fail.
-          python3 scripts/lint_unreleased_declared.py
 
   # ── PKG seam — the lean aarch64 (Raspberry Pi) install ────────────────────
   # Two jobs because there are two DISTINCT risks and neither covers the other:

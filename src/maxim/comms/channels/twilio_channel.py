@@ -71,8 +71,8 @@ class TwilioChannel(Channel):
 
     # ── Inbound (called by webhook endpoints) ─────────────────────────────
 
-    def receive_sms(self, from_number: str, body: str) -> None:
-        """Handle inbound SMS from Twilio webhook."""
+    def receive_sms(self, from_number: str, body: str, message_sid: str = "") -> None:
+        """Handle inbound SMS from Twilio webhook. ``message_sid`` lets the loop drop a webhook retry (#1481)."""
         conv = self.conv_manager.get_or_create("twilio:sms", from_number)
         self.conv_manager.record_inbound(conv, body)
         self.gateway.receive_inbound(
@@ -83,6 +83,7 @@ class TwilioChannel(Channel):
                 "conversation_id": conv.id,
                 "conversation_context": self.conv_manager.get_context_for_prompt(conv),
                 "message_count": len(conv.messages),
+                "message_sid": message_sid,
             },
         )
 

@@ -30,26 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **No too-fast, wrongly-referenced or mid-path-unsafe command reaches a Reachy motor** (#1499 PR 1; decisions
-  MP1–MP12, [docs/plans/motion_path_model.md](docs/plans/motion_path_model.md)). The SDK moves the head the short way
-  round the world rotation while the body follows its joint line, so a move whose endpoints are both legal could
-  swing the neck through about 180° mid-way: from a turned body through `center_vision`, every SDK `look_at`, wake
-  and sleep, and large turns. `ReachyMiniController` now:
-  - reads its reference fresh from the daemon (`GET /api/state/full`) before every dispatch and between chunks, and
-    refuses (`reference`) on a failed, malformed, torque-off, impossible or diverged read, with no `0.0` fallbacks;
-  - caps the rate (180°/s average, 340°/s peak), stretching a default duration and refusing a too-fast explicit one;
-  - samples the SDK's own path and splits a move that would sweep the neck (body, then neck yaw, then roll and
-    pitch), checking every chunk before any moves, re-checking the pose between chunks, and stopping cleanly on an
-    abort, an SDK timeout or a dropped chunk;
-  - returns a `MotionOutcome` (truthy iff the move completed; `bool` stays accepted from plugins via `as_outcome`).
-  `look_at` turns the head only. Wake and sleep re-centre a turned robot first and run the SDK's steps as clamped
-  dispatches, so the sleep antennas stop at ±90° instead of the SDK's ±175°; sleep with torque already off returns
-  ok without moving. After a sleep, new head and body moves are refused (and the robot reports not awake) until a
-  wake succeeds, even across a reconnect; after a disconnect, until the next connect.
-  `automatic_body_yaw: true` is now a config error. `move_head` delegates to the controller, and standalone callers
-  must pass `motion_lock=`. The motor worker books the gaze and bounds learners only on a completed move. Not yet
-  covered (#1499 PR 2): `move_antenna` still dispatches straight to the SDK (clamped, but with no rate cap or lock),
-  and the tools do not yet mark model-chosen durations as explicit, so those are stretched rather than refused.
 - **Talk remembers what you told it in an earlier session** (#1444, #1163, #1064, #1447; found by maxim-pulse on a
   real Reachy: "My name is Denny and my favourite colour is green", a restart, then "What is Denny's favorite
   color?" got "I do not have information"). Six defects composed into that one symptom, and each alone fixed
@@ -120,11 +100,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the stop request's deadline (else 30 s). The D13 planning-liveness abort is raised after that end.
   - `start_bio_session` is gone; `end_bio_session` takes `ticket=` and `capture=`. `Hippocampus.start_capture_worker()`
     returns a `CaptureWorker` handle with its own stop event.
-  - `AgentInstance.shutdown(deadline_s=)` waits for a loop that took its session over instead of ending it, and no
-    longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
+  - `AgentInstance.shutdown` waits for a loop that took its session over instead of ending it (and, since PR 1a, hands
+    that loop its after-steps), and no longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
   - New `utils/deadline.Deadline` and the sticky process stop request (`utils/cancellation.request_stop`).
   - A hub whose session cannot be claimed now aborts the loop (`SessionRefusal` and its subclasses); the old soft
     skip that ran the loop without memory is gone. `MaximHandle.stop` bounds its shutdown's wait by `talk_join_s`.
+- **The session end saves every store first, and consolidates only within the caller's deadline**
+  ([#1438](https://github.com/dennys246/Maxim/issues/1438) PR 1a, docs/plans/bounded_stop.md §5). It used to run the
+  slow sleep/replay BEFORE saving anything, so a stop that ran out of time lost every store.
+  - `on_session_end` / `on_session_end_lightweight` / `sleep` take `deadline=` (a `utils.deadline.Deadline`; `None`
+    is no bound). Sleep, promotion and ATL/AG consolidation each run only if the time left covers them, and skipped
+    steps are named in the result's `consolidation_skipped`. The phases live in `integration/session_end.py`.
+  - The hippocampus, EC, the semantic embedding store and the cross-layer graph are saved inside one hippocampus
+    read section, so no eviction lands between them. The hub's end now saves the hippocampus itself (the lightweight
+    end did not); `end_bio_session` and `AgentInstance.shutdown` save it only when no hub end covers it.
+  - EC and the embedding store have their own locks, and ATL's memory-ref writes take ATL's: a percept arriving on a
+    sensor thread during the save no longer fails it ("dictionary changed size", which also skipped NAc).
+  - The first session open prunes and counts references to memories the saved hippocampus no longer holds (NAc,
+    ATL) and NAc biases and fears keyed on EC nodes that no longer exist; restored ATL refs are now cleaned when their
+    memory is deleted (the ConceptExtractor's index is rebuilt after ATL loads).
+  - A shutdown that has to wait for a running loop hands its after-steps (the cerebellum save, the hub's workers) to
+    that loop's session end, which runs them once; it used to skip them ([#1520](https://github.com/dennys246/Maxim/issues/1520)).
+  - `AgentInstance.shutdown(deadline=, loop_wait=)` take `Deadline`s (PR 0's `deadline_s=` never shipped):
+    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. The pool passes `loop_wait` alone,
+    so a persistent agent still consolidates in full when it stops; the console's stop budget is PR 1b's. An
+    abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
+  - Loaders prune only against a store that read its file, so a missing or unreadable `hippocampus.json` no longer
+    looks like "every reference dangles".
 
 - **The agent loop logs, at DEBUG, when a planning job starts and stops holding new inputs, and when held inputs ride
   a follow-up** (#1488), so a narrator input that sits unplanned can be told from one that waits its turn. It logs
@@ -187,6 +189,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     3 of 5 arm-A deceptive trials.
 
 ### Fixed
+
+- **`maxim --tts` speaks, or refuses at start** ([#1437](https://github.com/dennys246/Maxim/issues/1437), found by
+  maxim-pulse's device review). The CLI built a voice for `--tts`, logged "TTS enabled", and wired no speaker, so it
+  never spoke; the robot runtime had its own copy keyed on `MAXIM_TTS_ENABLED`. Both now go through one builder,
+  `utils.response_output.build_speech_output`: `--tts` or `MAXIM_TTS_ENABLED` turns speech on for either path (the
+  robot now hears `--tts`/`--tts-model`); the CLI speaks through local speakers, a robot through its device sink.
+  A request that cannot play refuses at start with a typed `SpeechOutputUnavailable` naming the fix (download the
+  voice, or `pip install 'pymaxim[tts]'`), and "enabled" is logged only for a path that can play. The run then stops
+  with that fix and exit code 2, on the CLI and on the robot. On a robot, speech is resolved before the robot moves
+  and before the agentic runtime starts, so a refusal is not downgraded to a warning. The voice is loaded at start
+  (a corrupt model refuses there, not at the first sentence), and local speakers are checked whenever speech will
+  play on them (`MAXIM_TTS_LOCAL`, or a robot run with no SDK handle). `--tts-model` now defaults to
+  `MAXIM_TTS_MODEL`, then the default voice. `LocalSpeaker` reports availability truthfully (a missing PortAudio
+  library, no sound server or no output device is "unavailable", not a crash), and `optional_dependency_available`
+  treats a package that is installed but cannot load on this machine as unavailable: an import raising `OSError`,
+  or the package's own exception (`sounddevice` raises its `PortAudioError` from import on Ubuntu 26 when no
+  PulseAudio server answers); the rule is `optional_deps.import_refused`, and any other import error stays loud.
+  The `tts` extra now includes `sounddevice` (on Linux it needs the PortAudio library, `apt install libportaudio2`,
+  and a running sound server), and the leader's install probe for the `audio` extra checks
+  `faster_whisper`, the extra's own package, instead of `sounddevice`.
 
 - **Reachy safety: no non-finite, out-of-range-duration or instant command reaches a motor**
   ([#1496](https://github.com/dennys246/Maxim/issues/1496), a 1.3.4 exit item). A NaN or infinite `head_yaw` in a body

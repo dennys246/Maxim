@@ -30,6 +30,7 @@ import os
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator
 from uuid import uuid4
@@ -225,6 +226,79 @@ class ATL(StoreFileOwnership, MemoryLayer):
                 cb(record_id)
             except Exception as e:
                 logger.warning("ATL deletion callback failed: %s", e)
+
+    def add_memory_ref(self, concept_id: str, layer: str, memory_id: str) -> bool:
+        """Record that ``memory_id`` (in ``layer``) references the concept, under the WRITE lock (#1438).
+
+        Every ``Concept.add_ref`` goes through here (``ConceptExtractor``, ``ConceptGrounder``): ``add_ref`` can
+        create a layer key in ``memory_refs`` and evict an old ref, which tore a concurrent ``dump``/``save``
+        iterating the same dicts. Returns False when the concept is gone or compressed (it holds no refs). Lock
+        order: callers hold no Hippocampus or ATL lock; nothing is called while holding it (``add_ref``'s
+        ``touch`` is the record's own leaf lock, not an activation).
+        """
+        with self._rwlock.write():
+            concept = self._concepts.get(concept_id)
+            if not isinstance(concept, Concept):
+                return False
+            concept.add_ref(layer, memory_id)
+            return True
+
+    def reinforce_concept(self, concept_id: str, episode_id: str) -> bool:
+        """``SemanticMemory.reinforce`` under the WRITE lock (#1438): it appends to ``source_episode_ids``, which
+        ``dump`` serializes. Returns False when the concept is gone or compressed (no ``reinforce``)."""
+        with self._rwlock.write():
+            concept = self._concepts.get(concept_id)
+            if not isinstance(concept, SemanticMemory):
+                return False
+            concept.reinforce(episode_id)
+            return True
+
+    def remove_memory_refs(self, layer: str, memory_id: str, concept_ids: Iterable[str]) -> int:
+        """Drop ``memory_id`` from the ``layer`` refs of the given concepts, under the WRITE lock; return how many.
+
+        The deletion path's ref removal (``ConceptExtractor._remove_refs_for``, #1438): a Hippocampus deletion
+        callback that edited ``Concept.memory_refs`` outside this lock tore a concurrent ``dump``/``save``. Lock
+        order: Hippocampus RWLock (write, the deletion callback) -> this RWLock. Nothing is called while holding it,
+        and it does not ``touch`` the concepts: deletion bookkeeping is not a use.
+        """
+        removed = 0
+        with self._rwlock.write():
+            for cid in concept_ids:
+                concept = self._concepts.get(cid)
+                if isinstance(concept, Concept):
+                    refs = concept.memory_refs.get(layer)
+                    if refs is not None and memory_id in refs:
+                        del refs[memory_id]
+                        removed += 1
+        return removed
+
+    def prune_refs(self, layer: str, valid_ids: Collection[str]) -> int:
+        """Drop every ``layer`` ref to a record not in ``valid_ids``, under the WRITE lock; return how many.
+
+        The loaders' post-load pass (``MemoryHub._prune_dangling_refs``, #1438) calls it once every store has loaded,
+        so a concept does not keep pointing at a memory the other store no longer holds. Removes
+        ``Concept.memory_refs[layer]`` entries and, for ``layer == "hippocampus"``, ``SemanticMemory.source_episode_ids``
+        entries; the count is the total of both. Compressed concepts hold neither and are left alone. In memory
+        only, nothing touched or activated: the caller saves.
+        """
+        valid = valid_ids if isinstance(valid_ids, (set, frozenset, dict)) else set(valid_ids)
+        removed = 0
+        with self._rwlock.write():
+            for concept in self._concepts.values():
+                if isinstance(concept, Concept):
+                    refs = concept.memory_refs.get(layer)
+                    if refs:
+                        stale = [mid for mid in refs if mid not in valid]
+                        for mid in stale:
+                            del refs[mid]
+                        removed += len(stale)
+                if layer == "hippocampus" and isinstance(concept, SemanticMemory) and concept.source_episode_ids:
+                    kept = [eid for eid in concept.source_episode_ids if eid in valid]
+                    removed += len(concept.source_episode_ids) - len(kept)
+                    concept.source_episode_ids[:] = kept
+        if removed:
+            logger.debug("ATL: pruned %d %s ref(s) to records that no longer exist", removed, layer)
+        return removed
 
     def recall_by_ids(
         self,
@@ -554,7 +628,30 @@ class ATL(StoreFileOwnership, MemoryLayer):
         return len(self._concepts)
 
     def __iter__(self) -> Iterator[SemanticMemory | CompressedSemantic]:
-        yield from self._concepts.values()
+        """Iterate a snapshot of the concepts taken under the read lock (#1438).
+
+        The lock is released before the first ``yield``, so a loop body may call any ATL method (the RWLock is not
+        re-entrant: holding it across the loop, as ``Hippocampus.__iter__`` does, deadlocks a body that re-reads
+        behind a queued writer) and a concurrent ``store``/``remove`` cannot change the dict mid-loop. The concepts
+        themselves are the live records.
+        """
+        with self._rwlock.read():
+            concepts = list(self._concepts.values())
+        yield from concepts
+
+    def ref_index(self, layer: str) -> dict[str, set[str]]:
+        """``{memory_id: {concept_id, ...}}`` for every ``layer`` ref, built under the read lock (#1438).
+
+        ``ConceptExtractor.rebuild_reverse_index``'s source: reading ``Concept.memory_refs`` outside the lock raced
+        ``add_memory_ref``/``remove_memory_refs``.
+        """
+        index: dict[str, set[str]] = defaultdict(set)
+        with self._rwlock.read():
+            for cid, concept in self._concepts.items():
+                if isinstance(concept, Concept):
+                    for mid in concept.memory_refs.get(layer, {}):
+                        index[mid].add(cid)
+        return dict(index)
 
     # ------------------------------------------------------------------
     # ATL-Specific Methods
@@ -578,7 +675,7 @@ class ATL(StoreFileOwnership, MemoryLayer):
         if existing:
             concept = existing[0]
             if isinstance(concept, SemanticMemory) and source_episode_id:
-                concept.reinforce(source_episode_id)
+                self.reinforce_concept(concept.id, source_episode_id)  # under the write lock (#1438)
             return concept.id, False
 
         # Create new Concept (extends SemanticMemory with memory_refs)
@@ -614,7 +711,7 @@ class ATL(StoreFileOwnership, MemoryLayer):
         existing = self.get(node_id)
         if existing is not None:
             if isinstance(existing, SemanticMemory):
-                existing.reinforce(node_id)
+                self.reinforce_concept(existing.id, node_id)  # under the write lock (#1438)
             return existing.id
 
         concept = Concept(

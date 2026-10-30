@@ -30,7 +30,7 @@ having learned. Each of these can be fixed on paper. Notes on the other five que
   - Wire-A is `NAc.get_agent_tool_biases(agent_id, top_n=5)`, which its own docstring calls "agent-wide (no
     active-cluster filter)".
   - Wire-1 is `NAc.get_action_risk_profile(min_observations=_WIRE1_MIN_OBSERVATIONS)`, with
-    `_WIRE1_MIN_OBSERVATIONS = 5` (`runtime/agent_loop.py`).
+    `_WIRE1_MIN_OBSERVATIONS = 5` (`runtime/loop_planning.py` since #1481; it was `runtime/agent_loop.py`).
   - The situation keying (EC cluster × tool) lives in NAc, and neither annotation shows it to the LLM.
 - **The resumed AUT has more memory channels than the three named wires.** `simulation/orchestrator.py` (sim AUT
   construction) registers:
