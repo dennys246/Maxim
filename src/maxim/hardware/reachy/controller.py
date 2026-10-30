@@ -1417,18 +1417,19 @@ class ReachyMiniController(RobotController):
             translation_body_frame=held,
         )
 
-    def _await_settled(self, wait_s: float, *, gen: int) -> None:
+    def _await_settled(self, wait_s: float, *, gen: int) -> MotionOutcome | None:
         """After an SDK timeout: settled now, or within ``wait_s`` (re-reading every 0.1 s), else ``MotionRefused``.
 
-        A stop during the wait ends it at once (``cancelled``).
+        Returns None once settled; a stop during the wait ends it at once with a ``cancelled`` outcome
+        (a stop is not a refusal, so it is not raised as one).
         """
         deadline = time.monotonic() + wait_s
         while True:
             if self._abort_gen != gen:
-                raise MotionRefused("cancelled", "a stop was requested while waiting for the robot to settle")
+                return MotionOutcome.refused("cancelled", "a stop was requested while waiting for the robot to settle")
             try:
                 self._require_settled(self._fresh_readback())
-                return
+                return None
             except MotionRefused:
                 if time.monotonic() >= deadline:
                     raise
@@ -1444,7 +1445,9 @@ class ReachyMiniController(RobotController):
         """
         try:
             if self._unsettled is not None:
-                self._await_settled(settle_wait_s, gen=gen)
+                stopped = self._await_settled(settle_wait_s, gen=gen)
+                if stopped is not None:
+                    return stopped
             recentred = self._recentre_if_turned(gen=gen)
             if recentred is not None and not recentred:
                 return recentred

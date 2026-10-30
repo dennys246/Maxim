@@ -87,7 +87,13 @@ EGRESS_SDK_IMPORTERS: dict[str, frozenset[str]] = {
     "faster_whisper": frozenset({"src/maxim/inference/transcribe_audio.py"}),
     "twilio": frozenset({"src/maxim/comms/api.py", "src/maxim/comms/channels/twilio_channel.py"}),
     "ultralytics": frozenset({"src/maxim/models/vision/ultralytics_engine.py"}),
-    "reachy_mini": frozenset({"src/maxim/embodiment/audio_localization.py", "src/maxim/hardware/reachy/controller.py"}),
+    "reachy_mini": frozenset(
+        {
+            "src/maxim/embodiment/audio_localization.py",
+            "src/maxim/hardware/reachy/controller.py",
+            "src/maxim/hardware/reachy/motion_path.py",
+        }
+    ),
 }
 
 

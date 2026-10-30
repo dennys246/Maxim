@@ -1140,6 +1140,7 @@ def test_a_stop_during_the_settle_wait_ends_the_sleep_at_once(daemon):
     started = time.monotonic()
     out = ctl.goto_sleep()
     assert not out and _kind(out) == "cancelled"
+    assert "settle" in out.reason  # the wait itself ended it, not a later generation check
     assert time.monotonic() - started < 0.8
     assert daemon.gotos() == []
 
