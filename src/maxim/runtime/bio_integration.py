@@ -322,11 +322,34 @@ def _close_session(
             hippocampus=session.hippocampus,
             capture=session.capture,
             consolidation=consolidation,
-            deadline=bound,
+            deadline=_end_bound(bound),
         )
     finally:
         if session.memory_hub is not None and session.ticket is not None:
             session.memory_hub.release_session_claim(session.ticket)
+
+
+# The time a bounded end keeps back for its persist, its handed-over after-steps (#1520) and the claim release, so
+# whoever waits on that end (``AgentInstance.shutdown(loop_wait=)``, the console's drain) on the SAME stop deadline
+# sees it finish inside its wait (#1438 PR 1c). Proportional, with a floor: a fixed guess would be wrong at both ends.
+_END_RESERVE_FRACTION = 0.25
+_END_RESERVE_FLOOR_S = 1.0
+
+
+def _end_bound(bound: Deadline | None) -> Deadline | None:
+    """The bound the session end runs under: the stop's, minus a reserve for its waiter. Consolidation is the only
+    step it limits (persist always runs), so the abandon test keeps the full bound (#1438 PR 1b's rule)."""
+    if bound is None:
+        return None
+    return bound.ending_early(max(_END_RESERVE_FLOOR_S, _END_RESERVE_FRACTION * bound.remaining()))
+
+
+# A spent bound still gets this long to flush queued captures: an expired reserve must never drop them at 0 s.
+_FLUSH_FLOOR_S = 0.5
+
+
+def _flush_timeout(deadline: Deadline | None) -> float:
+    return 5.0 if deadline is None else max(_FLUSH_FLOOR_S, deadline.cap(5.0))
 
 
 def end_bio_session(
@@ -351,10 +374,10 @@ def end_bio_session(
     flush and the hub's session end (which saves first, then consolidates only within it).
     """
     use_lightweight = consolidation == "lightweight"
-    # Drain this session's async capture queue and stop its worker, within the bound.
+    # Drain this session's async capture queue and stop its worker, within the bound (never under _FLUSH_FLOOR_S).
     if hippocampus is not None:
         try:
-            hippocampus.stop_capture_worker(capture, timeout=deadline.cap(5.0) if deadline is not None else 5.0)
+            hippocampus.stop_capture_worker(capture, timeout=_flush_timeout(deadline))
         except Exception as e:
             logger.warning("Failed to flush/stop the hippocampus capture worker: %s", e)
     _end_hub_session(memory_hub, ticket, deadline=deadline, lightweight=use_lightweight)

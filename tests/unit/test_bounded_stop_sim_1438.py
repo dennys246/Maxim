@@ -303,3 +303,47 @@ def test_g2b_a_stop_during_the_model_load_refuses_before_the_bridge_is_built(mon
     with pytest.raises(StopStillPending) as raised:
         start_simulation_mode(goal="stop test", max_turns=1)
     assert raised.value.reason == "stopped during the load"
+
+
+# ── G7: a bounded session end keeps a reserve for its waiter (closes 1b's shared-deadline overrun) ──────────────
+
+
+def test_g7_a_clean_exit_under_a_stop_ends_its_session_inside_the_stops_deadline_minus_a_reserve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import maxim.runtime.bio_integration as bio
+
+    seen: list[Any] = []
+    monkeypatch.setattr(bio, "end_bio_session", lambda **k: seen.append(k["deadline"]))
+    session = bio.BioSession(memory_hub=None, hippocampus=None, ticket=None, consolidation="full")
+    bound = Deadline.after(8.0)
+    bio._close_session(session, consolidation="full", bound=bound, abandon_if_expired=False)
+    [end] = seen
+    # The waiter (AgentInstance.shutdown(loop_wait=), the drain) waits on the SAME deadline: the end must leave it
+    # time to see the end, persist and after-steps included (25% of the time left, at least 1 s).
+    assert end.at <= bound.at - 1.9, f"the session end ran until {bound.at - end.at:.2f}s before its waiter's deadline"
+
+
+def test_the_abandon_test_keeps_the_full_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 1b's rule: an abnormal exit abandons only when the stop's own bound expired, not the reserved one.
+    import maxim.runtime.bio_integration as bio
+
+    seen: list[Any] = []
+    monkeypatch.setattr(bio, "end_bio_session", lambda **k: seen.append(k["deadline"]))
+    session = bio.BioSession(memory_hub=None, hippocampus=None, ticket=None, consolidation="full")
+    bio._close_session(session, consolidation="lightweight", bound=Deadline.after(0.5))  # inside the 1 s floor
+    assert len(seen) == 1, "an abnormal exit with time left was abandoned because of the reserve"
+
+
+def test_a_spent_bound_still_flushes_queued_captures() -> None:
+    from maxim.runtime.bio_integration import _flush_timeout
+
+    assert _flush_timeout(Deadline.after(0.0)) >= 0.5
+    assert _flush_timeout(None) == 5.0
+    assert _flush_timeout(Deadline.after(60.0)) == 5.0
+
+
+def test_ending_early_never_lands_before_now_and_leaves_none_unbounded() -> None:
+    assert Deadline.after(0.2).ending_early(5.0).remaining() == pytest.approx(0.0, abs=0.05)
+    assert Deadline.none().ending_early(5.0).remaining() == float("inf")
+    assert Deadline.after(10.0).ending_early(3.0).remaining() == pytest.approx(7.0, abs=0.1)
