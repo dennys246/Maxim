@@ -144,8 +144,8 @@
       "missing": 292
     },
     "maxim/simulation": {
-      "percent": 75.1,
-      "missing": 2544
+      "percent": 76.4,
+      "missing": 2440
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -170,8 +170,12 @@
   },
   "files": {
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 70.7,
-      "missing": 388
+      "percent": 72.9,
+      "missing": 316
+    },
+    "src/maxim/simulation/stall_detector.py": {
+      "percent": 82.8,
+      "missing": 43
     }
   },
   "retired_files": []
