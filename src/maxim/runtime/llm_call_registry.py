@@ -225,7 +225,7 @@ def any_call_in_flight(*, tier: str | None = None, now: float | None = None) -> 
 
     ``now`` (default: the wall clock) is the reader's own clock: the stall detector passes its injectable one
     (``simulation/stall_detector.py``). It must be on ``time.time``'s epoch, which stamps every entry here; an entry
-    ``_STALE_ENTRY_TTL_S`` older than ``now`` is pruned. The same for the two readers below.
+    ``_STALE_ENTRY_TTL_S`` older than ``now`` is ignored (it reads as no call). The same for the two readers below.
     """
     now = time.time() if now is None else now
     for v in _live_entries_snapshot(now):

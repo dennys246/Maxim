@@ -195,7 +195,8 @@ def test_the_spinner_tells_the_truth_then_the_hard_abort_ends_the_run(monkeypatc
     detector, injected, bridge = _detector(monkeypatch, clock)
     bridge._spinner.planning_window = True
     monkeypatch.setenv("MAXIM_SIM_HARD_ABORT", "1")
-    monkeypatch.setattr(SD.threading, "Thread", _NoThread)
+    # Only the detector module's own reference: the process's threading.Thread stays real for every other thread.
+    monkeypatch.setattr(SD, "threading", SimpleNamespace(Thread=_NoThread))
     for nudge in (1, 2, 3):
         clock.offset = nudge * (_THRESHOLD_S + 1)
         assert detector._poll() is False and len(injected) == nudge
