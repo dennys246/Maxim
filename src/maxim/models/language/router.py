@@ -944,7 +944,83 @@ class LLMRouter:
         thinking: dict[str, Any] | None = None,
         stream: bool = False,
     ) -> tuple[str, dict[str, Any] | None]:
-        """Complete text with optional usage metadata."""
+        """Complete text with optional usage metadata; the one dispatch every public call reaches.
+
+        A process stop request abandons the call (#1438 PR 1c): refused at entry, and a call in flight returns the
+        dispatch-failure shape ``("", None)`` within ~0.5 s. A caller that bound a per-call cancel event (the
+        ``utils.cancellation`` ContextVar) runs inline, because it abandons on its own stop: ``LLMWorker`` binds one
+        and registers its stop event with the process stop request. Anyone else's call runs on a helper thread the
+        caller polls; the abandoned orphan keeps ``_inference_lock`` until its backend call ends.
+        """
+        from maxim.utils.cancellation import current_cancel_event, yield_requested
+
+        kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "provider_hint": provider_hint,
+            "request_context": request_context,
+            "tools": tools,
+            "thinking": thinking,
+            "stream": stream,
+        }
+        if yield_requested():
+            logger.info("LLM call refused: a process stop is requested")
+            return "", None
+        if current_cancel_event() is not None:
+            return self._complete_text_dispatch(system, user, **kwargs)
+        return self._complete_text_abandonable(system, user, kwargs)
+
+    def _complete_text_abandonable(
+        self, system: str, user: str, kwargs: dict[str, Any]
+    ) -> tuple[str, dict[str, Any] | None]:
+        import contextvars
+
+        from maxim.utils.cancellation import reset_cancel_event, set_cancel_event, yield_requested
+
+        cancel_event = threading.Event()
+        token = set_cancel_event(cancel_event)
+        try:
+            ctx = contextvars.copy_context()  # the cancel event and the http context ride into the helper
+        finally:
+            reset_cancel_event(token)
+        done = threading.Event()
+        outcome: list[Any] = []
+
+        def _run() -> None:
+            try:
+                outcome.append(("ok", self._complete_text_dispatch(system, user, **kwargs)))
+            except BaseException as e:  # re-raised on the caller's thread, as itself
+                outcome.append(("raised", e))
+            finally:
+                done.set()
+
+        # Named after the caller, so sim_log's thread-role tag ([ORCH] / [AUT]) stays the caller's.
+        name = f"{threading.current_thread().name}/router.call"
+        threading.Thread(target=ctx.run, args=(_run,), name=name, daemon=True).start()
+        while not done.wait(0.5):
+            if yield_requested():
+                cancel_event.set()  # the backend's next checkpoint unwinds the orphan
+                logger.info("LLM call abandoned: a process stop is requested")
+                return "", None
+        kind, value = outcome[0]
+        if kind == "raised":
+            raise value
+        result: tuple[str, dict[str, Any] | None] = value
+        return result
+
+    def _complete_text_dispatch(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float,
+        max_tokens: int,
+        provider_hint: str | None = None,
+        request_context: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        thinking: dict[str, Any] | None = None,
+        stream: bool = False,
+    ) -> tuple[str, dict[str, Any] | None]:
         if not self.enabled():
             return "", None
         system, user = _neutralize_stray_frame_markers(system), _neutralize_stray_frame_markers(user)
@@ -1843,14 +1919,22 @@ class LLMRouter:
             timeout: Maximum seconds to wait. Default 120s for large models on CPU.
 
         Returns:
-            True if LLM is ready, False if warmup failed or timed out.
+            True if LLM is ready, False if warmup failed, timed out, or a process stop was requested (#1438 PR 1c:
+            keyed on the stop request, never on the backend's shutdown event, which every normal sim end also sets).
         """
+        from maxim.utils.cancellation import yield_requested
+
         if not self.enabled():
             return False
-        if self._ready_event.wait(timeout=timeout):
-            return not self._warmup_failed
-        warn("LLM wait_ready timed out after %.1fs", timeout)
-        return False
+        end = time.monotonic() + timeout
+        while not self._ready_event.wait(timeout=max(0.0, min(0.5, end - time.monotonic()))):
+            if yield_requested():
+                info("LLM wait_ready stopped: a process stop was requested")
+                return False
+            if time.monotonic() >= end:
+                warn("LLM wait_ready timed out after %.1fs", timeout)
+                return False
+        return not self._warmup_failed
 
     @property
     def is_ready(self) -> bool:

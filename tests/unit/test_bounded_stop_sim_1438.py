@@ -25,7 +25,6 @@ _RED = pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1438 PR 1c
 # ── G1: a reset never re-arms the backend under a live stop request ──────────────────────────────────────────────
 
 
-@_RED
 def test_g1_reset_shutdown_under_a_stop_request_leaves_the_backend_stopped() -> None:
     from maxim.models.language import cancellation as backend
 
@@ -59,7 +58,6 @@ def _bare_router() -> Any:
     return router
 
 
-@_RED
 def test_g5_wait_ready_returns_promptly_when_a_stop_lands_during_the_load() -> None:
     router = _bare_router()
     result: list[bool] = []
@@ -107,7 +105,6 @@ def _router_with_blocking_dispatch() -> tuple[Any, threading.Event, threading.Ev
     return router, started, release
 
 
-@_RED
 def test_g6_a_direct_router_call_returns_promptly_after_a_stop() -> None:
     router, started, release = _router_with_blocking_dispatch()
     result: list[Any] = []
@@ -133,10 +130,49 @@ def test_a_direct_router_call_with_no_stop_returns_its_result() -> None:
     assert router._complete_text("s", "u", temperature=0.0, max_tokens=8) == ("late text", None)
 
 
+def test_a_direct_router_call_re_raises_its_dispatch_error_as_itself_and_keeps_the_callers_thread_tag() -> None:
+    from maxim.exceptions import LeaderRefusal
+
+    router, _started, _release = _router_with_blocking_dispatch()
+    seen: list[str] = []
+
+    def _refuse(*_a: Any, **_k: Any) -> Any:
+        seen.append(threading.current_thread().name)
+        raise LeaderRefusal("refused")
+
+    router._complete_text_locked = _refuse
+    with pytest.raises(LeaderRefusal):
+        router._complete_text("s", "u", temperature=0.0, max_tokens=8)
+    # sim_log tags [ORCH] / [AUT] by thread name: the helper carries the caller's name.
+    assert seen and seen[0].startswith(threading.current_thread().name), seen
+
+
+def test_a_router_call_under_a_bound_cancel_event_runs_inline() -> None:
+    # The worker path (LLMWorker binds a per-call cancel event and abandons on its own) is never double-threaded.
+    from maxim.utils.cancellation import reset_cancel_event, set_cancel_event
+
+    router, _started, release = _router_with_blocking_dispatch()
+    release.set()
+    seen: list[str] = []
+    router._complete_text_locked = lambda *a, **k: (seen.append(threading.current_thread().name), ("x", None))[1]
+    token = set_cancel_event(threading.Event())
+    try:
+        assert router._complete_text("s", "u", temperature=0.0, max_tokens=8) == ("x", None)
+    finally:
+        reset_cancel_event(token)
+    assert seen == [threading.current_thread().name]
+
+
+def test_a_router_call_made_under_a_stop_is_refused_at_once() -> None:
+    router, started, _release = _router_with_blocking_dispatch()
+    request_stop("test", Deadline.after(5.0))
+    assert router._complete_text("s", "u", temperature=0.0, max_tokens=8) == ("", None)
+    assert not started.is_set(), "a call made under a stop reached the backend"
+
+
 # ── G3: the generative runner stops, records no fabricated turn, and says yielded ────────────────────────────────
 
 
-@_RED
 def test_g3_the_generative_runner_stops_after_the_call_a_stop_lands_in_and_reports_yielded() -> None:
     from maxim.simulation.generative_runner import run_generative_campaign
 
@@ -167,7 +203,6 @@ def test_g3_the_generative_runner_stops_after_the_call_a_stop_lands_in_and_repor
 # ── G4: the DM runtime stops, records no fabricated choice, and says yielded ─────────────────────────────────────
 
 
-@_RED
 def test_g4_the_dm_runtime_stops_at_the_encounter_a_stop_lands_in_and_reports_yielded() -> None:
     from maxim.simulation.dm_runtime import DMRuntime
     from maxim.simulation.dm_schema import Act, CampaignDef, EncounterDef
@@ -208,7 +243,6 @@ def test_g4_the_dm_runtime_stops_at_the_encounter_a_stop_lands_in_and_reports_yi
 # ── G4b: the orchestrator reads a runner's yielded as yielded, never error ───────────────────────────────────────
 
 
-@_RED
 @pytest.mark.parametrize(
     ("runner", "outcome"),
     [
@@ -221,3 +255,51 @@ def test_g4b_a_runner_that_yielded_is_reported_as_yielded(runner: str, outcome: 
 
     got = _runner_outcome(runner, outcome)
     assert got is not None and got[0] == "yielded", f"{runner} yielded read as {got!r}"
+
+
+# ── G2: a simulation refuses to start under a stop request, before anything is built ────────────────────────────
+
+
+def test_g2_a_simulation_started_under_a_stop_request_refuses_before_building_a_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import maxim.runtime.lane_backends as lane_backends
+    from maxim.exceptions import StopStillPending
+    from maxim.simulation.orchestrator import start_simulation_mode
+
+    def _no_router(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("a router was built under a stop request")
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", _no_router)
+    request_stop("test", Deadline.after(5.0))
+    with pytest.raises(StopStillPending) as raised:
+        start_simulation_mode(goal="stop test", max_turns=1)
+    assert raised.value.reason == "test"
+    assert "simulation not started" in str(raised.value)
+
+
+class _LoadingRouter:
+    """A router whose model load is interrupted by a stop request."""
+
+    def warmup(self) -> bool:
+        return True
+
+    def wait_ready(self, timeout: float = 120.0) -> bool:
+        request_stop("stopped during the load", Deadline.after(5.0))
+        return False
+
+
+def test_g2b_a_stop_during_the_model_load_refuses_before_the_bridge_is_built(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.runtime.lane_backends as lane_backends
+    import maxim.simulation.bridge as bridge_mod
+    from maxim.exceptions import StopStillPending
+    from maxim.simulation.orchestrator import start_simulation_mode
+
+    def _no_bridge(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("the bridge was built after the stop landed during the load")
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", lambda **_k: (_LoadingRouter(), None))
+    monkeypatch.setattr(bridge_mod, "SimulationBridge", _no_bridge)
+    with pytest.raises(StopStillPending) as raised:
+        start_simulation_mode(goal="stop test", max_turns=1)
+    assert raised.value.reason == "stopped during the load"

@@ -192,9 +192,9 @@ def stop_event_registered(event: Any) -> Iterator[None]:
 
 def register_stop_hook(on_request: Callable[[], None], on_clear: Callable[[], None] | None = None) -> None:
     """Run ``on_request`` when the stop is requested and ``on_clear`` when that request is cleared. For a module
-    ``utils`` must not import: the LLM backend registers its ``request_shutdown`` / ``reset_shutdown`` pair here, so a
-    cleared stop re-arms the backend. Hooks must not block, and must not call ``request_stop``,
-    ``clear_stop_request`` or ``register_stop_hook`` (they run under the non-reentrant hook lock); each is guarded and
+    ``utils`` must not import: the LLM backend registers its shutdown event's set / clear pair here, so a cleared stop
+    re-arms the backend. Hooks must not block, and must not call ``request_stop``, ``clear_stop_request``,
+    ``register_stop_hook`` or ``reset_unless_stopped`` (they run under the non-reentrant hook lock); each is guarded and
     logged. Already requested:
     ``on_request`` runs now (a module imported after the request)."""
     with _hook_lock:
@@ -256,3 +256,18 @@ def clear_stop_request(expected: StopRequest | None = None) -> bool:
             hooks = [on_clear for _, on_clear in _stop_hooks if on_clear is not None]
         _run_hooks(hooks)
     return True
+
+
+def reset_unless_stopped(reset: Callable[[], None]) -> bool:
+    """Run ``reset`` only while no stop is requested; whether it ran (#1438 PR 1c).
+
+    A reset re-arms work a stop request stopped (the backend's ``reset_shutdown``), so one made under a live request
+    would undo it. Checked and run under the hook lock, so no request can land between the check and the reset; the
+    request's own hooks run under the same lock, after. ``reset`` must not take the hook lock."""
+    with _hook_lock:
+        stopped = _stop_request is not None
+        if not stopped:
+            reset()
+    if stopped:
+        logger.info("A reset was refused: a process stop is requested")
+    return not stopped

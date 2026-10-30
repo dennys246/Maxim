@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from maxim.simulation.tty_stdin import read_post_sim_goal_raw, stdin_reader_raw
-from maxim.utils.cancellation import yield_requested
+from maxim.exceptions import StopStillPending
+from maxim.utils.cancellation import current_stop, yield_requested
 
 
 logger = logging.getLogger(__name__)
@@ -344,10 +345,10 @@ def _runner_outcome(runner: str, outcome: Any) -> tuple[str, str] | None:
     completed (#1002). Each runner is read in its OWN return shape (pinned against the real producers):
 
     - ``generative_runner``: ``None`` when it raised, else a ``GenerativeCampaignResult`` whose
-      ``finish_reason`` is ``completed`` / ``max_turns`` / ``error``;
+      ``finish_reason`` is ``completed`` / ``max_turns`` / ``error`` / ``yielded`` (a process stop, #1438);
     - ``dm_runner``: ``{"error": ...}`` when it raised, else ``DMRuntime.get_rollup()``, whose ending is
       ``campaign.finish_reason`` (``all_encounters_complete`` / ``campaign_end:*`` complete it; ``cancel`` is
-      a Ctrl+C; anything else is a structural failure);
+      a Ctrl+C; ``yielded`` a process stop (#1438); anything else is a structural failure);
     - ``fixture_runner``: ``{"error": ...}`` when it raised, else ``asdict(FixtureResult)``, which finishes
       ``complete``;
     - ``precampaign_runner``: the analysis dict, whose ``turns`` each carry ``error`` when that turn failed; a
@@ -365,12 +366,16 @@ def _runner_outcome(runner: str, outcome: Any) -> tuple[str, str] | None:
             return None
         if reason in ("max_turns", "error"):
             return reason, f"the generative campaign ended with {reason}"
+        if reason == "yielded":
+            return "yielded", "the generative campaign yielded to a process stop"
     elif runner == "dm_runner" and isinstance(outcome, dict):
         reason = (outcome.get("campaign") or {}).get("finish_reason")
         if reason == "all_encounters_complete" or str(reason).startswith("campaign_end:"):
             return None
         if reason == "cancel":
             return "cancel", "the DM campaign was interrupted (Ctrl+C)"
+        if reason == "yielded":
+            return "yielded", "the DM campaign yielded to a process stop"
     elif runner == "fixture_runner" and isinstance(outcome, dict):
         reason = outcome.get("finish_reason")
         if reason == "complete":
@@ -582,6 +587,44 @@ def _await_aut_session_end_before_new(aut_memory_hub: Any | None) -> None:
 _NEW_GOAL_SESSION_WAIT_S = 30.0
 
 
+def _refuse_a_stop_then_reset_llm_cancellation() -> None:
+    """A simulation's first act: refuse to start under a process stop request, then re-arm the LLM backend.
+
+    The refusal (#1438 PR 1c, owner decision 2026-10-30) comes before anything is built: a sim started under a stop
+    would build a router, a sandbox and loops that are born stopped, and report a run that never happened.
+    """
+    stop = current_stop()
+    if stop is not None:
+        raise StopStillPending(stop.reason, refused="simulation")
+    # Reset the process-wide LLM cancellation primitive. If a previous sim
+    # in the same Python process requested shutdown (e.g., this is a
+    # --continuous run or a long-lived REPL invoking multiple sims), the
+    # event would still be set and the new sim's LLM calls would bail out
+    # immediately. Clearing at entry makes successive sims safe.
+    try:
+        from maxim.models.language.cancellation import reset_shutdown
+
+        reset_shutdown()
+    except Exception as e:
+        logger.debug("Failed to reset LLM cancellation at sim start: %s", e)
+
+
+def _await_llm_ready_or_refuse(llm_router: Any | None) -> None:
+    """Wait for the model to load (avoid cold-start stale drops), then refuse if a stop landed during the load.
+
+    ``wait_ready`` returns early on a stop (#1438 PR 1c); the sim then refuses before the bridge, sandbox and loops
+    are built. The router and its lane manager are left as a finished sim leaves them (neither has a shutdown).
+    """
+    if llm_router is None:
+        return
+    logger.info("Waiting for LLM model to load...")
+    llm_router.wait_ready(timeout=120.0)
+    stop = current_stop()
+    if stop is not None:
+        raise StopStillPending(stop.reason, refused="simulation")
+    logger.info("LLM ready")
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -738,17 +781,7 @@ def start_simulation_mode(
     stop_event = threading.Event()
     operator_stop = threading.Event()  # set only when a human ends the run (#1002)
 
-    # Reset the process-wide LLM cancellation primitive. If a previous sim
-    # in the same Python process requested shutdown (e.g., this is a
-    # --continuous run or a long-lived REPL invoking multiple sims), the
-    # event would still be set and the new sim's LLM calls would bail out
-    # immediately. Clearing at entry makes successive sims safe.
-    try:
-        from maxim.models.language.cancellation import reset_shutdown
-
-        reset_shutdown()
-    except Exception as e:
-        logger.debug("Failed to reset LLM cancellation at sim start: %s", e)
+    _refuse_a_stop_then_reset_llm_cancellation()
 
     # ── Shared LLM router (single model, alternating inference) ──────────
     # Routed through the multi-LLM factory so sim respects per-lane assignments
@@ -786,18 +819,13 @@ def start_simulation_mode(
             _substrate_budget,
             aut_mode,
         )
+    _await_llm_ready_or_refuse(llm_router)
     bridge = SimulationBridge(
         response_timeout=response_timeout,
         stop_event=stop_event,
         aut_mode=aut_mode,
         substrate_actions_per_turn=_substrate_budget,
     )
-
-    # ── Wait for LLM to be ready (avoid cold-start stale drops) ────────
-    if llm_router is not None:
-        logger.info("Waiting for LLM model to load...")
-        llm_router.wait_ready(timeout=120.0)
-        logger.info("LLM ready")
 
     # ── Orchestrator percept source (receives goal + user commands) ──────
     orchestrator_source = ConversationalSource()

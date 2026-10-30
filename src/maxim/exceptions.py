@@ -64,18 +64,24 @@ class KeyFileUnusable(MaximError, RuntimeError):
 
 
 class StopStillPending(MaximError, RuntimeError):
-    """A console refused to start while an earlier process stop request is still set (#1438 PR 1b).
+    """Something refused to start while a process stop request is set: a console (#1438 PR 1b) or a simulation
+    (PR 1c).
 
     The request is cleared only by the owner that made it, after a stop that finished; a stop that overran its budget
     (a campaign or a session end still running) leaves it set. Starting anyway would build loops and LLM workers that
-    are born stopped. ``reason`` is the pending request's reason.
+    are born stopped. ``reason`` is the pending request's reason; ``refused`` names what refused, when it is not the
+    console (a simulation's stop is usually still in progress, not overrun).
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, refused: str = "") -> None:
         self.reason = reason
-        super().__init__(
-            f"refusing to start: an earlier stop ({reason!r}) has not finished; restart the process to recover"
-        )
+        if refused:
+            message = f"{refused} not started: a process stop ({reason!r}) is in progress or did not finish"
+        else:
+            message = (
+                f"refusing to start: an earlier stop ({reason!r}) has not finished; restart the process to recover"
+            )
+        super().__init__(message)
 
 
 class LeaderRefusal(MaximError, RuntimeError):

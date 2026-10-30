@@ -112,6 +112,8 @@ PRE_SLICE_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "orchest
 # A ``maxim`` module ``orchestrator.py`` imports that it did not at 17710609, and that is NOT an extraction
 # module (a fix needing a new dependency), with the reason. Empty at slice 0.
 NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
+    "maxim.exceptions": "#1438 PR 1c: a simulation started under a process stop request refuses with "
+    "StopStillPending (at entry, and again if the stop lands during the model load)",
     "maxim.utils.cancellation": "#1438 PR 1b: _resolve_finish_reason reads yield_requested() so a campaign "
     "ended by a process stop reports the typed abort 'yielded', never a status the stop caused",
 }
