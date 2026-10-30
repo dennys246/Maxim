@@ -10,7 +10,8 @@ The fake models the daemon facts the motion-path design rests on (reachy-mini 1.
 - F12: the REST ``GET /api/state/full`` read, served from the modelled state, with its failure modes.
 
 ``linear_pose_interpolation`` is a verbatim copy of the SDK's (``reachy_mini/utils/interpolation.py``), because the
-unit lane has no ``reachy`` extra. A contract test in the reachy extras cell pins the copy to the real function.
+unit lane has no ``reachy`` extra. ``tests/unit/test_reachy_sdk_contract_1499.py`` pins the copy to the real function
+wherever the SDK is installed (no CI lane has it yet: R2's reachy cell will).
 """
 
 from __future__ import annotations
@@ -108,8 +109,12 @@ class FakeDaemon:
         self.enable_raises = False
         self.torque_delay_s = 0.0  # enable_motors takes effect this long after the call (fire-and-forget)
         self._torque_at: float | None = None
-        self.rest_mode = "ok"  # ok | status500 | timeout | missing_body | nan_body | nested | head_m | unknown
+        # ok (the 1.8.3 shape) | status500 | timeout | missing_body | nan_body | nested | head_m | unknown
+        self.rest_mode = "ok"
         self.rest_calls = 0
+        self.rest_delay_s = 0.0  # each REST read takes this long (the controller's deadline check)
+        self.fail_rest_calls: set[int] = set()  # 1-based REST call numbers that time out (the retry)
+        self.last_fetch_kwargs: dict[str, Any] = {}  # what the controller passed to fetch_url
         self.lock = threading.Lock()
         self.media = FakeMedia()
 
@@ -214,7 +219,8 @@ class FakeDaemon:
             body = float("nan")
         state: dict[str, Any] = {
             "control_mode": self._control_mode_now(),
-            "head_pose": self.head.tolist(),
+            # The daemon's Matrix4x4Pose serialises as {"m": [16 floats]}, row-major (daemon/app/models.py).
+            "head_pose": {"m": self.head.ravel().tolist()},
             "body_yaw": body,
             "antennas_position": list(self.antennas),
             "timestamp": "2026-10-29T00:00:00+00:00",
@@ -224,7 +230,7 @@ class FakeDaemon:
         elif self.rest_mode == "nested":
             state["body"] = {"body_yaw": state.pop("body_yaw")}
         elif self.rest_mode == "head_m":
-            state["head_pose"] = {"m": state["head_pose"]}
+            state["head_pose"] = {"m": self.head.tolist()}  # a nested 4×4 under "m"
         elif self.rest_mode == "unknown":
             state = {"pose": "?"}
         return state
@@ -234,7 +240,10 @@ class FakeDaemon:
 
         if "/api/state/full" in url:
             self.rest_calls += 1
-            if self.rest_mode == "timeout":
+            self.last_fetch_kwargs = dict(_kw)
+            if self.rest_delay_s:
+                time.sleep(self.rest_delay_s)
+            if self.rest_mode == "timeout" or self.rest_calls in self.fail_rest_calls:
                 raise TimeoutError("read timed out")
             if self.rest_mode == "status500":
                 return Response(
@@ -290,6 +299,59 @@ def controller(daemon: FakeDaemon):
     ctl._resolved_host = "127.0.0.1"
     ctl._connection_mode = "network"
     ctl.last_clamped_axes = ()
+    ctl._tunnel = False
+    ctl._init_motion_state()
+    ctl._auto_yaw_asserted = True  # a connected controller asserted set_automatic_body_yaw(False) at connect
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
+    return ctl
+
+
+def serve_state_from_ws_fake(monkeypatch) -> None:
+    """For the older WS-style fakes (``_BiasedFakeMini``, ``_Mini``, …): answer the controller's REST read from them.
+
+    The controller's fresh readback (#1499 R1) is ``GET /api/state/full``. These
+    fakes model the daemon through ``get_current_head_pose`` /
+    ``get_current_joint_positions`` only, so the transport seam
+    ``ReachyMiniController._get_state_full`` is served from those reads, in the
+    1.8.3 shape. The parsing, the torque check and every refusal stay real. A
+    fake with ``rest_fails = True``, an unreadable pose, or a raising read
+    answers as a failed REST read.
+    """
+    from maxim.exceptions import MotionRefused
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    def _state(self):
+        mini = self._mini
+        if getattr(mini, "rest_fails", False):
+            raise MotionRefused("reference", "the fake daemon's REST read failed")
+        try:
+            head = mini.get_current_head_pose()
+            joints, antennas = mini.get_current_joint_positions()
+        except Exception as e:  # a raising fake read is a failed REST read
+            raise MotionRefused("reference", f"the fake daemon's read raised: {e}") from e
+        if head is None or joints is None or len(joints) < 1:
+            raise MotionRefused("reference", "the fake daemon has no pose to serve")
+        state = {
+            "control_mode": getattr(mini, "control_mode", "enabled"),
+            "head_pose": {"m": np.asarray(head, dtype=object).ravel().tolist()},
+            "body_yaw": joints[0],
+        }
+        if antennas is not None and len(antennas) == 2:
+            state["antennas_position"] = list(antennas)
+        return state
+
+    monkeypatch.setattr(ReachyMiniController, "_get_state_full", _state)
+    # The R5 sampler imports the SDK's own interpolation; these files stub only reachy_mini.utils.
+    interpolation = types.ModuleType("reachy_mini.utils.interpolation")
+    interpolation.linear_pose_interpolation = linear_pose_interpolation
+    monkeypatch.setitem(sys.modules, "reachy_mini.utils.interpolation", interpolation)
+
+
+def prepare_controller(ctl):
+    """The #1499 dispatch state for a controller a test built with ``__new__`` (connected, auto-yaw asserted off)."""
+    ctl._init_motion_state()
+    ctl._auto_yaw_asserted = True
+    ctl._tunnel = False
+    ctl._resolved_host = "127.0.0.1"
     return ctl

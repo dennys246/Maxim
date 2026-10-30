@@ -31,11 +31,11 @@ import math
 import numbers
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
-from maxim.exceptions import MotionRefused
+from maxim.exceptions import MotionRefusalKind, MotionRefused
 from maxim.hardware.capabilities import (
     RobotCapabilities,
     RobotConnectionState,
@@ -51,10 +51,15 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "MOTION_DURATION_MAX_S",
     "MOTION_DURATION_MIN_S",
+    "DurationPolicy",
+    "MotionOutcome",
+    "HEAD_TRANSLATION_EXTRAS",
+    "MotionOutcomeKind",
     "MotionRefused",
     "MotionTarget",
     "PixelTarget",
     "RobotController",
+    "as_outcome",
     "clamp_finite",
     "floor_duration",
     "normalize_method",
@@ -147,6 +152,67 @@ def normalize_method(method: Any) -> str:
     return canonical
 
 
+# How a requested duration is treated (#1499 R4, O1). ``"exact"``: the caller
+# chose it (a model-supplied duration), so a move that cannot be done safely in
+# that time is refused (``rate``/``path``). ``"at_least"``: a default or derived
+# duration, stretched to the rate cap and split along the path as needed.
+DurationPolicy = Literal["exact", "at_least"]
+
+MotionOutcomeKind = MotionRefusalKind | Literal["superseded", "cancelled", "partial", "error"]
+
+# ``MotionTarget.extras`` keys for a head translation, body frame, metres: written by
+# ``motion/movement.py::move_head`` when it delegates, read by ``ReachyMiniController`` (#1499 5.4).
+HEAD_TRANSLATION_EXTRAS = ("head_x", "head_y", "head_z")
+
+
+@dataclass(frozen=True)
+class MotionOutcome:
+    """What became of one motion command (#1499 O4, O7). Truthy iff ``ok``.
+
+    Never persisted and never sent over a wire: it lives for one dispatch and
+    its callers (the tools, the motor worker, DN), so it carries no
+    forward-compat path (CC3 scope: persisted or wire-crossing only).
+
+    ``kind`` is ``None`` when ``ok``. Otherwise it is a refusal kind
+    (``MotionRefusalKind``), or ``"cancelled"`` (aborted, or the motor was
+    busy), ``"partial"`` (a split stopped after ``chunks_done`` chunks),
+    ``"superseded"`` (replaced before it ran) or ``"error"`` (the controller
+    failed, or a plugin returned ``False``). No non-ok outcome feeds the gaze or
+    workspace-bounds learners (#1499 O4). ``"superseded"`` has no producer until
+    PR 2's motor queue.
+    """
+
+    ok: bool
+    kind: MotionOutcomeKind | None = None
+    reason: str = ""
+    duration_s: float | None = None
+    chunks_planned: int = 0
+    chunks_done: int = 0
+
+    def __bool__(self) -> bool:
+        return self.ok
+
+    @classmethod
+    def refused(cls, kind: MotionOutcomeKind, reason: str, *, chunks_planned: int = 0) -> MotionOutcome:
+        return cls(ok=False, kind=kind, reason=reason, chunks_planned=chunks_planned)
+
+
+def as_outcome(result: bool | MotionOutcome | None) -> MotionOutcome:
+    """A controller result as a ``MotionOutcome`` (#1499 O7).
+
+    Plugins and older fakes return ``bool``; ``True`` is ok with no reason,
+    ``False`` is ``kind="error"``. Every consumer that reads a field goes
+    through this.
+    """
+    if isinstance(result, MotionOutcome):
+        return result
+    if result:
+        return MotionOutcome(ok=True)
+    if result is None:
+        return MotionOutcome(ok=False, kind="error", reason="the controller returned no outcome")
+    return MotionOutcome(ok=False, kind="error", reason="the controller returned False")
+
+
 @dataclass
 class MotionTarget:
     """Target pose for robot motion.
@@ -199,6 +265,10 @@ class MotionTarget:
     # Motion method (e.g., "linear", "minimum_jerk"); normalised to the canonical name.
     method: str = "minimum_jerk"
 
+    # "exact" when the caller chose ``duration`` (refuse what cannot be done in
+    # it); "at_least" for a default or derived one (stretch and split) (#1499).
+    duration_policy: DurationPolicy = "at_least"
+
     def __post_init__(self) -> None:
         # #1496: refuse at construction. The dataclass is mutable, so the
         # controller re-checks every field at the last mile as well.
@@ -209,6 +279,7 @@ class MotionTarget:
         self.extras = {key: require_finite(f"extras[{key!r}]", val) for key, val in self.extras.items()}
         self.duration = require_duration(self.duration)
         self.method = normalize_method(self.method)
+        self.duration_policy = _require_policy(self.duration_policy)
 
 
 @dataclass(slots=True)
@@ -218,11 +289,21 @@ class PixelTarget:
     u: int  # X coordinate (0 = left)
     v: int  # Y coordinate (0 = top)
     duration: float = 0.5
+    duration_policy: DurationPolicy = "at_least"  # see MotionTarget.duration_policy
 
     def __post_init__(self) -> None:
         self.u = _require_pixel("u", self.u)
         self.v = _require_pixel("v", self.v)
         self.duration = require_duration(self.duration)
+        self.duration_policy = _require_policy(self.duration_policy)
+
+
+def _require_policy(value: Any) -> DurationPolicy:
+    if value == "exact":
+        return "exact"
+    if value == "at_least":
+        return "at_least"
+    raise MotionRefused("invalid", f"duration_policy must be 'exact' or 'at_least', got {value!r}")
 
 
 def _require_pixel(field_name: str, value: Any) -> int:
@@ -357,19 +438,21 @@ class RobotController(ABC):
     # ─────────────────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def goto_target(self, target: MotionTarget) -> bool:
+    def goto_target(self, target: MotionTarget) -> bool | MotionOutcome:
         """Move robot to target pose.
 
         Args:
             target: Target pose specification.
 
         Returns:
-            True if motion command accepted.
+            A ``MotionOutcome`` (preferred; truthy iff ok) or a ``bool``, which
+            stays accepted for 1.x plugins. Consumers read it through
+            ``as_outcome`` (#1499 O7).
         """
         ...
 
     @abstractmethod
-    def look_at_pixel(self, target: PixelTarget) -> bool:
+    def look_at_pixel(self, target: PixelTarget) -> bool | MotionOutcome:
         """Move head to look at a pixel coordinate.
 
         Uses the robot's camera model to convert pixel
@@ -392,7 +475,7 @@ class RobotController(ABC):
         """
         ...
 
-    def center_vision(self, duration: float = 0.5) -> bool:
+    def center_vision(self, duration: float = 0.5) -> bool | MotionOutcome:
         """Center the head to look straight ahead.
 
         Returns:
@@ -411,7 +494,7 @@ class RobotController(ABC):
     # ─────────────────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def wake_up(self) -> bool:
+    def wake_up(self) -> bool | MotionOutcome:
         """Wake up the robot (enable motors, start streaming).
 
         Returns:
@@ -420,7 +503,7 @@ class RobotController(ABC):
         ...
 
     @abstractmethod
-    def goto_sleep(self) -> bool:
+    def goto_sleep(self) -> bool | MotionOutcome:
         """Put the robot to sleep (disable motors, stop streaming).
 
         Returns:

@@ -171,6 +171,12 @@ LAYER_RULES: dict[str, dict[str, list[str]]] = {
     "bridges": {
         "must_not_import": ["agents", "planning", "tools", "runtime", "conscience"],
     },
+    # #1499 (Architecture scoped S1): the motion types (MotionOutcome, and PR 2's
+    # MotionTicket) live in hardware/, so the controller never reaches up into
+    # the runtime that drives it.
+    "hardware": {
+        "must_not_import": ["embodied_runtime", "tools", "runtime", "agents", "planning"],
+    },
 }
 
 

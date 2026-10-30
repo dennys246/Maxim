@@ -106,6 +106,7 @@ Reachy Mini was the first robot Maxim supported, but the architecture was always
    ```python
    # src/maxim_atlas/controller.py
    from maxim.hardware import RobotController, MotionTarget, PixelTarget, RobotCapabilities, MotionCapability, StreamCapability
+   from maxim.hardware.controller import MotionOutcome
 
    class AtlasController(RobotController):
        @property
@@ -114,17 +115,21 @@ Reachy Mini was the first robot Maxim supported, but the architecture was always
 
        def connect(self, timeout=30.0): ...
        def disconnect(self): ...
-       def goto_target(self, target: MotionTarget) -> bool:
+       # Motion and lifecycle methods return ``bool | MotionOutcome``: a MotionOutcome (truthy iff the move
+       # completed, with a ``kind`` and ``reason`` when it did not) is preferred; a plain bool stays accepted in
+       # 1.x. Callers read either through ``maxim.hardware.controller.as_outcome``, so never compare the result
+       # with ``is True``.
+       def goto_target(self, target: MotionTarget) -> bool | MotionOutcome:
            # Read generic head fields
            yaw = target.head_yaw or 0.0
            # Read robot-specific joints from extras
            left_arm = target.extras.get("left_arm_yaw", 0.0)
            gripper = target.extras.get("gripper_left", 0.0)
            return self._sdk.move(yaw=yaw, left_arm=left_arm, gripper=gripper, ...)
-       def look_at_pixel(self, target: PixelTarget) -> bool: ...
+       def look_at_pixel(self, target: PixelTarget) -> bool | MotionOutcome: ...
        def get_current_pose(self) -> dict[str, float]: ...
-       def wake_up(self) -> bool: ...
-       def goto_sleep(self) -> bool: ...
+       def wake_up(self) -> bool | MotionOutcome: ...
+       def goto_sleep(self) -> bool | MotionOutcome: ...
        # ... see hardware/reachy/controller.py for the full list
    ```
 

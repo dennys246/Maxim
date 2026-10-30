@@ -36,9 +36,16 @@ import time
 import types
 
 import pytest
+from tests.unit._reachy_fakes import prepare_controller, serve_state_from_ws_fake
 
 from maxim.hardware.controller import MotionTarget
 from maxim.hardware.reachy.controller import ReachyMiniController
+
+
+@pytest.fixture(autouse=True)
+def _serve_the_fresh_readback(monkeypatch):
+    """The controller reads its reference from the daemon's REST state (#1499 R1); serve it from this file's fake."""
+    serve_state_from_ws_fake(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -77,16 +84,19 @@ def _world_yaw_of(pose_matrix) -> float:
 
 
 class _FakeMini:
-    """Records goto_target kwargs; reports body yaw via the SDK joint[0] convention."""
+    """Records goto_target kwargs and reaches the commanded pose (the controller re-reads it, #1499).
+
+    Reports body yaw via the SDK joint[0] convention.
+    """
 
     def __init__(self, body_yaw: float = 0.0, head_world_yaw: float = 0.0) -> None:
         self._body_yaw = body_yaw
-        self._head_world_yaw = head_world_yaw
+        c, s = math.cos(head_world_yaw), math.sin(head_world_yaw)
+        self._head = [[c, -s, 0.0, 0.0], [s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
         self.calls: list[dict] = []
 
     def get_current_head_pose(self):
-        c, s = math.cos(self._head_world_yaw), math.sin(self._head_world_yaw)
-        return [[c, -s, 0.0, 0.0], [s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+        return [list(row) for row in self._head]
 
     def get_current_joint_positions(self):
         # [body_yaw, *stewart_legs] — the SDK's own fk() reads index 0 as body_yaw.
@@ -94,6 +104,10 @@ class _FakeMini:
 
     def goto_target(self, **kwargs):
         self.calls.append(kwargs)
+        if kwargs.get("head") is not None:
+            self._head = [list(map(float, row)) for row in kwargs["head"]]
+        if kwargs.get("body_yaw") is not None:
+            self._body_yaw = float(kwargs["body_yaw"])
 
 
 def _make_controller(body_yaw: float = 0.0, head_world_yaw: float = 0.0):
@@ -106,6 +120,7 @@ def _make_controller(body_yaw: float = 0.0, head_world_yaw: float = 0.0):
     ctl._divergence_last_warn = 0.0
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
+    prepare_controller(ctl)
     return ctl, fake
 
 
@@ -122,8 +137,10 @@ def controller():
 class TestGotoTargetClamps:
     def test_body_yaw_beyond_160_deg_is_clamped(self, controller):
         ctl, fake = controller
-        assert ctl.goto_target(MotionTarget(body_yaw=math.radians(300.0))) is True
-        (call,) = fake.calls
+        assert ctl.goto_target(MotionTarget(body_yaw=math.radians(300.0)))
+        # A 160° turn is split into chunks (#1499 R5); the last one carries the clamped target.
+        call = fake.calls[-1]
+        assert all(abs(c["body_yaw"]) <= math.radians(160.0) + 1e-9 for c in fake.calls)
         assert call["body_yaw"] == pytest.approx(math.radians(160.0)), (
             "A body command past ±160° must be clamped at the controller — an "
             "unclamped extreme is the motor-destruction failure class."
@@ -131,14 +148,15 @@ class TestGotoTargetClamps:
 
     def test_body_yaw_negative_extreme_clamped(self, controller):
         ctl, fake = controller
-        assert ctl.goto_target(MotionTarget(body_yaw=-6.0)) is True
-        (call,) = fake.calls
+        assert ctl.goto_target(MotionTarget(body_yaw=-6.0))
+        call = fake.calls[-1]  # split (#1499 R5): the last chunk carries the clamped target
+        assert all(abs(c["body_yaw"]) <= math.radians(160.0) + 1e-9 for c in fake.calls)
         assert call["body_yaw"] == pytest.approx(-math.radians(160.0))
 
     def test_head_relative_yaw_beyond_65_deg_is_clamped(self, controller):
         ctl, fake = controller
         # Body stays at 0, so the shipped world yaw equals the relative yaw.
-        assert ctl.goto_target(MotionTarget(head_yaw=math.radians(120.0))) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=math.radians(120.0)))
         (call,) = fake.calls
         assert _world_yaw_of(call["head"]) == pytest.approx(math.radians(65.0), abs=1e-6), (
             "head_yaw is BODY-RELATIVE and the neck's physical capability is ±65°; commanding past it must clamp."
@@ -146,7 +164,7 @@ class TestGotoTargetClamps:
 
     def test_head_roll_and_pitch_clamped_to_40_deg(self, controller):
         ctl, fake = controller
-        assert ctl.goto_target(MotionTarget(head_roll=2.0, head_pitch=-2.0)) is True
+        assert ctl.goto_target(MotionTarget(head_roll=2.0, head_pitch=-2.0))
         (call,) = fake.calls
         m = call["head"]
         pitch = math.atan2(-m[2][0], math.hypot(m[2][1], m[2][2]))
@@ -163,13 +181,13 @@ class TestGotoTargetClamps:
         """
         body = math.radians(100.0)
         ctl, fake = _make_controller(body_yaw=body, head_world_yaw=body)
-        assert ctl.goto_target(MotionTarget(head_yaw=math.radians(40.0), body_yaw=body)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=math.radians(40.0), body_yaw=body))
         (call,) = fake.calls
         assert _world_yaw_of(call["head"]) == pytest.approx(math.radians(140.0), abs=1e-6)
 
     def test_legal_commands_pass_through_unchanged(self, controller):
         ctl, fake = controller
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, body_yaw=0.5)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, body_yaw=0.5))
         (call,) = fake.calls
         assert call["body_yaw"] == pytest.approx(0.5)
         assert _world_yaw_of(call["head"]) == pytest.approx(0.8, abs=1e-6)
@@ -192,17 +210,17 @@ class TestGotoTargetMotionLock:
         inside = threading.Event()
         overlap = threading.Event()
 
-        real_pose = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "body_yaw": 0.0}
+        real_read = ctl._get_state_full  # the dispatch's pose read is the REST readback since #1499 (R1)
 
-        def slow_pose():
+        def slow_read():
             if inside.is_set():
                 overlap.set()
             inside.set()
             time.sleep(0.15)
             inside.clear()
-            return dict(real_pose)
+            return real_read()
 
-        ctl.get_current_pose = slow_pose  # type: ignore[method-assign]
+        ctl._get_state_full = slow_read  # type: ignore[method-assign]
 
         threads = [
             threading.Thread(target=lambda: ctl.goto_target(MotionTarget(body_yaw=0.4))),
@@ -214,7 +232,7 @@ class TestGotoTargetMotionLock:
             t.join(timeout=5.0)
 
         assert not overlap.is_set(), (
-            "Two goto_target calls interleaved their get_current_pose() → compose → "
+            "Two goto_target calls interleaved their pose read → compose → "
             "dispatch sections: each composes a head matrix against a body yaw the "
             "other is concurrently changing (TOCTOU on live kinematic state)."
         )
@@ -224,7 +242,7 @@ class TestGotoTargetMotionLock:
         """RLock, not Lock: a caller already holding the lock can dispatch."""
         ctl, fake = controller
         with ctl._motion_lock:
-            assert ctl.goto_target(MotionTarget(body_yaw=0.1)) is True
+            assert ctl.goto_target(MotionTarget(body_yaw=0.1))
         assert len(fake.calls) == 1
 
 
@@ -287,7 +305,7 @@ class TestTurnAroundRoutesThroughController:
         ctl, fake = _make_controller()
         host = _TurnHost(ctl)
         host.turn_around(300.0, duration=5.0)
-        step2 = fake.calls[1]
+        step2 = fake.calls[-1]  # the 160° body step splits into chunks (#1499 R5); the last carries the target
         assert step2["body_yaw"] == pytest.approx(math.radians(160.0), abs=1e-6)
 
     def test_no_controller_skips_motion_instead_of_raw_sdk(self):
@@ -367,8 +385,8 @@ class TestMoveHeadFrameComposition:
 
     def test_relative_zero_on_turned_body_ships_world_body_yaw(self):
         body = math.radians(120.0)
-        fake = _FakeMini(body_yaw=body)
-        move_head(fake, 0, 0, 0, 0, 0, 0.0, 0.5)
+        fake = _FakeMini(body_yaw=body, head_world_yaw=body)
+        move_head(fake, 0, 0, 0, 0, 0, 0.0, 0.5, motion_lock=threading.RLock())  # standalone (#1499 5.4)
         (call,) = fake.calls
         assert _world_yaw_of(call["head"]) == pytest.approx(body, abs=1e-6), (
             "move_head(yaw=0) on a body at 120° must center the head ON THE BODY "
@@ -377,14 +395,14 @@ class TestMoveHeadFrameComposition:
 
     def test_relative_yaw_composes_onto_body(self):
         body = math.radians(90.0)
-        fake = _FakeMini(body_yaw=body)
-        move_head(fake, 0, 0, 0, 0, 0, 30.0, 0.5)
+        fake = _FakeMini(body_yaw=body, head_world_yaw=body)
+        move_head(fake, 0, 0, 0, 0, 0, 30.0, 0.5, motion_lock=threading.RLock())
         (call,) = fake.calls
         assert _world_yaw_of(call["head"]) == pytest.approx(body + math.radians(30.0), abs=1e-6)
 
     def test_rotations_clamped_to_capability(self):
         fake = _FakeMini()
-        move_head(fake, 0, 0, 0, 90.0, -90.0, 170.0, 0.5)
+        move_head(fake, 0, 0, 0, 90.0, -90.0, 170.0, 0.5, motion_lock=threading.RLock())
         (call,) = fake.calls
         m = call["head"]
         yaw = _world_yaw_of(m)
@@ -394,9 +412,6 @@ class TestMoveHeadFrameComposition:
         assert roll == pytest.approx(math.radians(40.0), abs=1e-6)
         assert pitch == pytest.approx(-math.radians(40.0), abs=1e-6)
 
-    @pytest.mark.xfail(
-        strict=True, reason="#1499 PR 1 inverts this pin (motion_path_model.md v8 §7): R2, no body readback refuses"
-    )
     def test_a_body_read_failure_refuses(self):
         """Inverted by #1499 (R2). Composing against a guessed body of 0 is the head-frame trap; with no body
         readback the move is refused (a typed refusal, or no dispatch), never sent."""
@@ -423,7 +438,7 @@ class TestMoveHeadFrameComposition:
         import threading
 
         body = math.radians(-150.0)
-        fake = _FakeMini(body_yaw=body)
+        fake = _FakeMini(body_yaw=body, head_world_yaw=body + math.radians(30.0))  # a legal start: neck at +30°
         move_head(fake, 0, 0, 0, 0, 0, 0, 0.5, motion_lock=threading.RLock())
         (call,) = fake.calls
         assert _world_yaw_of(call["head"]) == pytest.approx(body, abs=1e-6)
@@ -493,7 +508,7 @@ class TestSimulatedControllerParity:
 
         sim = SimulatedController()
         sim.connect()
-        assert sim.goto_target(MotionTarget(head_yaw=math.radians(120.0))) is True
+        assert sim.goto_target(MotionTarget(head_yaw=math.radians(120.0)))
         pose = sim.get_current_pose()
         rel = pose["yaw"] - pose["body_yaw"]
         assert rel == pytest.approx(ReachyMiniController._MAX_HEAD_REL_YAW_RAD, abs=1e-6)
@@ -503,7 +518,7 @@ class TestSimulatedControllerParity:
 
         sim = SimulatedController()
         sim.connect()
-        assert sim.goto_target(MotionTarget(body_yaw=6.0)) is True
+        assert sim.goto_target(MotionTarget(body_yaw=6.0))
         assert sim.get_current_pose()["body_yaw"] == pytest.approx(ReachyMiniController._MAX_BODY_YAW_RAD, abs=1e-6)
 
     def test_explicit_tighter_limit_still_wins(self):
@@ -573,8 +588,8 @@ class TestExecutorLensFolds:
         """Body-only command + unreadable pose must REFUSE, not guess world 0
         (a legal-under-clamp but violent swing while state is unknown)."""
         ctl, fake = _make_controller()
-        ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is False
+        fake.rest_fails = True  # the reference is the REST readback since #1499 (R1)
+        assert not ctl.goto_target(MotionTarget(body_yaw=0.5))
         assert fake.calls == []
 
     def test_turn_around_rejected_motion_does_not_update_mirror(self):

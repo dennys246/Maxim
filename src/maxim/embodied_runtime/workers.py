@@ -20,9 +20,10 @@ import numpy as np
 
 from maxim.embodied_runtime.movement import SyncResult
 from maxim.exceptions import MotionRefused
+from maxim.hardware.controller import as_outcome
 from maxim.inference.transcribe_audio import create_task_file
 from maxim.utils.audio import resample_audio, to_int16
-from maxim.utils.logging import warn
+from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.queueing import put_latest
 
 
@@ -58,11 +59,16 @@ def motor_worker(
     stop_event: threading.Event,
     maxim: Any,
 ) -> None:
-    """Drain *motor_queue* and execute motor commands until *stop_event* is set."""
+    """Drain *motor_queue* and execute motor commands until *stop_event* is set.
 
-    # Local mutable state (was closure-captured lists in original code)
-    ik_failure_count = 0
-    last_ik_reset_time = 0.0
+    Each callable's result is read as a ``MotionOutcome`` (``as_outcome``; a
+    plugin's ``bool`` works too). The learners are booked a success ONLY when
+    the outcome is ok (#1499 O4, Architecture D1): a refused, partial,
+    cancelled or failed move, or a callable that returned nothing, never
+    reaches ``record_gaze(success=True)`` or the bounds learner. Only the
+    existing IK-failure detection books a failure.
+    """
+    state = _IKState()
 
     # Get reachy loggers to monitor for IK warnings (daemon logs to specific path)
     reachy_loggers = [
@@ -88,135 +94,30 @@ def motor_worker(
         movement_duration = kwargs.get("duration", 0.5)  # Get duration for sync timing
 
         try:
-            fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
 
-            # Check if IK failure was detected via warnings
             if ik_handler.ik_failure_detected:
+                # Check if IK failure was detected via warnings
                 maxim.log.warning("IK failure detected: %s", ik_handler.failure_message)
-                ik_failure_count += 1
-
-                # Record failure in AttentionNetwork for dynamic bounds learning
-                if position_info is not None:
-                    default_network = getattr(maxim, "_default_network", None)
-                    if default_network is not None:
-                        attention = getattr(default_network, "_attention_network", None)
-                        if attention is not None:
-                            try:
-                                attention.record_gaze(position_info, success=False)
-                                maxim.log.debug("Recorded IK failure at position %s", position_info)
-                            except Exception as rec_err:
-                                maxim.log.debug("Failed to record IK failure: %s", rec_err)
-
-                # Record IK failure for workspace bounds learning
-                if commanded_6d is not None:
-                    default_network = getattr(maxim, "_default_network", None)
-                    if default_network is not None:
-                        bounds_learner = getattr(default_network, "_bounds_learner", None)
-                        if bounds_learner is not None:
-                            try:
-                                maxim.sync_head_position()
-                                actual_6d = {
-                                    "yaw": float(getattr(maxim, "yaw", 0.0) or 0.0),
-                                    "pitch": float(getattr(maxim, "pitch", 0.0) or 0.0),
-                                    "y": float(getattr(maxim, "y", 0.0) or 0.0),
-                                    "z": float(getattr(maxim, "z", 0.0) or 0.0),
-                                    "roll": float(getattr(maxim, "roll", 0.0) or 0.0),
-                                    "x": float(getattr(maxim, "x", 0.0) or 0.0),
-                                }
-                                bounds_learner.record_movement_outcome(
-                                    commanded=commanded_6d,
-                                    actual=actual_6d,
-                                    ik_failure=True,
-                                )
-                                maxim.log.debug("Recorded IK failure bounds at %s", commanded_6d)
-                            except Exception as bounds_err:
-                                maxim.log.debug("Failed to record bounds failure: %s", bounds_err)
-
-                # If too many consecutive failures, sync with hardware and optionally reset
-                now = time.time()
-                if ik_failure_count >= IK_FAILURE_THRESHOLD and (now - last_ik_reset_time) > 2.0:
-                    maxim.log.warning("Too many IK failures (%d), syncing with hardware position", ik_failure_count)
-                    try:
-                        # First try to sync with actual hardware position
-                        # This corrects any drift between our tracking and reality
-                        synced = maxim.sync_head_position()
-
-                        if synced is SyncResult.NON_FINITE:
-                            # #1496: the pose is unknown, so a blind reset would
-                            # move from it. Skip, and stop retrying every move.
-                            maxim.log.error("Hardware pose is not finite; skipping the blind reset to center")
-                            ik_failure_count = 0
-                        elif synced:
-                            maxim.log.info(
-                                "Synced position from hardware: yaw=%.1f°, pitch=%.1f°", maxim.yaw, maxim.pitch
-                            )
-                            # If we're already near center, just reset counter
-                            if abs(maxim.yaw) < 5.0 and abs(maxim.pitch) < 5.0:
-                                maxim.log.info("Already near center, clearing failure count")
-                                ik_failure_count = 0
-                            else:
-                                # Move toward center from current synced position
-                                maxim.log.info("Moving to center from synced position")
-                                from maxim.motion.movement import move_head
-
-                                move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5, controller=getattr(maxim, "_robot", None))
-                                maxim.yaw = 0.0
-                                maxim.pitch = 0.0
-                                ik_failure_count = 0
-                        else:
-                            # Sync failed, fall back to blind reset
-                            maxim.log.warning("Hardware sync failed, blind reset to center")
-                            from maxim.motion.movement import move_head
-
-                            move_head(maxim.mini, 0, 0, 0, 0, 0, 0, 0.5, controller=getattr(maxim, "_robot", None))
-                            # Mirror after a dispatch that did not raise (#1496).
-                            maxim.yaw = 0.0
-                            maxim.pitch = 0.0
-                            ik_failure_count = 0
-
-                        last_ik_reset_time = now
-                    except Exception as reset_err:
-                        maxim.log.warning("Failed to reset head: %s", reset_err)
+                state.failures += 1
+                _record_ik_failure(maxim, position_info, commanded_6d)
+                _maybe_recover_from_ik_failures(maxim, state)
             else:
-                # Movement succeeded - reset failure counter
-                ik_failure_count = 0
-
-                # Record success for reachability learning
-                if position_info is not None:
-                    default_network = getattr(maxim, "_default_network", None)
-                    if default_network is not None:
-                        attention = getattr(default_network, "_attention_network", None)
-                        if attention is not None:
-                            try:
-                                attention.record_gaze(position_info, success=True)
-                            except Exception:
-                                pass
-
-                # Record outcome for workspace bounds learning
-                if commanded_6d is not None:
-                    default_network = getattr(maxim, "_default_network", None)
-                    if default_network is not None:
-                        bounds_learner = getattr(default_network, "_bounds_learner", None)
-                        if bounds_learner is not None:
-                            try:
-                                # Wait briefly for movement to settle, then sync
-                                time.sleep(min(0.1, float(movement_duration) * 0.3))
-                                maxim.sync_head_position()
-                                actual_6d = {
-                                    "yaw": float(getattr(maxim, "yaw", 0.0) or 0.0),
-                                    "pitch": float(getattr(maxim, "pitch", 0.0) or 0.0),
-                                    "y": float(getattr(maxim, "y", 0.0) or 0.0),
-                                    "z": float(getattr(maxim, "z", 0.0) or 0.0),
-                                    "roll": float(getattr(maxim, "roll", 0.0) or 0.0),
-                                    "x": float(getattr(maxim, "x", 0.0) or 0.0),
-                                }
-                                bounds_learner.record_movement_outcome(
-                                    commanded=commanded_6d,
-                                    actual=actual_6d,
-                                    ik_failure=False,
-                                )
-                            except Exception as bounds_err:
-                                maxim.log.debug("Failed to record bounds outcome: %s", bounds_err)
+                outcome = as_outcome(result)
+                if outcome.ok:
+                    # Movement succeeded - reset failure counter, book the learners
+                    state.failures = 0
+                    _record_success(maxim, position_info, commanded_6d, movement_duration)
+                elif result is None:
+                    # Not a controller dispatch (an antenna nudge, a compute-only call): nothing to book.
+                    maxim.log.debug("Motor command returned no outcome; the learners are not booked")
+                else:
+                    maxim.log.warning(
+                        "Motor command did not complete (%s): %s", outcome.kind, outcome.reason or "no reason given"
+                    )
+                    # Selfy writes its mirror before it enqueues: a refused or partial move must re-read the
+                    # real pose, as a raised MotionRefused always did, or an identical retry is a silent no-op.
+                    maxim.sync_head_position()
 
         except MotionRefused as e:
             # A refused motion is bad input, not a lost connection (#1496): no
@@ -225,22 +126,120 @@ def motor_worker(
             maxim.log.error("Motor command refused: %s", e)
             maxim.sync_head_position()
         except Exception as e:
+            # A raised command never feeds a learner (#1499 O4); it counts as a connection failure.
             warn("Motor command failed: %s", e, logger=maxim.log)
             maxim._note_connection_failure("motor", e)
-
-            # Also record as failure if we have position info
-            if position_info is not None:
-                default_network = getattr(maxim, "_default_network", None)
-                if default_network is not None:
-                    attention = getattr(default_network, "_attention_network", None)
-                    if attention is not None:
-                        try:
-                            attention.record_gaze(position_info, success=False)
-                        except Exception:
-                            pass
         finally:
             for rl in reachy_loggers:
                 rl.removeHandler(ik_handler)
+
+
+class _IKState:
+    """The motor worker's IK-failure counter and the time of its last recovery."""
+
+    def __init__(self) -> None:
+        self.failures = 0
+        self.last_reset = 0.0
+
+
+def _learners(maxim: Any) -> tuple[Any, Any]:
+    """(attention network, bounds learner) from the DefaultNetwork, either None when absent."""
+    default_network = getattr(maxim, "_default_network", None)
+    if default_network is None:
+        return None, None
+    return getattr(default_network, "_attention_network", None), getattr(default_network, "_bounds_learner", None)
+
+
+def _actual_6d(maxim: Any) -> dict[str, float]:
+    return {axis: float(getattr(maxim, axis, 0.0) or 0.0) for axis in ("yaw", "pitch", "y", "z", "roll", "x")}
+
+
+def _record_ik_failure(maxim: Any, position_info: Any, commanded_6d: Any) -> None:
+    """Book an IK failure in the reachability and workspace-bounds learners (the existing detection)."""
+    attention, bounds_learner = _learners(maxim)
+    if position_info is not None and attention is not None:
+        try:
+            attention.record_gaze(position_info, success=False)
+            maxim.log.debug("Recorded IK failure at position %s", position_info)
+        except Exception as rec_err:
+            maxim.log.debug("Failed to record IK failure: %s", rec_err)
+    if commanded_6d is not None and bounds_learner is not None:
+        try:
+            maxim.sync_head_position()
+            bounds_learner.record_movement_outcome(commanded=commanded_6d, actual=_actual_6d(maxim), ik_failure=True)
+            maxim.log.debug("Recorded IK failure bounds at %s", commanded_6d)
+        except Exception as bounds_err:
+            maxim.log.debug("Failed to record bounds failure: %s", bounds_err)
+
+
+def _record_success(maxim: Any, position_info: Any, commanded_6d: Any, movement_duration: Any) -> None:
+    """Book a completed move in the reachability and workspace-bounds learners."""
+    attention, bounds_learner = _learners(maxim)
+    if position_info is not None and attention is not None:
+        try:
+            attention.record_gaze(position_info, success=True)
+        except Exception:
+            log_swallowed_exception()
+    if commanded_6d is not None and bounds_learner is not None:
+        try:
+            # Wait briefly for movement to settle, then sync
+            time.sleep(min(0.1, float(movement_duration) * 0.3))
+            maxim.sync_head_position()
+            bounds_learner.record_movement_outcome(commanded=commanded_6d, actual=_actual_6d(maxim), ik_failure=False)
+        except Exception as bounds_err:
+            maxim.log.debug("Failed to record bounds outcome: %s", bounds_err)
+
+
+def _maybe_recover_from_ik_failures(maxim: Any, state: _IKState) -> None:
+    """After too many IK failures: sync with the hardware and re-centre the head through the controller."""
+    now = time.time()
+    if state.failures < IK_FAILURE_THRESHOLD or (now - state.last_reset) <= 2.0:
+        return
+    maxim.log.warning("Too many IK failures (%d), syncing with hardware position", state.failures)
+    try:
+        # First try to sync with actual hardware position
+        # This corrects any drift between our tracking and reality
+        synced = maxim.sync_head_position()
+
+        if synced is SyncResult.NON_FINITE:
+            # #1496: the pose is unknown, so a blind reset would
+            # move from it. Skip, and stop retrying every move.
+            maxim.log.error("Hardware pose is not finite; skipping the blind reset to center")
+            state.failures = 0
+        elif synced:
+            maxim.log.info("Synced position from hardware: yaw=%.1f°, pitch=%.1f°", maxim.yaw, maxim.pitch)
+            # If we're already near center, just reset counter
+            if abs(maxim.yaw) < 5.0 and abs(maxim.pitch) < 5.0:
+                maxim.log.info("Already near center, clearing failure count")
+                state.failures = 0
+            else:
+                # Move toward center from current synced position
+                maxim.log.info("Moving to center from synced position")
+                _recentre_head(maxim)
+                state.failures = 0
+        else:
+            # Sync failed, fall back to a reset to center (from a fresh readback, through the controller)
+            maxim.log.warning("Hardware sync failed, blind reset to center")
+            _recentre_head(maxim)
+            state.failures = 0
+
+        state.last_reset = now
+    except Exception as reset_err:
+        maxim.log.warning("Failed to reset head: %s", reset_err)
+
+
+def _recentre_head(maxim: Any) -> None:
+    """The IK-recovery re-centre: through the controller (#1499 5.4), mirrored only when it completed."""
+    from maxim.motion.movement import move_head
+
+    robot = getattr(maxim, "_robot", None)
+    result = move_head(
+        maxim.mini, 0, 0, 0, 0, 0, 0, 0.5, controller=robot, motion_lock=getattr(robot, "_motion_lock", None)
+    )
+    if robot is None or as_outcome(result).ok:
+        # Mirror after a dispatch that did not raise (#1496) and, with a controller, completed (#1499).
+        maxim.yaw = 0.0
+        maxim.pitch = 0.0
 
 
 # ---------------------------------------------------------------------------

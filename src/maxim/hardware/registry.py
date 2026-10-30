@@ -11,7 +11,7 @@ import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.hardware.controller import RobotController
+from maxim.hardware.controller import RobotController, as_outcome
 
 if TYPE_CHECKING:
     from maxim.hardware.controller import MotionTarget, PixelTarget
@@ -492,7 +492,7 @@ class RobotRegistry:
         with self._robots_lock:
             for robot_id, registration in self._robots.items():
                 try:
-                    results[robot_id] = registration.controller.wake_up()
+                    results[robot_id] = bool(as_outcome(registration.controller.wake_up()))
                 except Exception as e:
                     logger.error("Failed to wake robot %s: %s", robot_id, e)
                     results[robot_id] = False
@@ -508,7 +508,7 @@ class RobotRegistry:
         with self._robots_lock:
             for robot_id, registration in self._robots.items():
                 try:
-                    results[robot_id] = registration.controller.goto_sleep()
+                    results[robot_id] = bool(as_outcome(registration.controller.goto_sleep()))
                 except Exception as e:
                     logger.error("Failed to sleep robot %s: %s", robot_id, e)
                     results[robot_id] = False
@@ -538,7 +538,7 @@ class RobotRegistry:
                     results[robot_id] = False
                     continue
                 try:
-                    results[robot_id] = registration.controller.goto_target(target)
+                    results[robot_id] = bool(as_outcome(registration.controller.goto_target(target)))
                 except Exception as e:
                     logger.error("Failed to move robot %s: %s", robot_id, e)
                     results[robot_id] = False
@@ -568,7 +568,7 @@ class RobotRegistry:
                     results[robot_id] = False
                     continue
                 try:
-                    results[robot_id] = registration.controller.look_at_pixel(target)
+                    results[robot_id] = bool(as_outcome(registration.controller.look_at_pixel(target)))
                 except Exception as e:
                     logger.error("Failed look_at for robot %s: %s", robot_id, e)
                     results[robot_id] = False
@@ -597,7 +597,7 @@ class RobotRegistry:
                     results[robot_id] = False
                     continue
                 try:
-                    results[robot_id] = registration.controller.center_vision(duration)
+                    results[robot_id] = bool(as_outcome(registration.controller.center_vision(duration)))
                 except Exception as e:
                     logger.error("Failed to center robot %s: %s", robot_id, e)
                     results[robot_id] = False

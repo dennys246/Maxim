@@ -239,9 +239,16 @@ def main() -> int:
             # no_media: skip WebRTC/GStreamer entirely (the pip GStreamer bundle's
             # libgstpython can't dlopen libpython on macOS and hangs media setup).
             # Motion rides the WS; DoA rides REST /state/doa — media not needed here.
-            mini = ReachyMini(host=host, port=8000, connection_mode="network", timeout=10.0, media_backend="no_media")
+            mini = ReachyMini(
+                host=host,
+                port=8000,
+                connection_mode="network",
+                timeout=10.0,
+                media_backend="no_media",
+                automatic_body_yaw=False,  # daemon-global; the SDK defaults it on (#1499 O6)
+            )
         else:
-            mini = ReachyMini(connection_mode=mode)
+            mini = ReachyMini(connection_mode=mode, automatic_body_yaw=False)
     except Exception as e:  # noqa: BLE001
         print(f"[FAIL] connect ({mode}) failed: {e}")
         if ws_era:

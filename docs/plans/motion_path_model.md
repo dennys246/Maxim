@@ -226,7 +226,7 @@ The phases run in this order:
 Rules around the loop:
 - **The abort token (Architecture S5; Executor scoped round).** A plain event cleared "at the start of each dispatch" is lost: `goto_sleep` sets it mid-split, the split stops and releases the lock, and the worker's next queued command (the `RLock` is not fair) takes the lock, clears the event and moves. `goto_sleep` then waits behind it and can time out, so motion continues after a stop and the robot never sleeps. Instead:
   - **A generation counter.** `request_abort()` increments `_abort_gen`. Each dispatch records the generation at its start and checks it between chunks: a change stops the move with `cancelled`, carrying `chunks_done`. Nothing but the stop/sleep path ever resets it, so a later dispatch cannot consume someone else's abort.
-  - **A stop fence.** `goto_sleep`, `disconnect` and the runtime's stop path call `request_abort()` **before** they try to take the lock. The stop path also calls `MotorQueue.close()` first, so no queued command can be dispatched behind a stop.
+  - **A stop fence.** `goto_sleep`, `disconnect` and the runtime's stop path bump the generation **before** they try to take the lock (as built: `_stop`, which also sets the stop latch in the same locked step, MP9). The stop path also calls `MotorQueue.close()` first, so no queued command can be dispatched behind a stop.
   - **No timeout for the stop path.** The lifecycle and stop path wait for the lock without the 25 s timeout. The fence makes that wait bounded: at most the current chunk, ≤ 11 s.
 - **Mid-split failure (Executor S4).** A chunk k > 1 can fail on a fresh read, a last mile or an SDK `TimeoutError`. Then:
   - The outcome is `partial`, with `chunks_done = k − 1`; the learners ignore it.
@@ -590,3 +590,115 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 3. **PR 3, the lint extension**, plus the facade follow-up issue.
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
+
+## 14. PR 1 build notes (2026-10-29, for the code review)
+
+**Choices the build made that v8 did not fix** (each fail-closed or behaviour-preserving):
+1. **Placement.** The SDK-describing math (R4 rate, R5 sampler and split, the R1 parser) lives in a new
+   `hardware/reachy/motion_path.py`, imported by the controller, instead of inside the 1,200-line `controller.py`
+   (§4). The constants split the same way, which departs from §4: the controller's own bounds (lock wait, read
+   deadlines, divergence, settle, lifecycle) stay in `controller.py`; the rate and path constants (`MAX_RATE_*`,
+   `_PEAK_FACTOR`, `PATH_SIGMA_PREFILTER_DEG`, `NECK_PATH_*`) moved to `motion_path.py`, beside the math.
+2. **`"exact"` checks rate before path.** An explicit move is never split, so both refusals are decided on the move
+   as one dispatch; rate first, so a 160° body move in 0.5 s reads `rate`, not `path` (gate 2's case).
+3. **The REST shape.** The daemon's `Matrix4x4Pose` serialises as `{"m": [16 floats]}` (row-major, flattened), not
+   a nested 4×4. The parser accepts that, a nested 4×4 under `m`, a bare 4×4 and the `XYZRPYPose` dict; the fake's
+   default now serves the real shape. Pinned to the installed SDK's `FullState` in
+   `tests/unit/test_reachy_sdk_contract_1499.py`.
+4. **`move_head` translation.** Delegation carries `move_head`'s mm nudges as `MotionTarget.extras`
+   `head_x`/`head_y`/`head_z` (body frame, metres), which the controller rotates with the body. Without them the head
+   composes at zero translation, as before.
+5. **Auto-yaw is asserted before every wake** (and at connect), not after: maxim no longer calls the SDK's wake, so
+   nothing can reset it in between, and asserting first means a failed assertion moves nothing. `adopt()` does not
+   exist yet (embodied-device plan); it inherits the same call.
+6. **A command that asks for nothing** (no head axis, no body) returns `ok` with zero chunks and no SDK call
+   (previously a no-op dispatch).
+7. **The final-target check** compares the body, the world head geodesic and, when commanded, the antennas.
+8. **Settled** follows 5.1 (within 2° of the timed-out chunk, or stable within 0.5° for 1 s), not §12 item 4's
+   stale "two reads 100 ms apart"; it never blocks: each refused dispatch advances the stability anchor.
+9. **Selfy's compute-only look-at** (`perform_movement=False`) no longer enqueues anything: nothing read the motor
+   queue's result, and the raw `look_at_image` allow-list line is gone.
+10. **Standalone `move_head`** (no controller) refuses an unreadable body or head, stretches to the rate cap and
+    refuses a sweeping path (it cannot split).
+11. **The motor worker** treats a callable that returns `None` (an antenna nudge) as "nothing to book", at DEBUG.
+
+**Moved to PR 2** (PR 1 stays safe to land alone: the learners are gated and every controller path is checked):
+`MotorQueue`, the two-stage ticket and `current_motion_ticket` (gates 10, 11, 21, gate 16's queue half), the
+tools' explicit-duration policies (5.5), the DN inbox (gate 13), the pain-bridge event ids (gate 14), `media_loop.act`,
+`turn_around`'s `MotionOutcome` and fresh-read body (5.6 D3, 5.8, gate 26), and `move_antenna` delegation (5.4).
+
+**One red gate's locator was corrected before it flipped** (disclosed per the red-gate rule):
+`test_wake_up_from_a_turned_body_recentres_before_the_lifecycle_steps` found "the first goto at INIT's rotation",
+but the re-centre's own last chunk is at INIT's rotation too. It now finds the first goto that commands the
+antennas (only a lifecycle step does) and still asserts the ≥ 2 s re-centre. Three gates were strengthened after
+the deletion probes showed them green with their mechanism removed (settle, the standalone lock, the translation
+hold), and two were added (R2's impossible readback, the split pre-check).
+
+**The simulated controller still returns `bool`** (§4 said it would return `MotionOutcome`). O7 keeps `bool` valid,
+and every consumer reads it through `as_outcome`, so this moved to PR 2 with the tools.
+
+### Pre-merge review round (2026-10-29): what it found and where each fold went
+
+Four readers on the staged build: Executor, Architecture, Wire integrity, and a separate reader on the stop fence.
+All returned SHIP AFTER FOLDS; reports in Session S's scratchpad (`review_*.md`).
+
+| Finding | Fold |
+|---|---|
+| Architecture B1 / Wire F1: the audit test pins the layer set | `"hardware"` added to `EXPECTED_LAYERS`; ARCHITECTURE.md gains the `hardware/` ownership line |
+| Architecture B2 / Wire F4: three registry broadcasts stored a raw outcome | `move_all`, `look_at_all`, `center_all` wrap `bool(as_outcome(...))` |
+| Executor S1 / Architecture S1 / fence 3: an SDK error escaped `wake_up`/`goto_sleep` | `_run_lifecycle` returns `refused("error")` for any exception |
+| Fence 1 (owner MP9): a move that starts after a stop still ran | the stop latch |
+| Fence 2 / Architecture S2: the wake ignored a stop between steps | one stop generation per lifecycle call, checked before every step; `_run_move` checks it before every chunk, chunk 1 included (fence NIT 2) |
+| Fence 4 / Executor S2 (owner MP10): wake and sleep skipped the settle rule | wake refuses, sleep waits ≤ 2 s (`_await_settled`) |
+| Architecture S3 / Wire F3 (owner MP11): sleep refused on torque-off, so a failed wake kept the run's connection | `_torque_is_off`: sleep returns ok, moves nothing |
+| Executor S4 (owner MP12): the 100 ms deadline is unmeasured | one retry for the reads between chunks and after the last; DEBUG timing; a manual tunnel (`localhost_only`) gets the tunnel deadline. The rig p99 is a release-gate measurement |
+| Fence 5: the lock-wait comment overclaimed | corrected: the bound covers the wait only, and applies to every caller, the motor thread included (so §5.6's "not from the motor thread" is superseded) |
+| Wire F2: a returned refusal no longer re-synced Selfy's mirror | the worker re-syncs after every non-ok outcome |
+| Wire F2b: a partial body turn skipped the orient backend's measurement | a partial (or any move with chunks done) takes the measurement path, with `success=False` and the reason |
+| Executor S3 / Architecture S7: mechanisms that survived deletion | tests for the deadline, the tunnel deadline, the private policy, the re-check, both settle clears, the learner gate (ok books; non-ok and `None` do not), the translation, the registry and the backend partial; each probed red, but the delta round's mutation runner then found five fold mechanisms still green (below) |
+| Architecture S4–S6, Wire F5, N2–N4: docs said more than PR 1 ships | the contract tests skip in every CI lane until R2's reachy cell; "learner" means the gaze and bounds learners; the CHANGELOG, DECISIONS and embodiment.md name `move_antenna` and the unused `"exact"` as PR 2; CLAUDE.md says "every controller dispatch"; the user docs show `bool | MotionOutcome`; getting_started.md stops showing the SDK's wake as maxim's |
+| NITs | `HEAD_TRANSLATION_EXTRAS` shared by producer and consumer; `Pose` has no value equality; `as_outcome(None)` names itself; the connect probe's message covers an unreadable read |
+
+**Not folded, with reasons:** the latch is not a substitute for PR 2's queue close (a command already queued still
+runs once the robot wakes); `_find_body_yaw` and the tolerant head-matrix parser stay permissive (the shape is
+pinned by the contract test where the SDK is installed); `last_clamped_axes` read after the lock is released
+(predates PR 1); a tool whose move starts late can still outlive its tool timeout (the comment now says so; the
+refusal-by-budget option is PR 2's, with the tools).
+
+### Delta round on the folds (2026-10-29)
+
+Two delta-scoped readers (Executor with the stop-fence reader; Architecture with Wire). Architecture + Wire: SHIP,
+one SHOULD-FIX and docs NITs, no further round owed for those. Executor + fence: one finding NOT fail-closed, so one
+more delta round is owed on this second fold batch.
+
+| Finding | Fold |
+|---|---|
+| Fence delta S1 (not fail-closed): a wake that won the lock from a waiting sleep left the sleeping robot unlatched; and a stop between `wake_up`'s three generation statements was absorbed | `goto_sleep` re-latches once it holds the lock; `wake_up` reads the generation once (`requested_gen`). Owner: the robot ends asleep and latched, the racing wake is lost (fail closed) |
+| Arch/Wire delta S1 (owner): a latched controller still reported awake, so the next run skipped its wake and every move was refused | latched means `is_awake=False` (set when the sleep latches, even if the sleep then fails) |
+| Arch/Wire delta N2 (owner): any connect cleared a sleep's latch | `_stop_by_sleep`: connect clears only a disconnect's latch |
+| Fence delta NIT 3 (owner): a failed wake cleared the latch | the latch clears only when a wake succeeds with no stop since it was requested |
+| Fence delta S2: five fold mechanisms survived deletion (M1 final-read retry, M2 wake behind a stop, M5 the chunk-1 stop check, M7 a partial that reads as reached, M8 a cancel after a chunk) | a guard test for each; plus the race (ordered-lock), latched-not-awake, failed-wake-keeps-latch, the latch across a real reconnect, the settle wait honouring a stop, and the lifecycle duration sum |
+| Fence delta NIT 1: the settle wait ignored a stop | `_await_settled` checks the generation every poll |
+| Arch/Wire delta N3: two REST reads per sleep, and a failed first read lost MP11's ok | one shared read answers both torque-off and the start pose (`_checked_pose`) |
+| Docs NITs (N1, N4–N8; fence NIT 2) | "head and body" scope; MP1–MP12 headers; MP12's `localhost_only` wording; the backend's message when a partial turn did arrive; `as_outcome`'s `None` annotation; "the maxim package" in getting_started.md; the retry docstring |
+
+### Second delta round (2026-10-29)
+
+Executor + fence on the second fold batch: the race is fixed, `is_awake` follows the latch at every exit; three more
+findings, folded:
+
+| Finding | Fold |
+|---|---|
+| SF1 (not fail-closed; owner: refuse): a sleep with no SDK handle (mid-reconnect) returned ok before latching, and the following connect cleared the disconnect's latch | `goto_sleep` latches and stops first (`_stop(by_sleep=True)`), then refuses "not connected" when there is no handle |
+| SF3 (not fail-closed; owner: fold now): latch read-then-writes could interleave | `_stop`, `_latch_for_sleep`, `_clear_latch_after_connect`, `_clear_latch_after_wake` all run under `_abort_lock`, the stop's latch and generation bump as one step |
+| SF2: the wake's after-the-steps check, the sleep's first latch, the wake's flag clear and its pre-torque stop check survived deletion | a guard test for each, plus one per atomic transition and the sleep's own auto-yaw check |
+| NITs | the race test polls for the latch instead of sleeping 0.2 s; the Blackwell path (no `wake_up`) is documented; a wake behind a stop never enables torque (pinned) |
+
+### Third delta round (2026-10-29): SOUND, no further round owed
+
+Executor + fence on the atomic latch: every latch write is under `_abort_lock`, `_abort_lock` is only taken inside
+`_motion_lock` (no deadlock path), and the no-handle refusal is safe for every caller (`api.py`'s release now keeps
+a connection that was lost mid-run, recorded under MP9). Folded, test- and docs-only: guards for disconnect's stop
+during a split, and for the sleep re-latch's `is_awake=False` and `_stop_by_sleep` (each deletion-probed red); the
+`request_abort` docstring and the stop-fence bullet now say `goto_sleep` and `disconnect` use `_stop`. Not folded:
+the abort-lock test counts acquisitions rather than snapshotting the writes (NIT, fail-closed).

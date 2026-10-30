@@ -406,7 +406,9 @@ class MotorError(HardwareError):
     pass
 
 
-MotionRefusalKind = Literal["non_finite", "duration", "method", "range", "invalid"]
+MotionRefusalKind = Literal[
+    "non_finite", "duration", "method", "range", "invalid", "rate", "reference", "path", "limit"
+]
 
 
 class MotionRefused(HardwareError, ValueError):
@@ -422,9 +424,14 @@ class MotionRefused(HardwareError, ValueError):
     Attributes:
         kind: ``"non_finite"`` (NaN or Inf), ``"duration"`` (outside the range),
             ``"method"`` (an unknown or overshooting interpolation), ``"range"``
-            (a config value past a hard cap, e.g. an orient delta over 90 deg), or
-            ``"invalid"`` (not a number, the wrong shape, an unknown pose).
-            #1499's recorder split keys on it.
+            (a config value past a hard cap, e.g. an orient delta over 90 deg),
+            ``"invalid"`` (not a number, the wrong shape, an unknown pose), or one
+            of #1499's: ``"rate"`` (an explicit duration faster than the rate cap),
+            ``"reference"`` (no fresh, trusted readback to move from), ``"path"``
+            (the move would sweep the neck mid-path) and ``"limit"`` (a turn that
+            cannot fit within the body limit; no producer yet, PR 2's turn_around).
+            No kind feeds the gaze or workspace-bounds learners (#1499 O4); a tool
+            that reports one still reaches the tool-outcome path like any failure.
         reason: Human-readable reason, returned to the model by the tools.
     """
 

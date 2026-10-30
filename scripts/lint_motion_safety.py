@@ -73,13 +73,8 @@ RAW_ALLOW_FILES = {
     "scripts/orient_backbone/live_1_smoke.py": "live hardware smoke; literal finite targets, maxim-import-free by design",
     "scripts/lint_motion_safety.py": "this lint's own pattern literals",
 }
-RAW_ALLOW_LINES = {
-    "src/maxim/embodied_runtime/movement.py": {
-        # _enqueue_sdk_look_at binds the SDK fn, then dispatches it through a
-        # last-mile-checked wrapper on the motor thread (#1499 reroutes it).
-        "sdk_look_at = self.mini.look_at_image",
-    },
-}
+# Selfy's look-at dispatches through ReachyMiniController.look_at_pixel since #1499 (5.2).
+RAW_ALLOW_LINES: dict[str, set[str]] = {}
 
 
 @dataclass(frozen=True)

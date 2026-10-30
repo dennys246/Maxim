@@ -270,7 +270,14 @@ def connect_and_wake(host: str):
     from reachy_mini import ReachyMini
     from reachy_mini.utils import create_head_pose
 
-    mini = ReachyMini(host=host, port=8000, connection_mode="network", timeout=10.0, media_backend="no_media")
+    mini = ReachyMini(
+        host=host,
+        port=8000,
+        connection_mode="network",
+        timeout=10.0,
+        media_backend="no_media",
+        automatic_body_yaw=False,  # daemon-global; the SDK defaults it on (#1499 O6)
+    )
     print(f"[ok] connected (reachy-mini {sdk_ver}, ws://{host}:8000/ws/sdk)")
     mini.enable_motors()
     print("[motors] enable_motors() sent (torque on)")
@@ -346,7 +353,12 @@ class LiveRig:
 
         time.sleep(2.0)
         self.mini = ReachyMini(
-            host=self.host, port=8000, connection_mode="network", timeout=10.0, media_backend="no_media"
+            host=self.host,
+            port=8000,
+            connection_mode="network",
+            timeout=10.0,
+            media_backend="no_media",
+            automatic_body_yaw=False,  # daemon-global; the SDK defaults it on (#1499 O6)
         )
         try:
             self.mini.enable_motors()
