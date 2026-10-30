@@ -207,7 +207,7 @@ def _build_argparser(prog: str) -> argparse.ArgumentParser:
         description=(
             "Add a user profile to ~/.config/maxim/profiles.yml. The new "
             "profile is immediately usable on the next `maxim` invocation "
-            "(no restart of any running daemon — profiles load at import). "
+            "(a running daemon keeps the profiles it already loaded: they load once per process, on first use). "
             "Comments in profiles.yml are NOT preserved across `maxim model "
             "add/remove` calls; edit the file directly to keep them."
         ),

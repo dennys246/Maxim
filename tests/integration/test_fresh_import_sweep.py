@@ -36,12 +36,20 @@ _CHILD = (
 )
 
 
-def _modules() -> list[str]:
+def _modules() -> tuple[list[str], list[str]]:
+    """Every module name, plus the packages ``walk_packages`` could not descend into (an ``__init__`` that raises
+    would otherwise drop its whole subtree from the sweep without a word)."""
+    unwalkable: list[str] = []
     sys.path.insert(0, str(SRC))
     try:
         import maxim
 
-        return sorted(m.name for m in pkgutil.walk_packages(maxim.__path__, "maxim.") if m.name not in SKIP)
+        names = sorted(
+            m.name
+            for m in pkgutil.walk_packages(maxim.__path__, "maxim.", onerror=unwalkable.append)
+            if m.name not in SKIP
+        )
+        return names, unwalkable
     finally:
         sys.path.remove(str(SRC))
 
@@ -49,8 +57,10 @@ def _modules() -> list[str]:
 @pytest.mark.slow
 def test_every_module_imports_first_in_a_fresh_process(tmp_path: Path) -> None:
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path)}
+    names, unwalkable = _modules()
+    assert not unwalkable, f"packages whose __init__ fails to import, so their subtrees were not swept: {unwalkable}"
     fails: dict[str, str] = {}
-    for name in _modules():
+    for name in names:
         proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
             [sys.executable, "-I", "-c", _CHILD, str(SRC), json.dumps([name])],
             capture_output=True,

@@ -1108,21 +1108,28 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
 # only after a successful merge, so a swallowing caller cannot turn the first failure into a silent "no user
 # profiles" for the rest of the process.
 _user_profiles_loaded = False
-_user_profiles_lock = threading.RLock()  # re-entrant: the merge itself may resolve a name through an accessor
+_user_profiles_lock = threading.RLock()  # re-entrant, so a nested ensure reaches the explicit refusal below
+_user_profiles_merging = False
 
 
 def _ensure_user_profiles() -> None:
     """Merge the user's profiles once per process (idempotent, thread-safe). The loader validates the whole file
     before it touches any table, so a failed attempt leaves the tables unchanged and the next access retries."""
-    global _user_profiles_loaded
+    global _user_profiles_loaded, _user_profiles_merging
     if _user_profiles_loaded:
         return
     with _user_profiles_lock:
         if _user_profiles_loaded:
             return
+        if _user_profiles_merging:  # the merge looked a profile up: refuse instead of re-running it without end
+            raise RuntimeError("_ensure_user_profiles re-entered during the profiles.yml merge")
         # Imported here: download.py imports this module, and the loader is only needed on the first access.
         from maxim.models.download import LLM_MODELS
         from maxim.models.language.profile_loader import apply_user_profiles
 
-        apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+        _user_profiles_merging = True
+        try:
+            apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+        finally:
+            _user_profiles_merging = False
         _user_profiles_loaded = True

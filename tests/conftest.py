@@ -54,10 +54,17 @@ else:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
-# The first maxim import, deliberately AFTER the HOME/XDG redirect above: importing maxim reads
+# The first maxim import, deliberately AFTER the HOME/XDG redirect above: maxim reads
 # ~/.config/maxim/profiles.yml, which must be the isolated one, never the developer's (guard:
 # tests/unit/test_conftest_isolation_order.py).
 from maxim.memory.encoding import EncodingSignals  # noqa: E402
+
+# profiles.yml merges on the first profile lookup, not at import (#1315 step 0a). Merge the ISOLATED (empty) one here,
+# once, so the suite's profile tables never depend on which test looks a profile up first, or under whose
+# XDG_CONFIG_HOME it does. Tests that need a user profile run it in a fresh process (test_profile_readers_v9.py).
+from maxim.models.language.config import _ensure_user_profiles  # noqa: E402
+
+_ensure_user_profiles()
 
 # No test reaches the network (roadmap 1.3.1): outbound TCP and non-loopback DNS raise; loopback,
 # IP-literal lookups and UDP connect stay allowed. `@pytest.mark.allow_network` lifts this in-process guard only;

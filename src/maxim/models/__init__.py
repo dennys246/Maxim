@@ -1,6 +1,6 @@
 """Model definitions used by Maxim."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maxim.models.download import (
     download_llm,
@@ -13,6 +13,9 @@ from maxim.models.download import (
     DEFAULT_LLM,
     DEFAULT_TTS,
 )
+
+if TYPE_CHECKING:
+    from maxim.models.download import LLM_MODELS  # resolved through llm_models() at runtime (below)
 
 __all__ = [
     "download_llm",

@@ -2,7 +2,8 @@
 
 Found 2026-10-27 calibrating the big-mac-mini suite runner: `from maxim.memory.encoding import EncodingSignals` sat
 above the isolation block, and importing it reads `~/.config/maxim/profiles.yml` into `_BUILTIN_PROFILES` with the
-REAL home. The rig's own `r1-distill-qwen-32b` profile then failed four `test_profile_metadata` cases, recorded since
+REAL home (since #1315 step 0a the read happens on the first profile lookup, which conftest makes right after the
+isolation block). The rig's own `r1-distill-qwen-32b` profile then failed four `test_profile_metadata` cases, recorded since
 2026-09-22 as "environment" failures. A machine whose real profiles happen to be clean (CI, most laptops) hides it.
 """
 

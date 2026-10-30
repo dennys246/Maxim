@@ -3443,8 +3443,8 @@ def check_user_profiles() -> CheckResult:
       block, intra-user alias collision, etc.) → ``fail`` with the
       specific schema error
 
-    A malformed ``profiles.yml`` blocks ``maxim`` startup (the loader
-    raises ``ConfigurationError`` from module import). Pre-merge
+    A malformed ``profiles.yml`` stops every run when it builds its model (``build_primary_router`` raises
+    ``ConfigurationError`` up front, #1315 step 0a; ``maxim doctor`` itself still runs and reports it). Pre-merge
     executor review caught the original implementation only running
     ``load_user_profiles`` (top-level YAML parse) and missing the
     per-profile schema layer — leaving operators with a misleading
@@ -3485,7 +3485,7 @@ def check_user_profiles() -> CheckResult:
             status="fail",
             message=f"{path}: {exc}",
             fix=(
-                f"Fix the schema error in {path} (or move it aside) — `maxim` will refuse to start until this resolves."
+                f"Fix the schema error in {path} (or move it aside) — every `maxim` run stops with this error until it is fixed."
             ),
         )
     count = len(entries)

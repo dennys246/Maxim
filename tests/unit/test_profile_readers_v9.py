@@ -274,6 +274,44 @@ def test_a_malformed_profiles_file_raises_on_every_access(tmp_path: Path) -> Non
         assert mro is not None and "ConfigurationError" in mro, f"access {i} did not raise ConfigurationError: {mro}"
 
 
+_ROUTER_BODY = textwrap.dedent(
+    r"""
+    import sys, json
+    CFG = json.load(open(sys.argv[1]))
+    sys.path.insert(0, CFG["src"])
+    sys.dont_write_bytecode = True
+    OUT = {"raised": None, "tiers_detected": False}
+    import maxim
+    OUT["maxim_file"] = maxim.__file__
+    from maxim.runtime import lane_models
+    from maxim.runtime.capabilities import RuntimeCapabilities
+    _detect = lane_models.detect_tiers
+    def _spy(*a, **k):  # the seam must refuse BEFORE tier detection reads a profile
+        OUT["tiers_detected"] = True
+        return _detect(*a, **k)
+    lane_models.detect_tiers = _spy
+    from maxim.runtime.lane_backends import build_primary_router
+    try:
+        build_primary_router(RuntimeCapabilities(has_gpu=True, gpu_type="cuda", vram_gb=16.0, ram_gb=32.0))
+    except Exception as e:  # noqa: BLE001
+        OUT["raised"] = [c.__name__ for c in type(e).__mro__]
+    print(CFG["marker"] + json.dumps(OUT), flush=True)
+    """
+)
+
+
+def test_a_malformed_profiles_file_stops_the_run_before_tier_detection(tmp_path: Path) -> None:
+    """``build_primary_router``, which every run path calls to build its LLM, raises ``ConfigurationError`` on a
+    malformed ``profiles.yml`` before tier detection runs (owner decision 2026-10-30). Without it, tier detection's
+    ``profile_available`` swallowed the error as "no local file" and the large tier silently fell to a small model:
+    a refusal at import became a wrong model at run time (step 0a review, wire W1)."""
+    out = _run(tmp_path, _ROUTER_BODY, MALFORMED_YML)
+    assert out["raised"] is not None and "ConfigurationError" in out["raised"], (
+        f"build_primary_router did not refuse a malformed profiles.yml: {out}"
+    )
+    assert not out["tiers_detected"], "tier detection ran before the malformed profiles.yml was refused"
+
+
 # ── step 0a: the lazy package inits (V9) ──────────────────────────────────
 
 LAZY_PACKAGES: tuple[str, ...] = ("maxim.runtime", "maxim.agents", "maxim.tools", "maxim.utils")
@@ -298,6 +336,50 @@ def test_step0a_package_init_is_lazy(package: str) -> None:
     )
 
 
+def _init_tree(package: str) -> Any:
+    import ast
+
+    return ast.parse((SRC / package.replace(".", "/") / "__init__.py").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+def test_step0a_package_init_imports_nothing_eagerly(package: str) -> None:
+    """The init's only runtime imports are ``__future__``, ``importlib`` and ``typing``: a ``from maxim... import``
+    at its top level would undo the lazy table for every importer, and the executor-closure gate would catch it only
+    when the eager import happened to load that gate's cut list (§1A.1)."""
+    import ast
+
+    allowed = {"__future__", "importlib", "typing"}
+    eager: list[str] = []
+    for node in _init_tree(package).body:
+        if isinstance(node, ast.Import):
+            eager += [a.name for a in node.names if a.name not in allowed]
+        elif isinstance(node, ast.ImportFrom) and node.module not in allowed:
+            eager.append(str(node.module))
+    assert not eager, f"{package}/__init__.py imports eagerly at runtime: {eager}"
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+def test_step0a_type_checking_mirror_matches_the_lazy_table(package: str) -> None:
+    """Every name in ``_LAZY`` is imported, from the same module, under ``if TYPE_CHECKING:``, and nothing else is:
+    a drifted mirror makes mypy type the name as ``Any`` without a word."""
+    import ast
+    import importlib
+
+    lazy = vars(importlib.import_module(package))["_LAZY"]
+    mirror: dict[str, str] = {}
+    for node in _init_tree(package).body:
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            for sub in node.body:
+                if isinstance(sub, ast.ImportFrom):
+                    mirror.update({a.asname or a.name: str(sub.module) for a in sub.names})
+    assert mirror == lazy, (
+        f"{package}: TYPE_CHECKING mirror and _LAZY differ: only in _LAZY "
+        f"{sorted(set(lazy) - set(mirror))}, only in the mirror {sorted(set(mirror) - set(lazy))}, "
+        f"module mismatch {sorted(n for n in set(lazy) & set(mirror) if lazy[n] != mirror[n])}"
+    )
+
+
 # ── step 0a: no reader bypasses the ensuring accessors ─────────────────────
 
 # Each private table -> the one module that may name it. Anywhere else, a read would see the tables before the
@@ -309,7 +391,8 @@ PRIVATE_TABLE_OWNERS: dict[str, frozenset[str]] = {
     "_PROFILE_ALIASES": frozenset({_CONFIG}),
     "_normalize_profile": frozenset({_CONFIG}),
     # config.py's ``_ensure_user_profiles`` IS the merge into the raw table (``llm_models()`` there would recurse).
-    "LLM_MODELS": frozenset({"src/maxim/models/download.py", _CONFIG}),
+    # ``maxim.models``' is a TYPE_CHECKING-only import: at runtime its ``LLM_MODELS`` resolves through ``llm_models()``.
+    "LLM_MODELS": frozenset({"src/maxim/models/download.py", _CONFIG, "src/maxim/models/__init__.py"}),
 }
 
 

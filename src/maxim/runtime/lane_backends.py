@@ -2048,6 +2048,34 @@ def _restore_persisted_profile(has_peer_config: bool, logger: Any | None) -> Non
                 logger.info("Restored persisted model preference: %s", _persisted)
 
 
+def _require_valid_user_profiles() -> None:
+    """The run's ONE fail-fast point for a malformed ``profiles.yml`` (#1315 step 0a; owner decision 2026-10-30).
+
+    The merge runs on the first profile lookup now, not at import, and ``build_primary_router``'s profile reads sit
+    behind ``except Exception`` fallbacks: tier detection's ``profile_available`` would answer "no local file" and
+    quietly pick a smaller model. So this raises ``ConfigurationError`` first, before any of them, on every run path
+    (CLI, API, ``create``, the orchestrators, the embodied runtime, the console all build their LLM here).
+    """
+    from maxim.models.language.config import _ensure_user_profiles
+
+    _ensure_user_profiles()
+
+
+def _capabilities_or_detected(capabilities: Any | None) -> Any:
+    """``capabilities``, or this machine's, detected (moved verbatim out of ``build_primary_router`` for rule T)."""
+    from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
+
+    if capabilities is None:
+        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+        capabilities = RuntimeCapabilities(
+            has_gpu=has_gpu,
+            gpu_type=gpu_type,
+            vram_gb=vram_gb,
+            ram_gb=ram_gb,
+        )
+    return capabilities
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
@@ -2078,13 +2106,14 @@ def build_primary_router(
         or MAXIM_MAX_CLOUD_LANES) refuse the request. Surface this to the
         user; it means their configuration exceeds the declared limits.
     """
-    from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
     from maxim.runtime.lane_models import (
         apply_lane_env_overrides,
         apply_tier_config_overrides,
         detect_tiers,
         load_function_overrides,
     )
+
+    _require_valid_user_profiles()
 
     # Lane-routing auto-load (C4 of config_unification.md):
     #
@@ -2142,14 +2171,7 @@ def build_primary_router(
     # local profile actually runs locally. See peer_leader_flexibility
     # plan P1 for the rationale and precedence table.
 
-    if capabilities is None:
-        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
-        capabilities = RuntimeCapabilities(
-            has_gpu=has_gpu,
-            gpu_type=gpu_type,
-            vram_gb=vram_gb,
-            ram_gb=ram_gb,
-        )
+    capabilities = _capabilities_or_detected(capabilities)
 
     try:
         lane_configs = detect_tiers(
@@ -2565,7 +2587,8 @@ def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool
                 )
             return True
     except Exception as e:
-        logger.debug("Cloud-profile detection failed, continuing auto-spawn check: %s", e)
+        if logger is not None:  # the caller's logger is optional (the info branch above checks it too)
+            logger.debug("Cloud-profile detection failed, continuing auto-spawn check: %s", e)
     return False
 
 

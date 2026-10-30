@@ -28,6 +28,7 @@
     "tests/integration/test_affordance_transfer.py::TestIssue1120RedGates::test_retired_040_mage_present_collapse",
     "tests/integration/test_affordance_transfer.py::TestIssue1120RedGates::test_water_does_not_share_with_fire_side_after_mage",
     "tests/integration/test_cradle_tool_routing.py::test_cradle_arm_a_no_respond_loop",
+    "tests/integration/test_fresh_import_sweep.py::test_every_module_imports_first_in_a_fresh_process",
     "tests/integration/test_orchestrator_sandbox.py::TestDockerBackend::test_docker_backend_returns_docker_sandbox",
     "tests/substrate/baselines/test_baselines.py::TestEmbeddingBaseline::test_deterministic_across_seeds",
     "tests/substrate/baselines/test_baselines.py::TestEmbeddingBaseline::test_different_seeds_same_result",

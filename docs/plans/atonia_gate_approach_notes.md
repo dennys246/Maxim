@@ -111,6 +111,13 @@ gates could not pass, and a hostile `XDG_CONFIG_HOME` would be parsed before `op
 > - The only `_maybe_auto_spawn_server` edit moved out to `lane_backends._lane_profile_is_cloud` (rule T: 271 → 259).
 > - Seven red gates flipped: the executor closure, the import-time `profiles.yml` read, `download.llm_models()`, and
 >   the four lazy-init pins. #1479's alias gate stays red.
+> - **Review fold (owner decision 2026-10-30): one fail-fast seam.** On main a malformed `profiles.yml` raised at
+>   import. Lazily, ~15 `except Exception` profile reads swallowed it, and tier detection silently picked a smaller
+>   model (wire W1, reproduced). `build_primary_router` now calls `_require_valid_user_profiles()` first, so every run
+>   path refuses up front. `maxim doctor` runs and reports instead of crashing. Also folded: conftest merges the
+>   isolated profiles once, at collection, and a re-entrant merge raises. Declined: hiding `__getattr__` from mypy
+>   (executor F5). The mypy ratchet counts `if not TYPE_CHECKING:` as a suppression in each init, so a misspelt lazy
+>   name still types as `Any`, as it would with any PEP 562 module. Reviews: `docs/plans/reviews/step0a/`.
 
 - PEP 562 `__getattr__` in `maxim/runtime/__init__.py`, `maxim/agents/__init__.py`, `maxim/tools/__init__.py` and
   `maxim/utils/__init__.py`. Every `from maxim.runtime import X` user keeps working; the names resolve on first
@@ -1201,7 +1208,7 @@ exemption):
 
 | Step | Pinned function | Plan |
 |---|---|---|
-| 0a | `models/language/config.py::load_llm_config` | The ensure call through the accessor helper, with a matching extraction |
+| 0a | `runtime/lane_backends.py::_maybe_auto_spawn_server` (as built) | Its profile read moved to `_lane_profile_is_cloud`, 271 → 259. `load_llm_config` was not edited: it ensures through `_normalize_profile` |
 | 2 | `runtime/bootstrap.py::build_executor` | Extract the policy plumbing |
 | 2 | `runtime/agent_factory.py::AgentFactory.create_full_agent` | Extract the executor build |
 | 2 | `api.py::run` | Extract the policy and `allowed_dirs` setup |
