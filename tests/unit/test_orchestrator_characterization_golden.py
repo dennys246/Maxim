@@ -62,12 +62,13 @@ with the diff justified in the PR.
 SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and from the arms added
 2026-10-24; none fixed here). A fix regenerates the fixture in its own commit:
 
-  - #1259: ``finish_simulation`` does not end the run. The tool finishes the bridge and the narrator source,
-    but nothing sets ``stop_event``. The narrator loop has no ``action_sink``, so
-    ``SimAdapter.check_exhaustion`` never tightens its 180 s grace, and the stall detector keeps
-    nudging the finished narrator every 30 s until that grace expires. A probe saw six post-finish
-    narrator calls over about 180 s. The narrator arm therefore follows the finish with an operator
-    ``/cancel`` (harness docstring).
+  - #1259 (FIXED): ``finish_simulation`` did not end the run. The tool finished the bridge and the narrator
+    source, but nothing set ``stop_event``, so the run waited out the source's 180 s exhaustion grace while the
+    stall detector nudged the finished narrator (a probe saw six post-finish narrator calls). The tool now sets
+    the run's ``stop_event``; the arms whose narrator finishes no longer need the operator ``/cancel`` that
+    followed it, which is now a watchdog the harness sends only if the run has not stopped 20 s after the finish
+    (``FINISH_WATCHDOG_S``; ``test_finish_ends_run_1259.py`` asserts it never fires). The fixture was regenerated
+    for it in its own commit.
   - #1260 (FIXED): ``TOOL_DESCRIPTIONS.update`` in §5 was process-global, so the AUT's prompt advertised
     ``respond: NOT AVAILABLE. Use send_message instead.``, and the AUT's ``respond`` got a ``process``
     follow-up, the ``say`` every turn pinned. The narrator's entries now ride on its registry
@@ -83,10 +84,10 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
     turn 1 and the narrator still sends turn 2. The pause reaches it only as a queued SYSTEM percept,
     and its loop answers the pending ``send_message`` follow-up first, so the pause, resume and guidance
     percepts are never planned before the ``/cancel``.
-  - #1259, the stall arm's half: after ``finish_simulation`` the detector's idle nudge reaches the narrator,
-    which plans on it, and each later ``finish_simulation`` overwrites ``finish_context`` (the report's
-    ``llm_finish_reason`` is the last answer's). Since D13 that is the only way a live narrator reaches the
-    idle threshold (#1452), so #1259's fix removes the stall arm's idle path and must re-home the arm.
+  - #1259, the stall arm's half (FIXED, re-homed): the detector's idle nudge used to reach the narrator only after
+    ``finish_simulation``, the path the fix removes; since D13 a live narrator never idles otherwise (#1452). The
+    arm now reaches the idle threshold behind a WEDGED narrator call, on the detector's injected clock
+    (``StallDetector.CLOCK``, the §11 slice).
   - #1453: the ``/new`` re-entry drops the caller's arguments (``sandbox_backend`` becomes ``"auto"``).
   - #1454: on ``/new`` the AUT's learning does not carry over (a fresh ``sim_agent_*`` home per run).
   - #1457: on ``/new``, ``--report-json`` is the first run's report while the caller gets the second run's
@@ -227,7 +228,7 @@ def test_orchestrator_run_matches_the_golden(arm: str, tmp_path_factory: pytest.
 
 
 @pytest.mark.timeout(240)
-def test_the_narrator_drives_two_turns_and_its_finish_outranks_the_operator_cancel(
+def test_the_narrator_drives_two_turns_and_its_finish_ends_the_run(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
     t = _trace("narrator", tmp_path_factory)
@@ -239,10 +240,10 @@ def test_the_narrator_drives_two_turns_and_its_finish_outranks_the_operator_canc
     assert [turn["text"] for turn in t["turns"]] == ["Hello, who are you?", "What is your favourite colour?"]
     assert all([a["tool"] for a in turn["actions"]] == ["respond"] for turn in t["turns"])  # terminal (#1260)
     assert t["bridge_finish_calls"][0]["initiated_by"] == "llm_finish_tool"
-    assert t["stdin_lines"] == [{"after": "finish_simulation", "after_turn": 2, "line": "/cancel"}]
+    assert t["stdin_lines"] == []  # no operator stop, not even the watchdog's: the finish ended the run (#1259)
     assert t["result"]["finish_reason"] == "completed"
     assert t["report"]["llm_finish_status"] == "completed"
-    assert "summary: Simulation cancelled by user." in t["lifecycle"]
+    assert "summary: Simulation cancelled by user." not in t["lifecycle"]
 
 
 @pytest.mark.timeout(240)

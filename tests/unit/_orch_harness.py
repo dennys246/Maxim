@@ -29,27 +29,26 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      The §9 RESUME branch (``resume_session``) is not reached; only the kickoff is.
   5. ``stall``: the stall detector (§11) with its idle threshold at 15 s (#1488; the clamp floor is 5 s) and a
      0.5 s poll (the arm's ``env``). Three probes; the diversity checkpoint lands during turn 3 and rides the narrator's
-     ``observe_actions`` follow-up (``held_inputs``); the narrator then finishes, and the detector's idle nudge
-     reaches the FINISHED narrator (#1259), which answers it with another ``finish_simulation``; the operator
-     ``/cancel`` follows that answer. WHY this shape (measured 2026-10-24): since D13 every action-less narrator
-     answer is a planning failure (the fourth aborts the run ``planning_failed``) and ``finish_simulation`` is its
-     only terminal tool, so a live narrator reaches the idle threshold only after it has finished, or behind a
-     wedged call (owner decision 2026-10-24: the post-finish path; #1259's fix removes it and re-homes this arm).
-     And a percept that reaches the narrator while its planning job is in flight rides the next FOLLOW-UP
-     (``agent_loop._take_deferred_inputs``, #1048): when that job instead ends the chain, the percept is planned only
-     when a later percept wakes the loop, and a second such percept races (two nudges, 15 s apart, in 2 of 8 fresh
-     runs; #1451). The idle-threshold reachability is #1452. The arm's ``observe_actions`` step gives the
-     checkpoint a follow-up to ride, so the nudge is the only post-finish percept. RE-HOMING (owed by #1259's
-     fix, which removes this path; the arm's gate scope is immutable): the remaining offline route to the idle
-     threshold is a WEDGED narrator call, i.e. a FakeRouter call registered in ``llm_call_registry`` the way
-     ``LLMRouter.generate_json`` registers its own (with ``allowed_s`` from the request context) and held past
-     ``stall_threshold.non_streaming_age_bound_s``, with that bound lowered by env, so ``stall_suppression``
-     judges it wedged (the D12/D14 path; keep ``MAXIM_SIM_HARD_ABORT=0``).
+     ``observe_actions`` follow-up (``held_inputs``). That follow-up is a WEDGED call (``_hold_for_stall_arm``): the
+     FakeRouter registers it in ``llm_call_registry`` the way ``LLMRouter`` registers its own (``allowed_s`` from the
+     request context), the hold jumps the detector's injected clock (``StallDetector.CLOCK``, a wall-plus-offset
+     ``_WallPlusOffset``) past ``stall_threshold.non_streaming_age_bound_s``, so ``stall_suppression`` judges the
+     call wedged and the detector injects its idle nudge (the D12/D14 path; every arm keeps
+     ``MAXIM_SIM_HARD_ABORT=0``), and the call answers ``observe_actions`` once the nudge has landed. The nudge,
+     which arrived while that planning job was in flight, rides the next follow-up (#1048); the narrator then
+     finishes, which ends the run (#1259). WHY a wedged call (measured 2026-10-24): since D13 every action-less
+     narrator answer is a planning failure (the fourth aborts the run ``planning_failed``) and ``finish_simulation``
+     is its only terminal tool, so a live narrator reaches the idle threshold only after it has finished, the path
+     #1259's fix removed, or behind a wedged call (#1452). A non-streaming call is wedged only past its allowed time
+     (at least 300 s by the call-timeout clamp) plus the margin, so the arm needs the injected clock (owner
+     decisions 2026-10-24 and 2026-10-30; the §11 slice). The arm's first ``observe_actions`` step gives the
+     checkpoint a follow-up to ride, and the wedged call's answer gives the nudge one, so no percept here waits
+     behind a job that ends the chain (#1451).
   6. ``new_goal``: interactive ON (``/new`` lives only in the interactive post-sim branch) with a line-read
      stdin that claims a TTY and has no ``fileno``, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
      once, so the run re-enters ``start_simulation_mode``, then Enter. Each run's narrator probes once and
-     finishes, and an operator ``/cancel`` follows each finish (as in the narrator arm). The re-entry resolves
+     finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry resolves
      ``sandbox_backend="auto"`` (it does not forward the caller's), so ``check_docker_available`` is patched to
      False for every arm: never a container, whatever the box has installed. Two findings pinned as-is: the
      re-entry drops the caller's other arguments (#1453), and the AUT's learning does not carry over (#1454).
@@ -59,14 +58,14 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      points (``play_campaign``, mode "dm"; ``play_premise``, generative) also take ``_campaign_lock`` and wrap the
      run in a ``_safety_lease`` restore, which would mask the orchestrator's own branch-4 restore this arm pins.
      The arm calls ``start_simulation_mode(persistent_agent=...)`` directly, in the default narrator mode
-     (branches 3 and 4 do not read the mode). One probe, a finish and an operator
-     ``/cancel``. The trace's ``handle`` key reads the instance's registry and its persistent pain bus before the
+     (branches 3 and 4 do not read the mode). One probe and a finish, which ends the run (#1259).
+     The trace's ``handle`` key reads the instance's registry and its persistent pain bus before the
      run, at the end of turn 1 and after it (``_handle_view``); the harness stops the handle after the trace.
   8. ``imagination``: §7 with an embodied AUT (``entity_ref="bodies/base_humanoid"``, which builds the
      ComponentRegistry the ImaginationTrigger needs). The fake scene manifest names an indexed component and a
      novel entity (``_MANIFEST_ENTITIES``), which the fake designer builds (``_LANTERN``); the trace's
      ``imagination`` key records the trigger's calls and its teardown (stats, tag, decay, ``clear_ephemeral``).
-     One probe, a finish and an operator ``/cancel``. An embodied registry reads every shipped component, so
+     One probe and a finish, which ends the run (#1259). An embodied registry reads every shipped component, so
      ``scenario_inputs`` under the checkout's shipped data are pinned by path, their bytes masked
      (``_SHIPPED_DATA``).
 
@@ -129,11 +128,12 @@ new_goal arm goes red, loudly):
     before the turn returns to its caller. The stdin arm uses it to feed operator lines and to wait
     until the reader has processed each one, so every command lands at a fixed point between two
     turns.
-  - ``finish``: in the narrator arm, the narrator's ``finish_simulation`` is followed by an operator
-    ``/cancel``. Without it the run idles out the AUT-side 180 s percept-source grace while the stall
-    detector nudges the finished narrator every 30 s, which is nondeterministic and three minutes
-    long. The test file's docstring records this as a src finding. ``finish_reason`` stays
-    ``completed``, because the LLM's ``finish_context`` outranks the operator stop.
+  - ``finish``: in the arms whose narrator finishes (narrator, new_goal, persistent_agent, imagination), the
+    narrator's ``finish_simulation`` arms a WATCHDOG (``_cancel_after_finish``): if the run's ``stop_event`` is
+    still clear ``FINISH_WATCHDOG_S`` (20 s) later, the harness sends the operator ``/cancel`` and records it in
+    ``stdin_lines`` as ``WATCHDOG_CANCEL``. Since #1259's fix the finish sets ``stop_event`` itself, so the
+    watchdog never fires (``test_finish_ends_run_1259.py`` asserts it); before it, these arms sent that
+    ``/cancel`` at once, because the run otherwise waited out the source's 180 s grace.
 
 NONDETERMINISM, NEUTRALISED. Every exclusion is a named constant below with its reason
 (``_RESULT_DROPPED``, ``_REPORT_DROPPED``, ``_PROVENANCE_MASKED``, ``_DATA_HOME_EXCLUDED``,
