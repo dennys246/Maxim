@@ -94,7 +94,10 @@ PRE_SLICE_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "orchest
 
 # A ``maxim`` module ``orchestrator.py`` imports that it did not at 17710609, and that is NOT an extraction
 # module (a fix needing a new dependency), with the reason. Empty at slice 0.
-NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {}
+NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
+    "maxim.utils.cancellation": "#1438 PR 1b: _resolve_finish_reason reads yield_requested() so a campaign "
+    "ended by a process stop reports the typed abort 'yielded', never a status the stop caused",
+}
 
 # A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run
 # (ordinary new code in, e.g., ``report.py``), as (file, name) with the reason. Empty at slice 0; the #1261 fix,

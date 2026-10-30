@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
+from maxim.utils.cancellation import stop_event_registered
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
 
@@ -977,8 +978,10 @@ def run_agentic_loop(
     (``bio_session``, PR 0). Every argument is forwarded unchanged; the signature is the public one and is kept
     identical to the body's. The run's inbound comms are held for exactly its lifetime (#1481)."""
     # ONE seam owns the run's memory session (#1438 PR 0): claimed before the body's setup starts anything, ended on
-    # every exit path. The owner is a fresh token per invocation, never a label.
+    # every exit path. The owner is a fresh token per invocation, never a label. The loop's stop event is registered
+    # with the process stop request for the run, so a stop ends the loop at its next tick (#1438 PR 1b).
     with (
+        stop_event_registered(stop_event),
         bio_session(
             memory_hub=memory_hub, hippocampus=hippocampus, owner=_LoopOwner(run_id), consolidation=consolidation
         ) as session,

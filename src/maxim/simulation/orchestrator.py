@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from maxim.simulation.tty_stdin import read_post_sim_goal_raw, stdin_reader_raw
+from maxim.utils.cancellation import yield_requested
 
 
 logger = logging.getLogger(__name__)
@@ -482,6 +483,9 @@ def _restore_aut_from_session(
 def _resolve_finish_reason(orch_error: Any, finish_context: dict | None, operator_stop: threading.Event) -> str:
     """How the run ended, in priority order:
 
+    0. the process was asked to stop (``yield_requested()``, #1438 PR 1b) -> ``yielded``, a typed abort that outranks
+       the statuses the stop itself causes (an ``llm_wedged`` or an ``error`` from abandoned calls; owner decision
+       2026-10-30);
     1. the orchestrator raised -> ``error``;
     2. a ``finish_context`` status (the LLM's ``finish_simulation``, or a guard -- max turns, a stall, the
        AUT dying, planning liveness -- distinguished by ``initiated_by``);
@@ -491,6 +495,8 @@ def _resolve_finish_reason(orch_error: Any, finish_context: dict | None, operato
     ``stop_event`` is deliberately not an input: a finished runner and the shutdown both set it, so it
     read every finished run as ``cancel`` (#1002).
     """
+    if yield_requested():
+        return "yielded"
     if orch_error:
         return "error"
     if finish_context and finish_context.get("status"):

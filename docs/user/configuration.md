@@ -109,7 +109,7 @@ a setting you chose. An older build reading a 1.2 file keeps the values but forg
 
 ### Format version and downgrades
 
-`config.json` carries a `_format_version` (`"1.3"` since 2026-10-14, which added `proxy.allow_remote_update`; `"1.2"` since 2026-10-01; `"1.1"` before it). A build reading a file with a NEWER
+`config.json` carries a `_format_version` (`"1.4"` since 2026-10-30, which added `console.stop_budget_s`; `"1.3"` since 2026-10-14, which added `proxy.allow_remote_update`; `"1.2"` since 2026-10-01; `"1.1"` before it). A build reading a file with a NEWER
 minor version tolerates the sections and keys it does not know, with a warning, instead of refusing to
 start. The 1.3.2 bump covers what shipped under `"1.0"` without one:
 - the `console`, `tools`, `sim` and `memory` sections;
