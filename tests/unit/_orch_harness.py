@@ -601,7 +601,8 @@ class QueueStdin(io.TextIOBase):
     read end, so the run's line reader polls it (``simulation/stdin_lines.py::OperatorLines``) and the run's stop
     ends that read (#1541), as on a terminal. ``reads`` counts the reader's requests for a line (``note_read``, from
     the ``OperatorLines.next_line`` hook in ``run_arm``, and ``readline``): the reader asking for line k+1 means it
-    has processed line k."""
+    has processed line k. Because it is selectable, no arm drives the reader's blocking fallback for a stdin with no
+    file descriptor (``OperatorLines._blocking_line``, ``stop_reader``'s warning); ``test_stdin_lines.py`` covers it."""
 
     def __init__(self, tty: bool = False) -> None:
         super().__init__()

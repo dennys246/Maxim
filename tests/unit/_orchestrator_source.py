@@ -46,6 +46,10 @@ end updates them consciously:
     narrator loop call's ``percept_source=orchestrator_source``; §12).
   - ``tests/integration/test_persistent_agent_campaign.py::TestNonePathUnchanged::test_injection_branch_gates_are_wired``
     (two multi-line pins that carry the function body's indentation; §2-§3).
+  - ``test_stdin_reader_stops_1541.py::test_teardown_joins_the_reader_after_the_stop_and_before_the_post_sim_prompt``
+    (the line order of the shutdown ``stop_event.set()``, ``stop_reader(stdin_thread)`` and
+    ``_show_report_and_post_sim_prompt(``; §13). A slice that moves the teardown keeps that order in its new home and
+    re-points the pin there.
 
 NOT ROUTED HERE (whole-MODULE readers, ``inspect.getsource(orchestrator)``). These follow the module, not
 the function. A slice that moves the code they pin into a new module updates them:

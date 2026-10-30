@@ -7,3 +7,6 @@
   - Teardown joins it, with a bound, before the post-sim prompt reads stdin.
   - A stdin that cannot be polled (no file descriptor, or Windows) still blocks. Such a reader drops the line it
     reads after the stop, and teardown logs a warning that it did not stop.
+  - On a piped or file stdin the reader reads the file descriptor directly, so lines Python had buffered before the
+    run, or that the reader read past the last line it processed, are not left for a later `input()`. A terminal is
+    unaffected.

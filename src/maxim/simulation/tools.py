@@ -1635,11 +1635,14 @@ class FinishSimulationTool(Tool):
 
     Call this when the simulation goal is achieved, a stalemate is
     detected, OR when you determine the run has failed and you want
-    to abort early. Triggers clean shutdown: AUT grace period,
-    orchestrator exit. A report is generated in all cases.
+    to abort early. Triggers clean shutdown: both loops stop and
+    teardown runs. A report is generated in all cases.
 
     The finish is a real stop (#1259): the tool sets the run's ``stop_event``, the one a campaign runner's finish sets
-    (``orchestrator._finish_runner``), so the narrator loop exits and teardown starts. Before that it signalled only the
+    (``orchestrator._finish_runner``), so the narrator loop exits and teardown starts. The AUT's loop shares the event,
+    so it stops too: an AUT proposal still in flight is not executed (and earns no credit), as after a campaign
+    runner's finish; teardown then joins the AUT thread (5 s, or 300 s for an adopted agent). The stop is set in a
+    ``finally``, so a signal that raises before it cannot leave the run waiting. Before that it signalled only the
     bridge and the narrator's percept source, and the run waited out the source's 180 s exhaustion grace while the stall
     detector nudged the finished narrator. ``stop_event`` is required, so a construction that forgets it is a
     ``TypeError``, not a run that never stops.
@@ -1738,19 +1741,22 @@ class FinishSimulationTool(Tool):
                 }
             )
 
-        # Tear down any active sub-AUT
-        if self._spawn_tool:
-            self._spawn_tool._teardown_sub()
+        try:
+            # Tear down any active sub-AUT
+            if self._spawn_tool:
+                self._spawn_tool._teardown_sub()
 
-        # Signal AUT to stop (grace period handles cleanup)
-        self._bridge.finish()
+            # Signal AUT to stop
+            self._bridge.finish()
 
-        # Signal orchestrator to stop
-        if self._orchestrator_source is not None:
-            self._orchestrator_source.finish()
-        # ...and end the run: the narrator loop stops on this (#1259). The finish_context above outranks the stop
-        # when the report resolves its finish reason, so the run reports the narrator's status, not a cancel.
-        self._stop_event.set()
+            # Signal orchestrator to stop
+            if self._orchestrator_source is not None:
+                self._orchestrator_source.finish()
+        finally:
+            # ...and end the run, even if a signal above raised: the narrator and AUT loops stop on this (#1259). The
+            # finish_context above outranks the stop when the report resolves its finish reason, so the run reports
+            # the narrator's status, not a cancel.
+            self._stop_event.set()
 
         return ToolOutput(
             success=True,

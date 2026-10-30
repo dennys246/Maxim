@@ -5,7 +5,7 @@ but set nothing the narrator loop stops on, so the run waited out the source's 1
 detector nudged the finished narrator (each nudge a fresh narrator LLM call). The evidence drives the REAL
 ``start_simulation_mode`` offline (``tests/unit/_orch_harness.py``, the narrator arm), whose finish watchdog sends
 the operator ``/cancel`` that used to follow the finish only if the run has not stopped by itself
-``FINISH_WATCHDOG_S`` after it, and then records it as a watchdog line. Red gate: commit 38b8ba57 (xfail strict).
+``FINISH_WATCHDOG_S`` after it, and then records it as a watchdog line. Red gate: commit b2f0f384 (xfail strict).
 """
 
 from __future__ import annotations

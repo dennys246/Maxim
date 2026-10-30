@@ -15,8 +15,10 @@ the same process, or for the caller.
     and ``stop_reader`` reports a reader it could not join.
 
 The fd path reads beneath ``sys.stdin``'s own buffer: bytes Python had buffered before the run's reader started are not
-seen, and bytes after the last line the run processed are dropped with the reader. Nothing pipes operator lines into a
-sim (2026-10-30); a terminal delivers a line per read.
+seen, and bytes after the last line the run processed are dropped with the reader. That loses lines only on a piped or
+file stdin, and the design rests on an assumption, true when this was written (2026-10-30, no ``stdin=PIPE`` driver of a
+sim in ``src/`` or ``scripts/``): nothing pipes operator lines into a sim. A terminal delivers a line per read, so on a
+TTY nothing is lost.
 """
 
 from __future__ import annotations
@@ -107,7 +109,9 @@ def read_operator_lines(
 ) -> None:
     """The line reader's loop. A line goes to the agent's pending prompt when one was waiting as the read began
     (``SimPromptHandler.deliver_response``), else to the run's command parser, which returns True to end the reader.
-    End of input ends the reader, and also stops the run when a prompt was waiting on it; an interrupt stops the run."""
+    End of input ends the reader, and also stops the run when a prompt was waiting on it. A ``KeyboardInterrupt`` stops
+    the run too, kept from the ``input()`` loop this replaced; Python delivers SIGINT only to the main thread, which this
+    reader never is, so a real Ctrl+C reaches the run's own handler instead."""
     while not stop_event.is_set():
         pending = sim_prompt_handler is not None and sim_prompt_handler.has_pending_prompt
         try:
@@ -130,13 +134,14 @@ def read_operator_lines(
 
 def stop_reader(thread: threading.Thread, *, timeout_s: float = STOP_JOIN_S) -> bool:
     """Join the run's ``sim.stdin`` reader once the run's stop event is set; False, with a warning, if it is still
-    running after ``timeout_s`` (a blocking read on a stdin ``select`` cannot poll: it takes one more line)."""
+    running after ``timeout_s``: blocked in a read on a stdin ``select`` cannot poll (it takes, and drops, one more line),
+    or still inside a slow command."""
     thread.join(timeout=timeout_s)
     if not thread.is_alive():
         return True
     logger.warning(
-        "the sim.stdin reader did not stop within %.1fs of the run's stop: its stdin cannot be polled, so the reader "
-        "takes (and drops) the next line typed",
+        "the sim.stdin reader did not stop within %.1fs of the run's stop: it is still in a command, or blocked on a "
+        "stdin that cannot be polled (then it takes, and drops, the next line typed)",
         timeout_s,
     )
     return False

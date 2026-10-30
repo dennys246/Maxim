@@ -7,20 +7,25 @@ returned with its reader alive, and that reader took the next stdin line meant f
 Both tests drive the REAL ``start_simulation_mode`` offline (``tests/unit/_orch_harness.py``):
 
   - the narrator arm ends on the narrator's finish, with no operator line after it: no reader is left;
-  - the new_goal arm runs twice (``/new`` re-enters the run) and the stdin arm then runs in the same process: its
-    operator ``/cancel`` after turn 2 reaches its own run. This is how the leak showed (the orchestrator golden's
-    regeneration, which runs every arm in one process): under the harness's former queue-backed stdin a reader the
-    new_goal runs left behind was still blocked when the stdin arm fed its ``/cancel``, so the harness's wait for the
-    line failed inside the narrator's send. Each arm now has its own pipe, whose end of input reaches every reader
-    on it, so this test no longer tells the fix apart (a deletion probe of the poll path leaves it green). The
-    cross-run defect on ONE shared stdin, as an in-process caller's runs read the process's stdin, is guarded by
-    ``test_stdin_lines.py::test_a_stopped_runs_reader_leaves_the_next_line_to_the_next_run``.
+  - the teardown joins the reader after the run's stop and before the post-sim prompt reads stdin. That join is an
+    ordering guarantee no run can observe (the reader's poll ends it within ``POLL_S`` anyway, so a deleted join
+    leaves every run green): in an interactive session the raw reader's ``finally`` restores the terminal, and it
+    must do so before ``read_post_sim_goal_raw`` puts the terminal into cbreak mode on the same fd. So it is pinned
+    by line order in the function.
 
-Red gate: commit d3af4cc6 (xfail strict).
+The cross-run defect on ONE shared stdin (the first run's stopped reader must leave the next line to the second, as
+an in-process caller's runs share the process's stdin) is guarded by
+``test_stdin_lines.py::test_a_stopped_runs_reader_leaves_the_next_line_to_the_next_run``. The red gate's second test
+(the new_goal arm, then the stdin arm, in one process: how the leak showed in the golden's regeneration) was removed
+after it flipped: with the harness's stdin now one pipe per arm, whose end of input reaches every reader on it, a
+deletion probe of the fix left it green, so it no longer guarded #1541.
+
+Red gate: commit 87cecca6 (xfail strict).
 """
 
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 
@@ -30,6 +35,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests.unit._orch_harness import run_arm  # noqa: E402
+from tests.unit._orchestrator_source import start_simulation_mode_def  # noqa: E402
 
 
 @pytest.mark.timeout(240)
@@ -38,12 +44,22 @@ def test_a_finished_run_leaves_no_stdin_reader_1541(tmp_path: Path) -> None:
     assert "sim.stdin" not in trace["threads_left_alive"]["added"], trace["threads_left_alive"]
 
 
-@pytest.mark.timeout(480)
-def test_a_later_runs_operator_lines_reach_that_run_1541(tmp_path: Path) -> None:
-    (tmp_path / "new_goal").mkdir()
-    (tmp_path / "stdin").mkdir()
-    run_arm("new_goal", tmp_path / "new_goal")
-    trace = run_arm("stdin", tmp_path / "stdin")
-    assert {"after_turn": 2, "line": "/cancel"} in trace["stdin_lines"], trace["stdin_lines"]
-    turns = [call.get("turn") for call in trace["narrator_calls"] if call["kind"] == "followup"]
-    assert turns == [1, 2], f"a follow-up lost its turn (the send failed under the harness): {turns}"
+def test_teardown_joins_the_reader_after_the_stop_and_before_the_post_sim_prompt() -> None:
+    fn = start_simulation_mode_def()
+    blocks = [getattr(n, f) for n in ast.walk(fn) for f in ("body", "orelse", "finalbody") if hasattr(n, f)]
+    ((block, at),) = [
+        (b, i)
+        for b in blocks
+        if isinstance(b, list)
+        for i, stmt in enumerate(b)
+        if isinstance(stmt, ast.Expr) and ast.unparse(stmt.value) == "stop_reader(stdin_thread)"
+    ]
+    shutdown = block[at - 1]
+    assert isinstance(shutdown, ast.Try), "the join directly follows the shutdown signals' try"
+    assert "stop_event.set()" in [ast.unparse(s) for s in shutdown.body], "...whose first act is the run's stop"
+    (prompt,) = [
+        n.lineno
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and ast.unparse(n.func) == "_show_report_and_post_sim_prompt"
+    ]
+    assert block[at].lineno < prompt, "the reader is joined before the post-sim prompt reads stdin"
