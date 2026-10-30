@@ -51,6 +51,8 @@ import json
 import math
 import logging
 import secrets
+import signal
+import sys
 import threading
 import time
 from pathlib import Path
@@ -58,6 +60,8 @@ from typing import Any, Callable, Sequence
 
 from urllib.parse import urlsplit
 
+import uvicorn
+from uvicorn.main import STARTUP_FAILURE
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -98,8 +102,13 @@ from maxim.console.ui_bundle import (
     packaged_ui_dist,
     resolve_ui_dist,
 )
+from maxim.exceptions import StopStillPending
+from maxim.utils.cancellation import clear_stop_request, current_stop, request_stop
+from maxim.utils.deadline import Deadline
 
 logger = logging.getLogger(__name__)
+
+_STOP_REPORT_RESERVE_S = 0.5  # the lifespan waits this long past the drain's deadline before calling it an overrun
 
 # Set by build_app so /api/identity and the /ws hello can report the bundle
 # that is ACTUALLY being served, not one re-derived after the fact.
@@ -2003,21 +2012,149 @@ def _health_message(kind: str, data: dict[str, Any]) -> str:
 
 
 def _drain_and_stop_handle(
-    *, run_join_s: float = 30.0, campaign_wait_s: float = 60.0, talk_join_s: float = 20.0
-) -> None:
-    """Join a live run (bounded), then stop the handle. Blocking; call off-loop.
+    *,
+    deadline: Deadline | None = None,
+    run_join_s: float = 30.0,
+    campaign_wait_s: float = 60.0,
+    talk_join_s: float = 20.0,
+) -> bool:
+    """Join a live run (bounded), then stop the handle. Blocking; call off-loop. True when the stop finished.
 
     Module-level (not a closure in the lifespan) so the shutdown contract can
     be tested without driving uvicorn, and so an operator wrapper — the
     sandbox broker's "end session" — can call the same thing the lifespan does.
+
+    ``deadline`` (#1438 PR 1b) makes this a PROCESS OWNER's stop, for a caller that is ending the process (the
+    lifespan, a broker ending the session): an overrun leaves the request set, and every loop or LLM worker started in
+    this process afterwards is born stopped until the next console start refuses. A caller that keeps serving passes
+    no ``deadline``. It requests the process stop first (a running loop ends at its next tick, an in-flight LLM call
+    is abandoned), each wait takes ``min(its cap, a share)``, and the request (made here, or inherited from the
+    lifespan or a signal through first-wins) is cleared only if the stop FINISHED — the run thread gone and
+    ``handle.stop`` returning True.
+    Without ``deadline``: today's caps, no request.
     """
+    request = request_stop("console stop", deadline) if deadline is not None else None
+    # The tighter of the caller's deadline and the (possibly inherited, first-wins) request's.
+    bound = request.deadline.sub(deadline.remaining()) if request is not None and deadline is not None else None
     with _handle_lock:
         handle = _handle
         run_thread = _active_run["thread"]
     if run_thread is not None and run_thread.is_alive():
-        run_thread.join(timeout=run_join_s)
+        run_thread.join(timeout=bound.share(0.4).cap(run_join_s) if bound is not None else run_join_s)
+    finished = True
     if handle is not None:
-        handle.stop(campaign_wait_s=campaign_wait_s, talk_join_s=talk_join_s)
+        if bound is None:
+            stopped = handle.stop(campaign_wait_s=campaign_wait_s, talk_join_s=talk_join_s)
+        else:
+            stopped = handle.stop(deadline=bound, campaign_wait_s=campaign_wait_s, talk_join_s=talk_join_s)
+        finished = stopped is True
+    # Judged AFTER handle.stop: a run that outlived its join share usually ends inside the campaign-lock wait.
+    finished = finished and (run_thread is None or not run_thread.is_alive())
+    if request is not None:
+        if finished:
+            clear_stop_request(expected=request)
+        else:
+            logger.error("Console stop overran (%s): a run, campaign or session end is still running", request.reason)
+    return finished
+
+
+def _resolve_stop_budget(stop_budget_s: float | None) -> float:
+    """The console's stop budget (#1438 PR 1b): the embedder's ``build_app(stop_budget_s=)``, else config
+    ``console.stop_budget_s`` (default 15 s, inside pulse's ~20 s kill)."""
+    if stop_budget_s is None:
+        return float(_resolve("console.stop_budget_s", None))
+    budget = float(stop_budget_s)
+    if not (0 < budget < math.inf):  # as the config path refuses: zero skips every wait, NaN passes a `< 0` check
+        raise ValueError(f"stop_budget_s must be a finite number of seconds above 0, got {stop_budget_s!r}")
+    return budget
+
+
+def _make_lifespan(stop_budget_s: float) -> Callable[[FastAPI], Any]:
+    """The console app's lifespan: the event sink up, the health monitor, and on shutdown the bounded stop."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> Any:
+        pending = current_stop()
+        if pending is not None:  # an earlier stop overran: loops and LLM workers built now would be born stopped
+            raise StopStillPending(pending.reason)
+        # EVENT seam: bridge sim_log records into the hub for /ws fan-out.
+        from maxim.simulation.sim_logger import register_sim_sink, unregister_sim_sink
+
+        _event_hub.attach(asyncio.get_running_loop())
+        # Registering the sink is SUFFICIENT: sim_log dispatches to sinks
+        # independently of `_sim_active` (the terminal-verbosity switch a sim
+        # owns and turns OFF at every campaign end). The console deliberately
+        # does NOT call enable_sim_logging — that would also opt this
+        # long-lived process into the in-memory record trail and the stdout
+        # print path, neither of which a server wants.
+        register_sim_sink(_event_hub.sink)
+        try:
+            with _health_serving(app):
+                yield
+        finally:
+            # Shutdown: server exit mid-campaign would otherwise kill the
+            # daemon run thread with the hippocampus capture queue unflushed —
+            # silent learning loss. Join the live run (bounded) BEFORE stopping
+            # so the campaign's own session-end wins when it can (post-merge
+            # review Exec #4); then stop() — idempotent, safe when no adventure
+            # ever ran. Both live INSIDE the finally (sandbox audit): the sink
+            # unregistration was already exception-safe, but the drain/stop sat
+            # after the block, so an exception through shutdown skipped the
+            # one step that persists a Talk-only session's substrate — a Talk
+            # loop writes nothing to disk until it is stopped. The stop runs
+            # before the sink is released (uvicorn has already closed every
+            # /ws connection by the time lifespan shutdown is delivered, so
+            # nothing is listening — the order is about the sink's own
+            # finally: a raising stop() cannot strand the registration).
+            try:
+                await _lifespan_shutdown(stop_budget_s)
+            finally:
+                unregister_sim_sink(_event_hub.sink)
+                _event_hub.detach()
+
+    return _lifespan
+
+
+async def _lifespan_shutdown(stop_budget_s: float) -> None:
+    """Request the process stop and run the drain within its deadline; RETURN at the deadline (#1438 PR 1b).
+
+    A signal's earlier request wins, and its deadline is the one used. The drain runs on a dedicated daemon thread,
+    never ``asyncio.to_thread``: that executor is joined at loop close (up to 300 s, unbounded on 3.10) and again at
+    exit. On overrun the request stays set, so the next console start in this process refuses (``StopStillPending``).
+    """
+    request = request_stop("console lifespan", Deadline.after(stop_budget_s))
+    loop = asyncio.get_running_loop()
+    done: asyncio.Future[bool] = loop.create_future()
+
+    def _settle(result: bool) -> None:
+        if not done.done():
+            done.set_result(result)
+
+    def _run() -> None:
+        result = False
+        try:
+            result = _drain_and_stop_handle(deadline=drain_deadline)
+        except Exception:
+            logger.exception("Console stop failed")
+        finally:
+            try:
+                loop.call_soon_threadsafe(_settle, result)
+            except RuntimeError:  # the loop closed after an overrun; nothing is waiting
+                logger.warning("Console stop finished after the server's event loop closed (complete=%s)", result)
+
+    # The drain finishes a moment before the lifespan stops waiting, so a stop that finished in budget is never
+    # reported as an overrun by the race between the two.
+    drain_deadline = request.deadline.sub(max(0.0, request.deadline.remaining() - _STOP_REPORT_RESERVE_S))
+    threading.Thread(target=_run, name="console-stop", daemon=True).start()
+    try:
+        await asyncio.wait_for(asyncio.shield(done), timeout=max(0.0, request.deadline.remaining()))
+    except asyncio.TimeoutError:
+        logger.error(
+            "console_stop_overran: the stop did not finish within its budget (%s); it continues on a daemon thread "
+            "and the stop request stays set",
+            request.reason,
+        )
 
 
 def build_app(
@@ -2029,6 +2166,7 @@ def build_app(
     pairing_announcer: Any = None,
     pairing_ready: Callable[[], bool] | None = None,
     health_monitor: bool = False,
+    stop_budget_s: float | None = None,
 ) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle.
 
@@ -2091,52 +2229,13 @@ def build_app(
     # lying about precisely the thing it exists to explain.
     _mountable = bool(ui_dist) and Path(ui_dist).is_dir()
     _SERVED_UI_DIST = (Path(ui_dist) if _mountable else None, ui_source if _mountable else "none")
-    from contextlib import asynccontextmanager
-
-    @asynccontextmanager
-    async def _lifespan(app: FastAPI) -> Any:
-        # EVENT seam: bridge sim_log records into the hub for /ws fan-out.
-        from maxim.simulation.sim_logger import register_sim_sink, unregister_sim_sink
-
-        _event_hub.attach(asyncio.get_running_loop())
-        # Registering the sink is SUFFICIENT: sim_log dispatches to sinks
-        # independently of `_sim_active` (the terminal-verbosity switch a sim
-        # owns and turns OFF at every campaign end). The console deliberately
-        # does NOT call enable_sim_logging — that would also opt this
-        # long-lived process into the in-memory record trail and the stdout
-        # print path, neither of which a server wants.
-        register_sim_sink(_event_hub.sink)
-        try:
-            with _health_serving(app):
-                yield
-        finally:
-            # Shutdown: server exit mid-campaign would otherwise kill the
-            # daemon run thread with the hippocampus capture queue unflushed —
-            # silent learning loss. Join the live run (bounded) BEFORE stopping
-            # so the campaign's own session-end wins when it can (post-merge
-            # review Exec #4); then stop() — idempotent, safe when no adventure
-            # ever ran. Both live INSIDE the finally (sandbox audit): the sink
-            # unregistration was already exception-safe, but the drain/stop sat
-            # after the block, so an exception through shutdown skipped the
-            # one step that persists a Talk-only session's substrate — a Talk
-            # loop writes nothing to disk until it is stopped. The stop runs
-            # before the sink is released (uvicorn has already closed every
-            # /ws connection by the time lifespan shutdown is delivered, so
-            # nothing is listening — the order is about the sink's own
-            # finally: a raising stop() cannot strand the registration).
-            try:
-                await asyncio.to_thread(_drain_and_stop_handle)
-            finally:
-                unregister_sim_sink(_event_hub.sink)
-                _event_hub.detach()
-
     app = FastAPI(
         title="Maxim Console",
         # Single source of truth with the UI contract check — a bundle's
         # maxim-ui.json::contract_version is compared against this exact value.
         version=CONSOLE_CONTRACT_VERSION,
         summary="Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
-        lifespan=_lifespan,
+        lifespan=_make_lifespan(_resolve_stop_budget(stop_budget_s)),
     )
     app.state.sandbox = sandbox
     _install_history_state(app, sandbox=sandbox, health_monitor=health_monitor)
@@ -2437,6 +2536,52 @@ def _resolve(field_path: str, cli_value: Any) -> Any:
     return result[0] if isinstance(result, tuple) else result
 
 
+class _MaximServer(uvicorn.Server):
+    """``maxim serve``'s uvicorn server: its shutdown requests the process stop FIRST (#1438 PR 1b).
+
+    uvicorn swaps in its own SIGINT/SIGTERM handlers while serving and re-raises the signal only after lifespan
+    shutdown (``Server.capture_signals``), so handlers installed before ``run`` never fire in time. ``handle_exit``
+    (signal context) only records the signal; ``shutdown`` (run by uvicorn once its main loop sees ``should_exit``,
+    BEFORE it closes connections and waits for open requests) makes the request, so running loops and in-flight LLM
+    calls start abandoning at the signal, not at lifespan time. With no signal recorded (an embedder or a test set
+    ``should_exit``) the reason is ``"server shutdown"``. The request can never keep ``super().shutdown()`` from
+    running."""
+
+    def __init__(self, config: uvicorn.Config, *, stop_budget_s: float) -> None:
+        super().__init__(config)
+        self._stop_budget_s = stop_budget_s
+        self._stop_signal: int | None = None
+
+    def handle_exit(self, sig: int, frame: Any) -> None:
+        if self._stop_signal is None:
+            self._stop_signal = sig
+        super().handle_exit(sig, frame)
+
+    async def shutdown(self, sockets: Any = None) -> None:
+        try:
+            sig = self._stop_signal
+            reason = "server shutdown" if sig is None else f"signal {signal.Signals(sig).name}"
+            request_stop(reason, Deadline.after(self._stop_budget_s))
+        except Exception:
+            logger.exception("Could not request the process stop at server shutdown")
+        finally:
+            await super().shutdown(sockets=sockets)
+
+
+def _serve(app: FastAPI, *, port: int, stop_budget_s: float) -> int:
+    """Run ``app`` on 127.0.0.1 like ``uvicorn.run`` (Ctrl+C swallowed; a failed startup exits 3), under
+    :class:`_MaximServer` with uvicorn's own wait for open requests bounded to a quarter of the stop budget."""
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=port, log_level="info", timeout_graceful_shutdown=max(1, int(stop_budget_s / 4))
+    )
+    server = _MaximServer(config, stop_budget_s=stop_budget_s)
+    with contextlib.suppress(KeyboardInterrupt):
+        server.run()
+    if not server.started:
+        sys.exit(STARTUP_FAILURE)  # uvicorn.run's exit code when the server never started
+    return 0
+
+
 def run_serve(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         prog="maxim serve",
@@ -2514,9 +2659,8 @@ def run_serve(argv: list[str]) -> int:
 
     # `maxim serve` samples health (owner decision 2026-10-13: the console always
     # runs the heartbeat); build_app keeps it off for tests and embedders.
-    app = build_app(ui_dist, ui_source, health_monitor=True)
-
-    import uvicorn
+    stop_budget_s = _resolve_stop_budget(None)
+    app = build_app(ui_dist, ui_source, health_monitor=True, stop_budget_s=stop_budget_s)
 
     # 127.0.0.1 ONLY — the console holds keys + can run/configure Maxim.
     # Every banner print flushes: under a redirected stdout (log file,
@@ -2558,5 +2702,4 @@ def run_serve(argv: list[str]) -> int:
             "maxim serve → sandbox mode ON (console.sandbox) — engine auth OFF; the proxy owns the edge",
             flush=True,
         )
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
-    return 0
+    return _serve(app, port=port, stop_budget_s=stop_budget_s)

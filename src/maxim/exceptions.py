@@ -63,6 +63,21 @@ class KeyFileUnusable(MaximError, RuntimeError):
         super().__init__(message or f"key file unusable ({reason}): {path}")
 
 
+class StopStillPending(MaximError, RuntimeError):
+    """A console refused to start while an earlier process stop request is still set (#1438 PR 1b).
+
+    The request is cleared only by the owner that made it, after a stop that finished; a stop that overran its budget
+    (a campaign or a session end still running) leaves it set. Starting anyway would build loops and LLM workers that
+    are born stopped. ``reason`` is the pending request's reason.
+    """
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(
+            f"refusing to start: an earlier stop ({reason!r}) has not finished; restart the process to recover"
+        )
+
+
 class LeaderRefusal(MaximError, RuntimeError):
     """A process refused to serve because doing so would be unauthenticated or over-exposed.
 
@@ -489,6 +504,7 @@ __all__ = [
     # Base
     "MaximError",
     "KeyFileUnusable",
+    "StopStillPending",
     "LeaderRefusal",
     # Connection
     "MaximConnectionError",

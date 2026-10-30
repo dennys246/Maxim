@@ -52,6 +52,7 @@ from maxim.runtime.loop_state import (
     operational_mode,
     shutdown_requested,
 )
+from maxim.utils.cancellation import yield_requested
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
@@ -108,6 +109,10 @@ def pre_tick_gate(
             return GateOutcome.BREAK
     except (AttributeError, RuntimeError):
         pass
+    # The process stop request (#1438 PR 1b): a loop given no stop event yields at this turn boundary too.
+    if yield_requested():
+        log_agentic("agent_loop", "shutdown", {"reason": "stop_requested"})
+        return GateOutcome.BREAK
 
     # Check for shutdown mode - break immediately to stop LLM worker promptly
     if shutdown_requested(state):

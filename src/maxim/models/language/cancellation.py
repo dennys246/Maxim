@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import threading
 
+from maxim.utils.cancellation import register_stop_hook
+
 _SHUTDOWN_EVENT = threading.Event()
 
 
@@ -76,3 +78,17 @@ def reset_shutdown() -> None:
     inside an active sim; it would unmask a Ctrl+C mid-run.
     """
     _SHUTDOWN_EVENT.clear()
+
+
+def _on_stop_requested() -> None:
+    request_shutdown()
+
+
+def _on_stop_cleared() -> None:
+    reset_shutdown()
+
+
+# The process stop request (``utils/cancellation.request_stop``, #1438 PR 1b) aborts in-flight backend work through
+# this event, and a cleared request re-arms it; ``utils`` never imports ``models``, so the backend registers itself.
+# Wrappers, not the functions: they resolve the module globals at call time.
+register_stop_hook(_on_stop_requested, _on_stop_cleared)

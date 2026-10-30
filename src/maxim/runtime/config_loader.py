@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # Schema constants (FROZEN at 1.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FORMAT_VERSION: str = "1.3"
+CONFIG_FORMAT_VERSION: str = "1.4"
 """The config.json format version. Bumped per CC1 on shape changes AND on changes
 to what a key means: minor for additive fields or meanings (an older build reading
 a future minor tolerates the keys it does not know, with a warning), major (2.0)
@@ -73,7 +73,8 @@ a setup verb, a hand edit), and the writer persists exactly those keys.
 A file stamped below 1.2 is a full dump whose intent is unknowable, so it is
 read by "value != default" until it is rewritten (see
 :func:`explicit_paths_of`); 1.3 (2026-10-14) adds ``proxy.allow_remote_update``
-(remote update stopped being on by default for leaders). Every field path is pinned per version in
+(remote update stopped being on by default for leaders); 1.4 (2026-10-30) adds ``console.stop_budget_s`` (the
+console's bounded stop, #1438). Every field path is pinned per version in
 ``tests/fixtures/config_schema_by_version.json``, and how each version
 resolves in ``tests/fixtures/config_resolution_by_version.json``; a change
 of either without a bump fails ``tests/unit/test_config_format_version_856.py``."""
@@ -444,6 +445,9 @@ class ConsoleConfigSection:
     allowed_origins: tuple[str, ...] = ()
     # Sandbox-mode cap on RunRequest.input length.
     max_input_chars: int = 16000
+    # The console's stop budget in seconds (#1438, config 1.4): what a lifespan shutdown or a `maxim serve` signal
+    # may spend saving before it returns; 15 s fits pulse's ~20 s kill. `build_app(stop_budget_s=)` overrides it.
+    stop_budget_s: float = 15.0
 
 
 @dataclass(frozen=True)
@@ -536,6 +540,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "console.sandbox": "MAXIM_CONSOLE_SANDBOX",
     "console.allowed_origins": "MAXIM_CONSOLE_ALLOWED_ORIGINS",
     "console.max_input_chars": "MAXIM_CONSOLE_MAX_INPUT_CHARS",
+    "console.stop_budget_s": "MAXIM_CONSOLE_STOP_BUDGET_S",
     "llm.enabled": "MAXIM_LLM_ENABLED",
     "llm.profile": "MAXIM_LLM_PROFILE",
     "llm.n_ctx": "MAXIM_LLM_N_CTX",
@@ -829,6 +834,9 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
     # Float fields
     if field_path == "cloud.session_budget_usd":
         return _coerce_float(raw, field_path, min_val=0.0)
+    if field_path == "console.stop_budget_s":
+        value = _coerce_float(raw, field_path, min_val=0.0)
+        return _range_check_float(value, field_path)
     if field_path == "data.budget_gb":
         return _coerce_float(raw, field_path, min_val=0.0)
     if field_path == "memory.s_base":
@@ -1614,6 +1622,9 @@ def _range_check_float(value: float, field_path: str) -> float:
     """Apply per-field range constraints to a JSON-parsed float."""
     if field_path in {"cloud.session_budget_usd", "data.budget_gb"} and value < 0:
         raise ConfigurationError(f"config.json: {field_path}={value} below minimum 0.0")
+    # Finite and positive: a zero budget would skip every wait, and NaN passes a ``< 0`` check.
+    if field_path == "console.stop_budget_s" and not (0 < value < float("inf")):
+        raise ConfigurationError(f"config.json: {field_path}={value} must be a finite number of seconds above 0")
     # ``not (value > 0)`` rather than ``value <= 0``, so a NaN is refused too: every comparison
     # with NaN is False, so the obvious spelling lets it straight through.
     if field_path == "memory.s_base" and not value > 0:

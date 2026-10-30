@@ -35,7 +35,8 @@ The CLI treats process success as **run integrity**, not as a favorable result:
   `failed`, `blocked`, and `inconclusive` are still valid observations.
 - `1` — a generic runtime error (or a rejected research review).
 - `4` — the run was incomplete or aborted (`llm_wedged`, `planning_failed`,
-  `worker_unavailable`, `aut_died`, `aborted`, `cancel`, or `stuck`). This is the
+  `worker_unavailable`, `aut_died`, `aborted`, `cancel`, `stuck`, or `yielded`: a process stop request
+  ended it, for example the console shutting down). This is the
   same code used whether teardown completed normally or the hard-abort backstop
   had to terminate the process.
 - `2` — the operator must act: a typed backend error (its fix hint is printed) or a

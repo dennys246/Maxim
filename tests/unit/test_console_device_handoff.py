@@ -184,7 +184,8 @@ class TestExtraTrustedOrigins:
 
 class TestBannerFlush:
     def test_token_handoff_reaches_redirected_stdout_before_the_loop(self, tmp_path):
-        """Stub uvicorn.run with os._exit: a hard exit drops unflushed stdio,
+        """Stub the server loop (``uvicorn.Server.run``, which ``maxim serve``'s ``_MaximServer`` inherits, #1438
+        PR 1b) with os._exit: a hard exit drops unflushed stdio,
         so anything the parent captures was flushed BEFORE the server loop —
         exactly what a log file / launchd / the Reachy app runner sees. This
         fails against unflushed print() (verified while writing the fix).
@@ -193,7 +194,7 @@ class TestBannerFlush:
             """
             import os
             import uvicorn
-            uvicorn.run = lambda *a, **k: os._exit(7)
+            uvicorn.Server.run = lambda *a, **k: os._exit(7)
             from maxim.console.server import run_serve
             run_serve([])
             """

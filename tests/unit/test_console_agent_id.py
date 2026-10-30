@@ -106,7 +106,9 @@ class TestValidation:
         monkeypatch.setenv("MAXIM_CONSOLE_AGENT_ID", "sim_aut")
         import uvicorn
 
+        # maxim serve's loop is uvicorn.Server.run (``_MaximServer``, #1438 PR 1b); stub both entry points.
         monkeypatch.setattr(uvicorn, "run", lambda *a, **k: pytest.fail("uvicorn.run must not be reached"))
+        monkeypatch.setattr(uvicorn.Server, "run", lambda *a, **k: pytest.fail("the server loop must not be reached"))
         rc = srv.run_serve([])
         assert rc == 2
         assert "sim_aut" in capsys.readouterr().out

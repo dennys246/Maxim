@@ -73,6 +73,7 @@ class TestSimulationExitContract:
             "aborted",
             "cancel",
             "stuck",
+            "yielded",
         ):
             assert simulation_exit_code(finish_reason) == 4
 

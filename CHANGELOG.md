@@ -122,9 +122,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A shutdown that has to wait for a running loop hands its after-steps (the cerebellum save, the hub's workers) to
     that loop's session end, which runs them once; it used to skip them ([#1520](https://github.com/dennys246/Maxim/issues/1520)).
   - `AgentInstance.shutdown(deadline=, loop_wait=)` take `Deadline`s (PR 0's `deadline_s=` never shipped):
-    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. `MaximHandle.stop` and the pool pass
-    `loop_wait` alone, so a persistent agent still consolidates in full when it stops, until the console gets its stop
-    budget (#1438 PR 1b). An abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
+    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. The pool passes `loop_wait` alone,
+    so a persistent agent still consolidates in full when it stops; the console's stop budget is PR 1b's. An
+    abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
   - Loaders prune only against a store that read its file, so a missing or unreadable `hippocampus.json` no longer
     looks like "every reference dangles".
 
