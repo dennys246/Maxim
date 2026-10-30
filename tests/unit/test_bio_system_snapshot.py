@@ -382,9 +382,14 @@ class TestLockDisciplinePreserved:
         src = inspect.getsource(NAc.save)
         assert "self.dump()" in src, "NAc.save must delegate to self.dump()"
 
-    def test_hippocampus_save_delegates_to_dump(self):
-        src = inspect.getsource(Hippocampus.save)
-        assert "self.dump()" in src, "Hippocampus.save must delegate to self.dump()"
+    def test_hippocampus_save_delegates_to_dump(self, tmp_path):
+        # Behavioural since #1438 PR 1a: save and the lock-held _save_locked share _save_with, each passing its dump.
+        hippo = Hippocampus(HippocampusConfig(persistence_path=str(tmp_path / "h.json")))
+        calls: list[int] = []
+        real_dump = hippo.dump
+        hippo.dump = lambda: calls.append(1) or real_dump()  # type: ignore[method-assign]
+        hippo.save()
+        assert calls == [1], "Hippocampus.save must delegate to self.dump()"
 
     def test_scn_save_delegates_to_dump(self):
         src = inspect.getsource(SCN.save)

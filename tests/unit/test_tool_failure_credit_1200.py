@@ -427,10 +427,10 @@ class _Hub:
         self._ticket = None
         return {}
 
-    def on_session_end(self, ticket: Any) -> dict[str, Any]:
+    def on_session_end(self, ticket: Any, *, deadline: Any = None) -> dict[str, Any]:
         return self._end(ticket)
 
-    def on_session_end_lightweight(self, ticket: Any) -> dict[str, Any]:
+    def on_session_end_lightweight(self, ticket: Any, *, deadline: Any = None) -> dict[str, Any]:
         return self._end(ticket)
 
     def release_session_claim(self, ticket: Any) -> None:

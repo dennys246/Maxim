@@ -446,6 +446,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # for good, so stored_capture_seqs reports holes only from here (Exp 63).
         self._capture_seq_floor = 0
         self._activations_this_process = 0
+        self._episode_changes = 0  # episode events, closes and reactions (``change_mark``)
 
         # Deletion callbacks for subsystem cleanup
         self._on_memory_deleted: list[Callable[[str], None]] = []
@@ -488,6 +489,9 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._capture_queue: queue.Queue[_CaptureRequest] = queue.Queue(maxsize=self.config.capture_queue_size)
         self._capture_worker_thread: threading.Thread | None = None
         self._capture_stop = threading.Event()
+        # Every worker started and not yet stopped, so the session end can stop them all (#1438 PR 1a).
+        self._capture_workers: list[CaptureWorker] = []
+        self._capture_workers_lock = threading.Lock()
 
         # Dedup tracking: hash of recent observations → timestamp. The class is documented thread-safe for
         # concurrent access, so the check, the update and the prune run as one step under this lock (#1135:
@@ -1185,20 +1189,48 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # The most recent worker, for a caller that stops without a handle (scripts; stop_capture_worker()).
         self._capture_stop = stop
         self._capture_worker_thread = thread
+        with self._capture_workers_lock:
+            self._capture_workers.append(worker)
         thread.start()
         if thread_registry is not None:
             thread_registry.register("hippocampus-capture", thread)
         return worker
 
-    def stop_capture_worker(self, worker: CaptureWorker | None = None) -> None:
-        """Drain the queue, then stop ``worker`` (else the most recently started one)."""
-        self.flush(timeout=5.0)
+    def stop_capture_worker(self, worker: CaptureWorker | None = None, *, timeout: float = 5.0) -> None:
+        """Drain the queue, then stop ``worker`` (else the most recently started one), within about ``timeout``."""
+        started = time.monotonic()
+        self.flush(timeout=max(0.0, timeout))
         stop, thread = (
             (worker.stop, worker.thread) if worker is not None else (self._capture_stop, self._capture_worker_thread)
         )
         stop.set()
         if thread is not None and thread.is_alive():
-            thread.join(timeout=2.0)
+            thread.join(timeout=max(0.0, min(2.0, timeout - (time.monotonic() - started))))
+        with self._capture_workers_lock:
+            self._capture_workers = [w for w in self._capture_workers if w.thread is not thread]
+
+    def stop_capture_workers(self, timeout: float) -> bool:
+        """Drain the queue, then stop EVERY worker this Hippocampus started, within ``timeout`` (#1438 PR 1a).
+
+        The session end's flush step: the last queued captures land (and feed the ConceptExtractor and the embedder,
+        flushed next) before the stores are saved. Returns False when a worker is still alive when the time runs out;
+        the session end logs it and saves anyway (every store guards itself, so a late capture is in the next save).
+
+        It stops EVERY worker, unlike :meth:`stop_capture_worker`'s per-handle stop (PR 0): the session is ending, and
+        no shipped path runs two loops on one Hippocampus at once.
+        """
+        deadline = time.monotonic() + max(0.0, timeout)
+        self.flush(timeout=max(0.0, timeout))
+        with self._capture_workers_lock:
+            workers = list(self._capture_workers)
+        for worker in workers:
+            worker.stop.set()
+        for worker in workers:
+            if worker.thread.is_alive():
+                worker.thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        with self._capture_workers_lock:
+            self._capture_workers = [w for w in self._capture_workers if w.thread.is_alive()]
+            return not self._capture_workers
 
     def capture_from_loop_async(
         self, *, encoding: EncodingSignals, situation: "Mapping[str, str] | None", **kwargs: Any
@@ -1622,6 +1654,22 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         with self._rwlock.read():
             return len(self._memories)
 
+    def change_mark(self) -> tuple[int, int, int]:
+        """``(write sections, episode changes, activations)`` so far: it differs from an earlier mark when the store
+        changed since (#1438 PR 1a; ``MemoryHub.hippocampus_unsaved``). Every insert, removal, consolidation and load
+        takes the write lock; episode events and activations do not, so they are counted beside it. Read inside a read
+        section, the first is exact."""
+        with self._episode_lock:
+            episode_changes = self._episode_changes
+        with self._work_lock:
+            activations = self._activations_this_process
+        return (self._rwlock.writes, episode_changes, activations)
+
+    def memory_ids(self) -> frozenset[str]:
+        """Every stored memory id, read in one read section (the loaders' prune pass resolves refs against it)."""
+        with self._rwlock.read():
+            return frozenset(self._memories)
+
     def __iter__(self) -> Iterator[EpisodicMemory | CompressedMemory]:
         """Iterate over all memories (both full and compressed)."""
         with self._rwlock.read():
@@ -1645,6 +1693,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         call this alongside capture) is a post-Stage-1 task.
         """
         with self._episode_lock:
+            self._episode_changes += 1
             if self._pending_episode is None:
                 self._pending_episode = self._start_episode(event)
                 return
@@ -1665,12 +1714,14 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         with self._episode_lock:
             if self._pending_episode is None:
                 return None
+            self._episode_changes += 1
             return self._close_pending_episode_locked()
 
     def capture_reaction(self, reaction: Any) -> None:
         """Append a Reaction to the current pending episode's reactions list."""
         with self._episode_lock:
             if self._pending_episode is not None:
+                self._episode_changes += 1
                 self._pending_episode.reactions.append(reaction)
 
     @overload

@@ -2,6 +2,35 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-26 — Reachy motion safety: no non-finite, bad-duration or instant command reaches a motor (MF1–MF10, #1496)
+
+### Decision (owner, 2026-10-26/27; design in [docs/plans/motion_finite_1496.md](docs/plans/motion_finite_1496.md))
+
+1. **MF1. #1496 is a 1.3.4 exit item, split from #1499.** #1496 closes the non-finite / duration / clamp /
+   instant-path class. The frame, rate, `look_at`-body and mid-move neck-sweep class is #1499, also an exit item.
+2. **MF2. Durations lie in [0.1 s, 10 s] inclusive; a non-finite duration is always refused.**
+3. **MF3. A non-finite value is refused, never clamped; a finite out-of-range value is clamped, as before.**
+4. **MF4. An explicit duration outside the range is refused; a default or derived one is lifted into it.**
+5. **MF5. `cartoon` interpolation is refused** (it overshoots its target by 10%), and an unknown method is refused
+   instead of silently becoming minimum-jerk.
+6. **MF6. The orient body-yaw delta is capped at ±90°; antennas at ±90°** (provisional, until the hand-measured
+   range), always interpolated (the instant `set_target` path is gone).
+7. **MF7. A refusal is a typed `MotionRefused`** (a `HardwareError` and a `ValueError`, with a `kind`), and validation
+   never sits inside a handler that substitutes a default motion or a success.
+8. **MF8. A bad orient delta in a body YAML makes the robot run bodiless with one ERROR**, following the existing
+   unusable-body rule in `_resolve_body_wiring`.
+9. **MF9. A non-finite present pose is refused at the last mile as defence in depth.** Over the WS transport it cannot
+   fire (the daemon sends `null` and the client drops the message); the hardware signal, a stale cache, is #1499's.
+10. **MF10. `scripts/` is in scope for the raw-SDK lint**, with the live harnesses allow-listed by name and reason.
+
+### Rationale
+
+A NaN `head_yaw` in a body YAML commanded a 160° body swing in 1 s, because every `max(-L, min(L, x))` clamp on the
+motion path turns NaN into a full-range move, and motors 2+3 had already been destroyed by an unclamped pose
+(docs/agents/embodiment.md §1). Five adversarial design rounds kept finding a deeper, pre-existing class (frames and
+the mid-move sweep); splitting let the bounded class ship while #1499 is designed. Refusing explicit-but-bad input
+while lifting derived durations keeps the robot moving under its own defaults and never guesses what a caller meant.
+
 ## 2026-10-24 — Grounding T8 (b) design-review decisions (G21–G30)
 
 ### Decision

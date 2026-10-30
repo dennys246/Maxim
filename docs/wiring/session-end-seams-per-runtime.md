@@ -10,12 +10,28 @@ There is no single "session end". Each runtime reaches a different subset of the
 
 | Runtime | What runs at the end | Cerebellum saved | `distributor.cleanup_session` |
 |---|---|---|---|
-| `maxim --sim`, the AUT (`sim_aut`, a per-run `mkdtemp` home) | `runtime/agent_loop.py::run_agentic_loop` → `runtime/bio_integration.py::end_bio_session`: the Hippocampus flush and save, and `MemoryHub.on_session_end_lightweight` | **Never** | **Never** |
+| `maxim --sim`, the AUT (`sim_aut`, a per-run `mkdtemp` home) | `runtime/agent_loop.py::run_agentic_loop` → `runtime/bio_integration.py::end_bio_session`: the capture flush, and `MemoryHub.on_session_end_lightweight`, which saves the Hippocampus (since #1438 PR 1a) | **Never** | **Never** |
 | `maxim --sim`, the narrator (`sim_orchestrator`, write-but-don't-read) | `runtime/agent_factory.py::AgentInstance.shutdown`, called from `simulation/orchestrator.py::start_simulation_mode` | Yes (`save_cerebellum()`), but this Cerebellum never trains | No |
 | The Minecraft harness and the survival scripts | `end_bio_session`, then `bio.on_session_end()` (`runtime/bio_stack.py::BioStack.on_session_end`) | Yes | Yes |
 | The console HANDLE (an adopted persistent agent) | `instance.shutdown()` on the adopted agent | Yes (`save_cerebellum()`) | No |
 | `api.py` and `maxim.create.agent()` homes | `AgentInstance.shutdown()` | Yes (`save_cerebellum()`) | No |
 | `maxim --sim` with an adopted persistent agent as the AUT | the agent loop's `end_bio_session` inside the sim, then the HANDLE's `shutdown()` later | at the HANDLE's shutdown | No |
+
+**Since #1438 PR 1a** every hub session end (`integration/session_end.py::end_session`) saves the Hippocampus with
+EC, the embedding store and the cross-layer graph in one read section, before any consolidation. An
+`AgentInstance.shutdown` that finds a running loop holding the session hands its after-steps (the cerebellum save, the
+hub's workers) to that loop's session end (#1520), so the last row's cerebellum save happens at the loop's end when
+the HANDLE stops mid-campaign.
+
+Two rules learned building it (PR 1a's wire-integrity round):
+- **An abandon is a session end too.** Anything attached to a generation (`SessionOwnership.defer_until_ended`) is
+  reached by `abandon()` as well as by a normal end; an abandon drops handed-over steps (logged), because they persist
+  and its bound is spent.
+- **A prune is a gate over a LOAD OUTCOME, never over emptiness.** A target store that came up empty (missing,
+  unreadable or refused file) looks exactly like "every reference dangles"; `MemoryHub._prune_dangling_refs` resolves
+  only against a store that read its file (`store_file_loaded`).
+- The hub's end also stops every capture worker and drains the embedder (phase a), each within its share of the
+  deadline.
 
 `AgentInstance.shutdown` calls `bio_stack.save_cerebellum()` directly, never `BioStack.on_session_end`, so only the
 runtimes that call `on_session_end` themselves run the distributor's cleanup. In `src/`, that is only

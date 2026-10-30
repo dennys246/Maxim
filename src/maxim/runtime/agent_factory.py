@@ -38,6 +38,7 @@ from maxim.decisions.nac import require_agent_id
 from maxim.agents.permissions import AgentPermissions
 
 from maxim.exceptions import StoreOverwriteRefused
+from maxim.utils.deadline import Deadline
 
 log = logging.getLogger(__name__)
 
@@ -537,7 +538,11 @@ class AgentInstance:
             return {}
 
     def shutdown(
-        self, *, consolidation: Literal["full", "lightweight"] = "full", deadline_s: float | None = None
+        self,
+        *,
+        consolidation: Literal["full", "lightweight"] = "full",
+        deadline: Deadline | None = None,
+        loop_wait: Deadline | None = None,
     ) -> None:
         """Flush memories and clean up resources.
 
@@ -550,26 +555,21 @@ class AgentInstance:
                 existing caller byte-identical, and is the count-silent-
                 failures choice: wrongly lightweight loses consolidation
                 silently, wrongly full is loud-but-harmless slowness.
+            deadline: The bound on this shutdown's own session end (``None``: no bound; consolidation runs in full
+                after the saves).
+            loop_wait: The bound on the WAIT for a loop that holds the session (default: ``deadline``; neither: the
+                60 s cap). The console and the pool bound only this until 1b gives the console a stop budget
+                (owner decision 2026-10-29), so a large agent still consolidates when it stops.
         """
         if consolidation not in ("full", "lightweight"):
             raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
-        if self.memory_hub is not None and not self._end_or_await_session(self.memory_hub, consolidation, deadline_s):
-            return  # a loop still holds the session: its own end persists it; nothing below may run before that
-
-        if self.hippocampus is not None:
-            try:
-                persist_path = getattr(getattr(self.hippocampus, "config", None), "persistence_path", None)
-                if persist_path:
-                    self.hippocampus.save(persist_path)
-            except StoreOverwriteRefused as e:  # (#939): memories unsaved, file kept
-                log.error("Agent %s: hippocampus not saved: %s", self.agent_id, e)
-            except Exception as e:
-                log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
-
-        # With a hub, NAc is saved by the session end, in owner order beside EC (a NAc saved without its EC is the
-        # orphaned-bias state D2/D17 detect; #1438 PR 0). WITHOUT a hub (create.agent(remembers=False, learns=True), or
-        # a hub whose construction failed) nothing else saves it, and there is no EC to pair it with: save it here.
-        if self.memory_hub is None and self.nac is not None:
+        if self.memory_hub is not None:
+            self._end_or_hand_over(self.memory_hub, consolidation, deadline, loop_wait or deadline)
+            return
+        # No hub (create.agent(remembers=False, learns=True), or a hub whose construction failed): nothing else
+        # saves these stores, and there is no EC to pair the NAc with.
+        self._save_hippocampus()
+        if self.nac is not None:
             try:
                 nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
                 if nac_path:
@@ -578,9 +578,21 @@ class AgentInstance:
                 log.error("Agent %s: NAc not saved: %s", self.agent_id, e)
             except Exception as e:
                 log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
-        # The hippocampus save above STAYS until PR 1's end_session takes it into the persist order: the hub's session
-        # end does not save the hippocampus.
+        self._save_cerebellum()
 
+    def _save_hippocampus(self) -> None:
+        if self.hippocampus is None:
+            return
+        try:
+            persist_path = getattr(getattr(self.hippocampus, "config", None), "persistence_path", None)
+            if persist_path:
+                self.hippocampus.save(persist_path)
+        except StoreOverwriteRefused as e:  # (#939): memories unsaved, file kept
+            log.error("Agent %s: hippocampus not saved: %s", self.agent_id, e)
+        except Exception as e:
+            log.warning("Agent %s: hippocampus save failed: %s", self.agent_id, e)
+
+    def _save_cerebellum(self) -> None:
         # Review fix (Arch #2): save cerebellum forward models on shutdown.
         # Without this, learned forward models are lost every session.
         if self.bio_stack is not None:
@@ -589,36 +601,56 @@ class AgentInstance:
             except Exception as e:
                 log.warning("Agent %s: cerebellum save failed: %s", self.agent_id, e)
 
-    def _end_or_await_session(
-        self, hub: Any, consolidation: Literal["full", "lightweight"], deadline_s: float | None
-    ) -> bool:
-        """End the session as owner, or, when a loop took it over, wait for that loop's end (#1438 PR 0).
+    def _after_session_end(self, hub: Any) -> None:
+        """The steps that may run only once the session has ended: the hub's workers stop, the hippocampus is saved if
+        anything reached it since the session end saved it (``MemoryHub.hippocampus_unsaved``), the cerebellum is
+        saved (the hub's end never saves it)."""
+        hub.shutdown()  # the ConceptExtractor thread lives from construction
+        if hub.hippocampus_unsaved():
+            self._save_hippocampus()
+        self._save_cerebellum()
 
-        Returns False when the session did not end within ``deadline_s`` (else a 60 s cap): it logs
-        ``session_end_not_reached`` and the caller runs none of its after-steps. Otherwise it shuts the hub down
-        (the ConceptExtractor thread lives from construction) and returns True. ``hub`` is ``self.memory_hub``, passed
-        in already checked for None.
+    def _end_or_hand_over(
+        self,
+        hub: Any,
+        consolidation: Literal["full", "lightweight"],
+        deadline: Deadline | None,
+        loop_wait: Deadline | None,
+    ) -> None:
+        """End the session as owner, or hand the after-steps to the loop that took it over (#1438 PR 1a, #1520).
+
+        A loop that holds the session runs the after-steps at its own end (``MemoryHub.run_after_session_end``); this
+        call then waits for that end within ``loop_wait`` (else a 60 s cap) and returns either way. With nothing
+        going to end the session (an OPEN session no loop holds, opened by someone else), it logs
+        ``session_end_not_reached`` and runs none of them. A session already running its after-steps (a second
+        shutdown) is waited for, then this call runs its own. ``hub`` is ``self.memory_hub``, checked for None.
         """
+        wait_s = loop_wait.remaining() if loop_wait is not None else None
         try:
             if hub.holds_session(self._session_ticket):
                 if consolidation == "lightweight":
-                    hub.on_session_end_lightweight(self._session_ticket)
+                    hub.on_session_end_lightweight(self._session_ticket, deadline=deadline)
                 else:
-                    hub.on_session_end(self._session_ticket)
-            elif not hub.wait_session_ended(deadline_s=deadline_s):
+                    hub.on_session_end(self._session_ticket, deadline=deadline)
+            elif hub.run_after_session_end(f"agent-shutdown:{id(self)}", lambda: self._after_session_end(hub)):
+                if not hub.wait_session_ended(deadline_s=wait_s):
+                    log.warning(
+                        "Agent %s: session_end_not_reached — a running loop holds the memory session; its own end "
+                        "persists it and runs this shutdown's after-steps (hub workers, cerebellum)",
+                        self.agent_id,
+                    )
+                return
+            elif not hub.wait_session_ended(deadline_s=wait_s):  # at once for an OPEN session no loop holds
                 log.warning(
-                    "Agent %s: session_end_not_reached — the memory session is held by another opener (a running "
-                    "loop, whose own end persists it, or a harness that has not ended it yet); shutdown skipped its "
+                    "Agent %s: session_end_not_reached — the memory session is held by another opener (a harness "
+                    "that has not ended it yet, or an end still running past this wait); shutdown skipped its "
                     "after-steps",
                     self.agent_id,
                 )
-                return False
+                return
         except Exception as e:
             log.warning("Agent %s: memory_hub shutdown failed: %s", self.agent_id, e)
-        shutdown_fn = getattr(hub, "shutdown", None)
-        if callable(shutdown_fn):
-            shutdown_fn()
-        return True
+        self._after_session_end(hub)
 
 
 def _adopt_bio_stack(instance: AgentInstance, bio: Any) -> None:

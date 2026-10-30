@@ -69,6 +69,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Motion API changes from the Reachy safety fix** ([#1496](https://github.com/dennys246/Maxim/issues/1496); the
+  fix itself is under Fixed). Each refusal below raises `maxim.exceptions.MotionRefused`, a `ValueError`.
+  - `maxim.hardware.MotionTarget` and `PixelTarget` validate at construction. `MotionTarget.method` reads back as its
+    canonical name (`"minjerk"` becomes `"minimum_jerk"`, `"ease"` becomes `"ease_in_out"`). `PixelTarget` turns a
+    whole float into an `int` and refuses a fractional one.
+  - On the controller path, `ease` now means ease-in-out (it was minimum-jerk), and an unknown method is refused.
+  - `RobotController.center_vision` returns False for a bad duration, like `goto_target`.
+  - Selfy's `move`, `look_at_image`, `move_antenna` and `turn_around` refuse strings and bools; the tools convert a
+    model's numeric strings (`"30"`) before calling them.
+  - `Selfy.turn_around` returns True only when both steps were accepted, and no longer turns the body after a failed
+    head recentre. `maxim_command turn_around` reports a rejected turn as an error, not a success.
+  - `Selfy.goto_pose` refuses an unknown pose name (it used to move to the default pose), and
+    `motion.movement.load_poses` keeps a pose that does not parse as `None`, so that name is refused too.
+  - `Selfy.sync_head_position()` returns a `SyncResult` (`OK`, `FAILED`, `NON_FINITE`); only `OK` is truthy.
+  - An explicit duration of 0 to `move`, `focus_on_sound` or `track_target` is refused; it used to be swapped for the
+    tool's default.
+  - A non-finite `head_yaw` in any affordance's `self_effect` fails the body's YAML load.
+
 - **A memory session has one owner, and only its ticket ends it** ([#1438](https://github.com/dennys246/Maxim/issues/1438)
   PR 0, docs/plans/bounded_stop.md §4). `MemoryHub`'s session was a test-and-clear flag, so `AgentInstance.shutdown`
   could end a session a running loop still held, and two closers raced. It is now a three-state ledger
@@ -82,11 +100,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the stop request's deadline (else 30 s). The D13 planning-liveness abort is raised after that end.
   - `start_bio_session` is gone; `end_bio_session` takes `ticket=` and `capture=`. `Hippocampus.start_capture_worker()`
     returns a `CaptureWorker` handle with its own stop event.
-  - `AgentInstance.shutdown(deadline_s=)` waits for a loop that took its session over instead of ending it, and no
-    longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
+  - `AgentInstance.shutdown` waits for a loop that took its session over instead of ending it (and, since PR 1a, hands
+    that loop its after-steps), and no longer saves NAc itself (the session end does, beside EC). `AgentPool.shutdown` shares one deadline across agents.
   - New `utils/deadline.Deadline` and the sticky process stop request (`utils/cancellation.request_stop`).
   - A hub whose session cannot be claimed now aborts the loop (`SessionRefusal` and its subclasses); the old soft
     skip that ran the loop without memory is gone. `MaximHandle.stop` bounds its shutdown's wait by `talk_join_s`.
+- **The session end saves every store first, and consolidates only within the caller's deadline**
+  ([#1438](https://github.com/dennys246/Maxim/issues/1438) PR 1a, docs/plans/bounded_stop.md §5). It used to run the
+  slow sleep/replay BEFORE saving anything, so a stop that ran out of time lost every store.
+  - `on_session_end` / `on_session_end_lightweight` / `sleep` take `deadline=` (a `utils.deadline.Deadline`; `None`
+    is no bound). Sleep, promotion and ATL/AG consolidation each run only if the time left covers them, and skipped
+    steps are named in the result's `consolidation_skipped`. The phases live in `integration/session_end.py`.
+  - The hippocampus, EC, the semantic embedding store and the cross-layer graph are saved inside one hippocampus
+    read section, so no eviction lands between them. The hub's end now saves the hippocampus itself (the lightweight
+    end did not); `end_bio_session` and `AgentInstance.shutdown` save it only when no hub end covers it.
+  - EC and the embedding store have their own locks, and ATL's memory-ref writes take ATL's: a percept arriving on a
+    sensor thread during the save no longer fails it ("dictionary changed size", which also skipped NAc).
+  - The first session open prunes and counts references to memories the saved hippocampus no longer holds (NAc,
+    ATL) and NAc biases and fears keyed on EC nodes that no longer exist; restored ATL refs are now cleaned when their
+    memory is deleted (the ConceptExtractor's index is rebuilt after ATL loads).
+  - A shutdown that has to wait for a running loop hands its after-steps (the cerebellum save, the hub's workers) to
+    that loop's session end, which runs them once; it used to skip them ([#1520](https://github.com/dennys246/Maxim/issues/1520)).
+  - `AgentInstance.shutdown(deadline=, loop_wait=)` take `Deadline`s (PR 0's `deadline_s=` never shipped):
+    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. `MaximHandle.stop` and the pool pass
+    `loop_wait` alone, so a persistent agent still consolidates in full when it stops, until the console gets its stop
+    budget (#1438 PR 1b). An abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
+  - Loaders prune only against a store that read its file, so a missing or unreadable `hippocampus.json` no longer
+    looks like "every reference dangles".
 
 - **The agent loop logs, at DEBUG, when a planning job starts and stops holding new inputs, and when held inputs ride
   a follow-up** (#1488), so a narrator input that sits unplanned can be told from one that waits its turn. It logs
@@ -149,6 +189,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     3 of 5 arm-A deceptive trials.
 
 ### Fixed
+
+- **`maxim --tts` speaks, or refuses at start** ([#1437](https://github.com/dennys246/Maxim/issues/1437), found by
+  maxim-pulse's device review). The CLI built a voice for `--tts`, logged "TTS enabled", and wired no speaker, so it
+  never spoke; the robot runtime had its own copy keyed on `MAXIM_TTS_ENABLED`. Both now go through one builder,
+  `utils.response_output.build_speech_output`: `--tts` or `MAXIM_TTS_ENABLED` turns speech on for either path (the
+  robot now hears `--tts`/`--tts-model`); the CLI speaks through local speakers, a robot through its device sink.
+  A request that cannot play refuses at start with a typed `SpeechOutputUnavailable` naming the fix (download the
+  voice, or `pip install 'pymaxim[tts]'`), and "enabled" is logged only for a path that can play. The run then stops
+  with that fix and exit code 2, on the CLI and on the robot. On a robot, speech is resolved before the robot moves
+  and before the agentic runtime starts, so a refusal is not downgraded to a warning. The voice is loaded at start
+  (a corrupt model refuses there, not at the first sentence), and local speakers are checked whenever speech will
+  play on them (`MAXIM_TTS_LOCAL`, or a robot run with no SDK handle). `--tts-model` now defaults to
+  `MAXIM_TTS_MODEL`, then the default voice. `LocalSpeaker` reports availability truthfully (a missing PortAudio
+  library, no sound server or no output device is "unavailable", not a crash), and `optional_dependency_available`
+  treats a package that is installed but cannot load on this machine as unavailable: an import raising `OSError`,
+  or the package's own exception (`sounddevice` raises its `PortAudioError` from import on Ubuntu 26 when no
+  PulseAudio server answers); the rule is `optional_deps.import_refused`, and any other import error stays loud.
+  The `tts` extra now includes `sounddevice` (on Linux it needs the PortAudio library, `apt install libportaudio2`,
+  and a running sound server), and the leader's install probe for the `audio` extra checks
+  `faster_whisper`, the extra's own package, instead of `sounddevice`.
+
+- **Reachy safety: no non-finite, out-of-range-duration or instant command reaches a motor**
+  ([#1496](https://github.com/dennys246/Maxim/issues/1496), a 1.3.4 exit item). A NaN or infinite `head_yaw` in a body
+  YAML commanded a 160° body swing in 1 s, because every `max(-L, min(L, x))` clamp on the motion path turned NaN
+  into a full-range move. The same reached the motors from LLM tool arguments (`"nan"`), from NaN in
+  `default_poses.json`, and from a NaN readback composed into the head target. Durations were unbounded, and
+  antennas and the SDK `look_at` moved instantly on a duration of 0. Now:
+  - one set of validators in `maxim.hardware.controller` runs at entry (`MotionTarget`/`PixelTarget`, Selfy, the
+    tools) and at every command clamp (`clamp_finite`), and one Reachy last mile
+    (`hardware/reachy/controller.py::check_sdk_command`) runs immediately before each SDK call;
+  - durations lie in [0.1 s, 10 s]: an explicit one outside is refused, a default or derived one is lifted into range;
+  - antennas always interpolate and clamp to ±90° (provisional, until the hand-measured range);
+  - the `cartoon` interpolation, which overshoots its target by 10%, is refused;
+  - a refusal raises the new `maxim.exceptions.MotionRefused` (a `HardwareError` and a `ValueError`). Tools return it to the model as an
+    error, never as a default motion (a garbage `turn_around` angle used to become a 90° turn);
+  - a bad orient delta in a body YAML (non-finite, or over ±90°) makes the robot run bodiless with one ERROR;
+  - an unknown or unparseable pose name is an error, not a move to the default pose;
+  - `sync_head_position()` returns a `SyncResult` (`OK`, `FAILED` or `NON_FINITE`; only `OK` is truthy), and never
+    writes a non-finite readback into the head mirror. The motor worker skips its blind reset from a non-finite pose,
+    and a refused motion no longer counts as a lost connection;
+  - `scripts/lint_motion_safety.py` (in CI) bans the clamp idiom on the motion path and raw SDK motion outside the
+    sanctioned dispatch points, across `src/` and `scripts/`.
+
+  Over the WS transport the robot never reports a non-finite pose (the daemon sends `null` and the client drops the
+  message), so the present-pose check is defence in depth. Still open on the real robot, as 1.3.4 exit item
+  [#1499](https://github.com/dennys246/Maxim/issues/1499): the neck can sweep through about 180° in the middle of a
+  move that combines a large body turn with a head turn.
 
 - **Web search no longer fetches outside `maxim.utils.http`, and a broken search is reported as broken.**
   `tools/internet_search.py::_search_duckduckgo_lite` used its own urllib3 pool whenever urllib3 was importable. That pool

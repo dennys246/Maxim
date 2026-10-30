@@ -26,7 +26,7 @@ import math
 import numpy as np
 import pytest
 
-from maxim.embodied_runtime.movement import MovementMixin
+from maxim.embodied_runtime.movement import MovementMixin, SyncResult
 
 
 def _world_pose_matrix(yaw_rad: float) -> np.ndarray:
@@ -69,7 +69,7 @@ class TestBodyYawJointIndex:
             world_yaw_rad=math.radians(30.0),
         )
         host = _Host(mini)
-        assert host.sync_head_position() is True
+        assert host.sync_head_position() is SyncResult.OK
         assert host.yaw == pytest.approx(10.0, abs=0.1)
         assert host.body_yaw == pytest.approx(20.0, abs=0.1)
 
@@ -82,7 +82,7 @@ class TestBodyYawJointIndex:
             world_yaw_rad=0.0,
         )
         host = _Host(mini)
-        assert host.sync_head_position() is True
+        assert host.sync_head_position() is SyncResult.OK
         assert host.yaw == pytest.approx(0.0, abs=0.5), (
             "a stewart LEG angle (index 6) leaked into body_yaw — the zenoh-era joint ordering is back"
         )
@@ -96,6 +96,6 @@ class TestBodyYawJointIndex:
             world_yaw_rad=math.radians(40.0),
         )
         host = _Host(mini)
-        assert host.sync_head_position() is True
+        assert host.sync_head_position() is SyncResult.OK
         assert host.yaw == pytest.approx(0.0, abs=0.5)
         assert host.body_yaw == pytest.approx(40.0, abs=0.1)
