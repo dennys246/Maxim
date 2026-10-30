@@ -38,9 +38,9 @@ end updates them consciously:
     the function.
   - ``test_narrator_reliability.py::test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_exempt``
     (``_is_observe_only = `` before ``FinishSimulationTool(``; §5).
-  - ``test_planning_liveness.py::TestOrchestratorWiringPins::test_519_abort_clock_is_nudge_proof`` and
-    ``TestDeadAutIsSurfaced::test_aut_worker_terminates_the_sim_on_loop_failure`` (``split()`` regions of
-    the stall detector §11 and the ``sim.aut`` worker §8). They hold as long as each region moves whole.
+  - ``test_planning_liveness.py::TestDeadAutIsSurfaced::test_aut_worker_terminates_the_sim_on_loop_failure``
+    (a ``split()`` region of the ``sim.aut`` worker §8). It holds as long as the region moves whole. (Its §11
+    neighbour, ``test_519_abort_clock_is_nudge_proof``, became an AST check on ``StallDetector`` in the §11 slice.)
   - ``test_planning_liveness.py::...::test_orchestrator_opts_in_and_aut_does_not`` (the region after the
     narrator loop call's ``percept_source=orchestrator_source``; §12).
   - ``tests/integration/test_persistent_agent_campaign.py::TestNonePathUnchanged::test_injection_branch_gates_are_wired``
@@ -69,12 +69,29 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("tty_stdin.py", "read_post_sim_goal_raw"),
     # #1454's interim prompt fix (2026-10-26, rule T): the interactive post-sim report view + new-goal prompt
     ("orchestrator.py", "_show_report_and_post_sim_prompt"),
+    # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
+    # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
+    # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it
+    ("stall_detector.py", "_build_stall_nudge_example"),
+    ("stall_detector.py", "__init__"),
+    ("stall_detector.py", "_now"),
+    ("stall_detector.py", "run"),
+    ("stall_detector.py", "_configure"),
+    ("stall_detector.py", "_current_threshold"),
+    ("stall_detector.py", "_orch_action_count"),
+    ("stall_detector.py", "_poll"),
+    ("stall_detector.py", "_check_max_turns"),
+    ("stall_detector.py", "_on_turn_progress"),
+    ("stall_detector.py", "_suppressed"),
+    ("stall_detector.py", "_spinner_truth"),
+    ("stall_detector.py", "_hard_abort"),
+    ("stall_detector.py", "_nudge"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one
 # appends it here in the same commit as the move, and appends its functions to ``PARTS``.
 # ``test_orchestrator_source.py`` holds the registry complete (its docstring lists the checks and their limits).
-EXTRACTION_MODULES: tuple[str, ...] = ("maxim.simulation.tty_stdin",)
+EXTRACTION_MODULES: tuple[str, ...] = ("maxim.simulation.tty_stdin", "maxim.simulation.stall_detector")
 
 # Top-level functions of an extraction module that are NOT the run's code, with the reason: module-level
 # helpers of ``orchestrator.py`` that moved with the code they serve. They are not in ``PARTS``, so a pin on

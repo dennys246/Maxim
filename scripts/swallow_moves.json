@@ -16,5 +16,14 @@
     "date": "2026-10-06",
     "ref": "#1133",
     "reason": "section 4's memory.store_raw try moved into execute_and_learn; its content reads proposal.reasoning (was ctrl.pending_proposal.reasoning), so the enclosing try's AST changed; the handler (log_swallowed_exception(e, operation='memory.store_raw')) is verbatim"
+  },
+  {
+    "pool": "silent",
+    "file": "src/maxim/simulation/stall_detector.py",
+    "qualname": "StallDetector._orch_action_count",
+    "moved_from": {"file": "src/maxim/simulation/orchestrator.py", "qualname": "start_simulation_mode._stall_detector._orch_action_count"},
+    "date": "2026-10-30",
+    "ref": "#1259",
+    "reason": "orchestrator §11 slice: the stall detector's _orch_action_count left start_simulation_mode's nested _stall_detector closure for StallDetector; its closure cells became attributes (_last_orch_action_count[0] -> self._last_orch_action_count, orch_executor -> self._orch_executor), so the try's AST changed; the handler (return the last known count) is otherwise verbatim and still never reports, as before"
   }
 ]

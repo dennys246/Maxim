@@ -200,7 +200,7 @@ def non_streaming_age_bound_s(lane_timeout_s: float | None = None, allowed_s: fl
 
 
 def stall_suppression(
-    *, turn_in_progress: bool, lane: str | None = None, lane_timeout_s: float | None = None
+    *, turn_in_progress: bool, lane: str | None = None, lane_timeout_s: float | None = None, now: float | None = None
 ) -> tuple[bool, float | None]:
     """The simulation stall detector's suppression decision, as one callable (#1042). Returns ``(suppress,
     wedged_s)``:
@@ -214,6 +214,11 @@ def stall_suppression(
     - ``(False, s)``: every in-flight call on ``lane`` is wedged — byte-silent ``s`` seconds (streaming) or ``s``
       seconds old (the youngest non-streaming call).
     - ``(False, None)``: nothing is in flight: a real stall candidate.
+
+    ``now`` (default: the wall clock) is the time the call ages are read at: the detector's own clock, so a test that
+    advances it ages the in-flight calls with its idle timer (``simulation/stall_detector.py``). It must be on ``time.time``'s
+    epoch (the registry stamps its entries with it), and less than the registry's 1800 s stale-entry TTL ahead of the
+    wall clock, or a held call reads as "nothing in flight" rather than wedged.
     """
     from maxim.agents.llm_types import PLANNING_LANE
     from maxim.runtime import llm_call_registry as reg
@@ -221,12 +226,12 @@ def stall_suppression(
     if turn_in_progress:
         return True, None
     lane = lane or PLANNING_LANE
-    if not reg.any_call_in_flight(tier=lane):
+    if not reg.any_call_in_flight(tier=lane, now=now):
         return False, None
-    silence = reg.oldest_byte_silence_s(tier=lane)
+    silence = reg.oldest_byte_silence_s(tier=lane, now=now)
     if silence is not None and silence < max_byte_silence_threshold_s():
         return True, None
-    calls = reg.non_streaming_calls(tier=lane)
+    calls = reg.non_streaming_calls(tier=lane, now=now)
     if any(age < non_streaming_age_bound_s(lane_timeout_s, allowed) for age, allowed in calls):
         return True, None
     youngest = min((age for age, _ in calls), default=None)
