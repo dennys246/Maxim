@@ -164,6 +164,78 @@ class TestMotorBackendDispatch:
         result = backend.execute("turn_left", {})
         assert result.success is False
 
+    def test_a_partial_turn_takes_the_measurement_path(self):
+        """#1499 (Wire F2b): a partial outcome MOVED the body, so the backend still measures it: the frame is
+        re-read, the motion end bounds the next DoA window, and the turn reports failure with the reason."""
+        from maxim.hardware.controller import MotionOutcome
+
+        class _PartialRobot(_FakeRobot):
+            def goto_target(self, target):
+                self.targets.append(target)
+                self._body_yaw = target.body_yaw / 2  # it stopped half-way
+                return MotionOutcome(
+                    ok=False, kind="partial", reason="chunk 2/2 timed out", chunks_planned=2, chunks_done=1
+                )
+
+        robot = _PartialRobot(body_yaw=0.0)
+        backend, _ = self._backend(robot)
+        before = backend._last_motion_t_end
+        result = backend.execute("turn_left_big", {})
+        assert result.success is False
+        assert "chunk 2/2 timed out" in (result.error or "")
+        assert result.metadata["reached"] is False
+        assert backend._last_motion_t_end != before
+
+    def test_a_partial_turn_that_reads_as_reached_still_reports_failure(self):
+        """Mutant M7: a partial turn whose readback shows the target (the final REST read failed) reports failure."""
+        from maxim.hardware.controller import MotionOutcome
+
+        class _ArrivedRobot(_FakeRobot):
+            def goto_target(self, target):
+                self.targets.append(target)
+                self._body_yaw = target.body_yaw
+                return MotionOutcome(
+                    ok=False, kind="partial", reason="the final readback failed", chunks_planned=1, chunks_done=1
+                )
+
+        backend, _ = self._backend(_ArrivedRobot(body_yaw=0.0))
+        result = backend.execute("turn_left", {})
+        assert result.metadata["reached"] is True
+        assert result.success is False
+        assert "could not confirm" in (result.error or "")
+
+    def test_a_cancel_after_a_chunk_takes_the_measurement_path(self):
+        """Mutant M8: a cancel with chunks done moved the body, so _last_motion_t_end advances."""
+        from maxim.hardware.controller import MotionOutcome
+
+        class _CancelledRobot(_FakeRobot):
+            def goto_target(self, target):
+                self.targets.append(target)
+                self._body_yaw = target.body_yaw / 2
+                return MotionOutcome(
+                    ok=False, kind="cancelled", reason="stopped before chunk 2/2", chunks_planned=2, chunks_done=1
+                )
+
+        backend, _ = self._backend(_CancelledRobot(body_yaw=0.0))
+        before = backend._last_motion_t_end
+        result = backend.execute("turn_left_big", {})
+        assert result.success is False
+        assert backend._last_motion_t_end != before
+
+    def test_a_refusal_that_moved_nothing_returns_early(self):
+        from maxim.hardware.controller import MotionOutcome
+
+        class _RefusingRobot(_FakeRobot):
+            def goto_target(self, target):
+                self.targets.append(target)
+                return MotionOutcome(ok=False, kind="reference", reason="fresh readback failed")
+
+        backend, _ = self._backend(_RefusingRobot(body_yaw=0.0))
+        before = backend._last_motion_t_end
+        result = backend.execute("turn_left", {})
+        assert result.success is False and "fresh readback failed" in (result.error or "")
+        assert backend._last_motion_t_end == before
+
     def test_confirmed_shortfall_is_failure(self):
         # Dispatch accepted but the body never moved (track=False).
         backend, _ = self._backend(_FakeRobot(track=False))

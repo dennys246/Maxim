@@ -2,6 +2,77 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-10-29 — Reachy motion path: no too-fast, wrongly-referenced or mid-path-unsafe command reaches a motor (MP1–MP12, #1499)
+
+### Decision (owner, 2026-10-26 and 2026-10-29; design in [docs/plans/motion_path_model.md](docs/plans/motion_path_model.md))
+
+1. **MP1 (O1). The neck-path rule.** A move whose SDK-sampled path twists the neck past its endpoints by more than
+   10° (or past 90°) is split into chunks when its duration is a default or derived one, and refused (`path`) when
+   the caller chose it. Every chunk is sampled before any moves.
+2. **MP2 (O2). Rate.** Average speed ≤ 180°/s, and each method's peak ≤ 340°/s. A default or derived duration is
+   stretched; an explicit one that is too fast is refused (`rate`).
+3. **MP3 (O3). The reference is the daemon's public `GET /api/state/full`,** read fresh before every dispatch and
+   between chunks. A failed, malformed, non-finite, torque-off or impossible read refuses (`reference`). The WS pose
+   cache stays for observation only.
+4. **MP4 (O4). No refusal kind feeds the gaze or workspace-bounds learners.** The motor worker books a success only
+   on an ok `MotionOutcome`, and re-syncs Selfy's pose mirror after any other outcome. (PR 2 adds the enqueue ticket
+   that tells the tools the real outcome; a tool failure still reaches the tool-outcome path, as before.)
+5. **MP5 (O5). Lifecycle motion goes through the controller**, and the lint extension to the SDK's lifecycle calls
+   lands in PR 3. The no-motion facade for `Selfy.mini` is a follow-up.
+6. **MP6 (O6). `automatic_body_yaw: true` is a typed config error** (`InvalidConfigError`) at construction. The
+   controller asserts `set_automatic_body_yaw(False)` at connect and before every wake, and refuses motion until
+   an assertion succeeds; every `ReachyMini(` passes the argument explicitly.
+7. **MP7 (O7). The `RobotController` ABC's motion and lifecycle methods return `bool | MotionOutcome`**, read through
+   `as_outcome`. The return type was widened, not replaced, so 1.x plugins that return `bool` keep working; the
+   registry broadcasts keep `dict[str, bool]`.
+8. **MP8 (O8). Maxim replaces the SDK's `wake_up` and `goto_sleep`** with the same steps, each one a clamped
+   controller dispatch. The SDK's ±3.05 rad sleep antennas never reach a motor; they clamp to ±`ANTENNA_LIMIT_RAD`
+   (90°, until the hand-measured range). Torque is unchanged: the SDK's sleep never disables the motors.
+9. **MP9 (owner, 2026-10-29, from the stop-fence review and its delta round). A stop latch.** `goto_sleep` and
+   `disconnect` set it; while it is set `goto_target` and `look_at_pixel` refuse (`cancelled`) without waiting for
+   the lock, and the controller reports `is_awake=False`. So no head or body command that starts after a stop moves
+   the robot, tool threads included (PR 2's queue close covers only queued commands; `move_antenna` is not gated
+   until its PR 2 delegation). Only a wake that SUCCEEDS clears it. `connect` clears a latch that `disconnect` set,
+   never one a sleep set, so a reconnect while asleep stays stopped. When a wake and a sleep race for the lock, the
+   robot ends asleep and latched (fail closed; the racing wake is lost and can be repeated). A sleep with no SDK
+   handle (mid-reconnect) latches and then refuses, since nothing was made safe. Every latch transition runs under
+   one lock with the stop generation, so no two can interleave. One visible consequence: if a run's controller was
+   disconnected mid-run, `api.py`'s release now finds the sleep refused and keeps the connection (raising
+   `HardwareError` as a cleanup error that never hides the run's own), where it used to release cleanly. Selfy's Blackwell path never calls `wake_up`, so
+   after a sleep in that process head and body moves stay refused (fail closed) until a wake.
+10. **MP10 (owner, 2026-10-29). After an SDK timeout, wake refuses until the robot has settled; sleep waits up to
+    2 s for it to settle, then refuses.** One stop generation is taken per wake or sleep and checked before every
+    step and chunk, so a stop ends the whole sequence.
+11. **MP11 (owner, 2026-10-29). Sleep with torque off is already safe:** `goto_sleep` returns ok and moves nothing
+    when the daemon reports `control_mode: disabled`, so a failed wake (which disables torque) releases cleanly.
+12. **MP12 (owner, 2026-10-29). The fresh read keeps its 100 ms deadline (300 ms with an auto-tunnel or any
+    `localhost_only` connection: a manual tunnel, or a daemon on the same machine)
+    with one retry for the reads between chunks and after the last chunk, never for a move's first read;** each read's
+    time is logged at DEBUG, and the p99 is measured on the rig before release.
+
+### Rationale
+
+The SDK moves the head along the world SO(3) geodesic, the short way round, while the body follows its joint line,
+so whenever body and neck together ask for more than about 180° of world yaw, the neck passes about 180° mid-move
+with both endpoints legal. It was live through `center_vision` from a turned body, every SDK `look_at` (which also
+sends the body to 0), wake and sleep from a turned body, and large turns: the 2026-08-07 "head snapped to the
+opposite extreme" failure (docs/agents/embodiment.md §1). A σ threshold alone misses it: with roll and pitch
+moving, a σ = 149.6° move sweeps to 179.7° (verified with the SDK's own interpolation), so the rule samples the
+SDK's path. A stale or guessed reference is the same failure one step earlier, hence the fresh REST read and no
+`0.0` fallbacks.
+
+### Consequences
+
+- A turned robot re-centres before it wakes or sleeps (split, ≥ 2 s), and `look_at` no longer moves the body.
+- While asleep the antennas rest at ±90°, not folded at ±175°, until the measured range replaces the limit.
+- Unit tests serve the controller's REST read from a fake daemon (`tests/unit/_reachy_fakes.py`). The copies of the
+  SDK's interpolation, lifecycle poses and REST shape are pinned to the installed SDK by
+  `tests/unit/test_reachy_sdk_contract_1499.py`, which skips where the SDK is absent: every CI lane today, until R2's
+  reachy cell exists.
+- In PR 1 nothing sets `duration_policy="exact"`, so the `rate` and explicit-`path` refusals are reached only once
+  the tools adopt it (PR 2); a model-chosen duration is stretched meanwhile. `move_antenna` stays a raw SDK
+  primitive (clamped, last-mile-checked, no rate cap or lock) until its delegation in PR 2.
+
 ## 2026-10-26 — Reachy motion safety: no non-finite, bad-duration or instant command reaches a motor (MF1–MF10, #1496)
 
 ### Decision (owner, 2026-10-26/27; design in [docs/plans/motion_finite_1496.md](docs/plans/motion_finite_1496.md))

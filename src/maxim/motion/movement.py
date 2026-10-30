@@ -204,82 +204,111 @@ _MAX_HEAD_REL_YAW_DEG = 65.0
 
 
 def _current_body_yaw_deg(mini) -> float:
-    """Body yaw (degrees) from the SDK joint vector; 0.0 when the read is MISSING.
+    """Body yaw (degrees) from the SDK joint vector, or ``MotionRefused("reference")`` when it cannot be read.
 
     Joint vector is ``[body_yaw, *stewart_legs]`` — the SDK's own fk() reads
-    index 0 as body_yaw. A read that fails keeps the historical 0.0 fallback
-    (#1499 owns missing readbacks); a RETURNED non-finite body is refused,
-    outside the try, so composing ``yaw + body`` never sees NaN (#1496).
+    index 0 as body_yaw. A missing read is refused (#1499 R2): the historical
+    0.0 fallback composed a world head yaw off by the full body angle.
     """
+    from maxim.exceptions import MotionRefused
+
     body: Any = None
     try:
         head_joints, _ = mini.get_current_joint_positions()
         if head_joints is not None and len(head_joints) >= 1:
             body = head_joints[0]
-    except Exception:  # missing, not refused
+    except Exception as e:  # missing: refused below
         log_swallowed_exception()
+        raise MotionRefused("reference", f"the body yaw could not be read: {e}") from e
     if body is None:
-        return 0.0
+        raise MotionRefused("reference", "the body yaw could not be read")
     return math.degrees(require_finite("readback body_yaw", body))
 
 
-def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=None, controller=None):
-    """Dispatch a head pose to the SDK. ``yaw`` is BODY-RELATIVE degrees.
+_REQUIRED: Any = object()
 
-    FRAME (2026-08-07 safety fold — this was the reincarnation of the
-    head-frame trap one layer up): every Selfy-layer caller works in the
-    body-relative frame (``sync_head_position`` computes ``yaw = world −
-    body``), but the SDK head pose matrix is WORLD-frame. Pre-fold this
-    function shipped the relative yaw AS world yaw with ``body_yaw=None``
-    (retain) — correct only while the body sat at 0. After any SEM body
-    turn (body at e.g. 160°), a gaze command of "relative ≈ 0" dragged the
-    head to WORLD 0, demanding a head-relative angle of −160° against a
-    ±65° neck capability: the motor-destruction failure class, and the
-    same mechanism `turn_around`'s STEP 2 was just fixed for.
 
-    Composition happens at DISPATCH time (this runs on the motor-queue
-    thread), so the body yaw read is as fresh as it can be. Rotations are
-    clamped to physical capability as belt-and-suspenders — Selfy.move()
-    clamps the tighter style workspace upstream, but goto_pose and the
-    workers.py IK-recovery recenter also land here.
+def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=_REQUIRED, controller=None):
+    """Move the head to a BODY-RELATIVE pose: ``roll``/``pitch``/``yaw`` in degrees, ``x``/``y``/``z`` in mm.
+
+    With a ``controller`` (every Selfy and worker caller), this DELEGATES to its
+    ``goto_target`` (#1499 5.4), so one copy of the fresh readback, the rate cap
+    and the neck-path split governs every head move, and its ``MotionOutcome``
+    is returned. The translation rides along as body-frame ``head_x/y/z`` extras.
+
+    Standalone (scripts with no controller), ``motion_lock=`` is required, so
+    forgetting it is a ``TypeError``; pass ``None`` only when nothing else can
+    move the robot. The standalone path composes against the SDK's body read
+    and applies the same rate rule (stretching) and path rule (refusing), since
+    it cannot split. Returns ``None``; refusals raise ``MotionRefused``.
+
+    FRAME: every caller works body-relative, and the SDK head pose matrix is
+    WORLD-frame, so the body yaw is added at dispatch (the 2026-08-07 safety
+    fold: shipping the relative yaw as world dragged the head to world 0 after a
+    160° body turn, a −160° neck demand against a ±65° capability).
     """
+    if controller is not None and hasattr(controller, "goto_target"):
+        from maxim.hardware.controller import HEAD_TRANSLATION_EXTRAS, MotionTarget
+
+        extras = {
+            key: require_finite(key, value) / 1000.0
+            for key, value in zip(HEAD_TRANSLATION_EXTRAS, (x, y, z), strict=True)
+            if require_finite(key, value) != 0.0
+        }
+        return controller.goto_target(
+            MotionTarget(
+                head_roll=math.radians(require_finite("roll", roll)),
+                head_pitch=math.radians(require_finite("pitch", pitch)),
+                head_yaw=math.radians(require_finite("yaw", yaw)),
+                extras=extras,
+                duration=floor_duration(duration),
+            )
+        )
+    if motion_lock is _REQUIRED:
+        raise TypeError("move_head without a controller requires motion_lock= (#1499 5.4)")
     import contextlib
 
-    # When the caller can supply the controller's _motion_lock (Selfy.move
-    # threads it through), the body-yaw read + compose + dispatch here is
-    # serialized against controller-routed callers too — otherwise a
-    # controller goto_target changing body yaw between our read and our
-    # dispatch re-opens the TOCTOU one path over (executor-lens review
-    # finding). Lock-less callers (workers.py recovery) degrade to a fresh
-    # read with a small residual window.
     lock = motion_lock if motion_lock is not None else contextlib.nullcontext()
     with lock:
-        body_yaw_deg = _current_body_yaw_deg(mini)
-        roll = clamp_finite("roll", roll, -_MAX_HEAD_ROLL_DEG, _MAX_HEAD_ROLL_DEG)
-        pitch = clamp_finite("pitch", pitch, -_MAX_HEAD_PITCH_DEG, _MAX_HEAD_PITCH_DEG)
-        yaw = clamp_finite("yaw", yaw, -_MAX_HEAD_REL_YAW_DEG, _MAX_HEAD_REL_YAW_DEG)
-        x, y, z = (require_finite(name, v) for name, v in (("x", x), ("y", y), ("z", z)))
-        # Translation intent is body-frame (x forward, y left of the BODY);
-        # rotate into the world frame so a turned body doesn't reinterpret a
-        # forward nudge as sideways. mm-scale — not a destruction-class axis.
-        b = math.radians(body_yaw_deg)
-        x_w = x * math.cos(b) - y * math.sin(b)
-        y_w = x * math.sin(b) + y * math.cos(b)
-        pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
-        # Last mile (#1496): every scalar handed to the SDK, the duration's
-        # range, and the present pose (defence in depth).
-        duration, _ = check_sdk_command(mini, duration=duration, head=pose)
-        mini.goto_target(head=pose, duration=duration, body_yaw=None)
-        # F1 retained-axes fold (2026-08-09): this raw dispatch moves the
-        # head outside ReachyMiniController's last-commanded stash. When
-        # the caller shares a robot with a controller (Selfy threads it,
-        # same as motion_lock above), tell the controller so its next
-        # goto_target re-seeds the head axes from the readback instead of
-        # snapping the head back to a stale stashed pose. Duck-typed so
-        # this module stays SDK-level (SimulatedController has no stash).
-        hook = getattr(controller, "note_external_head_motion", None)
-        if hook is not None:
-            hook()
+        check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration)
+    return None
+
+
+def check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration) -> None:
+    """The standalone head dispatch: compose against the SDK's body read, rate-stretch, refuse a sweep, dispatch."""
+    from maxim.exceptions import MotionRefused
+    from maxim.hardware.reachy import motion_path as mp
+
+    body_yaw_deg = _current_body_yaw_deg(mini)
+    roll = clamp_finite("roll", roll, -_MAX_HEAD_ROLL_DEG, _MAX_HEAD_ROLL_DEG)
+    pitch = clamp_finite("pitch", pitch, -_MAX_HEAD_PITCH_DEG, _MAX_HEAD_PITCH_DEG)
+    yaw = clamp_finite("yaw", yaw, -_MAX_HEAD_REL_YAW_DEG, _MAX_HEAD_REL_YAW_DEG)
+    x, y, z = (require_finite(name, v) for name, v in (("x", x), ("y", y), ("z", z)))
+    # Translation intent is body-frame (x forward, y left of the BODY);
+    # rotate into the world frame so a turned body doesn't reinterpret a
+    # forward nudge as sideways. mm-scale — not a destruction-class axis.
+    b = math.radians(body_yaw_deg)
+    x_w = x * math.cos(b) - y * math.sin(b)
+    y_w = x * math.sin(b) + y * math.cos(b)
+    pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
+    duration = floor_duration(duration)
+    try:
+        current = np.asarray(mini.get_current_head_pose(), dtype=float)
+    except Exception:  # missing: the rate and path checks need a start, so this refuses below
+        log_swallowed_exception()
+        current = None
+    if current is None or current.shape != (4, 4) or not np.all(np.isfinite(current)):
+        raise MotionRefused("reference", "standalone move_head: the present head pose is unreadable")
+    start = mp.Pose(current, b)
+    target = mp.Pose(pose, b)
+    ok, worst = mp.neck_path_ok(start, target)
+    if not ok:
+        raise MotionRefused("path", f"standalone move_head would sweep the neck to {worst:.0f}° mid-path")
+    duration = mp.resolve_duration(duration, mp.move_delta_deg(start, target), "minimum_jerk", "at_least")
+    # Last mile (#1496): every scalar handed to the SDK, the duration's
+    # range, and the present pose (defence in depth).
+    duration, _ = check_sdk_command(mini, duration=duration, head=pose)
+    mini.goto_target(head=pose, duration=duration, body_yaw=None)
 
 
 def move_antenna(

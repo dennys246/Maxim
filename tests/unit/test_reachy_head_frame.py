@@ -30,6 +30,13 @@ import pytest
 
 from maxim.hardware.controller import MotionTarget
 from maxim.hardware.reachy.controller import ReachyMiniController
+from tests.unit._reachy_fakes import prepare_controller, serve_state_from_ws_fake
+
+
+@pytest.fixture(autouse=True)
+def _serve_the_fresh_readback(monkeypatch):
+    """The controller reads its reference from the daemon's REST state (#1499 R1); serve it from this file's fake."""
+    serve_state_from_ws_fake(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -76,16 +83,28 @@ def _yaw_of(pose_matrix) -> float:
 
 
 class _FakeMini:
-    """Records goto_target kwargs; reports a body yaw via the SDK's joint[0] convention."""
+    """Records goto_target kwargs and reaches the commanded pose (the controller re-reads it, #1499).
+
+    Reports a body yaw via the SDK's joint[0] convention. Setting ``_head_world_yaw``
+    places the head at that world yaw (no roll or pitch).
+    """
 
     def __init__(self, body_yaw: float = 0.0, head_world_yaw: float = 0.0) -> None:
         self._body_yaw = body_yaw
         self._head_world_yaw = head_world_yaw
         self.calls: list[dict] = []
 
+    @property
+    def _head_world_yaw(self) -> float:
+        return math.atan2(self._head[1][0], self._head[0][0])
+
+    @_head_world_yaw.setter
+    def _head_world_yaw(self, yaw: float) -> None:
+        c, s = math.cos(yaw), math.sin(yaw)
+        self._head = [[c, -s, 0.0, 0.0], [s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+
     def get_current_head_pose(self):
-        c, s = math.cos(self._head_world_yaw), math.sin(self._head_world_yaw)
-        return [[c, -s, 0.0, 0.0], [s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+        return [list(row) for row in self._head]
 
     def get_current_joint_positions(self):
         # [body_yaw, *stewart_legs] — the SDK's own fk() reads index 0 as body_yaw.
@@ -93,6 +112,10 @@ class _FakeMini:
 
     def goto_target(self, **kwargs):
         self.calls.append(kwargs)
+        if kwargs.get("head") is not None:
+            self._head = [list(map(float, row)) for row in kwargs["head"]]
+        if kwargs.get("body_yaw") is not None:
+            self._body_yaw = float(kwargs["body_yaw"])
 
 
 @pytest.fixture
@@ -108,13 +131,14 @@ def controller() -> tuple[ReachyMiniController, _FakeMini]:
     ctl._divergence_last_warn = 0.0
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
+    prepare_controller(ctl)
     return ctl, fake
 
 
 def test_body_yaw_alone_still_ships_a_head_matrix(controller):
     """THE invariant: a body-only command must NOT pass head=None."""
     ctl, fake = controller
-    assert ctl.goto_target(MotionTarget(body_yaw=0.9)) is True
+    assert ctl.goto_target(MotionTarget(body_yaw=0.9))
     (call,) = fake.calls
     assert call["head"] is not None, (
         "head=None with body_yaw set => the daemon counter-rotates the head and the "

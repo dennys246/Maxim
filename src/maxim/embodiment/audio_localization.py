@@ -224,7 +224,8 @@ def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
         require_optional_dependency("reachy_mini", feature="Reachy Mini audio sound-localization")
         from reachy_mini import ReachyMini  # type: ignore[import-not-found]
 
-        mini = ReachyMini()
+        # automatic_body_yaw is daemon-global and the SDK defaults it on (#1499 O6, F10): pass False explicitly.
+        mini = ReachyMini(automatic_body_yaw=False)
 
     media = mini.media  # type: ignore[attr-defined]
     # Ensure the media stream is producing values for get_DoA().

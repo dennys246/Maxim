@@ -20,15 +20,19 @@ from maxim.hardware.capabilities import (
     REACHY_MINI_CAPABILITIES,
     RobotConnectionState,
 )
-from maxim.exceptions import MotionRefused
+from maxim.exceptions import InvalidConfigError, MotionRefused
 from maxim.hardware.controller import (
+    HEAD_TRANSLATION_EXTRAS,
+    MotionOutcome,
     MotionTarget,
     PixelTarget,
     RobotController,
+    clamp_finite,
     normalize_method,
     require_duration,
     require_finite,
 )
+from maxim.hardware.reachy import motion_path as mp
 from maxim.utils.logging import log_swallowed_exception
 from maxim.hardware.reachy.streams import ReachyAudioStream, ReachyVideoStream
 from maxim.hardware.streams import AudioStream, VideoStream
@@ -47,6 +51,73 @@ logger = logging.getLogger(__name__)
 # Provisional: neither the SDK nor the daemon declares an antenna limit. To be
 # replaced by the hand-measured range (requested from pulse 2026-10-26).
 ANTENNA_LIMIT_RAD = math.radians(90.0)
+
+# ── The motion-path model (#1499; docs/plans/motion_path_model.md) ────────────
+# The math (rate, neck path, split, the REST parser) is in motion_path.py; these
+# are the controller's own bounds.
+
+# goto_target and look_at_pixel wait at most this long for _motion_lock, then
+# return "motor busy" (delta N5). It bounds the WAIT only: a tool whose move
+# starts at 24 s still runs past per_tool_timeout (30 s), and its executor
+# abandons the result while the robot finishes the move. Every caller is
+# bounded, the motor thread included (it logs and drops the command). The
+# lifecycle (wake, sleep) waits without a bound; the stop fence bounds it.
+MOTION_LOCK_WAIT_S = 25.0
+# The fresh readback's overall deadline (R1). Provisional; measured on the rig
+# before release (§12 item 3). Tunnel: an auto-tunnel or a manual one
+# (connection_mode localhost_only). The reads between chunks and after the last
+# chunk get one retry (owner, 2026-10-29); the first read of a move never does.
+FRESH_READ_DEADLINE_S = 0.1
+FRESH_READ_DEADLINE_TUNNEL_S = 0.3
+_STATE_FULL_QUERY = (
+    "use_pose_matrix=true&with_head_pose=true&with_body_yaw=true&with_antenna_positions=true&with_control_mode=true"
+)
+# A retained axis whose readback is this far from the last command is refused
+# and forgotten (decision 3), and the per-chunk re-check and the final-target
+# check use the same tolerance. Provisional 5°: end-of-move lag plus a margin.
+_STASH_DIVERGENCE_REFUSE_RAD = math.radians(5.0)
+# A readback body or neck beyond its limit by more than this is impossible (R2).
+_IMPOSSIBLE_MARGIN_RAD = math.radians(5.0)
+# After an SDK timeout: settled when within 2° of the timed-out chunk, or when
+# stable within 0.5° for a full second (the move ended somewhere else).
+_SETTLED_NEAR_RAD = math.radians(2.0)
+_SETTLED_STABLE_RAD = math.radians(0.5)
+_SETTLED_STABLE_S = 1.0
+
+# Lifecycle motion (5.3, O8). Maxim composes the SDK's wake_up / goto_sleep
+# steps itself (reachy_mini.py 1.8.3), each one a clamped controller dispatch:
+# the SDK's own sleep sends the antennas to ±3.05 rad, past any measured range.
+INIT_HEAD_POSE = np.eye(4)
+SLEEP_HEAD_POSE = np.array(
+    [
+        [0.911, 0.004, 0.413, -0.021],
+        [-0.004, 1.0, -0.001, 0.001],
+        [-0.413, -0.001, 0.911, -0.044],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+)
+INIT_ANTENNAS_RAD = (-0.1745, 0.1745)
+SLEEP_ANTENNAS_RAD = (-3.05, 3.05)  # clamped to ±ANTENNA_LIMIT_RAD before dispatch
+_LIFECYCLE_DEADBAND_RAD = math.radians(2.0)
+_LIFECYCLE_RECENTRE_FLOOR_S = 2.0
+_SLEEP_VIA_INIT_RAD = 0.2  # pose-space stand-in for the SDK's 0.2 joint-space test
+_TORQUE_ON_WAIT_S = 1.0
+# After an SDK timeout, sleep waits this long for the robot to settle before it
+# refuses; wake refuses at once (owner, 2026-10-29).
+_SLEEP_SETTLE_WAIT_S = 2.0
+
+
+def _wrap(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+# What every dispatch returns while the stop latch is set (goto_sleep / disconnect until wake_up / connect).
+_STOPPED = MotionOutcome(ok=False, kind="cancelled", reason="stopped: the robot is asleep or stopping; wake it first")
+
+# A lifecycle step: (world head pose, antennas or None, duration, sound) — a move when the head is set, a sound when
+# it is None.
+_LifecycleStep = tuple[Any, "tuple[float, float] | None", float, "str | None"]
+
 
 # Canonical interpolation name (hardware.controller.normalize_method) -> the
 # SDK's InterpolationTechnique spelling. No default: an unknown name is refused,
@@ -195,18 +266,24 @@ class ReachyMiniController(RobotController):
                 docs/embodiment/reachy_mini/README.md, transport pivot.)
             ssh_user: SSH user for the tunnel (default "pollen").
             ssh_port: SSH port for the tunnel (default 22).
-            automatic_body_yaw: Whether the DAEMON may auto-rotate the body
-                to follow the head. Default ``False`` — Maxim's loops own
-                the yaw axis, and per the CLAUDE.md head-frame invariant a
-                daemon that modulates body_yaw behind the runtime rotates
-                the frame every yaw computation lives in (observed
-                2026-08-03: −25° of uncommanded body rotation put every
-                focus_on_sound aim off by up to that much with a perfect
-                sensor). The orient scripts have always disabled it
-                (Step-2 calibration); this makes the runtime match.
-                Re-enable via robots.yaml ``config: {automatic_body_yaw:
-                true}`` if the daemon behavior is explicitly wanted.
+            automatic_body_yaw: Must be ``False``; ``True`` raises
+                ``InvalidConfigError`` (#1499 O6). With it on, the daemon
+                rotates the body behind the runtime (observed 2026-08-03:
+                −25° of uncommanded body rotation put every focus_on_sound
+                aim off by up to that much with a perfect sensor), and its
+                IK moves the body itself, so no readback-based check can hold.
+                The parameter stays so that a robots.yaml
+                ``automatic_body_yaw: true`` is refused rather than silently
+                dropped by the registry's signature filter.
+
+        Raises:
+            InvalidConfigError: ``automatic_body_yaw`` is true.
         """
+        if automatic_body_yaw:
+            raise InvalidConfigError(
+                "automatic_body_yaw: true is not supported: the daemon would rotate the body behind Maxim's "
+                "motion checks (#1499). Remove it from robots.yaml."
+            )
         super().__init__(robot_id or robot_name)
         self._robot_name = robot_name
         self._media_backend = media_backend
@@ -215,7 +292,7 @@ class ReachyMiniController(RobotController):
         self._tunnel = tunnel
         self._ssh_user = ssh_user
         self._ssh_port = ssh_port
-        self._automatic_body_yaw = bool(automatic_body_yaw)
+        self._automatic_body_yaw = False
         self._tunnel_proc: subprocess.Popen | None = None
         self._mini: Any = None  # ReachyMini SDK instance
         self._video_stream: ReachyVideoStream | None = None
@@ -239,15 +316,33 @@ class ReachyMiniController(RobotController):
         self.last_clamped_axes: tuple[str, ...] = ()
         # Last COMMANDED value per axis, as dispatched (post-clamp). Keys:
         # "head_roll" / "head_pitch" / "head_rel_yaw" (body-relative) /
-        # "body_yaw". goto_target fills UNSPECIFIED axes from here, never
-        # from the live readback — see the F1 ratchet note in
-        # _goto_target_locked. Mutated only under _motion_lock; cleared by
-        # out-of-band motion (look_at_pixel / wake_up / goto_sleep) and
-        # disconnect via _forget_commanded so the next fill-in re-seeds
-        # from the readback once.
+        # "body_yaw". goto_target fills UNSPECIFIED head axes from here, never
+        # from the live readback (the F1 ratchet, see _compose). The body
+        # stash is only checked for divergence (#1499 R1). Mutated only
+        # under _motion_lock; cleared on disconnect, and per axis when it
+        # diverges, so the next fill-in re-seeds from the readback once.
         self._last_commanded: dict[str, float] = {}
         # Throttle for the achieved-vs-commanded divergence WARNING.
         self._divergence_last_warn: float = 0.0
+        self._init_motion_state()
+
+    def _init_motion_state(self) -> None:
+        """The #1499 dispatch state (also called by test fakes that build the controller without connecting)."""
+        # The abort generation (5.1 stop fence): _stop() (sleep, disconnect) and
+        # request_abort() increment it, under _abort_lock.
+        self._abort_lock = threading.Lock()
+        self._abort_gen = 0
+        # Set after an SDK timeout: (timed-out chunk, stability anchor, anchor time).
+        self._unsettled: tuple[mp.Pose, mp.Pose | None, float | None] | None = None
+        # True once set_automatic_body_yaw(False) has been asserted on this handle (O6).
+        self._auto_yaw_asserted = False
+        # The stop latch (owner, 2026-10-29): set by goto_sleep and disconnect.
+        # While set, goto_target and look_at_pixel refuse, so a head or body
+        # command that starts after a stop never moves the robot, and the robot
+        # reports is_awake=False. Only a wake that SUCCEEDS clears it; connect
+        # clears it only when disconnect, not a sleep, set it (_stop_by_sleep).
+        self._stop_latched = False
+        self._stop_by_sleep = False
 
     @property
     def robot_type(self) -> str:
@@ -486,10 +581,13 @@ class ReachyMiniController(RobotController):
                 connection_mode=effective_mode,
                 media_backend=self._media_backend,
                 timeout=timeout,
-                # Maxim owns the yaw axis (head-frame invariant): stop the
+                # Maxim owns the yaw axis (head-frame invariant, O6): stop the
                 # daemon from rotating the body behind the runtime.
-                automatic_body_yaw=self._automatic_body_yaw,
+                automatic_body_yaw=False,
             )
+            self._assert_auto_yaw_off()
+            self._probe_state_shape()
+            self._clear_latch_after_connect()
 
             # Create stream wrappers — but only for devices that exist.
             # Under media_backend="no_media" the SDK's media manager has
@@ -554,6 +652,11 @@ class ReachyMiniController(RobotController):
 
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
+        # Latch (nothing new starts; connect clears it unless a sleep set it) and the stop
+        # fence (5.1: a split in progress ends at its next chunk), as one step.
+        self._stop(by_sleep=False)
+        self._unsettled = None  # a reconnect starts from a fresh read (§12 item 18)
+        self._auto_yaw_asserted = False
         self._stop_ssh_tunnel()
         if self._mini is None:
             return
@@ -659,213 +762,425 @@ class ReachyMiniController(RobotController):
                 for axis in axes:
                     self._last_commanded.pop(axis, None)
 
-    def goto_target(self, target: MotionTarget) -> bool:
-        """Move robot to target pose.
+    def request_abort(self) -> None:
+        """Stop any move in progress at its next chunk boundary, without latching (#1499 5.1, the stop fence).
+
+        Increments the abort generation. A dispatch records the generation
+        before it waits for the lock and checks it before every chunk, so a
+        dispatch waiting behind a stop, or a split that is mid-way, ends
+        ``cancelled``. ``goto_sleep`` and ``disconnect`` do not call this: they
+        use ``_stop``, which also sets the stop latch in the same locked step.
+        This is the generation-only stop, for a caller that wants the current
+        move to end but the next command to run.
+        """
+        with self._abort_lock:
+            self._abort_gen += 1
+
+    def goto_target(self, target: MotionTarget) -> MotionOutcome:
+        """Move robot to target pose (#1499: fresh readback, rate cap, neck-path split).
 
         Args:
             target: Target pose specification.
 
         Returns:
-            True if motion command accepted.
+            A ``MotionOutcome``, truthy iff the whole move completed. A refusal
+            carries its ``kind`` and ``reason`` and moves nothing.
         """
         if self._mini is None or not self.is_connected():
-            return False
-
+            return MotionOutcome.refused("error", "the robot is not connected")
+        if self._stop_latched:
+            return _STOPPED
+        gen = self._abort_gen
+        # Bounded (delta N5): a dispatch behind a long move returns "motor busy"
+        # instead of waiting without limit (the bound covers the wait only).
+        if not self._motion_lock.acquire(timeout=MOTION_LOCK_WAIT_S):
+            return MotionOutcome.refused("cancelled", "motor busy")
         try:
-            with self._motion_lock:
-                return self._goto_target_locked(target)
+            return self._goto_target_locked(target, gen=gen)
         except Exception as e:
             logger.error("Motion command failed: %s", e)
-            return False
+            return MotionOutcome.refused("error", f"motion command failed: {e}")
+        finally:
+            self._motion_lock.release()
 
-    def _goto_target_locked(self, target: MotionTarget) -> bool:
-        """Body of goto_target; runs under ``_motion_lock``.
+    def _goto_target_locked(self, target: MotionTarget, *, gen: int, start: mp.Pose | None = None) -> MotionOutcome:
+        """Body of goto_target; runs under ``_motion_lock``. Phases (5.1): read, divergence, compose, then move.
 
-        The lock spans get_current_pose() → head-matrix composition → SDK
-        dispatch so overlapping callers cannot compose against a body yaw
-        that another call is concurrently changing (TOCTOU on live
-        kinematic state).
+        THE HEAD-FRAME RULE (CLAUDE.md invariant). The SDK's head pose is WORLD
+        frame and sits above body_yaw in the kinematic chain: ``head=None``
+        counter-rotates the head while the body turns, and a body-relative yaw
+        sent as world pins the head at the wrong angle. So every dispatch ships a
+        world head matrix composed as ``Rz(body) · R_rel``.
         """
-        # Build head target. SDK >= 1.5 goto_target(head=...) requires a
-        # 4x4 pose MATRIX (the zenoh-era (roll, pitch, yaw) tuple would be
-        # flatten()ed to 3 values where the daemon expects 16). Compose
-        # the pose from euler targets via the SDK's own helper.
-        #
-        # THE HEAD-FRAME RULE (CLAUDE.md invariant, 2026-07-16). The head
-        # pose is in the WORLD frame and sits ABOVE body_yaw in the
-        # kinematic chain, so:
-        #   * head=None does NOT mean "leave the head alone" — the daemon
-        #     re-solves IK against the RETAINED world head target, which
-        #     COUNTER-ROTATES the head while the body turns under it. The
-        #     head-mounted camera and mic array then barely move (measured:
-        #     0.32 rad of sensor rotation for a 0.9 rad body command).
-        #   * a head yaw expressed as if body-relative is also wrong: the
-        #     pose is world, so head_yaw=0.1 with body_yaw=0.5 pins the head
-        #     at world 0.1 instead of 0.6.
-        # Both were live here until 2026-07-16. Pollen's prescription:
-        # "to make the head follow the body, ship a `head` matrix in the same
-        # call with the body delta added to the head yaw."
-        clamped_axes: list[str] = []
-        body_yaw_target = target.body_yaw
-        if body_yaw_target is not None:
-            body_yaw_target = self._clamp(body_yaw_target, self._MAX_BODY_YAW_RAD, "body_yaw", clamped_axes)
-        head_requested = any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw])
-
-        head_target = None
-        roll = pitch = relative_yaw = 0.0
-        if head_requested or body_yaw_target is not None:
-            from reachy_mini.utils import create_head_pose
-
-            # Fill UNSPECIFIED axes from the last COMMANDED value, never the
-            # live readback (F1 ratchet fix, H1 2026-08-08). Filling from the
-            # readback is positive feedback under any achieved-vs-commanded
-            # bias: each command re-targets the previous ACHIEVED value, so
-            # the bias integrates — ~20 yaw-only probe commands ratcheted
-            # roll +~1.3°/command up to +38° during H1 (see the F1 finding in
-            # docs/experiments/protocols/h1_healthy_hardware_doa_preregistration.md).
-            # The readback SEEDS an axis only when it has never been
-            # commanded through here (or after out-of-band motion cleared
-            # the stash) — a one-shot read has no feedback loop.
-            stash = self._last_commanded
-            current = self.get_current_pose()
-            # Refuse to guess (executor-lens review fold, mirroring
-            # ReachyOrientMotorBackend's E2 rule): SEEDING the retained
-            # relative yaw needs both the world head yaw and the body yaw
-            # from the readback. Treating an unreadable one as 0 commands a
-            # swing of up to the full body angle — legal under the clamp,
-            # violent in practice. With a stashed commanded yaw the readback
-            # is not needed for the yaw seed, so an unreadable pose no
-            # longer blocks — but see the body-seed refusal just below.
-            if (
-                target.head_yaw is None
-                and "head_rel_yaw" not in stash
-                and ("yaw" not in current or "body_yaw" not in current)
-            ):
-                logger.error(
-                    "goto_target: current pose unreadable (have keys %s) — refusing to guess "
-                    "the retained head yaw; re-issue with an explicit head_yaw or retry",
-                    sorted(current.keys()),
-                )
-                return False
-            # Same rule for the BODY seed (two-lens fold, cross-confirmed):
-            # the world-yaw composition needs a body angle. Guessing 0 when
-            # the body was never commanded AND the readback is dark ships a
-            # world head yaw that can demand a neck angle off by the full
-            # body rotation — the relative-frame clamp cannot catch it
-            # because it runs in the BELIEVED frame. (Head-only dispatches
-            # deliberately do not stash the body, so this seed recurs until
-            # a body command or a successful readback.)
-            if body_yaw_target is None and "body_yaw" not in stash and "body_yaw" not in current:
-                logger.error(
-                    "goto_target: body yaw unreadable (have keys %s) and never commanded — "
-                    "refusing to guess the body angle for head composition; re-issue with an "
-                    "explicit body_yaw or retry",
-                    sorted(current.keys()),
-                )
-                return False
-            # get_current_pose() reports head yaw in the WORLD frame (the
-            # SDK's fk() folds body_yaw in), so the head's angle RELATIVE to
-            # the body is (world head yaw - body yaw). Callers naturally mean
-            # "point the head there relative to the body", so re-add the
-            # TARGET body yaw to keep the head riding along.
-            # target.head_yaw is interpreted BODY-RELATIVE (what callers mean by
-            # "look left"); current["yaw"] is WORLD. Convert, then re-add the
-            # target body yaw so the head ends up riding along with the body.
-            if target.head_yaw is not None:
-                relative_yaw = target.head_yaw
-            elif "head_rel_yaw" in stash:
-                relative_yaw = stash["head_rel_yaw"]
-            else:
-                relative_yaw = require_finite("readback yaw", current["yaw"]) - require_finite(
-                    "readback body_yaw", current["body_yaw"]
-                )
-            # Body fill-in for the world-yaw composition: last commanded
-            # body when one exists. A never-commanded body reads back its
-            # actual angle instead — head-only dispatches don't move the
-            # body, so there is no command→achieve→re-command loop there.
-            # (Under automatic_body_yaw the daemon moves the body behind
-            # the runtime, so the body is never stashed — see the stash
-            # write below — and this branch always reads back.)
-            if body_yaw_target is not None:
-                target_body = body_yaw_target
-            elif "body_yaw" in stash:
-                target_body = stash["body_yaw"]
-            else:
-                # A NaN readback is refused (#1496); a MISSING one keeps the
-                # historical 0.0 fill-in, which #1499 owns.
-                target_body = require_finite("readback body_yaw", current.get("body_yaw", 0.0) or 0.0)
-            self._warn_commanded_vs_achieved(stash, current)
-            # Clamp in the BODY-RELATIVE frame — that is where the physical
-            # 65° neck constraint lives. Clamping the world-frame sum instead
-            # would spuriously limit a legal head pose whenever the body is
-            # turned, and miss an illegal one whenever body and head offsets
-            # cancel.
-            relative_yaw = self._clamp(
-                relative_yaw, self._MAX_HEAD_REL_YAW_RAD, "head_yaw (body-relative)", clamped_axes
-            )
-            roll = self._clamp(
-                (
-                    target.head_roll
-                    if target.head_roll is not None
-                    else stash.get("head_roll", current.get("roll", 0.0))
-                ),
-                self._MAX_HEAD_ROLL_RAD,
-                "head_roll",
-                clamped_axes,
-            )
-            pitch = self._clamp(
-                (
-                    target.head_pitch
-                    if target.head_pitch is not None
-                    else stash.get("head_pitch", current.get("pitch", 0.0))
-                ),
-                self._MAX_HEAD_PITCH_RAD,
-                "head_pitch",
-                clamped_axes,
-            )
-            head_target = create_head_pose(
-                roll=roll,
-                pitch=pitch,
-                yaw=relative_yaw + target_body,
-                degrees=False,
-            )
-
-        duration, sdk_method = self._last_mile(target, head_target, body_yaw_target)
-        self.last_clamped_axes = tuple(clamped_axes)  # after the last mile: a refusal leaves it as it was
-        self._mini.goto_target(
-            head=head_target,
-            body_yaw=body_yaw_target,
-            duration=duration,
-            method=sdk_method,
+        if self._abort_gen != gen:
+            return MotionOutcome.refused("cancelled", "a stop was requested before the move started")
+        if self._stop_latched:
+            return _STOPPED
+        try:
+            if start is None:
+                start = self._fresh_readback()
+            self._require_settled(start)
+            self._check_divergence(target, start)
+            clamped: list[str] = []
+            composed = self._compose(target, start, clamped)
+        except MotionRefused as e:
+            logger.warning("goto_target refused (%s): %s", e.kind, e.reason)
+            return MotionOutcome.refused(e.kind, e.reason)
+        if composed is None:
+            return MotionOutcome(ok=True, reason="nothing to move", duration_s=0.0)
+        pose, axes, body_commanded = composed
+        return self._run_move(
+            start,
+            pose,
+            requested=target.duration,
+            method=target.method,
+            policy=target.duration_policy,
+            gen=gen,
+            body_commanded=body_commanded,
+            final_axes=axes,
+            clamped=clamped,
+            translation_body_frame=self._body_frame_translation(target),
         )
 
-        # Stash AFTER the dispatch returns (fail-fast-before-mutation): a
-        # raised dispatch must not leave the stash asserting values that
-        # never shipped. Post-clamp values — what was actually commanded.
-        if head_target is not None:
-            stash = self._last_commanded
-            stash["head_roll"] = roll
-            stash["head_pitch"] = pitch
-            stash["head_rel_yaw"] = relative_yaw
-        # Under automatic_body_yaw the daemon rotates the body behind the
-        # runtime with no invalidation hook, so a stashed body value would
-        # go stale without bound (two-lens fold): never stash the body in
-        # that mode — the fill-in above then always reads the body back.
-        if body_yaw_target is not None and not self._automatic_body_yaw:
-            self._last_commanded["body_yaw"] = body_yaw_target
+    # ── 5.1 phase 1: the fresh readback (R1, O3) ──────────────────────────────
 
-        return True
+    def _get_state_full(self) -> Any:
+        """``GET /api/state/full`` from the daemon this controller connected to; JSON or ``MotionRefused``.
 
-    def _last_mile(self, target: MotionTarget, head_target: Any, body_yaw_target: float | None) -> tuple[float, str]:
-        """Re-check every value handed to the SDK, immediately before dispatch (#1496).
-
-        ``MotionTarget`` is mutable, so a post-construction write bypasses its
-        ``__post_init__``. Also refuses a non-finite present pose (defence in
-        depth: over the WS transport the client never sees one). Raises
-        ``MotionRefused``; returns the checked duration and SDK method name.
+        Through ``maxim_http.fetch_url`` (the ``_daemon_status`` pattern) with a
+        private address policy and a short per-phase timeout whose phases sum to
+        the deadline. The deadline is checked again on return. One read, no
+        retry: ``_fresh_readback(retry=True)`` owns the single retry.
         """
-        return check_sdk_command(
-            self._mini, duration=target.duration, head=head_target, body_yaw=body_yaw_target, method=target.method
+        from maxim.utils import http as maxim_http
+
+        host = self._resolved_host
+        if not host:
+            raise MotionRefused("reference", "no daemon host to read the pose from")
+        tunnelled = self._tunnel or self._connection_mode == "localhost_only"
+        deadline = FRESH_READ_DEADLINE_TUNNEL_S if tunnelled else FRESH_READ_DEADLINE_S
+        phase = deadline / 3.0
+        started = time.monotonic()
+        try:
+            resp = maxim_http.fetch_url(
+                f"http://{host}:8000/api/state/full?{_STATE_FULL_QUERY}",
+                timeout=maxim_http.TimeoutPolicy(connect_s=phase, read_s=phase, total_s=phase),
+                address_policy="private",
+            )
+        except Exception as e:  # noqa: BLE001 - any transport failure is a missing reference
+            raise MotionRefused("reference", f"fresh readback failed: {e}") from e
+        elapsed = time.monotonic() - started
+        logger.debug("fresh readback: %.1f ms (deadline %.0f ms)", elapsed * 1000, deadline * 1000)
+        if elapsed > deadline:
+            raise MotionRefused(
+                "reference", f"fresh readback took {elapsed * 1000:.0f} ms (deadline {deadline * 1000:.0f} ms)"
+            )
+        if resp.status != 200:
+            raise MotionRefused("reference", f"fresh readback returned HTTP {resp.status}")
+        try:
+            return resp.json()
+        except ValueError as e:
+            raise MotionRefused("reference", f"fresh readback is not JSON: {e}") from e
+
+    def _fresh_readback(self, *, retry: bool = False) -> mp.Pose:
+        """The pose every check starts from (R1, R2), or ``MotionRefused("reference")``.
+
+        ``retry``: one more read when ``_get_state_full`` fails (the transport, the
+        deadline, a non-200 status, a body that is not JSON, a missing host) on
+        the reads between chunks and after the last chunk. A read that parses but
+        says torque-off or impossible, or has the wrong shape, is never retried.
+        """
+        if self._automatic_body_yaw or not self._auto_yaw_asserted:
+            # O6: with the daemon moving the body behind us, no readback-based check describes what the motors do.
+            raise MotionRefused(
+                "reference", "automatic_body_yaw is not asserted off, so the daemon may rotate the body"
+            )
+        try:
+            data = self._get_state_full()
+        except MotionRefused as first:
+            if not retry:
+                raise
+            logger.debug("fresh readback failed (%s); retrying once", first.reason)
+            data = self._get_state_full()
+        pose, control_mode = mp.parse_full_state(data)
+        return self._checked_pose(pose, control_mode)
+
+    def _checked_pose(self, pose: mp.Pose, control_mode: str) -> mp.Pose:
+        """A parsed readback that moves may start from: torque on and nothing impossible (R1, R2)."""
+        if control_mode != "enabled":
+            raise MotionRefused("reference", f"motor torque is not enabled (control_mode={control_mode})")
+        # R2: an impossible body or neck value is refused (world yaw is never
+        # bounded: body 160° plus neck 65° legitimately reaches 225°).
+        if abs(pose.body) > self._MAX_BODY_YAW_RAD + _IMPOSSIBLE_MARGIN_RAD:
+            raise MotionRefused("reference", f"fresh readback body_yaw {math.degrees(pose.body):.0f}° is impossible")
+        twist = mp.neck_twist(pose.head, pose.body)
+        if abs(twist) > self._MAX_HEAD_REL_YAW_RAD + _IMPOSSIBLE_MARGIN_RAD:
+            raise MotionRefused("reference", f"fresh readback neck twist {math.degrees(twist):.0f}° is impossible")
+        return pose
+
+    def _require_settled(self, start: mp.Pose) -> None:
+        """After an SDK timeout the daemon may still be moving: refuse until it has settled (5.1, delta N4)."""
+        unsettled = self._unsettled
+        if unsettled is None:
+            return
+        target, anchor, anchor_t = unsettled
+        if self._pose_distance(start, target) <= _SETTLED_NEAR_RAD:
+            self._unsettled = None
+            return
+        now = time.monotonic()
+        if anchor is not None and anchor_t is not None and self._pose_distance(start, anchor) <= _SETTLED_STABLE_RAD:
+            if now - anchor_t >= _SETTLED_STABLE_S:
+                self._unsettled = None  # the move ended somewhere else
+                return
+        else:
+            self._unsettled = (target, start, now)
+        raise MotionRefused("reference", "the last move timed out and the robot has not settled yet")
+
+    @staticmethod
+    def _pose_distance(a: mp.Pose, b: mp.Pose) -> float:
+        """The largest per-axis difference between two poses, radians (body, world head geodesic, antennas)."""
+        dist = max(abs(a.body - b.body), mp.geodesic(a.head, b.head))
+        if a.antennas is not None and b.antennas is not None:
+            dist = max(dist, *(abs(x - y) for x, y in zip(a.antennas, b.antennas, strict=True)))
+        return dist
+
+    # ── 5.1 phase 2: divergence (decision 3) ─────────────────────────────────
+
+    def _check_divergence(self, target: MotionTarget, start: mp.Pose) -> None:
+        """Refuse when a retained axis (or the body stash) disagrees with the readback; forget that axis.
+
+        Retained axes are the head axes this command leaves unspecified, which
+        the stash fills. Relative yaw is compared through R_rel (R3).
+        """
+        stash = self._last_commanded
+        roll, pitch, rel = mp.euler_xyz(mp.relative_rotation(start.head, start.body))
+        checks = []
+        if target.head_roll is None and "head_roll" in stash:
+            checks.append(("head_roll", stash["head_roll"], roll))
+        if target.head_pitch is None and "head_pitch" in stash:
+            checks.append(("head_pitch", stash["head_pitch"], pitch))
+        if target.head_yaw is None and "head_rel_yaw" in stash:
+            checks.append(("head_rel_yaw", stash["head_rel_yaw"], rel))
+        if "body_yaw" in stash:
+            checks.append(("body_yaw", stash["body_yaw"], start.body))
+        self._warn_commanded_vs_achieved(checks)
+        diverged = [
+            f"{axis} {math.degrees(_wrap(commanded - achieved)):+.1f}°"
+            for axis, commanded, achieved in checks
+            if abs(_wrap(commanded - achieved)) > _STASH_DIVERGENCE_REFUSE_RAD
+        ]
+        if diverged:
+            self._forget_commanded(*(d.split(" ", 1)[0] for d in diverged))
+            raise MotionRefused(
+                "reference",
+                f"the readback diverges from the last command ({', '.join(diverged)}); "
+                "the stale axis is forgotten, so the next command reads it back",
+            )
+
+    # ── 5.1 phase 3: compose against the readback body and the stash-filled head axes ──
+
+    def _compose(
+        self, target: MotionTarget, start: mp.Pose, clamped: list[str]
+    ) -> tuple[mp.Pose, tuple[float, float, float], bool] | None:
+        """(target pose, (roll, pitch, rel_yaw), body commanded?) — None when nothing is asked to move.
+
+        Unspecified head axes fill from the last COMMANDED value, never the
+        readback (the H1 F1 ratchet: filling from the readback integrates any
+        achieved-vs-commanded bias). The readback seeds an axis only when the
+        stash has none. The body composes against the READBACK, never the stash
+        (R1): the stash is only checked for divergence.
+        """
+        head_requested = any(x is not None for x in (target.head_roll, target.head_pitch, target.head_yaw))
+        if not head_requested and target.body_yaw is None:
+            return None
+        stash = self._last_commanded
+        roll0, pitch0, rel0 = mp.euler_xyz(mp.relative_rotation(start.head, start.body))
+        body_commanded = target.body_yaw is not None
+        body = (
+            self._clamp(target.body_yaw, self._MAX_BODY_YAW_RAD, "body_yaw", clamped)
+            if target.body_yaw is not None
+            else start.body
+        )
+
+        def pick(value: float | None, key: str, readback: float) -> float:
+            if value is not None:
+                return value
+            return stash.get(key, readback)
+
+        # Clamp in the BODY-RELATIVE frame, where the 65° neck limit lives.
+        rel = self._clamp(
+            pick(target.head_yaw, "head_rel_yaw", rel0), self._MAX_HEAD_REL_YAW_RAD, "head_yaw (body-relative)", clamped
+        )
+        roll = self._clamp(pick(target.head_roll, "head_roll", roll0), self._MAX_HEAD_ROLL_RAD, "head_roll", clamped)
+        pitch = self._clamp(
+            pick(target.head_pitch, "head_pitch", pitch0), self._MAX_HEAD_PITCH_RAD, "head_pitch", clamped
+        )
+        translation = self._body_frame_translation(target)
+        world_t = None if translation is None else mp.rz(body) @ translation
+        return mp.Pose(mp.compose_head(roll, pitch, rel, body, world_t), body), (roll, pitch, rel), body_commanded
+
+    @staticmethod
+    def _body_frame_translation(target: MotionTarget) -> np.ndarray | None:
+        """The head translation a caller asked for, body frame, metres (``extras`` ``head_x/y/z``), or None.
+
+        ``motion/movement.py::move_head`` carries its mm-scale nudges here when it
+        delegates (5.4). Without them the head composes at zero translation, as
+        it always has.
+        """
+        if not any(key in target.extras for key in HEAD_TRANSLATION_EXTRAS):
+            return None
+        return np.array([float(target.extras.get(key, 0.0)) for key in HEAD_TRANSLATION_EXTRAS])
+
+    # ── 5.1 phases 4 and 5: plan every chunk, then move them one by one ───────
+
+    def _plan(
+        self,
+        start: mp.Pose,
+        pose: mp.Pose,
+        *,
+        requested: float,
+        method: str,
+        policy: str,
+        translation_body_frame: Any = None,
+    ) -> list[tuple[mp.Pose, float]]:
+        """Every chunk and its duration, all checked before anything moves (R4, R5); or ``MotionRefused``."""
+        if policy == "exact":
+            # An explicit duration is never split: rate first (the whole move), then the path as one dispatch.
+            duration = mp.resolve_duration(requested, mp.move_delta_deg(start, pose), method, "exact")
+            sigma = mp.sigma_deg(start, pose)
+            ok, worst = mp.neck_path_ok(start, pose)
+            if sigma > mp.PATH_SIGMA_PREFILTER_DEG or not ok:
+                raise MotionRefused(
+                    "path",
+                    f"this move would sweep the neck to {worst:.0f}° mid-path (world-yaw swing {sigma:.0f}°); "
+                    "drop the explicit duration so it can be split, or move in smaller steps",
+                )
+            return [(pose, duration)]
+        chunks = mp.plan_chunks(start, pose, translation_body_frame=translation_body_frame)
+        shares = [requested] if len(chunks) == 1 else mp.share_durations(requested, start, chunks)
+        planned = []
+        previous = start
+        for chunk, share in zip(chunks, shares, strict=True):
+            planned.append((chunk, mp.resolve_duration(share, mp.move_delta_deg(previous, chunk), method, "at_least")))
+            previous = chunk
+        return planned
+
+    def _run_move(
+        self,
+        start: mp.Pose,
+        pose: mp.Pose,
+        *,
+        requested: float,
+        method: str,
+        policy: str,
+        gen: int,
+        body_commanded: bool,
+        final_axes: tuple[float, float, float] | None = None,
+        clamped: list[str] | None = None,
+        translation_body_frame: Any = None,
+    ) -> MotionOutcome:
+        """Plan, then dispatch each chunk: abort check, re-check, last mile, SDK call, stash write (5.1)."""
+        try:
+            planned = self._plan(
+                start,
+                pose,
+                requested=requested,
+                method=method,
+                policy=policy,
+                translation_body_frame=translation_body_frame,
+            )
+        except MotionRefused as e:
+            logger.warning("goto_target refused (%s): %s", e.kind, e.reason)
+            return MotionOutcome.refused(e.kind, e.reason)
+        n = len(planned)
+        done = 0
+        total = 0.0
+        previous = start
+        for k, (chunk, duration) in enumerate(planned, start=1):
+            if self._abort_gen != gen:
+                return MotionOutcome(
+                    ok=False,
+                    kind="cancelled",
+                    reason="stopped before chunk %d/%d" % (k, n),
+                    duration_s=total,
+                    chunks_planned=n,
+                    chunks_done=done,
+                )
+            try:
+                if k > 1:
+                    self._recheck_before_chunk(previous, chunk)
+                body_yaw = chunk.body if body_commanded else None
+                checked, sdk_m = check_sdk_command(
+                    self._mini,
+                    duration=duration,
+                    head=chunk.head,
+                    body_yaw=body_yaw,
+                    antennas=chunk.antennas,
+                    method=method,
+                )
+                if k == 1 and clamped is not None:
+                    self.last_clamped_axes = tuple(clamped)  # after the last mile: a refusal leaves it as it was
+                kwargs: dict[str, Any] = {
+                    "head": chunk.head,
+                    "body_yaw": body_yaw,
+                    "duration": checked,
+                    "method": sdk_m,
+                }
+                if chunk.antennas is not None:
+                    kwargs["antennas"] = list(chunk.antennas)
+                self._mini.goto_target(**kwargs)
+            except MotionRefused as e:
+                if k == 1:
+                    logger.warning("goto_target refused (%s): %s", e.kind, e.reason)
+                    return MotionOutcome.refused(e.kind, e.reason, chunks_planned=n)
+                return self._partial(f"chunk {k}/{n}: {e.reason}", total, n, done)
+            except TimeoutError as e:
+                # F4: the daemon may still be moving. Refuse until it settles.
+                self._unsettled = (chunk, None, None)
+                return self._partial(f"chunk {k}/{n} timed out ({e}); waiting for the robot to settle", total, n, done)
+            except Exception as e:
+                if k == 1:
+                    raise
+                return self._partial(f"chunk {k}/{n} failed: {e}", total, n, done)
+            # Stash AFTER the dispatch returns (fail-fast-before-mutation), describing this chunk.
+            axes = (
+                final_axes
+                if k == n and final_axes is not None
+                else mp.euler_xyz(mp.relative_rotation(chunk.head, chunk.body))
+            )
+            self._last_commanded.update({"head_roll": axes[0], "head_pitch": axes[1], "head_rel_yaw": axes[2]})
+            if body_commanded:
+                self._last_commanded["body_yaw"] = chunk.body
+            done = k
+            total += checked
+            previous = chunk
+        try:
+            final = self._fresh_readback(retry=True)
+        except MotionRefused as e:
+            return self._partial(f"the final readback failed: {e.reason}", total, n, done)
+        if self._pose_distance(final, previous) > _STASH_DIVERGENCE_REFUSE_RAD:
+            return self._partial("the robot did not reach the target (final readback)", total, n, done)
+        return MotionOutcome(ok=True, duration_s=total, chunks_planned=n, chunks_done=done)
+
+    def _recheck_before_chunk(self, previous: mp.Pose, chunk: mp.Pose) -> None:
+        """Before chunk k > 1: the robot must be where chunk k − 1 went, and chunk k's path from there must pass (R5).
+
+        Catches a chunk the daemon dropped silently while the client reported
+        it complete (F3): without this, the next chunk would run from the old
+        start as one oversized move.
+        """
+        read = self._fresh_readback(retry=True)
+        if self._pose_distance(read, previous) > _STASH_DIVERGENCE_REFUSE_RAD:
+            raise MotionRefused("reference", "the previous chunk did not arrive (the daemon may have dropped it)")
+        ok, worst = mp.neck_path_ok(read, chunk)
+        if not ok:
+            raise MotionRefused("path", f"from the re-read pose the next chunk would sweep the neck to {worst:.0f}°")
+
+    @staticmethod
+    def _partial(reason: str, total: float, planned: int, done: int) -> MotionOutcome:
+        logger.warning("goto_target stopped after %d/%d chunks: %s", done, planned, reason)
+        return MotionOutcome(
+            ok=False, kind="partial", reason=reason, duration_s=total, chunks_planned=planned, chunks_done=done
         )
 
     # Achieved-vs-commanded divergence threshold + throttle for the
@@ -874,31 +1189,18 @@ class ReachyMiniController(RobotController):
     _DIVERGENCE_WARN_RAD = 0.0872664625997  # 5°
     _DIVERGENCE_WARN_INTERVAL_S = 30.0
 
-    def _warn_commanded_vs_achieved(self, stash: dict[str, float], current: dict[str, float]) -> None:
-        """Rate-limited WARNING when the readback diverges from the stash.
+    def _warn_commanded_vs_achieved(self, checks: list[tuple[str, float, float]]) -> None:
+        """Rate-limited WARNING when the readback diverges from the stash (progressive-degradation early warning, H1 F1).
 
-        The stash deliberately stops the readback from steering commands
-        (the F1 ratchet), but that also silences the signal that exposed
-        F1 in the first place: a persistently mis-achieving actuator. This
-        is the early-warning channel for progressive motor degradation —
-        compare what we last commanded against what the hardware reports,
-        per axis, and warn (throttled) past 5°. Purely observational;
-        never feeds back into any command.
+        Observational: compare what we last commanded against what the
+        hardware reports, per retained axis, and warn (throttled) past 5°. The
+        refusal itself is ``_check_divergence``'s.
         """
-        deltas: list[str] = []
-        for key, achieved in (
-            ("head_roll", current.get("roll")),
-            ("head_pitch", current.get("pitch")),
-            ("body_yaw", current.get("body_yaw")),
-        ):
-            if key in stash and achieved is not None:
-                d = stash[key] - achieved
-                if abs(d) > self._DIVERGENCE_WARN_RAD:
-                    deltas.append(f"{key} {math.degrees(d):+.1f}deg")
-        if "head_rel_yaw" in stash and "yaw" in current and "body_yaw" in current:
-            d = stash["head_rel_yaw"] - (current["yaw"] - current["body_yaw"])
-            if abs(d) > self._DIVERGENCE_WARN_RAD:
-                deltas.append(f"head_rel_yaw {math.degrees(d):+.1f}deg")
+        deltas = [
+            f"{axis} {math.degrees(_wrap(commanded - achieved)):+.1f}deg"
+            for axis, commanded, achieved in checks
+            if abs(_wrap(commanded - achieved)) > self._DIVERGENCE_WARN_RAD
+        ]
         if not deltas:
             return
         now = time.time()
@@ -915,59 +1217,53 @@ class ReachyMiniController(RobotController):
     def note_external_head_motion(self) -> None:
         """Tell the controller the head moved outside its dispatch paths.
 
-        Public invalidation hook for sanctioned raw-SDK head movers
-        (``motion/movement.py::move_head``, Selfy's raw ``look_at_image``
-        enqueue) and for scripts that drive the raw SDK and hand control
-        back. Drops the retained head axes so the next ``goto_target``
-        fill-in re-seeds them from the readback once — without this, the
-        next controller command would snap the head back to the stale
-        stashed pose. The body stash is kept: raw head movers do not
-        command the body axis.
+        For scripts that drive the raw SDK and hand control back. Drops the
+        retained head axes so the next ``goto_target`` fills them from the
+        readback once, instead of snapping the head back to a stale stashed
+        pose. (The body is never composed from the stash, R1.)
         """
         self._forget_commanded("head_roll", "head_pitch", "head_rel_yaw")
 
-    def look_at_pixel(self, target: PixelTarget) -> bool:
-        """Move head to look at a pixel coordinate.
+    def look_at_pixel(self, target: PixelTarget) -> MotionOutcome:
+        """Turn the head to look at a pixel, head only: the body never moves (#1499 5.2, F1).
 
-        Args:
-            target: Target pixel coordinates.
-
-        Returns:
-            True if motion command accepted.
+        The SDK's ``look_at_image(perform_movement=True)`` sends the body to 0.
+        Instead the SDK only computes the world pose (``perform_movement=False``),
+        the controller takes it relative to the fresh readback's body and
+        dispatches it through the same path as ``goto_target``.
         """
         if self._mini is None or not self.is_connected():
-            return False
-
+            return MotionOutcome.refused("error", "the robot is not connected")
+        if self._stop_latched:
+            return _STOPPED
+        gen = self._abort_gen
+        if not self._motion_lock.acquire(timeout=MOTION_LOCK_WAIT_S):
+            return MotionOutcome.refused("cancelled", "motor busy")
         try:
-            # Same lock as goto_target: a look_at in flight changing the head
-            # pose between another caller's pose read and its dispatch is the
-            # same TOCTOU (clamp risk is low here — pixel→angle is
-            # FOV-bounded — but the serialization claim must be true).
-            with self._motion_lock:
-                # Last mile BEFORE the stash is touched (#1496): a duration of
-                # 0 or NaN takes the SDK's instant set_target branch.
+            try:
+                # Last mile first (#1496): PixelTarget is mutable, so a
+                # post-construction 0 or NaN duration is refused here.
                 require_finite("u", target.u)
                 require_finite("v", target.v)
-                duration, _ = check_sdk_command(self._mini, duration=target.duration)
-                # look_at_image moves the head outside goto_target's stash —
-                # the retained head axes will no longer describe where the
-                # head was commanded. Forget BEFORE dispatching (two-lens
-                # fold): invalidation must be conservative in the opposite
-                # direction from population — a spurious clear costs one
-                # readback seed, a missed clear (dispatch raising after
-                # partial motion) leaves stale re-commands.
-                # (Body is untouched by look_at_image; its stash stays.)
-                self._forget_commanded("head_roll", "head_pitch", "head_rel_yaw")
-                self._mini.look_at_image(
-                    target.u,
-                    target.v,
-                    duration=duration,
-                )
-            return True
-
+                require_duration(target.duration)
+                start = self._fresh_readback()
+            except MotionRefused as e:
+                return MotionOutcome.refused(e.kind, e.reason)
+            world = self._mini.look_at_image(target.u, target.v, duration=target.duration, perform_movement=False)
+            roll, pitch, rel = mp.euler_xyz(mp.relative_rotation(np.asarray(world, dtype=float), start.body))
+            head_only = MotionTarget(
+                head_roll=roll,
+                head_pitch=pitch,
+                head_yaw=rel,
+                duration=target.duration,
+                duration_policy=target.duration_policy,
+            )
+            return self._goto_target_locked(head_only, gen=gen, start=start)
         except Exception as e:
             logger.error("Look-at command failed: %s", e)
-            return False
+            return MotionOutcome.refused("error", f"look-at failed: {e}")
+        finally:
+            self._motion_lock.release()
 
     def get_current_pose(self) -> dict[str, float]:
         """Get current joint positions.
@@ -1024,79 +1320,305 @@ class ReachyMiniController(RobotController):
     # Lifecycle
     # ─────────────────────────────────────────────────────────────────────────
 
-    def wake_up(self) -> bool:
-        """Enable motor torque, then wake the robot.
+    def _assert_auto_yaw_off(self) -> bool:
+        """Assert ``set_automatic_body_yaw(False)`` on the handle (O6); motion is refused until it succeeds.
 
-        SDK >= 1.5: ``wake_up()`` only moves + plays a sound — it does NOT
-        enable torque, and the daemon boots torque-off
-        (``--no-wake-up-on-start``). Without ``enable_motors()`` first, every
-        motion command is silently ignored while reads keep working (see
-        docs/embodiment/reachy_mini/troubleshooting.md).
+        The setting is daemon-global and has no getter, so another client (or an
+        SDK default of True on a handle Maxim did not build) can turn it on.
+        """
+        try:
+            self._mini.set_automatic_body_yaw(False)
+        except Exception as e:  # noqa: BLE001 - an SDK without the setter cannot be trusted with the body
+            logger.error(
+                "set_automatic_body_yaw(False) failed (%s): refusing motion, since the daemon may rotate the body", e
+            )
+            self._auto_yaw_asserted = False
+            return False
+        self._auto_yaw_asserted = True
+        return True
+
+    def _probe_state_shape(self) -> None:
+        """One readback at connect: an unknown ``/api/state/full`` shape is one ERROR now, not a refusal later."""
+        try:
+            mp.parse_full_state(self._get_state_full())
+        except MotionRefused as e:
+            logger.error(
+                "The daemon's GET /api/state/full could not be read or did not parse (%s; reachy-mini SDK %s): "
+                "every motion will be refused with 'reference' until it can",
+                e.reason,
+                ".".join(str(x) for x in (self._installed_sdk_version() or ("?",))),
+            )
+
+    def _wait_torque_on(self) -> bool:
+        """Poll the REST ``control_mode`` until ``enabled`` (``enable_motors`` is fire-and-forget; delta S3)."""
+        deadline = time.monotonic() + _TORQUE_ON_WAIT_S
+        while True:
+            try:
+                _, control_mode = mp.parse_full_state(self._get_state_full())
+                if control_mode == "enabled":
+                    return True
+            except MotionRefused as e:
+                logger.debug("torque-on poll: %s", e.reason)
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+    def _play_sound(self, name: str) -> None:
+        """A lifecycle sound, best-effort: a failed sound fails no step (O8)."""
+        try:
+            self._mini.media.play_sound(name)
+        except Exception as e:  # noqa: BLE001 - audio is cosmetic here; the move is what matters
+            logger.warning("lifecycle sound %s failed: %s", name, e)
+
+    def _lifecycle_step(
+        self, head: Any, antennas: tuple[float, float] | None, duration: float, *, gen: int
+    ) -> MotionOutcome:
+        """One composed lifecycle step: a world head pose at body 0, antennas clamped, through the dispatch (O8)."""
+        start = self._fresh_readback()
+        clamped = None
+        if antennas is not None:
+            clamped = (
+                clamp_finite("antenna left", antennas[0], -ANTENNA_LIMIT_RAD, ANTENNA_LIMIT_RAD),
+                clamp_finite("antenna right", antennas[1], -ANTENNA_LIMIT_RAD, ANTENNA_LIMIT_RAD),
+            )
+        target = mp.Pose(np.asarray(head, dtype=float), 0.0, clamped)
+        return self._run_move(
+            start,
+            target,
+            requested=duration,
+            method="minimum_jerk",
+            policy="at_least",
+            gen=gen,
+            body_commanded=True,
+        )
+
+    def _recentre_if_turned(self, *, gen: int) -> MotionOutcome | None:
+        """Before a lifecycle move: bring a turned body and neck to 0 first (5.3), or None when already there.
+
+        Holds the readback's roll, pitch and translation (in the body frame), so
+        the head is never lifted out of the sleep pose, with a 2 s floor shared
+        across the chunks.
+        """
+        start = self._fresh_readback()
+        twist = mp.neck_twist(start.head, start.body)
+        if abs(start.body) <= _LIFECYCLE_DEADBAND_RAD and abs(twist) <= _LIFECYCLE_DEADBAND_RAD:
+            return None
+        roll, pitch, _ = mp.euler_xyz(mp.relative_rotation(start.head, start.body))
+        held = mp.rz(-start.body) @ np.asarray(start.head, dtype=float)[:3, 3]
+        target = mp.Pose(mp.compose_head(roll, pitch, 0.0, 0.0, held), 0.0)
+        return self._run_move(
+            start,
+            target,
+            requested=_LIFECYCLE_RECENTRE_FLOOR_S,
+            method="minimum_jerk",
+            policy="at_least",
+            gen=gen,
+            body_commanded=True,
+            translation_body_frame=held,
+        )
+
+    def _await_settled(self, wait_s: float, *, gen: int) -> MotionOutcome | None:
+        """After an SDK timeout: settled now, or within ``wait_s`` (re-reading every 0.1 s), else ``MotionRefused``.
+
+        Returns None once settled; a stop during the wait ends it at once with a ``cancelled`` outcome
+        (a stop is not a refusal, so it is not raised as one).
+        """
+        deadline = time.monotonic() + wait_s
+        while True:
+            if self._abort_gen != gen:
+                return MotionOutcome.refused("cancelled", "a stop was requested while waiting for the robot to settle")
+            try:
+                self._require_settled(self._fresh_readback())
+                return None
+            except MotionRefused:
+                if time.monotonic() >= deadline:
+                    raise
+            time.sleep(0.1)
+
+    def _run_lifecycle(self, steps: list[_LifecycleStep], *, gen: int, settle_wait_s: float) -> MotionOutcome:
+        """Re-centre if needed, then each step in order; the first failure, or a stop, ends it (5.3, O8).
+
+        A step is ``(head, antennas, duration)`` for a move or ``(None, None, 0, sound)`` for a sound.
+        ``gen`` is the stop generation captured once for the whole call, so a
+        stop between steps ends the sequence, not just the current chunk.
+        Every failure, an unexpected one included, returns a refused outcome.
+        """
+        try:
+            if self._unsettled is not None:
+                stopped = self._await_settled(settle_wait_s, gen=gen)
+                if stopped is not None:
+                    return stopped
+            recentred = self._recentre_if_turned(gen=gen)
+            if recentred is not None and not recentred:
+                return recentred
+            outcome = MotionOutcome(ok=True, duration_s=recentred.duration_s if recentred else 0.0)
+            total = outcome.duration_s or 0.0
+            for head, antennas, duration, sound in steps:
+                if self._abort_gen != gen:
+                    return MotionOutcome.refused("cancelled", "a stop was requested between lifecycle steps")
+                if head is None:
+                    self._play_sound(sound or "")
+                    continue
+                outcome = self._lifecycle_step(head, antennas, duration, gen=gen)
+                if not outcome:
+                    return outcome
+                total += outcome.duration_s or 0.0
+            # (_await_settled has already cleared any unsettled state: a lifecycle that ran is settled.)
+            return MotionOutcome(
+                ok=True, duration_s=total, chunks_planned=outcome.chunks_planned, chunks_done=outcome.chunks_done
+            )
+        except MotionRefused as e:
+            logger.error("lifecycle motion refused (%s): %s", e.kind, e.reason)
+            return MotionOutcome.refused(e.kind, e.reason)
+        except Exception as e:  # noqa: BLE001 - the lifecycle reports, never raises (callers do not guard it)
+            logger.error("lifecycle motion failed: %s", e)
+            return MotionOutcome.refused("error", f"lifecycle motion failed: {e}")
+
+    def wake_up(self) -> MotionOutcome:
+        """Enable torque, then wake the robot with the SDK's steps, composed and clamped here (#1499 5.3, O8).
+
+        SDK >= 1.5: the daemon boots torque-off (``--no-wake-up-on-start``),
+        and without ``enable_motors()`` every motion command is silently
+        ignored while reads keep working (docs/embodiment/reachy_mini/
+        troubleshooting.md). ``enable_motors`` is fire-and-forget, so the
+        wake waits (≤ 1 s) for the REST ``control_mode`` to read ``enabled``.
+        A turned body is re-centred first; then INIT with the INIT antennas
+        (2 s), the wake sound, a 20° roll and back (0.2 s each). Only a wake that
+        succeeds clears the stop latch; a stop requested after the wake was,
+        while it waits or during it, ends it and leaves the latch set.
 
         Returns:
-            True if wake-up successful.
+            A ``MotionOutcome``, truthy iff the robot is awake.
         """
         if self._mini is None or not self.is_connected():
-            return False
-
-        try:
+            return MotionOutcome.refused("error", "the robot is not connected")
+        requested_gen = self._abort_gen
+        with self._motion_lock:  # the lifecycle waits without the tool bound (5.1)
+            gen = requested_gen  # one read: a stop at any point after the request ends this wake
+            if self._abort_gen != gen:
+                return MotionOutcome.refused("cancelled", "a stop was requested while the wake waited")
             try:
                 self._mini.enable_motors()
             except Exception as e:  # noqa: BLE001 - hardware boundary must fail closed
+                # No motion here (Executor S6): torque state is unknown, so a move could fight it.
                 logger.error("enable_motors() failed (%s) — refusing to claim the robot is awake", e)
                 try:
-                    self._mini.goto_sleep()
-                except Exception as sleep_error:  # noqa: BLE001 - best-effort safety restore
-                    logger.error("Safety sleep after torque-enable failure also failed: %s", sleep_error)
+                    self._mini.disable_motors()
+                except Exception as off_error:  # noqa: BLE001 - best-effort, logged
+                    logger.error("disable_motors() after the failed enable also failed: %s", off_error)
                 self._update_state(is_awake=False)
-                return False
-            # The wake motion moves the robot outside goto_target's stash —
-            # forget BEFORE dispatching so a raise after partial motion
-            # cannot leave stale values (spurious clear costs one seed).
-            self._forget_commanded()
-            self._mini.wake_up()
-            # Belt-and-suspenders re-assert after wake (mirrors the orient
-            # scripts): construction already passed automatic_body_yaw, but
-            # a daemon-side reset on wake must not silently re-enable the
-            # frame-rotating behavior the runtime's yaw math assumes off.
-            try:
-                self._mini.set_automatic_body_yaw(self._automatic_body_yaw)
-                logger.info(
-                    "automatic_body_yaw=%s (daemon body-follow %s)",
-                    self._automatic_body_yaw,
-                    "enabled" if self._automatic_body_yaw else "disabled — Maxim owns the yaw axis",
-                )
-            except Exception as e:  # noqa: BLE001 - older SDKs may lack it
-                logger.warning("set_automatic_body_yaw unavailable (%s) — daemon may auto-rotate the body", e)
-            self._update_state(is_awake=True)
-            logger.info("Reachy Mini awake: %s", self._robot_name)
-            return True
+                return MotionOutcome.refused("error", f"enable_motors failed: {e}")
+            if not self._assert_auto_yaw_off():
+                self._update_state(is_awake=False)
+                return MotionOutcome.refused("reference", "automatic_body_yaw could not be asserted off")
+            if not self._wait_torque_on():
+                logger.error("motor torque did not come on within %.1f s — not waking", _TORQUE_ON_WAIT_S)
+                self._update_state(is_awake=False)
+                return MotionOutcome.refused("reference", "motor torque did not come on")
+            roll_20 = mp.compose_head(math.radians(20.0), 0.0, 0.0, 0.0)
+            outcome = self._run_lifecycle(
+                [
+                    (INIT_HEAD_POSE, INIT_ANTENNAS_RAD, 2.0, None),
+                    (None, None, 0.0, "wake_up.wav"),
+                    (roll_20, None, 0.2, None),
+                    (INIT_HEAD_POSE, None, 0.2, None),
+                ],
+                gen=gen,
+                settle_wait_s=0.0,  # wake refuses until the robot has settled (owner, 2026-10-29)
+            )
+            # Only a wake that SUCCEEDED, with no stop since it was requested, ends a stop (owner, 2026-10-29).
+            if outcome and self._clear_latch_after_wake(gen):
+                self._update_state(is_awake=True)
+                logger.info("Reachy Mini awake: %s", self._robot_name)
+                return outcome
+            self._update_state(is_awake=False)
+            return (
+                outcome if not outcome else MotionOutcome.refused("cancelled", "a stop was requested during the wake")
+            )
 
-        except Exception as e:
-            logger.error("Wake-up failed: %s", e)
-            return False
+    def goto_sleep(self) -> MotionOutcome:
+        """Put the robot to sleep with the SDK's steps, composed and clamped here (#1499 5.3, O8).
 
-    def goto_sleep(self) -> bool:
-        """Put the robot to sleep (disable motors).
+        Sets the stop latch (and is_awake=False) and calls the stop fence first:
+        no new head or body move starts, a move in progress ends at its next
+        chunk (or step), and sleep never waits behind it as "motor busy". The
+        latch holds even when the sleep then fails, until a wake succeeds. With
+        torque already off the robot is safe and nothing moves (ok). After an SDK timeout it waits up to 2 s for
+        the robot to settle. A turned body is re-centred; the head goes through
+        INIT when far from it, then the sleep sound and the sleep pose with the
+        antennas clamped to ±``ANTENNA_LIMIT_RAD`` (the SDK's ±3.05 rad never
+        reaches a motor). Torque stays on, as with the SDK's own sleep.
 
         Returns:
-            True if sleep command successful.
+            A ``MotionOutcome``, truthy iff the robot is in the sleep pose or its torque is off.
         """
+        # Latch and stop first, as one step, even with no SDK handle (mid-reconnect):
+        # nothing new may move the robot, and connect will not clear a sleep's latch.
+        self._stop(by_sleep=True)
         if self._mini is None:
-            return True  # Already "asleep"
+            # Owner, 2026-10-29: nothing was made safe, so this refuses (api.py keeps treating it as unproven).
+            return MotionOutcome.refused("error", "not connected: the robot was not put to sleep")
+        with self._motion_lock:  # no timeout: the fence bounds the wait to the current chunk
+            # Again under the lock: a wake that won the (unfair) lock while this
+            # sleep waited must not leave the sleeping robot unlatched.
+            self._latch_for_sleep()
+            gen = self._abort_gen
+            try:
+                if self._automatic_body_yaw or not self._auto_yaw_asserted:
+                    raise MotionRefused("reference", "automatic_body_yaw is not asserted off")
+                pose, control_mode = mp.parse_full_state(self._get_state_full())  # one read for both questions
+                if control_mode == "disabled":
+                    logger.info("Reachy Mini asleep: %s (torque off, nothing to move)", self._robot_name)
+                    return MotionOutcome(ok=True, reason="torque off: already safe")
+                start = self._checked_pose(pose, control_mode)
+            except MotionRefused as e:
+                logger.error("goto_sleep refused (%s): %s", e.kind, e.reason)
+                return MotionOutcome.refused(e.kind, e.reason)
+            steps: list[_LifecycleStep] = []
+            if mp.geodesic(mp.relative_rotation(start.head, start.body), INIT_HEAD_POSE) > _SLEEP_VIA_INIT_RAD:
+                steps.append((INIT_HEAD_POSE, INIT_ANTENNAS_RAD, 1.0, None))
+            steps.append((None, None, 0.0, "go_sleep.wav"))
+            steps.append((SLEEP_HEAD_POSE, SLEEP_ANTENNAS_RAD, 2.0, None))
+            outcome = self._run_lifecycle(steps, gen=gen, settle_wait_s=_SLEEP_SETTLE_WAIT_S)
+            if outcome:
+                logger.info("Reachy Mini asleep: %s", self._robot_name)
+            return outcome
 
-        try:
-            # The sleep fold moves the robot outside goto_target's stash —
-            # forget BEFORE dispatching (same rationale as wake_up).
-            self._forget_commanded()
-            self._mini.goto_sleep()
+    # ── The stop latch (MP9). Every transition runs under _abort_lock together with
+    # the stop generation, so no read-then-write of the latch can interleave with
+    # another (connect, a wake's success, a sleep, a disconnect).
+
+    def _stop(self, *, by_sleep: bool) -> None:
+        """Latch and bump the stop generation as one step (goto_sleep, disconnect)."""
+        with self._abort_lock:
+            self._stop_latched = True
+            if by_sleep:
+                self._stop_by_sleep = True
+            self._abort_gen += 1
+        if by_sleep:
             self._update_state(is_awake=False)
-            logger.info("Reachy Mini asleep: %s", self._robot_name)
-            return True
 
-        except Exception as e:
-            logger.error("Sleep command failed: %s", e)
-            return False
+    def _latch_for_sleep(self) -> None:
+        """Re-assert a sleep's latch once it holds the motion lock (a wake may have won the lock first)."""
+        with self._abort_lock:
+            self._stop_latched = True
+            self._stop_by_sleep = True
+        self._update_state(is_awake=False)
+
+    def _clear_latch_after_connect(self) -> None:
+        """A new connection ends a disconnect's latch, never a sleep's."""
+        with self._abort_lock:
+            if not self._stop_by_sleep:
+                self._stop_latched = False
+
+    def _clear_latch_after_wake(self, gen: int) -> bool:
+        """End the stop after a successful wake, only if no stop came since the wake was requested."""
+        with self._abort_lock:
+            if self._abort_gen != gen:
+                return False
+            self._stop_latched = False
+            self._stop_by_sleep = False
+            return True
 
     def start_recording(self) -> bool:
         """Start media recording/streaming.

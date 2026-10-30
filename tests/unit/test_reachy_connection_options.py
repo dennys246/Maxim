@@ -27,12 +27,39 @@ def _no_daemon_status_io(monkeypatch):
     # WS era so tests don't depend on what happens to be installed. (The
     # era-gate tests override this per-test.)
     monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    monkeypatch.setattr(ReachyMiniController, "_get_state_full", _state_from_the_mock)
+
+
+def _state_from_the_mock(self):
+    """The daemon's REST state (#1499 R1), served from the mock SDK: the pose its last goto_target commanded."""
+    import numpy as np
+
+    state = {"control_mode": "enabled", "head_pose": {"m": np.eye(4).ravel().tolist()}, "body_yaw": 0.0}
+    goto = getattr(self._mini, "goto_target", None)
+    kwargs = getattr(getattr(goto, "call_args", None), "kwargs", None) or {}
+    if kwargs.get("head") is not None:
+        state["head_pose"] = {"m": np.asarray(kwargs["head"], dtype=float).ravel().tolist()}
+    if kwargs.get("body_yaw") is not None:
+        state["body_yaw"] = float(kwargs["body_yaw"])
+    if kwargs.get("antennas") is not None:
+        state["antennas_position"] = list(kwargs["antennas"])
+    return state
 
 
 def _mock_sdk():
-    """(context-manager, mock_module) with reachy_mini importable as a mock."""
+    """(context-manager, mock_module) with reachy_mini importable as a mock.
+
+    The SDK's interpolation module is the verbatim copy: the controller's path
+    sampler (#1499 R5) runs it.
+    """
+    import types
+
+    from tests.unit._reachy_fakes import linear_pose_interpolation
+
     mod = MagicMock()
-    return patch.dict(sys.modules, {"reachy_mini": mod}), mod
+    interpolation = types.ModuleType("reachy_mini.utils.interpolation")
+    interpolation.linear_pose_interpolation = linear_pose_interpolation
+    return patch.dict(sys.modules, {"reachy_mini": mod, "reachy_mini.utils.interpolation": interpolation}), mod
 
 
 def test_new_kwargs_stored():
@@ -267,12 +294,15 @@ class TestAutomaticBodyYaw:
             assert c.connect()
         assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is False
 
-    def test_robots_yaml_opt_in_passes_through(self):
-        c = ReachyMiniController(host="10.42.0.1", connection_mode="network", automatic_body_yaw=True)
+    def test_robots_yaml_opt_in_is_a_config_error(self):
+        """Inverted (O6): ``automatic_body_yaw: true`` used to pass through to the SDK."""
+        from maxim.exceptions import InvalidConfigError
+
         ctx, mod = _mock_sdk()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
-            assert c.connect()
-        assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is True
+        with ctx, pytest.raises(InvalidConfigError):
+            c = ReachyMiniController(host="10.42.0.1", connection_mode="network", automatic_body_yaw=True)
+            c.connect()
+        mod.ReachyMini.assert_not_called()
 
     def test_wake_reasserts_the_setting(self):
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
@@ -291,17 +321,54 @@ class TestAutomaticBodyYaw:
             assert c.connect()
             mini = mod.ReachyMini.return_value
             mini.enable_motors.side_effect = RuntimeError("torque unavailable")
-            assert c.wake_up() is False
+            assert not c.wake_up()
 
         mini.wake_up.assert_not_called()
-        mini.goto_sleep.assert_called_once_with()
+        mini.goto_sleep.assert_not_called()  # inverted (5.3, Executor S6): the failure branch commands no motion
+        mini.goto_target.assert_not_called()
+        mini.disable_motors.assert_called_once_with()
         assert c.state.is_awake is False
 
-    def test_wake_survives_sdk_without_the_setter(self):
+    def test_wake_refuses_on_an_sdk_without_the_setter(self):
+        """Inverted (O6, delta D4): if ``set_automatic_body_yaw(False)`` cannot be asserted, the daemon may rotate the
+        body behind us, so the controller refuses motion until an assertion succeeds. It used to warn and wake."""
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()
         with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
             assert c.connect()
             mini = mod.ReachyMini.return_value
             mini.set_automatic_body_yaw.side_effect = AttributeError("old SDK")
-            assert c.wake_up()  # warning, not crash
+            assert not c.wake_up()
+        mini.goto_target.assert_not_called()
+
+
+class TestStopLatchAcrossReconnect:
+    """#1499 owner decisions 2026-10-29: a sleep's latch survives a reconnect (only a successful wake ends it);
+    a disconnect's own latch ends with the new connection."""
+
+    def _connected(self):
+        from maxim.hardware.controller import MotionTarget
+
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
+        ctx, mod = _mock_sdk()
+        return c, ctx, MotionTarget
+
+    def test_a_sleep_latch_survives_a_reconnect(self):
+        c, ctx, MotionTarget = self._connected()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+            assert c.goto_sleep()
+            c.disconnect()
+            assert c.connect()
+            out = c.goto_target(MotionTarget(head_yaw=0.1))
+            assert not out and out.kind == "cancelled"
+            assert c.wake_up()
+            assert c.goto_target(MotionTarget(head_yaw=0.1))
+
+    def test_a_disconnect_latch_ends_with_the_new_connection(self):
+        c, ctx, MotionTarget = self._connected()
+        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+            assert c.connect()
+            c.disconnect()
+            assert c.connect()
+            assert c.goto_target(MotionTarget(head_yaw=0.1))

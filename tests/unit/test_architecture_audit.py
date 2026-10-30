@@ -163,6 +163,7 @@ class TestLayerRulesCoverage:
         "runtime",
         "skills",
         "bridges",
+        "hardware",
     }
 
     def test_all_layers_present(self):

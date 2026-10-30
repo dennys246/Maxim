@@ -21,6 +21,7 @@ import types
 
 import numpy as np
 import pytest
+from tests.unit._reachy_fakes import prepare_controller, serve_state_from_ws_fake
 
 NAN = float("nan")
 INF = float("inf")
@@ -29,6 +30,12 @@ INF = float("inf")
 # ─────────────────────────────────────────────────────────────────────────────
 # Fakes
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _serve_the_fresh_readback(monkeypatch):
+    """The controller reads its reference from the daemon's REST state (#1499 R1); serve it from this file's fake."""
+    serve_state_from_ws_fake(monkeypatch)
 
 
 def _rot(roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -88,6 +95,13 @@ class _Mini:
 
     def goto_target(self, **kw):
         self.calls.append(("goto_target", kw))
+        # Reach the commanded pose: the controller re-reads it after the move (#1499 final-target check).
+        if kw.get("head") is not None:
+            self.head = np.asarray(kw["head"], dtype=float)
+        if kw.get("body_yaw") is not None:
+            self.body = float(kw["body_yaw"])
+        if kw.get("antennas") is not None:
+            self.antennas = list(kw["antennas"])
 
     def set_target(self, **kw):
         self.calls.append(("set_target", kw))
@@ -111,6 +125,7 @@ def _controller(mini: _Mini):
     ctl._robot_name = "test_reachy"
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
+    prepare_controller(ctl)
     return ctl
 
 
@@ -366,8 +381,8 @@ def test_controller_refuses_a_nan_body_readback(caplog):
 
     mini = _Mini(body=NAN)
     ctl = _controller(mini)
-    with caplog.at_level(logging.ERROR):
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1, head_pitch=0.0, head_roll=0.0, duration=0.5)) is False
+    with caplog.at_level(logging.WARNING):  # a refusal at the readback logs at WARNING (#1499 R1)
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.1, head_pitch=0.0, head_roll=0.0, duration=0.5))
     assert mini.motion_calls() == []
     # Refused at the readback, before composition (the last mile is a second layer, not the only one).
     assert any("readback body_yaw" in r.getMessage() for r in caplog.records)
@@ -386,7 +401,7 @@ def test_move_head_refuses_a_non_finite_body_readback(body):
 
     mini = _Mini(body=body)
     with pytest.raises(_refused()):
-        move_head(mini, 0, 0, 0, 0, 0, 10, 0.5)
+        move_head(mini, 0, 0, 0, 0, 0, 10, 0.5, motion_lock=threading.RLock())
     assert mini.motion_calls() == []
 
 
@@ -395,9 +410,9 @@ def test_move_head_refuses_nan_arguments_instead_of_clamping():
 
     mini = _Mini()
     with pytest.raises(_refused()):
-        move_head(mini, 0, 0, 0, 0, 0, NAN, 0.5)
+        move_head(mini, 0, 0, 0, 0, 0, NAN, 0.5, motion_lock=threading.RLock())
     with pytest.raises(_refused()):
-        move_head(mini, 0, 0, 0, 0, 0, 10, NAN)
+        move_head(mini, 0, 0, 0, 0, 0, 10, NAN, motion_lock=threading.RLock())
     assert mini.motion_calls() == []
 
 
@@ -437,7 +452,7 @@ def test_look_at_with_zero_duration_is_refused_on_both_paths():
     ctl = _controller(mini)
     target = PixelTarget(u=320, v=240, duration=0.5)
     target.duration = 0.0  # a post-construction write bypasses __post_init__
-    assert ctl.look_at_pixel(target) is False
+    assert not ctl.look_at_pixel(target)
     assert mini.motion_calls() == []
 
 
@@ -482,15 +497,15 @@ def test_a_post_construction_bad_duration_is_refused_at_dispatch_and_keeps_the_s
 
     mini = _Mini()
     ctl = _controller(mini)
-    assert ctl.goto_target(MotionTarget(head_yaw=0.2, head_pitch=0.0, head_roll=0.0, duration=0.5)) is True
+    assert ctl.goto_target(MotionTarget(head_yaw=0.2, head_pitch=0.0, head_roll=0.0, duration=0.5))
     stash = dict(ctl._last_commanded)
     calls = len(mini.motion_calls())
     target = MotionTarget(head_yaw=0.3, duration=0.5)
     target.duration = 0.01
-    assert ctl.goto_target(target) is False
+    assert not ctl.goto_target(target)
     target2 = MotionTarget(head_yaw=0.3, duration=0.5)
     target2.method = "cartoon"
-    assert ctl.goto_target(target2) is False
+    assert not ctl.goto_target(target2)
     assert ctl._last_commanded == stash
     assert len(mini.motion_calls()) == calls
 
@@ -588,7 +603,7 @@ def test_motor_worker_handles_a_refusal_without_a_connection_failure(caplog):
     selfy._note_connection_failure = lambda *a: failures.append(a)
     q: queue.Queue = queue.Queue()
     stop = threading.Event()
-    q.put((move_head, (mini, 0, 0, 0, 0, 0, 10, 0.5), {}))
+    q.put((move_head, (mini, 0, 0, 0, 0, 0, 10, 0.5), {"motion_lock": threading.RLock()}))
 
     def _stop_when_drained():
         while not q.empty():
@@ -655,29 +670,27 @@ def test_a_non_finite_present_pose_refuses_every_motion_path(head):
 
     mini = _Mini(head=head)
     with pytest.raises(_refused()):
-        move_head(mini, 0, 0, 0, 0, 0, 5, 0.5)
+        move_head(mini, 0, 0, 0, 0, 0, 5, 0.5, motion_lock=threading.RLock())
     with pytest.raises(_refused()):
         move_antenna(mini, right=5)
     ctl = _controller(mini)
-    assert ctl.goto_target(MotionTarget(body_yaw=0.1, duration=1.0)) is False
-    assert ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=0.5)) is False
+    assert not ctl.goto_target(MotionTarget(body_yaw=0.1, duration=1.0))
+    assert not ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=0.5))
 
     selfy = _body(mini=mini, robot=ctl)
     selfy._enqueue_sdk_look_at(320, 240, (320, 240), 0.5, perform_movement=True)
     fn, args, kwargs = selfy.enqueued[-1]
     kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
-    with pytest.raises(_refused()):
-        fn(*args, **kwargs)
+    assert not fn(*args, **kwargs)  # through the controller (#1499 5.2): a refused outcome, not a raise
     assert mini.motion_calls() == []
 
     mini.head = np.eye(4)
-    move_head(mini, 0, 0, 0, 0, 0, 5, 0.5)
+    move_head(mini, 0, 0, 0, 0, 0, 5, 0.5, motion_lock=threading.RLock())
     assert len(mini.motion_calls()) == 1
 
 
 def test_a_failed_pose_read_counts_as_missing_not_refused():
     from maxim.hardware.reachy.controller import require_present_pose_finite
-    from maxim.motion.movement import move_head
 
     mini = _Mini()
     mini.head_raise = True
@@ -685,12 +698,24 @@ def test_a_failed_pose_read_counts_as_missing_not_refused():
     mini.head_raise = False
     mini.joints_raise = True
     require_present_pose_finite(mini)
-    move_head(mini, 0, 0, 0, 0, 0, 5, 0.5)  # today's body-read fallback is unchanged (#1499 owns it)
-    assert len(mini.motion_calls()) == 1
     bad = _Mini()
     bad.head = np.array([[1.0, None, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=object)
     with pytest.raises(_refused()):
         require_present_pose_finite(bad)
+
+
+def test_a_failed_body_read_refuses_the_move():
+    """Split out of the test above, and inverted by #1499 (R2): the body-read fallback #1496 left in place is gone."""
+    from maxim.motion.movement import move_head
+
+    mini = _Mini()
+    mini.joints_raise = True
+    mini.rest_fails = True
+    try:
+        move_head(mini, 0, 0, 0, 0, 0, 5, 0.5, motion_lock=threading.RLock())
+    except _refused():
+        pass
+    assert mini.motion_calls() == []
 
 
 def test_the_ws_transport_drops_non_finite_poses(monkeypatch):
