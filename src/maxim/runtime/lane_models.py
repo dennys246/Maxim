@@ -376,7 +376,7 @@ def _pick_infer_profile_with_ctx(
     (the spawner's default). Callers should treat n_ctx<=0 as "use the
     spawner default" so this function never blocks startup.
     """
-    from maxim.models.language.config import _BUILTIN_PROFILES
+    from maxim.models.language.config import get_profile
 
     check = profile_available or (lambda _: True)
     for min_vram, profile_name in _INFER_VRAM_TIERS:
@@ -384,7 +384,7 @@ def _pick_infer_profile_with_ctx(
             continue
         if not check(profile_name):
             continue
-        profile_data = _BUILTIN_PROFILES.get(profile_name, {})
+        profile_data = get_profile(profile_name) or {}
         formula_ctx = estimate_max_ctx(profile_data, vram_gb, kv_quant_mode=kv_quant_mode)
         fallback_ctx = _lookup_fallback_nctx(profile_name, vram_gb)
         # Be conservative: when both speak, take the SMALLER of the two so
@@ -460,10 +460,10 @@ def detect_tiers(
         # respects the user's hardware. The "with_ctx" picker is only used
         # for auto-selection.
         if env_profile:
-            from maxim.models.language.config import _BUILTIN_PROFILES
+            from maxim.models.language.config import get_profile
 
             profile = env_profile
-            n_ctx = estimate_max_ctx(_BUILTIN_PROFILES.get(profile, {}), caps.vram_gb)
+            n_ctx = estimate_max_ctx((get_profile(profile) or {}), caps.vram_gb)
             if n_ctx <= 0:
                 n_ctx = _lookup_fallback_nctx(profile, caps.vram_gb)
         else:

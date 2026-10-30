@@ -112,5 +112,12 @@ def as_agent_list(agents: Any) -> AgentList | None:
     raise TypeError(f"Unsupported agents type: {type(agents).__name__}")
 
 
-# Backwards-compatibility: GoalAgent historically lived in this module.
-from maxim.agents.goal_agent import GoalAgent  # noqa: E402, F401
+def __getattr__(name: str) -> Any:
+    """Backwards-compatibility: ``GoalAgent`` historically lived in this module. Resolved on access, not by a
+    bottom-of-module import: ``goal_agent`` imports this module, so an eager re-export is a cycle that only the old
+    eager ``maxim.agents`` init hid (#1315 step 0a)."""
+    if name == "GoalAgent":
+        from maxim.agents.goal_agent import GoalAgent
+
+        return GoalAgent
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

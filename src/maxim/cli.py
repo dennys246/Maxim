@@ -59,7 +59,7 @@ def _handle_list_models() -> int:
     cloud anthropic / cloud openai / cloud other) mirrors what users actually
     care about when picking a model.
     """
-    from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
+    from maxim.models.language.config import iter_profiles, profile_aliases
     from maxim.runtime.lane_backends import _profile_has_local_file, _read_persisted_model
 
     local_llama: list[str] = []
@@ -68,8 +68,9 @@ def _handle_list_models() -> int:
     cloud_openai: list[str] = []
     cloud_other: list[str] = []
 
-    for name, profile in sorted(_BUILTIN_PROFILES.items()):
-        aliases = [a for a, v in _PROFILE_ALIASES.items() if v == name and a != name]
+    alias_table = profile_aliases()
+    for name, profile in iter_profiles():
+        aliases = [a for a, v in alias_table.items() if v == name and a != name]
         alias_str = f"  (also: {', '.join(aliases[:2])})" if aliases else ""
         backend = profile.get("backend", "")
         n_ctx = profile.get("n_ctx", 0)

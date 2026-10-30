@@ -660,7 +660,7 @@ def _check_vram_context_pressure() -> list["CheckResult"]:
     output tight.
     """
     try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.language.config import get_profile
         from maxim.runtime.capabilities import detect_compute_resources
         from maxim.runtime.config_loader import load_config, resolve_setting
         from maxim.runtime.lane_models import project_vram_usage
@@ -703,7 +703,7 @@ def _check_vram_context_pressure() -> list["CheckResult"]:
             )
         ]
 
-    profile_meta = _BUILTIN_PROFILES.get(str(profile_value), {})
+    profile_meta = get_profile(str(profile_value)) or {}
     try:
         projection = project_vram_usage(
             str(profile_value),
@@ -1579,10 +1579,10 @@ def check_vram_pressure(port: int = 8100) -> CheckResult:
         running_n_ctx = _current_llama_server_n_ctx(port)
         if running_n_ctx and running_n_ctx > 0:
             try:
-                from maxim.models.language.config import _BUILTIN_PROFILES
+                from maxim.models.language.config import get_profile
                 from maxim.runtime.lane_models import project_vram_usage
 
-                profile_meta = _BUILTIN_PROFILES.get(active_profile, {})
+                profile_meta = get_profile(active_profile) or {}
                 projection = project_vram_usage(
                     active_profile,
                     profile_meta,
@@ -3008,7 +3008,7 @@ def check_peer_vs_local_conflict() -> CheckResult:
             message="no local --llm override active",
         )
     try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.language.config import get_profile
         from maxim.peer.config import read_peer_config
 
         cfg = read_peer_config()
@@ -3024,7 +3024,7 @@ def check_peer_vs_local_conflict() -> CheckResult:
             status="ok",
             message=f"--llm={profile} (no peer config)",
         )
-    profile_data = _BUILTIN_PROFILES.get(profile, {})
+    profile_data = get_profile(profile) or {}
     if profile_data.get("cloud"):
         return CheckResult(
             name="--llm vs peer config",

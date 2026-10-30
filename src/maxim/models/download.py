@@ -162,6 +162,16 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
 # (for an LFS ``.onnx`` HF's ``x-linked-etag`` header is the same sha256; a ``.json``'s etag is a git sha1, not it).
 _PIPER_VOICES = "https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/"
 
+
+def llm_models() -> dict[str, dict[str, Any]]:
+    """``LLM_MODELS`` with the user's ``profiles.yml`` downloads merged in (#1315 step 0a: the merge runs on first
+    use, never at import). Every reader goes through here; a CI check forbids the bare name outside this module."""
+    from maxim.models.language.config import _ensure_user_profiles
+
+    _ensure_user_profiles()
+    return LLM_MODELS
+
+
 TTS_MODELS: dict[str, dict[str, Any]] = {
     "en_US-lessac-medium": {
         "description": "English US - Lessac voice (medium quality, recommended)",
@@ -565,7 +575,7 @@ def ensure_available(
     if profile_has_local_file(profile_name):
         return True
 
-    if profile_name not in LLM_MODELS:
+    if profile_name not in llm_models():
         msg = (
             f"Auto-download skipped: profile '{profile_name}' is not in the LLM_MODELS "
             f"registry. Custom profiles must be downloaded manually — point "
@@ -577,7 +587,7 @@ def ensure_available(
             print(msg)
         return False
 
-    info = LLM_MODELS[profile_name]
+    info = llm_models()[profile_name]
     # User profiles added via ``maxim model add`` don't have a
     # known size_gb; profile_loader.py injects ``size_gb: None`` for
     # them. ``.get(key, default)`` only returns the default when the
@@ -679,12 +689,12 @@ def download_llm(
     """
     if models_dir is None:
         models_dir = _llm_dir()
-    if model_name not in LLM_MODELS:
+    if model_name not in llm_models():
         print(f"Unknown LLM model: {model_name}")
-        print(f"Available models: {', '.join(LLM_MODELS.keys())}")
+        print(f"Available models: {', '.join(llm_models().keys())}")
         return False
 
-    model_info = LLM_MODELS[model_name]
+    model_info = llm_models()[model_name]
     models_dir = Path(models_dir)
 
     print(f"\nDownloading LLM: {model_name}")
@@ -718,8 +728,8 @@ def delete_llm(
     models_dir = Path(models_dir)
 
     # Try the download registry first (exact filename)
-    if model_name in LLM_MODELS:
-        dest_path = models_dir / LLM_MODELS[model_name]["filename"]
+    if model_name in llm_models():
+        dest_path = models_dir / llm_models()[model_name]["filename"]
         if dest_path.is_file():
             size_gb = dest_path.stat().st_size / (1024**3)
             dest_path.unlink()
@@ -736,14 +746,10 @@ def delete_llm(
     # file the user did not name is the same silent-substitution class the
     # model_path fold closed; never fall through for unknown names.
     try:
-        from maxim.models.language.config import (
-            _BUILTIN_PROFILES,
-            _normalize_profile,
-            list_llm_profiles,
-        )
+        from maxim.models.language.config import get_profile, list_llm_profiles, normalize_llm_profile
 
-        key = _normalize_profile(model_name) or model_name
-        known_profile = key in _BUILTIN_PROFILES or key in set(list_llm_profiles() or [])
+        key = normalize_llm_profile(model_name) or model_name
+        known_profile = get_profile(key) is not None or key in set(list_llm_profiles() or [])
         if known_profile:
             from maxim.models.language.config import load_llm_config
 
@@ -949,7 +955,7 @@ def list_models() -> None:
     print("\n=== Available LLM Models ===")
     print(f"(Default: {DEFAULT_LLM})\n")
 
-    for name, info in LLM_MODELS.items():
+    for name, info in llm_models().items():
         marker = " [recommended]" if name == DEFAULT_LLM else ""
         print(f"  {name}{marker}")
         print(f"    {info['description']}")
@@ -992,7 +998,7 @@ def check_models(
 
     status = {}
 
-    for name, info in LLM_MODELS.items():
+    for name, info in llm_models().items():
         path = llm_dir / info["filename"]
         status[f"llm:{name}"] = path.exists()
 
@@ -1019,7 +1025,7 @@ def print_status(
     print("\n=== Model Status ===\n")
 
     print("LLM Models:")
-    for name in LLM_MODELS:
+    for name in llm_models():
         key = f"llm:{name}"
         icon = "[x]" if status.get(key) else "[ ]"
         print(f"  {icon} {name}")

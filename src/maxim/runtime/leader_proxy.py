@@ -1237,9 +1237,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     upstream_port = DEFAULT_UPSTREAM_PORT
                 running_n_ctx = _current_llama_server_n_ctx(upstream_port)
                 if running_n_ctx and running_n_ctx > 0:
-                    from maxim.models.language.config import _BUILTIN_PROFILES
+                    from maxim.models.language.config import get_profile
 
-                    profile_meta = _BUILTIN_PROFILES.get(active_profile, {})
+                    profile_meta = get_profile(active_profile) or {}
                     vram_proj = project_vram_usage(
                         active_profile,
                         profile_meta,

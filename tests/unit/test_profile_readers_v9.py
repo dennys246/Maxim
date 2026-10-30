@@ -1,10 +1,9 @@
 """V9 / step 0a guard (#1315 §1A.1): every public profile reader resolves a user ``profiles.yml`` profile and alias.
 
-WHAT THIS FILE IS. NOT a red gate: a guard that PASSES today, because ``models/language/config.py`` merges
-``$XDG_CONFIG_HOME/maxim/profiles.yml`` into ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES`` and
-``models/download.py::LLM_MODELS`` at import (``_apply_user_profiles_at_import``), and that must KEEP passing through
-step 0a, which moves that load to a first-use ``_ensure_user_profiles()`` (``docs/plans/atonia_gate_approach_notes.md``
-§1A.1: "Red gate, by outcome rather than by enumeration"). A reader that still reads the raw dicts after 0a would see
+WHAT THIS FILE IS. A guard: ``models/language/config.py`` merges ``$XDG_CONFIG_HOME/maxim/profiles.yml`` into
+its profile and alias tables and ``models/download.py``'s download table on FIRST USE, through
+``_ensure_user_profiles()``, never at import (step 0a, ``docs/plans/atonia_gate_approach_notes.md`` §1A.1: "Red gate,
+by outcome rather than by enumeration"). A reader that read the raw tables instead of an ensuring accessor would see
 no user profile and fail here. It is parametrised over ``READERS``: a new public reader joins that tuple and gets a
 branch in ``_READER_BODY``.
 
@@ -12,9 +11,9 @@ HOW. Each reader runs in a fresh ``sys.executable -I`` child whose ``XDG_CONFIG_
 (``PROFILE``) with one alias (``ALIAS``). A malformed ``profiles.yml`` must raise ``ConfigurationError`` on the first
 access AND on the second (§1A.1: "Failure is never cached").
 
-A reader that fails today is a real finding, and is its own def with a literal strict-xfail decorator (lint rule 3b):
-``test_download_llm_models_holds_a_user_profile`` (flips with 0a) and ``test_doctor_vram_projection_resolves_an_alias``
-(#1479, not 0a's; driven with a built-in alias).
+A reader that fails is a real finding, and is its own def with a literal strict-xfail decorator (lint rule 3b):
+``test_doctor_vram_projection_resolves_an_alias`` (#1479, not 0a's; driven with a built-in alias).
+``test_download_llm_models_holds_a_user_profile`` and the lazy-init pins were red gates that flipped with step 0a.
 """
 
 from __future__ import annotations
@@ -123,7 +122,7 @@ _READER_BODY = textwrap.dedent(
             OUT["ok"] = cfg.profile == NAME and os.path.basename(cfg.model_path) == HF_FILE
         elif reader == "models.download LLM_MODELS":
             from maxim.models import download
-            table = download.llm_models() if hasattr(download, "llm_models") else download.LLM_MODELS
+            table = download.llm_models()
             OUT["ok"] = NAME in table
         elif reader == "ensure_available lookup":
             from unittest.mock import MagicMock
@@ -244,17 +243,8 @@ def test_every_public_reader_resolves_a_user_profile(tmp_path: Path, reader: str
     assert out["ok"], f"{reader} did not resolve user profile {PROFILE!r} / alias {ALIAS!r}: {out['detail']}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "V9 finding: a user profile reaches models.download.LLM_MODELS only as a side effect of importing "
-        "models.language.config, so a process that reads the table first misses it; flips with step 0a's "
-        "ensuring download.llm_models() accessor"
-    ),
-)
 def test_download_llm_models_holds_a_user_profile(tmp_path: Path) -> None:
-    """``models.download``'s profile table (``llm_models()`` once 0a lands, ``LLM_MODELS`` today), read by a fresh
+    """``models.download``'s profile table (``llm_models()``, step 0a's ensuring accessor), read by a fresh
     process that imported nothing else, holds the user profile."""
     out = _run(tmp_path, _READER_BODY, PROFILES_YML, "models.download LLM_MODELS")
     assert out["ok"], f"models.download's table does not hold user profile {PROFILE!r}"
@@ -290,15 +280,10 @@ LAZY_PACKAGES: tuple[str, ...] = ("maxim.runtime", "maxim.agents", "maxim.tools"
 
 
 @pytest.mark.parametrize("package", LAZY_PACKAGES)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 V9 step 0a: the package __init__ is eager today; flips with its PEP 562 __getattr__ + lazy table",
-)
 def test_step0a_package_init_is_lazy(package: str) -> None:
     """``package`` defines a module-level PEP 562 ``__getattr__`` and a lazy table ``_LAZY`` (name -> defining
     module, the seam chosen here), and ``__all__`` is exactly the lazy table's names plus the names the init still
-    binds eagerly (§1A.1: "A test pins ``__all__`` against the lazy table"). Fails today: no ``__getattr__``."""
+    binds eagerly (§1A.1: "A test pins ``__all__`` against the lazy table")."""
     import importlib
 
     mod = importlib.import_module(package)
@@ -311,3 +296,64 @@ def test_step0a_package_init_is_lazy(package: str) -> None:
         f"{package}.__all__ does not match its lazy table: only in __all__ "
         f"{sorted(exported - set(lazy) - eager)}, only in _LAZY {sorted(set(lazy) - exported)}"
     )
+
+
+# ── step 0a: no reader bypasses the ensuring accessors ─────────────────────
+
+# Each private table -> the one module that may name it. Anywhere else, a read would see the tables before the
+# user's profiles.yml is merged (the merge runs on first use of an accessor, never at import), so a user profile
+# would silently disappear from that reader (§1A.1: "the grep, not the plan's count, forces every reader to migrate").
+_CONFIG = "src/maxim/models/language/config.py"
+PRIVATE_TABLE_OWNERS: dict[str, frozenset[str]] = {
+    "_BUILTIN_PROFILES": frozenset({_CONFIG}),
+    "_PROFILE_ALIASES": frozenset({_CONFIG}),
+    "_normalize_profile": frozenset({_CONFIG}),
+    # config.py's ``_ensure_user_profiles`` IS the merge into the raw table (``llm_models()`` there would recurse).
+    "LLM_MODELS": frozenset({"src/maxim/models/download.py", _CONFIG}),
+}
+
+
+def _private_table_uses(path: Path) -> list[tuple[int, str]]:
+    """Every import, name or attribute reference to a private table in ``path`` (an AST scan: docstrings, comments
+    and string literals that mention a name are not reads)."""
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            hits += [(node.lineno, a.name) for a in node.names if a.name in PRIVATE_TABLE_OWNERS]
+        elif isinstance(node, ast.Name) and node.id in PRIVATE_TABLE_OWNERS:
+            hits.append((node.lineno, node.id))
+        elif isinstance(node, ast.Attribute) and node.attr in PRIVATE_TABLE_OWNERS:
+            hits.append((node.lineno, node.attr))
+    return hits
+
+
+def test_no_reader_outside_its_owner_names_a_private_profile_table() -> None:
+    """``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES`` and ``_normalize_profile`` are named only in ``config.py``, and
+    ``LLM_MODELS`` only in ``download.py`` (and in ``config.py``'s merge), across ``src/`` and ``scripts/``: every other reader uses ``get_profile``,
+    ``iter_profiles``, ``profile_aliases``, ``normalize_llm_profile`` or ``download.llm_models()``. Tests may patch
+    the tables directly."""
+    offenders: list[str] = []
+    for root in (REPO / "src", REPO / "scripts"):
+        for path in sorted(root.rglob("*.py")):
+            rel = path.relative_to(REPO).as_posix()
+            for lineno, name in _private_table_uses(path):
+                if rel not in PRIVATE_TABLE_OWNERS[name]:
+                    offenders.append(f"{rel}:{lineno}: {name}")
+    assert not offenders, "read through an ensuring accessor instead:\n  " + "\n  ".join(offenders)
+
+
+def test_the_private_table_scan_sees_each_kind_of_reference(tmp_path: Path) -> None:
+    """The scan above is not vacuous: it reports an import, a bare name and an attribute read, and ignores a
+    docstring that only mentions the name."""
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        '"""Mentions _BUILTIN_PROFILES in prose only."""\n'
+        "from maxim.models.language.config import _PROFILE_ALIASES\n"
+        "import maxim.models.download as d\n"
+        "x = _PROFILE_ALIASES\n"
+        "y = d.LLM_MODELS\n"
+    )
+    assert sorted(_private_table_uses(probe)) == [(2, "_PROFILE_ALIASES"), (4, "_PROFILE_ALIASES"), (5, "LLM_MODELS")]

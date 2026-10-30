@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -592,6 +593,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
 
 
 def _normalize_profile(name: Any) -> str:
+    _ensure_user_profiles()  # load_llm_config resolves its profile here first, so it reads the merged tables
     raw = str(name or "").strip()
     if not raw:
         return ""
@@ -630,7 +632,28 @@ def _llm_config_candidates() -> list[str]:
     return candidates
 
 
+def get_profile(name: str) -> dict[str, Any] | None:
+    """The profile named ``name`` (built-in or from ``profiles.yml``), or None. It does not normalise: callers pass
+    a name already resolved through :func:`normalize_llm_profile`, as they read the table before. Read-only: the
+    dict is the live table entry."""
+    _ensure_user_profiles()
+    return _BUILTIN_PROFILES.get(name)
+
+
+def iter_profiles() -> list[tuple[str, dict[str, Any]]]:
+    """Every profile as ``(name, profile)`` pairs, sorted by name, with the user's profiles merged in."""
+    _ensure_user_profiles()
+    return sorted(_BUILTIN_PROFILES.items())
+
+
+def profile_aliases() -> dict[str, str]:
+    """A copy of the alias -> profile-name table, with the user's aliases merged in."""
+    _ensure_user_profiles()
+    return dict(_PROFILE_ALIASES)
+
+
 def list_llm_profiles() -> list[str]:
+    _ensure_user_profiles()
     profiles = set(_BUILTIN_PROFILES.keys())
 
     for path in _llm_config_candidates():
@@ -1077,23 +1100,29 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
 # L2: user-defined profiles (leader_ux_profile_management.md)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# At module import, merge ``~/.config/maxim/profiles.yml`` entries into
-# ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES``, and ``LLM_MODELS``. User
-# profiles WIN on collision (logged WARNING). A missing or empty file
-# is a silent no-op (the common case). A malformed file raises
-# ``ConfigurationError`` at startup so the operator sees the problem
-# immediately rather than after first inference.
-def _apply_user_profiles_at_import() -> None:
-    """Bridge the loader to the runtime dicts. Pulled into its own
-    function so test code can monkey-patch the path resolution without
-    touching module-level state."""
-    # Imports kept inside the function to avoid a top-of-file import
-    # cycle through ``maxim.models.download`` and to keep ``config.py``'s
-    # import-time cost unchanged when ``profiles.yml`` is absent.
-    from maxim.models.download import LLM_MODELS
-    from maxim.models.language.profile_loader import apply_user_profiles
-
-    apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+# ``~/.config/maxim/profiles.yml`` entries are merged into ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES`` and
+# ``LLM_MODELS`` on FIRST USE, through every accessor above, never at import (#1315 step 0a, V9): importing this
+# module must not read ``XDG_CONFIG_HOME``/``HOME`` or parse the file, so a hostile file is never parsed before a
+# caller that refuses it can run. User profiles WIN on collision (logged WARNING). A missing or empty file is a
+# silent no-op (the common case). A malformed file raises ``ConfigurationError`` on EVERY access: the guard is set
+# only after a successful merge, so a swallowing caller cannot turn the first failure into a silent "no user
+# profiles" for the rest of the process.
+_user_profiles_loaded = False
+_user_profiles_lock = threading.RLock()  # re-entrant: the merge itself may resolve a name through an accessor
 
 
-_apply_user_profiles_at_import()
+def _ensure_user_profiles() -> None:
+    """Merge the user's profiles once per process (idempotent, thread-safe). The loader validates the whole file
+    before it touches any table, so a failed attempt leaves the tables unchanged and the next access retries."""
+    global _user_profiles_loaded
+    if _user_profiles_loaded:
+        return
+    with _user_profiles_lock:
+        if _user_profiles_loaded:
+            return
+        # Imported here: download.py imports this module, and the loader is only needed on the first access.
+        from maxim.models.download import LLM_MODELS
+        from maxim.models.language.profile_loader import apply_user_profiles
+
+        apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+        _user_profiles_loaded = True

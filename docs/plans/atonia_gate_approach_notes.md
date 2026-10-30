@@ -96,6 +96,22 @@ Importing anything under `models/language/` runs `config.py::_apply_user_profile
 gates could not pass, and a hostile `XDG_CONFIG_HOME` would be parsed before `open()` could refuse anything.
 
 **Step 0a (V9, owner decision 2026-10-25: lazy package inits).**
+
+> **Status: BUILT 2026-10-30** (branch `feat/1315-step0a-lazy-inits`). As built, where it differs from the text below:
+> - `load_llm_config` is not edited, so rule T does not bite it. It resolves its profile through `_normalize_profile`
+>   before it reads a table, and `_normalize_profile` ensures first.
+> - `build_model_path` reads no profile table, so it does not ensure (an ensure there would parse `profiles.yml` for
+>   nothing).
+> - The CI check is an AST scan, `tests/unit/test_profile_readers_v9.py::test_no_reader_outside_its_owner_names_a_private_profile_table`,
+>   not a grep: a docstring that mentions a name is not a read. `config.py`'s `_ensure_user_profiles` may name
+>   `LLM_MODELS`, because it IS the merge.
+> - `maxim.models.LLM_MODELS` stays public through a module `__getattr__` that returns `llm_models()`.
+> - The fresh-process import sweep (`tests/integration/test_fresh_import_sweep.py`, slow) found one latent cycle:
+>   `agents/base.py`'s bottom-of-module `GoalAgent` re-export, now a module `__getattr__`.
+> - The only `_maybe_auto_spawn_server` edit moved out to `lane_backends._lane_profile_is_cloud` (rule T: 271 → 259).
+> - Seven red gates flipped: the executor closure, the import-time `profiles.yml` read, `download.llm_models()`, and
+>   the four lazy-init pins. #1479's alias gate stays red.
+
 - PEP 562 `__getattr__` in `maxim/runtime/__init__.py`, `maxim/agents/__init__.py`, `maxim/tools/__init__.py` and
   `maxim/utils/__init__.py`. Every `from maxim.runtime import X` user keeps working; the names resolve on first
   access. A test pins `__all__` against the lazy table, and a subprocess test pins `import maxim.runtime.executor`'s

@@ -405,11 +405,15 @@ class Executor:
         # rather than an import of it: `runtime` reaching into `proprioception` for a `simulation`
         # fact would buy one source of truth with a worse edge. Giving the predicate a single home
         # is #864's open layering half.
-        from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
+        # Only an executor with a pain bridge books anything, so only it imports the simulation fact (#1315 step 0a:
+        # an executor built without one, the atonia observer's, never loads `maxim.simulation`).
+        _suppress_nac = False
+        if self._tool_pain_bridge is not None:
+            from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
 
-        # A speculative call (prefetch, TF9) was not chosen by the agent: like a human-driven one, the bridge books
-        # nothing for it. Read from the executor's context, never from the action dict (the model's own JSON).
-        _suppress_nac = get_interactive_mode() == InteractiveMode.ON or _SPECULATIVE.get()
+            # A speculative call (prefetch, TF9) was not chosen by the agent: like a human-driven one, the bridge
+            # books nothing for it. Read from the executor's context, never from the action dict (the model's JSON).
+            _suppress_nac = get_interactive_mode() == InteractiveMode.ON or _SPECULATIVE.get()
 
         try:
             return self._run_started(tool_name, original_name, params, invocation_id, suppress_nac=_suppress_nac)

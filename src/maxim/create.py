@@ -401,10 +401,10 @@ def templates() -> dict[str, list[str]]:
 
 def _router_missing_reason(model: str) -> str:
     """Why ``create.router(model)`` built no backend: the cloud profile's missing key, else the local profile."""
-    from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+    from maxim.models.language.config import get_profile, normalize_llm_profile
 
     profile_name = normalize_llm_profile(model) or model
-    profile = _BUILTIN_PROFILES.get(profile_name, {})
+    profile = get_profile(profile_name) or {}
     key_env = str(profile.get("api_key_env", "") or "")
     if profile.get("cloud") and key_env and not os.environ.get(key_env):
         return (
