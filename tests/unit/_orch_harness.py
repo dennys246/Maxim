@@ -287,6 +287,12 @@ _REPORT_WRITERS = ("save_report", "save_action_log", "save_aut_state", "analyze_
 # (#1260: a narrator-only description must not reach the process-global dict).
 RUN_SIDE: dict[str, dict[str, Any]] = {}
 SETTLE_TIMEOUT_S = 30.0  # a harness wait that exceeds this is a hang, not a slow run
+# #1259: with ``finish_watchdog``, how long the harness waits after the narrator's ``finish_simulation`` for the run to
+# stop by itself (its ``stop_event``) before it sends the operator ``/cancel`` that ends the run anyway, recorded as a
+# watchdog line in ``stdin_lines``. Far above a stop that works (it is set inside the tool) and far below the 180 s
+# percept-source grace a run without the stop waits out.
+FINISH_WATCHDOG_S = 20.0
+WATCHDOG_CANCEL = f"watchdog: the run had not stopped {FINISH_WATCHDOG_S:.0f} s after finish_simulation (#1259)"
 _AUT_SETTLE_S = 3.0  # SimulationBridge's default settle_s: the same quiet window a turn waits for
 
 
@@ -806,8 +812,11 @@ def _model_isolation_env(work: Path) -> dict[str, str]:
     }
 
 
-def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
-    """Drive the real ``start_simulation_mode`` for one arm; return the CANONICAL trace."""
+def run_arm(arm: str, workdir: Path, *, finish_watchdog: bool = False) -> dict[str, Any]:
+    """Drive the real ``start_simulation_mode`` for one arm; return the CANONICAL trace.
+
+    ``finish_watchdog`` (#1259): in the arms whose narrator finishes and is then cancelled by the operator, send that
+    ``/cancel`` only if the run has not stopped by itself ``FINISH_WATCHDOG_S`` after the finish."""
     assert_this_checkout()
     import maxim.runtime.lane_backends as LB
     from maxim.decisions.nac import NAc
@@ -989,6 +998,22 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     if arm == "stall":
         router.hold = _hold_for_stall_arm
 
+    def _cancel_after_finish(bridge: Any) -> None:
+        """The operator ``/cancel`` that follows the narrator's finish: at once, or (``finish_watchdog``) only if the
+        run's ``stop_event`` is still clear ``FINISH_WATCHDOG_S`` later, on a harness thread."""
+        assert isinstance(stdin, QueueStdin)
+        if not finish_watchdog:
+            stdin.feed("/cancel")
+            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "finish_simulation"})
+            return
+
+        def watch() -> None:
+            if not bridge._stop_event.wait(FINISH_WATCHDOG_S):
+                stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": WATCHDOG_CANCEL})
+                stdin.feed("/cancel")
+
+        threading.Thread(target=watch, name="harness.finish_watchdog", daemon=True).start()
+
     def finish(self: Any) -> None:
         finish_calls.append(dict(self.finish_context))  # the finish_context each finish() saw
         orig_finish(self)
@@ -1003,17 +1028,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             and not any(b is self for b in cancelled_bridges)
         ):  # each run's narrator finish is followed by its /cancel, as in the narrator arm
             cancelled_bridges.append(self)
-            assert isinstance(stdin, QueueStdin)
-            stdin.feed("/cancel")
-            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "finish_simulation"})
+            _cancel_after_finish(self)
         if (
             arm == "narrator"
             and len(finish_calls) == 1
             and self.finish_context.get("initiated_by") == "llm_finish_tool"
         ):
-            assert isinstance(stdin, QueueStdin)
-            stdin.feed("/cancel")  # module docstring: the post-finish grace is otherwise 180 s
-            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "finish_simulation"})
+            _cancel_after_finish(self)  # module docstring: the post-finish grace is otherwise 180 s
 
     def display_status(message: str) -> None:
         lifecycle.append(f"status: {message}")
