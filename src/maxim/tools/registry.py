@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Iterable
 
-from .base import Tool
+from maxim.exceptions import ToolEffectRefused
+
+from .base import Effect, Tool, effect_mismatch, effect_names, effect_of, exceeds
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,81 @@ def _token_overlap(a: str, b: str) -> float:
     return len(intersection) / len(union)
 
 
+def log_effect_refusal(exc: ToolEffectRefused, *, site: str) -> None:
+    """The structured WARNING every site that catches a :class:`ToolEffectRefused` emits (#1315 item 2: refusals
+    are never silent). One shape, so ``MAXIM_LOG_FILE`` carries the tool, its effect and the ceiling at every site."""
+    logger.warning(
+        "%s: tool %r refused: %s",
+        site,
+        exc.tool_name,
+        exc,
+        extra={
+            "event": "tool_effect_refused",
+            "data": {"site": site, "tool": exc.tool_name, "effect": exc.effect, "ceiling": exc.ceiling},
+        },
+    )
+
+
+class EffectAdmission:
+    """The effect ceiling and admission check shared by :class:`ToolRegistry` and ``simulation.tools.SimToolRegistry``
+    (#1315 item 2, atonia notes §2.2).
+
+    The ceiling is fixed at construction (a read-only property, ``ALL`` by default). Admission is layer 1 and
+    best-effort structural: every in-tree write calls :meth:`_admit`. Dispatch is the authoritative check, so an
+    out-of-tree subclass that skips this is still refused there.
+    """
+
+    _ceiling: Effect = Effect.ALL
+
+    def _set_ceiling(self, ceiling: Effect) -> None:
+        if not isinstance(ceiling, Effect):
+            raise TypeError(f"a registry ceiling must be a maxim.tools.base.Effect, got {ceiling!r}")
+        self._ceiling = ceiling
+
+    @property
+    def ceiling(self) -> Effect:
+        """The effects this registry admits. Fixed at construction."""
+        return self._ceiling
+
+    def _refusal(self, tool: Tool, why: str) -> ToolEffectRefused:
+        return ToolEffectRefused(
+            f"{why} (ceiling {effect_names(self._ceiling)})",
+            tool_name=str(getattr(tool, "name", "?")),
+            effect=effect_names(effect_of(tool)),
+            ceiling=effect_names(self._ceiling),
+        )
+
+    def _admit(self, tool: Tool, existing: Tool | None) -> None:
+        """Raise :class:`ToolEffectRefused` unless *tool* may be registered over *existing* (the tool already under
+        its name, or ``None``). Under ``ALL``, a replacement by a different class is allowed (``register_tool``
+        needs it) and logged; below ``ALL`` any replacement refuses."""
+        mismatch = effect_mismatch(tool)
+        if mismatch is not None:
+            raise self._refusal(tool, mismatch)
+        effect = effect_of(tool)
+        if exceeds(effect, self._ceiling):
+            raise self._refusal(tool, f"effect {effect_names(effect)} exceeds the ceiling")
+        if existing is None or existing is tool:
+            return
+        if self._ceiling != Effect.ALL:
+            raise self._refusal(tool, f"it would replace the registered {type(existing).__qualname__}")
+        if type(existing) is not type(tool):
+            logger.warning(
+                "tool %r: %s replaces %s",
+                tool.name,
+                type(tool).__qualname__,
+                type(existing).__qualname__,
+                extra={
+                    "event": "tool_replaced",
+                    "data": {
+                        "tool": tool.name,
+                        "new": f"{type(tool).__module__}.{type(tool).__qualname__}",
+                        "old": f"{type(existing).__module__}.{type(existing).__qualname__}",
+                    },
+                },
+            )
+
+
 @dataclass
 class _SceneMeta:
     """Per-tool scene metadata (internal)."""
@@ -49,7 +126,7 @@ class _SceneMeta:
     active: bool = True
 
 
-class ToolRegistry:
+class ToolRegistry(EffectAdmission):
     """Thread-safe tool registry with scene-scoped activation.
 
     Uses RLock so methods that call other methods (e.g., register calling
@@ -68,7 +145,9 @@ class ToolRegistry:
         tools: Iterable[Tool] | None = None,
         *,
         active_tool_cap: int = DEFAULT_ACTIVE_TOOL_CAP,
+        ceiling: Effect = Effect.ALL,
     ) -> None:
+        self._set_ceiling(ceiling)
         self._tools: dict[str, Tool] = {}
         self._scene_meta: dict[str, _SceneMeta] = {}
         self._active_tool_cap = active_tool_cap
@@ -100,6 +179,7 @@ class ToolRegistry:
         ``@dataclass(frozen=True)`` subclass.
         """
         with self._lock:
+            self._admit(tool, self._tools.get(tool.name))
             if kind is not None:
                 # Override the instance's kind — useful when a registration
                 # site has more authoritative provenance than the tool's
@@ -107,6 +187,15 @@ class ToolRegistry:
                 # subclass safety.
                 object.__setattr__(tool, "kind", kind)
             self._tools[tool.name] = tool
+
+    def register_many(self, tools: Iterable[Tool]) -> None:
+        """Register *tools* as core tools, all or nothing: every tool is admitted (#1315 item 2) before any is
+        registered, so one refusal leaves the registry as it was."""
+        batch = builtins.list(tools)
+        with self._lock:
+            self._admit_all(batch)
+            for tool in batch:
+                self._tools[tool.name] = tool
 
     def get(self, name: str) -> Tool:
         with self._lock:
@@ -339,7 +428,11 @@ class ToolRegistry:
     # ── Private helpers ─────────────────────────────────────────────────
 
     def _register_scene_locked(self, tools: builtins.list[Tool], scene_id: str) -> builtins.list[str]:
-        """Register scene tools with cap enforcement. Caller MUST hold self._lock."""
+        """Register scene tools with cap enforcement. Caller MUST hold self._lock.
+
+        All or nothing: every tool is admitted (§2.2) before any scene is evicted or any tool registered.
+        """
+        self._admit_all(tools)
         deactivated_scenes: list[str] = []
 
         active_scene_count = self._count_active_scene_tools()
@@ -378,6 +471,14 @@ class ToolRegistry:
             )
 
         return deactivated_scenes
+
+    def _admit_all(self, tools: builtins.list[Tool]) -> None:
+        """Admit every tool of a batch, each against the tool it would replace (an earlier one in the batch, or the
+        registered one). Caller MUST hold self._lock."""
+        staged: dict[str, Tool] = {}
+        for tool in tools:
+            self._admit(tool, staged.get(tool.name) or self._tools.get(tool.name))
+            staged[tool.name] = tool
 
     def _count_active_scene_tools(self) -> int:
         """Count active tools that belong to a scene (excludes core tools).

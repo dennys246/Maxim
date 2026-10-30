@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class ChooseTool(Tool):
     """
 
     name = "choose"
+    effect = Effect.READ
     description = "Pick one of the available choices for the current encounter."
     input_schema: dict[str, Any] = {"option": str}
     timeout = 10.0
@@ -111,6 +112,7 @@ class BrowseComponentsTool(Tool):
     """Browse the SEM Component Registry for entity templates."""
 
     name = "browse_components"
+    effect = Effect.READ
     description = "Search the component library for entity templates (NPCs, weapons, creatures, environments)."
     input_schema: dict[str, Any] = {
         "category": (str, None),
@@ -142,6 +144,7 @@ class BrowseEncountersTool(Tool):
     """Browse the Encounter Library for scene templates."""
 
     name = "browse_encounters"
+    effect = Effect.READ
     description = "Search the encounter library for reusable scene templates."
     input_schema: dict[str, Any] = {
         "category": (str, None),
@@ -190,6 +193,7 @@ class DesignEntityTool(Tool):
     """Generate an NPC/item/creature from a natural language description."""
 
     name = "design_entity"
+    effect = Effect.READ
     description = (
         "Design an entity from a description. Returns a valid SEM entity spec. "
         "Use browse_components first to check if a base template exists."
@@ -244,6 +248,7 @@ class EmitCampaignTool(Tool):
     """Output the final campaign YAML for the architect to emit."""
 
     name = "emit_campaign"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = (
         "Emit a complete campaign YAML. Provide the full campaign structure "
         "including acts, encounters, NPCs, and player character."

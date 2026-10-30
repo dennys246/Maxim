@@ -2029,18 +2029,25 @@ def _inject_registered_tools(registry: Any) -> int:
     """
     with _registered_tools_lock:
         tools = list(_registered_tools)
+    from maxim.exceptions import ToolEffectRefused
+    from maxim.tools.registry import log_effect_refusal
+
     injected = 0
     for t in tools:
         try:
             registry.register(t)
             injected += 1
             logger.debug("Injected user tool: %s", getattr(t, "name", t))
+        except ToolEffectRefused as e:
+            # A ceiling below ALL (the observer, Talk, offline; never maxim.run, V10) drops an undeclared or
+            # wider user tool LOUDLY (§1A.4).
+            log_effect_refusal(e, site="maxim user tool injection")
         except Exception as e:
             logger.warning("Failed to inject tool %s: %s", getattr(t, "name", t), e)
     return injected
 
 
-def register_tool(tool: Any) -> None:
+def register_tool(tool: Any, *, effect: Any = None) -> None:
     """Register a custom tool available to all agents.
 
     Tools registered via this function are injected into the agent's
@@ -2049,6 +2056,11 @@ def register_tool(tool: Any) -> None:
     Args:
         tool: A Tool instance (must have ``name``, ``description``,
             ``input_schema``, and ``execute()``).
+        effect: Optional ``maxim.tools.base.Effect``: everything the tool can
+            cause. It is declared on the tool's class, which must not already
+            declare a different one. A tool with no effect counts as ``ALL``:
+            ``run()`` runs it as before, and a narrower agent (offline, the
+            observer, Talk) drops it with a WARNING naming the tool.
 
     Example::
 
@@ -2070,6 +2082,10 @@ def register_tool(tool: Any) -> None:
     ``name`` matches an existing registration replaces it.  Remove with
     :func:`unregister_tool` or :func:`clear_registered_tools`.
     """
+    if effect is not None:
+        from maxim.tools.base import declare_effect
+
+        declare_effect(type(tool), effect)
     _record_registration(tool)
 
 
@@ -2163,7 +2179,7 @@ def _infer_input_schema(fn: Any) -> dict[str, Any]:
     return schema
 
 
-def tool(fn: Any) -> Any:
+def tool(fn: Any = None, *, effect: Any = None) -> Any:
     """Decorator to register a function as a tool.
 
     Automatically infers ``input_schema`` from the function's type
@@ -2175,15 +2191,24 @@ def tool(fn: Any) -> Any:
         def my_analysis(data: str, depth: int = 3) -> str:
             \"""Analyze data at specified depth.\"""
             return f"Analysis of {data} at depth {depth}"
+
+        @maxim.tool(effect=Effect.READ)   # optional: everything the tool can cause
+        def lookup(key: str) -> str: ...
+
+    Without ``effect=`` the tool counts as ``Effect.ALL`` (see :func:`register_tool`).
     """
-    from maxim.tools.base import Tool, ToolOutput
+    if fn is None:
+        return lambda f: tool(f, effect=effect)
+    from maxim.tools.base import Effect, Tool, ToolOutput
 
     inferred_schema = _infer_input_schema(fn)
+    declared = Effect.ALL if effect is None else effect
 
     class FunctionTool(Tool):
         name = fn.__name__
         description = fn.__doc__ or f"Tool: {fn.__name__}"
         input_schema = inferred_schema
+        effect = declared
 
         def execute(self, **kwargs: Any) -> Any:
             try:

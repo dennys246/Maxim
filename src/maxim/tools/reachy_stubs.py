@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,6 +24,8 @@ def create_stub_tool(
     input_schema: dict[str, Any],
     output_fields: dict[str, Any] | None = None,
     always_allowed: bool = False,
+    *,
+    effect: Effect,
 ) -> type[Tool]:
     """Factory to create no-op stub tool classes.
 
@@ -33,14 +35,18 @@ def create_stub_tool(
         input_schema: Input schema matching the real tool.
         output_fields: Additional fields to include in the output dict.
         always_allowed: Whether this tool is always allowed (for safety tools).
+        effect: The REAL tool's effect, required (#1315 V14): a stub stands for the tool whose name it takes, so a
+            ceiling refuses that name whether or not a robot is attached, and the mode gate's name sets agree.
 
     Returns:
         A Tool subclass configured as a no-op stub.
     """
     extra_output = output_fields or {}
+    stub_effect = effect
 
     class StubTool(Tool):
         __doc__ = f"No-op stub for {name} when no live Maxim instance is available."
+        effect = stub_effect  # the real tool's effect (#1315 V14), not the no-op's own
 
         def execute(self, **kwargs: Any) -> ToolResult:
             output = {
@@ -69,6 +75,7 @@ def create_stub_tool(
 
 # FocusInterestsTool stub
 NoOpFocusInterestsTool = create_stub_tool(
+    effect=Effect.ALL,
     name="focus_interests",
     description="Focus on interesting objects (observation-only mode - no robot connected).",
     input_schema={
@@ -80,6 +87,7 @@ NoOpFocusInterestsTool = create_stub_tool(
 
 # TrackTargetTool stub
 NoOpTrackTargetTool = create_stub_tool(
+    effect=Effect.READ | Effect.ACTUATE,
     name="track_target",
     description="Track and center on a detected object (observation-only mode - no robot connected).",
     input_schema={
@@ -96,6 +104,7 @@ NoOpTrackTargetTool = create_stub_tool(
 # undispatchable prompt token — the exact bare-token failure the 2026-08-01
 # deep dive found for move (cross-confirmed by both pre-merge review lenses).
 NoOpFocusOnSoundTool = create_stub_tool(
+    effect=Effect.READ | Effect.ACTUATE,
     name="focus_on_sound",
     description="Turn the head to face the currently heard sound (observation-only mode - no robot connected).",
     input_schema={
@@ -107,6 +116,7 @@ NoOpFocusOnSoundTool = create_stub_tool(
 
 # MoveTool stub (always_allowed to match real MoveTool)
 NoOpMoveTool = create_stub_tool(
+    effect=Effect.READ | Effect.ACTUATE,
     name="move",
     description="Move Maxim's head to a target position (observation-only mode - no robot connected).",
     input_schema={
@@ -130,6 +140,8 @@ class NoOpMaximCommandTool(Tool):
     """No-op stub for maxim_command with command validation."""
 
     name = "maxim_command"
+    # The real maxim_command's effect (#1315 V14), not the no-op's own.
+    effect = Effect.READ | Effect.SELF_SCOPE | Effect.ACTUATE | Effect.GOVERN
     description = "Execute a Maxim command (observation-only mode - no robot connected)."
 
     input_schema = {
@@ -177,6 +189,7 @@ class NoOpNoveltyTrackTool(Tool):
     """No-op stub for novelty_track with action-based behavior."""
 
     name = "novelty_track"
+    effect = Effect.READ | Effect.ACTUATE  # the real novelty_track's effect (#1315 V14)
     description = "Track novel objects and center vision (observation-only mode - no robot connected)."
 
     input_schema = {

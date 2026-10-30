@@ -13,7 +13,7 @@ from typing import Any
 
 from maxim.memory.layer import activate_after_use
 from maxim.memory.types import record_active_goal, record_success
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 
 
 # ---------------------------------------------------------------------------
@@ -25,6 +25,7 @@ class MemoryRecallTool(Tool):
     """Search episodic memories with optional spreading activation."""
 
     name = "memory_recall"
+    effect = Effect.READ | Effect.SELF_SCOPE
     untrusted_output = True  # returns stored records' text (errors, reflections): framed external (Session R)
     description = (
         "Search your episodic memories. Filter by goal, tool, success/failure, "
@@ -125,6 +126,7 @@ class PredictOutcomeTool(Tool):
     """Query causal predictions for a tool before executing it."""
 
     name = "predict_outcome"
+    effect = Effect.READ
     description = (
         "Query what the causal learning system (NAc) predicts will happen "
         "if you execute a tool. Returns predicted outcome, confidence, "
@@ -208,6 +210,7 @@ class CausalLinksTool(Tool):
     """Inspect learned cause-effect relationships in the NAc."""
 
     name = "causal_links"
+    effect = Effect.READ
     description = (
         "Inspect your learned cause-effect relationships. See what events "
         "lead to what outcomes, filter by positive/negative valence, and "
@@ -279,6 +282,7 @@ class PainHistoryTool(Tool):
     """Query pain signals and fear gate status."""
 
     name = "pain_history"
+    effect = Effect.READ
     description = (
         "Check your pain and fear history. See recent pain signals from "
         "tool failures, movement errors, and timeouts. Query whether the "
@@ -336,6 +340,7 @@ class TemporalPatternsTool(Tool):
     """Discover time-based patterns in experience."""
 
     name = "temporal_patterns"
+    effect = Effect.READ
     description = (
         "Discover time-based patterns in your experience. Find memories "
         "from specific times of day, days of week, or discover rhythmic "
@@ -400,6 +405,7 @@ class EnergyStatusTool(Tool):
     """Check energy and resource consumption."""
 
     name = "energy_status"
+    effect = Effect.READ
     description = (
         "Check your energy and resource consumption. See recent token usage, "
         "inference costs, and overall energy budget status."
@@ -448,6 +454,7 @@ class ConceptQueryTool(Tool):
     """Search semantic knowledge base for concepts and relationships."""
 
     name = "concept_query"
+    effect = Effect.READ | Effect.SELF_SCOPE
     untrusted_output = True  # replays ATL names, which can be raw stored text: framed external (Session R)
     description = (
         "Search your semantic knowledge base for concepts, facts, and "
@@ -536,6 +543,7 @@ class SceneSummaryTool(Tool):
     """Get a summary of the current visual scene."""
 
     name = "scene_summary"
+    effect = Effect.READ
     description = (
         "Get a summary of the current visual scene. Shows the most salient "
         "objects, where you're currently looking, and what's novel or familiar."
@@ -598,6 +606,7 @@ class SimilaritySearchTool(Tool):
     """Find similar situations via the Entorhinal Cortex."""
 
     name = "similarity_search"
+    effect = Effect.READ
     description = (
         "Find situations similar to a description or to a past memory. "
         "Uses multi-modal similarity (structural, temporal, semantic) to "
@@ -663,6 +672,7 @@ class SystemStatsTool(Tool):
     """Aggregate health summary of all biological subsystems."""
 
     name = "system_stats"
+    effect = Effect.READ
     description = (
         "Get a health summary of all your biological subsystems: memory counts, "
         "causal link stats, energy usage, pain history, and learning progress."

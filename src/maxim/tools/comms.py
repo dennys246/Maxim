@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 
 if TYPE_CHECKING:
     from maxim.comms.gateway import CommunicationGateway
@@ -23,6 +23,7 @@ class SendMessageTool(Tool):
     """
 
     name = "send_message"
+    effect = Effect.COMMS | Effect.NETWORK
     description = (
         "Send a text message to a user via SMS, webhook, or other channel. "
         "Use to notify about events, answer questions, or reply to conversations."
@@ -76,6 +77,7 @@ class CallUserTool(Tool):
     """
 
     name = "call_user"
+    effect = Effect.COMMS | Effect.NETWORK
     description = (
         "Initiate an outbound voice call with text-to-speech. "
         "Use for urgent notifications that require immediate attention."

@@ -11,7 +11,7 @@ import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.modes.definitions import get_mode, raises_capability
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
@@ -45,6 +45,7 @@ class ModeSwitchTool(Tool):
     """
 
     name = "mode_switch"
+    effect = Effect.READ | Effect.GOVERN
     description = "Switch to a different operational mode"
     input_schema = {
         "mode": str,  # Required: target mode name
@@ -167,6 +168,7 @@ class AutonomyLevelTool(Tool):
     """
 
     name = "autonomy_level"
+    effect = Effect.READ | Effect.GOVERN
     description = "Request a change in autonomy level"
     input_schema = {
         "level": str,  # Required: "planning", "supervised", or "autonomous"

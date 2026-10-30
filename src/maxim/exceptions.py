@@ -174,6 +174,29 @@ class ToolTimeoutError(ToolExecutionError):
     pass
 
 
+class ToolEffectRefused(MaximError):
+    """A registry refused to admit a tool because of its declared effect (#1315 item 2): the tool's effect exceeds
+    the registry's ceiling, its class's ``effect`` was reassigned after creation, or it would replace a same-name
+    tool under a ceiling below ``ALL``. ``effect`` and ``ceiling`` are sorted flag-name lists (the serialised form).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        tool_name: str,
+        effect: list[str],
+        ceiling: list[str],
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message, context={**(context or {}), "tool_name": tool_name, "effect": effect, "ceiling": ceiling}
+        )
+        self.tool_name = tool_name
+        self.effect = effect
+        self.ceiling = ceiling
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Model Errors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -535,6 +558,7 @@ __all__ = [
     "ToolNotFoundError",
     "ToolValidationError",
     "ToolTimeoutError",
+    "ToolEffectRefused",
     # Models
     "ModelError",
     "ModelLoadError",

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import copy
+import functools
+import operator
 import os
+import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal
+from enum import Enum, Flag, auto
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
     from maxim.embodiment.sem import InteroceptiveOutcome
@@ -51,6 +54,105 @@ class ToolErrorKind(Enum):
     INVALID_INPUT = "invalid_input"
     EXTERNAL_FAILURE = "external_failure"
     VALIDATION = "validation"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Effect: what a tool can cause (#1315 item 2; docs/plans/atonia_gate_approach_notes.md §2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class Effect(Flag):
+    """Everything a tool can cause, through itself or through any collaborator it holds or is wired to later; not
+    what it is for (atonia notes §2.1). A SET, never a ladder (V2): compare with :func:`exceeds`, never ``<=``.
+
+    - ``READ``: reads state; changes nothing outside process memory.
+    - ``SELF_SCOPE``: writes only Maxim's own persisted state under the data home (memory, NAc, its own logs).
+    - ``WRITE_LOCAL``: writes, moves or deletes files outside the data home. A tool that spawns a process or runs
+      code in-process can cause anything, so it declares ``ALL`` instead.
+    - ``NETWORK``: any egress off the machine, DNS and GETs included.
+    - ``COMMS``: reaches a person or a channel (messages, calls, email).
+    - ``ACTUATE``: physical output: motion, sound, a display.
+    - ``GOVERN``: changes Maxim's own authority: mode, autonomy level, internet switch, allowed directories, the tool
+      set.
+
+    ``Effect.ALL`` is the union of the seven. It is attached after the class, not declared in it, so iterating
+    ``Effect`` yields exactly the seven flags on every supported Python (3.10 also iterates a composite member).
+    Serialise an effect with :func:`effect_names`, never as the integer, which depends on declaration order.
+    """
+
+    READ = auto()
+    SELF_SCOPE = auto()
+    WRITE_LOCAL = auto()
+    NETWORK = auto()
+    COMMS = auto()
+    ACTUATE = auto()
+    GOVERN = auto()
+
+    ALL: ClassVar[Effect]
+
+
+Effect.ALL = functools.reduce(operator.or_, Effect)
+
+
+def exceeds(effect: Effect, ceiling: Effect) -> bool:
+    """True when *effect* has any flag outside *ceiling*: the one subset check (§2.2). ``Flag`` has no subset ``<=``,
+    and an ``IntFlag`` would compare integers (WRITE_LOCAL <= READ|NETWORK), so no operator is used anywhere."""
+    return bool(effect & ~ceiling)
+
+
+def effect_names(effect: Effect) -> list[str]:
+    """*effect* as a sorted list of its flag names: the one serialised form (§1A.8)."""
+    return sorted(str(m.name) for m in Effect if m in effect)
+
+
+# The effect each Tool subclass declared in its OWN class body, recorded once at class creation (§2.2). Weak keys,
+# so a class made in a test or by a factory does not live forever. Read only through :func:`effect_of`.
+_EFFECT_RECORD: weakref.WeakKeyDictionary[type, Effect] = weakref.WeakKeyDictionary()
+
+
+def effect_of(obj: object) -> Effect:
+    """The effect recorded for ``type(obj)``; ``ALL`` for a type with no record (a duck-typed tool, a mock, a class
+    made outside ``Tool``). Never read from the instance, and never an inherited class value."""
+    return _EFFECT_RECORD.get(type(obj), Effect.ALL)
+
+
+def effect_mismatch(obj: object) -> str | None:
+    """Why ``type(obj)``'s own ``effect`` no longer matches its record, or ``None``.
+
+    Only a value PRESENT in the class's own ``__dict__`` that differs from the record is a mismatch: that is a
+    ``cls.effect = ...`` after creation. An absent value with a recorded ``ALL`` is consistent (an undeclared tool).
+    """
+    cls = type(obj)
+    recorded = _EFFECT_RECORD.get(cls)
+    if "effect" not in cls.__dict__ or recorded is None:
+        return None
+    own = cls.__dict__["effect"]
+    if isinstance(own, Effect) and own == recorded:
+        return None
+    return (
+        f"{cls.__module__}.{cls.__qualname__}.effect was reassigned after class creation "
+        f"(recorded {effect_names(recorded)}, now {own!r})"
+    )
+
+
+def declare_effect(cls: type, effect: Effect) -> None:
+    """Declare *effect* on a Tool class that declared none: the one sanctioned late declaration, used by
+    ``maxim.register_tool(tool, effect=)`` (V10, §1A.4). It sets the class's own ``effect`` and its record together,
+    so admission sees no mismatch. A class that already declares a DIFFERENT effect is refused (``TypeError``): a
+    declaration is never rewritten after the fact."""
+    if not isinstance(effect, Effect) or not effect:
+        raise TypeError(f"effect must be a non-empty maxim.tools.base.Effect, got {effect!r}")
+    if not (isinstance(cls, type) and issubclass(cls, Tool)):
+        raise TypeError(f"effect= needs a maxim.tools.base.Tool instance, got a {cls!r}")
+    if "effect" in cls.__dict__:
+        if cls.__dict__["effect"] == effect:
+            return
+        raise TypeError(
+            f"{cls.__module__}.{cls.__qualname__} already declares effect {cls.__dict__['effect']!r}; "
+            f"effect={effect!r} cannot rewrite it"
+        )
+    type.__setattr__(cls, "effect", effect)
+    _EFFECT_RECORD[cls] = effect
 
 
 @dataclass(slots=True, frozen=True)
@@ -366,6 +468,24 @@ class Tool(ABC):
     # (a recalled utterance, a stored reflection), so its follow-up is framed as EXTERNAL, untrusted content. Read
     # off the tool a call actually runs (after alias resolution), stamped on the ``ActionFollowup`` at dispatch.
     untrusted_output: bool = False
+    # ``effect`` (#1315 item 2) — everything this tool can cause (:class:`Effect`). Declared in each concrete class's
+    # OWN body: an inherited value does not count, because a subclass overriding ``execute`` must not inherit READ.
+    # Undeclared means ``ALL``. Read it with :func:`effect_of`, never ``tool.effect``.
+    effect: ClassVar[Effect]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Record the class's own ``effect`` (or ``ALL`` when it declares none). ``Effect(0)`` and a non-Effect
+        value are refused here, so no tool passes every ceiling by declaring nothing."""
+        super().__init_subclass__(**kwargs)
+        if "effect" not in cls.__dict__:
+            _EFFECT_RECORD[cls] = Effect.ALL
+            return
+        own = cls.__dict__["effect"]
+        if not isinstance(own, Effect) or not own:
+            raise TypeError(
+                f"{cls.__module__}.{cls.__qualname__}.effect must be a non-empty maxim.tools.base.Effect, got {own!r}"
+            )
+        _EFFECT_RECORD[cls] = own
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):

@@ -8,7 +8,7 @@ import numpy as np
 from maxim.exceptions import MotionRefused
 from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
 from maxim.inference.segment_vision import passive_observation
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 from maxim.utils.logging import warn
 from maxim.tools.novelty import NoveltyInfo, NoveltyRecord
 from maxim.utils.structured_logging import log_agentic
@@ -98,6 +98,7 @@ class FocusInterestsTool(Tool):
     """
 
     name = "focus_interests"
+    effect = Effect.ALL  # its display path starts a process (#1544); #1315 V13
     description = "Focus attention on objects in the current frame. Use target_class to prioritize a specific object class (e.g., 'cup', 'backpack', 'person')."
 
     input_schema = {
@@ -270,6 +271,7 @@ class TrackTargetTool(Tool):
     """
 
     name = "track_target"
+    effect = Effect.READ | Effect.ACTUATE
     description = "Move head to center on a detected object. Use target_class to specify what to track (e.g., 'person', 'backpack', 'cup'). Optionally specify robot_id to target a specific robot."
 
     input_schema = {
@@ -723,6 +725,7 @@ class MoveTool(Tool):
     """
 
     name = "move"
+    effect = Effect.READ | Effect.ACTUATE
     description = (
         "Turn Maxim's head to look in a direction. Preferred: target_x (-1 = look full LEFT, "
         "+1 = look full RIGHT — same sign as a heard sound's azimuth, so to face a sound pass "
@@ -965,6 +968,7 @@ class FocusOnSoundTool(Tool):
     """
 
     name = "focus_on_sound"
+    effect = Effect.READ | Effect.ACTUATE
     description = (
         "Turn Maxim's head to face the sound it is currently hearing. No direction or angle "
         "parameters — reads the live sound direction at execution time and turns the right "
@@ -1269,6 +1273,7 @@ class MaximCommandTool(Tool):
     """
 
     name = "maxim_command"
+    effect = Effect.READ | Effect.SELF_SCOPE | Effect.ACTUATE | Effect.GOVERN
     description = "Execute an allowlisted Maxim command (side effects on Reachy/runtime)."
     input_schema = {
         "command": str,
@@ -1625,6 +1630,7 @@ class NoveltyTrackTool(Tool):
     """
 
     name = "novelty_track"
+    effect = Effect.READ | Effect.ACTUATE
     description = "Center vision on the most novel detected object, or query novelty info."
 
     input_schema = {

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import urllib.parse
 from urllib.parse import quote_plus, urlparse
 
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 
 if TYPE_CHECKING:
     pass
@@ -362,6 +362,7 @@ class InternetSearchTool(Tool):
     """
 
     name = "internet_search"
+    effect = Effect.READ | Effect.NETWORK
     description = "Search the internet for information using DuckDuckGo"
     input_schema = {
         "query": str,  # Required: search query
@@ -570,6 +571,7 @@ class InternetAccessTool(Tool):
     """
 
     name = "internet_access_toggle"
+    effect = Effect.READ | Effect.GOVERN
     description = (
         "Turn internet access OFF for the rest of this session (enabled: false). It cannot turn internet on: "
         "only the operator can."

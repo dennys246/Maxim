@@ -1,0 +1,14 @@
+{
+  "_format_version": "1.0",
+  "_comment": "#1315 item 2 (atonia notes §2.1): Tool classes that reach a process sink but declare less than Effect.ALL, because the argv is fixed and hardened. Online only: under offline the audit-hook latch refuses every spawn (V8), so these drop. Git's config-driven filters can still run code despite GIT_HARDENING_ARGS; that residual is stated in the notes.",
+  "exemptions": [
+    {
+      "class": "maxim.tools.git_tools::GitDiffTool",
+      "reason": "fixed argv `git diff --no-ext-diff --no-textconv --end-of-options` plus tools/base.py::GIT_HARDENING_ARGS and git_env(); read-only"
+    },
+    {
+      "class": "maxim.tools.git_tools::GitCommitTool",
+      "reason": "fixed argv `git add` / `git commit --no-gpg-sign` plus tools/base.py::GIT_HARDENING_ARGS and git_env(); writes the repo inside allowed_dirs (WRITE_LOCAL)"
+    }
+  ]
+}

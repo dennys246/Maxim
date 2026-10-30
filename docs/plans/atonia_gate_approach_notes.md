@@ -60,7 +60,7 @@ the sandbox's.
 **Ingress is out of scope for item 10.** A leader bound to `0.0.0.0` and inbound comms are the inbound row's
 (item 4, and the sandbox).
 
-## 1. Owner decisions (V1–V8 decided 2026-10-24, V9–V10 2026-10-25; all as recommended)
+## 1. Owner decisions (V1–V8 decided 2026-10-24, V9–V10 2026-10-25, V11–V14 2026-10-30; all as recommended)
 
 The recommendation is listed first in each row, and it is what was decided.
 
@@ -77,6 +77,10 @@ The recommendation is listed first in each row, and it is what was decided.
 | **V8** | Under offline, may Maxim run any subprocess or connect to any endpoint? (asked 2026-10-24 after the v4 delta round) | **Nothing at all.** No subprocess the hook can see, no socket endpoint, no allow-list. Multiprocessing spawn children still start, through the unaudited `fork_exec`, and are latched by self-engage; their callers (`embodied_runtime/media_loop.py`, `data/camera/display.py`) are on the robot path, which is refused anyway. Offline also means **solo**: binding the leader proxy's `http.server` triggers a reverse-DNS lookup, which is refused, so the leader cannot start. The CLI's `llm.offline` needs an in-process model (the `llama_cpp` or `transformers` backend) and refuses at startup otherwise. The git tools drop. | The spawned-server allowance and the pinned git argv drew most of the fail-open findings in three consecutive rounds (v2 #3/#4, v3 #1/#2/#7, v4 #1–#4): endpoint revocation, listener ownership, and git's config-driven filters running code the latch cannot see. Neither the observer nor AvServ needs them. |
 | **V9** | The observer's import closure cannot hold: `maxim.runtime.executor` loads about 830 modules, and `models/language/config.py` parses the user's `profiles.yml` at import (three-lens round, 2026-10-25) | **Lazy package inits:** PEP 562 in `runtime`, `agents`, `tools` and `utils`; the profile load moves to first use. It is a new step 0, its own PR (§1A.1). | It is the root cause, and it makes `import maxim` lighter everywhere. A leaf-module observer would duplicate `Executor`'s check (two dispatchers for one gate), and dropping the closure gate would let a hostile `XDG_CONFIG_HOME` be parsed before `open()` refuses. |
 | **V10** | What may a ceiling do to the stable verbs `maxim.tool` / `register_tool` (2026-10-25)? | **Nothing in this release.** `maxim.run` keeps ceiling `ALL`. Ceilings below `ALL` apply only to the observer, Talk and offline, where undeclared user tools drop loudly. `effect=` is added as an optional form (§1A.4). | Both verbs are ✅ stable. A narrowed `maxim.run` would silently stop running users' tools in a patch. |
+| **V11** | Does a tool that calls the LLM router (sense_presence's imagination, design_entity) carry `NETWORK` (item 2 build, 2026-10-30)? | **No: the router is infrastructure.** Cloud egress is governed by the lanes and the offline latch (V8: offline means in-process lanes). | The agent loop sends to the router every turn anyway. With `NETWORK`, an offline ceiling would drop `sense_presence`, an auto-fire tool, even with an in-process model. |
+| **V12** | What do the narrator's `send_message`, `extend_simulation` and `inject_pain` declare (2026-10-30)? | **`ALL`.** Each drives a full turn of the agent under test, which can use any of its tools. | "Everything it can cause, through any collaborator" (§2.1), the reasoning that makes `spawn_sub_simulation` `ALL`. A narrator registry stays at ceiling `ALL`. |
+| **V13** | `focus_interests` reaches a multiprocessing spawn: `passive_observation` opens the display process even with `show=False` (2026-10-30) | **Declare `ALL` now, and file the `show=False` display bug as its own issue (#1544).** Once that is fixed the sink is gone and the tool can declare `READ\|ACTUATE`. | An exemption would excuse a sink that is itself a bug; fixing vision code would widen item 2. |
+| **V14** | What do the no-op stubs (observation-only `maxim_command`, `move`, `track_target`, …) declare (2026-10-30)? | **The real tool's effect.** `create_stub_tool` takes a required `effect=`. | A ceiling then refuses a name the same way whether or not a robot is attached, and the mode gate's name sets (`HOST_ACTING_TOOLS` includes `maxim_command`) agree with `Effect`. |
 
 **Flagged, not asked now:** `maxim.research` already exists (`api.py::research`, Experimental), so Profile A's builder
 needs another name when items 13 and 14 start.
@@ -565,6 +569,28 @@ a behaviour change outside the gate, so it is **filed as a follow-up** with the 
 test pins that every tool in those sets declares a matching `Effect` flag, so the two vocabularies cannot disagree.
 
 ## 2. Item 2: `Tool.effect` and the registry ceiling
+
+> **Status: BUILT 2026-10-30** (branch `feat/1315-item2-tool-effect`). As built, where it differs from the text below:
+> - The effect classification (86 classes) is in each class body; owner decisions V11–V14 settled the four judgement
+>   calls. Defaults taken without asking: ambient logging is not `SELF_SCOPE`; a first-use model download is
+>   infrastructure, not a tool effect; the robot link is `ACTUATE`, not `NETWORK`; `sense_tools` is `READ|GOVERN`
+>   (it re-activates scene tools); a Maxim-owned directory outside the data home (the sim tmpdir, `sandbox/`,
+>   `data/`) is `WRITE_LOCAL`; `READ` accompanies every flag set whose tool returns state it read.
+> - `ToolEffectRefused` lives in `maxim/exceptions.py` (a `MaximError`; `tool_name`, `effect`, `ceiling` as sorted
+>   flag-name lists) and is re-exported by `tools/registry.py`. Every site that catches one logs it through
+>   `tools/registry.py::log_effect_refusal` (event `tool_effect_refused`).
+> - The admission check is `tools/registry.py::EffectAdmission`, a mixin both registries inherit. Under `ALL`, a
+>   replacement by a different class logs a `tool_replaced` WARNING; the same class re-registered (a scene refresh)
+>   is silent. Re-registering the same instance is never a replacement.
+> - `ToolRegistry.register_many` is the all-or-nothing batch that `generate_tools_for_entity` uses; the entity joins
+>   the `EntityMap` only after its tools register. `register_scene_tools` admits the whole batch before evicting.
+> - `Effect.ALL` is attached after the class, so iterating `Effect` yields the seven flags on Python 3.10 too.
+> - `register_tool(tool, effect=)` declares the effect on the tool's class through `tools/base.py::declare_effect`,
+>   which refuses to rewrite a different existing declaration.
+> - The pinned literal-name helpers (§2.1) are checked by
+>   `tests/unit/test_tool_effect.py::test_pinned_import_helpers_take_only_literal_or_table_names`: three call sites
+>   pass a variable, each read from a module-level table of string literals.
+> - Ten item-2 red gates flipped. `test_o2_o5_...` stays red until item 3's dispatch check.
 
 ### 2.1 The flags, defined
 

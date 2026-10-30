@@ -10,9 +10,10 @@ import uuid
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.exceptions import ToolEffectRefused
 from maxim.tools.base import Tool, ToolOutput
 from maxim.utils.logging import log_swallowed_exception
-from maxim.tools.registry import ToolRegistry
+from maxim.tools.registry import ToolRegistry, log_effect_refusal
 
 if TYPE_CHECKING:
     from maxim.agents.permissions import AgentPermissions
@@ -697,6 +698,8 @@ class Executor:
                 try:
                     tools = self.generate_entity_tools(entity)
                     _log.info("Entity acquired: %s (%d tools registered)", entity_acquired, len(tools))
+                except ToolEffectRefused as exc:
+                    log_effect_refusal(exc, site=f"entity acquisition {entity_acquired!r}")
                 except Exception as exc:
                     _log.warning("Failed to register tools for acquired entity %s: %s", entity_acquired, exc)
             elif entity is None:
