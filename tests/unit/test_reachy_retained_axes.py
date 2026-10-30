@@ -34,6 +34,13 @@ import pytest
 
 from maxim.hardware.controller import MotionTarget, PixelTarget
 from maxim.hardware.reachy.controller import ReachyMiniController
+from tests.unit._reachy_fakes import prepare_controller, serve_state_from_ws_fake
+
+
+@pytest.fixture(autouse=True)
+def _serve_the_fresh_readback(monkeypatch):
+    """The controller reads its reference from the daemon's REST state (#1499 R1); serve it from this file's fake."""
+    serve_state_from_ws_fake(monkeypatch)
 
 
 def _rot(roll: float, pitch: float, yaw: float):
@@ -98,13 +105,14 @@ class _BiasedFakeMini:
         self.pitch = 0.0
         self.world_yaw = 0.0
         self.body_yaw = 0.0
+        self.antennas = [0.0, 0.0]
         self.calls: list[dict] = []
 
     def get_current_head_pose(self):
         return _rot(self.roll, self.pitch, self.world_yaw)
 
     def get_current_joint_positions(self):
-        return [self.body_yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0]
+        return [self.body_yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], list(self.antennas)
 
     def goto_target(self, **kwargs):
         self.calls.append(kwargs)
@@ -117,11 +125,18 @@ class _BiasedFakeMini:
             self.world_yaw = yaw + yb
         if kwargs.get("body_yaw") is not None:
             self.body_yaw = kwargs["body_yaw"] + bb
+        if kwargs.get("antennas") is not None:
+            self.antennas = list(kwargs["antennas"])
 
-    def look_at_image(self, u, v, duration=1.0):
-        # Moves the head out-of-band (not through goto_target's stash).
-        self.pitch += 0.2
-        self.world_yaw += 0.3
+    def look_at_image(self, u, v, duration=1.0, perform_movement=True):
+        # The SDK's look_at: the pose it would move to (here: pitch +0.2, yaw +0.3 from the present head).
+        # The controller only ever asks for the pose (perform_movement=False, #1499 5.2).
+        pose = _rot(self.roll, self.pitch + 0.2, self.world_yaw + 0.3)
+        if perform_movement:
+            self.pitch += 0.2
+            self.world_yaw += 0.3
+            self.body_yaw = 0.0  # F1: the SDK's own look_at sends the body to 0
+        return pose
 
     def commanded_eulers(self, call_index: int = -1) -> tuple[float, float, float]:
         return _eulers_of(self.calls[call_index]["head"])
@@ -138,6 +153,7 @@ def _make_controller(**bias) -> tuple[ReachyMiniController, _BiasedFakeMini]:
     ctl._robot_name = "test_reachy"
     ctl.is_connected = lambda: True  # type: ignore[method-assign]
     ctl._update_state = lambda **kw: None  # type: ignore[method-assign]
+    prepare_controller(ctl)
     return ctl, fake
 
 
@@ -157,7 +173,7 @@ class TestRetainedAxesDoNotRatchet:
         ctl, fake = _make_controller(roll_bias=bias, pitch_bias=bias)
 
         for _ in range(20):
-            assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
+            assert ctl.goto_target(MotionTarget(head_yaw=0.1))
 
         roll_cmd, pitch_cmd, _ = fake.commanded_eulers()
         assert abs(roll_cmd) <= bias / 2, (
@@ -183,7 +199,7 @@ class TestRetainedAxesDoNotRatchet:
         body = 0.0
         for _ in range(15):
             body += 0.05
-            assert ctl.goto_target(MotionTarget(body_yaw=body)) is True
+            assert ctl.goto_target(MotionTarget(body_yaw=body))
 
         _, _, world_yaw_cmd = fake.commanded_eulers()
         relative_cmd = world_yaw_cmd - fake.calls[-1]["body_yaw"]
@@ -193,21 +209,17 @@ class TestRetainedAxesDoNotRatchet:
             "from the biased readback instead of held at the commanded value."
         )
 
-    def test_head_only_commands_use_last_commanded_body_for_composition(self):
-        """After a body command, head-only follow-ups must compose the world
-        head yaw against the COMMANDED body angle, not the biased achieved
-        one — otherwise the body bias leaks into the head world target."""
+    def test_head_only_commands_compose_against_the_readback_body(self):
+        """Inverted by #1499 (R1, F2). With ``body_yaw=None`` the daemon holds the body at its PRESENT position and
+        solves the head against it, so composing against the commanded body put the world head target off by the
+        body's lag. The readback body composes; a 4° lag is inside the divergence tolerance, so it is not refused.
+        The head axes the caller leaves out still come from the stash (the H1 F1 rule, pinned above)."""
         ctl, fake = _make_controller(body_bias=math.radians(4.0))
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        assert ctl.goto_target(MotionTarget(head_yaw=0.2)) is True
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5))
+        assert ctl.goto_target(MotionTarget(head_yaw=0.2))
 
         _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(0.5 + 0.2, abs=1e-9), (
-            "head world yaw composed against the achieved body "
-            f"({math.degrees(world_yaw_cmd):.1f}° instead of "
-            f"{math.degrees(0.7):.1f}°) — body fill-in must come from the "
-            "last commanded body value."
-        )
+        assert world_yaw_cmd == pytest.approx(0.5 + math.radians(4.0) + 0.2, abs=1e-9)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -223,37 +235,38 @@ class TestReadbackSeeding:
         ctl, fake = _make_controller()
         fake.roll = 0.15
         fake.pitch = -0.1
-        assert ctl.goto_target(MotionTarget(head_yaw=0.2)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.2))
         roll_cmd, pitch_cmd, _ = fake.commanded_eulers()
         assert roll_cmd == pytest.approx(0.15, abs=1e-9)
         assert pitch_cmd == pytest.approx(-0.1, abs=1e-9)
 
-    def test_stash_survives_unreadable_pose_after_first_command(self):
-        """Once axes have been commanded, an unreadable pose must not block a
-        body-only command — the stash knows what was last commanded (the
-        refuse-to-guess rule narrows to the SEED case)."""
+    def test_an_unreadable_pose_refuses_and_keeps_the_stash(self):
+        """Inverted by #1499 (R2). Every rate and path check starts from a fresh readback, so with none the move
+        is refused rather than composed from the stash. The stash survives the refusal untouched."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_roll=0.1)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_roll=0.1))
+        stash = dict(ctl._last_commanded)
+        n_calls = len(fake.calls)
         ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(body_yaw=0.4)) is True
-        roll_cmd, _, world_yaw_cmd = fake.commanded_eulers()
-        assert roll_cmd == pytest.approx(0.1, abs=1e-9)
-        assert world_yaw_cmd == pytest.approx(0.3 + 0.4, abs=1e-9)
+        fake.rest_fails = True  # the fresh-read seam (the build's fake migration honours it)
+        assert not ctl.goto_target(MotionTarget(body_yaw=0.4))
+        assert len(fake.calls) == n_calls
+        assert ctl._last_commanded == stash
 
     def test_first_command_with_unreadable_pose_still_refuses(self):
         """The executor-lens E2 rule is intact where it matters: no stash +
         no readback = refuse, don't guess."""
         ctl, fake = _make_controller()
-        ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(body_yaw=0.4)) is False
+        fake.rest_fails = True  # an unreadable pose: the reference is the REST readback since #1499 (R1)
+        assert not ctl.goto_target(MotionTarget(body_yaw=0.4))
         assert fake.calls == []
 
     def test_clamped_command_stashes_the_clamped_value(self):
         """The stash holds what was DISPATCHED (post-clamp): a follow-up on
         another axis must re-command the clamped value, not the illegal one."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(head_roll=2.0)) is True  # clamps to 40°
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
+        assert ctl.goto_target(MotionTarget(head_roll=2.0))  # clamps to 40°
+        assert ctl.goto_target(MotionTarget(head_yaw=0.1))
         roll_cmd, _, _ = fake.commanded_eulers()
         assert roll_cmd == pytest.approx(ReachyMiniController._MAX_HEAD_ROLL_RAD, abs=1e-9)
         assert "head_roll" not in ctl.last_clamped_axes, (
@@ -269,7 +282,7 @@ class TestReadbackSeeding:
             raise RuntimeError("wire fell out")
 
         fake.goto_target = boom
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3)) is False
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.3))
         assert ctl._last_commanded == {}
 
 
@@ -279,32 +292,32 @@ class TestReadbackSeeding:
 
 
 class TestOutOfBandInvalidation:
-    def test_look_at_pixel_clears_head_axes(self):
-        """look_at_image moves the head outside the stash's sight — the next
-        fill-in must re-seed head axes from the readback, not re-command a
-        pose from before the look-at."""
+    def test_look_at_pixel_dispatches_through_the_controller(self):
+        """Inverted by #1499 (5.2, F1). look_at no longer moves the head out of band through the SDK (which also
+        sends the body to 0); it is computed with ``perform_movement=False`` and dispatched as a head-only
+        ``goto_target``, so the stash records its axes like any other controller command."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_pitch=0.1)) is True
-        assert ctl.look_at_pixel(PixelTarget(u=100, v=100)) is True
-        assert ctl.goto_target(MotionTarget(head_roll=0.05)) is True
-        _, pitch_cmd, world_yaw_cmd = fake.commanded_eulers()
-        # Achieved after look_at: pitch 0.1+0.2, world yaw 0.3+0.3.
-        assert pitch_cmd == pytest.approx(0.3, abs=1e-9)
-        assert world_yaw_cmd == pytest.approx(0.6, abs=1e-9)
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, head_pitch=0.1))
+        n_calls = len(fake.calls)
+        assert ctl.look_at_pixel(PixelTarget(u=100, v=100))
+        assert len(fake.calls) == n_calls + 1
+        assert fake.calls[-1].get("body_yaw") is None
+        assert "head_rel_yaw" in ctl._last_commanded
 
-    def test_look_at_pixel_keeps_body_stash(self):
-        """look_at_image does not move the body — its stashed commanded value
-        stays authoritative."""
+    def test_look_at_pixel_never_commands_the_body(self):
+        """Inverted by #1499 (5.2, F1). Every dispatch a look_at makes is head-only, so the body stays where it is."""
         ctl, fake = _make_controller(body_bias=math.radians(4.0))
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        assert ctl.look_at_pixel(PixelTarget(u=100, v=100)) is True
-        assert ctl.goto_target(MotionTarget(head_yaw=0.0)) is True
-        _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(0.5, abs=1e-9)
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5))
+        body_before = fake.body_yaw
+        n_calls = len(fake.calls)
+        assert ctl.look_at_pixel(PixelTarget(u=100, v=100))
+        assert len(fake.calls) > n_calls
+        assert all(c.get("body_yaw") is None for c in fake.calls[n_calls:])
+        assert fake.body_yaw == body_before
 
     def test_forget_commanded_clears_everything_by_default(self):
         ctl, _fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, body_yaw=0.2)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, body_yaw=0.2))
         assert ctl._last_commanded
         ctl._forget_commanded()
         assert ctl._last_commanded == {}
@@ -328,11 +341,11 @@ class TestBodySeedRefusal:
         # dispatches deliberately do NOT stash the body).
         fake.body_yaw = math.radians(120.0)
         fake.world_yaw = math.radians(120.0)
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.1))
         assert "body_yaw" not in ctl._last_commanded
-        ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
+        fake.rest_fails = True  # an unreadable pose (the REST readback, #1499 R1)
         n_calls = len(fake.calls)
-        assert ctl.goto_target(MotionTarget(head_pitch=0.2)) is False, (
+        assert not ctl.goto_target(MotionTarget(head_pitch=0.2)), (
             "head-partial command with an unreadable pose and a never-commanded "
             "body must REFUSE — composing against a guessed body=0 while the "
             "body sits at 120° demands a neck angle of −114° past the ±65° "
@@ -344,17 +357,20 @@ class TestBodySeedRefusal:
         """Tightened vs pre-fix (which silently guessed 0 here too): an
         explicit head_yaw still needs a body angle for world composition."""
         ctl, fake = _make_controller()
-        ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is False
+        fake.rest_fails = True  # an unreadable pose (the REST readback, #1499 R1)
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.1))
         assert fake.calls == []
 
-    def test_body_stash_unblocks_unreadable_pose(self):
+    def test_a_body_stash_does_not_unblock_an_unreadable_pose(self):
+        """Inverted by #1499 (R1, R2). The body stash only detects divergence now; it never substitutes for a
+        readback, so an unreadable pose refuses even after a body command."""
         ctl, fake = _make_controller()
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
+        assert ctl.goto_target(MotionTarget(body_yaw=0.5))
+        n_calls = len(fake.calls)
         ctl.get_current_pose = lambda: {}  # type: ignore[method-assign]
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
-        _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(0.6, abs=1e-9)
+        fake.rest_fails = True
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.1))
+        assert len(fake.calls) == n_calls
 
 
 class TestMoveHeadInvalidation:
@@ -364,33 +380,35 @@ class TestMoveHeadInvalidation:
     head back to the stale stashed pose — permanent gaze-fighting in the
     live embodied runtime (DN gaze loops never write the stash)."""
 
-    def test_move_head_invalidates_controller_head_stash(self):
+    def test_move_head_with_a_controller_keeps_the_stash_on_the_gaze_pose(self):
+        """Since #1499 (5.4) move_head delegates to the controller, so the gaze is a controller command: the stash
+        records it, and the next body-only turn keeps the gaze pose instead of snapping back to the pre-gaze one."""
         from maxim.motion.movement import move_head
 
         ctl, fake = _make_controller()
         # Controller centers the head — stash pins roll/pitch/rel_yaw at 0.
-        assert ctl.goto_target(MotionTarget(head_yaw=0.0, head_pitch=0.0)) is True
-        # DN gaze via the raw primitive, controller threaded (the Selfy.move seam).
-        move_head(fake, 0, 0, 0, 0.0, math.degrees(0.4), math.degrees(0.5), 0.5, controller=ctl)
-        for axis in ("head_roll", "head_pitch", "head_rel_yaw"):
-            assert axis not in ctl._last_commanded, (
-                f"move_head left {axis} in the stash — the next controller "
-                "command will snap the head back to the pre-gaze pose."
-            )
-        # Body-only turn now re-seeds head axes from the readback (gaze pose).
-        assert ctl.goto_target(MotionTarget(body_yaw=0.3)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.0, head_pitch=0.0))
+        # DN gaze via the primitive, controller threaded (the Selfy.move seam).
+        assert move_head(fake, 0, 0, 0, 0.0, math.degrees(0.4), math.degrees(0.5), 0.5, controller=ctl)
+        assert ctl._last_commanded["head_pitch"] == pytest.approx(0.4, abs=1e-9)
+        assert ctl._last_commanded["head_rel_yaw"] == pytest.approx(0.5, abs=1e-9)
+        assert ctl.goto_target(MotionTarget(body_yaw=0.3))
         _, pitch_cmd, _ = fake.commanded_eulers()
         assert pitch_cmd == pytest.approx(0.4, abs=1e-6), (
             "body-only turn re-commanded the stale pre-gaze pitch instead of "
             "re-seeding from where the gaze left the head."
         )
 
-    def test_move_head_without_controller_still_dispatches(self):
+    def test_standalone_move_head_needs_the_motion_lock(self):
+        """Inverted by #1499 (5.4; round-5 S2). The standalone path (scripts with no controller) still dispatches,
+        but only under a lock the caller passes; forgetting it is a TypeError, not a silent unlocked move."""
         from maxim.motion.movement import move_head
 
         fake = _BiasedFakeMini()
-        move_head(fake, 0, 0, 0, 0, 0, 10.0, 0.5)
-        assert fake.calls, "controller=None (workers.py legacy callers) must keep working"
+        with pytest.raises(TypeError):
+            move_head(fake, 0, 0, 0, 0, 0, 10.0, 0.5)
+        move_head(fake, 0, 0, 0, 0, 0, 10.0, 0.5, motion_lock=threading.RLock())
+        assert fake.calls
 
 
 class TestLifecycleClearWiring:
@@ -401,25 +419,37 @@ class TestLifecycleClearWiring:
 
     @staticmethod
     def _prep(ctl, fake):
-        assert ctl.goto_target(MotionTarget(head_yaw=0.3, body_yaw=0.2)) is True
+        assert ctl.goto_target(MotionTarget(head_yaw=0.3, body_yaw=0.2))
         assert ctl._last_commanded
         # Lifecycle SDK surface the fake doesn't have by default.
         fake.enable_motors = lambda: None
-        fake.wake_up = lambda: None
-        fake.goto_sleep = lambda: None
         fake.set_automatic_body_yaw = lambda v: None
 
-    def test_wake_up_clears_stash(self):
-        ctl, fake = _make_controller()
-        self._prep(ctl, fake)
-        assert ctl.wake_up() is True
-        assert ctl._last_commanded == {}
+        def _never(*_a, **_k):
+            raise AssertionError("the SDK's canned wake_up/goto_sleep must never be called (#1499 O8)")
 
-    def test_goto_sleep_clears_stash(self):
+        fake.wake_up = _never
+        fake.goto_sleep = _never
+
+    def test_wake_up_leaves_the_stash_on_the_wake_pose(self):
+        """Since #1499 (5.3, O8) wake is composed controller dispatches (re-centre, then INIT): the stash describes
+        where the wake left the head and body, never the pre-wake command."""
         ctl, fake = _make_controller()
         self._prep(ctl, fake)
-        assert ctl.goto_sleep() is True
-        assert ctl._last_commanded == {}
+        assert ctl.wake_up()
+        stash = ctl._last_commanded
+        assert stash["body_yaw"] == pytest.approx(0.0, abs=1e-9)
+        for axis in ("head_roll", "head_pitch", "head_rel_yaw"):
+            assert stash[axis] == pytest.approx(0.0, abs=1e-6)
+
+    def test_goto_sleep_leaves_the_stash_on_the_sleep_pose(self):
+        ctl, fake = _make_controller()
+        self._prep(ctl, fake)
+        assert ctl.goto_sleep()
+        stash = ctl._last_commanded
+        assert stash["body_yaw"] == pytest.approx(0.0, abs=1e-9)
+        assert stash["head_rel_yaw"] == pytest.approx(0.0, abs=0.01)
+        assert stash["head_pitch"] == pytest.approx(math.asin(0.413), abs=0.01)  # SLEEP_HEAD_POSE's ~24° pitch
 
     def test_disconnect_clears_stash_even_when_stream_stop_raises(self):
         class _BoomStream:
@@ -446,24 +476,21 @@ class TestAutomaticBodyYawMode:
     would go stale without bound. The body axis must stay readback-driven
     in that mode."""
 
-    def test_body_is_never_stashed(self):
+    def test_auto_body_yaw_mode_refuses_a_body_command(self):
+        """Inverted by #1499 (O6). With the daemon moving the body behind us, the path and rate checks no longer
+        describe what the motors do, so the controller refuses motion in that mode (construction raises too)."""
         ctl, fake = _make_controller()
         ctl._automatic_body_yaw = True
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        assert "body_yaw" not in ctl._last_commanded
+        assert not ctl.goto_target(MotionTarget(body_yaw=0.5))
+        assert fake.calls == []
 
-    def test_head_only_composes_against_readback_body(self):
+    def test_auto_body_yaw_mode_refuses_a_head_only_command(self):
+        """Inverted by #1499 (O6): head-only moves are refused in that mode too."""
         ctl, fake = _make_controller()
         ctl._automatic_body_yaw = True
-        assert ctl.goto_target(MotionTarget(body_yaw=0.5)) is True
-        # Daemon moved the body since (auto mode); readback reflects it.
         fake.body_yaw = 0.9
-        assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
-        _, _, world_yaw_cmd = fake.commanded_eulers()
-        assert world_yaw_cmd == pytest.approx(1.0, abs=1e-9), (
-            "auto-body-yaw mode must compose against the READBACK body — a "
-            "stashed commanded body goes stale on every daemon adjustment."
-        )
+        assert not ctl.goto_target(MotionTarget(head_yaw=0.1))
+        assert fake.calls == []
 
 
 class TestDivergenceWarning:
@@ -475,22 +502,25 @@ class TestDivergenceWarning:
     def test_large_divergence_warns(self, caplog):
         ctl, fake = _make_controller(roll_bias=math.radians(10.0))
         with caplog.at_level("WARNING", logger="maxim.hardware.reachy.controller"):
-            assert ctl.goto_target(MotionTarget(head_roll=0.0)) is True  # stash roll
-            assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True  # sees 10° divergence
+            # A 10° plant bias: the move lands 10° off (partial, #1499 final-target check), roll is stashed.
+            assert not ctl.goto_target(MotionTarget(head_roll=0.0))
+            out = ctl.goto_target(MotionTarget(head_yaw=0.1))  # sees the 10° divergence
         assert any("diverges from last commanded" in r.message for r in caplog.records)
+        assert not out and out.kind == "reference", "past 5° the divergence is refused too (decision 3)"
 
     def test_small_bias_stays_quiet(self, caplog):
         ctl, fake = _make_controller(roll_bias=math.radians(2.0))
         with caplog.at_level("WARNING", logger="maxim.hardware.reachy.controller"):
             for _ in range(5):
-                assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
+                assert ctl.goto_target(MotionTarget(head_yaw=0.1))
         assert not any("diverges from last commanded" in r.message for r in caplog.records)
 
     def test_warning_is_throttled(self, caplog):
         ctl, fake = _make_controller(roll_bias=math.radians(10.0))
         with caplog.at_level("WARNING", logger="maxim.hardware.reachy.controller"):
-            assert ctl.goto_target(MotionTarget(head_roll=0.0)) is True
+            # Under a 10° bias these alternate partial / refused (#1499); the warning still fires once.
+            ctl.goto_target(MotionTarget(head_roll=0.0))
             for _ in range(5):
-                assert ctl.goto_target(MotionTarget(head_yaw=0.1)) is True
+                ctl.goto_target(MotionTarget(head_yaw=0.1))
         n = sum(1 for r in caplog.records if "diverges from last commanded" in r.message)
         assert n == 1, f"expected exactly one throttled divergence warning, got {n}"

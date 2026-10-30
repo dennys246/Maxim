@@ -45,7 +45,7 @@ import math
 from typing import Any
 
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import clamp_finite, require_duration, require_finite
+from maxim.hardware.controller import as_outcome, clamp_finite, require_duration, require_finite
 
 logger = logging.getLogger(__name__)
 
@@ -297,10 +297,15 @@ class ReachyOrientMotorBackend:
             )
 
             self._inhibit_dn(duration_s)
-            ok = robot.goto_target(MotionTarget(body_yaw=target_body, duration=duration_s))
+            outcome = as_outcome(robot.goto_target(MotionTarget(body_yaw=target_body, duration=duration_s)))
             t_end = _time.monotonic()
-            if not ok:
-                return self._result(affordance, params, success=False, error="Motion command rejected by controller")
+            if not outcome and outcome.kind != "partial" and outcome.chunks_done == 0:
+                # Refused before anything moved: no motion to measure or to frame-correct against.
+                reason = outcome.reason or "rejected by controller"
+                return self._result(affordance, params, success=False, error=f"Motion command not completed: {reason}")
+            # A partial turn (#1499: a split that stopped part-way, or a move whose final readback
+            # failed or fell short) DID move the body: it takes the measurement path below, so the
+            # mirror syncs, the frame is re-measured and _last_motion_t_end bounds the next DoA window.
 
             # Post-motion: sync the runtime mirror NOW (the periodic 3 s
             # DN sync is too slow for the DoA stamp / focus_on_sound), then
@@ -351,7 +356,7 @@ class ReachyOrientMotorBackend:
             # Unknown readback stays optimistic (unknown != failed);
             # a CONFIRMED shortfall is a real failure the learning
             # chain should see.
-            success = reached is not False
+            success = reached is not False and bool(outcome)
             metadata: dict[str, Any] = {
                 "commanded_body_yaw_deg": round(math.degrees(target_body), 1),
                 "achieved_body_yaw_deg": (round(math.degrees(achieved_body), 1) if achieved_body is not None else None),
@@ -389,7 +394,17 @@ class ReachyOrientMotorBackend:
                 affordance,
                 params,
                 success=success,
-                error=None if success else "Body turn fell short (see metadata)",
+                error=(
+                    None
+                    if success
+                    else (
+                        f"Body turn reached its target, but the controller could not confirm it: {outcome.reason}"
+                        if not outcome and reached
+                        else f"Body turn not completed: {outcome.reason}"
+                        if not outcome
+                        else "Body turn fell short (see metadata)"
+                    )
+                ),
                 metadata=metadata,
             )
         except Exception as e:

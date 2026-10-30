@@ -206,6 +206,7 @@ def connect_robot(args: argparse.Namespace):
             use_sim=True,
             media_backend=args.media_backend,
             log_level=args.log_level,
+            automatic_body_yaw=False,  # daemon-global; the SDK defaults it on (#1499 O6)
         )
     log.info(
         "Connecting to Reachy Mini '%s' (connection_mode=%s)...",
@@ -217,6 +218,7 @@ def connect_robot(args: argparse.Namespace):
         connection_mode=args.connection_mode,
         media_backend=args.media_backend,
         log_level=args.log_level,
+        automatic_body_yaw=False,  # daemon-global; the SDK defaults it on (#1499 O6)
     )
 
 

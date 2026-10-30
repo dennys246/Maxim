@@ -1369,11 +1369,13 @@ class AgenticRuntimeMixin:
         except Exception:
             pass
 
-        # Wake up the robot
+        # Wake up the robot through the controller (#1499 5.3, O8): torque-on,
+        # the re-centre, the clamped lifecycle steps and the motion lock. The
+        # raw SDK handle's wake_up bypassed all four.
         try:
-            mini = getattr(self, "mini", None)
-            if mini is not None:
-                self._enqueue_motor(mini.wake_up)
+            robot = getattr(self, "_robot", None)
+            if robot is not None:
+                self._enqueue_motor(robot.wake_up)
                 self._woke_up = True
                 self.sleeping = False  # Mark as no longer sleeping
         except Exception as e:

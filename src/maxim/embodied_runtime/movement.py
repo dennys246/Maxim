@@ -14,8 +14,8 @@ from enum import Enum
 from typing import Any, Optional
 
 from maxim.exceptions import MotionRefused
-from maxim.hardware.reachy.controller import check_sdk_command
 from maxim.hardware.controller import (
+    PixelTarget,
     clamp_finite,
     floor_duration,
     normalize_method,
@@ -1058,32 +1058,25 @@ class MovementMixin:
         if commanded_6d is not None:
             kwargs["_commanded_6d"] = commanded_6d
 
-        # F1 retained-axes fold: this raw look_at_image bypasses
-        # ReachyMiniController.look_at_pixel, so the controller's
-        # last-commanded head stash never sees the motion. Wrap the
-        # dispatch to invalidate the stash (duck-typed — SimulatedController
-        # has none) so the controller's next goto_target re-seeds the head
-        # axes from the readback instead of snapping back to a stale pose.
-        # Invalidate BEFORE dispatch (conservative direction: a spurious
-        # clear costs one readback seed; a missed clear leaves stale
-        # re-commands) and only when the head will actually move.
-        #
-        # Last mile (#1496), at motor-thread dispatch time, on every moving
-        # call: the duration's range (0 or NaN takes the SDK's instant
-        # set_target) and the present pose (defence in depth). The SDK computes
-        # its target from that same readback, so the check runs BEFORE the call.
-        mini = self.mini
-        sdk_look_at = self.mini.look_at_image
-        invalidate = getattr(getattr(self, "_robot", None), "note_external_head_motion", None)
+        robot = getattr(self, "_robot", None)
+        if perform_movement:
+            # #1499 5.2: the SDK's look_at_image(perform_movement=True) sends the
+            # body to 0 (F1). The move goes through the controller's
+            # look_at_pixel instead: head only, from a fresh readback, under the
+            # rate cap and the neck-path rule, with its MotionOutcome returned to
+            # the motor worker (which books the learners only on ok).
+            if robot is None or not hasattr(robot, "look_at_pixel"):
+                self.log.error("look_at refused: no robot controller to dispatch it through (#1499)")
+                return
 
-        def _checked_look_at(*args: Any, **kw: Any) -> Any:
-            if kw.get("perform_movement", True):
-                kw["duration"], _ = check_sdk_command(mini, duration=kw.get("duration"))
-                if invalidate is not None:
-                    invalidate()
-            return sdk_look_at(*args, **kw)
+            def _controller_look_at(u_: int, v_: int, *, duration: float, perform_movement: bool) -> Any:
+                return robot.look_at_pixel(PixelTarget(u=u_, v=v_, duration=floor_duration(duration)))
 
-        self._enqueue_motor(_checked_look_at, sdk_u, sdk_v, **kwargs)
+            self._enqueue_motor(_controller_look_at, sdk_u, sdk_v, **kwargs)
+            return
+
+        # perform_movement=False: the SDK would only compute a pose, and nothing
+        # reads a motor-queue result, so there is nothing to enqueue.
 
     def move(
         self,
@@ -1248,13 +1241,11 @@ class MovementMixin:
             self.pitch,
             self.yaw,
             self.duration,
-            # Serialize against controller-routed callers (executor-lens
-            # review fold): move_head's body-yaw read + compose + dispatch
-            # runs under the same lock as the controller's goto_target.
+            # With the controller, move_head delegates to its goto_target
+            # (#1499 5.4): fresh readback, rate cap, neck-path split, the
+            # stash, and a MotionOutcome the worker books learners on. The
+            # lock serializes the standalone path (no controller) too.
             motion_lock=getattr(getattr(self, "_robot", None), "_motion_lock", None),
-            # F1 retained-axes fold: move_head moves the head outside the
-            # controller's last-commanded stash — thread the controller so
-            # move_head can invalidate its head axes after dispatch.
             controller=getattr(self, "_robot", None),
             _commanded_6d=commanded_6d,
         )

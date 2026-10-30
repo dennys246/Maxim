@@ -88,16 +88,21 @@ mini = ReachyMini(
     connection_mode="network",   # skip the localhost attempt
     timeout=10.0,
     media_backend="no_media",    # motion+DoA need NO media stack (see below)
+    automatic_body_yaw=False,    # REQUIRED: the SDK defaults it on, and it is daemon-global
 )
 mini.enable_motors()             # REQUIRED: wake_up() no longer enables torque
-mini.wake_up()                   # raises head from sleep pose + flourish
 ```
+
+This is the raw SDK, for a first connectivity check only. The maxim package never calls the SDK's `wake_up()`
+or `goto_sleep()` (only the allow-listed orient harness scripts still do): `ReachyMiniController.wake_up()` / `goto_sleep()` run the same steps as clamped dispatches, because
+the SDK's sleep pose sends the antennas to ±3.05 rad, and they re-centre a turned body first (#1499, MP8). Move the
+robot through the controller (`maxim --robot reachy_mini`), never through `mini.goto_target` directly.
 
 Three things that are NOT obvious:
 
 1. **`enable_motors()` is mandatory for movement.** The daemon boots with
    `--no-wake-up-on-start` → torque OFF → head parked in the down/sleep
-   pose. In ≥1.5, `wake_up()` only moves and plays a sound; it does NOT
+   pose. In ≥1.5, the SDK's `wake_up()` only moves and plays a sound; it does NOT
    enable torque. Without `enable_motors()`, every `goto_target` is
    silently ignored (reads still work — the deceptive part).
 2. **`media_backend="no_media"` for control work.** The default on network
