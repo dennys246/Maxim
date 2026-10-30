@@ -12,7 +12,7 @@ import importlib
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # the real types for mypy; at runtime each name is imported on first access
-    from maxim.tools.base import Tool, ToolErrorKind, ToolOutput, ToolResult
+    from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput, ToolResult
     from maxim.tools.comms import CallUserTool, SendMessageTool
     from maxim.tools.filesystem import (
         ExecuteFileTool,
@@ -48,6 +48,7 @@ if TYPE_CHECKING:  # the real types for mypy; at runtime each name is imported o
 
 # Each public name -> the module that defines it.
 _LAZY: dict[str, str] = {
+    "Effect": "maxim.tools.base",
     "Tool": "maxim.tools.base",
     "ToolErrorKind": "maxim.tools.base",
     "ToolOutput": "maxim.tools.base",
@@ -102,6 +103,7 @@ __all__ = [
     "RespondTool",
     "SendMessageTool",
     "SpeakTool",
+    "Effect",
     "Tool",
     "ToolErrorKind",
     "ToolRegistry",

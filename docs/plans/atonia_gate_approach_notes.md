@@ -611,6 +611,16 @@ test pins that every tool in those sets declares a matching `Effect` flag, so th
 >     so a refusal leaves a body-owned entity with no tools.
 >   - Under a ceiling, one `ALL` affordance (`ModulatorAffordanceTool`) keeps every tool of that entity out,
 >     its `READ` `sense_*` tools included (all or nothing). Talk (#1431) should know this.
+> - **Delta round** ([`code_delta.md`](reviews/item2/code_delta.md)): D1 (fail-open, folded: a deleted declaration is a
+>   mismatch, and a class that declared once can never be declared again, tracked in `_EFFECT_DECLARED`); D4, D5, D6
+>   and D7 folded (`Effect` is exported from `maxim.tools`; a top-level `maxim.Effect` would be an owner call). Left
+>   for a follow-up, all fail-closed: D2 (a refusal at a broad-handler site logs twice), D3 (the invalid-effect
+>   warning is once per class lifetime), wire F4 (`tool_replaced` can name one qualname twice).
+> - **Second delta round** ([`code_delta2.md`](reviews/item2/code_delta2.md)): D1's fix holds; D8 (fail-open, only with
+>   a third-party base whose `__init_subclass__` skips `super()`) folded: `declare_effect` refuses a class with no
+>   record. The micro-round on that fold ([`code_delta3.md`](reviews/item2/code_delta3.md)) returned **STOP**; its two
+>   fail-closed NITs (a class under a hook that skips `super()` can no longer take `register_tool(effect=)`, only
+>   the undeclared `ALL` form; the refusal message names one cause of two) go to the follow-up with D2, D3 and F4.
 > - Stated residual: a deregister followed by a register is not a replacement, so the below-`ALL` replacement rule
 >   does not see it. The effect bound still holds for the new tool.
 
@@ -664,13 +674,15 @@ Examples:
 - **The declaration** is `effect: ClassVar[Effect]` in the **class's own `__dict__`**. An inherited value does not
   count, because overriding `execute` must not inherit READ.
 - **The record.** `Tool.__init_subclass__` records it, or `ALL` when it is absent, in a module-private
-  `WeakKeyDictionary`. A non-`Effect` value or `Effect(0)` raises `TypeError`.
+  `WeakKeyDictionary`. `Effect(0)` raises `TypeError`. A non-`Effect` value records `ALL` with one WARNING (V15;
+  the v6 text had a `TypeError`).
 - **The lookup.** `effect_of(obj)` reads `type(obj)`'s record. A type with no record (a duck-typed tool, a mock, a
-  class made outside `Tool`) is `ALL`.
+  class made outside `Tool`) is `ALL`, and so is a type whose own value no longer matches its record (V15).
 - **Mutation is visible.** The mismatch check compares the record with `type(obj).__dict__.get("effect")` only, never
-  an inherited `getattr`. **An absent value with a recorded `ALL` is consistent, not a mismatch.** Only a present
-  value that differs from the record refuses admission, loudly. That catches `cls.effect = ...` after creation, and
-  undeclared test tools and stable `register_tool` tools still register under a ceiling of `ALL`. `create_stub_tool` and `@tool` put `effect` in the class body they build.
+  an inherited `getattr`. **An absent value with a recorded `ALL` is consistent, not a mismatch.** A present value
+  that differs from the record, or a deleted declaration (`del cls.effect`, delta D1), is a mismatch: the tool counts
+  as `ALL`, so a ceiling below `ALL` refuses it loudly and `ALL` still admits it (V15). Undeclared test tools and
+  stable `register_tool` tools still register under a ceiling of `ALL`. `create_stub_tool` and `@tool` put `effect` in the class body they build.
 - **The check** is one helper: `exceeds(e, ceiling) = bool(e & ~ceiling)`. `Flag` has no subset `<=`, and `IntFlag`
   compares integers (WRITE_LOCAL ≤ READ|NETWORK), so neither operator is used anywhere.
 - **The registry ceiling** is fixed at construction: a read-only property, `ALL` by default.
@@ -696,7 +708,7 @@ Examples:
 
 | Input | How it could lie | Answer |
 |---|---|---|
-| `type(tool).effect`, reassigned | `create_stub_tool` already reassigns class fields | Record versus own-`__dict__` mismatch refuses |
+| `type(tool).effect`, reassigned or deleted | `create_stub_tool` already reassigns class fields | Record versus own-`__dict__` mismatch: the tool counts as `ALL` (V15) |
 | Inherited `effect` | Subclass of a READ tool writes | Own `__dict__` only; undeclared means `ALL` |
 | `Effect(0)` | Passes every ceiling | Refused at class creation |
 | Instance attributes (`effect`, `auto_fire`, `kind`) | Set per instance | `effect` is never read from the instance; `auto_fire` is moot once `auto_sense` is checked (V6); `kind` is not the gate |

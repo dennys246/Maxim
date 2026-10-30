@@ -156,6 +156,9 @@ A tool may declare its **effect**: everything it can cause, as a set of
 `COMMS`, `ACTUATE`, `GOVERN`). Declare it in the class body
 (`effect = Effect.READ | Effect.NETWORK`), or pass it to the verbs:
 `@maxim.tool(effect=Effect.READ)` or `maxim.register_tool(tool, effect=Effect.READ)`.
+Use one route per class: `register_tool(effect=)` declares the effect on the
+tool's class, so it refuses a class that already declares one (every
+`@maxim.tool` function tool does; pass `effect=` to the decorator instead).
 A tool that declares nothing counts as `Effect.ALL`, and `run()` runs it exactly
 as before. So does a class whose own `effect` attribute is not an `Effect` (with one
 WARNING naming the class), or whose `effect` was reassigned after the class was

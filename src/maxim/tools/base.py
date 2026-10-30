@@ -131,6 +131,9 @@ def effect_names(effect: Effect) -> list[str]:
 # The effect each Tool subclass declared in its OWN class body, recorded once at class creation (§2.2). Weak keys,
 # so a class made in a test or by a factory does not live forever. Read only through :func:`effect_of`.
 _EFFECT_RECORD: weakref.WeakKeyDictionary[type, Effect] = weakref.WeakKeyDictionary()
+# Classes that DECLARED a valid effect (in their body, or once through :func:`declare_effect`), so a later
+# ``del cls.effect`` is never mistaken for "undeclared": a declared class can never be declared again (delta D1).
+_EFFECT_DECLARED: weakref.WeakSet[type] = weakref.WeakSet()
 # Classes already warned about an ``effect`` that is not a valid declaration (V15): one WARNING per class.
 _EFFECT_WARNED: weakref.WeakSet[type] = weakref.WeakSet()
 
@@ -168,13 +171,19 @@ def effect_of(obj: object) -> Effect:
 def effect_mismatch(obj: object) -> str | None:
     """Why ``type(obj)``'s own ``effect`` no longer matches its record, or ``None``.
 
-    Only a value PRESENT in the class's own ``__dict__`` that differs from the record is a mismatch: that is a
-    ``cls.effect = ...`` after creation. An absent value with a recorded ``ALL`` is consistent (an undeclared tool).
+    A value PRESENT in the class's own ``__dict__`` that differs from the record is a mismatch: that is a
+    ``cls.effect = ...`` after creation. So is an ABSENT value with a record narrower than ``ALL``: a ``del
+    cls.effect`` after creation, after which the class inherits whatever its base declares. An absent value with a
+    recorded ``ALL`` is consistent (an undeclared tool).
     """
     cls = type(obj)
     recorded = _EFFECT_RECORD.get(cls)
-    if "effect" not in cls.__dict__ or recorded is None:
+    if recorded is None:
         return None
+    if "effect" not in cls.__dict__:
+        if recorded == Effect.ALL:
+            return None
+        return f"its own effect was deleted but its record is {effect_names(recorded)}"
     own = cls.__dict__["effect"]
     if isinstance(own, Effect) and own == recorded:
         return None
@@ -191,6 +200,18 @@ def declare_effect(cls: type, effect: Effect) -> None:
         raise TypeError(f"effect must be a non-empty maxim.tools.base.Effect, got {effect!r}")
     if not (isinstance(cls, type) and issubclass(cls, Tool)):
         raise TypeError(f"effect= needs a maxim.tools.base.Tool instance, got a {cls!r}")
+    if cls not in _EFFECT_RECORD:
+        # Delta round D8: a base that overrides __init_subclass__ without super() leaves its subclasses unrecorded
+        # (effect_of says ALL). Narrowing one would trust a declaration nothing recorded.
+        raise TypeError(
+            f"{cls.__module__}.{cls.__qualname__} has no effect record (an __init_subclass__ that does not call "
+            f"super()?); effect={effect!r} cannot declare it"
+        )
+    if "effect" not in cls.__dict__ and cls in _EFFECT_DECLARED:
+        raise TypeError(
+            f"{cls.__module__}.{cls.__qualname__}'s declared effect was deleted after class creation; "
+            f"effect={effect!r} cannot rewrite it"
+        )
     if "effect" in cls.__dict__:
         if cls.__dict__["effect"] == effect and _EFFECT_RECORD.get(cls) == effect:
             return
@@ -200,6 +221,7 @@ def declare_effect(cls: type, effect: Effect) -> None:
         )
     type.__setattr__(cls, "effect", effect)
     _EFFECT_RECORD[cls] = effect
+    _EFFECT_DECLARED.add(cls)
 
 
 @dataclass(slots=True, frozen=True)
@@ -534,6 +556,7 @@ class Tool(ABC):
             if not own:
                 raise TypeError(f"{cls.__module__}.{cls.__qualname__}.effect is Effect(0): declare what it can cause")
             _EFFECT_RECORD[cls] = own
+            _EFFECT_DECLARED.add(cls)
             return
         _EFFECT_RECORD[cls] = Effect.ALL
         warn_invalid_effect_once(cls, f"its own effect {own!r} is not a maxim.tools.base.Effect")

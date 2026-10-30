@@ -2016,11 +2016,10 @@ def _record_registration(tool: Any) -> None:
     """
     name = _registration_name(tool)
     with _registered_tools_lock:
-        if name is not None:
-            for i, existing in enumerate(_registered_tools):
-                if getattr(existing, "name", None) == name:
-                    _registered_tools[i] = tool
-                    return
+        for i, existing in enumerate(_registered_tools):
+            if getattr(existing, "name", None) == name:
+                _registered_tools[i] = tool
+                return
         _registered_tools.append(tool)
 
 

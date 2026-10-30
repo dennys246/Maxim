@@ -102,6 +102,36 @@ def test_mismatch_only_for_a_present_value_that_differs_from_the_record() -> Non
     assert "record is ['READ']" in (effect_mismatch(declared()) or "")
 
 
+def test_a_deleted_declaration_is_all_and_cannot_be_redeclared_narrower() -> None:
+    """Delta round D1: ``del cls.effect`` must not leave a narrower record in force, for the class itself or for
+    ``register_tool(effect=)``. Both cases: a class declared ALL, and a READ subclass of an ALL base."""
+    runner = _cls("deleted_runner", Effect.ALL)
+    del runner.effect
+    with pytest.raises(TypeError, match="cannot rewrite"):
+        declare_effect(runner, Effect.READ)
+    with pytest.raises(ToolEffectRefused):
+        ToolRegistry(ceiling=Effect.READ).register(runner())
+    base = _cls("deleted_base", Effect.ALL)
+    sub = type("T_deleted_sub", (base,), {"effect": Effect.READ})
+    del sub.effect  # now inherits the base's ALL
+    assert effect_of(sub()) == Effect.ALL and "deleted" in (effect_mismatch(sub()) or "")
+
+
+def test_an_unrecorded_class_cannot_be_declared() -> None:
+    """Delta round D8: a base whose ``__init_subclass__`` skips ``super()`` leaves its subclasses with no record. They
+    count as ALL, and ``declare_effect`` refuses to narrow one, even after its own ``effect`` is deleted."""
+
+    class _BrokenBase(Tool):
+        def __init_subclass__(cls, **kwargs: Any) -> None:  # no super(): the effect hook never runs
+            pass
+
+    sub = type("T_unrecorded", (_BrokenBase,), {"name": "unrec", "effect": Effect.ALL, "execute": lambda self: None})
+    assert effect_of(sub()) == Effect.ALL
+    del sub.effect
+    with pytest.raises(TypeError, match="no effect record"):
+        declare_effect(sub, Effect.READ)
+
+
 def test_a_post_hoc_declaration_is_admitted_under_all_and_refused_below(caplog: pytest.LogCaptureFixture) -> None:
     """V15: ``MyTool.effect = Effect.READ`` after the class exists does not narrow it (the record says ALL), and it
     does not drop the tool under maxim.run's ALL either. Below ALL it is refused."""
