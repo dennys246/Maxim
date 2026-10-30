@@ -1173,7 +1173,7 @@ Each item:
 - has its strict red gates before code;
 - proves each guard by deleting it;
 - gets a three-lens review;
-- lists its `[Unreleased]` lines;
+- adds its `changelog.d/` fragment (M83; never an `[Unreleased]` line);
 - runs `scripts/run_mypy_public.sh` (it lists `executor.py`, `api.py`, `create.py`, `load.py` and
   `loop_perception.py`).
 

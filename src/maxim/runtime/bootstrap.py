@@ -633,7 +633,7 @@ def build_evaluators() -> list:
 
 def build_comms_stack(
     *,
-    bus: "AgentBus",
+    agent: Any,
     nac: object | None = None,
     goal_agent: object | None = None,
     autonomy_controller: object | None = None,
@@ -643,7 +643,16 @@ def build_comms_stack(
 
     Returns ``(gateway, conv_manager)`` on success, ``(None, None)`` if
     credentials are missing or dependencies are not installed.
+
+    Takes the AGENT, never a bus (#1481 D1): inbound messages are published on ``agent._bus``, the one bus the run's
+    loop watches (``loop_external.inbound_comms_subscription``), so comms can never be wired to a bus no loop reads.
+    An agent without a bus raises ``ConfigurationError``.
     """
+    bus = getattr(agent, "_bus", None)
+    if bus is None:
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError("build_comms_stack: the agent has no bus, so no loop would see its inbound messages")
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
     from_number = os.environ.get("TWILIO_FROM_NUMBER", "")

@@ -24,6 +24,7 @@ FILES=(
     src/maxim/runtime/executor.py
     src/maxim/runtime/agent_loop.py
     src/maxim/runtime/loop_setup.py
+    src/maxim/runtime/loop_external.py
     src/maxim/runtime/loop_gates.py
     src/maxim/runtime/loop_substrate.py
     src/maxim/runtime/substrate_proposal.py

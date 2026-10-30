@@ -260,6 +260,23 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("DoA feed not started: %s", e, logger=self.log)
 
+    def _build_runtime_comms(self, agent: Any, nac: Any) -> Any:
+        """The embodied runtime's comms stack, when ``MAXIM_COMMS_ENABLED``: wired to the agent, so its inbound messages
+        land on the bus the run's loop watches (#1481). Returns the gateway, or None. Moved from
+        ``_start_agentic_runtime`` (rule T)."""
+        gateway = None
+        if os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes"):
+            try:
+                from maxim.runtime.bootstrap import build_comms_stack
+
+                gateway, _conv_manager = build_comms_stack(
+                    agent=agent,
+                    nac=nac,
+                )
+            except Exception as e:
+                warn("Failed to build comms stack: %s", e, logger=self.log)
+        return gateway
+
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
 
@@ -474,18 +491,7 @@ class AgenticRuntimeMixin:
 
         state.data["internet_access"] = effective_internet_enabled(allow_internet)
 
-        # Build comms stack if enabled (MAXIM_COMMS_ENABLED env)
-        gateway = None
-        if os.environ.get("MAXIM_COMMS_ENABLED", "").lower() in ("1", "true", "yes"):
-            try:
-                from maxim.runtime.bootstrap import build_comms_stack
-
-                gateway, _conv_manager = build_comms_stack(
-                    bus=agent_bus,
-                    nac=nac,
-                )
-            except Exception as e:
-                warn("Failed to build comms stack: %s", e, logger=self.log)
+        gateway = self._build_runtime_comms(agent, nac)  # MAXIM_COMMS_ENABLED env
 
         _t_tools = time.time()
         # Pass maxim=None when headless so robot tools get no-op stubs

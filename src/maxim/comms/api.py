@@ -101,9 +101,10 @@ def create_api_app(
         form = await request.form()
         from_number = str(form.get("From", ""))
         body = str(form.get("Body", ""))
+        message_sid = str(form.get("MessageSid", ""))
         twilio_ch = gateway.channels.get("twilio")
         if twilio_ch and hasattr(twilio_ch, "receive_sms"):
-            twilio_ch.receive_sms(from_number, body)
+            twilio_ch.receive_sms(from_number, body, message_sid)
         return {"status": "ok"}
 
     @app.post("/api/twilio/voice", dependencies=[Depends(require_twilio_signature)])

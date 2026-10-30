@@ -391,7 +391,7 @@ class TestAnnotationAssemblyExpression:
     # Import the production constants — if Bio fold changes the phrases
     # again, these tests fail at module load with a clean ImportError,
     # not a silent green run on stale strings.
-    from maxim.runtime.agent_loop import (
+    from maxim.runtime.loop_planning import (
         _WIRE1_HIGH_PHRASE,
         _WIRE1_HIGH_VARIANCE_THRESHOLD,
         _WIRE1_LOW_PHRASE,

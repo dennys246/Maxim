@@ -6,7 +6,7 @@
     {
       "file": "src/maxim/agents/llm_worker.py",
       "qualname": "LLMWorker._process_request",
-      "lines": 259
+      "lines": 252
     },
     {
       "file": "src/maxim/api.py",
@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1468
+      "lines": 1458
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 840
+      "lines": 829
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -141,7 +141,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2349
+      "lines": 2178
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -181,7 +181,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 384
+      "lines": 374
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -382,6 +382,10 @@
     "_run_agentic_loop_body tightened 2379 -> 2359 on 2026-10-28 (#1438 PR 0, rule T): the session end, the Default Network stop and the consolidation resolution left the body for runtime/bio_integration.py::bio_session, which run_agentic_loop now wraps the body in; the D13 abort is returned and raised by the wrapper after the session ends.",
     "_run_agentic_loop_body tightened 2359 -> 2349 on 2026-10-28 (#1438 PR 0, mypy fold): the D13 abort's construction moved to the module-level _planning_liveness_abort in agent_loop.py, so the body ends in one explicit return (mypy: Missing return statement).",
     "start_simulation_mode tightened 2869 -> 2862 and AgentFactory.create_full_agent 204 -> 195 (unpinned) on 2026-10-28 (#1438 PR 0, rule T): /new's memory consolidation moved to orchestrator.py::_await_aut_session_end_before_new (it now WAITS for the AUT loop's own session end, as a non-owner), and the bio-stack adoption + session open to agent_factory.py::_adopt_bio_stack.",
-    "run_interactive_sim tightened 260 -> 248 on 2026-10-28 (#1438 PR 0, rule T): the end-of-conversation session close moved to interactive.py::_await_conversation_session_end, which waits (a non-owner) for the last turn's loop to end the session it owns."
+    "run_interactive_sim tightened 260 -> 248 on 2026-10-28 (#1438 PR 0, rule T): the end-of-conversation session close moved to interactive.py::_await_conversation_session_end, which waits (a non-owner) for the last turn's loop to end the session it owns.",
+    "_run_agentic_loop_body tightened 2379 -> 2208 and LLMWorker._process_request 259 -> 252 on 2026-10-28 (#1481, rule T; Session A's grants): the section 6 submit try/finally moved whole to loop_external.submit_tick_context with the two submits' shared arguments built once by loop_external.planning_submit_shared_kwargs (autonomy_level stays per call), and the Wire 1 variance-annotation block moved verbatim to loop_planning.annotate_tool_variance (AST-identical); _process_request's proposal sim-log moved to llm_worker._sim_log_proposal_built, paying for the two inbound fields; execute_and_learn 384 -> 374: its conversation-history after-effect moved verbatim to tool_dispatch._record_turn_after_effects (the seed of #1150's after-effects step), which carries the inbound acknowledgement.",
+    "_main_impl tightened 1478 -> 1468 on 2026-10-29 (#1481, rule T; Session A's grant): the comms-stack block moved to cli.py::_build_cli_comms, carrying its build_comms_stack(bus=) -> (agent=) edit; AgenticRuntimeMixin._start_agentic_runtime 865 -> 854 the same way (its comms block moved to AgenticRuntimeMixin._build_runtime_comms).",
+    "AgenticRuntimeMixin._start_agentic_runtime re-pinned 840 -> 829 on 2026-10-29 at the merge of main (#1518) into #1481: #1518's pin less #1481's comms-block extraction to _build_runtime_comms (the second lander re-measures, as S and V agreed); _main_impl 1468 -> 1458 the same way (#1518's TTS extraction plus #1481's _build_cli_comms).",
+    "_run_agentic_loop_body re-pinned 2349 -> 2178 on 2026-10-29 at the merge of main (#1438 PR 0, #1525) into #1481: PR 0's pin plus #1481's rule-T extractions above; the inbound subscription now nests in run_agentic_loop's bio_session with statement, so the body gained only its inbound_inbox parameter."
   ]
 }
