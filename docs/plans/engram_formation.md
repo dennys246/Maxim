@@ -71,7 +71,7 @@ instead of the call.
 
 **Consequences.** `~/.maxim/<home>/cerebellum.json` starts appearing; confirm hivemind bundles still
 exclude it (they do today). No behaviour change: predictions have no consumer (E2/E7).
-`[Unreleased]` line required (`src/` change).
+A `changelog.d/` fragment required (`src/` change; it replaced the `[Unreleased]` line in M83 step 3).
 
 ### E2 — say what runs, mark what doesn't (#909)
 
@@ -210,7 +210,7 @@ E6    memory line 2S-e plan → four-lens                                    ←
 E7    Phase 5 graded-predictor audit                                       ← when a rung names it
 ```
 
-Each `src/` PR needs a pre-merge three-lens review round ([../CODE_REVIEW.md](../CODE_REVIEW.md)) and an `[Unreleased]` CHANGELOG line.
+Each `src/` PR needs a pre-merge three-lens review round ([../CODE_REVIEW.md](../CODE_REVIEW.md)) and a `changelog.d/` fragment (since M83 step 3; it replaced the `[Unreleased]` CHANGELOG line).
 
 ## Done when
 
