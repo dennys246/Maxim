@@ -242,6 +242,8 @@ ARMS: dict[str, dict[str, Any]] = {
     # §11 slice's injected clock; the golden test prints the loop's log on a mismatch.
     "stall": {
         "max_turns": 10,
+        # (Every arm runs with MAXIM_SIM_HARD_ABORT=0, which this one needs: its wedged call is old enough by the
+        # clock to trip the D12 abort, #1259's re-home.)
         "env": {"MAXIM_STALL_FLOOR_S": "15", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
         "events": True,
     },
@@ -450,7 +452,7 @@ class FakeRouter:
             # The inputs that rode this follow-up (``agent_loop._take_deferred_inputs``, #1048): what the narrator was
             # handed beside the tool result. Recorded only for these arms, so the slice-0 traces stay byte-identical.
             m = _NEW_INSTRUCTIONS.search(prompt)
-            call["held_inputs"] = m.group(1).strip()[:120] if m else None
+            call["held_inputs"] = _mask_stall(m.group(1).strip())[:120] if m else None  # masked before the cut
         if self.hold is not None:
             self.hold(role, call)
         answer = getattr(self, f"_answer_{role}")(call)
@@ -504,9 +506,9 @@ class FakeRouter:
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
     def _answer_stall_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
-        """Three probes, then ``finish_simulation``; after it, the queued diversity checkpoint and one idle nudge each
-        get a narrator plan, answered with another ``finish_simulation`` (the narrator's only terminal tool: since D13
-        an action-less answer is a planning failure, so a live narrator never idles before it finishes)."""
+        """Three probes, then ``observe_actions``, whose follow-up carries the diversity checkpoint and is the WEDGED
+        call (``_hold_for_stall_arm``): it answers ``observe_actions`` again, and that follow-up carries the idle nudge
+        that landed while the call was wedged; the narrator then finishes, which ends the run (#1259)."""
         if call["kind"] == "followup" and call["executed"] == "send_message":
             turn = call.get("turn")
             if turn in _STALL_PROBES:
@@ -514,15 +516,11 @@ class FakeRouter:
             if turn == 3:
                 return _act("observe_actions")
         if call["kind"] == "followup" and call["executed"] == "observe_actions":
-            return _act("finish_simulation", status="completed", reason="three probes delivered", summary="")
-        if call["kind"] == "plan":
-            req = call["request"]
-            if req.startswith("simulation goal:"):
-                return _act("send_message", text="Hello, who are you?")
-            if req.startswith("diversity checkpoint (turn 3):"):
-                return _act("finish_simulation", status="completed", reason="checkpoint after finish", summary="")
-            if req.startswith("system: stall detected ("):
-                return _act("finish_simulation", status="completed", reason="nudge after finish", summary="")
+            if (call.get("held_inputs") or "").startswith("SYSTEM: Stall detected ("):
+                return _act("finish_simulation", status="completed", reason="nudged after a wedged call", summary="")
+            return _act("observe_actions")
+        if call["kind"] == "plan" and call["request"].startswith("simulation goal:"):
+            return _act("send_message", text="Hello, who are you?")
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
     def _answer_aut(self, call: dict[str, Any]) -> dict[str, Any]:
@@ -638,6 +636,26 @@ class QueueStdin(io.TextIOBase):
                 if time.monotonic() > deadline:
                     raise HarnessHang(f"stdin reader did not reach read #{n} (at {self.reads})")
                 self._cv.wait(0.05)
+
+
+class _WallPlusOffset:
+    """``StallDetector.CLOCK`` for the stall arm: the wall clock plus an offset the arm's hold sets, the clock's
+    contract (``simulation/stall_detector.py``: the registry stamps calls on the wall clock)."""
+
+    def __init__(self) -> None:
+        self.offset = 0.0
+
+    def __call__(self) -> float:
+        return time.time() + self.offset
+
+
+def _wedged_offset_s() -> float:
+    """How far the stall arm's clock jumps: past a non-streaming planning call's wedged-by-age bound (the worker's
+    call timeout it stamps as ``allowed_s``, plus the stall margin; ``stall_threshold.non_streaming_age_bound_s``),
+    with room for the call's real age; well under the registry's 1800 s stale-entry TTL."""
+    from maxim.runtime.stall_threshold import non_streaming_age_bound_s
+
+    return non_streaming_age_bound_s() + 30.0
 
 
 # Hangs raised by a causal hold on a thread the run owns (the fake AUT's LLM call): src may swallow them there, so
@@ -832,6 +850,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     spec = ARMS[arm]
     work = workdir.resolve()
     router = FakeRouter(arm)
+    stall_clock = _WallPlusOffset()  # the stall detector's clock in the stall arm (``_hold_for_stall_arm``)
     turns: list[dict[str, Any]] = []
     lifecycle: list[str] = []
     finish_calls: list[dict[str, Any]] = []
@@ -960,6 +979,21 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 lambda: any(e.get("text", "").startswith("DIVERSITY CHECKPOINT") for e in events),
                 "the stall detector's diversity checkpoint after turn 3",
             )
+        if (
+            role == "narrator"
+            and call["kind"] == "followup"
+            and call["executed"] == "observe_actions"
+            and (call.get("held_inputs") or "").startswith("DIVERSITY CHECKPOINT")
+        ):
+            # The WEDGED narrator call (#1259's re-home; owner decisions 2026-10-24 and 2026-10-30): this call is
+            # registered in llm_call_registry (FakeRouter.generate_json) and held here. The detector's clock jumps
+            # past the age it was allowed plus the margin, so stall_suppression judges it wedged, and the idle nudge
+            # fires; the call answers once the nudge has landed. The clock stays ahead: nothing later reads an age.
+            stall_clock.offset = _wedged_offset_s()  # read under the arm's env
+            _wait_for(
+                lambda: any(e.get("text", "").startswith("SYSTEM: Stall detected (") for e in events),
+                "the stall detector's idle nudge behind the wedged narrator call",
+            )
 
     cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
     post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
@@ -989,9 +1023,6 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
 
         return spy
 
-    def _answered_the_nudge() -> bool:
-        return any(c["request"].startswith("system: stall detected (") for c in router.calls["narrator"])
-
     if arm == "stall":
         router.hold = _hold_for_stall_arm
 
@@ -1011,11 +1042,6 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     def finish(self: Any) -> None:
         finish_calls.append(dict(self.finish_context))  # the finish_context each finish() saw
         orig_finish(self)
-        if arm == "stall" and not stdin_feed and _answered_the_nudge():
-            # The stall arm's /cancel: only once the finished narrator has planned on (and answered) the idle nudge.
-            assert isinstance(stdin, QueueStdin)
-            stdin.feed("/cancel")
-            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "the idle nudge's answer"})
         if (
             arm in ("new_goal", "persistent_agent", "imagination")
             and self.finish_context.get("initiated_by") == "llm_finish_tool"
@@ -1094,6 +1120,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         *((report_mod, n, _report_spy(n)) for n in _REPORT_WRITERS),
         *((NAc, m, _credit_spy(m)) for m in _NAC_CREDIT_ENTRY_POINTS),
     ]
+    if arm == "stall":
+        from maxim.simulation.stall_detector import StallDetector
+
+        patches.append((StallDetector, "CLOCK", staticmethod(stall_clock)))
     if arm == "imagination":
         from maxim.embodiment.component_registry import ComponentRegistry
         from maxim.imagination.trigger import ImaginationTrigger

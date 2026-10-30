@@ -320,10 +320,13 @@ def test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_n
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
     """The stall detector (§11) past its first diversity checkpoint and its idle threshold. The checkpoint (after
-    turn 3) carries the AUT's tools of turns 1-2 and rides the narrator's next follow-up; the idle nudge reaches the
-    narrator only after it has called ``finish_simulation`` (since D13 a live narrator never idles before), and the
-    narrator's answer to it overwrites the run's ``finish_context`` (#1259, pinned as current behaviour; its fix
-    removes this path, so that PR re-homes the arm; #1452)."""
+    turn 3) carries the AUT's tools of turns 1-2 and rides the narrator's next follow-up (#1048). That follow-up is
+    a WEDGED call: held, registered in the call registry, while the detector's injected clock jumps past the age it
+    was allowed plus the margin, so the detector judges it wedged and injects its idle nudge, which rides the next
+    follow-up; the narrator then finishes and the finish ends the run (#1259). Re-homed by #1259's fix (owner
+    decisions 2026-10-24 and 2026-10-30): before it, the only path to the idle threshold was a nudge reaching the
+    FINISHED narrator, which this test's name (fixed in the 1.4.0 gate's evidence list) still describes; since D13
+    a live narrator never idles otherwise (#1452)."""
     t = _trace("stall", tmp_path_factory)
     narrator = [e for e in t["events"] if e.get("inject") == "narrator#1"]
     assert [(e["thread"], e["text"][:40]) for e in narrator] == [
@@ -333,19 +336,15 @@ def test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_n
     ]
     assert "tools so far (not yours): respond (2x). Its blocked tools: none." in narrator[1]["text"]
     calls = t["narrator_calls"]
-    (observe,) = [c for c in calls if c.get("executed") == "observe_actions"]
-    assert observe["held_inputs"].startswith("DIVERSITY CHECKPOINT (turn 3)")  # rode the follow-up (#1048)
-    assert observe["answer"]["tool_name"] == "finish_simulation"
-    assert calls[-1]["kind"] == "plan" and calls[-1]["request"].startswith("system: stall detected (<S>s idle")
-    assert calls.index(observe) == len(calls) - 2  # the nudge is planned only after the finish
-    # The probes' finish, the nudge's finish, then teardown's bridge.finish() seeing the last context.
-    assert [f.get("reason") for f in t["bridge_finish_calls"]] == [
-        "three probes delivered",
-        "nudge after finish",
-        "nudge after finish",
-    ]
-    assert t["report"]["llm_finish_reason"] == "nudge after finish"  # the post-finish answer overwrote it (#1259)
-    assert t["stdin_lines"] == [{"after": "the idle nudge's answer", "after_turn": 3, "line": "/cancel"}]
+    wedged, nudged = [c for c in calls if c.get("executed") == "observe_actions"]
+    assert wedged["held_inputs"].startswith("DIVERSITY CHECKPOINT (turn 3)")  # rode the follow-up (#1048)
+    assert wedged["answer"]["tool_name"] == "observe_actions"
+    assert nudged["held_inputs"].startswith("SYSTEM: Stall detected (<S>s idle")  # landed behind the wedged call
+    assert nudged["answer"]["tool_name"] == "finish_simulation" and calls[-1] is nudged  # nothing after the finish
+    # The narrator's finish, then teardown's bridge.finish() seeing the same context.
+    assert [f.get("reason") for f in t["bridge_finish_calls"]] == ["nudged after a wedged call"] * 2
+    assert t["report"]["llm_finish_reason"] == "nudged after a wedged call"
+    assert t["stdin_lines"] == []  # no operator stop: the finish ended the run (#1259)
     assert t["result"]["finish_reason"] == "completed"
 
 
