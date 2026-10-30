@@ -559,9 +559,12 @@ def test_item2_process_and_code_runners_declare_all() -> None:
 
 
 def test_item2_effect_record_semantics() -> None:
-    """§2.2: ``Effect(0)`` and a non-Effect value are refused at class creation (TypeError); a subclass of a READ
-    tool with no own ``effect`` records ALL; reassigning ``cls.effect`` after creation makes admission refuse
-    (``ToolEffectRefused``, loudly); ``exceeds`` is the subset check, so WRITE_LOCAL exceeds READ|NETWORK."""
+    """§2.2, as amended by owner decision V15 (2026-10-30, the item 2 review round): ``Effect(0)`` is refused at
+    class creation (TypeError); a non-Effect value records ALL (a third-party tool's own ``effect`` attribute keeps
+    working under ceiling ALL), where §2.2 had a TypeError; a subclass of a READ tool with no own ``effect`` records
+    ALL; reassigning ``cls.effect`` after creation makes ``effect_of`` ALL, so a ceiling below ALL refuses it
+    (``ToolEffectRefused``, loudly) and ALL still admits it; ``exceeds`` is the subset check, so WRITE_LOCAL exceeds
+    READ|NETWORK."""
     base = _require_effect()
     from maxim.tools.base import Effect, Tool, ToolOutput, effect_of, exceeds
     from maxim.tools.registry import ToolRegistry
@@ -572,8 +575,8 @@ def test_item2_effect_record_semantics() -> None:
         return type("ZeroProbe", (Tool,), {"name": "zero", "effect": effect, "execute": lambda self, **kw: None})
 
     _expect_raises(TypeError, lambda: _make(Effect(0)), "Effect(0) was accepted at class creation")
-    _expect_raises(TypeError, lambda: _make("READ"), "a non-Effect effect was accepted at class creation")
-    _expect_raises(TypeError, lambda: _make(1), "an int effect was accepted at class creation")
+    for bad in ("READ", 1):
+        assert effect_of(_make(bad)()) == Effect.ALL, f"a non-Effect effect {bad!r} did not record ALL (V15)"
 
     read_tool = _probe_tool("read_probe", Effect.READ)
     assert effect_of(read_tool) == Effect.READ, "a declared READ tool does not record READ"
@@ -586,7 +589,11 @@ def test_item2_effect_record_semantics() -> None:
     mutated_cls = type(_probe_tool("mut_probe", Effect.READ))
     mutated = mutated_cls()
     mutated_cls.effect = Effect.ALL  # after creation: the record says READ
-    _expect_raises(refused, lambda: ToolRegistry().register(mutated), "a reassigned cls.effect was admitted")
+    assert effect_of(mutated) == Effect.ALL, "a reassigned cls.effect left the stale READ record in force"
+    _expect_raises(
+        refused, lambda: ToolRegistry(ceiling=Effect.READ).register(mutated), "a reassigned cls.effect was admitted"
+    )
+    ToolRegistry().register(mutated)  # V15: ceiling ALL still admits it
 
     assert exceeds(Effect.WRITE_LOCAL, Effect.READ | Effect.NETWORK), "WRITE_LOCAL does not exceed READ|NETWORK"
     assert not exceeds(Effect.READ, Effect.READ | Effect.NETWORK), "READ exceeds READ|NETWORK"

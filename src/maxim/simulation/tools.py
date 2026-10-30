@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import math
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -173,6 +173,14 @@ class SimToolRegistry(EffectAdmission):
         self._admit(tool, self._tools.get(tool.name))
         self._tools[tool.name] = tool
         # Keep _FallbackRedirectTool's tool list in sync
+        _FallbackRedirectTool._registered_tools = self.advertised()
+
+    def register_many(self, tools: Iterable[Tool]) -> None:
+        """Register *tools*, all or nothing (``ToolRegistry.register_many``'s contract)."""
+        batch = list(tools)
+        self._admit_all(batch, self._tools)
+        for tool in batch:
+            self._tools[tool.name] = tool
         _FallbackRedirectTool._registered_tools = self.advertised()
 
     def get(self, name: str) -> Tool:
@@ -600,6 +608,7 @@ class DamageComponentTool(Tool):
     """
 
     name = "damage_component"
+    # SELF_SCOPE: it publishes pain the AUT learns from (NAc credit, persisted with the agent), not only body state.
     effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Apply damage to a specific body part of the agent. Specify which "
@@ -977,6 +986,7 @@ class SetEntitySensorTool(Tool):
     """
 
     name = "set_entity_sensor"
+    # SELF_SCOPE: it publishes pain the AUT learns from (NAc credit, persisted with the agent), not only body state.
     effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Set an agent body sensor to a specific value, or adjust it by a delta "

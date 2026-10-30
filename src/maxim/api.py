@@ -1991,6 +1991,19 @@ _registered_tools: list[Any] = []
 _registered_tools_lock = threading.Lock()
 
 
+def _registration_name(tool: Any) -> str:
+    """*tool*'s ``name``, or ``TypeError``.
+
+    Fail at the call site rather than warning on EVERY later run(): since
+    registration is permanent, a nameless object would be appended
+    unboundedly and fail inside registry.register forever (review fold).
+    """
+    name = getattr(tool, "name", None)
+    if not isinstance(name, str) or not name:
+        raise TypeError(f"register_tool() requires a Tool with a non-empty string `name`; got {tool!r}")
+    return name
+
+
 def _record_registration(tool: Any) -> None:
     """Store one registration, replacing any earlier one with the same name.
 
@@ -2001,12 +2014,7 @@ def _record_registration(tool: Any) -> None:
     the documented "same name replaces" semantics at the list level and not
     merely at ``ToolRegistry.register``.
     """
-    name = getattr(tool, "name", None)
-    if not isinstance(name, str) or not name:
-        # Fail at the call site rather than warning on EVERY later run(): now
-        # that registration is permanent, a nameless object would be appended
-        # unboundedly and fail inside registry.register forever (review fold).
-        raise TypeError(f"register_tool() requires a Tool with a non-empty string `name`; got {tool!r}")
+    name = _registration_name(tool)
     with _registered_tools_lock:
         if name is not None:
             for i, existing in enumerate(_registered_tools):
@@ -2030,7 +2038,6 @@ def _inject_registered_tools(registry: Any) -> int:
     with _registered_tools_lock:
         tools = list(_registered_tools)
     from maxim.exceptions import ToolEffectRefused
-    from maxim.tools.registry import log_effect_refusal
 
     injected = 0
     for t in tools:
@@ -2039,9 +2046,9 @@ def _inject_registered_tools(registry: Any) -> int:
             injected += 1
             logger.debug("Injected user tool: %s", getattr(t, "name", t))
         except ToolEffectRefused as e:
-            # A ceiling below ALL (the observer, Talk, offline; never maxim.run, V10) drops an undeclared or
-            # wider user tool LOUDLY (§1A.4).
-            log_effect_refusal(e, site="maxim user tool injection")
+            # The registry's effect ceiling refused it, and the registry already logged the structured WARNING
+            # (#1315 item 2). maxim.run's registry is ALL (V10), so this needs a narrower one.
+            logger.debug("User tool %s not injected: %s", getattr(t, "name", t), e)
         except Exception as e:
             logger.warning("Failed to inject tool %s: %s", getattr(t, "name", t), e)
     return injected
@@ -2058,9 +2065,9 @@ def register_tool(tool: Any, *, effect: Any = None) -> None:
             ``input_schema``, and ``execute()``).
         effect: Optional ``maxim.tools.base.Effect``: everything the tool can
             cause. It is declared on the tool's class, which must not already
-            declare a different one. A tool with no effect counts as ``ALL``:
-            ``run()`` runs it as before, and a narrower agent (offline, the
-            observer, Talk) drops it with a WARNING naming the tool.
+            declare anything else (a ``@maxim.tool`` function tool always does:
+            pass ``effect=`` to the decorator instead). A tool with no effect
+            counts as ``Effect.ALL``, and ``run()`` runs it exactly as before.
 
     Example::
 
@@ -2085,6 +2092,7 @@ def register_tool(tool: Any, *, effect: Any = None) -> None:
     if effect is not None:
         from maxim.tools.base import declare_effect
 
+        _registration_name(tool)  # refuse a nameless tool before its class is declared
         declare_effect(type(tool), effect)
     _record_registration(tool)
 
@@ -2201,6 +2209,8 @@ def tool(fn: Any = None, *, effect: Any = None) -> Any:
         return lambda f: tool(f, effect=effect)
     from maxim.tools.base import Effect, Tool, ToolOutput
 
+    if effect is not None and (not isinstance(effect, Effect) or not effect):
+        raise TypeError(f"@maxim.tool(effect=) must be a non-empty maxim.tools.base.Effect, got {effect!r}")
     inferred_schema = _infer_input_schema(fn)
     declared = Effect.ALL if effect is None else effect
 

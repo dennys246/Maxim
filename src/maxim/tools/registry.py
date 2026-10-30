@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 from maxim.exceptions import ToolEffectRefused
 
-from .base import Effect, Tool, effect_mismatch, effect_names, effect_of, exceeds
+from .base import Effect, Tool, effect_mismatch, effect_names, effect_of, exceeds, warn_invalid_effect_once
 
 logger = logging.getLogger(__name__)
 
@@ -42,21 +42,6 @@ def _token_overlap(a: str, b: str) -> float:
     return len(intersection) / len(union)
 
 
-def log_effect_refusal(exc: ToolEffectRefused, *, site: str) -> None:
-    """The structured WARNING every site that catches a :class:`ToolEffectRefused` emits (#1315 item 2: refusals
-    are never silent). One shape, so ``MAXIM_LOG_FILE`` carries the tool, its effect and the ceiling at every site."""
-    logger.warning(
-        "%s: tool %r refused: %s",
-        site,
-        exc.tool_name,
-        exc,
-        extra={
-            "event": "tool_effect_refused",
-            "data": {"site": site, "tool": exc.tool_name, "effect": exc.effect, "ceiling": exc.ceiling},
-        },
-    )
-
-
 class EffectAdmission:
     """The effect ceiling and admission check shared by :class:`ToolRegistry` and ``simulation.tools.SimToolRegistry``
     (#1315 item 2, atonia notes §2.2).
@@ -64,6 +49,9 @@ class EffectAdmission:
     The ceiling is fixed at construction (a read-only property, ``ALL`` by default). Admission is layer 1 and
     best-effort structural: every in-tree write calls :meth:`_admit`. Dispatch is the authoritative check, so an
     out-of-tree subclass that skips this is still refused there.
+
+    Every refusal is logged HERE, as it is raised (a ``tool_effect_refused`` WARNING carrying the tool, its effect,
+    the ceiling and the reason), so a caller's broad ``except Exception`` around ``register`` cannot make one silent.
     """
 
     _ceiling: Effect = Effect.ALL
@@ -78,28 +66,48 @@ class EffectAdmission:
         """The effects this registry admits. Fixed at construction."""
         return self._ceiling
 
-    def _refusal(self, tool: Tool, why: str) -> ToolEffectRefused:
-        return ToolEffectRefused(
+    def _refuse(self, tool: Tool, why: str) -> ToolEffectRefused:
+        """Log the refusal and return the exception for the caller to raise."""
+        exc = ToolEffectRefused(
             f"{why} (ceiling {effect_names(self._ceiling)})",
             tool_name=str(getattr(tool, "name", "?")),
             effect=effect_names(effect_of(tool)),
             ceiling=effect_names(self._ceiling),
         )
+        logger.warning(
+            "tool %r refused: %s",
+            exc.tool_name,
+            exc,
+            extra={
+                "event": "tool_effect_refused",
+                "data": {"tool": exc.tool_name, "effect": exc.effect, "ceiling": exc.ceiling, "reason": why},
+            },
+        )
+        return exc
 
     def _admit(self, tool: Tool, existing: Tool | None) -> None:
         """Raise :class:`ToolEffectRefused` unless *tool* may be registered over *existing* (the tool already under
-        its name, or ``None``). Under ``ALL``, a replacement by a different class is allowed (``register_tool``
-        needs it) and logged; below ``ALL`` any replacement refuses."""
+        its name, or ``None``).
+
+        - A class whose own ``effect`` no longer matches its record (reassigned after creation, or never a valid
+          ``Effect``) counts as ``ALL``: admitted under ``ALL`` with one WARNING (owner decision V15), refused below.
+        - Under ``ALL``, a replacement by a different class is allowed (``register_tool`` needs it) and logged; below
+          ``ALL`` any replacement refuses. A deregister followed by a register is not a replacement: the effect
+          bound still holds for the new tool.
+        """
+        all_ceiling = self._ceiling == Effect.ALL
         mismatch = effect_mismatch(tool)
         if mismatch is not None:
-            raise self._refusal(tool, mismatch)
+            if not all_ceiling:
+                raise self._refuse(tool, mismatch)
+            warn_invalid_effect_once(type(tool), mismatch)
         effect = effect_of(tool)
         if exceeds(effect, self._ceiling):
-            raise self._refusal(tool, f"effect {effect_names(effect)} exceeds the ceiling")
+            raise self._refuse(tool, f"effect {effect_names(effect)} exceeds the ceiling")
         if existing is None or existing is tool:
             return
-        if self._ceiling != Effect.ALL:
-            raise self._refusal(tool, f"it would replace the registered {type(existing).__qualname__}")
+        if not all_ceiling:
+            raise self._refuse(tool, f"it would replace the registered {type(existing).__qualname__}")
         if type(existing) is not type(tool):
             logger.warning(
                 "tool %r: %s replaces %s",
@@ -112,9 +120,22 @@ class EffectAdmission:
                         "tool": tool.name,
                         "new": f"{type(tool).__module__}.{type(tool).__qualname__}",
                         "old": f"{type(existing).__module__}.{type(existing).__qualname__}",
+                        "new_effect": effect_names(effect_of(tool)),
+                        "old_effect": effect_names(effect_of(existing)),
                     },
                 },
             )
+
+    def _admit_all(self, tools: Iterable[Tool], registered: Mapping[str, Tool]) -> None:
+        """Admit every tool of a batch before any is written, each against the tool it would replace: an earlier
+        one in the batch, else the one in *registered*. Caller MUST hold the registry's lock, if it has one."""
+        staged: dict[str, Tool] = {}
+        for tool in tools:
+            existing = staged.get(tool.name)
+            if existing is None:
+                existing = registered.get(tool.name)
+            self._admit(tool, existing)
+            staged[tool.name] = tool
 
 
 @dataclass
@@ -193,7 +214,7 @@ class ToolRegistry(EffectAdmission):
         registered, so one refusal leaves the registry as it was."""
         batch = builtins.list(tools)
         with self._lock:
-            self._admit_all(batch)
+            self._admit_all(batch, self._tools)
             for tool in batch:
                 self._tools[tool.name] = tool
 
@@ -432,7 +453,7 @@ class ToolRegistry(EffectAdmission):
 
         All or nothing: every tool is admitted (§2.2) before any scene is evicted or any tool registered.
         """
-        self._admit_all(tools)
+        self._admit_all(tools, self._tools)
         deactivated_scenes: list[str] = []
 
         active_scene_count = self._count_active_scene_tools()
@@ -471,14 +492,6 @@ class ToolRegistry(EffectAdmission):
             )
 
         return deactivated_scenes
-
-    def _admit_all(self, tools: builtins.list[Tool]) -> None:
-        """Admit every tool of a batch, each against the tool it would replace (an earlier one in the batch, or the
-        registered one). Caller MUST hold self._lock."""
-        staged: dict[str, Tool] = {}
-        for tool in tools:
-            self._admit(tool, staged.get(tool.name) or self._tools.get(tool.name))
-            staged[tool.name] = tool
 
     def _count_active_scene_tools(self) -> int:
         """Count active tools that belong to a scene (excludes core tools).

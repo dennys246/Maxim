@@ -876,9 +876,8 @@ class SceneState:
             self._registered_tools[name] = [t.name for t in tools]
             log.info("Scene: registered %d tools for %s", len(tools), name)
         except ToolEffectRefused as e:
-            from maxim.tools.registry import log_effect_refusal
-
-            log_effect_refusal(e, site=f"dm_runtime: entity {name!r}")
+            # The registry already logged the structured WARNING (#1315 item 2); none of the entity's tools registered.
+            log.debug("Scene: tools for %s refused by the effect ceiling: %s", name, e)
         except Exception as e:
             log.debug("Scene: failed to register tools for %s: %s", name, e)
 

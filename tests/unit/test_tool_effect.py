@@ -1,10 +1,10 @@
 """``Tool.effect`` and the registry ceiling (#1315 item 2; ``docs/plans/atonia_gate_approach_notes.md`` §2), in-process.
 
 The strict red gates in ``test_atonia_red_gates_effect_policy.py`` pin the behaviour the notes name; these cover the
-rest of the new code paths directly: ``Effect`` itself, the record and its mismatch check, ``declare_effect``, the
-shared ``EffectAdmission`` (replacement under ``ALL``, the batch paths), ``log_effect_refusal``'s structured record,
-and the three sites that catch a refusal (the DM's scene registration, the executor's entity acquisition, the user
-tool injection).
+rest of the new code paths directly: ``Effect`` itself, the record and its mismatch check (owner decision V15: an
+invalid declaration counts as ``ALL``), ``declare_effect``, the shared ``EffectAdmission`` (the refusal logged where
+it is raised, replacement under ``ALL``, the batch paths), and the three sites that catch a refusal (the DM's scene
+registration, the executor's entity acquisition, the user tool injection).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from maxim.tools.base import (
     effect_of,
     exceeds,
 )
-from maxim.tools.registry import ToolRegistry, log_effect_refusal
+from maxim.tools.registry import ToolRegistry
 
 
 def _cls(name: str, effect: Any = None, *, declare: bool = True) -> type[Tool]:
@@ -51,6 +51,14 @@ def test_effect_iterates_the_seven_flags_and_all_is_their_union() -> None:
     assert effect_names(Effect.READ | Effect.NETWORK) == ["NETWORK", "READ"]
 
 
+def test_effect_all_cannot_be_reassigned_or_deleted() -> None:
+    with pytest.raises(AttributeError, match="fixed"):
+        Effect.ALL = Effect.READ  # type: ignore[misc]
+    with pytest.raises(AttributeError, match="fixed"):
+        del Effect.ALL
+    assert effect_of(SimpleNamespace()) == Effect.READ | ~Effect.READ
+
+
 def test_exceeds_is_the_subset_check() -> None:
     assert not exceeds(Effect.READ, Effect.READ)
     assert exceeds(Effect.WRITE_LOCAL, Effect.READ | Effect.NETWORK)
@@ -65,10 +73,21 @@ def test_undeclared_records_all_and_declared_records_its_own() -> None:
     assert effect_of(_cls("declared", Effect.READ | Effect.SELF_SCOPE)()) == Effect.READ | Effect.SELF_SCOPE
 
 
-@pytest.mark.parametrize("bad", [None, Effect(0), 1, "READ"])
-def test_a_non_effect_or_empty_declaration_is_refused_at_class_creation(bad: Any) -> None:
-    with pytest.raises(TypeError, match="non-empty"):
-        _cls("bad", bad)
+def test_an_empty_declaration_is_refused_at_class_creation() -> None:
+    with pytest.raises(TypeError, match="Effect\\(0\\)"):
+        _cls("empty", Effect(0))
+
+
+@pytest.mark.parametrize("bad", [None, 1, "heal", {"hp": 3}])
+def test_a_non_effect_declaration_counts_as_all_with_one_warning(bad: Any, caplog: pytest.LogCaptureFixture) -> None:
+    """V15: a third-party tool whose own ``effect`` attribute is not an Effect keeps working under ALL."""
+    with caplog.at_level(logging.WARNING, logger="maxim.tools.base"):
+        cls = _cls("third_party", bad)
+    assert effect_of(cls()) == Effect.ALL
+    assert [r.event for r in caplog.records] == ["tool_effect_invalid"]  # type: ignore[attr-defined]
+    with caplog.at_level(logging.WARNING, logger="maxim.tools.base"):
+        ToolRegistry().register(cls())  # admitted under ALL, and not warned twice
+    assert len(caplog.records) == 1
 
 
 def test_mismatch_only_for_a_present_value_that_differs_from_the_record() -> None:
@@ -80,7 +99,19 @@ def test_mismatch_only_for_a_present_value_that_differs_from_the_record() -> Non
     undeclared.effect = Effect.ALL  # matches the recorded ALL
     assert effect_mismatch(undeclared()) is None
     declared.effect = "READ"
-    assert "reassigned" in (effect_mismatch(declared()) or "")
+    assert "record is ['READ']" in (effect_mismatch(declared()) or "")
+
+
+def test_a_post_hoc_declaration_is_admitted_under_all_and_refused_below(caplog: pytest.LogCaptureFixture) -> None:
+    """V15: ``MyTool.effect = Effect.READ`` after the class exists does not narrow it (the record says ALL), and it
+    does not drop the tool under maxim.run's ALL either. Below ALL it is refused."""
+    cls = _cls("post_hoc", declare=False)
+    cls.effect = Effect.READ
+    with caplog.at_level(logging.WARNING):
+        ToolRegistry().register(cls())
+    assert [r.event for r in caplog.records] == ["tool_effect_invalid"]  # type: ignore[attr-defined]
+    with pytest.raises(ToolEffectRefused):
+        ToolRegistry(ceiling=Effect.ALL & ~Effect.GOVERN).register(cls())
 
 
 # ── declare_effect (register_tool(effect=)) ─────────────────────────────────
@@ -93,6 +124,10 @@ def test_declare_effect_declares_once_and_never_rewrites() -> None:
     declare_effect(cls, Effect.READ)  # the same declaration again is a no-op
     with pytest.raises(TypeError, match="cannot rewrite"):
         declare_effect(cls, Effect.ALL)
+    stale = _cls("late_stale", declare=False)
+    stale.effect = Effect.READ  # assigned by hand: the record still says ALL
+    with pytest.raises(TypeError, match="cannot rewrite"):
+        declare_effect(stale, Effect.READ)
 
 
 def test_declare_effect_refuses_a_bad_effect_or_a_non_tool() -> None:
@@ -114,12 +149,21 @@ def test_a_ceiling_must_be_an_effect_and_is_read_only() -> None:
         reg.ceiling = Effect.ALL  # type: ignore[misc]
 
 
-def test_a_refusal_carries_the_tool_effect_and_ceiling() -> None:
+def test_a_refusal_is_logged_where_it_is_raised(caplog: pytest.LogCaptureFixture) -> None:
+    """Refusals are never silent, even when a caller swallows the exception: the registry logs each one."""
     reg = ToolRegistry(ceiling=Effect.READ)
-    with pytest.raises(ToolEffectRefused) as info:
-        reg.register(_cls("net", Effect.READ | Effect.NETWORK)())
-    assert (info.value.tool_name, info.value.effect, info.value.ceiling) == ("net", ["NETWORK", "READ"], ["READ"])
+    with caplog.at_level(logging.WARNING, logger="maxim.tools.registry"):
+        try:
+            reg.register(_cls("net", Effect.READ | Effect.NETWORK)())
+        except Exception as e:  # noqa: BLE001 -- a caller's broad handler
+            refused = e
+    assert isinstance(refused, ToolEffectRefused)
+    assert (refused.tool_name, refused.effect, refused.ceiling) == ("net", ["NETWORK", "READ"], ["READ"])
     assert reg.find("net") is None
+    (rec,) = caplog.records
+    assert rec.levelno == logging.WARNING and rec.event == "tool_effect_refused"  # type: ignore[attr-defined]
+    assert rec.data["tool"] == "net" and rec.data["ceiling"] == ["READ"]  # type: ignore[attr-defined]
+    assert "exceeds" in rec.data["reason"]  # type: ignore[attr-defined]
 
 
 def test_under_all_a_replacement_by_another_class_is_allowed_and_logged(caplog: pytest.LogCaptureFixture) -> None:
@@ -141,6 +185,15 @@ def test_below_all_the_same_instance_again_is_not_a_replacement() -> None:
     reg.register(t)
     reg.register(t)
     assert reg.get("again") is t
+
+
+def test_a_batch_checks_a_repeated_name_against_its_own_earlier_tool() -> None:
+    first, again = _cls("twice", Effect.READ)(), _cls("twice", Effect.READ)()
+    with pytest.raises(ToolEffectRefused, match="replace"):
+        ToolRegistry(ceiling=Effect.READ).register_many([first, again])
+    wide = ToolRegistry()
+    wide.register_many([first, again])
+    assert wide.get("twice") is again
 
 
 def test_register_many_is_all_or_nothing() -> None:
@@ -172,6 +225,35 @@ def test_sim_registry_admits_and_keeps_its_redirect_only_under_all() -> None:
     with pytest.raises(KeyError):
         narrow.get("missing")
     assert isinstance(SimToolRegistry().get("missing"), _FallbackRedirectTool)
+    with pytest.raises(ToolEffectRefused):
+        narrow.register_many([_cls("sim_ok", Effect.READ)(), _cls("sim_wide2", Effect.ALL)()])
+    assert narrow.list() == ["sim_read"]
+    narrow.register_many([_cls("sim_ok", Effect.READ)()])
+    assert narrow.list() == ["sim_read", "sim_ok"]
+
+
+def test_entity_generation_raises_the_refusal_and_maps_the_entity_only_after_registering() -> None:
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+    class _Map:
+        def __init__(self, registry: ToolRegistry) -> None:
+            self.registry, self.seen = registry, []
+
+        def register(self, entity: Any) -> None:
+            self.seen.append(sorted(self.registry.list_all()))  # what was registered when the entity was mapped
+
+    narrow = ToolRegistry(ceiling=Effect.READ)
+    refused_map = _Map(narrow)
+    with pytest.raises(ToolEffectRefused):
+        generate_tools_for_entity(
+            ComponentRegistry().instantiate("weapons/rusty_sword"), narrow, entity_map=refused_map
+        )
+    assert narrow.list_all() == [] and refused_map.seen == []
+    wide = ToolRegistry()
+    mapped = _Map(wide)
+    tools = generate_tools_for_entity(ComponentRegistry().instantiate("weapons/rusty_sword"), wide, entity_map=mapped)
+    assert mapped.seen == [sorted(t.name for t in tools)]
 
 
 # ── the sites that catch a refusal ──────────────────────────────────────────
@@ -181,33 +263,19 @@ def _refusal() -> ToolEffectRefused:
     return ToolEffectRefused("x", tool_name="t", effect=["ALL"], ceiling=["READ"])
 
 
-def test_log_effect_refusal_is_one_structured_warning(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.WARNING, logger="maxim.tools.registry"):
-        log_effect_refusal(_refusal(), site="here")
-    (rec,) = caplog.records
-    assert rec.levelno == logging.WARNING and rec.event == "tool_effect_refused"  # type: ignore[attr-defined]
-    assert rec.data == {"site": "here", "tool": "t", "effect": ["ALL"], "ceiling": ["READ"]}  # type: ignore[attr-defined]
-
-
-def test_the_dm_scene_logs_a_refused_entity_and_records_no_tools(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    import maxim.embodiment.tool_bridge as tool_bridge
+def test_the_dm_scene_registers_none_of_a_refused_entitys_tools(caplog: pytest.LogCaptureFixture) -> None:
+    from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.simulation.dm_runtime import SceneState
 
-    def _refuse(*_a: Any, **_k: Any) -> list[Tool]:
-        raise _refusal()
-
-    monkeypatch.setattr(tool_bridge, "generate_tools_for_entity", _refuse)
-    scene = SceneState({"goblin": object()}, tool_registry=ToolRegistry(ceiling=Effect.READ))
+    reg = ToolRegistry(ceiling=Effect.READ)
+    scene = SceneState({"sword": ComponentRegistry().instantiate("weapons/rusty_sword")}, tool_registry=reg)
     with caplog.at_level(logging.WARNING, logger="maxim.tools.registry"):
-        scene._register_entity_tools("goblin")
-    assert scene._registered_tools == {}
+        scene._register_entity_tools("sword")
+    assert scene._registered_tools == {} and reg.list_all() == []
     assert [r.event for r in caplog.records] == ["tool_effect_refused"]  # type: ignore[attr-defined]
-    assert "goblin" in caplog.records[0].data["site"]  # type: ignore[attr-defined]
 
 
-def test_entity_acquisition_logs_a_refusal(caplog: pytest.LogCaptureFixture) -> None:
+def test_entity_acquisition_survives_a_refusal(caplog: pytest.LogCaptureFixture) -> None:
     from maxim.runtime.executor import Executor
 
     entity = SimpleNamespace(name="sword", reparent=lambda root: None)
@@ -220,9 +288,9 @@ def test_entity_acquisition_logs_a_refusal(caplog: pytest.LogCaptureFixture) -> 
         embodiment=SimpleNamespace(root=object()),
         generate_entity_tools=_refuse,
     )
-    with caplog.at_level(logging.WARNING, logger="maxim.tools.registry"):
+    with caplog.at_level(logging.DEBUG, logger="maxim.runtime.executor"):
         Executor._handle_entity_acquisition(fake, {"entity_acquired": "sword"})  # type: ignore[arg-type]
-    assert [r.event for r in caplog.records] == ["tool_effect_refused"]  # type: ignore[attr-defined]
+    assert any("refused by the effect ceiling" in r.getMessage() for r in caplog.records)
 
 
 def test_tool_decorator_refuses_a_bad_effect_and_registers_nothing() -> None:
@@ -231,9 +299,20 @@ def test_tool_decorator_refuses_a_bad_effect_and_registers_nothing() -> None:
     def _bad_effect_probe() -> str:
         return "x"
 
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="non-empty"):
         api.tool(effect="READ")(_bad_effect_probe)
     assert "_bad_effect_probe" not in api.list_registered_tools()
+
+
+def test_register_tool_refuses_a_nameless_tool_before_declaring_its_class() -> None:
+    import maxim.api as api
+
+    cls = _cls("nameless", declare=False)
+    nameless = cls()
+    object.__setattr__(nameless, "name", "")
+    with pytest.raises(TypeError, match="name"):
+        api.register_tool(nameless, effect=Effect.READ)
+    assert "effect" not in cls.__dict__ and effect_of(cls()) == Effect.ALL
 
 
 # ── §2.1: the pinned literal-name helpers are called with literal names only ─

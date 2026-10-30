@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import copy
 import functools
+import logging
 import operator
 import os
 import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum, Flag, auto
+from enum import Enum, EnumMeta, Flag, auto
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
@@ -61,7 +62,25 @@ class ToolErrorKind(Enum):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class Effect(Flag):
+_logger = logging.getLogger(__name__)
+
+
+class _EffectMeta(EnumMeta):
+    """Refuses a reassignment or deletion of ``Effect.ALL`` once it is set (#1315 item 2 review): ``ALL`` is not an
+    enum member, so ``EnumMeta`` alone would let ``Effect.ALL = Effect.READ`` narrow every fail-closed default."""
+
+    def __setattr__(cls, name: str, value: Any) -> None:
+        if name == "ALL" and "ALL" in cls.__dict__:
+            raise AttributeError("Effect.ALL is fixed: it is the union of the seven flags")
+        super().__setattr__(name, value)
+
+    def __delattr__(cls, name: str) -> None:
+        if name == "ALL":
+            raise AttributeError("Effect.ALL is fixed: it is the union of the seven flags")
+        super().__delattr__(name)
+
+
+class Effect(Flag, metaclass=_EffectMeta):
     """Everything a tool can cause, through itself or through any collaborator it holds or is wired to later; not
     what it is for (atonia notes §2.1). A SET, never a ladder (V2): compare with :func:`exceeds`, never ``<=``.
 
@@ -69,14 +88,18 @@ class Effect(Flag):
     - ``SELF_SCOPE``: writes only Maxim's own persisted state under the data home (memory, NAc, its own logs).
     - ``WRITE_LOCAL``: writes, moves or deletes files outside the data home. A tool that spawns a process or runs
       code in-process can cause anything, so it declares ``ALL`` instead.
-    - ``NETWORK``: any egress off the machine, DNS and GETs included.
+    - ``NETWORK``: egress the tool causes to a destination off the machine, DNS and GETs included. Two channels are
+      not a tool's ``NETWORK`` (owner decisions V11, V16): the configured LLM lanes (the router is infrastructure)
+      and the configured robot body (its channel is ``ACTUATE``). Offline still refuses both, at the lanes and the
+      latch.
     - ``COMMS``: reaches a person or a channel (messages, calls, email).
     - ``ACTUATE``: physical output: motion, sound, a display.
     - ``GOVERN``: changes Maxim's own authority: mode, autonomy level, internet switch, allowed directories, the tool
       set.
 
     ``Effect.ALL`` is the union of the seven. It is attached after the class, not declared in it, so iterating
-    ``Effect`` yields exactly the seven flags on every supported Python (3.10 also iterates a composite member).
+    ``Effect`` yields exactly the seven flags on every supported Python (3.10 also iterates a composite member), and
+    the metaclass refuses to reassign it.
     Serialise an effect with :func:`effect_names`, never as the integer, which depends on declaration order.
     """
 
@@ -108,12 +131,38 @@ def effect_names(effect: Effect) -> list[str]:
 # The effect each Tool subclass declared in its OWN class body, recorded once at class creation (§2.2). Weak keys,
 # so a class made in a test or by a factory does not live forever. Read only through :func:`effect_of`.
 _EFFECT_RECORD: weakref.WeakKeyDictionary[type, Effect] = weakref.WeakKeyDictionary()
+# Classes already warned about an ``effect`` that is not a valid declaration (V15): one WARNING per class.
+_EFFECT_WARNED: weakref.WeakSet[type] = weakref.WeakSet()
+
+
+def warn_invalid_effect_once(cls: type, why: str) -> None:
+    """One structured WARNING per class whose own ``effect`` is not a valid declaration, which therefore counts as
+    ``ALL`` (owner decision V15: a third-party ``Tool`` with an ``effect`` attribute of its own keeps working under
+    ceiling ``ALL``)."""
+    if cls in _EFFECT_WARNED:
+        return
+    _EFFECT_WARNED.add(cls)
+    _logger.warning(
+        "%s.%s: %s; it counts as Effect.ALL",
+        cls.__module__,
+        cls.__qualname__,
+        why,
+        extra={
+            "event": "tool_effect_invalid",
+            "data": {"class": f"{cls.__module__}.{cls.__qualname__}", "reason": why},
+        },
+    )
 
 
 def effect_of(obj: object) -> Effect:
     """The effect recorded for ``type(obj)``; ``ALL`` for a type with no record (a duck-typed tool, a mock, a class
-    made outside ``Tool``). Never read from the instance, and never an inherited class value."""
-    return _EFFECT_RECORD.get(type(obj), Effect.ALL)
+    made outside ``Tool``) and for one whose own ``effect`` no longer matches its record (:func:`effect_mismatch`):
+    a reassignment never narrows a tool, and never leaves a stale narrower record for a later check to trust. Never
+    read from the instance, and never an inherited class value."""
+    recorded = _EFFECT_RECORD.get(type(obj))
+    if recorded is None or effect_mismatch(obj) is not None:
+        return Effect.ALL
+    return recorded
 
 
 def effect_mismatch(obj: object) -> str | None:
@@ -129,23 +178,21 @@ def effect_mismatch(obj: object) -> str | None:
     own = cls.__dict__["effect"]
     if isinstance(own, Effect) and own == recorded:
         return None
-    return (
-        f"{cls.__module__}.{cls.__qualname__}.effect was reassigned after class creation "
-        f"(recorded {effect_names(recorded)}, now {own!r})"
-    )
+    return f"its own effect is {own!r} but its record is {effect_names(recorded)}"
 
 
 def declare_effect(cls: type, effect: Effect) -> None:
     """Declare *effect* on a Tool class that declared none: the one sanctioned late declaration, used by
     ``maxim.register_tool(tool, effect=)`` (V10, §1A.4). It sets the class's own ``effect`` and its record together,
-    so admission sees no mismatch. A class that already declares a DIFFERENT effect is refused (``TypeError``): a
-    declaration is never rewritten after the fact."""
+    so admission sees no mismatch. A class that already declares anything else, or whose value no longer matches its
+    record, is refused (``TypeError``): a declaration is never rewritten after the fact. A ``@maxim.tool`` function
+    tool always declares, so pass ``effect=`` to the decorator instead."""
     if not isinstance(effect, Effect) or not effect:
         raise TypeError(f"effect must be a non-empty maxim.tools.base.Effect, got {effect!r}")
     if not (isinstance(cls, type) and issubclass(cls, Tool)):
         raise TypeError(f"effect= needs a maxim.tools.base.Tool instance, got a {cls!r}")
     if "effect" in cls.__dict__:
-        if cls.__dict__["effect"] == effect:
+        if cls.__dict__["effect"] == effect and _EFFECT_RECORD.get(cls) == effect:
             return
         raise TypeError(
             f"{cls.__module__}.{cls.__qualname__} already declares effect {cls.__dict__['effect']!r}; "
@@ -474,18 +521,22 @@ class Tool(ABC):
     effect: ClassVar[Effect]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Record the class's own ``effect`` (or ``ALL`` when it declares none). ``Effect(0)`` and a non-Effect
-        value are refused here, so no tool passes every ceiling by declaring nothing."""
+        """Record the class's own ``effect``, or ``ALL`` when it declares none. ``Effect(0)`` is refused here
+        (``TypeError``), so no tool passes every ceiling by declaring nothing. Any other value that is not an
+        ``Effect`` (a third-party tool's own ``effect`` attribute, a property) records ``ALL`` with one WARNING
+        (owner decision V15), so such a tool keeps working under ceiling ``ALL`` and is refused below it."""
         super().__init_subclass__(**kwargs)
         if "effect" not in cls.__dict__:
             _EFFECT_RECORD[cls] = Effect.ALL
             return
         own = cls.__dict__["effect"]
-        if not isinstance(own, Effect) or not own:
-            raise TypeError(
-                f"{cls.__module__}.{cls.__qualname__}.effect must be a non-empty maxim.tools.base.Effect, got {own!r}"
-            )
-        _EFFECT_RECORD[cls] = own
+        if isinstance(own, Effect):
+            if not own:
+                raise TypeError(f"{cls.__module__}.{cls.__qualname__}.effect is Effect(0): declare what it can cause")
+            _EFFECT_RECORD[cls] = own
+            return
+        _EFFECT_RECORD[cls] = Effect.ALL
+        warn_invalid_effect_once(cls, f"its own effect {own!r} is not a maxim.tools.base.Effect")
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):

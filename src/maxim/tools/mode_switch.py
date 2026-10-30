@@ -168,7 +168,8 @@ class AutonomyLevelTool(Tool):
     """
 
     name = "autonomy_level"
-    effect = Effect.READ | Effect.GOVERN
+    # COMMS: request_autonomy puts the request in front of the operator, as request_interaction does.
+    effect = Effect.READ | Effect.COMMS | Effect.GOVERN
     description = "Request a change in autonomy level"
     input_schema = {
         "level": str,  # Required: "planning", "supervised", or "autonomous"
