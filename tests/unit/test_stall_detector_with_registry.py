@@ -155,9 +155,9 @@ def test_the_detector_and_the_worker_share_one_planning_lane():
     import inspect
 
     from maxim.agents import llm_worker
-    from maxim.simulation import orchestrator
+    from maxim.simulation import stall_detector  # the detector's module since the orchestrator's §11 slice
 
-    assert "_resolved_tier = PLANNING_LANE" in inspect.getsource(orchestrator)
+    assert "_resolved_tier = PLANNING_LANE" in inspect.getsource(stall_detector)
     worker = inspect.getsource(llm_worker)
     assert "lane = PLANNING_LANE" in worker and 'lane = "large"' not in worker
 
@@ -209,14 +209,16 @@ def test_the_orchestrator_wires_the_suppression_decision():
     the activity-clock reset while a turn is in progress, ping-pong exempt, and a reported (not swallowed) failure."""
     import inspect
 
-    from maxim.simulation import orchestrator
+    from maxim.simulation.stall_detector import StallDetector  # the detector's home since the orchestrator's §11 slice
 
-    src = inspect.getsource(orchestrator)
-    assert "turn_in_progress=bridge.turn_in_progress, lane=_resolved_tier, lane_timeout_s=_lane_timeout_s" in src
+    src = inspect.getsource(StallDetector._suppressed)
+    assert "turn_in_progress=bridge.turn_in_progress," in src
+    assert "lane=self._resolved_tier," in src and "lane_timeout_s=self._lane_timeout_s," in src
+    assert "now=self._now()," in src, "call ages are read on the detector's own clock"
     assert "if _suppress and not ping_pong:" in src
-    block = src.split("if _suppress and not ping_pong:", 1)[1].split("continue", 1)[0]
-    assert "if bridge.turn_in_progress:" in block and "_last_activity_time[0] = time.time()" in block
-    assert 'log_swallowed_exception(site="orchestrator.py:_stall_detector:stall_suppression")' in src
+    block = src.split("if _suppress and not ping_pong:", 1)[1].split("return True", 1)[0]
+    assert "if bridge.turn_in_progress:" in block and "self._last_activity_time = self._now()" in block
+    assert 'log_swallowed_exception(site="stall_detector.py:StallDetector._suppressed:stall_suppression")' in src
 
 
 def test_a_byte_silent_streaming_call_is_wedged_whatever_its_age():

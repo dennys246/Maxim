@@ -69,12 +69,28 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("tty_stdin.py", "read_post_sim_goal_raw"),
     # #1454's interim prompt fix (2026-10-26, rule T): the interactive post-sim report view + new-goal prompt
     ("orchestrator.py", "_show_report_and_post_sim_prompt"),
+    # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
+    # methods, by name: each is one def in that file) and the nudge-example builder that was nested beside it
+    ("stall_detector.py", "_build_stall_nudge_example"),
+    ("stall_detector.py", "__init__"),
+    ("stall_detector.py", "_now"),
+    ("stall_detector.py", "run"),
+    ("stall_detector.py", "_configure"),
+    ("stall_detector.py", "_current_threshold"),
+    ("stall_detector.py", "_orch_action_count"),
+    ("stall_detector.py", "_poll"),
+    ("stall_detector.py", "_check_max_turns"),
+    ("stall_detector.py", "_on_turn_progress"),
+    ("stall_detector.py", "_suppressed"),
+    ("stall_detector.py", "_spinner_truth"),
+    ("stall_detector.py", "_hard_abort"),
+    ("stall_detector.py", "_nudge"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one
 # appends it here in the same commit as the move, and appends its functions to ``PARTS``.
 # ``test_orchestrator_source.py`` holds the registry complete (its docstring lists the checks and their limits).
-EXTRACTION_MODULES: tuple[str, ...] = ("maxim.simulation.tty_stdin",)
+EXTRACTION_MODULES: tuple[str, ...] = ("maxim.simulation.tty_stdin", "maxim.simulation.stall_detector")
 
 # Top-level functions of an extraction module that are NOT the run's code, with the reason: module-level
 # helpers of ``orchestrator.py`` that moved with the code they serve. They are not in ``PARTS``, so a pin on

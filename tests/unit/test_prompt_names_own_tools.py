@@ -119,9 +119,9 @@ def test_an_agent_with_every_tool_sees_unchanged_guidance() -> None:
 
 
 def test_the_narrators_stall_and_diversity_inputs_label_the_agents_tools() -> None:
-    from maxim.simulation import orchestrator
+    from maxim.simulation import stall_detector  # the detector's module since the orchestrator's §11 slice
 
-    src = inspect.getsource(orchestrator)
+    src = inspect.getsource(stall_detector)
     assert "the agent under test's last action was" in src
     assert "the agent under test's tools so far (not yours)" in src
 

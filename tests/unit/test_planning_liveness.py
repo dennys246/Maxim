@@ -754,14 +754,30 @@ class TestOrchestratorWiringPins:
         reset it (pre-#519, nudges reset the clock and made the abort
         structurally unreachable: '>=3 nudges AND >=150s stall' were
         mutually exclusive by construction)."""
-        writes = orch_src.count("_last_turn_progress_time[0] = time.time()")
-        assert writes == 1, f"expected exactly one abort-clock write site, found {writes}"
-        # And that one write is in the turn-advance branch, not the nudge path.
-        turn_advance = orch_src.split("if current_turns > _last_turn_count[0]:", 1)[1]
-        advance_block = turn_advance.split("continue", 1)[0]
-        assert "_last_turn_progress_time[0] = time.time()" in advance_block
-        nudge_block = orch_src.split("_nudge_count[0] += 1", 1)[1].split("def _force_exit", 1)[0]
-        assert "_last_turn_progress_time" not in nudge_block
+        # Since the orchestrator's §11 slice the detector is a class (simulation/stall_detector.py): the clock is the
+        # attribute ``_last_turn_progress_time``, and every method that assigns it is named.
+        import ast
+        import inspect
+
+        from maxim.simulation import stall_detector
+
+        cls = next(
+            n
+            for n in ast.parse(inspect.getsource(stall_detector)).body
+            if isinstance(n, ast.ClassDef) and n.name == "StallDetector"
+        )
+        writers = sorted(
+            f.name
+            for f in cls.body
+            if isinstance(f, ast.FunctionDef)
+            for n in ast.walk(f)
+            if isinstance(n, ast.Assign)
+            for t in n.targets
+            if isinstance(t, ast.Attribute) and t.attr == "_last_turn_progress_time"
+        )
+        # Its initial value when the thread starts, and the turn-advance branch: never the nudge path.
+        assert writers == ["_configure", "_on_turn_progress"], writers
+        assert "self._poll()" in orch_src and "self._on_turn_progress(current_turns, current_actions)" in orch_src
 
 
 # ─────────────────────────────────────────────────────────────────────────────
