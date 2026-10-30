@@ -400,7 +400,7 @@ def _registered_profile_cloud_flag(model: str) -> bool | None:
     This asks "what IS this profile" — its ``cloud`` field — rather than
     guessing from the name prefix, mirroring Maxim core's by-backend lane
     routing. ``maxim.models.language.config`` merges user profiles from
-    ``~/.config/maxim/profiles.yml`` into ``_BUILTIN_PROFILES`` at import,
+    ``~/.config/maxim/profiles.yml`` into its profile table on first lookup (``get_profile``),
     so a local GGUF profile added via ``maxim model add`` is visible here.
 
     Returns:
@@ -418,14 +418,11 @@ def _registered_profile_cloud_flag(model: str) -> bool | None:
     caller degrades to the prior prefix-only behavior rather than crashing.
     """
     try:
-        from maxim.models.language.config import (
-            _BUILTIN_PROFILES,
-            normalize_llm_profile,
-        )
+        from maxim.models.language.config import get_profile, normalize_llm_profile
     except Exception:
         return None
     canonical = normalize_llm_profile(model)
-    entry = _BUILTIN_PROFILES.get(canonical)
+    entry = get_profile(canonical)
     if entry is None:
         return None
     return bool(entry.get("cloud", False))

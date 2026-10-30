@@ -376,10 +376,10 @@ def _validate_model(model: str) -> None:
     model is unknown, the required SDK is missing, or the API key is unset.
     """
     from maxim.exceptions import ConfigurationError
-    from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+    from maxim.models.language.config import get_profile, normalize_llm_profile
 
     canonical = normalize_llm_profile(model)
-    profile = _BUILTIN_PROFILES.get(canonical)
+    profile = get_profile(canonical)
 
     if profile is None:
         from maxim.models.language.config import list_llm_profiles
@@ -452,13 +452,13 @@ def list_models() -> dict[str, list[ModelInfo]]:
             status = "✓" if m.ready else "needs key"
             print(f"  {status} {m.name}")
     """
-    from maxim.models.language.config import _BUILTIN_PROFILES
+    from maxim.models.language.config import iter_profiles
     from maxim.runtime.lane_backends import _profile_has_local_file
 
     local: list[ModelInfo] = []
     cloud: list[ModelInfo] = []
 
-    for name, profile in sorted(_BUILTIN_PROFILES.items()):
+    for name, profile in iter_profiles():
         is_cloud = bool(profile.get("cloud"))
         env = profile.get("api_key_env", "")
         if is_cloud:

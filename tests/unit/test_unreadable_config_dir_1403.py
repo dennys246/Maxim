@@ -7,8 +7,9 @@ With ``$XDG_CONFIG_HOME/maxim`` at mode 000, every ``maxim`` command died with a
 3.14, so on 3.14 the same state silently drops the operator's profiles and config instead (#1312's
 class). Every config-dir probe now goes through ``utils/paths.py::config_file_present``.
 
-Every module under test is imported HERE, before a fixture locks the dir: ``models.language`` loads
-the user profiles at import, so importing it inside a test would raise outside ``pytest.raises``.
+Every module under test is imported HERE, before a fixture locks the dir. ``models.language`` used to load the user
+profiles at import; since #1315 step 0a it loads them on the first lookup, and conftest makes that lookup at
+collection, under the isolated (readable) dir.
 """
 
 from __future__ import annotations

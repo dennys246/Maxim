@@ -1961,7 +1961,7 @@ class TestCheckUserProfiles:
         result = check_user_profiles()
         assert result.status == "fail"
         assert result.fix is not None
-        assert "refuse to start" in result.fix
+        assert "every `maxim` run stops" in result.fix  # #1315 step 0a: refused when the run builds its model
 
     def test_per_profile_schema_error_returns_fail(self, tmp_path, monkeypatch):
         """Pre-merge executor review fold: the original check_user_profiles

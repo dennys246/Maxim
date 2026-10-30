@@ -745,7 +745,6 @@ def _forbidden_loaded(modules: list[str]) -> list[str]:
 # ── 1. import closure ─────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 step 0a (V9): flips with the lazy package inits")
 def test_executor_import_closure_step0a(tmp_path: Path) -> None:
     """``import maxim.runtime.executor`` alone must not load the loop or the LLM worker (§1A.1 step 0a, V9)."""
     # No hostile profiles.yml here: its import-time parse is step 0a's OTHER red gate (§1A.1), not this one.
@@ -786,9 +785,6 @@ _PROFILES_CHILD = textwrap.dedent(
 )
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 V9 step 0a: flips when the profile load moves to first use"
-)
 def test_language_config_import_does_not_read_profiles(tmp_path: Path) -> None:
     """``import maxim.models.language.config`` must neither open nor parse ``profiles.yml`` (§1A.1, V9)."""
     xdg = tmp_path / "xdg"
@@ -1609,11 +1605,11 @@ def test_process_stop_signals_do_not_stop_the_observer(tmp_path: Path, monkeypat
         req = getattr(utils_cancel, "request_stop", None)
         if callable(req):  # bounded_stop PR 0
             deadline_mod = importlib.import_module("maxim.utils.deadline")
-            req(deadline_mod.Deadline(5.0), "yield")
+            req("yield", deadline_mod.Deadline(5.0))  # request_stop(reason, deadline)
         report = _as_dict(session.ingest(EVENTS))
     finally:
         lang_cancel.reset_shutdown()
-        reset = getattr(utils_cancel, "_reset_for_tests", None)
+        reset = getattr(utils_cancel, "clear_stop_request", None)
         if callable(reset):
             reset()
         session.close()

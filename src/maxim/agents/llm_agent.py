@@ -161,18 +161,18 @@ class LLMAgent(Agent):
         model_path = self._agent_config.model_path
         if not model_path:
             # Build from profile and quantization
-            from maxim.models.language.config import _BUILTIN_PROFILES, _normalize_profile
+            from maxim.models.language.config import get_profile, normalize_llm_profile
 
-            profile = _normalize_profile(self._agent_config.profile)
-            builtin = _BUILTIN_PROFILES.get(profile, {})
+            profile = normalize_llm_profile(self._agent_config.profile)
+            builtin = get_profile(profile) or {}
             model_base = builtin.get("model_base", profile)
             model_path = build_model_path(model_base, self._agent_config.quantization)
 
         # Get prompt style from profile
-        from maxim.models.language.config import _BUILTIN_PROFILES, _normalize_profile
+        from maxim.models.language.config import get_profile, normalize_llm_profile
 
-        profile = _normalize_profile(self._agent_config.profile)
-        builtin = _BUILTIN_PROFILES.get(profile, {})
+        profile = normalize_llm_profile(self._agent_config.profile)
+        builtin = get_profile(profile) or {}
         prompt_style = builtin.get("prompt_style", "mistral_instruct")
         stop = tuple(builtin.get("stop", ["</s>"]))
         n_ctx = builtin.get("n_ctx", self._agent_config.n_ctx)

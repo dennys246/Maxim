@@ -96,6 +96,32 @@ Importing anything under `models/language/` runs `config.py::_apply_user_profile
 gates could not pass, and a hostile `XDG_CONFIG_HOME` would be parsed before `open()` could refuse anything.
 
 **Step 0a (V9, owner decision 2026-10-25: lazy package inits).**
+
+> **Status: BUILT 2026-10-30** (branch `feat/1315-step0a-lazy-inits`). As built, where it differs from the text below:
+> - `load_llm_config` is not edited, so rule T does not bite it. It resolves its profile through `_normalize_profile`
+>   before it reads a table, and `_normalize_profile` ensures first.
+> - `build_model_path` reads no profile table, so it does not ensure (an ensure there would parse `profiles.yml` for
+>   nothing).
+> - The CI check is an AST scan, `tests/unit/test_profile_readers_v9.py::test_no_reader_outside_its_owner_names_a_private_profile_table`,
+>   not a grep: a docstring that mentions a name is not a read. `config.py`'s `_ensure_user_profiles` may name
+>   `LLM_MODELS`, because it IS the merge.
+> - `maxim.models.LLM_MODELS` stays public through a module `__getattr__` that returns `llm_models()`.
+> - The fresh-process import sweep (`tests/integration/test_fresh_import_sweep.py`, slow) found one latent cycle:
+>   `agents/base.py`'s bottom-of-module `GoalAgent` re-export, now a module `__getattr__`.
+> - The only `_maybe_auto_spawn_server` edit moved out to `lane_backends._lane_profile_is_cloud` (rule T: 271 → 259).
+> - Seven red gates flipped: the executor closure, the import-time `profiles.yml` read, `download.llm_models()`, and
+>   the four lazy-init pins. #1479's alias gate stays red.
+> - **Review fold (owner decision 2026-10-30): one fail-fast seam.** On main a malformed `profiles.yml` raised at
+>   import. Lazily, ~15 `except Exception` profile reads swallowed it, and tier detection silently picked a smaller
+>   model (wire W1, reproduced). `build_primary_router` now calls `_require_valid_user_profiles()` first, so every run
+>   path refuses up front. The delta round (D1) found that CLI agentic, embodied, research and foundry never reach
+>   it, so the owner added a second caller in `cli._main_impl`, before the mode dispatch. Both now call the public
+>   `config.require_valid_user_profiles()`, which raises a typed `UserProfilesInvalid`, and `cli.main` renders it
+>   (exit 2, file and fix). `maxim doctor` runs and reports instead of crashing. Also folded: conftest merges the
+>   isolated profiles once, at collection, and a re-entrant merge raises. Declined: hiding `__getattr__` from mypy
+>   (executor F5). The mypy ratchet counts `if not TYPE_CHECKING:` as a suppression in each init, so a misspelt lazy
+>   name still types as `Any`, as it would with any PEP 562 module. Reviews: `docs/plans/reviews/step0a/`.
+
 - PEP 562 `__getattr__` in `maxim/runtime/__init__.py`, `maxim/agents/__init__.py`, `maxim/tools/__init__.py` and
   `maxim/utils/__init__.py`. Every `from maxim.runtime import X` user keeps working; the names resolve on first
   access. A test pins `__all__` against the lazy table, and a subprocess test pins `import maxim.runtime.executor`'s
@@ -1185,7 +1211,7 @@ exemption):
 
 | Step | Pinned function | Plan |
 |---|---|---|
-| 0a | `models/language/config.py::load_llm_config` | The ensure call through the accessor helper, with a matching extraction |
+| 0a | `runtime/lane_backends.py::_maybe_auto_spawn_server` (as built) | Its profile read moved to `_lane_profile_is_cloud`, 271 → 259. `load_llm_config` was not edited: it ensures through `_normalize_profile` |
 | 2 | `runtime/bootstrap.py::build_executor` | Extract the policy plumbing |
 | 2 | `runtime/agent_factory.py::AgentFactory.create_full_agent` | Extract the executor build |
 | 2 | `api.py::run` | Extract the policy and `allowed_dirs` setup |

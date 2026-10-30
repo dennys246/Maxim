@@ -59,7 +59,7 @@ def _handle_list_models() -> int:
     cloud anthropic / cloud openai / cloud other) mirrors what users actually
     care about when picking a model.
     """
-    from maxim.models.language.config import _BUILTIN_PROFILES, _PROFILE_ALIASES
+    from maxim.models.language.config import iter_profiles, profile_aliases
     from maxim.runtime.lane_backends import _profile_has_local_file, _read_persisted_model
 
     local_llama: list[str] = []
@@ -68,8 +68,9 @@ def _handle_list_models() -> int:
     cloud_openai: list[str] = []
     cloud_other: list[str] = []
 
-    for name, profile in sorted(_BUILTIN_PROFILES.items()):
-        aliases = [a for a, v in _PROFILE_ALIASES.items() if v == name and a != name]
+    alias_table = profile_aliases()
+    for name, profile in iter_profiles():
+        aliases = [a for a, v in alias_table.items() if v == name and a != name]
         alias_str = f"  (also: {', '.join(aliases[:2])})" if aliases else ""
         backend = profile.get("backend", "")
         n_ctx = profile.get("n_ctx", 0)
@@ -1113,6 +1114,56 @@ def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
     return gateway
 
 
+def _handle_foundry(args: Any, _foundry_theme: str) -> int:
+    """``maxim --foundry <theme>``: the Asset Foundry run (moved verbatim out of ``_main_impl``, #1315 step 0a)."""
+    from maxim.simulation.foundry import FoundryRunner
+
+    # Build a lightweight LLM router for generation when --llm is set.
+    # The foundry dispatches before the full agent stack, so it creates
+    # its own router from the profile name (same pattern as ExecAgent).
+    _foundry_llm = None
+    _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
+    if _foundry_profile:
+        try:
+            from maxim.models.language.config import load_llm_config
+            from maxim.models.language.router import LLMRouter
+
+            _foundry_cfg = load_llm_config(profile_override=_foundry_profile)
+            _foundry_llm = LLMRouter(_foundry_cfg)
+            if hasattr(_foundry_llm, "warmup"):
+                _foundry_llm.warmup()
+            if hasattr(_foundry_llm, "wait_ready"):
+                print(f"  Waiting for LLM ({_foundry_profile}) to load...")
+                if not _foundry_llm.wait_ready(timeout=120.0):
+                    print("  WARNING: LLM failed to load — foundry will use template fallback.")
+                    if hasattr(_foundry_llm, "shutdown"):
+                        _foundry_llm.shutdown()
+                    _foundry_llm = None
+                else:
+                    print(f"  LLM ready: {_foundry_profile}")
+        except Exception as e:
+            print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
+
+    runner = FoundryRunner(
+        theme=_foundry_theme,
+        genre=getattr(args, "foundry_genre", "fantasy"),
+        category=getattr(args, "foundry_category", None),
+        llm_router=_foundry_llm,
+        dry_run=bool(getattr(args, "foundry_dry_run", False)),
+    )
+    result = runner.run(count=int(getattr(args, "foundry_count", 10) or 10))
+
+    print(f"\nFoundry complete: {result.output_dir}")
+    print(f"Generated: {result.generated} | Validated: {result.validated} | Tested: {result.tested}")
+    print(f"Promoted: {len(result.promoted)} | Review: {len(result.review)} | Rejected: {len(result.rejected)}")
+    if result.promoted:
+        print("\nPromoted components:")
+        for s in result.promoted:
+            print(f"  {s.candidate_name} ({s.total_score:.2f})")
+
+    return 0
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -1366,55 +1417,16 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     if clear_memory is not None:
         return _handle_clear_memory(clear_memory, args, raw_argv)
 
+    # Every run mode below reads profiles.yml, many through fallbacks that would hide a broken file: refuse it HERE
+    # (#1315 step 0a; owner decision 2026-10-30). The repair commands (doctor, config, model, ...) dispatch above.
+    from maxim.models.language.config import require_valid_user_profiles
+
+    require_valid_user_profiles()
+
     # ── Asset Foundry dispatch ──────────────────────────────────────────
     _foundry_theme = getattr(args, "foundry", None)
     if _foundry_theme:
-        from maxim.simulation.foundry import FoundryRunner
-
-        # Build a lightweight LLM router for generation when --llm is set.
-        # The foundry dispatches before the full agent stack, so it creates
-        # its own router from the profile name (same pattern as ExecAgent).
-        _foundry_llm = None
-        _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
-        if _foundry_profile:
-            try:
-                from maxim.models.language.config import load_llm_config
-                from maxim.models.language.router import LLMRouter
-
-                _foundry_cfg = load_llm_config(profile_override=_foundry_profile)
-                _foundry_llm = LLMRouter(_foundry_cfg)
-                if hasattr(_foundry_llm, "warmup"):
-                    _foundry_llm.warmup()
-                if hasattr(_foundry_llm, "wait_ready"):
-                    print(f"  Waiting for LLM ({_foundry_profile}) to load...")
-                    if not _foundry_llm.wait_ready(timeout=120.0):
-                        print("  WARNING: LLM failed to load — foundry will use template fallback.")
-                        if hasattr(_foundry_llm, "shutdown"):
-                            _foundry_llm.shutdown()
-                        _foundry_llm = None
-                    else:
-                        print(f"  LLM ready: {_foundry_profile}")
-            except Exception as e:
-                print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
-
-        runner = FoundryRunner(
-            theme=_foundry_theme,
-            genre=getattr(args, "foundry_genre", "fantasy"),
-            category=getattr(args, "foundry_category", None),
-            llm_router=_foundry_llm,
-            dry_run=bool(getattr(args, "foundry_dry_run", False)),
-        )
-        result = runner.run(count=int(getattr(args, "foundry_count", 10) or 10))
-
-        print(f"\nFoundry complete: {result.output_dir}")
-        print(f"Generated: {result.generated} | Validated: {result.validated} | Tested: {result.tested}")
-        print(f"Promoted: {len(result.promoted)} | Review: {len(result.review)} | Rejected: {len(result.rejected)}")
-        if result.promoted:
-            print("\nPromoted components:")
-            for s in result.promoted:
-                print(f"  {s.candidate_name} ({s.total_score:.2f})")
-
-        return 0
+        return _handle_foundry(args, _foundry_theme)
 
     # ── Cross-flag validation ───────────────────────────────────────────
     if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
@@ -2603,8 +2615,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
-        from maxim.exceptions import ConfigDirUnreadable
+        from maxim.exceptions import ConfigDirUnreadable, UserProfilesInvalid
 
+        if isinstance(e, UserProfilesInvalid):  # a malformed profiles.yml, refused at run start (#1315 step 0a)
+            from maxim.utils.logging import user_warn
+
+            logging.getLogger(__name__).debug("user profiles invalid", exc_info=True)
+            user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event="user_profiles_invalid")
+            return 2
         if isinstance(e, ConfigDirUnreadable):
             # Checked before importing models.language: an unreadable config dir fails that import too (#1403).
             from maxim.utils.logging import user_warn

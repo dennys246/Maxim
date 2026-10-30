@@ -1,10 +1,9 @@
 """V9 / step 0a guard (#1315 §1A.1): every public profile reader resolves a user ``profiles.yml`` profile and alias.
 
-WHAT THIS FILE IS. NOT a red gate: a guard that PASSES today, because ``models/language/config.py`` merges
-``$XDG_CONFIG_HOME/maxim/profiles.yml`` into ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES`` and
-``models/download.py::LLM_MODELS`` at import (``_apply_user_profiles_at_import``), and that must KEEP passing through
-step 0a, which moves that load to a first-use ``_ensure_user_profiles()`` (``docs/plans/atonia_gate_approach_notes.md``
-§1A.1: "Red gate, by outcome rather than by enumeration"). A reader that still reads the raw dicts after 0a would see
+WHAT THIS FILE IS. A guard: ``models/language/config.py`` merges ``$XDG_CONFIG_HOME/maxim/profiles.yml`` into
+its profile and alias tables and ``models/download.py``'s download table on FIRST USE, through
+``_ensure_user_profiles()``, never at import (step 0a, ``docs/plans/atonia_gate_approach_notes.md`` §1A.1: "Red gate,
+by outcome rather than by enumeration"). A reader that read the raw tables instead of an ensuring accessor would see
 no user profile and fail here. It is parametrised over ``READERS``: a new public reader joins that tuple and gets a
 branch in ``_READER_BODY``.
 
@@ -12,9 +11,9 @@ HOW. Each reader runs in a fresh ``sys.executable -I`` child whose ``XDG_CONFIG_
 (``PROFILE``) with one alias (``ALIAS``). A malformed ``profiles.yml`` must raise ``ConfigurationError`` on the first
 access AND on the second (§1A.1: "Failure is never cached").
 
-A reader that fails today is a real finding, and is its own def with a literal strict-xfail decorator (lint rule 3b):
-``test_download_llm_models_holds_a_user_profile`` (flips with 0a) and ``test_doctor_vram_projection_resolves_an_alias``
-(#1479, not 0a's; driven with a built-in alias).
+A reader that fails is a real finding, and is its own def with a literal strict-xfail decorator (lint rule 3b):
+``test_doctor_vram_projection_resolves_an_alias`` (#1479, not 0a's; driven with a built-in alias).
+``test_download_llm_models_holds_a_user_profile`` and the lazy-init pins were red gates that flipped with step 0a.
 """
 
 from __future__ import annotations
@@ -123,7 +122,7 @@ _READER_BODY = textwrap.dedent(
             OUT["ok"] = cfg.profile == NAME and os.path.basename(cfg.model_path) == HF_FILE
         elif reader == "models.download LLM_MODELS":
             from maxim.models import download
-            table = download.llm_models() if hasattr(download, "llm_models") else download.LLM_MODELS
+            table = download.llm_models()
             OUT["ok"] = NAME in table
         elif reader == "ensure_available lookup":
             from unittest.mock import MagicMock
@@ -244,17 +243,8 @@ def test_every_public_reader_resolves_a_user_profile(tmp_path: Path, reader: str
     assert out["ok"], f"{reader} did not resolve user profile {PROFILE!r} / alias {ALIAS!r}: {out['detail']}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "V9 finding: a user profile reaches models.download.LLM_MODELS only as a side effect of importing "
-        "models.language.config, so a process that reads the table first misses it; flips with step 0a's "
-        "ensuring download.llm_models() accessor"
-    ),
-)
 def test_download_llm_models_holds_a_user_profile(tmp_path: Path) -> None:
-    """``models.download``'s profile table (``llm_models()`` once 0a lands, ``LLM_MODELS`` today), read by a fresh
+    """``models.download``'s profile table (``llm_models()``, step 0a's ensuring accessor), read by a fresh
     process that imported nothing else, holds the user profile."""
     out = _run(tmp_path, _READER_BODY, PROFILES_YML, "models.download LLM_MODELS")
     assert out["ok"], f"models.download's table does not hold user profile {PROFILE!r}"
@@ -284,21 +274,54 @@ def test_a_malformed_profiles_file_raises_on_every_access(tmp_path: Path) -> Non
         assert mro is not None and "ConfigurationError" in mro, f"access {i} did not raise ConfigurationError: {mro}"
 
 
+_ROUTER_BODY = textwrap.dedent(
+    r"""
+    import sys, json
+    CFG = json.load(open(sys.argv[1]))
+    sys.path.insert(0, CFG["src"])
+    sys.dont_write_bytecode = True
+    OUT = {"raised": None, "tiers_detected": False}
+    import maxim
+    OUT["maxim_file"] = maxim.__file__
+    from maxim.runtime import lane_models
+    from maxim.runtime.capabilities import RuntimeCapabilities
+    _detect = lane_models.detect_tiers
+    def _spy(*a, **k):  # the seam must refuse BEFORE tier detection reads a profile
+        OUT["tiers_detected"] = True
+        return _detect(*a, **k)
+    lane_models.detect_tiers = _spy
+    from maxim.runtime.lane_backends import build_primary_router
+    try:
+        build_primary_router(RuntimeCapabilities(has_gpu=True, gpu_type="cuda", vram_gb=16.0, ram_gb=32.0))
+    except Exception as e:  # noqa: BLE001
+        OUT["raised"] = [c.__name__ for c in type(e).__mro__]
+    print(CFG["marker"] + json.dumps(OUT), flush=True)
+    """
+)
+
+
+def test_a_malformed_profiles_file_stops_the_run_before_tier_detection(tmp_path: Path) -> None:
+    """``build_primary_router``, which every run path calls to build its LLM, raises ``ConfigurationError`` on a
+    malformed ``profiles.yml`` before tier detection runs (owner decision 2026-10-30). Without it, tier detection's
+    ``profile_available`` swallowed the error as "no local file" and the large tier silently fell to a small model:
+    a refusal at import became a wrong model at run time (step 0a review, wire W1)."""
+    out = _run(tmp_path, _ROUTER_BODY, MALFORMED_YML)
+    assert out["raised"] is not None and "ConfigurationError" in out["raised"], (
+        f"build_primary_router did not refuse a malformed profiles.yml: {out}"
+    )
+    assert not out["tiers_detected"], "tier detection ran before the malformed profiles.yml was refused"
+
+
 # ── step 0a: the lazy package inits (V9) ──────────────────────────────────
 
 LAZY_PACKAGES: tuple[str, ...] = ("maxim.runtime", "maxim.agents", "maxim.tools", "maxim.utils")
 
 
 @pytest.mark.parametrize("package", LAZY_PACKAGES)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 V9 step 0a: the package __init__ is eager today; flips with its PEP 562 __getattr__ + lazy table",
-)
 def test_step0a_package_init_is_lazy(package: str) -> None:
     """``package`` defines a module-level PEP 562 ``__getattr__`` and a lazy table ``_LAZY`` (name -> defining
     module, the seam chosen here), and ``__all__`` is exactly the lazy table's names plus the names the init still
-    binds eagerly (§1A.1: "A test pins ``__all__`` against the lazy table"). Fails today: no ``__getattr__``."""
+    binds eagerly (§1A.1: "A test pins ``__all__`` against the lazy table")."""
     import importlib
 
     mod = importlib.import_module(package)
@@ -311,3 +334,224 @@ def test_step0a_package_init_is_lazy(package: str) -> None:
         f"{package}.__all__ does not match its lazy table: only in __all__ "
         f"{sorted(exported - set(lazy) - eager)}, only in _LAZY {sorted(set(lazy) - exported)}"
     )
+
+
+def _init_tree(package: str) -> Any:
+    import ast
+
+    return ast.parse((SRC / package.replace(".", "/") / "__init__.py").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+def test_step0a_package_init_imports_nothing_eagerly(package: str) -> None:
+    """The init's only runtime imports are ``__future__``, ``importlib`` and ``typing``: a ``from maxim... import``
+    at its top level would undo the lazy table for every importer, and the executor-closure gate would catch it only
+    when the eager import happened to load that gate's cut list (§1A.1)."""
+    import ast
+
+    allowed = {"__future__", "importlib", "typing"}
+    eager: list[str] = []
+    for node in _init_tree(package).body:
+        if isinstance(node, ast.Import):
+            eager += [a.name for a in node.names if a.name not in allowed]
+        elif isinstance(node, ast.ImportFrom) and node.module not in allowed:
+            eager.append(str(node.module))
+    assert not eager, f"{package}/__init__.py imports eagerly at runtime: {eager}"
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+def test_step0a_type_checking_mirror_matches_the_lazy_table(package: str) -> None:
+    """Every name in ``_LAZY`` is imported, from the same module, under ``if TYPE_CHECKING:``, and nothing else is:
+    a drifted mirror makes mypy type the name as ``Any`` without a word."""
+    import ast
+    import importlib
+
+    lazy = vars(importlib.import_module(package))["_LAZY"]
+    mirror: dict[str, str] = {}
+    for node in _init_tree(package).body:
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            for sub in node.body:
+                if isinstance(sub, ast.ImportFrom):
+                    mirror.update({a.asname or a.name: str(sub.module) for a in sub.names})
+    assert mirror == lazy, (
+        f"{package}: TYPE_CHECKING mirror and _LAZY differ: only in _LAZY "
+        f"{sorted(set(lazy) - set(mirror))}, only in the mirror {sorted(set(mirror) - set(lazy))}, "
+        f"module mismatch {sorted(n for n in set(lazy) & set(mirror) if lazy[n] != mirror[n])}"
+    )
+
+
+# ── step 0a: no reader bypasses the ensuring accessors ─────────────────────
+
+# Each private table -> the one module that may name it. Anywhere else, a read would see the tables before the
+# user's profiles.yml is merged (the merge runs on first use of an accessor, never at import), so a user profile
+# would silently disappear from that reader (§1A.1: "the grep, not the plan's count, forces every reader to migrate").
+_CONFIG = "src/maxim/models/language/config.py"
+PRIVATE_TABLE_OWNERS: dict[str, frozenset[str]] = {
+    "_BUILTIN_PROFILES": frozenset({_CONFIG}),
+    "_PROFILE_ALIASES": frozenset({_CONFIG}),
+    "_normalize_profile": frozenset({_CONFIG}),
+    # config.py's ``_ensure_user_profiles`` IS the merge into the raw table (``llm_models()`` there would recurse).
+    # ``maxim.models``' is a TYPE_CHECKING-only import: at runtime its ``LLM_MODELS`` resolves through ``llm_models()``.
+    "LLM_MODELS": frozenset({"src/maxim/models/download.py", _CONFIG, "src/maxim/models/__init__.py"}),
+}
+
+
+def _private_table_uses(path: Path) -> list[tuple[int, str]]:
+    """Every import, name or attribute reference to a private table in ``path`` (an AST scan: docstrings, comments
+    and string literals that mention a name are not reads)."""
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            hits += [(node.lineno, a.name) for a in node.names if a.name in PRIVATE_TABLE_OWNERS]
+        elif isinstance(node, ast.Name) and node.id in PRIVATE_TABLE_OWNERS:
+            hits.append((node.lineno, node.id))
+        elif isinstance(node, ast.Attribute) and node.attr in PRIVATE_TABLE_OWNERS:
+            hits.append((node.lineno, node.attr))
+    return hits
+
+
+def test_no_reader_outside_its_owner_names_a_private_profile_table() -> None:
+    """``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES`` and ``_normalize_profile`` are named only in ``config.py``, and
+    ``LLM_MODELS`` only in ``download.py`` (and in ``config.py``'s merge), across ``src/`` and ``scripts/``: every other reader uses ``get_profile``,
+    ``iter_profiles``, ``profile_aliases``, ``normalize_llm_profile`` or ``download.llm_models()``. Tests may patch
+    the tables directly."""
+    offenders: list[str] = []
+    for root in (REPO / "src", REPO / "scripts"):
+        for path in sorted(root.rglob("*.py")):
+            rel = path.relative_to(REPO).as_posix()
+            for lineno, name in _private_table_uses(path):
+                if rel not in PRIVATE_TABLE_OWNERS[name]:
+                    offenders.append(f"{rel}:{lineno}: {name}")
+    assert not offenders, "read through an ensuring accessor instead:\n  " + "\n  ".join(offenders)
+
+
+def test_the_private_table_scan_sees_each_kind_of_reference(tmp_path: Path) -> None:
+    """The scan above is not vacuous: it reports an import, a bare name and an attribute read, and ignores a
+    docstring that only mentions the name."""
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        '"""Mentions _BUILTIN_PROFILES in prose only."""\n'
+        "from maxim.models.language.config import _PROFILE_ALIASES\n"
+        "import maxim.models.download as d\n"
+        "x = _PROFILE_ALIASES\n"
+        "y = d.LLM_MODELS\n"
+    )
+    assert sorted(_private_table_uses(probe)) == [(2, "_PROFILE_ALIASES"), (4, "_PROFILE_ALIASES"), (5, "LLM_MODELS")]
+
+
+# ── step 0a: the lazy hooks themselves, in-process ────────────────────────
+
+
+@pytest.mark.parametrize("package", LAZY_PACKAGES)
+def test_each_lazy_name_resolves_to_its_defining_object_and_unknown_names_raise(package: str) -> None:
+    """Every ``_LAZY`` entry resolves, through the package's ``__getattr__``, to the object its module defines; an
+    unknown name raises ``AttributeError`` (so ``hasattr`` and ``from pkg import <submodule>`` keep working); and
+    ``dir()`` lists the lazy names before any is touched."""
+    import importlib
+
+    mod = importlib.import_module(package)
+    lazy: dict[str, str] = vars(mod)["_LAZY"]
+    for name, module in lazy.items():
+        assert mod.__getattr__(name) is getattr(importlib.import_module(module), name), f"{package}.{name}"
+    with pytest.raises(AttributeError):
+        mod.__getattr__("no_such_name_step0a")
+    assert set(lazy) <= set(dir(mod))
+
+
+def test_the_moved_goal_agent_alias_and_the_public_llm_models_still_resolve() -> None:
+    """``maxim.agents.base.GoalAgent`` (the historical home) and ``maxim.models.LLM_MODELS`` stay public, through
+    module ``__getattr__``s; anything else still raises ``AttributeError``."""
+    import maxim.agents.base as base
+    import maxim.models as models
+    from maxim.agents.goal_agent import GoalAgent
+    from maxim.models import download
+
+    assert base.__getattr__("GoalAgent") is GoalAgent
+    assert models.__getattr__("LLM_MODELS") is download.llm_models()
+    for mod in (base, models):
+        with pytest.raises(AttributeError):
+            mod.__getattr__("no_such_name_step0a")
+
+
+def test_a_re_entrant_profile_merge_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A lookup made from inside the merge is refused, instead of re-running the merge without end."""
+    from maxim.models.language import config
+
+    monkeypatch.setattr(config, "_user_profiles_loaded", False)
+    monkeypatch.setattr(config, "_user_profiles_merging", True)
+    with pytest.raises(RuntimeError, match="re-entered"):
+        config.require_valid_user_profiles()
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"), [("claude-sonnet-4-6", True), ("qwen2.5-14b", False), ("no-such-profile", False)]
+)
+def test_lane_profile_is_cloud_answers_from_the_profile_table(profile: str, expected: bool) -> None:
+    """The cloud-lane skip reads the lane's profile through ``get_profile`` (step 0a, rule T extraction), with or
+    without a logger."""
+    from types import SimpleNamespace
+
+    from maxim.runtime.lane_backends import _lane_profile_is_cloud
+
+    cfg = SimpleNamespace(model_profile=profile)
+    assert _lane_profile_is_cloud(cfg, "large", None) is expected
+    assert _lane_profile_is_cloud(cfg, "large", __import__("logging").getLogger("step0a")) is expected
+
+
+def test_lane_profile_is_cloud_survives_a_broken_profile_read_without_a_logger() -> None:
+    """A failing read is logged when a logger is given and never raises through a missing one (step 0a review N7)."""
+    from maxim.runtime.lane_backends import _lane_profile_is_cloud
+
+    class _Boom:
+        @property
+        def model_profile(self) -> str:
+            raise RuntimeError("profile unavailable")
+
+    assert _lane_profile_is_cloud(_Boom(), "large", None) is False
+
+
+_CLI_BODY = textwrap.dedent(
+    r"""
+    import sys, json, io, contextlib
+    CFG = json.load(open(sys.argv[1]))
+    sys.path.insert(0, CFG["src"])
+    sys.dont_write_bytecode = True
+    import maxim
+    from maxim.cli import main
+    OUT = {"maxim_file": maxim.__file__, "runs": {}}
+    for label, argv in CFG["commands"].items():
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            try:
+                rc = main(argv)
+                raised = None
+            except BaseException as e:  # noqa: BLE001
+                rc, raised = None, type(e).__name__
+        OUT["runs"][label] = {"rc": rc, "raised": raised, "stderr": err.getvalue()[-2000:]}
+    print(CFG["marker"] + json.dumps(OUT), flush=True)
+    """
+)
+
+
+def test_a_malformed_profiles_file_stops_cli_runs_but_not_the_repair_commands(tmp_path: Path) -> None:
+    """Agentic mode never builds through ``build_primary_router`` (its router comes from ``ExecAgent``, whose
+    fallback would run the loop with no LLM), so the CLI refuses a malformed ``profiles.yml`` before its mode
+    dispatch: exit 2, naming the file and the fix (delta review D1; owner decision 2026-10-30). The commands that
+    repair a broken setup dispatch above that check and still run (Session A's condition)."""
+    commands = {
+        "agentic": ["--mode", "agentic", "--interactive", "false"],
+        "doctor": ["doctor", "--json"],
+        "config": ["config", "get", "llm.profile"],
+    }
+    out = _run(tmp_path, _CLI_BODY, MALFORMED_YML, commands=commands)
+    runs = out["runs"]
+    agentic = runs["agentic"]
+    assert agentic["rc"] == 2 and agentic["raised"] is None, agentic
+    assert "UserProfilesInvalid" in agentic["stderr"] and "profiles.yml" in agentic["stderr"], agentic["stderr"]
+    assert "maxim doctor" in agentic["stderr"], f"the refusal does not say how to recover: {agentic['stderr']}"
+    for label in ("doctor", "config"):
+        assert runs[label]["raised"] is None, f"`maxim {' '.join(commands[label])}` raised: {runs[label]}"
+        assert "UserProfilesInvalid" not in runs[label]["stderr"], runs[label]

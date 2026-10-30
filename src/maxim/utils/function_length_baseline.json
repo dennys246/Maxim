@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1458
+      "lines": 1419
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -161,12 +161,12 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 271
+      "lines": 259
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "build_primary_router",
-      "lines": 245
+      "lines": 239
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
@@ -387,6 +387,9 @@
     "_main_impl tightened 1478 -> 1468 on 2026-10-29 (#1481, rule T; Session A's grant): the comms-stack block moved to cli.py::_build_cli_comms, carrying its build_comms_stack(bus=) -> (agent=) edit; AgenticRuntimeMixin._start_agentic_runtime 865 -> 854 the same way (its comms block moved to AgenticRuntimeMixin._build_runtime_comms).",
     "AgenticRuntimeMixin._start_agentic_runtime re-pinned 840 -> 829 on 2026-10-29 at the merge of main (#1518) into #1481: #1518's pin less #1481's comms-block extraction to _build_runtime_comms (the second lander re-measures, as S and V agreed); _main_impl 1468 -> 1458 the same way (#1518's TTS extraction plus #1481's _build_cli_comms).",
     "_run_agentic_loop_body re-pinned 2349 -> 2178 on 2026-10-29 at the merge of main (#1438 PR 0, #1525) into #1481: PR 0's pin plus #1481's rule-T extractions above; the inbound subscription now nests in run_agentic_loop's bio_session with statement, so the body gained only its inbound_inbox parameter.",
+    "_maybe_auto_spawn_server tightened 271 -> 259 on 2026-10-30 (#1315 step 0a, rule T): the cloud-lane skip moved verbatim to lane_backends._lane_profile_is_cloud, carrying its profile read's move to get_profile (profiles.yml now merges on first use, not at import).",
+    "build_primary_router tightened 245 -> 239 on 2026-10-30 (#1315 step 0a review fold W1/S1, rule T): the fail-fast profiles.yml check went in as one call to lane_backends._require_valid_user_profiles, and the capability detection moved verbatim to lane_backends._capabilities_or_detected.",
+    "_main_impl tightened 1458 -> 1419 on 2026-10-30 (#1315 step 0a delta fold D1, rule T; Session A's grant): the run-start require_valid_user_profiles() call went in before the mode dispatch, and the foundry dispatch moved verbatim to cli.py::_handle_foundry.",
     "build_app tightened 283 -> 245 on 2026-10-30 (#1438 PR 1b, rule T): the lifespan closure left build_app for module-level console/server.py::_make_lifespan (with the new startup refusal under a pending stop request) and its bounded shutdown for _lifespan_shutdown; build_app gained the keyword-only stop_budget_s."
   ]
 }

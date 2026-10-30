@@ -934,7 +934,7 @@ class LaneBackendManager:
         if self.has_cloud_placement():
             return True
         try:
-            from maxim.models.language.config import _BUILTIN_PROFILES, _normalize_profile
+            from maxim.models.language.config import get_profile, normalize_llm_profile
 
             for cfg in self._configs.values():
                 for entry in derive_placement(cfg, peer_owned=self._peer_owned):
@@ -942,8 +942,8 @@ class LaneBackendManager:
                     # ("claude-sonnet") rather than the canonical profile
                     # key ("claude-sonnet-4-6") depending on which path
                     # populated model_profile.
-                    key = _normalize_profile(entry.model or "") or (entry.model or "")
-                    if _BUILTIN_PROFILES.get(key, {}).get("cloud"):
+                    key = normalize_llm_profile(entry.model or "") or (entry.model or "")
+                    if (get_profile(key) or {}).get("cloud"):
                         return True
         except Exception:
             return True  # can't inspect → don't claim cost tracking is inert
@@ -1249,11 +1249,11 @@ class LaneBackendManager:
             return llm_config
 
         try:
-            from maxim.models.language.config import _BUILTIN_PROFILES
+            from maxim.models.language.config import get_profile
         except Exception:
             return llm_config
 
-        profile_data = _BUILTIN_PROFILES.get(fallback_model, {})
+        profile_data = get_profile(fallback_model) or {}
         if not profile_data.get("cloud"):
             return llm_config
 
@@ -1614,11 +1614,11 @@ def _placement_entry_to_provider(entry: ProviderPlacement, key: str) -> tuple[di
         # (``claude-sonnet`` → ``claude-sonnet-4-6``), mirroring how cli_utils
         # resolves --cloud-fallback before storing the model name.
         try:
-            from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+            from maxim.models.language.config import get_profile, normalize_llm_profile
         except Exception:
             return None, False
         resolved_model = normalize_llm_profile(entry.model or "")
-        profile = _BUILTIN_PROFILES.get(resolved_model, {})
+        profile = get_profile(resolved_model) or {}
         if not profile.get("cloud"):
             return None, False
         api_key_env = profile.get("api_key_env", "ANTHROPIC_API_KEY")
@@ -1738,10 +1738,10 @@ def _apply_cloud_cli_overrides(
         if not cloud_model:
             continue
         try:
-            from maxim.models.language.config import _BUILTIN_PROFILES
+            from maxim.models.language.config import get_profile
         except Exception:
             continue
-        if not _BUILTIN_PROFILES.get(cloud_model, {}).get("cloud"):
+        if not (get_profile(cloud_model) or {}).get("cloud"):
             if logger is not None:
                 logger.warning(
                     "MAXIM_CLOUD_LANE_%s_MODEL=%s is not a cloud profile — ignoring",
@@ -1787,10 +1787,10 @@ def _apply_cloud_fallback_override(
     if not model:
         return lane_configs
     try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.language.config import get_profile
     except Exception:
         return lane_configs
-    if not _BUILTIN_PROFILES.get(model, {}).get("cloud"):
+    if not (get_profile(model) or {}).get("cloud"):
         if logger is not None:
             logger.warning("MAXIM_CLOUD_FALLBACK_MODEL=%s is not a cloud profile — ignoring", model)
         return lane_configs
@@ -1830,8 +1830,8 @@ def _ensure_lane_profiles_available(
     No-op for cloud lanes, remote lanes, and lanes with no profile.
     """
     try:
-        from maxim.models.download import LLM_MODELS, ensure_available
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.download import ensure_available, llm_models
+        from maxim.models.language.config import get_profile
         from maxim.runtime.lane_models import detect_tiers
     except Exception as e:
         if logger is not None:
@@ -1849,13 +1849,13 @@ def _ensure_lane_profiles_available(
         if not profile:
             continue
         # Skip cloud profiles outright — they have no GGUF.
-        profile_data = _BUILTIN_PROFILES.get(profile, {})
+        profile_data = get_profile(profile) or {}
         if profile_data.get("cloud"):
             continue
         # Skip profiles that aren't in our download registry. They're either
         # custom user profiles (handled out-of-band) or non-llama_cpp
         # backends like transformers (HF auto-downloads on first use).
-        if profile not in LLM_MODELS:
+        if profile not in llm_models():
             continue
         if _profile_has_local_file(profile):
             continue
@@ -1963,11 +1963,11 @@ def _apply_local_llm_override(
         return lane_configs
 
     try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.language.config import get_profile
     except Exception:
         return lane_configs
 
-    profile_data = _BUILTIN_PROFILES.get(profile_name, {})
+    profile_data = get_profile(profile_name) or {}
     if profile_data.get("cloud"):
         # Cloud profiles are handled by _apply_cloud_cli_overrides and
         # also by the existing cloud-backend construction path. This
@@ -2048,6 +2048,30 @@ def _restore_persisted_profile(has_peer_config: bool, logger: Any | None) -> Non
                 logger.info("Restored persisted model preference: %s", _persisted)
 
 
+def _require_valid_user_profiles() -> None:
+    """``build_primary_router``'s first step: :func:`maxim.models.language.config.require_valid_user_profiles`.
+    Its profile reads sit behind ``except Exception`` fallbacks (tier detection's ``profile_available`` would answer
+    "no local file" and quietly pick a smaller model), so a malformed ``profiles.yml`` is refused before any of them."""
+    from maxim.models.language.config import require_valid_user_profiles
+
+    require_valid_user_profiles()
+
+
+def _capabilities_or_detected(capabilities: Any | None) -> Any:
+    """``capabilities``, or this machine's, detected (moved verbatim out of ``build_primary_router`` for rule T)."""
+    from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
+
+    if capabilities is None:
+        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
+        capabilities = RuntimeCapabilities(
+            has_gpu=has_gpu,
+            gpu_type=gpu_type,
+            vram_gb=vram_gb,
+            ram_gb=ram_gb,
+        )
+    return capabilities
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
@@ -2078,13 +2102,14 @@ def build_primary_router(
         or MAXIM_MAX_CLOUD_LANES) refuse the request. Surface this to the
         user; it means their configuration exceeds the declared limits.
     """
-    from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
     from maxim.runtime.lane_models import (
         apply_lane_env_overrides,
         apply_tier_config_overrides,
         detect_tiers,
         load_function_overrides,
     )
+
+    _require_valid_user_profiles()
 
     # Lane-routing auto-load (C4 of config_unification.md):
     #
@@ -2142,14 +2167,7 @@ def build_primary_router(
     # local profile actually runs locally. See peer_leader_flexibility
     # plan P1 for the rationale and precedence table.
 
-    if capabilities is None:
-        has_gpu, gpu_type, vram_gb, ram_gb = detect_compute_resources()
-        capabilities = RuntimeCapabilities(
-            has_gpu=has_gpu,
-            gpu_type=gpu_type,
-            vram_gb=vram_gb,
-            ram_gb=ram_gb,
-        )
+    capabilities = _capabilities_or_detected(capabilities)
 
     try:
         lane_configs = detect_tiers(
@@ -2549,6 +2567,27 @@ def _route_to_reused_server(
     return out
 
 
+def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool:
+    """True when the lane's own profile is a cloud profile, so ``_maybe_auto_spawn_server`` skips (logged). Moved
+    out of that function for rule T (#1315 step 0a: its profile read now goes through ``get_profile``)."""
+    try:
+        from maxim.models.language.config import get_profile
+
+        _lane_profile_data = get_profile(infer_cfg.model_profile) or {}
+        if _lane_profile_data.get("cloud"):
+            if logger is not None:
+                logger.info(
+                    "Auto-spawn skipped: lane '%s' is configured for cloud profile '%s' (no local GGUF needed)",
+                    infer_tier,
+                    infer_cfg.model_profile,
+                )
+            return True
+    except Exception as e:
+        if logger is not None:  # the caller's logger is optional (the info branch above checks it too)
+            logger.debug("Cloud-profile detection failed, continuing auto-spawn check: %s", e)
+    return False
+
+
 def _maybe_auto_spawn_server(
     capabilities: Any,
     lane_configs: dict[str, Any],
@@ -2600,20 +2639,8 @@ def _maybe_auto_spawn_server(
     # even after `--cloud-lane large claude-sonnet` explicitly routed to
     # Anthropic, wasting 120s of spawn startup on a model the lane won't
     # use. See cancellation.py / cli.py for the cloud-lane override path.
-    try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
-
-        _lane_profile_data = _BUILTIN_PROFILES.get(infer_cfg.model_profile, {})
-        if _lane_profile_data.get("cloud"):
-            if logger is not None:
-                logger.info(
-                    "Auto-spawn skipped: lane '%s' is configured for cloud profile '%s' (no local GGUF needed)",
-                    _infer_tier,
-                    infer_cfg.model_profile,
-                )
-            return lane_configs
-    except Exception as e:
-        logger.debug("Cloud-profile detection failed, continuing auto-spawn check: %s", e)
+    if _lane_profile_is_cloud(infer_cfg, _infer_tier, logger):
+        return lane_configs
 
     try:
         import llama_cpp.server  # noqa: F401
@@ -2830,17 +2857,13 @@ def _validate_swap_profile(profile: str) -> tuple[str, dict[str, Any]]:
     ``(resolved_name, profile_data)``. Raises ``ValueError`` on any
     client-side issue.
     """
-    from maxim.models.language.config import (
-        _BUILTIN_PROFILES,
-        list_llm_profiles,
-        normalize_llm_profile,
-    )
+    from maxim.models.language.config import get_profile, list_llm_profiles, normalize_llm_profile
 
     resolved = normalize_llm_profile(profile)
     if not resolved:
         raise ValueError("Empty model name")
 
-    profile_data = _BUILTIN_PROFILES.get(resolved, {})
+    profile_data = get_profile(resolved) or {}
 
     if profile_data.get("cloud"):
         raise ValueError(f"Profile '{resolved}' is a cloud provider — cannot run on llama-cpp-server")
@@ -2888,14 +2911,14 @@ def _estimate_swap_n_ctx(cfg: Any, *, fallback: int = 8192) -> int:
     capability path can't produce a number — never returns 0.
     """
     try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.language.config import get_profile
         from maxim.runtime.capabilities import detect_compute_resources
         from maxim.runtime.lane_models import _lookup_fallback_nctx, estimate_max_ctx
     except Exception:
         return int(getattr(cfg, "n_ctx", 0) or fallback)
 
     profile_name = str(getattr(cfg, "profile", "") or "").strip()
-    profile_data = _BUILTIN_PROFILES.get(profile_name, {}) if profile_name else {}
+    profile_data = (get_profile(profile_name) or {}) if profile_name else {}
     try:
         _, _, vram_gb, _ = detect_compute_resources()
     except Exception:
@@ -2939,12 +2962,12 @@ def _check_vram_spillover_risk(
     if not profile_name or resolved_n_ctx <= 0 or vram_gb <= 0:
         return
     try:
-        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.models.language.config import get_profile
         from maxim.runtime.lane_models import project_vram_usage
     except Exception:
         return
 
-    profile_meta = _BUILTIN_PROFILES.get(profile_name, {})
+    profile_meta = get_profile(profile_name) or {}
     projection = project_vram_usage(
         profile_name,
         profile_meta,

@@ -1,6 +1,7 @@
 """User-defined Maxim profile loader (L2 of leader_ux_profile_management.md).
 
-Reads ``~/.config/maxim/profiles.yml`` at import time and merges its
+Reads ``~/.config/maxim/profiles.yml`` on first use (``config._ensure_user_profiles``, #1315 step 0a: never at
+import) and merges its
 ``profiles:`` entries into ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES``,
 and ``LLM_MODELS`` so that any GGUF on HuggingFace (or any local path)
 becomes a first-class Maxim profile.
@@ -39,7 +40,7 @@ WARNING logged at load time. This matches the codebase's avoid-silent-
 no-op discipline (the operator opted in by writing the file; silently
 falling back to the built-in would mask their intent).
 
-Loading is intentionally synchronous + import-time. Live reload is out
+Loading is intentionally synchronous, once per process, on the first profile lookup. Live reload is out
 of scope at 1.0 (mirrors peer.yml / mesh.yml).
 
 **Schema versioning at 1.0 (CC3-analog):** the YAML schema is the

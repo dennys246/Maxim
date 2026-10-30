@@ -121,9 +121,9 @@ def normalize_args(args: argparse.Namespace) -> None:
                 raise SystemExit(1)
             os.environ["MAXIM_LLM_PROFILE"] = selected
             # Validate API key early for cloud models
-            from maxim.models.language.config import _BUILTIN_PROFILES
+            from maxim.models.language.config import get_profile
 
-            profile = _BUILTIN_PROFILES.get(selected, {})
+            profile = get_profile(selected) or {}
             if profile.get("cloud"):
                 api_key_env = profile.get("api_key_env", "")
                 if api_key_env and not os.environ.get(api_key_env):
@@ -175,7 +175,7 @@ def normalize_args(args: argparse.Namespace) -> None:
     cloud_budget = getattr(args, "cloud_budget", None)
 
     if cloud_fallback or cloud_lane:
-        from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+        from maxim.models.language.config import get_profile, normalize_llm_profile
 
         for label, model_name in [
             ("--cloud-fallback", cloud_fallback),
@@ -184,7 +184,7 @@ def normalize_args(args: argparse.Namespace) -> None:
             if model_name is None:
                 continue
             resolved = normalize_llm_profile(model_name)
-            profile = _BUILTIN_PROFILES.get(resolved, {})
+            profile = get_profile(resolved) or {}
             if not profile.get("cloud"):
                 raise SystemExit(
                     f"{label} {model_name!r} is not a cloud profile. "
@@ -474,9 +474,9 @@ def _config_value(field_path: str):
 
 def _registered_cloud_flag(profile: str) -> bool | None:
     """The profile's own ``cloud`` field when it is registered (builtin or ``maxim model add``), else None."""
-    from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+    from maxim.models.language.config import get_profile, normalize_llm_profile
 
-    entry = _BUILTIN_PROFILES.get(normalize_llm_profile(profile))
+    entry = get_profile(normalize_llm_profile(profile))
     return None if entry is None else bool(entry.get("cloud", False))
 
 

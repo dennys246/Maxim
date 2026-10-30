@@ -585,6 +585,38 @@ class TestInteractiveAttributionGate:
         executor._tool_pain_bridge = MagicMock()
         return executor
 
+    def test_an_executor_without_a_pain_bridge_never_imports_the_simulation_fact(self, tmp_path):
+        """#1315 step 0a: only an executor with a pain bridge books anything, so only it reads the interactive mode.
+        One without (the atonia observer's) dispatches without loading ``maxim.simulation``. A fresh process, so no
+        earlier test can have imported it."""
+        import json
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        src = Path(__file__).resolve().parents[2] / "src"
+        child = (
+            "import json, sys\n"
+            "from maxim.runtime.executor import Executor\n"
+            "from maxim.tools.base import Tool, ToolOutput\n"
+            "from maxim.tools.registry import ToolRegistry\n"
+            "class _Stub(Tool):\n"
+            "    name = 'stub_tool'\n"
+            "    description = 'stub'\n"
+            "    input_schema: dict = {}\n"
+            "    def execute(self, **kwargs):\n"
+            "        return ToolOutput(success=True, output='ran')\n"
+            "registry = ToolRegistry()\n"
+            "registry.register(_Stub())\n"
+            "out = Executor(registry).execute({'tool_name': 'stub_tool', 'params': {}})\n"
+            "print(json.dumps({'ok': out.success, 'loaded': 'maxim.simulation.sim_logger' in sys.modules}))\n"
+        )
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path), "PYTHONPATH": str(src)}
+        proc = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 0, proc.stderr[-2000:]
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        assert result == {"ok": True, "loaded": False}, result
+
     def test_a_broken_interactive_read_does_not_attribute_to_nac(self, monkeypatch):
         """Version-independent: patches the reader, not the fix's own shape, so it runs against
         the defective code too. With the old bare `except Exception: pass` this passed straight
