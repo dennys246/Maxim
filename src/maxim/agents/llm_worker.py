@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.models.language.token_counter import CharEstimateCounter
+from maxim.utils.cancellation import register_stop_event
 from maxim.utils.optional_deps import OptionalDependencyError
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -617,6 +618,10 @@ class LLMWorker:
     def start(self) -> None:
         """Start the LLM worker via WorkerPool."""
         self._stop_event.clear()
+        # The process stop request sets this event, so an in-flight call is abandoned at its next 0.5 s poll
+        # (``_call_llm_with_timeout``); registered AFTER the clear, so a worker started under a request is born stopped
+        # (#1438 PR 1b).
+        register_stop_event(self._stop_event)
 
         # Initialize provider semaphores for concurrency control
         self._init_provider_semaphores()

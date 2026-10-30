@@ -28,6 +28,8 @@ SIMULATION_ABORT_FINISH_REASONS = frozenset(
         "planning_failed",
         "stuck",
         "worker_unavailable",
+        # A process stop request ended the run (#1438 PR 1b; owner decision 2026-10-30): a typed abort, never data.
+        "yielded",
     }
 )
 SIMULATION_FAILURE_FINISH_REASONS = SIMULATION_ABORT_FINISH_REASONS | {"error"}

@@ -279,24 +279,37 @@ def bio_session(
         _close_session(session, consolidation="lightweight", bound=bound)
         raise
     else:
-        _close_session(session, consolidation=session.resolved_consolidation(), bound=None)
+        # A clean exit under a process stop (the loop yielded) is bounded by that stop's deadline: the end persists
+        # whatever the bound and consolidates only within it (owner decision 2026-10-30, #1438 PR 1b). Read once.
+        stop = current_stop()
+        _close_session(
+            session,
+            consolidation=session.resolved_consolidation(),
+            bound=stop.deadline if stop is not None else None,
+            abandon_if_expired=False,
+        )
 
 
 def _close_session(
-    session: BioSession, *, consolidation: Literal["full", "lightweight"], bound: Deadline | None
+    session: BioSession,
+    *,
+    consolidation: Literal["full", "lightweight"],
+    bound: Deadline | None,
+    abandon_if_expired: bool = True,
 ) -> None:
     """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error.
 
-    The Default Network and this session's capture worker stop on EVERY path; only the persist is gated on the bound.
-    A bound that expired before the persist could start abandons the generation (closed, nothing persisted), so the
-    session never stays OPEN with nobody able to end it."""
+    The Default Network and this session's capture worker stop on EVERY path. On the abnormal path
+    (``abandon_if_expired``) a bound that expired before the persist could start abandons the generation (closed,
+    nothing persisted), so the session never stays OPEN with nobody able to end it. A clean exit never abandons: it
+    persists under any bound (``end_session`` saves first) and the bound only limits consolidation."""
     try:
         if session.stop_default_network is not None:
             try:
                 session.stop_default_network()
             except Exception:
                 log_swallowed_exception(site="bio_integration.py:_close_session:stop_default_network")
-        if bound is not None and bound.expired():
+        if abandon_if_expired and bound is not None and bound.expired():
             if session.capture is not None:
                 session.capture.stop.set()  # no flush: the bound is spent
             if session.memory_hub is not None and session.ticket is not None:

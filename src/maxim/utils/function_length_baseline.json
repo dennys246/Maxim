@@ -26,7 +26,7 @@
     {
       "file": "src/maxim/console/server.py",
       "qualname": "build_app",
-      "lines": 283
+      "lines": 245
     },
     {
       "file": "src/maxim/decisions/nac.py",
@@ -382,6 +382,7 @@
     "_run_agentic_loop_body tightened 2379 -> 2359 on 2026-10-28 (#1438 PR 0, rule T): the session end, the Default Network stop and the consolidation resolution left the body for runtime/bio_integration.py::bio_session, which run_agentic_loop now wraps the body in; the D13 abort is returned and raised by the wrapper after the session ends.",
     "_run_agentic_loop_body tightened 2359 -> 2349 on 2026-10-28 (#1438 PR 0, mypy fold): the D13 abort's construction moved to the module-level _planning_liveness_abort in agent_loop.py, so the body ends in one explicit return (mypy: Missing return statement).",
     "start_simulation_mode tightened 2869 -> 2862 and AgentFactory.create_full_agent 204 -> 195 (unpinned) on 2026-10-28 (#1438 PR 0, rule T): /new's memory consolidation moved to orchestrator.py::_await_aut_session_end_before_new (it now WAITS for the AUT loop's own session end, as a non-owner), and the bio-stack adoption + session open to agent_factory.py::_adopt_bio_stack.",
-    "run_interactive_sim tightened 260 -> 248 on 2026-10-28 (#1438 PR 0, rule T): the end-of-conversation session close moved to interactive.py::_await_conversation_session_end, which waits (a non-owner) for the last turn's loop to end the session it owns."
+    "run_interactive_sim tightened 260 -> 248 on 2026-10-28 (#1438 PR 0, rule T): the end-of-conversation session close moved to interactive.py::_await_conversation_session_end, which waits (a non-owner) for the last turn's loop to end the session it owns.",
+    "build_app tightened 283 -> 245 on 2026-10-30 (#1438 PR 1b, rule T): the lifespan closure left build_app for module-level console/server.py::_make_lifespan (with the new startup refusal under a pending stop request) and its bounded shutdown for _lifespan_shutdown; build_app gained the keyword-only stop_budget_s."
   ]
 }

@@ -122,11 +122,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A shutdown that has to wait for a running loop hands its after-steps (the cerebellum save, the hub's workers) to
     that loop's session end, which runs them once; it used to skip them ([#1520](https://github.com/dennys246/Maxim/issues/1520)).
   - `AgentInstance.shutdown(deadline=, loop_wait=)` take `Deadline`s (PR 0's `deadline_s=` never shipped):
-    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. `MaximHandle.stop` and the pool pass
-    `loop_wait` alone, so a persistent agent still consolidates in full when it stops, until the console gets its stop
-    budget (#1438 PR 1b). An abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
+    `deadline` bounds the agent's own end, `loop_wait` only its wait for a loop. The pool passes `loop_wait` alone,
+    so a persistent agent still consolidates in full when it stops; the console's stop budget is PR 1b's, below. An abandoned session (its stop bound spent) drops handed-over after-steps, logged at ERROR.
   - Loaders prune only against a store that read its file, so a missing or unreadable `hippocampus.json` no longer
     looks like "every reference dangles".
+- **A console stop now stops the work it waits for, within a budget** ([#1438](https://github.com/dennys246/Maxim/issues/1438)
+  PR 1b, docs/plans/bounded_stop.md §5). A stop used to tell nothing to stop: it waited out a run (30 s), a campaign
+  (60 s) and Talk (20 s), then ended the agent's session unbounded, past pulse's ~20 s kill.
+  - New config `console.stop_budget_s` (default 15 s; `MAXIM_CONSOLE_STOP_BUDGET_S`; `build_app(stop_budget_s=)` for
+    an embedder). `CONFIG_FORMAT_VERSION` is now 1.4.
+  - The console's shutdown (and `maxim serve` on SIGINT/SIGTERM) makes a process stop request
+    (`utils.cancellation.request_stop`): running agent loops end at their next tick, in-flight LLM calls through
+    `LLMWorker` are abandoned within half a second, and backend retries stop (until a campaign's own tail re-arms
+    them; PR 1c). Each wait takes a share of the budget, and a loop that ends this way saves every store and
+    consolidates only within the budget. The request stops every loop and LLM worker in the process, not only the
+    console's.
+  - The request is cleared once the stop finished. If anything was still running at the budget (a campaign, a session
+    end), it stays set, and a console started again in the same process refuses with `StopStillPending` rather than
+    building loops that are born stopped. Restart the process to recover.
+  - `MaximHandle.stop(deadline=)` bounds its waits and the agent's own end without stopping anything else in the
+    process, and returns whether everything it waited for finished. It does NOT bound the session end of a Talk loop
+    that owns the session, which only a process stop request bounds (#1536). `AgentInstance.shutdown` returns
+    whether the session end was reached.
+  - A simulation that ends because of a stop request reports `yielded`, a typed abort (exit 4), never a completed
+    run, even when the stop lands after its last turn. Running campaigns themselves notice the stop in PR 1c.
+  - `maxim serve` runs uvicorn through `console/server.py::_MaximServer`; uvicorn's own wait for open requests is
+    bounded to a quarter of the budget (it was unbounded).
 
 - **The agent loop logs, at DEBUG, when a planning job starts and stops holding new inputs, and when held inputs ride
   a follow-up** (#1488), so a narrator input that sits unplanned can be told from one that waits its turn. It logs

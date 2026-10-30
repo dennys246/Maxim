@@ -2,9 +2,9 @@
 
 A process stop today tells nothing to stop: an in-flight LLM call, a running loop and a console drain each run to
 their caps, and a loop that exits cleanly ends its session unbounded. Each gate below is
-``xfail(strict=True, raises=AssertionError)``: it fails on the pre-fix code by assertion, for the reason named, and
-flips when PR 1b lands. A gate that needs a surface PR 1b adds asserts that surface first, so its absence is the
-assertion that fails.
+proven red on the pre-fix code by assertion, for the reason named (``xfail(strict=True, raises=AssertionError)`` in
+the red-gate commit), and flipped by PR 1b. A gate that needs a surface PR 1b adds asserts that surface first, so its
+absence was the assertion that failed.
 """
 
 from __future__ import annotations
@@ -22,8 +22,6 @@ import pytest
 from maxim.utils import cancellation
 from maxim.utils.cancellation import current_stop, request_stop
 from maxim.utils.deadline import Deadline
-
-red = pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1438 PR 1b: the stop side")
 
 
 # ── G1: the LLM worker ──────────────────────────────────────────────────────────────────────────────────────────
@@ -48,7 +46,6 @@ class _BlockingLLM:
         return {"ok": True}
 
 
-@red
 def test_g1_a_stop_request_abandons_an_in_flight_llm_call() -> None:
     from maxim.agents.llm_worker import LLMWorker
 
@@ -70,7 +67,6 @@ def test_g1_a_stop_request_abandons_an_in_flight_llm_call() -> None:
     assert elapsed < 2.0, f"the call ran {elapsed:.1f}s after the stop request (its timeout, not the stop)"
 
 
-@red
 def test_g1_a_worker_started_after_a_stop_request_is_born_stopped() -> None:
     from maxim.agents.llm_worker import LLMWorker
 
@@ -86,7 +82,6 @@ def test_g1_a_worker_started_after_a_stop_request_is_born_stopped() -> None:
 # ── G2: the loop's turn boundary ────────────────────────────────────────────────────────────────────────────────
 
 
-@red
 def test_g2_a_loop_with_no_stop_event_breaks_at_its_next_tick_after_a_stop_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -135,7 +130,6 @@ def _agent(tmp_path: Path, agent_id: str = "stop_agent") -> Any:
     return AgentFactory(base_data_dir=tmp_path).create_full_agent(config, tool_registry=ToolRegistry(), auto_load=True)
 
 
-@red
 def test_g3_a_clean_loop_exit_under_a_stop_saves_and_skips_consolidation_past_the_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -188,7 +182,6 @@ def _serve_in_thread(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, threading.Th
     return server, thread, handle
 
 
-@red
 def test_g4_a_sigterm_requests_the_stop_before_the_lifespan_drains(monkeypatch: pytest.MonkeyPatch) -> None:
     server, thread, handle = _serve_in_thread(monkeypatch)
     t0 = time.monotonic()
@@ -198,7 +191,6 @@ def test_g4_a_sigterm_requests_the_stop_before_the_lifespan_drains(monkeypatch: 
     assert handle.reasons and (handle.reasons[0] or "").startswith("signal"), handle.reasons
 
 
-@red
 def test_g12_a_shutdown_with_no_signal_still_requests_the_stop_and_drains(monkeypatch: pytest.MonkeyPatch) -> None:
     server, thread, handle = _serve_in_thread(monkeypatch)
     server.should_exit = True
@@ -210,7 +202,6 @@ def test_g12_a_shutdown_with_no_signal_still_requests_the_stop_and_drains(monkey
 # ── G5: the lifespan refuses to start while a stop request is still set (the overrun case) ─────────────────────
 
 
-@red
 def test_g5_the_lifespan_refuses_to_start_while_a_stop_request_is_set() -> None:
     from fastapi.testclient import TestClient
 
@@ -230,7 +221,6 @@ def test_g5_the_lifespan_refuses_to_start_while_a_stop_request_is_set() -> None:
 # ── G7: config 1.4 carries console.stop_budget_s ───────────────────────────────────────────────────────────────
 
 
-@red
 def test_g7_config_1_4_carries_the_console_stop_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     from maxim.runtime import config_loader
 
@@ -242,7 +232,6 @@ def test_g7_config_1_4_carries_the_console_stop_budget(monkeypatch: pytest.Monke
 # ── G9/G10: compare-and-clear, and the backend event follows the request ───────────────────────────────────────
 
 
-@red
 def test_g9_compare_and_clear_leaves_another_owners_request() -> None:
     assert "expected" in inspect.signature(cancellation.clear_stop_request).parameters
     mine = request_stop("mine", Deadline.after(5.0))
@@ -252,7 +241,6 @@ def test_g9_compare_and_clear_leaves_another_owners_request() -> None:
     assert current_stop() is theirs
 
 
-@red
 def test_g10_the_backend_event_follows_the_request_even_when_a_request_races_a_clear(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -287,7 +275,6 @@ def test_g10_the_backend_event_follows_the_request_even_when_a_request_races_a_c
 # ── G11: a drain that leaves a campaign running never clears the request ───────────────────────────────────────
 
 
-@red
 def test_g11_a_drain_that_leaves_a_campaign_running_keeps_the_request(monkeypatch: pytest.MonkeyPatch) -> None:
     import maxim.console.server as srv
     from maxim.console.handle import MaximHandle
@@ -319,3 +306,204 @@ def test_g11_a_drain_that_leaves_a_campaign_running_keeps_the_request(monkeypatc
         assert current_stop() is not None, "the request was cleared over a campaign that is still running"
     finally:
         release.set()
+
+
+# ── Guards (not red gates: each pins a fold of the design passes) ──────────────────────────────────────────────
+
+
+def test_g6_a_per_handle_stop_makes_no_process_request() -> None:
+    """Owner decision 2026-10-30: only process owners request the stop; an embedder stopping one handle stops nothing
+    else in the process."""
+    from maxim.console.handle import MaximHandle
+
+    h = MaximHandle.__new__(MaximHandle)
+    h.agent_id = "t"
+    h._stopped = False
+    h._stop_result = None
+    h._campaign_lock = threading.Lock()
+    h._talk_lock = threading.Lock()
+    h._talk_bridge = h._talk_thread = h._talk_stop = h._talk_worker = None
+    h.instance = MagicMock()
+    h.instance.shutdown.return_value = True
+    assert h.stop(deadline=Deadline.after(2.0)) is True
+    assert current_stop() is None
+    assert h.stop(deadline=Deadline.after(2.0)) is True  # a second call returns the first stop's result
+
+
+def test_a_second_stop_while_the_first_still_runs_reads_as_not_finished() -> None:
+    from maxim.console.handle import MaximHandle
+
+    h = MaximHandle.__new__(MaximHandle)
+    h._stopped = True  # the first stop is in progress
+    h._stop_result = None
+    assert h.stop() is False
+
+
+def test_g8_a_clean_exit_whose_bound_already_expired_still_persists(tmp_path: Path) -> None:
+    """The v2 design abandoned the generation here (nothing saved); the clean path never abandons."""
+    from maxim.runtime.bio_integration import bio_session
+
+    inst = _agent(tmp_path)
+    inst.hippocampus.store_observation("the green kettle is on the stove")
+    inst.hippocampus.flush(timeout=5.0)
+    path = Path(inst.hippocampus.config.persistence_path).expanduser()
+    with bio_session(memory_hub=inst.memory_hub, hippocampus=inst.hippocampus, owner=object(), consolidation="full"):
+        request_stop("test", Deadline.after(0.0))
+    assert path.exists()
+    assert "green kettle" in path.read_text(encoding="utf-8")
+
+
+def test_an_event_registered_after_the_request_is_set_at_once() -> None:
+    request_stop("test", Deadline.after(5.0))
+    event = threading.Event()
+    cancellation.register_stop_event(event)
+    assert event.is_set()
+
+
+def test_a_hook_registered_after_the_request_runs_at_once_and_its_clear_partner_on_clear() -> None:
+    calls: list[str] = []
+    request = request_stop("test", Deadline.after(5.0))
+    cancellation.register_stop_hook(lambda: calls.append("request"), lambda: calls.append("clear"))
+    try:
+        assert calls == ["request"]
+        assert cancellation.clear_stop_request(expected=request) is True
+        assert calls == ["request", "clear"]
+    finally:
+        cancellation._stop_hooks.pop()
+
+
+def test_a_finished_drain_clears_its_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.console.server as srv
+
+    monkeypatch.setattr(srv, "_handle", _RecordingHandle())
+    monkeypatch.setattr(srv, "_active_run", {"session_id": None, "thread": None})
+    assert srv._drain_and_stop_handle(deadline=Deadline.after(2.0)) is True
+    assert current_stop() is None
+
+
+def test_a_lifespan_stop_that_overruns_returns_at_the_budget_and_keeps_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    import maxim.console.server as srv
+
+    release = threading.Event()
+
+    def _stuck(**_kw: Any) -> bool:
+        release.wait(10.0)
+        return True
+
+    monkeypatch.setattr(srv, "_drain_and_stop_handle", _stuck)
+    app = srv.build_app(None, auth_token="t" * 32, stop_budget_s=0.5)
+    try:
+        t0 = time.monotonic()
+        with TestClient(app):
+            pass
+        assert time.monotonic() - t0 < 3.0
+        assert current_stop() is not None and current_stop().reason == "console lifespan"
+    finally:
+        release.set()
+
+
+def test_a_run_ended_by_a_stop_request_is_yielded_and_a_typed_abort() -> None:
+    from maxim.simulation.orchestrator import _resolve_finish_reason
+    from maxim.simulation.sim_types import is_simulation_run_failure
+
+    request_stop("test", Deadline.after(5.0))
+    reason = _resolve_finish_reason(RuntimeError("abandoned call"), {"status": "llm_wedged"}, threading.Event())
+    assert reason == "yielded"
+    assert is_simulation_run_failure(reason)
+
+
+def test_run_agentic_loop_registers_its_stop_event_for_the_run_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.runtime import agent_loop
+
+    stop_event = threading.Event()
+    seen: list[bool] = []
+
+    def _body(*_a: Any, **_k: Any) -> None:
+        seen.append(stop_event in cancellation._stop_events)
+
+    monkeypatch.setattr(agent_loop, "_run_agentic_loop_body", _body)
+    agent_loop.run_agentic_loop(None, None, None, None, None, None, stop_event=stop_event)
+    assert seen == [True]
+    assert stop_event not in cancellation._stop_events
+    request_stop("test", Deadline.after(5.0))
+    assert not stop_event.is_set()  # the run ended: a later stop no longer reaches it
+
+
+def test_a_shared_stop_event_stays_registered_until_its_last_holder_ends() -> None:
+    """The orchestrator's AUT and orch loops (and a sub-simulation tool) share one stop event: the first loop to end
+    must not unregister it for the others (wire-integrity review, PR 1b)."""
+    event = threading.Event()
+    with cancellation.stop_event_registered(event):
+        with cancellation.stop_event_registered(event):
+            pass
+        request_stop("test", Deadline.after(5.0))
+        assert event.is_set()
+
+
+def test_a_run_that_ends_during_handle_stop_is_not_an_overrun(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.console.server as srv
+
+    # The run outlives its 40 % join share (0.8 s of 2 s), then ends inside handle.stop's wait (judged at ~1.8 s).
+    run = threading.Thread(target=time.sleep, args=(1.0,), daemon=True)
+    run.start()
+
+    class _SlowHandle:
+        def stop(self, **_kw: Any) -> bool:
+            time.sleep(1.0)  # the campaign-lock wait, which the run outlived its join share into
+            return True
+
+    monkeypatch.setattr(srv, "_handle", _SlowHandle())
+    monkeypatch.setattr(srv, "_active_run", {"session_id": None, "thread": run})
+    assert srv._drain_and_stop_handle(deadline=Deadline.after(2.0)) is True
+    assert current_stop() is None
+
+
+def test_a_talk_loop_that_ends_inside_the_shutdown_wait_is_not_an_overrun() -> None:
+    from maxim.console.handle import MaximHandle
+
+    talk = threading.Thread(target=time.sleep, args=(0.6,), daemon=True)
+    talk.start()
+    h = MaximHandle.__new__(MaximHandle)
+    h.agent_id = "t"
+    h._stopped = False
+    h._stop_result = None
+    h._campaign_lock = threading.Lock()
+    h._talk_lock = threading.Lock()
+    h._talk_bridge = h._talk_stop = h._talk_worker = None
+    h._talk_thread = talk
+    h.instance = MagicMock()
+    h.instance.shutdown.side_effect = lambda **_kw: (talk.join(2.0), True)[1]  # waits for the loop's own end
+    assert h.stop(deadline=Deadline.after(1.0)) is True
+
+
+def test_build_app_refuses_a_stop_budget_the_config_would_refuse() -> None:
+    import maxim.console.server as srv
+
+    for bad in (0, -1, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            srv.build_app(None, auth_token="t" * 32, stop_budget_s=bad)
+
+
+def test_the_lifespan_gives_the_drain_a_reserve_before_its_own_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The drain finishes before the lifespan stops waiting, so a stop that finished in budget never races the
+    lifespan's overrun report (delta round, PR 1b)."""
+    from fastapi.testclient import TestClient
+
+    import maxim.console.server as srv
+
+    seen: list[float] = []
+
+    def _record(*, deadline: Deadline, **_kw: Any) -> bool:
+        req = current_stop()
+        assert req is not None
+        seen.append(req.deadline.remaining() - deadline.remaining())
+        return True
+
+    monkeypatch.setattr(srv, "_drain_and_stop_handle", _record)
+    with TestClient(srv.build_app(None, auth_token="t" * 32, stop_budget_s=5.0)):
+        pass
+    assert len(seen) == 1 and seen[0] >= srv._STOP_REPORT_RESERVE_S - 0.05

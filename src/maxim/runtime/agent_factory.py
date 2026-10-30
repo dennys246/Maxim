@@ -543,8 +543,10 @@ class AgentInstance:
         consolidation: Literal["full", "lightweight"] = "full",
         deadline: Deadline | None = None,
         loop_wait: Deadline | None = None,
-    ) -> None:
-        """Flush memories and clean up resources.
+    ) -> bool:
+        """Flush memories and clean up resources. True once the session end and the after-steps ran here, or were
+        handed to a loop whose end was reached within ``loop_wait``; False when that end was not reached (#1438 PR 1b:
+        the console's drain clears the process stop request only after a stop that finished).
 
         Args:
             consolidation: Explicit session-end flavor (HANDLE seam, part b —
@@ -558,14 +560,13 @@ class AgentInstance:
             deadline: The bound on this shutdown's own session end (``None``: no bound; consolidation runs in full
                 after the saves).
             loop_wait: The bound on the WAIT for a loop that holds the session (default: ``deadline``; neither: the
-                60 s cap). The console and the pool bound only this until 1b gives the console a stop budget
-                (owner decision 2026-10-29), so a large agent still consolidates when it stops.
+                60 s cap). The pool bounds only this, so a large agent still consolidates when it stops; the console
+                passes its stop budget as ``deadline`` too (#1438 PR 1b).
         """
         if consolidation not in ("full", "lightweight"):
             raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
         if self.memory_hub is not None:
-            self._end_or_hand_over(self.memory_hub, consolidation, deadline, loop_wait or deadline)
-            return
+            return self._end_or_hand_over(self.memory_hub, consolidation, deadline, loop_wait or deadline)
         # No hub (create.agent(remembers=False, learns=True), or a hub whose construction failed): nothing else
         # saves these stores, and there is no EC to pair the NAc with.
         self._save_hippocampus()
@@ -579,6 +580,7 @@ class AgentInstance:
             except Exception as e:
                 log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
         self._save_cerebellum()
+        return True
 
     def _save_hippocampus(self) -> None:
         if self.hippocampus is None:
@@ -616,8 +618,10 @@ class AgentInstance:
         consolidation: Literal["full", "lightweight"],
         deadline: Deadline | None,
         loop_wait: Deadline | None,
-    ) -> None:
+    ) -> bool:
         """End the session as owner, or hand the after-steps to the loop that took it over (#1438 PR 1a, #1520).
+        False when the end this call waited for was not reached (``session_end_not_reached``); True otherwise, including
+        when the hub's end raised (logged): nothing is still running.
 
         A loop that holds the session runs the after-steps at its own end (``MemoryHub.run_after_session_end``); this
         call then waits for that end within ``loop_wait`` (else a 60 s cap) and returns either way. With nothing
@@ -639,7 +643,8 @@ class AgentInstance:
                         "persists it and runs this shutdown's after-steps (hub workers, cerebellum)",
                         self.agent_id,
                     )
-                return
+                    return False
+                return True
             elif not hub.wait_session_ended(deadline_s=wait_s):  # at once for an OPEN session no loop holds
                 log.warning(
                     "Agent %s: session_end_not_reached — the memory session is held by another opener (a harness "
@@ -647,10 +652,11 @@ class AgentInstance:
                     "after-steps",
                     self.agent_id,
                 )
-                return
+                return False
         except Exception as e:
             log.warning("Agent %s: memory_hub shutdown failed: %s", self.agent_id, e)
         self._after_session_end(hub)
+        return True
 
 
 def _adopt_bio_stack(instance: AgentInstance, bio: Any) -> None:

@@ -296,7 +296,11 @@ class TestShutdown:
             raise RuntimeError("stop exploded")
 
         monkeypatch.setattr(srv, "_drain_and_stop_handle", _boom)
-        with pytest.raises(RuntimeError, match="stop exploded"):
-            with TestClient(plain_app):
-                pass
+        # #1438 PR 1b: the stop runs on its own daemon thread within the stop budget, so its error is logged there
+        # rather than raised through the lifespan; the request it inherited stays set (the next start refuses).
+        with TestClient(plain_app):
+            pass
         assert released == [True]
+        from maxim.utils.cancellation import current_stop
+
+        assert current_stop() is not None

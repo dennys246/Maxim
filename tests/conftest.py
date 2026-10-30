@@ -2083,12 +2083,14 @@ def _isolate_maxim_console_sandbox_env():
     lazily by ``_get_handle``. A leaked switch would 403 the probe/setup/
     diagnose tests and refuse every ``/ws`` upgrade in later console tests —
     the CLAUDE.md "opt-in env vars need autouse scrubs" pairing.
+    ``MAXIM_CONSOLE_STOP_BUDGET_S`` (#1438 PR 1b) sets every later lifespan's stop budget.
     """
     names = (
         "MAXIM_CONSOLE_SANDBOX",
         "MAXIM_CONSOLE_ALLOWED_ORIGINS",
         "MAXIM_CONSOLE_MAX_INPUT_CHARS",
         "MAXIM_CONSOLE_AGENT_ID",
+        "MAXIM_CONSOLE_STOP_BUDGET_S",
     )
     saved = {name: os.environ.pop(name, None) for name in names}
     try:
