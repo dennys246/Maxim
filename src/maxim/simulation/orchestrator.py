@@ -15,12 +15,14 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
+from maxim.simulation.stdin_lines import OperatorLines, read_operator_lines
 from maxim.simulation.tty_stdin import read_post_sim_goal_raw, stdin_reader_raw
 from maxim.exceptions import StopStillPending
 from maxim.utils.cancellation import current_stop
@@ -2421,28 +2423,15 @@ def start_simulation_mode(
         return False
 
     def _stdin_reader_line() -> None:
-        """Fallback line-based stdin reader for non-TTY environments."""
-        while not stop_event.is_set():
-            # Mirror the raw reader's prompt handler check: if an agent
-            # tool is waiting for user input via SimPromptHandler, route
-            # the next line to deliver_response() instead of _process_line().
-            if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
-                try:
-                    line = input()
-                except (EOFError, KeyboardInterrupt):
-                    _stop_by_operator(stop_event, operator_stop)
-                    return
-                _sim_prompt_handler.deliver_response(line.strip())
-                continue
-            try:
-                line = input()
-            except EOFError:
-                return
-            except KeyboardInterrupt:
-                _stop_by_operator(stop_event, operator_stop)
-                break
-            if _process_line(line):
-                break
+        """Fallback line-based stdin reader for non-TTY environments; the run's stop ends it (#1541)."""
+        read_operator_lines(
+            lines=OperatorLines(sys.stdin, stop_event),
+            stop_event=stop_event,
+            operator_stop=operator_stop,
+            sim_prompt_handler=_sim_prompt_handler,
+            process_line=_process_line,
+            stop_by_operator=_stop_by_operator,
+        )
 
     _stdin_target = (
         functools.partial(
@@ -2585,6 +2574,7 @@ def start_simulation_mode(
     _tail = SimTail(
         is_interactive=_is_interactive,
         stop_event=stop_event,
+        stdin_thread=stdin_thread,
         bridge=bridge,
         orchestrator_source=orchestrator_source,
         aut_thread=aut_thread,

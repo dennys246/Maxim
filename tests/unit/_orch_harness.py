@@ -16,7 +16,7 @@ uses. The slice-0 arms (owner decision (a), 2026-10-13):
      This arm exercises the narrator loop on the calling thread (§12), the stall-detector polling
      and the LLM-finish path. It also passes ``aut_model``, so the AUT gets its OWN router build
      (the dual-router path, §4) and the two roles' provenance can be told apart.
-  3. ``stdin``: operator commands fed through a queue-backed ``sys.stdin``: ``/status``, ``/pause``,
+  3. ``stdin``: operator commands fed through a pipe-backed ``sys.stdin`` (``QueueStdin``): ``/status``, ``/pause``,
      free text while paused (which goes to the AUT), ``/resume``, free text while running (which
      goes to the narrator as guidance), and ``/cancel``.
 
@@ -45,7 +45,7 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      checkpoint a follow-up to ride, and the wedged call's answer gives the nudge one, so no percept here waits
      behind a job that ends the chain (#1451).
   6. ``new_goal``: interactive ON (``/new`` lives only in the interactive post-sim branch) with a line-read
-     stdin that claims a TTY and has no ``fileno``, so the raw reader falls back to the line reader. The
+     stdin that claims a TTY over a pipe, which ``tcgetattr`` refuses, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
      once, so the run re-enters ``start_simulation_mode``, then Enter. Each run's narrator probes once and
      finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry resolves
@@ -72,8 +72,8 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
 The TTY read loops (the raw-mode stdin reader and the post-sim raw-mode "new goal" prompt) are
 deliberately left uncharacterized (owner decision (e)). Every arm but ``new_goal`` runs non-interactive
 (``InteractiveMode.OFF``, the ``--interactive false`` path); ``new_goal`` runs interactive ON on a stdin that
-passes ``stdin_reader_raw``'s isatty check but whose ``fileno()`` raises, so the reader falls back to the line
-reader before it enters raw mode (the head of ``stdin_reader_raw`` runs; its raw loop never does). Either way the
+passes ``stdin_reader_raw``'s isatty check but is a pipe, which ``termios.tcgetattr`` refuses, so the reader falls back to
+the line reader before it enters raw mode (the head of ``stdin_reader_raw`` runs; its raw loop never does). Either way the
 line reader is the one exercised, and the post-sim raw reader is faked.
 
 ROUTER BUILDS. Every ``build_primary_router`` call returns a ``_RouterView``: the one shared
@@ -190,7 +190,6 @@ import io
 import json
 import logging
 import os
-import queue
 import re
 import sys
 import threading
@@ -247,8 +246,8 @@ ARMS: dict[str, dict[str, Any]] = {
         "env": {"MAXIM_STALL_FLOOR_S": "15", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
         "events": True,
     },
-    # Interactive ON (``/new`` exists only there) on a line-read stdin that claims a TTY: no ``fileno``, so the raw
-    # reader falls back to the line reader (``tty_stdin.stdin_reader_raw``) and the post-sim branch reads a goal
+    # Interactive ON (``/new`` exists only there) on a line-read stdin that claims a TTY over a pipe (``tcgetattr``
+    # refuses it), so the raw reader falls back to the line reader (``tty_stdin.stdin_reader_raw``) and the post-sim branch reads a goal
     # through ``read_post_sim_goal_raw``, faked (``_post_sim_goals``).
     "new_goal": {"max_turns": 10, "interactive": True, "events": True},
     # HANDLE seam (a): a real console ``MaximHandle`` (the shipped producer, owner decision 2026-10-24) built inside
@@ -598,14 +597,17 @@ def _describe(prompt: str) -> dict[str, Any]:
 
 
 class QueueStdin(io.TextIOBase):
-    """A ``sys.stdin`` whose lines arrive when the harness feeds them; ``input()`` reads it through
-    ``readline`` (no ``fileno``, so CPython takes the non-console path). ``reads`` counts readline
-    calls: the reader asking for line k+1 means it has processed line k."""
+    """A ``sys.stdin`` over an OS pipe whose lines arrive when the harness feeds them. Its ``fileno`` is the pipe's
+    read end, so the run's line reader polls it (``simulation/stdin_lines.py::OperatorLines``) and the run's stop
+    ends that read (#1541), as on a terminal. ``reads`` counts the reader's requests for a line (``note_read``, from
+    the ``OperatorLines.next_line`` hook in ``run_arm``, and ``readline``): the reader asking for line k+1 means it
+    has processed line k."""
 
     def __init__(self, tty: bool = False) -> None:
         super().__init__()
         self._tty = tty
-        self._q: queue.Queue[str] = queue.Queue()
+        self._r, self._w = os.pipe()
+        self._w_open = True
         self._cv = threading.Condition()
         self.reads = 0
 
@@ -615,17 +617,37 @@ class QueueStdin(io.TextIOBase):
     def isatty(self) -> bool:
         return self._tty
 
-    def readline(self, size: int | None = -1) -> str:  # type: ignore[override]
+    def fileno(self) -> int:
+        return self._r
+
+    def note_read(self) -> None:
         with self._cv:
             self.reads += 1
             self._cv.notify_all()
-        return self._q.get()
+
+    def readline(self, size: int | None = -1) -> str:  # type: ignore[override]
+        self.note_read()
+        out = bytearray()
+        while not out.endswith(b"\n"):
+            byte = os.read(self._r, 1)
+            if not byte:
+                break
+            out += byte
+        return out.decode("utf-8")
 
     def feed(self, line: str) -> None:
-        self._q.put(line + "\n")
+        os.write(self._w, (line + "\n").encode("utf-8"))
 
     def eof(self) -> None:
-        self._q.put("")
+        if self._w_open:
+            self._w_open = False
+            os.close(self._w)
+
+    def close(self) -> None:  # the read end lives while a reader holds this object (a leaked one keeps it)
+        if not self.closed:
+            self.eof()
+            os.close(self._r)
+        super().close()
 
     def wait_reads(self, n: int, reader: threading.Thread | None) -> None:
         deadline = time.monotonic() + SETTLE_TIMEOUT_S
@@ -880,6 +902,16 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     counter = iter(range(1, 1_000_000))
     Bridge = bridge_mod.SimulationBridge
     orig_send, orig_finish, orig_bridge_init = Bridge.send_and_wait, Bridge.finish, Bridge.__init__
+    from maxim.simulation.stdin_lines import OperatorLines
+
+    orig_next_line = OperatorLines.next_line
+
+    def _counted_next_line(self: Any) -> str | None:
+        """The run's line reader asks for its next line: count it on the harness's stdin (``QueueStdin.reads``)."""
+        if isinstance(self._stdin, QueueStdin):
+            self._stdin.note_read()
+        return orig_next_line(self)
+
     Source = conv_mod.ConversationalSource
     orig_inject = Source.inject_cli
     bridges: list[Any] = []  # every SimulationBridge the run built (a /new re-entry builds a second)
@@ -1120,6 +1152,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         *((report_mod, n, _report_spy(n)) for n in _REPORT_WRITERS),
         *((NAc, m, _credit_spy(m)) for m in _NAC_CREDIT_ENTRY_POINTS),
     ]
+    if isinstance(stdin, QueueStdin):
+        patches.append((OperatorLines, "next_line", _counted_next_line))
     if arm == "stall":
         from maxim.simulation.stall_detector import StallDetector
 
