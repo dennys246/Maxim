@@ -162,7 +162,7 @@ leader unchanged. *(Owner decision O2 — schedule now or on first use.)*
   ("a self-hosted lane's context window resolves from the server's trusted report; a request-shaped
   400 never cools down a provider" — Regression guard: the Phase 0 fixture tests), §6 drift gotcha
   update, §7 any new keys.
-- `CHANGELOG.md` `[Unreleased]` line per `src/` PR.
+- A `changelog.d/` fragment per `src/` PR (an `[Unreleased]` line before M83 step 3).
 
 ### Phase 6 — measure before claiming (optional, `[engineering]` evidence only)
 

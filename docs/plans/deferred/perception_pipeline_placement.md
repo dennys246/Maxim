@@ -10,7 +10,7 @@
 >
 > The `src/` Dormant marker in `runtime/perception_placement.py` (module docstring) still names "the
 > 1.3 cross-modal perception fabric" as its resurrection trigger. Re-pointing it is a `src/` docstring
-> change that needs an `[Unreleased]` line; until it lands, this banner governs.
+> change that needs a `changelog.d/` fragment (an `[Unreleased]` line before M83 step 3); until it lands, this banner governs.
 >
 > **DEFERRED 2026-09-19** (plans audit at the 1.3.0 release; README §Rules: a deferred plan states its revive trigger). **Revive when:** a second robot body physically exists (a real backend registered through `maxim.robots`, or the operator records its arrival). The design below is unchanged and is not being worked on until then.
 **Status:** Shell plan, drafted 2026-06-22; corrected 2026-06-22 after a code-grounded review pass (see "Review corrections" below).

@@ -3,8 +3,8 @@
 
 Policy (CLAUDE.md §Versioning, decided 2026-08-29): **`main` is ahead of PyPI; the version
 bump happens in the release transaction.** Between releases `pyproject.toml` /
-`src/maxim/__init__.py` carry the LAST PUBLISHED version and `CHANGELOG.md` accumulates under
-`## [Unreleased]`; the bump commit adds the `## [X.Y.Z] - <date>` section, and the tag +
+`src/maxim/__init__.py` carry the LAST PUBLISHED version, each `src/` change adds a `changelog.d/`
+fragment (M83 step 3), and the bump commit's `changelog_fragments.py assemble` adds the `## [X.Y.Z] - <date>` section, and the tag +
 publish follow the guide. Nothing in the repo asserts what PyPI serves — the three
 version lines point at PyPI instead of describing it, because prose that describes PyPI
 ("pending", "rc", "serves") drifted on every release and the score card counted it.
