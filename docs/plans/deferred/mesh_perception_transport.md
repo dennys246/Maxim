@@ -2,6 +2,8 @@
 
 > **DEFERRED (2026-07-15 plans audit):** 1.0 prep SHIPPED (PR #329 — `PERCEPT_PUSH`/`PERCEPT_ACK` enum slots, `to_wire_dict`/`from_wire_dict`, two CLAUDE.md invariants); the 1.1 transport is unbuilt and the single-cut-point framing is superseded by [perception_pipeline_placement.md](perception_pipeline_placement.md) (see the 2026-06-22 CORRECTION banner in-doc). **Revive when:** perception_pipeline_placement reaches a cut point that places a stage across the wire (its 1.2+ leader-side segmentation / frame transport) — this plan is then the byte-mover implementation vehicle.
 
+> **Amended 2026-10-29 ([phone_device.md](phone_device.md)):** a phone or browser sensor node is a console client, not a mesh peer. It enters through console auth with a per-device token and the relay's receptor registry, never through this plan's cluster-keyed `/v1/mesh/percepts` family: one credential must not grant both inference and console access. This plan's ingress stays scoped to mesh peers; the phone shares only the server-side percept shape, after the relay.
+
 
 **Status:** Shell plan, drafted 2026-06-02. 1.0 prep work scoped; 1.1 implementation sketched.
 

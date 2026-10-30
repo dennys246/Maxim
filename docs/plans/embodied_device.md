@@ -6,6 +6,10 @@ folded. Input: maxim-pulse's device review, [Maxim-pulse #58](https://github.com
 1.12). Pulse's document is the evidence and a proposed shape. This one is pymaxim's plan: what pymaxim owns, what
 rides on what already exists, and in what order.
 
+> **Pointer 2026-10-29:** [deferred/phone_device.md](deferred/phone_device.md) PD1 attaches a phone through `embody()` as a
+> device, not a second body. Its P0-7 asks steps 1, 4 and 5 to become device-generic (`embody()` takes a device
+> adapter; the census covers every effector, including haptics and notifications). Not yet folded into this plan.
+
 **Home (owner decision 2026-10-24): its own clock, in parallel.** Like the atonia gate, it gets its own session. It
 ships as a patch when it is ready and holds nothing. It touches no decomposition-fenced file, so 1.3.5, 1.3.6 and
 1.4.0 keep their order.

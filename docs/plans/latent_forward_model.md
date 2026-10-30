@@ -1477,7 +1477,7 @@ threshold used to count dissociations (recommended: production 0.44, never the r
   round-trip is lossless, and the substring recall path is unchanged because the field is `repr=False`
   (the guard above; without it the discharge would be false, wiring lens D3). T1-1 (Exp 10) carries the older "hippocampus persistence schema change" wording,
   but it is SUPERSEDED by T1-16 and no longer gates. The trace now grows by raw inputs only (§4.2 item 1).
-- `[Unreleased]` grows (`lint_unreleased_on_src_change.py`).
+- A `changelog.d/` fragment is added (`scripts/changelog_fragments.py check`; before M83 step 3 this was `[Unreleased]` growth).
 
 **Owner decisions at S1 start:** Q6 is **decided** (G22): no key change, no situation in the key. Asked at
 S1 start: the source of the "sensed before the decision" flag (above); a resolved `target=` case, only if

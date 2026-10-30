@@ -19,7 +19,9 @@ script did (design pass on docs/plans/archive/release_pipeline.md, folds SF1, SF
                  so only the owner (bypass) can push a release tag. #1372's own "Done when" item, checked where it is
                  relied on (architecture review S1).
 ``notes``        ``docs/announcements/release_<version>.md`` exists and has no repo-relative links, checked BEFORE the
-                 irreversible upload rather than after it (SF8).
+                 irreversible upload rather than after it (SF8); and no ``changelog.d/`` fragment is left at the
+                 release commit, since one would be an entry missing from the released section (M83 step 3; it
+                 applies while the version is untagged or on a tag push, so pre-bump rehearsals pass).
 
 Exits: 0 pass; 1 refused; 2 could not check (an API or git failure is never a pass).
 """
@@ -39,6 +41,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_release_tags import _REL_LINK  # noqa: E402
+from changelog_fragments import leftover_fragment_problems  # noqa: E402
 
 _INIT_VERSION = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 
@@ -162,7 +165,10 @@ def notes_problems(version: str, root: Path = REPO) -> list[str]:
     if not notes.is_file():
         return [f"no release notes at {notes.relative_to(root)}: write them before tagging"]
     links = _REL_LINK.findall(notes.read_text(encoding="utf-8"))
-    return [f"{notes.relative_to(root)} has repo-relative links (404 on the Releases page): {links}"] if links else []
+    problems = (
+        [f"{notes.relative_to(root)} has repo-relative links (404 on the Releases page): {links}"] if links else []
+    )
+    return problems + leftover_fragment_problems(root, version)
 
 
 def main(argv: list[str] | None = None) -> int:
