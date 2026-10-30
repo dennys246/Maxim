@@ -20,7 +20,7 @@
 - [`models/language/router.py::LLMRouter._dispatch`](../../src/maxim/models/language/router.py) — the **canonical instrumentation site** (per consolidated review: covers the provider-failover loop that per-backend wrapping misses)
 - [`models/language/maxim_peer_backend.py::_stream_response`](../../src/maxim/models/language/maxim_peer_backend.py) — updates `last_byte_at` on every chunk arrival, including PR #320's TTFT keepalive frames (`: keepalive\n\n`) — the SSE parser receives these as bytes-on-wire
 - [`runtime/function_router.py::FunctionRouter.resolve`](../../src/maxim/runtime/function_router.py) — `resolve("sim_orchestrator")` returns the currently-routed tier including failover (large → medium). The stall detector consults this NOT a hardcoded tier
-- [`simulation/orchestrator.py::_stall_detector`](../../src/maxim/simulation/orchestrator.py) — current implementation (lines 2200-2440). Primary fix surface
+- [`simulation/orchestrator.py::_stall_detector`](../../src/maxim/simulation/orchestrator.py) — the implementation when this plan was written (lines 2200-2440); since the orchestrator's §11 slice (2026-10-30) it is [`simulation/stall_detector.py::StallDetector`](../../src/maxim/simulation/stall_detector.py). Primary fix surface
 - [`runtime/heartbeat.py::HeartbeatMonitor`](../../src/maxim/runtime/heartbeat.py) — Stage 2 target. Different signal from orchestrator (warns, doesn't inject) — gets DIFFERENT integration (floor + in-flight check, NOT lane-timeout ceiling — per Executor review I3)
 
 **Enables:**

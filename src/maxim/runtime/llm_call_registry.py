@@ -2,7 +2,7 @@
 
 Single source of truth for "is there an LLM call in flight right now?"
 across the codebase. One consumer queries it today (the others are planned):
-- :mod:`maxim.simulation.orchestrator` :func:`_stall_detector` — suppresses
+- :mod:`maxim.simulation.stall_detector` :class:`StallDetector` — suppresses
   spurious "REPEATED STALL" nudges during legitimate inference (the bug
   this module exists to close — see [docs/plans/deferred/stall_detector_timeout_awareness.md]).
 - :class:`maxim.runtime.heartbeat.HeartbeatMonitor` (Stage 2, pending) —
@@ -215,22 +215,26 @@ def _live_entries_snapshot(now: float) -> list[_InFlightCall]:
         return [v for v in _registry.values() if now - v.started_at < _STALE_ENTRY_TTL_S]
 
 
-def any_call_in_flight(*, tier: str | None = None) -> bool:
+def any_call_in_flight(*, tier: str | None = None, now: float | None = None) -> bool:
     """True if any non-stale LLM call is in flight.
 
     When ``tier`` is provided, filters to that lane tier only — the
     orchestrator's stall detector uses this to suppress nudges only when
     a call is in flight at the same tier the orchestrator's own calls
     use (resolved via :func:`maxim.runtime.function_router.FunctionRouter.resolve`).
+
+    ``now`` (default: the wall clock) is the reader's own clock: the stall detector passes its injectable one
+    (``simulation/stall_detector.py``). It must be on ``time.time``'s epoch, which stamps every entry here; an entry
+    ``_STALE_ENTRY_TTL_S`` older than ``now`` is ignored (it reads as no call). The same for the two readers below.
     """
-    now = time.time()
+    now = time.time() if now is None else now
     for v in _live_entries_snapshot(now):
         if tier is None or v.tier == tier:
             return True
     return False
 
 
-def oldest_byte_silence_s(*, tier: str | None = None) -> float | None:
+def oldest_byte_silence_s(*, tier: str | None = None, now: float | None = None) -> float | None:
     """Seconds since the most recent byte across in-flight calls.
 
     Used by the stall detector's wedged-connection safety net: distinguish
@@ -245,18 +249,18 @@ def oldest_byte_silence_s(*, tier: str | None = None) -> float | None:
     Only STREAMING calls count: a non-streaming call reports no bytes, so its silence is unknown, never evidence of
     a wedged connection (#1042). ``None`` also when only non-streaming calls are in flight.
     """
-    now = time.time()
+    now = time.time() if now is None else now
     candidates = [
         now - v.last_byte_at for v in _live_entries_snapshot(now) if v.streams and (tier is None or v.tier == tier)
     ]
     return min(candidates) if candidates else None
 
 
-def non_streaming_calls(*, tier: str | None = None) -> list[tuple[float, float | None]]:
+def non_streaming_calls(*, tier: str | None = None, now: float | None = None) -> list[tuple[float, float | None]]:
     """``(age_s, allowed_s)`` of every NON-streaming call in flight. Such a call reports no bytes, so its age —
     against the time it was allowed — is the only evidence it has: the stall detector judges it wedged once it has
     outlived that time (#1042)."""
-    now = time.time()
+    now = time.time() if now is None else now
     return [
         (now - v.started_at, v.allowed_s)
         for v in _live_entries_snapshot(now)

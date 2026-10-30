@@ -211,12 +211,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 2862
-    },
-    {
-      "file": "src/maxim/simulation/orchestrator.py",
-      "qualname": "start_simulation_mode.<locals>._stall_detector",
-      "lines": 405
+      "lines": 2414
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -390,6 +385,7 @@
     "_maybe_auto_spawn_server tightened 271 -> 259 on 2026-10-30 (#1315 step 0a, rule T): the cloud-lane skip moved verbatim to lane_backends._lane_profile_is_cloud, carrying its profile read's move to get_profile (profiles.yml now merges on first use, not at import).",
     "build_primary_router tightened 245 -> 239 on 2026-10-30 (#1315 step 0a review fold W1/S1, rule T): the fail-fast profiles.yml check went in as one call to lane_backends._require_valid_user_profiles, and the capability detection moved verbatim to lane_backends._capabilities_or_detected.",
     "_main_impl tightened 1458 -> 1419 on 2026-10-30 (#1315 step 0a delta fold D1, rule T; Session A's grant): the run-start require_valid_user_profiles() call went in before the mode dispatch, and the foundry dispatch moved verbatim to cli.py::_handle_foundry.",
-    "build_app tightened 283 -> 245 on 2026-10-30 (#1438 PR 1b, rule T): the lifespan closure left build_app for module-level console/server.py::_make_lifespan (with the new startup refusal under a pending stop request) and its bounded shutdown for _lifespan_shutdown; build_app gained the keyword-only stop_budget_s."
+    "build_app tightened 283 -> 245 on 2026-10-30 (#1438 PR 1b, rule T): the lifespan closure left build_app for module-level console/server.py::_make_lifespan (with the new startup refusal under a pending stop request) and its bounded shutdown for _lifespan_shutdown; build_app gained the keyword-only stop_budget_s.",
+    "start_simulation_mode tightened 2862 -> 2414 on 2026-10-30 (orchestrator \u00a711 slice, the injected stall clock owed by #1259/#1488): its nested _stall_detector (pinned 405, entry removed) left for simulation/stall_detector.py::StallDetector, whose methods each span 200 lines or fewer; the detector reads every 'now' through StallDetector.CLOCK."
   ]
 }

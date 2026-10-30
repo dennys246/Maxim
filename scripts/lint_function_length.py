@@ -13,8 +13,8 @@ Identity is ``(file, qualname)``: ``file`` is repo-relative (``src/maxim/...``),
 is Python's form (``Class.method``, ``outer.<locals>.inner``). Span is
 ``end_lineno - lineno + 1`` with decorators excluded (the measure since 2026-08-29). A
 nested function's lines also count inside its parent's span, so it is charged TWICE: growing a
-pinned ``outer.<locals>.inner`` raises both pins and needs an exception for each (today's case:
-``start_simulation_mode.<locals>._stall_detector``).
+pinned ``outer.<locals>.inner`` raises both pins and needs an exception for each (the case until the orchestrator's
+§11 slice, 2026-10-30: ``start_simulation_mode.<locals>._stall_detector``).
 
 **Every run** (rules 1-3, plus the file's own shape):
 
