@@ -614,7 +614,9 @@ def test_run_agentic_loop_is_a_wrapper_that_forwards_every_argument_to_the_body(
     wrapper_sig = inspect.signature(agent_loop.run_agentic_loop)
     body_params = inspect.signature(agent_loop._run_agentic_loop_body).parameters
     # Keyword-only parameters only the wrapper supplies (PR 0 adds ``session``); every other one is public and shared.
-    body_only: frozenset[str] = frozenset({"session"})  # #1438 PR 0: the wrapper's bio_session hands it to the body
+    body_only: frozenset[str] = frozenset(
+        {"session", "inbound_inbox"}
+    )  # the wrapper hands both to the body: the bio_session (#1438 PR 0) and the held inbound comms (#1481)
     assert {p: v for p, v in body_params.items() if p not in body_only} == dict(wrapper_sig.parameters)
     tree = ast.parse(Path(agent_loop.__file__).read_text())
     [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]

@@ -114,6 +114,19 @@ class ModeInfo:
         return available
 
 
+class InboundFeed(Protocol):
+    """Held inbound comms, as the prompt builder and dispatch see them (#1481). Implemented in ``runtime`` by
+    ``loop_external.ExternalInbox``; ``agents`` depends only on this shape."""
+
+    def held(
+        self, *, evict: bool = True
+    ) -> list[Any]: ...  # entries with ``id``, ``alias``, ``channel``, ``content``, oldest first
+
+    def note_rendered(self, ids: list[int]) -> None: ...
+
+    def ack(self, ids: list[int]) -> None: ...
+
+
 @dataclass(order=True)
 class LLMRequest:
     """Request for LLM processing."""
@@ -219,6 +232,14 @@ class LLMRequest:
     # branch. Empty for every loop without planning liveness.
     deferred_inputs: list[str] = field(default_factory=list, compare=False)
 
+    # Inbound comms (#1481): the run's held messages, read when the prompt is BUILT (``InboundFeed.held``). The prompt
+    # builder records the nonce of each message frame it rendered; the worker keeps the ids whose frame survived the
+    # fit WHOLE in the text sent, replaced on every build (a retry never keeps a stale id). None: no inbound comms.
+    inbound_feed: InboundFeed | None = field(default=None, compare=False)
+    inbound_frame_ids: dict[str, int] = field(default_factory=dict, compare=False)
+    inbound_rendered_ids: list[int] = field(default_factory=list, compare=False)
+    inbound_counted: bool = field(default=False, compare=False)
+
     def __post_init__(self):
         # Sort by negative priority (higher priority first), then by timestamp
         self.sort_index = (-self.priority, self.timestamp)
@@ -260,6 +281,12 @@ class LLMProposal:
     plan_text: str | None = None
     # Whether this proposal requires user approval before execution
     requires_approval: bool = False
+
+    # Inbound comms (#1481): set ONLY on the proposal built from a successfully parsed model reply, so a fallback
+    # (timeout, no response) never acknowledges a message the model did not answer. Dispatch acknowledges these ids
+    # through the feed when the turn is acted on (``tool_dispatch.execute_and_learn``). Runtime-ephemeral.
+    inbound_rendered_ids: tuple[int, ...] = field(default=(), compare=False)
+    inbound_feed: Any | None = field(default=None, compare=False)
 
     # PFC deliberation: whether the LLM is ready to act.
     # True (default) = one-shot / backward compatible.

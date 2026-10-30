@@ -140,6 +140,9 @@ def _run_llm_loop(
         def subscribe(self, *_a: Any, **_k: Any) -> None:
             return None
 
+        def unsubscribe(self, *_a: Any, **_k: Any) -> None:  # the run's inbound comms subscription ends (#1481)
+            return None
+
     bus = _Bus()
     autonomy = AutonomyController(
         initial_level=AutonomyLevel.AUTONOMOUS, safety_constraints=SafetyConstraints(forbidden_tools=set(forbidden))

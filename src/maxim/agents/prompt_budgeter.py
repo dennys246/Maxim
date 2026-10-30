@@ -107,6 +107,7 @@ class PromptBudgeter:
         phase_scoped: bool = False,
         *,
         source: SectionSource,
+        frame_wording: str | None = None,
     ) -> None:
         """Add a section to the budget. Empty content is silently ignored.
 
@@ -117,6 +118,8 @@ class PromptBudgeter:
         places the section at the END of the stable prefix); asking for it
         on a dynamic section is a caller bug, raised loudly rather than
         silently ignored.
+
+        ``frame_wording`` names what this section's frames hold (#1481); None is the tool-output default.
         """
         if phase_scoped and not cacheable:
             raise ValueError(f"prompt section {name!r}: phase_scoped=True requires cacheable=True")
@@ -129,7 +132,9 @@ class PromptBudgeter:
             # carries a partial frame, and one holding a frame states the frame rule first, budgeted with it.
             from maxim.utils.content_safety import framed_section
 
-            content = framed_section(content)
+            content = (
+                framed_section(content) if frame_wording is None else framed_section(content, wording=frame_wording)
+            )
         if not content or not content.strip():
             return
         token_count = self._counter.count_tokens(content)

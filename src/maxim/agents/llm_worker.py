@@ -247,6 +247,32 @@ def _normalize_request_context(ctx: dict[str, Any] | None) -> Any:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _record_inbound_rendered(request: LLMRequest, prompt: str) -> None:
+    """Which held inbound messages this build showed WHOLE (#1481, delta1 N1, delta2 P2/P4): a frame the budgeter
+    dropped, or ``drop_unbalanced_frames`` cut, is not complete in the text sent and does not count. Replaced on every
+    build; the render is counted once per request, so a retry of the same turn is not a second turn."""
+    from maxim.utils.content_safety import frame_is_whole
+
+    rendered = [entry_id for nonce, entry_id in request.inbound_frame_ids.items() if frame_is_whole(prompt, nonce)]
+    request.inbound_rendered_ids = rendered
+    if rendered and request.inbound_feed is not None and not request.inbound_counted:
+        request.inbound_counted = True
+        request.inbound_feed.note_rendered(rendered)
+
+
+def _sim_log_proposal_built(proposal: LLMProposal, request: LLMRequest) -> None:
+    try:
+        from maxim.simulation.sim_logger import sim_log
+
+        _tool = proposal.action.get("tool_name") if isinstance(proposal.action, dict) else None
+        sim_log(
+            "EXEC",
+            f"LLMProposal built: tool={_tool}, action_is_dict={isinstance(proposal.action, dict)}, req_id={request.request_id[:20]}",
+        )
+    except Exception:
+        pass
+
+
 class LLMWorker:
     """
     Dedicated thread for LLM inference.
@@ -993,6 +1019,7 @@ class LLMWorker:
         failed_tools: list[str] | None = None,
         deliberation_available: bool,
         deferred_inputs: list[str],
+        inbound_feed: Any = None,
     ) -> bool:
         """
         Submit context for LLM processing (non-blocking).
@@ -1043,6 +1070,7 @@ class LLMWorker:
             failed_tools=failed_tools or [],
             deliberation_available=deliberation_available,
             deferred_inputs=list(deferred_inputs),
+            inbound_feed=inbound_feed,
         )
 
         if self._pool is not None:
@@ -1350,17 +1378,10 @@ class LLMWorker:
                 plan_text=plan_text,
                 requires_approval=requires_approval,
                 ready_to_act=ready_to_act,
+                inbound_rendered_ids=tuple(request.inbound_rendered_ids),  # #1481: the success branch only
+                inbound_feed=request.inbound_feed,
             )
-            try:
-                from maxim.simulation.sim_logger import sim_log
-
-                _tool = proposal.action.get("tool_name") if isinstance(proposal.action, dict) else None
-                sim_log(
-                    "EXEC",
-                    f"LLMProposal built: tool={_tool}, action_is_dict={isinstance(proposal.action, dict)}, req_id={request.request_id[:20]}",
-                )
-            except Exception:
-                pass
+            _sim_log_proposal_built(proposal, request)
             return proposal
 
         except Exception as e:
@@ -1394,7 +1415,9 @@ class LLMWorker:
     # ── Delegation to PromptBuilder ──────────────────────────────────────
 
     def _build_prompt(self, request: LLMRequest) -> str:
-        return self._prompt_builder.build_prompt(request)
+        prompt = self._prompt_builder.build_prompt(request)
+        _record_inbound_rendered(request, prompt)
+        return prompt
 
     def _build_budget_context(self) -> str:
         return self._prompt_builder.build_budget_context()
