@@ -6,6 +6,7 @@ import logging
 import threading
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from maxim.embodied_runtime.agentic_runtime import AgenticRuntimeMixin
 
@@ -150,15 +151,22 @@ class TestWakeUpAgentic:
         # Should not have set _woke_up since mini is None
         assert rt._woke_up is False
 
-    def test_wakes_robot_when_mini_present(self):
-        """When mini is set, wake_up should call mini.wake_up via _enqueue_motor."""
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 (docs/plans/motion_path_model.md v8): the wake word wakes the raw SDK handle, bypassing the controller",
+    )
+    def test_wakes_robot_through_the_controller(self):
+        """Inverted (5.3, O8): the wake word used to enqueue the raw SDK ``mini.wake_up``, skipping torque-on, the
+        re-centre, the antenna clamp and the motion lock. It must enqueue the controller's ``wake_up``."""
         rt = _TestRuntime()
         rt.mini = MagicMock()
+        rt._robot = MagicMock()
 
         with patch.object(rt, "_start_agentic_runtime"):
             rt.wake_up_agentic()
 
-        rt.mini.wake_up.assert_called_once()
+        rt._robot.wake_up.assert_called_once()
+        rt.mini.wake_up.assert_not_called()
         assert rt._woke_up is True
         assert rt.sleeping is False
 

@@ -267,12 +267,19 @@ class TestAutomaticBodyYaw:
             assert c.connect()
         assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is False
 
-    def test_robots_yaml_opt_in_passes_through(self):
-        c = ReachyMiniController(host="10.42.0.1", connection_mode="network", automatic_body_yaw=True)
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 (docs/plans/motion_path_model.md v8): O6 inverts this: an opt-in is a config error",
+    )
+    def test_robots_yaml_opt_in_is_a_config_error(self):
+        """Inverted (O6): ``automatic_body_yaw: true`` used to pass through to the SDK."""
+        from maxim.exceptions import InvalidConfigError
+
         ctx, mod = _mock_sdk()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
-            assert c.connect()
-        assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is True
+        with ctx, pytest.raises(InvalidConfigError):
+            c = ReachyMiniController(host="10.42.0.1", connection_mode="network", automatic_body_yaw=True)
+            c.connect()
+        mod.ReachyMini.assert_not_called()
 
     def test_wake_reasserts_the_setting(self):
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
@@ -283,6 +290,10 @@ class TestAutomaticBodyYaw:
             assert c.wake_up()
         mini.set_automatic_body_yaw.assert_called_with(False)
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 (docs/plans/motion_path_model.md v8): the failure branch still sends a safety goto_sleep",
+    )
     def test_wake_fails_loudly_when_motor_enable_fails(self):
         """Torque failure cannot be reported as an operational robot."""
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
@@ -294,14 +305,23 @@ class TestAutomaticBodyYaw:
             assert c.wake_up() is False
 
         mini.wake_up.assert_not_called()
-        mini.goto_sleep.assert_called_once_with()
+        mini.goto_sleep.assert_not_called()  # inverted (5.3, Executor S6): the failure branch commands no motion
+        mini.goto_target.assert_not_called()
+        mini.disable_motors.assert_called_once_with()
         assert c.state.is_awake is False
 
-    def test_wake_survives_sdk_without_the_setter(self):
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#1499 PR 1 (docs/plans/motion_path_model.md v8): an unassertable auto-yaw still wakes and moves (O6)",
+    )
+    def test_wake_refuses_on_an_sdk_without_the_setter(self):
+        """Inverted (O6, delta D4): if ``set_automatic_body_yaw(False)`` cannot be asserted, the daemon may rotate the
+        body behind us, so the controller refuses motion until an assertion succeeds. It used to warn and wake."""
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()
         with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
             assert c.connect()
             mini = mod.ReachyMini.return_value
             mini.set_automatic_body_yaw.side_effect = AttributeError("old SDK")
-            assert c.wake_up()  # warning, not crash
+            assert not c.wake_up()
+        mini.goto_target.assert_not_called()

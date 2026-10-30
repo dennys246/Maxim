@@ -7,7 +7,7 @@ a turned body, every SDK look_at (it also sends the body to 0), wake_up/goto_sle
 turn_around. Mid-path the IK fails, the daemon holds the last joints, then they jump: the 2026-08-07 "head snapped to
 the opposite extreme" failure (embodiment.md §1).
 
-Design: docs/plans/motion_path_model.md (v8; owner decisions O1-O7, 2026-10-29). Each gate drives the real controller
+Design: docs/plans/motion_path_model.md (v8; owner decisions O1-O8, 2026-10-29). Each gate drives the real controller
 against tests/unit/_reachy_fakes.py, and is a strict xfail until PR 1's fix lands.
 """
 
@@ -21,7 +21,11 @@ import threading
 import numpy as np
 import pytest
 
+from scipy.spatial.transform import Rotation as R
+
 from tests.unit._reachy_fakes import (
+    INIT_ANTENNAS,
+    INIT_HEAD_POSE,
     SLEEP_HEAD_POSE,
     FakeDaemon,
     controller,
@@ -263,25 +267,86 @@ def test_look_at_pixel_leaves_the_body_where_it_is(daemon):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _lifecycle_names(d: FakeDaemon) -> list[str]:
+    return [c["name"] for c in d.calls if c["name"] in {"wake_up", "goto_sleep"}]
+
+
+def _rot_close(a, b, tol_deg: float = 0.5) -> bool:
+    return math.degrees(R.from_matrix(np.asarray(a)[:3, :3].T @ np.asarray(b)[:3, :3]).magnitude()) < tol_deg
+
+
 @_gate("wake_up runs the SDK's canned move (body → 0) from a turned body")
-def test_wake_up_from_a_turned_body_recentres_before_the_canned_move(daemon):
+def test_wake_up_from_a_turned_body_recentres_before_the_lifecycle_steps(daemon):
     _place(daemon, body_deg=150, rel_deg=20)
     ctl = controller(daemon)
     assert ctl.wake_up()
-    (wake,) = [c for c in daemon.calls if c["name"] == "wake_up"]
-    assert abs(wake["start_body"]) < D(2.0), "the canned wake must start from a centred body"
-    recentre = [c for c in daemon.gotos() if daemon.calls.index(c) < daemon.calls.index(wake)]
-    assert sum(float(c["duration"]) for c in recentre) >= 2.0
+    assert _lifecycle_names(daemon) == [], "O8: the SDK's canned wake is never called"
+    gotos = daemon.gotos()
+    first_init = next(i for i, c in enumerate(gotos) if c["head"] is not None and _rot_close(c["head"], INIT_HEAD_POSE))
+    assert first_init > 0, "a turned body re-centres before the INIT step"
+    assert abs(gotos[first_init]["start_body"]) < D(2.0), "the lifecycle steps must start from a centred body"
+    assert sum(float(c["duration"]) for c in gotos[:first_init]) >= 2.0
     for path in _chunk_paths(daemon):
         assert _within_r5_bound(path)
 
 
-def test_wake_up_from_the_sleep_pose_at_body_zero_does_not_recentre(daemon):
-    """Pin (5.3's 2° deadband): asleep at body 0, nothing moves before the canned wake."""
+@_gate("wake_up calls the SDK's canned wake instead of the composed, clamped steps (O8)")
+def test_wake_up_from_the_sleep_pose_at_body_zero_runs_only_the_lifecycle_steps(daemon):
+    """5.3's 2° deadband: asleep at body 0 there is no re-centre, so the first dispatch is the INIT step (F11)."""
     daemon.head = SLEEP_HEAD_POSE.copy()
     ctl = controller(daemon)
-    ctl.wake_up()
-    assert daemon.gotos() == []
+    assert ctl.wake_up()
+    assert _lifecycle_names(daemon) == []
+    heads = [c["head"] for c in daemon.gotos()]
+    assert len(heads) == 3, "INIT, the 20° roll, INIT"
+    assert _rot_close(heads[0], INIT_HEAD_POSE) and _rot_close(heads[2], INIT_HEAD_POSE)
+    assert _rot_close(heads[1], head_pose(roll=D(20)))
+    assert tuple(daemon.gotos()[0]["antennas"]) == pytest.approx(INIT_ANTENNAS)
+    assert all(c["body_yaw"] == pytest.approx(0.0) for c in daemon.gotos())
+    assert daemon.media.sounds == ["wake_up.wav"]
+
+
+@_gate("goto_sleep calls the SDK's canned sleep, whose antennas go to ±3.05 rad (O8)")
+def test_goto_sleep_clamps_the_sleep_antennas_and_never_calls_the_sdk_sleep(daemon):
+    from maxim.hardware.reachy.controller import ANTENNA_LIMIT_RAD
+
+    ctl = controller(daemon)  # the fake starts at INIT_HEAD_POSE, body 0
+    assert ctl.goto_sleep()
+    assert _lifecycle_names(daemon) == []
+    gotos = daemon.gotos()
+    assert len(gotos) == 1, "a head already at INIT skips the INIT step"
+    (last,) = gotos
+    assert _rot_close(last["head"], SLEEP_HEAD_POSE)
+    assert tuple(last["antennas"]) == pytest.approx((-ANTENNA_LIMIT_RAD, ANTENNA_LIMIT_RAD))
+    assert daemon.media.sounds == ["go_sleep.wav"]
+    assert "disable_motors" not in [c["name"] for c in daemon.calls], "the SDK's sleep keeps torque on; so does ours"
+
+
+@_gate("goto_sleep calls the SDK's canned sleep (O8)")
+def test_goto_sleep_from_a_raised_head_goes_through_init_first(daemon):
+    from maxim.hardware.reachy.controller import ANTENNA_LIMIT_RAD
+
+    _place(daemon, body_deg=0, pitch_deg=-30)
+    ctl = controller(daemon)
+    assert ctl.goto_sleep()
+    gotos = daemon.gotos()
+    assert len(gotos) == 2
+    assert _rot_close(gotos[0]["head"], INIT_HEAD_POSE) and float(gotos[0]["duration"]) >= 1.0
+    assert tuple(gotos[0]["antennas"]) == pytest.approx(INIT_ANTENNAS)
+    assert _rot_close(gotos[1]["head"], SLEEP_HEAD_POSE)
+    for c in gotos:
+        assert all(abs(a) <= ANTENNA_LIMIT_RAD + 1e-9 for a in c["antennas"])
+
+
+@_gate("the lifecycle sounds are the SDK's, inside its canned moves (O8)")
+def test_a_failed_sound_fails_no_lifecycle_step(daemon, caplog):
+    daemon.media.sound_raises = True
+    ctl = controller(daemon)
+    with caplog.at_level(logging.WARNING):
+        assert ctl.goto_sleep()
+    assert _lifecycle_names(daemon) == []
+    assert _rot_close(daemon.gotos()[-1]["head"], SLEEP_HEAD_POSE)
+    assert any("sound" in r.getMessage().lower() for r in caplog.records), "a failed sound is logged, not swallowed"
 
 
 @_gate("the enable_motors failure branch still commands a safety goto_sleep")
@@ -299,7 +364,7 @@ def test_wake_up_waits_for_torque_then_wakes(daemon):
     ctl = controller(daemon)
     assert ctl.wake_up()
     assert daemon.rest_calls >= 1
-    assert [c["name"] for c in daemon.calls].count("wake_up") == 1
+    assert _lifecycle_names(daemon) == [] and daemon.gotos(), "woken by the composed steps (O8)"
 
 
 @_gate("wake_up does not check that torque came on at all")

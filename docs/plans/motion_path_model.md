@@ -59,6 +59,11 @@ Every finding is folded below. §11 maps each one to its home. The owner re-deci
   - One normalizer, `as_outcome(result) -> MotionOutcome` in `hardware/controller.py`, turns a `bool` into an outcome with no reason (`kind=None`). Every consumer that reads a field goes through it.
   - Plugins, and the test fakes that return `bool`, keep working (docs/user/extension_api.md: "will not break in 1.x").
   - Recorded as an MP decision.
+- **O8 (2026-10-29, owner; raised by pulse's antenna-range request). Maxim replaces the SDK's `wake_up` and `goto_sleep`.**
+  - Each becomes the same sequence of steps the SDK runs (F11), and every step is one dispatch through the controller's clamped `goto_target`. So the antennas clamp to ±`ANTENNA_LIMIT_RAD`, and the head passes R1 to R5 like any other command.
+  - The SDK sleep pose's ±3.05 rad antennas (F9) no longer reach a motor. They clamp to ±90° for now, then to the hand-measured range minus a margin. The margin and the clamp live in the controller, and pulse only shows what the controller allows.
+  - Torque is unchanged: the SDK's sleep never disables the motors, and neither does ours. The sounds stay.
+  - So no `src/` caller of the SDK's `wake_up`/`goto_sleep` remains, and the O5 lint allows none, the controller included.
 
 ## 2. SDK and daemon facts (reachy-mini 1.8.3; verified 2026-10-26 and 2026-10-29)
 
@@ -80,7 +85,9 @@ Every finding is folded below. §11 maps each one to its home. The owner re-deci
   - The setting is daemon-global.
   - With it on, `AnalyticalKinematics.ik` uses `inverse_kinematics_safe`, which moves the body itself.
   - There is no client getter.
-- **F11.** `wake_up` and `goto_sleep` call `goto_target(INIT/SLEEP_HEAD_POSE, antennas, duration=2)` with the body default of 0.
+- **F11.** `wake_up` and `goto_sleep` call `goto_target` with the body default of 0. Their steps (`reachy_mini.py`, read 2026-10-29):
+  - **`wake_up`:** `INIT_HEAD_POSE` with the antennas at `INIT_ANTENNAS_JOINT_POSITIONS` [−0.1745, 0.1745] over 2 s; `wake_up.wav`; a 20° roll over 0.2 s; back to `INIT_HEAD_POSE` over 0.2 s.
+  - **`goto_sleep`:** if the WS joints are more than 0.2 (joint-space norm) from the initial joints, first `INIT_HEAD_POSE` with the INIT antennas over 1 s; `go_sleep.wav`; `SLEEP_HEAD_POSE` with `SLEEP_ANTENNAS_JOINT_POSITIONS` [−3.05, 3.05] over 2 s; a 2 s sleep. Torque stays on.
 - **F12. Freshness.**
   - The WS client's pose and joint messages carry no timestamp, and a non-finite pose is dropped silently (the cache keeps the last good one).
   - `GET /api/state/full` returns `head_pose`, `body_yaw`, `antennas`, `control_mode` and `timestamp` (UTC).
@@ -242,12 +249,16 @@ Rules around the loop:
     - **holding the readback's roll, pitch and x/y/z translation**, so the head is never lifted out of the sleep pose. (The SDK moves translation along a straight world chord, so over a 150° body chunk a held x/y offset passes inside its arc mid-path: about 16 mm on a 21 mm offset, with z unaffected. Stated, mm-scale.) Today the controller always composes zero translation, and `MotionTarget` has no x/y/z (delta N1). So a controller-internal `_hold_translation` argument to the compose phase carries the readback's translation **in the body frame**: rotated with the body, as `move_head` does, so a world-held x/y does not slide sideways during a body re-centre. It is not a public `MotionTarget` field;
     - `"at_least"`, with a floor of 2 s;
     - split by R5 as needed.
-  - Then call the SDK's canned move. Its body starts at 0, so it cannot sweep.
-  - With no fresh readback, or a refused re-centre, there is no canned move, and the call returns a failed outcome.
+  - Then run the composed lifecycle steps (O8): F11's steps, each one a controller dispatch with `body_yaw=0` and the antennas clamped. The body starts at 0, so they cannot sweep.
+    - Sleep goes through `INIT_HEAD_POSE` first when the fresh read's head is more than 0.2 rad (rotation angle) from it. This is a pose-space stand-in for the SDK's joint-space test, because the REST read carries no head joints.
+    - The sounds play through `self._mini.media.play_sound`, best-effort and logged; a failed sound fails no step.
+    - The SDK's trailing 2 s sleep is dropped. The final-target check (§12 item 17) is the settle.
+    - Any step's failed outcome stops the sequence and is the call's outcome.
+  - With no fresh readback, or a refused re-centre, there are no lifecycle steps, and the call returns a failed outcome.
 - **Torque off.** The daemon's `enable_motors` pins its targets to the present pose, and the pose is the forward kinematics of the present joints, so the read is valid (Executor-checked).
 - **Torque-on race (delta S3).** The SDK's `enable_motors()` is a fire-and-forget WS `SetTorqueCmd`, so the next REST read can still say `control_mode: "disabled"`. `wake_up` therefore polls the REST `control_mode` until it reads `enabled`, bounded at 1 s, before the re-centre and the canned move. On timeout it reports the failure, with no motion. Without this, a cold boot (the daemon starts with `--no-wake-up-on-start`) would never wake.
 - **The `enable_motors()` failure branch commands no motion** (Executor S6). It reports the failure and calls `disable_motors()`, best-effort and logged. The old safety `goto_sleep` there goes away.
-- **Canned antennas.** The canned sleep move takes the antennas to ±3.05 rad, beyond the provisional 90° limit. The limit governs commands Maxim composes; the canned poses are the vendor's mechanical rest, stated and re-checked when pulse's hand-measured range arrives.
+- **Lifecycle antennas (O8; replaces v8's "canned antennas are exempt").** The sleep step's antennas are the SDK's ±3.05 rad clamped to ±`ANTENNA_LIMIT_RAD`. **Stated behaviour change:** asleep, the antennas rest at ±90°, not folded at ±175°, until the measured range replaces the provisional limit.
 - **Raw callers move to the controller.** These are `agentic_runtime.py`'s `mini.wake_up` and `connection.py`'s soft-reconnect `wake_up`.
   - **Stated behaviour change:** a reconnect while the body is turned re-centres it (split, at most 4 chunks), and the abort event can interrupt that.
   - Selfy's sleep and wake paths go through the controller too.
@@ -420,7 +431,9 @@ Rules around the loop:
 6. **Wrap.** World 170°, body 160°, target world 175° → passes, with a relative command near 15°.
 7. **look_at.** Body 1.0 rad → no body command, on both paths.
 8. **Lifecycle.**
-   - Body 150° → re-centre chunks hold the readback's translation and last at least 2 s; the canned move sees body 0.
+   - Body 150° → re-centre chunks hold the readback's translation and last at least 2 s; the lifecycle steps see body 0.
+   - Neither `wake_up` nor `goto_sleep` calls the SDK's `wake_up`/`goto_sleep` (O8). Every antenna value they dispatch lies within ±`ANTENNA_LIMIT_RAD`, and sleep's last step is `SLEEP_HEAD_POSE` with the antennas at ±`ANTENNA_LIMIT_RAD`.
+   - Sleep from a head already at `INIT_HEAD_POSE` skips the INIT step; from the sleep pose, wake runs all three head steps.
    - Asleep at body 0 → no re-centre.
    - `enable_motors` raising → no motion.
    - Reconnect and the agentic wake go through the controller.
@@ -549,7 +562,7 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 4. **"Settled" after an SDK timeout:** two reads 100 ms apart within 0.5°.
 5. **The tool wait:** at most 25 s, on `accepted`. A timeout cancels the ticket.
 6. **One API** (`goto_target -> MotionOutcome`, truthy iff ok), following the `SyncResult` precedent.
-7. **The lifecycle re-centre:** 2° deadband, 2 s floor, translation held. Canned sleep antennas are exempt from our limit.
+7. **The lifecycle re-centre:** 2° deadband, 2 s floor, translation held. (O8 replaced "canned sleep antennas are exempt": the lifecycle steps are composed and clamped. The 0.2 rad pose-space INIT test and dropping the SDK's trailing 2 s sleep are choices for the delta round.)
 8. **The `enable_motors` failure:** no motion, `disable_motors()` best-effort.
 9. **Selfy's early returns:** `ok`/0 chunks for a no-op; `limit` for "unreachable".
 10. **The per-chunk re-check tolerance:** `_STASH_DIVERGENCE_REFUSE_RAD` (one rig-measured constant, provisionally 5°).

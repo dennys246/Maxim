@@ -5,7 +5,8 @@ The fake models the daemon facts the motion-path design rests on (reachy-mini 1.
 - F1: ``look_at_image(..., perform_movement=True)`` sends the body to 0 (``goto_target``'s ``body_yaw`` default).
 - F2: a ``goto_target`` with ``body_yaw=None`` holds the body where it is.
 - F3: a move can be dropped silently while the client still reports it complete (``drop_next``).
-- F11: the canned ``wake_up``/``goto_sleep`` drive the body to 0.
+- F11: the canned ``wake_up``/``goto_sleep`` drive the body to 0 (O8: maxim must call neither; ``media.sounds`` records
+  the sounds maxim's composed lifecycle plays in their place).
 - F12: the REST ``GET /api/state/full`` read, served from the modelled state, with its failure modes.
 
 ``linear_pose_interpolation`` is a verbatim copy of the SDK's (``reachy_mini/utils/interpolation.py``), because the
@@ -26,6 +27,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 INIT_HEAD_POSE = np.eye(4)
+INIT_ANTENNAS = (-0.1745, 0.1745)  # the SDK's INIT_ANTENNAS_JOINT_POSITIONS
 SLEEP_HEAD_POSE = np.array(
     [
         [math.cos(math.radians(24)), 0.0, math.sin(math.radians(24)), -0.021],
@@ -79,6 +81,19 @@ def worst_path_twist_deg(start_world, start_body, target_world, target_body, sam
     return worst
 
 
+class FakeMedia:
+    """``mini.media``: records ``play_sound`` names; ``sound_raises`` makes every call raise."""
+
+    def __init__(self) -> None:
+        self.sounds: list[str] = []
+        self.sound_raises = False
+
+    def play_sound(self, name: str) -> None:
+        if self.sound_raises:
+            raise RuntimeError("audio device busy")
+        self.sounds.append(name)
+
+
 class FakeDaemon:
     """The SDK handle and the daemon behind it, as one object. Every motion call is recorded with its start state."""
 
@@ -96,6 +111,7 @@ class FakeDaemon:
         self.rest_mode = "ok"  # ok | status500 | timeout | missing_body | nan_body | nested | head_m | unknown
         self.rest_calls = 0
         self.lock = threading.Lock()
+        self.media = FakeMedia()
 
     # ── recording ──────────────────────────────────────────────────────────
     def _record(self, name: str, **kw) -> None:
