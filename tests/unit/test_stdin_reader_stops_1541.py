@@ -56,7 +56,7 @@ def test_teardown_joins_the_reader_after_the_stop_and_before_the_post_sim_prompt
     ]
     shutdown = block[at - 1]
     assert isinstance(shutdown, ast.Try), "the join directly follows the shutdown signals' try"
-    assert "stop_event.set()" in [ast.unparse(s) for s in shutdown.body], "...whose first act is the run's stop"
+    assert "stop_event.set()" in [ast.unparse(s) for s in shutdown.body], "...which sets the run's stop"
     (prompt,) = [
         n.lineno
         for n in ast.walk(fn)

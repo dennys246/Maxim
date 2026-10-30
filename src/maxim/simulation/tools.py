@@ -1640,8 +1640,8 @@ class FinishSimulationTool(Tool):
 
     The finish is a real stop (#1259): the tool sets the run's ``stop_event``, the one a campaign runner's finish sets
     (``orchestrator._finish_runner``), so the narrator loop exits and teardown starts. The AUT's loop shares the event,
-    so it stops too: an AUT proposal still in flight is not executed (and earns no credit), as after a campaign
-    runner's finish; teardown then joins the AUT thread (5 s, or 300 s for an adopted agent). The stop is set in a
+    so it stops too, at its next stop check: an AUT action it has not yet executed may never run (and then earns no
+    credit), as after a campaign runner's finish; teardown then joins the AUT thread (5 s, or 300 s for an adopted agent). The stop is set in a
     ``finally``, so a signal that raises before it cannot leave the run waiting. Before that it signalled only the
     bridge and the narrator's percept source, and the run waited out the source's 180 s exhaustion grace while the stall
     detector nudged the finished narrator. ``stop_event`` is required, so a construction that forgets it is a

@@ -2,5 +2,5 @@
   campaign runner's finish does, so teardown starts at once. Before, the run waited out the 180 s percept-source
   grace while the stall detector nudged the finished narrator, each nudge a fresh narrator LLM call (a probe saw six).
   `FinishSimulationTool` takes the run's `stop_event` as a required keyword.
-  The AUT's loop stops with the run too: an AUT action still in flight at the finish is not executed and earns no
-  credit, as after a campaign runner's finish.
+  The AUT's loop stops with the run too, at its next stop check: an AUT action not yet executed at the finish may
+  never run and then earns no credit, as after a campaign runner's finish.
