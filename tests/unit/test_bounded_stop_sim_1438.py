@@ -347,3 +347,107 @@ def test_ending_early_never_lands_before_now_and_leaves_none_unbounded() -> None
     assert Deadline.after(0.2).ending_early(5.0).remaining() == pytest.approx(0.0, abs=0.05)
     assert Deadline.none().ending_early(5.0).remaining() == float("inf")
     assert Deadline.after(10.0).ending_early(3.0).remaining() == pytest.approx(7.0, abs=0.1)
+
+
+# ── a stopped sim's report: every report-time wait bounded, no skipped check stamped as passed ───────────────────
+
+
+class _BusyRouter:
+    """A role router whose in-flight call never ends (an abandoned orphan holds its lock), with serving probes."""
+
+    call_serial = 9001
+
+    def __init__(self) -> None:
+        self.idle_waits: list[float] = []
+        self.probed = False
+
+    def wait_idle(self, timeout: float) -> bool:
+        self.idle_waits.append(timeout)
+        return False
+
+    def serving_probes(self) -> list[dict[str, Any]]:
+        self.probed = True
+        return []
+
+
+def test_a_stopped_reports_serving_provenance_caps_its_waits_and_stamps_skipped_probes_as_unknown() -> None:
+    import maxim.simulation.serving_provenance as SP
+
+    router = _BusyRouter()
+    token = SP.capture_serving_start()
+    t0 = time.monotonic()
+    prov = SP.serving_provenance(
+        token,
+        llm_worker=SimpleNamespace(router=router),
+        aut_worker=None,
+        resume=None,
+        adopted=False,
+        goal="g",
+        deadline=Deadline.after(0.5),
+    )
+    assert time.monotonic() - t0 < 2.0
+    assert router.idle_waits and max(router.idle_waits) <= 0.5, "the idle wait was not capped by the deadline"
+    assert not router.probed, "a probe started with less than its own timeout left"
+    assert prov["model_changed_during_run"] is None, "a skipped probe was stamped as 'the model did not change'"
+    assert prov["sampling_complete"] is False
+    assert any("probes skipped" in p for p in prov["sampling_problems"])
+
+
+def test_with_no_deadline_the_serving_waits_and_probes_are_todays() -> None:
+    import maxim.simulation.serving_provenance as SP
+
+    router = _BusyRouter()
+    router.wait_idle = lambda timeout: (router.idle_waits.append(timeout), True)[1]  # type: ignore[method-assign]
+    token = SP.capture_serving_start()
+    prov = SP.serving_provenance(
+        token, llm_worker=SimpleNamespace(router=router), aut_worker=None, resume=None, adopted=False, goal="g"
+    )
+    assert router.idle_waits == [SP.ROUTER_IDLE_TIMEOUT_S] and router.probed
+    assert prov["model_changed_during_run"] is False
+
+
+def test_a_stopped_reports_end_code_stamp_fails_closed_without_running_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.simulation.report as report
+
+    def _no_git(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("the end code stamp ran git under a stop")
+
+    start = report.capture_start_provenance()
+    monkeypatch.setattr(report, "_code_stamp", _no_git)
+    prov = report.run_provenance(
+        start, llm_worker=None, aut_worker=None, resume=None, adopted=False, goal="g", deadline=Deadline.after(1.0)
+    )
+    assert prov["end_executed_git_hash"] == "unknown: stopped"
+    assert prov["end_code_tree_sha256"] == "unknown: stopped"
+    assert prov["working_tree_dirty_src_scripts"] is True
+    assert prov["code_changed_during_run"] is None
+
+
+# ── a stopped sim's container removal is detached, never killed mid-request ──────────────────────────────────────
+
+
+def test_under_a_stop_a_container_removal_is_detached_in_its_own_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.simulation.container_runner as cr
+
+    launched: list[dict[str, Any]] = []
+
+    class _Proc:
+        def __init__(self, argv: list[str], **kwargs: Any) -> None:
+            launched.append({"argv": argv, **kwargs})
+
+    def _no_wait(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("a stopped sim waited on docker rm -f")
+
+    monkeypatch.setattr(cr.subprocess, "Popen", _Proc)
+    monkeypatch.setattr(cr, "_DETACHED_REMOVALS", [])
+    runner = cr.LocalDockerRunner(docker_cmd="docker")
+    monkeypatch.setattr(runner, "_run_docker", _no_wait)
+    handle = cr.ContainerHandle(container_id="abc123", name="sim-test", spec=MagicMock())
+    cr.LocalDockerRunner._LIVE_HANDLES.add(handle)
+    request_stop("test", Deadline.after(5.0))
+    runner.stop(handle)
+    [call] = launched
+    assert call["argv"] == ["docker", "rm", "-f", "abc123"]
+    assert call["start_new_session"] is True, "a supervisor killing the process group would kill the removal"
+    assert handle not in cr.LocalDockerRunner._LIVE_HANDLES, "the at-exit cleanup would wait on it again"
+    assert len(cr._DETACHED_REMOVALS) == 1
