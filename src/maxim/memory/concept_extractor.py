@@ -270,7 +270,7 @@ class ConceptExtractor:
 
         concept = self._atl.get(concept_id)
         if concept and isinstance(concept, Concept):
-            concept.add_ref("hippocampus", memory_id)
+            self._atl.add_memory_ref(concept_id, "hippocampus", memory_id)  # under the ATL write lock (#1438)
         # A plain SemanticMemory hit was already reinforced once, by find_or_create (it has
         # source_episode_id); reinforcing it again here counted every episode twice (#843). A
         # CompressedSemantic has no reinforce() (compression is one-way until the memory-strength plan's
@@ -361,7 +361,8 @@ class ConceptExtractor:
                             modality,
                         )
                 continue
-            concept.add_ref("hippocampus", memory_id)
+            if not self._atl.add_memory_ref(cluster_id, "hippocampus", memory_id):  # under the ATL lock (#1438)
+                continue  # compressed or removed since the lookup above: it holds no refs
             self._reverse_index[memory_id].add(cluster_id)
             self._cross_layer.add_edge(
                 source_layer="hippocampus",
@@ -493,12 +494,15 @@ class ConceptExtractor:
         self._remove_refs_for(memory_id)
 
     def _remove_refs_for(self, memory_id: str) -> None:
-        """Remove all concept refs for a memory ID."""
+        """Remove all concept refs for a memory ID.
+
+        Through ``ATL.remove_memory_refs``, under the ATL's write lock (#1438): this runs as a Hippocampus deletion
+        callback while the session end may be saving the ATL, and editing ``Concept.memory_refs`` outside that lock
+        tore the save. Lock order: Hippocampus write lock -> ATL write lock.
+        """
         concept_ids = self._reverse_index.pop(memory_id, set())
-        for cid in concept_ids:
-            concept = self._atl.get(cid)
-            if concept and isinstance(concept, Concept):
-                concept.remove_ref("hippocampus", memory_id)
+        if concept_ids:
+            self._atl.remove_memory_refs("hippocampus", memory_id, concept_ids)
 
     # ------------------------------------------------------------------
     # Startup + Shutdown
@@ -513,11 +517,10 @@ class ConceptExtractor:
         start = _time.monotonic()
         self._reverse_index.clear()
         ref_count = 0
-        for concept in self._atl:
-            if isinstance(concept, Concept):
-                for mem_id in concept.memory_refs.get("hippocampus", {}):
-                    self._reverse_index[mem_id].add(concept.id)
-                    ref_count += 1
+        # One snapshot under the ATL's read lock (#1438): the refs are written under its write lock.
+        for mem_id, concept_ids in self._atl.ref_index("hippocampus").items():
+            self._reverse_index[mem_id].update(concept_ids)
+            ref_count += len(concept_ids)
         elapsed_ms = (_time.monotonic() - start) * 1000
         logger.info(
             "ConceptExtractor reverse index rebuilt: %d refs across %d memories in %.1fms",
@@ -526,11 +529,15 @@ class ConceptExtractor:
             elapsed_ms,
         )
 
-    def shutdown(self) -> None:
-        """Stop the worker thread. Called during MemoryHub shutdown."""
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Stop the worker thread, joining it for at most ``timeout`` (the session end passes its share)."""
         self._stop.set()
         if self._worker.is_alive():
-            self._worker.join(timeout=5.0)
+            self._worker.join(timeout=max(0.0, timeout))
+
+    def is_running(self) -> bool:
+        """Whether the worker thread is alive (a stopped one drains nothing: a flush would only wait out its timeout)."""
+        return self._worker.is_alive()
 
     def restart_worker(self) -> bool:
         """Revive the worker after a ``shutdown()`` (repeated-session support).

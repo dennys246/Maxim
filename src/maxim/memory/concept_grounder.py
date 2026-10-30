@@ -387,7 +387,7 @@ class ConceptGrounder:
                 metadata={"field": field_name},
             )
 
-            concept.add_ref("angular_gyrus", record_id)
+            self._atl.add_memory_ref(concept.id, "angular_gyrus", record_id)  # under the ATL write lock (#1438)
 
     # ------------------------------------------------------------------
     # Numeric extraction
@@ -558,8 +558,8 @@ class ConceptGrounder:
                     metadata={"field": field_name},
                 )
 
-                # Track ref in concept
-                concept.add_ref("angular_gyrus", record_id)
+                # Track ref in concept, under the ATL write lock (#1438)
+                self._atl.add_memory_ref(concept.id, "angular_gyrus", record_id)
 
 
 __all__ = ["ConceptGrounder"]

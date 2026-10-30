@@ -141,6 +141,32 @@ direct `on_session_end` callers, and `AgentInstance.shutdown` ends whatever is o
 
 ## 5. PR 1 (#1438): the library
 
+**As built (2026-10-29): split into PR 1a and PR 1b (owner decision).** PR 1a is the memory side: the session end
+below, the store locks, the loaders' prune pass, the `Deadline` parameter, and #1520. PR 1b is the stop side:
+`StopRequest` wiring and LLM-worker abandon, the cancelling console/handle waits, `start_simulation_mode(stop_event=)`,
+the console lifespan and `console.stop_budget_s` (config 1.3 → 1.4), and the sim tail. PR 0 ships in the same release
+as both. PR 1a departs from the text below as follows:
+
+- **No quiesce-and-skip, and the session never stays ENDING** (owner decision 2026-10-29, after a design pass showed
+  a late writer would wedge the hub for the rest of the process, and that percept threads and synchronous captures
+  write EC and the embedding store where no session end can stop them). EC and the `EmbeddingStore` got their own
+  leaf locks, and ATL's ref writes, reinforce and iteration go through ATL's lock. Phase a flushes the writers, best
+  effort and logged, producers before consumers (capture workers, extractor, embedder; the embedder is drained, not
+  stopped, since nothing restarts it), and never skips a store.
+- **#1520: owed after-steps** (owner decision 2026-10-29). A shutdown that must wait for a live loop hands its
+  after-steps to that generation's end (`SessionOwnership.defer_until_ended`). An abandon drops them, naming each at
+  ERROR (owner decision 2026-10-29).
+- **Loaders prune NAc and ATL, not SCN or EC signatures:** SCN's ids mix in the tool-pain bridge's persistent event
+  signatures, and EC's `register` is an open id space no shipped path fills with hippocampus ids. They prune once per
+  hub, and only against a target that READ its file (an empty target makes everything look dangling). NAc is pruned
+  in place under its lock (`NAc.prune_ec_keys`), never by a dump/load round trip.
+- **The plan manager and provenance end after consolidation;** the hippocampus `.backup` is taken in phase b (the
+  previous session's file; sleep's own auto-save used to make it).
+- **The console and the pool bound only their wait for a loop** (`AgentInstance.shutdown(loop_wait=)`); the
+  agent's own end stays unbounded until 1b's `console.stop_budget_s` (owner decision 2026-10-29).
+- **The cross-layer graph is pathless in every shipped builder** (never saved or loaded); #1530 owns it. Unlocked readers of EC and ATL state outside them: #1532; the
+  `EmbeddingStore` save: #1531.
+
 - **`utils/deadline.py::Deadline`:** frozen and monotonic. It has `remaining()`, `expired()`, `share(fraction of
   remaining)` and `sub(seconds)` (both clamped to the parent), and `Deadline.none()`. Never persisted.
 - **`StopRequest`** in `utils/cancellation.py`, the neutral home: memory, runtime, console and the CLI import it, and

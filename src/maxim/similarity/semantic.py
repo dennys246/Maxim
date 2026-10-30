@@ -18,6 +18,7 @@ import math
 import os
 import queue
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -399,9 +400,15 @@ class NeuralSemanticLSH:
 
     def _embedding_worker(self) -> None:
         """Background thread for async embedding."""
-        while not self._shutdown_event.is_set():
+        work, stop = self._embedding_queue, self._shutdown_event
+        if work is None or stop is None:
+            return  # __init__ creates both before it starts this thread
+        while not stop.is_set():
             try:
-                item = self._embedding_queue.get(timeout=0.1)
+                item = work.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            try:
                 memory_id, text, callback = item
 
                 embedding = self.embed(text)
@@ -412,11 +419,27 @@ class NeuralSemanticLSH:
                         callback(memory_id, embedding, hash_bits)
                     except Exception as e:
                         logger.warning("Embedding callback failed: %s", e)
-
-            except queue.Empty:
-                continue
             except Exception as e:
                 logger.error("Embedding worker error: %s", e)
+            finally:
+                work.task_done()  # drain() waits on it
+
+    def drain(self, timeout: float) -> bool:
+        """Wait until every scheduled embedding has been written by its callback; False if ``timeout`` ran out first.
+
+        The session end quiesces this lockless writer of the EC's embedding store before saving it (#1438 PR 1a).
+        It drains rather than stops: nothing restarts the worker, and a persistent agent's next session embeds too.
+        """
+        if self._embedding_queue is None:
+            return True
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self._embedding_queue.all_tasks_done:
+            while self._embedding_queue.unfinished_tasks:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._embedding_queue.all_tasks_done.wait(timeout=remaining)
+        return True
 
     def shutdown(self) -> None:
         """Shutdown async embedding worker."""
@@ -460,11 +483,19 @@ class EmbeddingStore:
 
     Provides persistence and retrieval of embeddings for memories.
     Supports incremental embedding of new memories.
+
+    Thread safety (#1438): ``_lock`` guards ``_embeddings`` and ``_hashes``. Writers arrive on several threads: the
+    embedder's worker thread (``set``, via the hub's embedding callback), Hippocampus deletion callbacks (``remove``,
+    under the Hippocampus WRITE lock) and the session end's ``save``. It is a LEAF lock: nothing is called while
+    holding it. The embedder (a model forward pass) runs before it is taken, ``save`` snapshots under it and writes
+    the file outside it, and ``load`` reads the file outside it and merges under it. Lock order: Hippocampus RWLock
+    -> this lock (the EC's lock is never held around a call into the store, nor this one around the EC).
     """
 
     embedder: NeuralSemanticLSH
     _embeddings: dict[str, np.ndarray] = field(default_factory=dict)
     _hashes: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    _lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
 
     def set(
         self,
@@ -473,22 +504,26 @@ class EmbeddingStore:
         hash_bits: tuple[int, ...] | None = None,
     ) -> None:
         """Store embedding for a memory."""
-        self._embeddings[memory_id] = embedding
-        if hash_bits:
-            self._hashes[memory_id] = hash_bits
+        with self._lock:
+            self._embeddings[memory_id] = embedding
+            if hash_bits:
+                self._hashes[memory_id] = hash_bits
 
     def get(self, memory_id: str) -> np.ndarray | None:
         """Get embedding for a memory."""
-        return self._embeddings.get(memory_id)
+        with self._lock:
+            return self._embeddings.get(memory_id)
 
     def get_hash(self, memory_id: str) -> tuple[int, ...] | None:
         """Get hash for a memory."""
-        return self._hashes.get(memory_id)
+        with self._lock:
+            return self._hashes.get(memory_id)
 
     def remove(self, memory_id: str) -> None:
         """Remove embedding for a memory."""
-        self._embeddings.pop(memory_id, None)
-        self._hashes.pop(memory_id, None)
+        with self._lock:
+            self._embeddings.pop(memory_id, None)
+            self._hashes.pop(memory_id, None)
 
     def find_similar(
         self,
@@ -511,10 +546,12 @@ class EmbeddingStore:
         if not self.embedder.is_healthy:
             return []
 
-        query_embedding = self.embedder.embed(query)
+        query_embedding = self.embedder.embed(query)  # the model runs before the lock is taken (#1438)
+        with self._lock:
+            items = list(self._embeddings.items())
 
         results = []
-        for memory_id, embedding in self._embeddings.items():
+        for memory_id, embedding in items:
             similarity = float(np.dot(query_embedding, embedding))
             if similarity >= threshold:
                 results.append((memory_id, similarity))
@@ -541,7 +578,8 @@ class EmbeddingStore:
         if not self.embedder.is_healthy:
             return 0
 
-        missing = [(mid, text) for mid, text in memories.items() if mid not in self._embeddings]
+        with self._lock:
+            missing = [(mid, text) for mid, text in memories.items() if mid not in self._embeddings]
 
         if not missing:
             return 0
@@ -560,7 +598,8 @@ class EmbeddingStore:
 
     def __len__(self) -> int:
         """Number of stored embeddings."""
-        return len(self._embeddings)
+        with self._lock:
+            return len(self._embeddings)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Persistence
@@ -577,16 +616,20 @@ class EmbeddingStore:
         """
         import json as json_module
 
-        if not self._embeddings:
+        # #1438: SNAPSHOT under the leaf lock (``np.stack`` copies the arrays), write the file outside it.
+        with self._lock:
+            if not self._embeddings:
+                memory_ids: list[str] = []
+            else:
+                memory_ids = list(self._embeddings.keys())
+                embeddings_array = np.stack([self._embeddings[mid] for mid in memory_ids])
+                # Prepare hashes as JSON (tuples aren't directly serializable in npz)
+                hashes_data = {mid: list(h) for mid, h in self._hashes.items()}
+
+        if not memory_ids:
             logger.info("No embeddings to save")
             return
 
-        # Convert to arrays
-        memory_ids = list(self._embeddings.keys())
-        embeddings_array = np.stack([self._embeddings[mid] for mid in memory_ids])
-
-        # Prepare hashes as JSON (tuples aren't directly serializable in npz)
-        hashes_data = {mid: list(h) for mid, h in self._hashes.items()}
         hashes_json = json_module.dumps(hashes_data)
 
         # Save to compressed npz
@@ -627,14 +670,12 @@ class EmbeddingStore:
             embeddings_array = data["embeddings"]
             hashes_json = str(data["hashes_json"][0])
 
-            # Load embeddings
-            for i, mid in enumerate(memory_ids):
-                self._embeddings[str(mid)] = embeddings_array[i]
-
-            # Load hashes
-            hashes_data = json_module.loads(hashes_json)
-            for mid, h in hashes_data.items():
-                self._hashes[mid] = tuple(h)
+            # Parse outside the lock, merge under it (#1438)
+            embeddings = {str(mid): embeddings_array[i] for i, mid in enumerate(memory_ids)}
+            hashes = {mid: tuple(h) for mid, h in json_module.loads(hashes_json).items()}
+            with self._lock:
+                self._embeddings.update(embeddings)
+                self._hashes.update(hashes)
 
             logger.info("Loaded %d embeddings from %s", len(memory_ids), path)
             return len(memory_ids)
@@ -645,8 +686,9 @@ class EmbeddingStore:
 
     def clear(self) -> None:
         """Clear all stored embeddings."""
-        self._embeddings.clear()
-        self._hashes.clear()
+        with self._lock:
+            self._embeddings.clear()
+            self._hashes.clear()
 
 
 __all__ = [

@@ -191,8 +191,8 @@ class TestBioSession:
             hub.on_session_start.assert_called_once_with(owner=owner, live=True)
             assert s.ticket is hub.on_session_start.return_value and s.memory_hub_enabled
             assert s.capture is hippo.start_capture_worker.return_value
-        hub.on_session_end.assert_called_once_with(s.ticket)  # a clean, non-sim exit: full
-        hippo.stop_capture_worker.assert_called_once_with(s.capture)  # only ITS worker
+        hub.on_session_end.assert_called_once_with(s.ticket, deadline=None)  # a clean, non-sim exit: full, unbounded
+        hippo.stop_capture_worker.assert_called_once_with(s.capture, timeout=5.0)  # only ITS worker (it flushes)
         hub.release_session_claim.assert_called_once_with(s.ticket)
 
     def test_a_sim_run_ends_lightweight_and_an_override_wins(self):
@@ -236,7 +236,7 @@ class TestBioSession:
         hippo = MagicMock()
         with bio_session(memory_hub=None, hippocampus=hippo, owner=object()) as s:
             assert s.ticket is None and not s.memory_hub_enabled
-        hippo.stop_capture_worker.assert_called_once_with(s.capture)  # its worker still started AND stopped
+        hippo.stop_capture_worker.assert_called_once_with(s.capture, timeout=5.0)  # still started AND stopped
 
     def test_a_capture_worker_failure_is_non_fatal(self):
         hippo = MagicMock()
@@ -270,15 +270,15 @@ class TestEndBioSession:
         hippo.__len__ = MagicMock(return_value=10)
         worker = object()
         end_bio_session(memory_hub=None, ticket=None, hippocampus=hippo, capture=worker)
-        hippo.flush.assert_called_once_with(timeout=5.0)
-        hippo.stop_capture_worker.assert_called_once_with(worker)
+        # #1438 PR 1a: stop_capture_worker flushes inside itself, within the bound
+        hippo.stop_capture_worker.assert_called_once_with(worker, timeout=5.0)
         hippo.save.assert_called_once()
 
     def test_ends_memory_hub_session_with_its_ticket(self):
         hub, ticket = MagicMock(), object()
         hub.on_session_end.return_value = {"consolidated": 5}
         end_bio_session(memory_hub=hub, ticket=ticket, hippocampus=None)
-        hub.on_session_end.assert_called_once_with(ticket)
+        hub.on_session_end.assert_called_once_with(ticket, deadline=None)
 
     def test_default_consolidation_is_full(self):
         """HANDLE seam (b): the default is FULL consolidation (wrongly-lightweight loses data)."""
@@ -301,7 +301,7 @@ class TestEndBioSession:
 
     def test_all_failures_nonfatal(self):
         hippo = MagicMock()
-        hippo.flush.side_effect = RuntimeError("flush error")
+        hippo.stop_capture_worker.side_effect = RuntimeError("flush error")
         hippo.config = MagicMock()
         hippo.config.persistence_path = "/tmp/test.json"
         hippo.save.side_effect = RuntimeError("save error")

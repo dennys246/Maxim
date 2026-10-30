@@ -469,6 +469,32 @@ research integrity, runtime correctness, maintainability, tests/CI, documentatio
 and release governance. It also records the evidence required to improve each
 grade and assigns the corrective work to 1.1 or 1.1.x.
 
+**The graded areas** (as of 2026-10-28; the cards through v1.3.1 graded the first eight):
+1. Research integrity
+2. Ambition and originality
+3. Documentation honesty
+4. Runtime correctness
+5. Maintainability
+6. Test quantity
+7. Test/CI truthfulness
+8. Release governance
+9. **Functional fidelity** (added 2026-10-28, owner decision; first graded at the next re-score). *Does each
+   subsystem deliver, on the shipped path, the function its docs claim?* The grade comes from running the shipped
+   composition, never from reading code, docstrings or briefs, because those describe what the code is for and read
+   correctly while the behaviour is broken. A mechanism declared `Dormant` is not marked down; a claim that is not
+   declared Dormant and does not hold is.
+   - **A:** every user-facing claim checked works end to end, or is declared Dormant.
+   - **B:** small gaps, each known and tracked.
+   - **C:** a user-facing claim fails silently on the shipped path.
+   - **D:** core claims mostly do not hold.
+
+   Why it exists: 1.3.4's recall defect. "Tell Maxim a fact, restart, ask for it" returned nothing on the shipped
+   path, while every piece passed its own tests: the store stored, the ranker ranked, the renderer rendered. Six
+   defects composed into the one failure (#1444, #1163, #1064, #1447; [recall_1_3_4.md](../plans/recall_1_3_4.md)).
+   The v1.3.1 card had the signal ("much of the bio stack records state nothing reads", under Ambition), but no
+   area asked whether each subsystem does what it is for. Silent no-ops are graded here, so Runtime correctness
+   does not count the same defect twice.
+
 The scorecard is intentionally **not** an `L*` entry: these `L*` rows describe
 measured properties of experimental instruments, while the scorecard evaluates the
 engineering system and its development process.

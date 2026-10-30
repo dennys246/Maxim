@@ -40,6 +40,8 @@ import threading
 from pathlib import Path
 from typing import Any, Literal
 
+from maxim.utils.deadline import Deadline
+
 logger = logging.getLogger(__name__)
 
 
@@ -713,7 +715,7 @@ class MaximHandle:
             # shutdown only ends a session its instance still holds, else it
             # waits for the loop's end, bounded here so stop() stays bounded.
             self._stop_talk_loop(join_s=talk_join_s)
-            self.instance.shutdown(consolidation=consolidation, deadline_s=talk_join_s)
+            self.instance.shutdown(consolidation=consolidation, loop_wait=Deadline.after(talk_join_s))
         finally:
             if acquired:
                 self._campaign_lock.release()

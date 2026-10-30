@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from maxim.motion.movement import load_actions, load_movement_thresholds, load_poses
+from maxim.motion.movement import centered_pose_from, load_actions, load_movement_thresholds, load_poses
 from maxim.utils.data_management import CLIInputLogger, VisionEventLogger
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn
 from maxim.utils.plotting import preflight_matplotlib_fonts, preload_matplotlib_fonts
@@ -119,6 +119,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         simulation: bool = False,
         robot_id: str | None = None,
         operational_mode: str | None = None,
+        tts: bool = False,
+        tts_model: str | None = None,
     ):
         # Apply hardware env guards (mp start method, GPU detection, OpenGL)
         _setup_hardware_env()
@@ -195,14 +197,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self.launch_operational_mode = operational_mode
 
         self.observation_period = 1
-        self.audio = bool(audio)
-        try:
-            self.audio_len = float(audio_len)
-        except (TypeError, ValueError) as e:
-            log_swallowed_exception(e, operation="parse_audio_len", context={"audio_len": audio_len})
-            self.audio_len = 5.0
-        if self.audio_len <= 0:
-            self.audio_len = 5.0
+        self._init_audio(audio, audio_len, tts=tts, tts_model=tts_model)
 
         self.video_fps = 20.0
 
@@ -371,22 +366,10 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self.body_yaw = 0.0  # Body rotation (separate from head yaw)
         self._last_turn_around_time = 0.0  # Cooldown tracking for turn_around
 
-        centered = None
-        try:
-            centered = getattr(self, "poses", {}).get("centered")
-        except (AttributeError, TypeError) as e:
-            log_swallowed_exception(e, operation="get_centered_pose")
-            centered = None
-        if isinstance(centered, (list, tuple)) and len(centered) >= 6:
-            try:
-                self.x = float(centered[0])
-                self.y = float(centered[1])
-                self.z = float(centered[2])
-                self.roll = float(centered[3])
-                self.pitch = float(centered[4])
-                self.yaw = float(centered[5])
-            except (TypeError, ValueError, IndexError) as e:
-                log_swallowed_exception(e, operation="parse_centered_pose", context={"centered": centered})
+        centered = centered_pose_from(getattr(self, "poses", None), log=self.log)
+        if centered is not None:
+            self.x, self.y, self.z = centered["x"], centered["y"], centered["z"]
+            self.roll, self.pitch, self.yaw = centered["roll"], centered["pitch"], centered["yaw"]
 
         self._default_head_pose = {
             "x": float(self.x),

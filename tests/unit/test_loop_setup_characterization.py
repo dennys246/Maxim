@@ -90,12 +90,12 @@ class _Hub:
         self.ticket = SimpleNamespace(owner=owner, live=live, generation=1, start_stats={})
         return self.ticket
 
-    def on_session_end(self, ticket: Any) -> dict[str, Any]:
+    def on_session_end(self, ticket: Any, *, deadline: Any = None) -> dict[str, Any]:
         assert ticket is self.ticket, "ended a session this fake never opened"  # #1438 PR 0: every fake checks
         self.ended.append("full")
         return {}
 
-    def on_session_end_lightweight(self, ticket: Any) -> dict[str, Any]:
+    def on_session_end_lightweight(self, ticket: Any, *, deadline: Any = None) -> dict[str, Any]:
         assert ticket is self.ticket, "ended a session this fake never opened"
         self.ended.append("lightweight")
         return {}
