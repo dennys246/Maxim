@@ -3,14 +3,19 @@
   simulation kept going: the narrator and DM looped on, a direct LLM call ran to its backend's timeout, and the sim's
   own reset re-armed the backend mid-stop.
   - A direct router call (the narrator, the DM, the roundup, research) is refused under a stop request and abandoned
-    within about half a second when one lands mid-call. Calls made through an `LLMWorker` are unchanged.
+    within about half a second when one lands mid-call; a Ctrl+C during the call now cancels it too. An `LLMWorker`
+    call still abandons on the worker's own stop event, as before. `LLMRouter.generate` raises the new
+    `LLMCallStopped` (a `ModelInferenceError`) for a stopped call, so a stop no longer reads as a model failure.
   - `reset_shutdown()` no longer re-arms the backend while a stop is requested.
   - `LLMRouter.wait_ready` returns False on a stop request instead of waiting out the model load.
-  - The generative and DM runners stop at the next turn or encounter, never deliver or record a fallback turn made
-    from an abandoned call, and report `yielded`, which the run's finish context now reads as `yielded`, not `error`.
-  - A simulation started under a stop request raises `StopStillPending` before building anything, and again if the
-    stop lands while the model loads.
+  - The generative and DM runners stop at the next turn or encounter, never deliver or record a fallback turn or
+    choice made from an abandoned call, and report `yielded`, which the run's finish context now reads as
+    `yielded`, not `error`.
+  - A simulation started under a stop request raises `StopStillPending` before building anything (its start
+    provenance included), and again, releasing its serving registration, if the stop lands while the model loads.
   - A loop's session end under a stop keeps a reserve for whoever waits on it, so a slow end no longer overruns
-    the console's stop. It persists whatever the bound, and a spent bound still flushes queued captures for 0.5 s.
-  - A stopped sim's report bounds its provenance waits and fails its skipped checks closed (`unknown: stopped`,
-    `model_changed_during_run` unknown), and its container is removed in the background.
+    the console's stop. It persists whatever the bound, and a spent bound still flushes the session's own queued
+    captures for 0.5 s. An exit with no stop keeps its whole bound.
+  - A stopped sim's container is removed in the background. `run_provenance` / `serving_provenance` gain a
+    `deadline=` that bounds every report-time wait and fails skipped checks closed (`unknown: stopped`,
+    `model_changed_during_run` unknown); the sim's stop tail passes it in a follow-up PR.

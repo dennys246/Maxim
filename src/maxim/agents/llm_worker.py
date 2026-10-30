@@ -719,6 +719,8 @@ class LLMWorker:
         import contextvars
 
         from maxim.utils.cancellation import (
+            mark_abandons_on_stop,
+            reset_abandons_on_stop,
             reset_cancel_event,
             set_cancel_event,
         )
@@ -737,6 +739,9 @@ class LLMWorker:
         # in the worker thread on its next checkpoint check.
         cancel_event = threading.Event()
         cancel_token = set_cancel_event(cancel_event)
+        # This worker abandons its own call when the process stop is requested (its stop event is registered with
+        # it, #1438 PR 1b), so the router runs the call inline rather than abandoning it a second time.
+        abandons_token = mark_abandons_on_stop()
         # Plan 4 A.2: bind the typed RequestContext into the utils/http
         # contextvar so (a) outbound X-Maxim-* headers on internal
         # endpoints populate correctly, (b) the peer backend's
@@ -835,6 +840,7 @@ class LLMWorker:
             # Always restore the prior cancellation binding to avoid
             # leaking this request's Event into any later context.
             reset_cancel_event(cancel_token)
+            reset_abandons_on_stop(abandons_token)
             # Plan 4 A.2: reset the RequestContext binding for the same
             # reason — sequential LLM calls must not inherit a previous
             # request's agent_id/session_id via contextvar leakage.

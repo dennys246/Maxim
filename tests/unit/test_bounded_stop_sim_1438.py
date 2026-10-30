@@ -38,10 +38,16 @@ def test_a_clear_with_the_backend_hooks_registered_returns_promptly() -> None:
     # Guard for G1's fix: the clear hook runs under the hook lock, so it must never re-take it.
     from maxim.models.language import cancellation as backend
 
+    from maxim.utils import cancellation
+
     request_stop("test", Deadline.after(5.0))
     done = threading.Event()
     threading.Thread(target=lambda: (clear_stop_request(), done.set()), daemon=True).start()
-    assert done.wait(2.0), "clear_stop_request() did not return: the clear hook deadlocked"
+    if not done.wait(2.0):
+        # A deadlocked clear holds the hook lock forever, and the autouse clear would then hang the whole run. Swap in
+        # a fresh lock (the module reads it at call time) so the teardown runs, and fail with the reason.
+        cancellation._hook_lock = threading.Lock()
+        pytest.fail("clear_stop_request() did not return within 2 s: the clear hook deadlocked on the hook lock")
     assert not backend.is_shutdown_requested(), "a finished stop's clear left the backend stopped"
 
 
@@ -147,20 +153,99 @@ def test_a_direct_router_call_re_raises_its_dispatch_error_as_itself_and_keeps_t
     assert seen and seen[0].startswith(threading.current_thread().name), seen
 
 
-def test_a_router_call_under_a_bound_cancel_event_runs_inline() -> None:
-    # The worker path (LLMWorker binds a per-call cancel event and abandons on its own) is never double-threaded.
-    from maxim.utils.cancellation import reset_cancel_event, set_cancel_event
+def test_a_router_call_from_a_caller_that_abandons_on_the_stop_runs_inline() -> None:
+    # The worker path (LLMWorker marks its calls: it abandons on its own registered stop event) is never
+    # double-threaded.
+    from maxim.utils.cancellation import mark_abandons_on_stop, reset_abandons_on_stop
 
     router, _started, release = _router_with_blocking_dispatch()
     release.set()
     seen: list[str] = []
     router._complete_text_locked = lambda *a, **k: (seen.append(threading.current_thread().name), ("x", None))[1]
-    token = set_cancel_event(threading.Event())
+    token = mark_abandons_on_stop()
     try:
         assert router._complete_text("s", "u", temperature=0.0, max_tokens=8) == ("x", None)
     finally:
-        reset_cancel_event(token)
+        reset_abandons_on_stop(token)
     assert seen == [threading.current_thread().name]
+
+
+def test_a_cancel_event_bound_only_for_a_timeout_does_not_lose_the_stops_abandon() -> None:
+    # Binding a cancel event is a documented pattern for timeout-only abandons; only the explicit marker opts out.
+    from maxim.utils.cancellation import reset_cancel_event, set_cancel_event
+
+    router, started, release = _router_with_blocking_dispatch()
+    result: list[Any] = []
+
+    def _call() -> None:
+        token = set_cancel_event(threading.Event())
+        try:
+            result.append(router._complete_text("s", "u", temperature=0.0, max_tokens=8))
+        finally:
+            reset_cancel_event(token)
+
+    caller = threading.Thread(target=_call, daemon=True)
+    caller.start()
+    try:
+        assert started.wait(5.0)
+        request_stop("test", Deadline.after(5.0))
+        caller.join(timeout=3.0)
+    finally:
+        release.set()
+    assert result == [("", None)], "a timeout-only cancel event made the call run inline, past the stop"
+
+
+def test_an_exception_in_the_callers_wait_cancels_the_orphan(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A Ctrl+C lands in the caller's poll: the orphan must be told to unwind, not left holding the inference lock.
+    import maxim.utils.cancellation as cancellation
+
+    router = _bare_router()
+    router._routing_policy = SimpleNamespace(max_session_cost=0)
+    router._inference_lock = threading.Lock()
+    router._pending_auto_drains = []
+    router._auto_drain_callback = None
+    cancelled = threading.Event()
+
+    def _dispatch(*_a: Any, **_k: Any) -> tuple[str, None]:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            ev = cancellation.current_cancel_event()
+            if ev is not None and ev.is_set():
+                cancelled.set()
+                break
+            time.sleep(0.01)
+        return "", None
+
+    router._complete_text_locked = _dispatch
+    calls = [0]
+
+    def _interrupting() -> bool:
+        calls[0] += 1
+        if calls[0] >= 2:  # the entry check passes; the first poll is "interrupted"
+            raise KeyboardInterrupt
+        return False
+
+    monkeypatch.setattr(cancellation, "yield_requested", _interrupting)
+    with pytest.raises(KeyboardInterrupt):
+        router._complete_text("s", "u", temperature=0.0, max_tokens=8)
+    assert cancelled.wait(3.0), "the orphan was never cancelled when its caller left"
+
+
+def test_generate_raises_llm_call_stopped_and_generate_json_returns_none_quietly(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from maxim.exceptions import LLMCallStopped, ModelInferenceError
+
+    router, started, _release = _router_with_blocking_dispatch()
+    router._get_backend = lambda: None
+    request_stop("test", Deadline.after(5.0))
+    with pytest.raises(LLMCallStopped) as raised:
+        router.generate("p", temperature=0.0)
+    assert isinstance(raised.value, ModelInferenceError), "callers catching ModelInferenceError must be unchanged"
+    with caplog.at_level("WARNING"):
+        assert router.generate_json("p") is None
+    assert "non-dict" not in caplog.text, "a stop was logged as a model returning garbage"
+    assert not started.is_set()
 
 
 def test_a_router_call_made_under_a_stop_is_refused_at_once() -> None:
@@ -317,7 +402,7 @@ def test_g7_a_clean_exit_under_a_stop_ends_its_session_inside_the_stops_deadline
     monkeypatch.setattr(bio, "end_bio_session", lambda **k: seen.append(k["deadline"]))
     session = bio.BioSession(memory_hub=None, hippocampus=None, ticket=None, consolidation="full")
     bound = Deadline.after(8.0)
-    bio._close_session(session, consolidation="full", bound=bound, abandon_if_expired=False)
+    bio._close_session(session, consolidation="full", bound=bound, abandon_if_expired=False, reserve_for_waiter=True)
     [end] = seen
     # The waiter (AgentInstance.shutdown(loop_wait=), the drain) waits on the SAME deadline: the end must leave it
     # time to see the end, persist and after-steps included (25% of the time left, at least 1 s).
@@ -333,6 +418,25 @@ def test_the_abandon_test_keeps_the_full_bound(monkeypatch: pytest.MonkeyPatch) 
     session = bio.BioSession(memory_hub=None, hippocampus=None, ticket=None, consolidation="full")
     bio._close_session(session, consolidation="lightweight", bound=Deadline.after(0.5))  # inside the 1 s floor
     assert len(seen) == 1, "an abnormal exit with time left was abandoned because of the reserve"
+
+
+def test_an_exit_with_no_stop_keeps_its_whole_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The reserve exists for a waiter on the SAME stop deadline; an exception exit with no stop has no such waiter.
+    import maxim.runtime.bio_integration as bio
+
+    seen: list[Any] = []
+    monkeypatch.setattr(bio, "end_bio_session", lambda **k: seen.append(k["deadline"]))
+    session = bio.BioSession(memory_hub=None, hippocampus=None, ticket=None, consolidation="full")
+    bound = Deadline.after(30.0)
+    bio._close_session(session, consolidation="lightweight", bound=bound)
+    assert seen == [bound]
+
+
+def test_an_unbounded_stop_deadline_stays_unbounded_at_the_session_end() -> None:
+    from maxim.runtime.bio_integration import _end_bound
+
+    end = _end_bound(Deadline.none())
+    assert end is not None and end.remaining() == float("inf"), "inf - inf made the session end's bound 'now'"
 
 
 def test_a_spent_bound_still_flushes_queued_captures() -> None:
@@ -451,3 +555,89 @@ def test_under_a_stop_a_container_removal_is_detached_in_its_own_session(monkeyp
     assert call["start_new_session"] is True, "a supervisor killing the process group would kill the removal"
     assert handle not in cr.LocalDockerRunner._LIVE_HANDLES, "the at-exit cleanup would wait on it again"
     assert len(cr._DETACHED_REMOVALS) == 1
+
+
+# ── the runners' remaining stop checks, each pinned ──────────────────────────────────────────────────────────────
+
+
+def _crossroads(bridge: Any, llm_router: Any = None) -> Any:
+    from maxim.simulation.dm_runtime import DMRuntime
+    from maxim.simulation.dm_schema import Act, CampaignDef, EncounterDef
+
+    loop = EncounterDef(
+        name="start", scene="A crossroads.", choices=["stay", "leave"], branches={"stay": "start", "leave": "__END__"}
+    )
+    campaign = CampaignDef(
+        name="stop_test",
+        goal="stop",
+        seed=0,
+        acts=[Act(name="act1", encounters=["start"])],
+        encounters={"start": loop},
+        pc_spec={},
+        npc_specs={},
+    )
+    return DMRuntime(campaign=campaign, bridge=bridge, llm_router=llm_router)
+
+
+def test_a_dm_choice_classified_by_a_call_the_stop_abandoned_is_never_recorded() -> None:
+    bridge = MagicMock()
+    bridge.send_and_wait = MagicMock(return_value={"response": "Hmm."})  # matches no choice: the LLM classifies it
+    llm = MagicMock()
+
+    def _abandoned(*_a: Any, **_k: Any) -> None:
+        request_stop("test", Deadline.after(5.0))
+        return None  # the router abandoned the call; the DM falls back to the first choice
+
+    llm.generate_json = MagicMock(side_effect=_abandoned)
+    runtime = _crossroads(bridge, llm_router=llm)
+    state = runtime.run()
+    assert llm.generate_json.called, "the test never reached the LLM classification"
+    assert state.finish_reason == "yielded"
+    assert state.choices_made == [], f"a fallback choice was recorded after the stop: {state.choices_made}"
+
+
+def test_a_dm_campaign_under_a_stop_delivers_no_encounter() -> None:
+    bridge = MagicMock()
+    bridge.send_and_wait = MagicMock(return_value={"response": "I stay."})
+    request_stop("test", Deadline.after(5.0))
+    state = _crossroads(bridge).run()
+    assert state.finish_reason == "yielded"
+    assert not bridge.send_and_wait.called, "an encounter was composed and delivered under a stop"
+
+
+def test_a_generative_campaign_under_a_stop_makes_no_narrator_call() -> None:
+    from maxim.simulation.generative_runner import run_generative_campaign
+
+    llm = MagicMock()
+    bridge = MagicMock()
+    request_stop("test", Deadline.after(5.0))
+    result = run_generative_campaign(goal="test", bridge=bridge, llm=llm, max_turns=3)
+    assert result.finish_reason == "yielded"
+    assert not llm.generate_json.called and not llm.generate_text.called, "the narrator was called under a stop"
+
+
+def test_g2_the_refusal_comes_before_the_start_provenance_capture(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The capture runs git and starts model hashing: a refused sim must not spend the stop's budget on it.
+    import maxim.simulation.orchestrator as orch
+    from maxim.exceptions import StopStillPending
+
+    def _no_capture(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("the start provenance was captured under a stop request")
+
+    monkeypatch.setattr(orch, "capture_start_provenance", _no_capture)
+    request_stop("test", Deadline.after(5.0))
+    with pytest.raises(StopStillPending):
+        orch.start_simulation_mode(goal="stop test", max_turns=1)
+
+
+def test_g2b_a_refusal_after_the_load_releases_the_sims_serving_registration(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.runtime.lane_backends as lane_backends
+    import maxim.simulation.serving_provenance as SP
+    from maxim.exceptions import StopStillPending
+    from maxim.simulation.orchestrator import start_simulation_mode
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", lambda **_k: (_LoadingRouter(), None))
+    before = set(SP._ACTIVE)
+    with pytest.raises(StopStillPending):
+        start_simulation_mode(goal="stop test", max_turns=1)
+    assert set(SP._ACTIVE) == before, "a refused sim left its serving registration behind"

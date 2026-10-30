@@ -590,8 +590,10 @@ _NEW_GOAL_SESSION_WAIT_S = 30.0
 def _refuse_a_stop_then_reset_llm_cancellation() -> None:
     """A simulation's first act: refuse to start under a process stop request, then re-arm the LLM backend.
 
-    The refusal (#1438 PR 1c, owner decision 2026-10-30) comes before anything is built: a sim started under a stop
-    would build a router, a sandbox and loops that are born stopped, and report a run that never happened.
+    The refusal (#1438 PR 1c, owner decision 2026-10-30) comes before anything is built, the start provenance capture
+    (git calls, model-file hashing, a serving registration) included: a sim started under a stop would spend the
+    stop's budget building a router, a sandbox and loops that are born stopped, and report a run that never
+    happened.
     """
     stop = current_stop()
     if stop is not None:
@@ -609,11 +611,12 @@ def _refuse_a_stop_then_reset_llm_cancellation() -> None:
         logger.debug("Failed to reset LLM cancellation at sim start: %s", e)
 
 
-def _await_llm_ready_or_refuse(llm_router: Any | None) -> None:
+def _await_llm_ready_or_refuse(llm_router: Any | None, start_provenance: dict[str, Any]) -> None:
     """Wait for the model to load (avoid cold-start stale drops), then refuse if a stop landed during the load.
 
     ``wait_ready`` returns early on a stop (#1438 PR 1c); the sim then refuses before the bridge, sandbox and loops
-    are built. The router and its lane manager are left as a finished sim leaves them (neither has a shutdown).
+    are built, releasing its serving registration (a held one would stamp every later sim ``concurrent_sims``). The
+    router and its lane manager are left as a finished sim leaves them (neither has a shutdown).
     """
     if llm_router is None:
         return
@@ -621,6 +624,10 @@ def _await_llm_ready_or_refuse(llm_router: Any | None) -> None:
     llm_router.wait_ready(timeout=120.0)
     stop = current_stop()
     if stop is not None:
+        from maxim.simulation.report import SERVING_TOKEN_KEY
+        from maxim.simulation.serving_provenance import release_serving_start
+
+        release_serving_start(start_provenance.get(SERVING_TOKEN_KEY))
         raise StopStillPending(stop.reason, refused="simulation")
     logger.info("LLM ready")
 
@@ -740,6 +747,7 @@ def start_simulation_mode(
         SpawnSubSimulationTool,
     )
 
+    _refuse_a_stop_then_reset_llm_cancellation()
     start_time = time.time()
     start_provenance = capture_start_provenance(scenario_objects=(dm_campaign, pre_campaign_turns))  # M1; B0
 
@@ -781,8 +789,6 @@ def start_simulation_mode(
     stop_event = threading.Event()
     operator_stop = threading.Event()  # set only when a human ends the run (#1002)
 
-    _refuse_a_stop_then_reset_llm_cancellation()
-
     # ── Shared LLM router (single model, alternating inference) ──────────
     # Routed through the multi-LLM factory so sim respects per-lane assignments
     # (capability-driven profiles, env overrides, remote URLs, safety gates).
@@ -819,7 +825,7 @@ def start_simulation_mode(
             _substrate_budget,
             aut_mode,
         )
-    _await_llm_ready_or_refuse(llm_router)
+    _await_llm_ready_or_refuse(llm_router, start_provenance)
     bridge = SimulationBridge(
         response_timeout=response_timeout,
         stop_event=stop_event,

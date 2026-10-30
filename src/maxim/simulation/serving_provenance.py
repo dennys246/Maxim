@@ -85,6 +85,13 @@ def _release_sim(token: int) -> tuple[dict[str, Any] | None, bool]:
         return _STARTS.pop(token, None), (reg is None or reg["overlapped"])
 
 
+def release_serving_start(token: Any) -> None:
+    """Drop a start capture whose sim never ran (it refused to start, #1438 PR 1c), so a later sim is not stamped
+    ``concurrent_sims`` against it. An unknown or non-int token is a no-op."""
+    if type(token) is int:
+        _release_sim(token)
+
+
 def capture_serving_start(*, scenario_objects: Iterable[Any] = ()) -> int:
     """Take the start capture and return its token. ``scenario_objects`` are what the sim was handed already
     loaded: an object with ``source_inputs`` (a DM campaign) has those files re-recorded into this sim's

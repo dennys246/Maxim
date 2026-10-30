@@ -402,6 +402,7 @@ class LocalDockerRunner:
                 "Container %s not removed (a stop is requested; launching docker failed: %s)", handle.name, e
             )
             return
+        _DETACHED_REMOVALS[:] = [p for p in _DETACHED_REMOVALS if p.poll() is None]  # reap the finished ones
         _DETACHED_REMOVALS.append(proc)
         LocalDockerRunner._LIVE_HANDLES.discard(handle)
         logger.info("Container %s: removal requested, not confirmed (a process stop is requested)", handle.name)

@@ -220,6 +220,17 @@ class ModelInferenceError(ModelError):
     pass
 
 
+class LLMCallStopped(ModelInferenceError):
+    """An LLM call was refused or abandoned because a process stop was requested (#1438 PR 1c).
+
+    Raised by ``LLMRouter.generate`` (owner decision 2026-10-30: typed where the API already raises). A
+    ``ModelInferenceError``, so a caller that catches that is unchanged, and any caller can tell a stop from a model
+    failure. ``generate_json`` keeps its documented ``None`` and logs the stop by name.
+    """
+
+    pass
+
+
 class ModelConfigError(ModelError):
     """Model configuration is invalid."""
 
@@ -545,6 +556,7 @@ __all__ = [
     "ModelError",
     "ModelLoadError",
     "ModelInferenceError",
+    "LLMCallStopped",
     "ModelConfigError",
     # Memory
     "MaximMemoryError",

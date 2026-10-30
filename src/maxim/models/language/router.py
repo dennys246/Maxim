@@ -947,12 +947,13 @@ class LLMRouter:
         """Complete text with optional usage metadata; the one dispatch every public call reaches.
 
         A process stop request abandons the call (#1438 PR 1c): refused at entry, and a call in flight returns the
-        dispatch-failure shape ``("", None)`` within ~0.5 s. A caller that bound a per-call cancel event (the
-        ``utils.cancellation`` ContextVar) runs inline, because it abandons on its own stop: ``LLMWorker`` binds one
-        and registers its stop event with the process stop request. Anyone else's call runs on a helper thread the
-        caller polls; the abandoned orphan keeps ``_inference_lock`` until its backend call ends.
+        dispatch-failure shape ``("", None)`` within ~0.5 s. A caller that declared it abandons on the stop itself
+        (``utils.cancellation.mark_abandons_on_stop``: ``LLMWorker``, whose stop event is registered with the process
+        stop request) runs inline. Anyone else's call runs on a helper thread the caller polls; an exception in that
+        wait (a Ctrl+C) cancels the orphan too. The orphan keeps ``_inference_lock`` until its backend call reaches
+        its next cancel checkpoint or ends, so a blocking non-streaming read still holds it.
         """
-        from maxim.utils.cancellation import current_cancel_event, yield_requested
+        from maxim.utils.cancellation import abandons_on_stop, yield_requested
 
         kwargs: dict[str, Any] = {
             "temperature": temperature,
@@ -966,7 +967,7 @@ class LLMRouter:
         if yield_requested():
             logger.info("LLM call refused: a process stop is requested")
             return "", None
-        if current_cancel_event() is not None:
+        if abandons_on_stop():
             return self._complete_text_dispatch(system, user, **kwargs)
         return self._complete_text_abandonable(system, user, kwargs)
 
@@ -997,11 +998,15 @@ class LLMRouter:
         # Named after the caller, so sim_log's thread-role tag ([ORCH] / [AUT]) stays the caller's.
         name = f"{threading.current_thread().name}/router.call"
         threading.Thread(target=ctx.run, args=(_run,), name=name, daemon=True).start()
-        while not done.wait(0.5):
-            if yield_requested():
-                cancel_event.set()  # the backend's next checkpoint unwinds the orphan
-                logger.info("LLM call abandoned: a process stop is requested")
-                return "", None
+        try:
+            while not done.wait(0.5):
+                if yield_requested():
+                    cancel_event.set()  # the backend's next checkpoint unwinds the orphan
+                    logger.info("LLM call abandoned: a process stop is requested")
+                    return "", None
+        except BaseException:
+            cancel_event.set()  # the caller is leaving (a Ctrl+C): never leave the orphan running uncancelled
+            raise
         kind, value = outcome[0]
         if kind == "raised":
             raise value
@@ -2032,7 +2037,8 @@ Return JSON exactly like:
             ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
                 failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
         """
-        from maxim.exceptions import LeaderRefusal, ModelInferenceError
+        from maxim.exceptions import LeaderRefusal, LLMCallStopped, ModelInferenceError
+        from maxim.utils.cancellation import yield_requested
 
         if not self.enabled():
             raise ModelInferenceError("LLM router is disabled", model_name=self.model_name)
@@ -2048,6 +2054,8 @@ Return JSON exactly like:
             raise
         except Exception as e:
             raise ModelInferenceError(f"LLM inference failed: {e}", model_name=self.model_name) from e
+        if not text and yield_requested():
+            raise LLMCallStopped("LLM call stopped: a process stop is requested", model_name=self.model_name)
         if not text or not text.strip():
             raise ModelInferenceError(
                 "LLM returned no text (every provider failed, the session cost ceiling, or a held inference lock)",
@@ -2134,6 +2142,10 @@ Return JSON exactly like:
         if text:
             logger.debug("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
 
+        from maxim.utils.cancellation import yield_requested
+
+        if not text and yield_requested():
+            return None  # refused or abandoned at a process stop (logged by _complete_text), not a model failure
         obj = _extract_json_object(text)
         if not isinstance(obj, dict):
             warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text[:100] if text else "empty")

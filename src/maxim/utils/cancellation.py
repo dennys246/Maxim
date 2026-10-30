@@ -125,6 +125,27 @@ def is_cancelled() -> bool:
     return event is not None and event.is_set()
 
 
+# Set by a caller that abandons its own call when the process stop is requested: it binds the cancel event above AND
+# registered its stop event with ``register_stop_event`` (``LLMWorker``). ``LLMRouter._complete_text`` then runs the
+# call inline; every other call it abandons itself at a stop (#1438 PR 1c). A cancel event bound only for a timeout
+# does not set it, so binding one never silently loses the stop's abandon.
+_abandons_on_stop_var: ContextVar[bool] = ContextVar("maxim_abandons_on_stop", default=False)
+
+
+def mark_abandons_on_stop() -> Token[bool]:
+    """Declare that this context's caller abandons its call on the process stop; pair with ``reset_abandons_on_stop``."""
+    return _abandons_on_stop_var.set(True)
+
+
+def reset_abandons_on_stop(token: Token[bool]) -> None:
+    _abandons_on_stop_var.reset(token)
+
+
+def abandons_on_stop() -> bool:
+    """Whether this context's caller declared it abandons its own call on the process stop."""
+    return _abandons_on_stop_var.get()
+
+
 # ── The process stop request (#1438; docs/plans/bounded_stop.md §5) ─────────────────────────────────────────────
 # The THIRD cancellation primitive, beside the per-call ContextVar above and the LLM backend's process-wide
 # `models/language/cancellation.request_shutdown()`. It lives here, the neutral home, so memory, runtime, console and

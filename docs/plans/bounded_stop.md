@@ -198,6 +198,23 @@ pass and two delta rounds (approach note in the session record) changed the text
   abandoned), the tail order with an early and a late report save, the bounded AUT join with a share and a reserve,
   refusal at start, the post-sim stdin prompt, `wait_ready` honouring a stop, and the reset re-check.
 
+**As built, PR 1c (2026-10-30; the half outside the sim tail, the tail follows as the orchestrator decomposition's tail slice).** An adversarial design pass took four rounds; the last came back SOUND WITH CONDITIONS. Owner decisions 2026-10-30:
+- D1: a sim started under a stop raises `StopStillPending` (`refused="simulation"`), before its start provenance, and again after the model load.
+- D2: report.json is saved early and late under a stop (tail).
+- D3: a direct router call is abandoned in ONE seam, `LLMRouter._complete_text`.
+- D4: the roundup is skipped only under a process stop request (tail).
+- D5: the fence touch is approved, built as the decomposition's tail slice with Session A.
+- The stop is typed where the API already raises (`LLMCallStopped`, from `generate`).
+
+Departures from the text below:
+- **Two abandoners, not one registry.** `LLMWorker` abandons its own call (its stop event is registered) and marks its context (`mark_abandons_on_stop`). The router abandons every other call on a helper thread named after the caller. A cancel event bound only for a timeout does not opt out.
+- **`reset_shutdown()` refuses under a request** (`reset_unless_stopped`, under the hook lock). The clear hook uses the private `_clear_shutdown_event`.
+- **`wait_ready` keys on the stop request,** never on the backend event, which every normal sim end sets.
+- **The runners re-check after each LLM-backed step** (`generative_runner._narrate_turn`; the DM after delivery and after classification), so no fallback built from an abandoned call is delivered or recorded. A human's interactive choice is kept.
+- **The session end keeps a reserve for its waiter.** This fixes 1b's shared-deadline overrun: `_end_bound`, 25% of the time left with a 1 s floor, only when the bound is a stop's deadline. The abandon test keeps the full bound, and the session's own capture flush keeps a 0.5 s floor; the hub's writer flushes stay unfloored.
+- **Report-time waits take `deadline=`** (`run_provenance`, `serving_provenance`); the tail passes it. Under it the end code stamp is skipped (`unknown: stopped`), and skipped probes stamp `model_changed_during_run: null`.
+- **A stopped sim's container removal is detached** (own session, reaped on the next append).
+
 - **`utils/deadline.py::Deadline`:** frozen and monotonic. It has `remaining()`, `expired()`, `share(fraction of
   remaining)` and `sub(seconds)` (both clamped to the parent), and `Deadline.none()`. Never persisted.
 - **`StopRequest`** in `utils/cancellation.py`, the neutral home: memory, runtime, console and the CLI import it, and

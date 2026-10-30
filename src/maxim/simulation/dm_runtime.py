@@ -226,13 +226,17 @@ class DMRuntime:
                 display_scene(stimulus)
                 response = self._deliver_and_wait(stimulus)
 
-            # A stop that landed while the AUT answered: its fallback choice is never recorded (#1438 PR 1c).
-            if self._yield_if_stopped():
+            # A stop that landed while the AUT answered: its choice is never classified or recorded (#1438 PR 1c).
+            # A human's interactive choice is real, not a fallback, so it is kept.
+            if not _interactive_choice and self._yield_if_stopped():
                 break
 
             if encounter.choices:
                 if not _interactive_choice:
                     choice = self._get_choice(response, encounter)
+                    # The classification may be an LLM call the stop abandoned, whose fallback is the first choice.
+                    if self._yield_if_stopped():
+                        break
                 log.info("DM: AUT chose '%s'", choice)
 
                 # Record choice

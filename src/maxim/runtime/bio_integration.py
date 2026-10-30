@@ -276,7 +276,7 @@ def bio_session(
     except BaseException:
         stop = current_stop()
         bound = stop.deadline if stop is not None else Deadline.after(ABNORMAL_EXIT_CAP_S)
-        _close_session(session, consolidation="lightweight", bound=bound)
+        _close_session(session, consolidation="lightweight", bound=bound, reserve_for_waiter=stop is not None)
         raise
     else:
         # A clean exit under a process stop (the loop yielded) is bounded by that stop's deadline: the end persists
@@ -287,6 +287,7 @@ def bio_session(
             consolidation=session.resolved_consolidation(),
             bound=stop.deadline if stop is not None else None,
             abandon_if_expired=False,
+            reserve_for_waiter=stop is not None,
         )
 
 
@@ -296,6 +297,7 @@ def _close_session(
     consolidation: Literal["full", "lightweight"],
     bound: Deadline | None,
     abandon_if_expired: bool = True,
+    reserve_for_waiter: bool = False,
 ) -> None:
     """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error.
 
@@ -322,7 +324,7 @@ def _close_session(
             hippocampus=session.hippocampus,
             capture=session.capture,
             consolidation=consolidation,
-            deadline=_end_bound(bound),
+            deadline=_end_bound(bound) if reserve_for_waiter else bound,
         )
     finally:
         if session.memory_hub is not None and session.ticket is not None:
@@ -337,8 +339,11 @@ _END_RESERVE_FLOOR_S = 1.0
 
 
 def _end_bound(bound: Deadline | None) -> Deadline | None:
-    """The bound the session end runs under: the stop's, minus a reserve for its waiter. Consolidation is the only
-    step it limits (persist always runs), so the abandon test keeps the full bound (#1438 PR 1b's rule)."""
+    """The bound a session end runs under when that bound is a process stop's deadline (``reserve_for_waiter``):
+    minus a reserve for its waiter, who waits on the same deadline. It limits consolidation and the hub's writer
+    flushes, which are deliberately unfloored (a late writer at a stop is lost by design, bounded_stop.md §5); persist
+    always runs, and the abandon test keeps the full bound (#1438 PR 1b's rule). An abnormal exit with no stop has no
+    such waiter and keeps its whole cap."""
     if bound is None:
         return None
     return bound.ending_early(max(_END_RESERVE_FLOOR_S, _END_RESERVE_FRACTION * bound.remaining()))
