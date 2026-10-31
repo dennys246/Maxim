@@ -195,15 +195,18 @@ def test_windows_takes_the_blocking_fallback(monkeypatch: pytest.MonkeyPatch, pi
     assert not OperatorLines(None, threading.Event()).interruptible
 
 
-def test_a_reader_with_no_time_left_is_not_waited_for_and_not_blamed_on_stdin(
+def test_a_reader_with_no_time_left_is_warned_as_mid_poll_first(
     pipe: _PipeStdin, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """A stopped run past its bound joins with a cap of 0: a polling reader is then between polls, and the warning,
+    at the level the shutdown leaves ``maxim`` at, says so before it names a stdin that cannot be polled."""
     stop = threading.Event()
     thread = _reader(OperatorLines(pipe, stop), stop, [])
-    with caplog.at_level(logging.INFO, logger=SLN.logger.name):
+    with caplog.at_level(logging.WARNING, logger=SLN.logger.name):
         assert stop_reader(thread, timeout_s=0.0) is False
-    assert [r.levelno for r in caplog.records] == [logging.INFO], "an expired bound is not a stuck reader"
-    assert "no time left" in caplog.records[0].getMessage()
+    (record,) = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "it ends at its next poll" in record.getMessage()
     stop.set()
     assert stop_reader(thread) is True
 
