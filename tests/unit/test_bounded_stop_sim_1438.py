@@ -673,3 +673,136 @@ def test_an_unmarked_callers_own_cancel_reaches_the_backend_through_the_helper()
     finally:
         cancellation.reset_cancel_event(token)
     assert started.is_set() and cancelled.is_set(), "the caller's own cancel never reached the backend's checkpoint"
+
+
+# ── G8-G10: the sim's tail under a stop (sim_teardown.end_run) ─────────────────────────────────────────────────────
+
+
+class _Thread:
+    """A joinable stand-in that records each join's timeout into the shared event log."""
+
+    def __init__(self, name: str, events: list[tuple[str, Any]]) -> None:
+        self._name, self._events = name, events
+
+    def join(self, timeout: float | None = None) -> None:
+        self._events.append((f"{self._name}_join", timeout))
+
+    def is_alive(self) -> bool:
+        return False
+
+
+@pytest.fixture
+def _tail_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Any:
+    """A SimTail over stand-ins, with every report writer recorded into one ordered event log."""
+    import logging
+
+    import maxim.simulation.report as report_mod
+    import maxim.simulation.sim_logger as sim_logger
+    import maxim.simulation.sim_teardown as teardown
+    import maxim.utils.paths as paths
+    from maxim.models.language.cancellation import reset_shutdown
+
+    events: list[tuple[str, Any]] = []
+    report = SimpleNamespace(session_id="tail-test", turns=0, total_actions=0, blocked_actions=0, llm_summary="")
+    monkeypatch.setattr(report_mod, "build_report", lambda **k: events.append(("build_report", k)) or report)
+    monkeypatch.setattr(report_mod, "save_report", lambda *a, **k: events.append(("save_report", None)))
+    monkeypatch.setattr(report_mod, "save_action_log", lambda *a, **k: events.append(("save_action_log", None)))
+    monkeypatch.setattr(report_mod, "save_aut_state", lambda **k: events.append(("save_aut_state", None)))
+    monkeypatch.setattr(report_mod, "analyze_simulation", lambda *a, **k: events.append(("analyze_simulation", None)))
+    monkeypatch.setattr(teardown, "run_provenance", lambda *a, **k: {"stamp": "test"})
+    monkeypatch.setattr(sim_logger, "display_status", lambda *a, **k: None)
+    monkeypatch.setattr(sim_logger, "disable_sim_logging", lambda: None)
+    monkeypatch.setattr(paths, "sim_reports", lambda: tmp_path)
+    monkeypatch.delenv("MAXIM_REPORT_JSON", raising=False)
+
+    orch_instance = MagicMock()
+    orch_instance.shutdown.side_effect = lambda **k: events.append(("orch_shutdown", k))
+    adopted = MagicMock()
+    adopted.lease.restore.return_value = ([], [])
+    bridge = MagicMock()
+    bridge.finish_context = None
+    bridge.get_all_actions.return_value = []
+    fields = {name: None for name in teardown.SimTail.__dataclass_fields__}
+    fields.update(
+        is_interactive=False,
+        stop_event=threading.Event(),
+        bridge=bridge,
+        orchestrator_source=MagicMock(),
+        aut_thread=_Thread("aut", events),
+        adopted=adopted,  # an adopted agent's AUT join waits 300 s today
+        dm_error=[],
+        orch_instance=orch_instance,
+        start_time=time.time(),
+        operator_stop=threading.Event(),
+        goal="tail test",
+        mode="test",
+        llm_router=MagicMock(session_cost_exceeded=False),
+        start_provenance={},
+    )
+    tail = teardown.SimTail(**fields)
+    level = logging.getLogger("maxim").level
+    yield SimpleNamespace(tail=tail, events=events, end_run=teardown.end_run)
+    logging.getLogger("maxim").setLevel(level)
+    reset_shutdown()
+
+
+def _names(events: list[tuple[str, Any]]) -> list[str]:
+    return [name for name, _ in events]
+
+
+@_RED
+def test_g8_under_a_stop_the_report_is_saved_before_the_tail_waits_on_the_aut(_tail_run: Any) -> None:
+    request_stop("test", Deadline.after(10.0))
+    _tail_run.end_run(_tail_run.tail)
+    names = _names(_tail_run.events)
+    assert "save_report" in names and names.index("save_report") < names.index("aut_join"), (
+        f"the first report save came after the AUT join, so a stop that expires in the join leaves no report: {names}"
+    )
+
+
+@_RED
+def test_g9_under_a_stop_the_tails_waits_are_bounded_by_the_stops_deadline(_tail_run: Any) -> None:
+    request_stop("test", Deadline.after(4.0))
+    _tail_run.end_run(_tail_run.tail)
+    [join_timeout] = [arg for name, arg in _tail_run.events if name == "aut_join"]
+    assert join_timeout is not None and join_timeout <= 4.0, f"the AUT join waited up to {join_timeout}s"
+    [kwargs] = [arg for name, arg in _tail_run.events if name == "orch_shutdown"]
+    assert kwargs.get("deadline") is not None, "the orchestrator instance's shutdown ran unbounded under the stop"
+
+
+@_RED
+def test_g10_under_a_stop_the_tail_skips_the_llm_roundup(_tail_run: Any) -> None:
+    request_stop("test", Deadline.after(10.0))
+    _tail_run.end_run(_tail_run.tail)
+    assert "analyze_simulation" not in _names(_tail_run.events), "the roundup made an LLM call under the stop (D4)"
+
+
+@_RED
+def test_g10_under_a_stop_an_interactive_sim_skips_the_post_sim_prompt() -> None:
+    # The prompt blocks on stdin for a human, and starts a new sim on an answer: neither belongs inside a stop.
+    import ast
+
+    from tests.unit._orchestrator_source import orchestrator_tree
+
+    [guard] = [
+        n
+        for n in ast.walk(orchestrator_tree())
+        if isinstance(n, ast.If)
+        and any(
+            isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_show_report_and_post_sim_prompt"
+            for s in n.body
+            for c in ast.walk(s)
+        )
+    ]
+    assert "stop" in ast.unparse(guard.test), f"the post-sim prompt's guard ignores the stop: {ast.unparse(guard.test)}"
+
+
+def test_with_no_stop_the_tail_keeps_todays_order_and_roundup(_tail_run: Any) -> None:
+    _tail_run.end_run(_tail_run.tail)
+    names = _names(_tail_run.events)
+    assert names.index("aut_join") < names.index("build_report") < names.index("save_report"), names
+    assert "analyze_simulation" in names, names
+    [join_timeout] = [arg for name, arg in _tail_run.events if name == "aut_join"]
+    assert join_timeout == 300.0, "an adopted agent's full consolidation lost its 300 s join"
+    [kwargs] = [arg for name, arg in _tail_run.events if name == "orch_shutdown"]
+    assert kwargs == {}, "with no stop the orchestrator instance's shutdown is called as today"
