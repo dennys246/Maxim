@@ -23,5 +23,7 @@
     (`provenance.stop_stage: "early"`) before any wait, bounds its waits for the agent and DM threads and the
     orchestrator's own shutdown by a share of the stop's deadline (an adopted agent's join no longer waits 300 s),
     saves the full report (`stop_stage: "late"`) only if time is left, skips the LLM roundup, and never shows the
-    interactive post-sim prompt. With no stop, the end of a run is unchanged; its code moved to
+    interactive post-sim prompt. A failed save never skips the shutdown and release that follow it. While the agent's
+    loop is still ending its session, the end leaves its state alone: no tool lease restore (by the sim or by
+    `MaximHandle`'s safety net), no pain-bridge unsubscribe, no imagination cleanup, no subsystem snapshot. With no stop, the end of a run is unchanged; its code moved to
     `simulation/sim_teardown.py`.

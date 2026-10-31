@@ -763,7 +763,8 @@ def test_g9_under_a_stop_the_tails_waits_are_bounded_by_the_stops_deadline(_tail
     request_stop("test", Deadline.after(4.0))
     _tail_run.end_run(_tail_run.tail)
     [join_timeout] = [arg for name, arg in _tail_run.events if name == "aut_join"]
-    assert join_timeout is not None and join_timeout <= 4.0, f"the AUT join waited up to {join_timeout}s"
+    # The tail's share of the stop's 4 s (_SIM_TAIL_SHARE = 0.35), not the whole deadline: the drain needs the rest.
+    assert join_timeout is not None and join_timeout <= 0.35 * 4.0 + 0.05, f"the AUT join waited up to {join_timeout}s"
     [kwargs] = [arg for name, arg in _tail_run.events if name == "orch_shutdown"]
     assert kwargs.get("deadline") is not None, "the orchestrator instance's shutdown ran unbounded under the stop"
 
@@ -845,3 +846,109 @@ def test_a_stopped_result_skips_the_snapshot_while_the_aut_still_runs(_tail_run:
     result = teardown.build_simulation_result(tail, report, "/tmp", 0.0, "yielded")
     tail.aut_introspector.benchmark_snapshot.assert_not_called()
     assert result.subsystem_snapshot == {}
+
+
+def test_under_a_stop_a_failed_early_save_still_waits_releases_and_saves_late(
+    _tail_run: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import maxim.simulation.report as report_mod
+    import maxim.simulation.sim_logger as sim_logger
+
+    events = _tail_run.events
+    saves = iter([OSError("disk full"), None])
+
+    def _save(*_a: Any, **_k: Any) -> None:
+        events.append(("save_report", None))
+        failure = next(saves)
+        if failure is not None:
+            raise failure
+
+    monkeypatch.setattr(report_mod, "save_report", _save)
+    monkeypatch.setattr(sim_logger, "disable_sim_logging", lambda: events.append(("disable_sim_logging", None)))
+    request_stop("test", Deadline.after(0.0))  # no time left: the late save runs only because the early one failed
+    _tail_run.end_run(_tail_run.tail)
+    names = _names(events)
+    assert "orch_shutdown" in names and "disable_sim_logging" in names, names
+    assert names.count("build_report") == 2 and "save_aut_state" in names, names
+
+
+def test_under_a_stop_a_failed_late_save_keeps_and_emits_the_early_report(
+    _tail_run: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    import maxim.simulation.report as report_mod
+
+    monkeypatch.setattr(report_mod, "save_aut_state", lambda **k: (_ for _ in ()).throw(OSError("disk full")))
+    emitted: list[Any] = []
+    monkeypatch.setattr(report_mod, "emit_report_json", lambda report, path: emitted.append(path))
+    monkeypatch.setenv("MAXIM_REPORT_JSON", str(tmp_path / "r.json"))
+    request_stop("test", Deadline.after(30.0))
+    report, *_ = _tail_run.end_run(_tail_run.tail)
+    assert report.session_id == "tail-test" and emitted == [str(tmp_path / "r.json")]
+
+
+def test_under_a_stop_a_live_aut_skips_the_releases_that_act_on_its_state(_tail_run: Any) -> None:
+    tail = _tail_run.tail
+    tail.aut_thread = MagicMock(is_alive=lambda: True)
+    tail.aut_imagination_trigger = MagicMock()
+    request_stop("test", Deadline.after(5.0))
+    _tail_run.end_run(tail)
+    tail.adopted.lease.restore.assert_not_called()
+    tail.aut_imagination_trigger.stats.assert_not_called()
+
+
+def test_with_no_stop_the_releases_run_as_today(_tail_run: Any) -> None:
+    tail = _tail_run.tail
+    tail.aut_imagination_trigger = MagicMock()
+    tail.aut_imagination_trigger.stats.return_value = {}
+    _tail_run.end_run(tail)
+    tail.adopted.lease.restore.assert_called_once()
+    tail.aut_imagination_trigger.stats.assert_called_once()
+
+
+def test_a_stopped_result_skips_the_basic_analysis_while_the_aut_still_runs(_tail_run: Any) -> None:
+    import maxim.simulation.sim_teardown as teardown
+
+    tail = _tail_run.tail
+    tail.stop = request_stop("test", Deadline.after(5.0))
+    tail.aut_thread = MagicMock(is_alive=lambda: True)
+    tail.aut_introspector = MagicMock()
+    report = SimpleNamespace(session_id="s", turns=0, total_actions=0, blocked_actions=0, llm_summary="")
+    result = teardown.build_simulation_result(tail, report, "/tmp", 0.0, "yielded")
+    tail.aut_introspector.full_analysis.assert_not_called()
+    assert result.campaign_analysis == {}
+
+
+def test_a_stopped_interactive_run_prints_its_report_to_the_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.simulation.report as report_mod
+    import maxim.simulation.sim_logger as sim_logger
+    import maxim.simulation.sim_teardown as teardown
+
+    display = MagicMock()
+    sim_logger.set_active_display(display)
+    seen: list[Any] = []
+    monkeypatch.setattr(report_mod, "print_report", lambda *a, **k: seen.append(sim_logger.get_active_display()))
+    try:
+        tail = SimpleNamespace(is_interactive=True)
+        teardown.print_run_report(tail, SimpleNamespace(session_id="s"), "/tmp")  # type: ignore[arg-type]
+    finally:
+        sim_logger.set_active_display(None)
+    display.stop.assert_called_once()
+    assert seen == [None], "the report was routed into the stopped live panel, not the terminal"
+
+
+@pytest.mark.parametrize(
+    "stopped, loop_holds_session, restored", [(True, True, False), (True, False, True), (False, True, True)]
+)
+def test_the_handle_lease_safety_net_skips_only_under_a_stop_with_a_loop_still_holding_the_session(
+    stopped: bool, loop_holds_session: bool, restored: bool
+) -> None:
+    from maxim.console.handle import _restore_campaign_lease
+
+    instance = MagicMock()
+    instance.memory_hub.wait_session_ended.return_value = not loop_holds_session
+    lease = MagicMock()
+    lease.restore.return_value = ([], [])
+    if stopped:
+        request_stop("test", Deadline.after(5.0))
+    _restore_campaign_lease(instance, lease)
+    assert lease.restore.called is restored

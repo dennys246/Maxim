@@ -226,6 +226,12 @@ Departures from the approach note:
 - **`_resolve_finish_reason` keeps reading `yield_requested()`**, not the snapshot: the request is sticky until its owner clears it after the drain, which waits for this tail.
 - **The sandbox release stays before the late save:** under a stop its container removal is already detached (not waited on).
 
+Added by the delta review round (2026-10-30):
+- **A live AUT is left alone** (owner decision 2026-10-30, Architecture SHOULD-FIX, Wire NIT): when the bounded AUT join expires, the release skips the lease restore, the DN pain-bridge unsubscribe and imagination's tag/decay/clear, logging each by name (`release_run_resources(aut_running=)`). The handle's lease safety net (`console/handle.py::_restore_campaign_lease`) skips likewise while the agent's session is still open or ending (`wait_session_ended(deadline_s=0)` False; broader than a live loop, which is harmless while the process stops). The result skips `benchmark_snapshot()` and the basic analysis too.
+- **A failed save never costs the release** (Executor SHOULD-FIX): a failed early save is logged and the waits and release still run, then the late save is tried whatever the time; a failed late save returns and emits the early report (report.json on disk may already be the late one if the failure came after it); only both failing raises, after the release.
+- **Residual, the post-snapshot window:** a stop that lands after `end_run`'s snapshot gets the no-stop tail (unbounded waits, the roundup, whose call D3 abandons, and the post-sim prompt). Unreachable today: only the console requests a stop, and it forces interactive off.
+- **Residual, the provenance's moment:** the one provenance call runs before the waits, so both reports carry serving counts as of the early save (calls still in flight then fail the B0 count check: fail closed, and a yielded run is never evidence).
+
 - **`utils/deadline.py::Deadline`:** frozen and monotonic. It has `remaining()`, `expired()`, `share(fraction of
   remaining)` and `sub(seconds)` (both clamped to the parent), and `Deadline.none()`. Never persisted.
 - **`StopRequest`** in `utils/cancellation.py`, the neutral home: memory, runtime, console and the CLI import it, and

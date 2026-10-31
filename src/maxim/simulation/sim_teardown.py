@@ -8,7 +8,7 @@ unchanged: each phase below is the tail's code verbatim, in the tail's order, re
 ``orchestrator``) and calls the phases around it:
 
     end_run (shut_down_run -> release_run_resources -> save_run_report -> roundup_and_emit_report)
-    -> (post-sim prompt or print_report, in orchestrator.py) -> build_simulation_result
+    -> (the post-sim prompt in orchestrator.py, or print_run_report) -> build_simulation_result
 
 ``_resolve_finish_reason`` and ``_sim_provenance`` moved with the code: the tail was their only caller.
 
@@ -37,9 +37,13 @@ logger = logging.getLogger(__name__)
 
 # The tail's share of what is left of a stop's deadline when the tail starts. The console's drain
 # (console/server.py::_drain_and_stop_handle) joins the run thread for share(0.4) of ITS bound, so a tail started at
-# t0 into a budget B ends at t0 + 0.35 * (B - t0), inside that join while t0 < 0.077 B; a tail started later is caught
-# by MaximHandle.stop's campaign-lock wait (share(0.3)) instead. The rest of the deadline stays for the
-# SimulationResult, the handle's lease safety net and the drain's own agent shutdown.
+# t0 into a budget B ends at t0 + 0.35 * (B - t0), inside that join while t0 < 0.077 B. A tail started later is caught
+# by MaximHandle.stop's campaign-lock wait (share(0.3), ending near 0.58 B) while t0 < ~0.35 B; later still, the tail
+# ends by B but after the drain judged the run thread, which reports an overrun and leaves the request set (fail
+# closed). The tail shares the REQUEST's deadline; the drain waits on the tighter of it and its own. Not capped by the
+# bound: each LLM worker's stop (its own joins, up to ~6 s) and the late save's AUT-state write, which the early
+# save's time does not estimate. The rest of the deadline stays for the SimulationResult, the handle's lease safety net
+# and the drain's own agent shutdown.
 _SIM_TAIL_SHARE = 0.35
 # The late report save starts only with more than this left (or more than the early save took, if longer).
 _LATE_SAVE_FLOOR_S = 0.5
@@ -248,9 +252,14 @@ def _wait_for_run(tail: SimTail, *, bound: Deadline | None) -> None:
         logger.debug("Failed to shutdown orchestrator instance: %s", e)
 
 
-def release_run_resources(tail: SimTail) -> None:
+def release_run_resources(tail: SimTail, *, aut_running: bool = False) -> None:
     """Restore an adopted agent's tools and pain bus, clean the sandbox up, end imagination's session and stop sim
-    logging."""
+    logging.
+
+    ``aut_running`` (a stopped tail whose bounded AUT join expired, #1438 PR 1c; owner decision 2026-10-30): the AUT
+    loop is still ending its session, so the steps that act on its live state -- the lease restore, the DN pain-bridge
+    unsubscribe and imagination's tag/decay/clear -- are skipped and logged by name. The process is stopping; the
+    sandbox cleanup and sim logging still run."""
     from maxim.simulation.sim_logger import display_status
 
     _adopted = tail.adopted
@@ -268,7 +277,13 @@ def release_run_resources(tail: SimTail) -> None:
     # loop has fully stopped so no dispatch races a half-restored registry.
     # Exception paths that bail before this point are covered by the
     # idempotent safety-net restore in MaximHandle.play_campaign's finally.
-    if _adopted is not None:
+    if _adopted is not None and aut_running:
+        logger.warning(
+            "Stopped sim: the AUT loop on %r is still ending its session; its tool lease restore and DefaultNetwork "
+            "pain-bridge unsubscribe were skipped",
+            _aut_agent_id,
+        )
+    elif _adopted is not None:
         try:
             _dropped, _restored = _adopted.lease.restore(aut_registry)
             logger.info(
@@ -319,7 +334,9 @@ def release_run_resources(tail: SimTail) -> None:
     # docs/plans/archive/console_handle_campaign_injection.md (needs a session-scoped
     # tag set — decay_imagined_links decays ALL imagined links per call,
     # which compounds across a persistent agent's repeated campaigns).
-    if aut_imagination_trigger is not None:
+    if aut_imagination_trigger is not None and aut_running:
+        logger.warning("Stopped sim: the AUT loop is still running; imagination's tag/decay/clear was skipped")
+    elif aut_imagination_trigger is not None:
         try:
             stats = aut_imagination_trigger.stats()
             if stats.get("designs_succeeded", 0) > 0:
@@ -578,7 +595,8 @@ def _emit_report_json(report: Any) -> None:
 
 def end_run(tail: SimTail) -> tuple[Any, str, float, str]:
     """The run's end, before the post-sim prompt: shut down, release, save the report, then the roundup. Returns
-    ``(report, report_dir, duration, finish_reason)``. Under a process stop request: :func:`_end_stopped_run`."""
+    ``(report, report_dir, duration, finish_reason)``. Under a process stop request: :func:`_end_stopped_run`. A
+    phase added here is added there too, or the stop path's omission is stated in its docstring."""
     tail.stop = current_stop()
     if tail.stop is not None:
         return _end_stopped_run(tail, tail.stop)
@@ -597,7 +615,8 @@ def _end_stopped_run(tail: SimTail, stop: StopRequest) -> tuple[Any, str, float,
     it is partial by name. The provenance is computed once, bounded, for both saves. The late, full save runs only if
     more than the early save took (at least ``_LATE_SAVE_FLOOR_S``) is left, and may overshoot by its own duration.
     No LLM roundup: a stopped run makes no new LLM call. A yielded run is a typed abort either way, so neither report
-    is evidence."""
+    is evidence. A failed early save never costs the waits or the release (the late save is then tried whatever the
+    time); a failed late save keeps the early report; only both failing raises, after the release."""
     bound = stop.deadline.share(_SIM_TAIL_SHARE)
     _signal_shutdown(tail)
     provenance = _sim_provenance(
@@ -610,25 +629,35 @@ def _end_stopped_run(tail: SimTail, stop: StopRequest) -> tuple[Any, str, float,
         deadline=bound,
     )
     started = time.monotonic()
-    report, report_dir, duration, finish_reason = save_run_report(
-        tail, provenance={**provenance, "stop_stage": "early"}, partial=True
-    )
+    saved: tuple[Any, str, float, str] | None = None
+    try:
+        saved = save_run_report(tail, provenance={**provenance, "stop_stage": "early"}, partial=True)
+    except Exception as e:
+        logger.error("Stopped sim: the early report save failed; continuing to the waits and the release: %s", e)
     early_s = time.monotonic() - started
     _wait_for_run(tail, bound=bound)
-    release_run_resources(tail)
-    if bound.remaining() > max(_LATE_SAVE_FLOOR_S, early_s):
-        report, report_dir, duration, finish_reason = save_run_report(
-            tail, provenance={**provenance, "stop_stage": "late"}
-        )
+    release_run_resources(tail, aut_running=tail.aut_thread.is_alive())
+    if saved is None or bound.remaining() > max(_LATE_SAVE_FLOOR_S, early_s):
+        try:
+            saved = save_run_report(tail, provenance={**provenance, "stop_stage": "late"})
+        except Exception as e:
+            if saved is None:
+                raise
+            logger.error(
+                "Stopped sim: the late report save failed part-way (report.json on disk may already be the late one); "
+                "returning and emitting the early report: %s",
+                e,
+            )
     else:
         logger.warning(
             "Stopped sim %s: late report save skipped (%.1fs left of the tail's bound, the early save took %.1fs); "
             "report.json is the early, partial one, and the AUT state and experiment log were not saved",
-            report.session_id,
+            saved[0].session_id,
             bound.remaining(),
             early_s,
         )
-    logger.info("LLM roundup skipped: a process stop is requested (%s)", stop.reason)
+    report, report_dir, duration, finish_reason = saved
+    logger.warning("LLM roundup skipped: a process stop is requested (%s)", stop.reason)
     _emit_report_json(report)
     return report, report_dir, duration, finish_reason
 
@@ -640,11 +669,12 @@ def print_run_report(tail: SimTail, report: Any, report_dir: str) -> None:
     from maxim.simulation.report import print_report
 
     if tail.is_interactive:
-        from maxim.simulation.sim_logger import get_active_display
+        from maxim.simulation.sim_logger import get_active_display, set_active_display
 
         display = get_active_display()
         if display is not None:
             display.stop()
+            set_active_display(None)  # else the report is routed into the stopped panel and never printed
     print_report(report, session_dir=Path(report_dir) / report.session_id)
 
 
@@ -695,8 +725,10 @@ def build_simulation_result(
 
     # Subsystem snapshot
     _snapshot: dict[str, Any] = {}
-    if tail.stop is not None and tail.aut_thread.is_alive():
-        logger.info("Subsystem snapshot skipped: the AUT thread outlived the stopped tail and still holds its state")
+    # A stopped tail whose AUT thread is still ending reads none of its live state (the snapshot, the basic analysis).
+    aut_running = tail.stop is not None and tail.aut_thread.is_alive()
+    if aut_running:
+        logger.warning("Subsystem snapshot and analysis skipped: the AUT thread outlived the stopped tail")
     elif aut_introspector is not None:
         try:
             _snapshot = aut_introspector.benchmark_snapshot()
@@ -727,7 +759,7 @@ def build_simulation_result(
         session_dir=_session_dir,
         campaign_analysis=campaign_analysis
         if pre_campaign_turns
-        else (dm_rollup or _build_basic_analysis(aut_introspector)),
+        else (dm_rollup or ({} if aut_running else _build_basic_analysis(aut_introspector))),
         introspector=aut_introspector,
         tool_stats=_tool_stats,
         actions=_actions,
