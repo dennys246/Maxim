@@ -176,6 +176,8 @@ class DMRuntime:
         log.info("DM: Starting campaign '%s' (seed=%d)", self._campaign.name, self._campaign.seed)
 
         while not self._state.finished:
+            if self._yield_if_stopped():
+                break
             enc_name = self._state.current_encounter
             encounter = self._campaign.encounters.get(enc_name)
             if encounter is None:
@@ -225,9 +227,17 @@ class DMRuntime:
                 display_scene(stimulus)
                 response = self._deliver_and_wait(stimulus)
 
+            # A stop that landed while the AUT answered: its choice is never classified or recorded (#1438 PR 1c).
+            # A human's interactive choice is real, not a fallback, so it is kept.
+            if not _interactive_choice and self._yield_if_stopped():
+                break
+
             if encounter.choices:
                 if not _interactive_choice:
                     choice = self._get_choice(response, encounter)
+                    # The classification may be an LLM call the stop abandoned, whose fallback is the first choice.
+                    if self._yield_if_stopped():
+                        break
                 log.info("DM: AUT chose '%s'", choice)
 
                 # Record choice
@@ -492,6 +502,17 @@ class DMRuntime:
                 lines.append(f"  {obj_name}: {', '.join(sensor_parts)}")
 
         return "\n".join(lines)
+
+    def _yield_if_stopped(self) -> bool:
+        """End the campaign as ``yielded`` when a process stop is requested (#1438 PR 1c); whether it did."""
+        from maxim.utils.cancellation import yield_requested
+
+        if not yield_requested():
+            return False
+        self._state.finished = True
+        self._state.finish_reason = "yielded"
+        log.info("DM: campaign yielded to a process stop at encounter '%s'", self._state.current_encounter)
+        return True
 
     def _deliver_and_wait(self, stimulus: str) -> dict[str, Any]:
         """Send stimulus to AUT via bridge and wait for response."""

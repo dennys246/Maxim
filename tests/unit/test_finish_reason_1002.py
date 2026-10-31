@@ -15,7 +15,8 @@ import threading
 
 import pytest
 
-from maxim.simulation.orchestrator import _resolve_finish_reason, _stop_by_operator
+from maxim.simulation.orchestrator import _stop_by_operator
+from maxim.simulation.sim_teardown import _resolve_finish_reason
 
 
 def _event(is_set: bool) -> threading.Event:
@@ -68,7 +69,10 @@ def _is_call(node: ast.AST, name: str) -> bool:
 
 
 def test_the_run_resolves_its_finish_reason_from_the_operator_stop() -> None:
-    (call,) = [n for n in ast.walk(_start_simulation_mode()) if _is_call(n, "_resolve_finish_reason")]
+    # Walk-only: every part (the tail slice moved the call to sim_teardown.save_run_report).
+    from tests.unit._orchestrator_source import orchestrator_tree
+
+    (call,) = [n for n in ast.walk(orchestrator_tree()) if _is_call(n, "_resolve_finish_reason")]
     assert [ast.unparse(a) for a in call.args] == ["orch_error", "llm_finish", "operator_stop"]
 
 

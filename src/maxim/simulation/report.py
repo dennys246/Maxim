@@ -19,6 +19,7 @@ from typing import Any
 
 from maxim.exceptions import StoreOverwriteRefused
 from maxim.utils import code_tree
+from maxim.utils.deadline import Deadline
 from maxim.utils.http import redact_urls, url_origin
 
 logger = logging.getLogger(__name__)
@@ -194,6 +195,15 @@ def capture_start_provenance(*, scenario_objects: tuple[Any, ...] = ()) -> dict[
     }
 
 
+def release_start_provenance(start: dict[str, Any]) -> None:
+    """Release the serving registration ``capture_start_provenance`` made, for a sim that will never build its report
+    (#1438 PR 1c: one refused after its start was captured). A held registration would stamp every later sim
+    ``concurrent_sims``."""
+    from maxim.simulation.serving_provenance import release_serving_start
+
+    release_serving_start(start.get(SERVING_TOKEN_KEY))
+
+
 def run_provenance(
     start: dict[str, Any],
     *,
@@ -202,6 +212,7 @@ def run_provenance(
     resume: dict[str, Any] | None,
     adopted: bool,
     goal: str,
+    deadline: Deadline | None = None,
 ) -> dict[str, Any]:
     """``start`` (from :func:`capture_start_provenance`) plus what each LLM role actually ran with.
 
@@ -217,6 +228,11 @@ def run_provenance(
     (:func:`resume_stamp`); required, so a caller cannot forget to say whether the run resumed. ``adopted``
     (an injected persistent agent) and ``goal`` feed the serving/scenario/session fields
     (``simulation/serving_provenance.py``, baseline floors B0); required for the same reason.
+
+    ``deadline`` (a stopped sim's report, #1438 PR 1c) bounds this report-time work: the end code stamp (git calls
+    that can each wait 60 s) is SKIPPED and fails closed (``unknown: stopped``, dirty, ``code_changed_during_run``
+    unknown; the start stamp is never copied into the end fields), and the serving fields cap their waits by it. A
+    stopped run is a typed abort, so no claim reads these stamps. None: today's stamps and waits.
     """
     import maxim
 
@@ -226,8 +242,8 @@ def run_provenance(
     serving_token = start.pop(SERVING_TOKEN_KEY, None)
     resume_record = resume_stamp(resume) if resume is not None else None
 
-    end = _code_stamp(Path(maxim.__file__).resolve())
-    changed = any(end[k] != start.get(k) for k in end)
+    end = _code_stamp(Path(maxim.__file__).resolve()) if deadline is None else _STOPPED_CODE_STAMP
+    changed: bool | None = any(end[k] != start.get(k) for k in end) if deadline is None else None
     roles: dict[str, Any] = {}
     for role, worker in (("language", llm_worker), ("aut", aut_worker)):
         router = getattr(worker, "router", None)
@@ -252,8 +268,17 @@ def run_provenance(
             resume=resume_record,
             adopted=adopted,
             goal=goal,
+            deadline=deadline,
         ),
     }
+
+
+# The end stamp a stopped sim's report records instead of running git (#1438 PR 1c): fails closed.
+_STOPPED_CODE_STAMP: dict[str, Any] = {
+    "executed_git_hash": "unknown: stopped",
+    "working_tree_dirty_src_scripts": True,
+    "code_tree_sha256": "unknown: stopped",
+}
 
 
 # The stores a ``--resume-sim`` restore reads from the prior session's directory, and what each may report.

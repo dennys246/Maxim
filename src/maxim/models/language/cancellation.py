@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import threading
 
-from maxim.utils.cancellation import register_stop_hook
+from maxim.utils.cancellation import register_stop_hook, reset_unless_stopped
 
 _SHUTDOWN_EVENT = threading.Event()
 
@@ -76,7 +76,14 @@ def reset_shutdown() -> None:
     event on entry so successive sims in the same process (REPL, continuous
     runs, test suites) start with a clean slate. Do NOT call this from
     inside an active sim; it would unmask a Ctrl+C mid-run.
+
+    Refused while a process stop is requested (#1438 PR 1c): the request set
+    this event, and a reset under it would re-arm backend retries mid-stop.
     """
+    reset_unless_stopped(_clear_shutdown_event)
+
+
+def _clear_shutdown_event() -> None:
     _SHUTDOWN_EVENT.clear()
 
 
@@ -85,7 +92,9 @@ def _on_stop_requested() -> None:
 
 
 def _on_stop_cleared() -> None:
-    reset_shutdown()
+    # Runs under the hook lock (clear_stop_request), so it clears the event directly: the public reset_shutdown()
+    # takes that lock again and would deadlock.
+    _clear_shutdown_event()
 
 
 # The process stop request (``utils/cancellation.request_stop``, #1438 PR 1b) aborts in-flight backend work through
