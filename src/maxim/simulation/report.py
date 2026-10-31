@@ -195,6 +195,15 @@ def capture_start_provenance(*, scenario_objects: tuple[Any, ...] = ()) -> dict[
     }
 
 
+def release_start_provenance(start: dict[str, Any]) -> None:
+    """Release the serving registration ``capture_start_provenance`` made, for a sim that will never build its report
+    (#1438 PR 1c: one refused after its start was captured). A held registration would stamp every later sim
+    ``concurrent_sims``."""
+    from maxim.simulation.serving_provenance import release_serving_start
+
+    release_serving_start(start.get(SERVING_TOKEN_KEY))
+
+
 def run_provenance(
     start: dict[str, Any],
     *,

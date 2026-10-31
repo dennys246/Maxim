@@ -508,15 +508,18 @@ def test_the_sim_takes_its_code_stamp_before_building_any_router() -> None:
 
 
 def test_the_sim_passes_its_start_and_its_workers_to_the_report() -> None:
-    (call,) = _calls(_start_simulation_mode(), "build_report")
+    # Walk-only: every part (the tail slice moved the build_report call to sim_teardown.save_run_report).
+    from tests.unit._orchestrator_source import orchestrator_tree
+
+    (call,) = _calls(orchestrator_tree(), "build_report")
     keywords = {kw.arg: kw.value for kw in call.keywords}
     assert ast.unparse(keywords["started_at"]) == "start_time"
     assert ast.unparse(keywords["provenance"]) == (
         "_sim_provenance(start_provenance, orch_llm_worker, aut_llm_worker, resume_record, _adopted, goal)"
     )
-    from maxim.simulation import orchestrator
+    from maxim.simulation import sim_teardown
 
-    (inner,) = _calls(ast.parse(inspect.getsource(orchestrator._sim_provenance)), "run_provenance")
+    (inner,) = _calls(ast.parse(inspect.getsource(sim_teardown._sim_provenance)), "run_provenance")
     assert {kw.arg: ast.unparse(kw.value) for kw in inner.keywords} == {
         "llm_worker": "orch_worker", "aut_worker": "aut_worker", "resume": "resume",
         "adopted": "adopted is not None", "goal": "goal",

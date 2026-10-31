@@ -410,7 +410,7 @@ def test_a_lifespan_stop_that_overruns_returns_at_the_budget_and_keeps_the_reque
 
 
 def test_a_run_ended_by_a_stop_request_is_yielded_and_a_typed_abort() -> None:
-    from maxim.simulation.orchestrator import _resolve_finish_reason
+    from maxim.simulation.sim_teardown import _resolve_finish_reason
     from maxim.simulation.sim_types import is_simulation_run_failure
 
     request_stop("test", Deadline.after(5.0))
