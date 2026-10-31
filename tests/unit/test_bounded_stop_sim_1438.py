@@ -905,6 +905,54 @@ def test_with_no_stop_the_releases_run_as_today(_tail_run: Any) -> None:
     tail.aut_imagination_trigger.stats.assert_called_once()
 
 
+def test_with_no_stop_imagination_tags_decays_and_clears_on_the_agents_state(_tail_run: Any) -> None:
+    import maxim.simulation.sim_teardown as teardown
+
+    tail = _tail_run.tail
+    tail.aut_imagination_trigger = MagicMock(imagined_refs=["ghost"])
+    tail.aut_imagination_trigger.stats.return_value = {"designs_succeeded": 1, "phrases_extracted": 2}
+    tail.aut_nac = MagicMock()
+    tail.aut_nac.tag_imagined_links.return_value = 3
+    tail.aut_nac.decay_imagined_links.return_value = 2
+    tail.aut_component_registry = MagicMock()
+    tail.aut_component_registry.clear_ephemeral.return_value = ["ghost"]
+    teardown.release_run_resources(tail)
+    tail.aut_nac.tag_imagined_links.assert_called_once_with(["ghost"])
+    tail.aut_nac.decay_imagined_links.assert_called_once_with(0.5)
+    tail.aut_component_registry.clear_ephemeral.assert_called_once()
+
+
+def test_a_failed_release_step_never_skips_the_steps_after_it(
+    _tail_run: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    import maxim.simulation.sim_logger as sim_logger
+    import maxim.simulation.sim_teardown as teardown
+
+    def _no_logging() -> None:
+        events.append("disable_sim_logging")
+        raise RuntimeError("logging boom")
+
+    events: list[str] = []
+    monkeypatch.setattr(sim_logger, "disable_sim_logging", _no_logging)
+    tail = _tail_run.tail
+    tail.aut_default_network = MagicMock()
+    tail.aut_pain_bus = MagicMock()
+    tail.aut_pain_bus.unsubscribe.side_effect = RuntimeError("bus boom")
+    tail.sim_sandbox = MagicMock(pain_events=["ouch"])
+    tail.sim_sandbox.cleanup.side_effect = RuntimeError("sandbox boom")
+    tail.aut_imagination_trigger = MagicMock()
+    tail.aut_imagination_trigger.stats.side_effect = RuntimeError("imagination boom")
+    with caplog.at_level(logging.DEBUG, logger="maxim"):
+        teardown.release_run_resources(tail)
+    tail.sim_sandbox.cleanup.assert_called_once()
+    tail.aut_imagination_trigger.stats.assert_called_once()
+    assert events == ["disable_sim_logging"]
+    for text in ("bus boom", "sandbox boom", "imagination boom", "logging boom"):
+        assert text in caplog.text, f"a failed release step was not logged: {text}"
+
+
 def test_a_stopped_result_skips_the_basic_analysis_while_the_aut_still_runs(_tail_run: Any) -> None:
     import maxim.simulation.sim_teardown as teardown
 
