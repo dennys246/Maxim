@@ -32,6 +32,7 @@ from maxim.simulation.orchestrator import (
 )
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 from tests.unit._orchestrator_source import orchestrator_source
 
 
@@ -59,6 +60,7 @@ def _build_persistent_agent(tmp_path, agent_id: str = "console_agent"):
         with_executor=True,
         with_pain_bridge=False,
         with_fear_gate=False,
+        policy=TEST_POLICY,
     )
     factory = AgentFactory(base_data_dir=tmp_path)
     registry = ToolRegistry()
@@ -116,7 +118,7 @@ class TestAdoption:
         bare = AgentInstance(
             agent_id="console_agent",
             role="pc",
-            config=AgentConfig(agent_id="console_agent"),
+            config=AgentConfig(agent_id="console_agent", policy=None),
         )
         with pytest.raises(ValueError, match="missing"):
             _adopt_persistent_agent(bare)
@@ -412,7 +414,7 @@ class TestStopConsolidation:
         inst = AgentInstance(
             agent_id="console_agent",
             role="pc",
-            config=AgentConfig(agent_id="console_agent"),
+            config=AgentConfig(agent_id="console_agent", policy=None),
             memory_hub=hub,
         )
         # #1438 PR 0: shutdown ends only the session its instance opened (owner ticket), so open it first.

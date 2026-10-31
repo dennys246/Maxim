@@ -719,6 +719,50 @@ Examples:
 
 ## 3. Item 3: a required `ToolPolicy` on every executor
 
+> **Status: BUILT 2026-10-31** (branch `feat/1315-item3-tool-policy`). As built, where it differs from the text below:
+> - `OFFLINE_CEILING`, `effective_ceiling`, `dispatching` and `require_policy` live in `runtime/tool_policy.py`
+>   beside `ToolPolicy`. `current_policy()` and the Protocol `PolicyHandle` live in `tools/base.py`, the
+>   context variable too, so a tools-layer composite reads it without importing `runtime`.
+> - The seam is two methods. `Executor._permission_denial` holds the NAME gates (forbid, mode, permissions) and
+>   `Executor._object_refusal` the OBJECT gates (the permissions on the tool's own `kind`, the ceiling, the pin),
+>   run on the one `registry.get`. Both return a typed `_Refusal` (kind, layer, message). `permits()` runs both for a
+>   registered tool, so the roster never offers an above-ceiling tool (§2.2's roster bullet).
+> - `Executor.check(tool)` returns the refused `ToolOutput` (typed) or `None`. An unregistered name under an
+>   allow-list is refused at layer `"permissions"`: the allow-list judges the name before the registry is asked.
+> - `Tool.run` re-raises `OfflineRefusal` (its broad `except` would otherwise turn it into an untyped failure), and
+>   `Executor._run_started` maps it to `OFFLINE` before any booking.
+> - **Owner decision 2026-10-31: under the offline latch the tool-pain bridge books nothing** (`_suppress_nac` gains
+>   `is_offline()`, beside the human-driven and speculative cases). A body that meets the latch raises after
+>   `record_tool_start`, whose pending NAc event later pain could link to. Dispatch's `record_outcome` still books
+>   what ran. The atonia observer, the one offline consumer, is built with no bridge anyway.
+> - **Owner decision 2026-10-31, a red-gate scenario fix:** `test_refusal_booking_red_gate.py`'s
+>   `offline_in_tool_body` case engages the latch, as it is whenever shipped code raises `OfflineRefusal`
+>   (`_offline.refuse` and the audit hook raise only then). Its assertions are unchanged.
+> - `record_outcome(refused=)` routes through `tool_dispatch._learning_nac`: a gate kind sets `nac=None` (the
+>   `book_machine_refusal` precedent), a non-gate kind raises `ValueError`. Callers pass
+>   `tool_dispatch.gate_refusal_of(result)`. The agent-fallback booking moved into
+>   `tool_dispatch.book_agent_fallback_failure` (Session A's grant), which passes `gate_refusal_of(result)`.
+> - The parallel batch now writes an autonomy audit entry per executed action (`_audit_parallel_action`), which the
+>   booking gate demanded.
+> - The console builds its policy with `tool_policy.policy_from_tools_settings`; `agents/permissions.py::
+>   tool_permissions_from_settings` is deleted (§1A.5).
+> - `maxim.run` confines its filesystem tools to the run's home (`allowed_dirs_override`), #1342's first half; the
+>   prefetch half stays on #1342.
+> - **Not built:** the sub-sim child's registry ceiling. `build_tool_registry` is pinned over 200 lines, and the
+>   child's executor policy (the dispatcher's, narrowed) already refuses at dispatch and in `permits()`. The registry
+>   ceiling would add admission-time refusal only.
+> - The census lives in `tests/unit/test_tool_policy_census.py`. Its direct-call table pins two sites the notes did
+>   not name: the sim world's body reflexes (`integration/bio_enrichment.py::_dispatch_reflex_tool`) and the
+>   narrator's actor composite (`OrchestratorActorTool.execute`).
+> - Rule T extractions: `api._build_run_executor`, `cli._cli_agent_config`,
+>   `orchestrator._aut_agent_config` / `_orchestrator_agent_config`,
+>   `AgenticRuntimeMixin._build_runtime_executor`, `bootstrap._check_build_executor_args`,
+>   `tool_dispatch._stash_timeout_retry` / `_observe_energy_cost` / `_parallel_entry`. Every touched pinned
+>   function shrank.
+> - **Deletion probes** (each mechanism removed, its gate red, then restored): the ceiling check; the pin;
+>   `dispatching`; each of `auto_sense`'s two checks; `_learning_nac`; the offline bridge suppression;
+>   `require_policy`; the spawn refusal; the home confinement.
+
 **The defect (O1).** `Executor.__init__(tool_registry, pain_detector=None, tool_pain_bridge=None, permissions=None,
 embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source restricts nothing.
 `build_executor(*, permissions=)` is required but accepts `None`. `AgentConfig.permissions` defaults to `None`. Seven

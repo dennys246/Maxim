@@ -34,6 +34,7 @@ import pytest
 
 from maxim.agents.llm_worker import LLMProposal
 from maxim.runtime.sim_adapter import NullSimulationAdapter
+from tests.policy_helpers import TEST_POLICY
 from tests.unit.test_loop_setup_characterization import _Hub
 
 LOGGER = "maxim.runtime.agent_loop"
@@ -167,7 +168,7 @@ def _run(
 
     monkeypatch.setattr(time, "sleep", _sleep)
 
-    executor = kwargs.pop("executor", None) or build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor = kwargs.pop("executor", None) or build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     run.executor = executor
     state = RuntimeState()
     state.data["mode"] = "active"

@@ -274,7 +274,7 @@ def _run_arm(
     exactly target_episodes) -> post marginal-probe. Returns the seed record incl. validity flags."""
     from maxim.agents.context_pool import ContextPool
     from maxim.runtime.substrate_proposal import _encode_current_clusters, _read_drive_states
-    from maxim.runtime.tool_dispatch import read_learning_side_effects, record_outcome
+    from maxim.runtime.tool_dispatch import gate_refusal_of, read_learning_side_effects, record_outcome
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
 
     agent_id = f"r2lb_{arm}_{seed}"
@@ -337,6 +337,7 @@ def _run_arm(
                     agent_id=agent_id,
                     tool_name=eat_tool,
                     bridge_booked=getattr(out, "nac_failure_booked", None),  # #1200 Stage 2
+                    refused=gate_refusal_of(out),  # #1315 item 3: a gate refusal books no NAc
                     success=bool(getattr(out, "success", False)),
                     result_summary=str(getattr(out, "output", ""))[:80] or None,
                     error=getattr(out, "error", None),

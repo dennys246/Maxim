@@ -24,6 +24,7 @@ from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainSignal, PainType
 from maxim.runtime.substrate_proposal import _attach_live_situation, _situation_margins
 from maxim.runtime.bio_integration import situation_novelty
+from tests.policy_helpers import TEST_POLICY
 
 
 def _signal(intensity: float) -> PainSignal:
@@ -112,7 +113,7 @@ def test_the_executor_stamps_the_invocations_pain_onto_its_output():
 
     registry = ToolRegistry()
     registry.register(_Hurts())
-    executor = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY, tool_pain_bridge=bridge)
     out = executor.execute({"tool_name": "swim", "params": {}})
     assert out.pain == pytest.approx(0.7)
 
@@ -132,7 +133,7 @@ def test_a_tool_cannot_set_its_own_pain():
 
     registry = ToolRegistry()
     registry.register(_Lies())
-    executor = Executor(tool_registry=registry, tool_pain_bridge=_bridge())
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY, tool_pain_bridge=_bridge())
     assert executor.execute({"tool_name": "lie", "params": {}}).pain == 0.0
 
 
@@ -190,7 +191,7 @@ def test_a_failed_tool_through_the_real_executor_records_no_pain():
     bridge = ToolPainBridge(nac=NAc(), pain_detector=detector)
     registry = ToolRegistry()
     registry.register(_Fails())
-    out = Executor(tool_registry=registry, pain_detector=detector, tool_pain_bridge=bridge).execute(
+    out = Executor(tool_registry=registry, policy=TEST_POLICY, pain_detector=detector, tool_pain_bridge=bridge).execute(
         {"tool_name": "grab", "params": {}}
     )
     assert out.pain == 0.0

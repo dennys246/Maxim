@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import copy
 import functools
 import logging
@@ -9,7 +10,9 @@ import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, EnumMeta, Flag, auto
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
+
+from maxim._offline import OfflineRefusal
 
 if TYPE_CHECKING:
     from maxim.embodiment.sem import InteroceptiveOutcome
@@ -55,6 +58,31 @@ class ToolErrorKind(Enum):
     INVALID_INPUT = "invalid_input"
     EXTERNAL_FAILURE = "external_failure"
     VALIDATION = "validation"
+    # The dispatch gate's refusals (#1315 item 3, approach notes §1A.2): the tool never ran. Only
+    # ``runtime/executor.py`` produces them, so a tool body cannot exempt itself from NAc by returning one.
+    NOT_REGISTERED = "not_registered"
+    INACTIVE_SCENE = "inactive_scene"
+    POLICY_CEILING = "policy_ceiling"
+    POLICY_PERMISSIONS = "policy_permissions"
+    POLICY_PIN = "policy_pin"
+    MODE = "mode"
+    OFFLINE = "offline"
+
+
+GATE_REFUSAL_KINDS: frozenset[ToolErrorKind] = frozenset(
+    {
+        ToolErrorKind.NOT_REGISTERED,
+        ToolErrorKind.INACTIVE_SCENE,
+        ToolErrorKind.POLICY_CEILING,
+        ToolErrorKind.POLICY_PERMISSIONS,
+        ToolErrorKind.POLICY_PIN,
+        ToolErrorKind.MODE,
+        ToolErrorKind.OFFLINE,
+    }
+)
+"""The refusals a gate made, not the tool (#1315 item 3, §1A.2): booked to the model's carryover, the recent
+outcomes and the autonomy audit log, never to NAc, pain, goal credit or cluster reward. ``PERMISSION_DENIED`` is
+not one: a tool's own path refusal keeps booking its NAc negative."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +250,32 @@ def declare_effect(cls: type, effect: Effect) -> None:
     type.__setattr__(cls, "effect", effect)
     _EFFECT_RECORD[cls] = effect
     _EFFECT_DECLARED.add(cls)
+
+
+class PolicyHandle(Protocol):
+    """What a tools-layer composite may do with the dispatching executor's policy (#1315 item 3, §1A.3): narrow it
+    for a child, never widen it. ``runtime/tool_policy.py::ToolPolicy`` implements it; ``tools/`` cannot import it."""
+
+    @property
+    def ceiling(self) -> Effect: ...  # pragma: no cover - a Protocol
+
+    def narrowed(
+        self, *, ceiling: Effect | None = None, only: Any = None, deny: Any = ()
+    ) -> PolicyHandle: ...  # pragma: no cover - a Protocol
+
+
+_CURRENT_POLICY: contextvars.ContextVar[PolicyHandle | None] = contextvars.ContextVar(
+    "maxim_current_tool_policy", default=None
+)
+
+
+def current_policy() -> PolicyHandle | None:
+    """The policy of the executor dispatching the running tool, or None outside a dispatch (#1315 item 3, §3).
+
+    A composite (``SpawnSubSimulationTool``) builds its child from this, not from a policy handed to it at
+    registration, and refuses when it is None. Read it synchronously in ``execute()``: a ``threading.Thread`` does
+    not inherit the context. Set only by ``runtime/tool_policy.py::dispatching``."""
+    return _CURRENT_POLICY.get()
 
 
 @dataclass(slots=True, frozen=True)
@@ -572,6 +626,10 @@ class Tool(ABC):
             if isinstance(output, ToolOutput):
                 return output
             return ToolOutput(success=True, output=output)
+        except OfflineRefusal:
+            # Not the tool's failure: the executor maps it to ToolErrorKind.OFFLINE BEFORE any booking, so an
+            # offline session does not learn aversion to the tools the latch refuses (#1315 item 3, §1A.2).
+            raise
         except Exception as e:
             return ToolOutput(success=False, error=str(e))
 

@@ -23,7 +23,7 @@ the fact. See ``docs/plans/archive/executor_bootstrap_unification.md``.
     executor = build_executor(                                # bridge attached here
         registry,
         pain_bus=pain_bus,                                    # required keyword
-        permissions=None,                                     # required keyword (D73)
+        policy=ToolPolicy.unrestricted(reason="..."),         # required keyword (#1315 item 3)
         nac=nac,
         hippocampus=hippocampus,
     )

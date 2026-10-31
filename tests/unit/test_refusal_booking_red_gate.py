@@ -32,8 +32,10 @@ autonomy audit log (``AutonomyController.audit_log``). §1A.2 keeps those, so th
 TODAY every case books a negative through ``record_outcome`` (``NAc.observe``, plus goal credit, plus cluster reward
 when ``drive_relief_only`` is False) and ``execute_and_learn`` books the plan bridge. Under production wiring no
 pain is published for these refusals (the executor has no ``pain_detector``). The parallel batch writes NO autonomy
-audit entry at all, so the gate also demands one there (new work for item 3). Every case is xfail, so the one
-parametrised def carries one literal ``xfail(strict=True)`` (lint rule 3b).
+audit entry at all, so the gate also demands one there (new work for item 3).
+
+STATUS: flipped by item 3 (every case passes; the xfail decorators are removed, so this is now a regression guard).
+The ``offline_in_tool_body`` case engages the latch (owner decision 2026-10-31): see its setup.
 
 THE ONE LINE ITEM 3 TOUCHES. ``_build_executor`` builds through ``ToolPolicy`` once ``maxim.runtime.tool_policy``
 exists (``deny`` for the permissions kind, which then refuses as ``POLICY_PERMISSIONS``; ``unrestricted``
@@ -277,7 +279,7 @@ def _rig(kind: str) -> Rig:
 
         cleanup = off._reset_for_tests
     elif kind == "offline_in_tool_body":
-        off = _require_offline("OfflineRefusal")
+        off = _require_offline("OfflineRefusal", "engage", "_reset_for_tests")
         _require_effect()
 
         def body() -> Any:
@@ -286,6 +288,14 @@ def _rig(kind: str) -> Rig:
         probe = _effect_probe("probe_lazy_fetch", _require_effect().Effect.READ, body)
         registry.register(probe)
         must_not_run = False  # it runs, and its body meets the latch
+
+        # Scenario fix (owner decision 2026-10-31, approach notes §3 as built): the latch is ENGAGED, as it is
+        # whenever shipped code raises OfflineRefusal (``_offline.refuse`` and the audit hook raise only then).
+        # The v6.4 case raised it with the latch off, a state no shipped path reaches. The assertions are unchanged.
+        def engage() -> None:
+            off.engage("red-gate probe: a tool body meets the latch")
+
+        cleanup = off._reset_for_tests
     else:  # pragma: no cover - the parametrisation is closed
         raise ScenarioBroken(f"unknown refusal kind {kind!r}")
     executor = _build_executor(registry, nac=nac, bus=bus, deny=deny, policy=policy)
@@ -392,15 +402,6 @@ def _check_refusal(kind: str, outputs: list[Any]) -> None:
 @pytest.mark.parametrize("drive_relief_only", [False, True], ids=["substrate_primary", "llm_primary"])
 @pytest.mark.parametrize("path", PATHS)
 @pytest.mark.parametrize("kind", KINDS)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "#1315 item 3 / §1A.2: a gate refusal books learning today (NAc observe, goal and cluster credit, plan "
-        "bridge) and the batch writes no autonomy audit entry; the new kinds' APIs do not exist. Flips when "
-        "record_outcome's refused= branch (GATE_REFUSAL_KINDS) lands for this kind on this path"
-    ),
-)
 def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_only: bool) -> None:
     """One refusal of ``kind`` through ``path``: zero learning writes and unchanged NAc state, and exactly one
     carryover, one ``recent_outcomes`` and one autonomy audit entry (§1A.2's booking table, "After" column)."""
@@ -468,11 +469,6 @@ def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_onl
             rig.cleanup()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 3 / §1A.2: tools/base.py has no GATE_REFUSAL_KINDS yet",
-)
 def test_cases_cover_every_gate_refusal_kind() -> None:
     """Every member of ``GATE_REFUSAL_KINDS`` has a case in ``KIND_TO_REFUSAL``, so a new kind joins the gate.
     Fails today: the frozenset does not exist."""

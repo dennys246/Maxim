@@ -331,7 +331,9 @@ def test_run_wires_and_disconnects_robot(tmp_path, mocked_run_runtime, monkeypat
         learning=False,
     )
 
-    assert mocked_run_runtime.registry_calls == [{"internet_launch_enabled": False, "maxim": robot}]
+    assert mocked_run_runtime.registry_calls == [
+        {"internet_launch_enabled": False, "maxim": robot, "allowed_dirs_override": [os.path.realpath(str(tmp_path))]}
+    ]
     assert _RunTestAgent.instances[0].goal.robot is robot
     release.assert_called_once_with(lease)
 
@@ -879,7 +881,7 @@ def test_full_agent_construction_opens_the_session_on_the_hub_it_keeps(api_home)
     from maxim.time.temporal_signature import TemporalSignature
 
     factory = AgentFactory()
-    agent = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True))
+    agent = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True, policy=None))
     assert agent.memory_hub._session_active is True, "the session was opened on a hub that was then discarded"
     agent.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
     concept_id, _ = agent.memory_hub.atl.find_or_create("probe_concept", category="test", definition="a probe")
@@ -889,7 +891,9 @@ def test_full_agent_construction_opens_the_session_on_the_hub_it_keeps(api_home)
     for name in ("ec.json", "scn.json", "atl.json"):
         assert (agent_dir / name).exists(), f"{name} was dropped by the bio-stack construction path"
 
-    reloaded = factory.create_full_agent(AgentConfig(agent_id="full_round_trip", with_bio_stack=True), auto_load=True)
+    reloaded = factory.create_full_agent(
+        AgentConfig(agent_id="full_round_trip", with_bio_stack=True, policy=None), auto_load=True
+    )
     try:
         # D42: build_bio_stack used to construct a PATHLESS SCN, so on_session_end had
         # nothing to save to and temporal state vanished between runtime sessions.
@@ -910,7 +914,7 @@ def test_the_loop_closing_its_own_session_does_not_make_shutdown_cry_wolf(api_ho
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
     from maxim.runtime.bio_integration import bio_session
 
-    agent = AgentFactory().create_full_agent(AgentConfig(agent_id="loop_nesting", with_bio_stack=True))
+    agent = AgentFactory().create_full_agent(AgentConfig(agent_id="loop_nesting", with_bio_stack=True, policy=None))
     # #1438 PR 0: the loop takes the instance's session over (handover) and ends its own generation.
     with bio_session(memory_hub=agent.memory_hub, hippocampus=agent.hippocampus, owner=object()) as s:
         assert s.ticket is not agent._session_ticket
@@ -945,7 +949,7 @@ def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
     from maxim.time.temporal_signature import TemporalSignature
 
     factory = AgentFactory()
-    first = factory.create_full_agent(AgentConfig(agent_id="npc_style", with_bio_stack=True))
+    first = factory.create_full_agent(AgentConfig(agent_id="npc_style", with_bio_stack=True, policy=None))
     first.memory_hub.scn.register("probe_memory_1", TemporalSignature.now(), significance=0.9)
     first.shutdown()
 
@@ -953,7 +957,7 @@ def test_write_but_dont_read_agents_do_not_restore_scn(api_home):
         "nothing was persisted, so the assertion below would pass vacuously"
     )
     npc = factory.create_full_agent(
-        AgentConfig(agent_id="npc_style", with_bio_stack=True, load_persisted=False), auto_load=False
+        AgentConfig(agent_id="npc_style", with_bio_stack=True, load_persisted=False, policy=None), auto_load=False
     )
     try:
         assert npc.memory_hub.scn.get_signature("probe_memory_1") is None
@@ -969,14 +973,14 @@ def test_a_corrupt_scn_file_is_preserved_not_overwritten(api_home, caplog):
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
     factory = AgentFactory()
-    first = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
+    first = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True, policy=None))
     first.shutdown()
     scn_json = api_home / "agents" / "corrupt_scn" / "scn.json"
     assert scn_json.exists()
     scn_json.write_text("{not json at all")
 
     caplog.set_level(logging.WARNING)
-    second = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True))
+    second = factory.create_full_agent(AgentConfig(agent_id="corrupt_scn", with_bio_stack=True, policy=None))
     try:
         assert second.memory_hub.scn.persistence_path == str(scn_json), "SCN went unpersisted again"
         assert any("Corrupt SCN file" in r.getMessage() for r in caplog.records)

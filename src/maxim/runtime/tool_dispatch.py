@@ -14,12 +14,14 @@ import os
 import re
 import time
 from collections.abc import Callable, Mapping
+from types import SimpleNamespace
 from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
 from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import ActionFollowup
+from maxim.tools.base import GATE_REFUSAL_KINDS, ToolErrorKind
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -206,6 +208,13 @@ def _observe_tool_result(
     return link
 
 
+def gate_refusal_of(result: Any) -> ToolErrorKind | None:
+    """*result*'s gate refusal kind (``tools/base.py::GATE_REFUSAL_KINDS``), or None: the tool ran, or a tool's own
+    refusal (``PERMISSION_DENIED`` keeps booking its NAc negative). What ``record_outcome(refused=)`` is passed."""
+    kind = getattr(result, "error_kind", None)
+    return kind if isinstance(kind, ToolErrorKind) and kind in GATE_REFUSAL_KINDS else None
+
+
 def record_outcome(
     *,
     agent_id: str,
@@ -231,11 +240,16 @@ def record_outcome(
     drive_relief_channel: str | None = None,
     outcome_valence: "_V | None" = None,
     bridge_booked: str | None,
+    refused: ToolErrorKind | None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
     ``bridge_booked``: the signature the tool-pain bridge booked THIS failure under (``ToolOutput.nac_failure_booked``,
     #1200 Stage 2); see ``_observe_tool_result``. REQUIRED (TF8): forgetting it is a ``TypeError``, not a double count.
+
+    ``refused``: the gate kind when a dispatch gate refused the action (``gate_refusal_of``; #1315 item 3, §1A.2),
+    else None. REQUIRED, like ``bridge_booked``. A gate refusal is booked as ``book_machine_refusal`` books one (the
+    #1185 precedent): the outcome window, the carryover and the context pool, never NAc, goal credit or a cluster.
 
     Appends to recent_outcomes, records reasoning carryover on llm_worker,
     adds to context_pool, and (if NAc is wired) records a causal observation
@@ -277,6 +291,7 @@ def record_outcome(
             "Tool outcome recording is per-agent — empty / missing values "
             "would silently merge attribution across agents."
         )
+    nac = _learning_nac(nac, refused)
     ts = time.time()
     recent_outcomes.append(
         {
@@ -591,20 +606,89 @@ def record_outcome(
 
     # Energy → NAc: learn which tools are expensive (metabolic budget)
     if nac is not None and elapsed_s > 0:
-        try:
-            # Expensive actions (>2s) get NEGATIVE energy valence; cheap ones NEUTRAL
-            energy_valence = _V.NEGATIVE if elapsed_s > 2.0 else _V.NEUTRAL
-            nac.observe(
-                event_type="energy",
-                event_signature=f"cost:{tool_name}",
-                outcome_type="energy_cost",
-                outcome_signature=f"elapsed:{elapsed_s:.1f}s",
-                outcome_valence=energy_valence,
-                delta_seconds=elapsed_s,
-                context={"agent_id": agent_id, "tool": tool_name},
-            )
-        except Exception:
-            log_swallowed_exception()
+        _observe_energy_cost(nac, tool_name, elapsed_s, agent_id)
+
+
+def _learning_nac(nac: Any | None, refused: ToolErrorKind | None) -> Any | None:
+    """The NAc ``record_outcome`` may book to: None for a gate refusal (#1315 item 3), which no person made and which
+    teaches nothing about the action; a kind that is not a gate kind is a caller's mistake, refused loudly."""
+    if refused is None:
+        return nac
+    if refused not in GATE_REFUSAL_KINDS:
+        raise ValueError(f"record_outcome(refused=) takes a gate refusal kind or None, got {refused!r}")
+    return None
+
+
+def _observe_energy_cost(nac: Any, tool_name: str, elapsed_s: float, agent_id: str) -> None:
+    """Book a tool's metabolic cost to NAc (moved out of ``record_outcome``, #1315 item 3)."""
+    try:
+        # Expensive actions (>2s) get NEGATIVE energy valence; cheap ones NEUTRAL
+        energy_valence = _V.NEGATIVE if elapsed_s > 2.0 else _V.NEUTRAL
+        nac.observe(
+            event_type="energy",
+            event_signature=f"cost:{tool_name}",
+            outcome_type="energy_cost",
+            outcome_signature=f"elapsed:{elapsed_s:.1f}s",
+            outcome_valence=energy_valence,
+            delta_seconds=elapsed_s,
+            context={"agent_id": agent_id, "tool": tool_name},
+        )
+    except Exception:
+        log_swallowed_exception()
+
+
+def _parallel_entry(tool_name: str, parallel_action: dict[str, Any], result: Any) -> dict[str, Any]:
+    """One executed parallel action's result entry, carrying its learning fields (moved out of
+    ``execute_parallel_actions``, #1315 item 3)."""
+    success = getattr(result, "success", True)
+    output = getattr(result, "output", None)
+    error = getattr(result, "error", None)
+    # D53 review fold: this path discarded side_effects entirely, so
+    # the learning tier could not reach record_outcome below and a
+    # clamped motion dispatched in a parallel batch still booked
+    # POSITIVE. The pre-existing NOTE about drive_credit_withheld
+    # being "covered today because llm-primary sets
+    # drive_relief_only" does NOT extend to the tier: learn_valence
+    # is computed above and independently of the cluster block that
+    # drive_relief_only gates.
+    _side = read_learning_side_effects(result)
+
+    return {
+        "tool": tool_name,
+        "params": parallel_action.get("params", {}),
+        "success": success,
+        "result": str(output)[:2000] if output else None,
+        "error": error,
+        "_embodiment_failed": _side.embodiment_failed,
+        "_outcome_valence": _side.outcome_valence,
+        "_drive_potential_diff": _side.drive_potential_diff,
+        "_drive_credit_withheld": _side.drive_credit_withheld,
+        "_drive_relief_channel": _side.drive_relief_channel,
+        "_failure_booked": getattr(result, "nac_failure_booked", None),
+        "_refused": gate_refusal_of(result),  # executed branch only (#1315 item 3)
+    }
+
+
+#: ``operational_mode`` for the parallel batch, which is handed no loop state: the executor's grant or mode source
+#: (the loop always sets one), else ``DEFAULT_RUN_MODE``, exactly as ``operational_mode`` documents for no state.
+_NO_LOOP_STATE = SimpleNamespace(data={})
+
+
+def _audit_parallel_action(
+    autonomy_controller: Any, executor: Any, action: dict[str, Any], result: Any, reasoning: str, confidence: float
+) -> None:
+    """Write the executed parallel action's autonomy audit entry (#1315 item 3, §1A.2): the batch wrote none, so
+    ``max_consecutive_failures`` never saw a model that kept naming a refused tool in a batch."""
+    success = getattr(result, "success", True)
+    autonomy_controller.log_action(
+        action_type="executed",
+        action=action,
+        reasoning=reasoning,
+        mode=operational_mode(executor, _NO_LOOP_STATE),
+        confidence=confidence,
+        outcome="success" if success else "failure",
+        error=getattr(result, "error", None),
+    )
 
 
 def execute_parallel_actions(
@@ -690,33 +774,8 @@ def execute_parallel_actions(
             # Execute the action
             result = executor.execute(parallel_action)
             success = getattr(result, "success", True)
-            output = getattr(result, "output", None)
-            error = getattr(result, "error", None)
-            # D53 review fold: this path discarded side_effects entirely, so
-            # the learning tier could not reach record_outcome below and a
-            # clamped motion dispatched in a parallel batch still booked
-            # POSITIVE. The pre-existing NOTE about drive_credit_withheld
-            # being "covered today because llm-primary sets
-            # drive_relief_only" does NOT extend to the tier: learn_valence
-            # is computed above and independently of the cluster block that
-            # drive_relief_only gates.
-            _side = read_learning_side_effects(result)
-
-            parallel_results.append(
-                {
-                    "tool": tool_name,
-                    "params": parallel_action.get("params", {}),
-                    "success": success,
-                    "result": str(output)[:2000] if output else None,
-                    "error": error,
-                    "_embodiment_failed": _side.embodiment_failed,
-                    "_outcome_valence": _side.outcome_valence,
-                    "_drive_potential_diff": _side.drive_potential_diff,
-                    "_drive_credit_withheld": _side.drive_credit_withheld,
-                    "_drive_relief_channel": _side.drive_relief_channel,
-                    "_failure_booked": getattr(result, "nac_failure_booked", None),
-                }
-            )
+            parallel_results.append(_parallel_entry(tool_name, parallel_action, result))
+            _audit_parallel_action(autonomy_controller, executor, parallel_action, result, reasoning, confidence)
 
             if not success:
                 all_succeeded = False
@@ -767,6 +826,9 @@ def execute_parallel_actions(
             drive_relief_channel=pr.get("_drive_relief_channel"),
             # #1200 Stage 2: the signature the bridge booked a failure under (rejected / raised entries: None).
             bridge_booked=pr.get("_failure_booked"),
+            # #1315 item 3: a gate refusal books no NAc. The autonomy rejection above stays a booked negative
+            # (pre-existing, inconsistent with #1185; filed for an owner line).
+            refused=pr.get("_refused"),
             cluster_id=cluster_id,
             clusters=clusters,
             # Phase 1 guardrail must reach the BATCH path too: without this, an
@@ -893,6 +955,7 @@ def book_refusal(
         cluster_id=getattr(source, "cluster_id", None),
         clusters=getattr(source, "clusters", None),
         bridge_booked=None,  # refused: the tool never ran (#1200 Stage 2)
+        refused=None,  # a person's "no" still books NAc (#1185); only a gate's refusal does not (#1315 item 3)
     )
 
 
@@ -934,6 +997,7 @@ def book_machine_refusal(
         cluster_id=None,
         clusters=None,
         bridge_booked=None,  # refused: the tool never ran (#1200 Stage 2)
+        refused=None,  # no gate refused it: nac=None above already books no NAc
     )
 
 
@@ -1008,6 +1072,7 @@ def book_hard_rejection(
         cluster_id=proposal.cluster_id,
         clusters=proposal.clusters,
         bridge_booked=None,  # the tool never ran: nothing was bridge-booked
+        refused=None,  # the autonomy level, not a dispatch gate: a hard rejection still books NAc (#1185)
     )
     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
 
@@ -1104,6 +1169,80 @@ def _record_turn_after_effects(*, action: dict[str, Any], success: bool, proposa
                 tool_used=tool_name,
             )
     return tool_name
+
+
+def book_agent_fallback_failure(
+    e: Exception,
+    *,
+    rec_outcome: Callable[..., Any],
+    agent_id: str,
+    action: dict[str, Any],
+    result: Any,
+    proposal: Any,
+    recent_outcomes: list[dict[str, Any]],
+    max_recent: int,
+    llm_worker: Any,
+    context_pool: Any,
+    nac: Any,
+    state: Any,
+) -> None:
+    """Book an agent-fallback action whose dispatch raised (moved out of ``run_agentic_loop``'s body, #1315 item 3).
+
+    ``refused`` is ``gate_refusal_of(result)``: None when ``executor.execute`` itself raised (``result`` is still
+    None, so the failure books its NAc negative as before), a gate kind only if the gate refused and a later step
+    raised. The fallback path's own dispatch is tracked by #1147."""
+    log_agentic(
+        "agent_loop",
+        "error",
+        {"context": "agent_fallback_action", "error": str(e)},
+        level="ERROR",
+    )
+    _loop_logger.debug(f"Agent fallback action failed: {e}")
+
+    # Track exception in recent_outcomes for LLM learning
+    rec_outcome(
+        agent_id=agent_id,
+        tool_name=action["tool_name"],
+        success=False,
+        result_summary=None,
+        error=str(e),
+        reasoning=getattr(proposal, "reasoning", "") if proposal else "",
+        recent_outcomes=recent_outcomes,
+        max_recent=max_recent,
+        llm_worker=llm_worker,
+        context_pool=context_pool,
+        nac=nac,
+        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+        cluster_id=getattr(proposal, "cluster_id", None),
+        clusters=getattr(proposal, "clusters", None),
+        bridge_booked=getattr(result, "nac_failure_booked", None),
+        refused=gate_refusal_of(result),
+    )
+
+
+def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
+    """Store a succeeded timeout-retry prompt's state for the user's response (moved verbatim out of
+    ``execute_and_learn``, #1315 item 3)."""
+    # Plan 3.5 R2: fall back to the current agent-level LLM
+    # timeout default if the action didn't include _timeout_s.
+    # Was hardcoded 60.0 pre-plan (mesh-era value).
+    from maxim.agents.llm_worker import DEFAULT_LLM_CALL_TIMEOUT_S
+
+    timeout_s = action.get("_timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S)
+    # In sim mode, auto-resolve instead of blocking
+    sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
+    if sim_timeout_response is not None:
+        sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
+        state.data["pending_timeout_retry"] = {
+            "original_request": action.get("_original_request"),
+            "timeout_s": timeout_s,
+        }
+        state.data["pending_loop_reply"] = sim_timeout_response
+    else:
+        state.data["pending_timeout_retry"] = {
+            "original_request": action.get("_original_request"),
+            "timeout_s": timeout_s,
+        }
 
 
 def execute_and_learn(
@@ -1241,26 +1380,7 @@ def execute_and_learn(
 
         # If this was a timeout retry prompt, store state for user response
         if action.get("_timeout_retry") and success:
-            # Plan 3.5 R2: fall back to the current agent-level LLM
-            # timeout default if the action didn't include _timeout_s.
-            # Was hardcoded 60.0 pre-plan (mesh-era value).
-            from maxim.agents.llm_worker import DEFAULT_LLM_CALL_TIMEOUT_S
-
-            timeout_s = action.get("_timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S)
-            # In sim mode, auto-resolve instead of blocking
-            sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
-            if sim_timeout_response is not None:
-                sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
-                state.data["pending_timeout_retry"] = {
-                    "original_request": action.get("_original_request"),
-                    "timeout_s": timeout_s,
-                }
-                state.data["pending_loop_reply"] = sim_timeout_response
-            else:
-                state.data["pending_timeout_retry"] = {
-                    "original_request": action.get("_original_request"),
-                    "timeout_s": timeout_s,
-                }
+            _stash_timeout_retry(action, sim, state)
 
         # Invalidate cache for write operations to ensure fresh reads
         tool_name = action.get("tool_name", "")
@@ -1342,6 +1462,7 @@ def execute_and_learn(
             cluster_id=getattr(proposal, "cluster_id", None),
             clusters=getattr(proposal, "clusters", None),
             bridge_booked=getattr(result, "nac_failure_booked", None),
+            refused=gate_refusal_of(result),
             embodiment_failed=_embodiment_failed,
             drive_potential_diff=_drive_potential_diff,
             drive_credit_withheld=_drive_credit_withheld,
@@ -1355,7 +1476,7 @@ def execute_and_learn(
         # books a positive CausalLink that competes with the tool's
         # learned aversion (the PlanHistoryBridge records under the
         # same tool event signature).
-        if memory_hub is not None:
+        if memory_hub is not None and gate_refusal_of(result) is None:  # a gate refusal books no plan outcome
             _record_plan_outcome(
                 memory_hub=memory_hub,
                 goal=proposal.reasoning or "",
@@ -1464,6 +1585,7 @@ def execute_and_learn(
             cluster_id=getattr(proposal, "cluster_id", None),
             clusters=getattr(proposal, "clusters", None),
             bridge_booked=getattr(result, "nac_failure_booked", None),
+            refused=gate_refusal_of(result),
         )
 
         # Mark failure in state

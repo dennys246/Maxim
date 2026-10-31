@@ -11,12 +11,12 @@
     {
       "file": "src/maxim/api.py",
       "qualname": "run",
-      "lines": 276
+      "lines": 256
     },
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1419
+      "lines": 1412
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 829
+      "lines": 800
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -141,7 +141,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2178
+      "lines": 2164
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -151,7 +151,7 @@
     {
       "file": "src/maxim/runtime/bootstrap.py",
       "qualname": "build_executor",
-      "lines": 250
+      "lines": 223
     },
     {
       "file": "src/maxim/runtime/bootstrap.py",
@@ -181,12 +181,12 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 374
+      "lines": 357
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "record_outcome",
-      "lines": 399
+      "lines": 392
     },
     {
       "file": "src/maxim/similarity/encoder.py",

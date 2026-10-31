@@ -9,7 +9,6 @@ from maxim.agents.permissions import (
     PerceivedAuthority,
     PerceivedAuthorityTracker,
     SEMAccessRule,
-    tool_permissions_from_settings,
 )
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolOutput
@@ -343,23 +342,34 @@ class TestKindSelector:
 # ---------------------------------------------------------------------------
 
 
-class TestToolPermissionsFromSettings:
-    def test_unconfigured_is_none_not_an_empty_gate(self):
-        # None keeps Executor._permissions None — the pre-1.1.3 console.
-        assert tool_permissions_from_settings(None, ()) is None
-        assert tool_permissions_from_settings(None, None) is None
+class TestPolicyFromToolsSettings:
+    """``runtime/tool_policy.py::policy_from_tools_settings`` replaced ``tool_permissions_from_settings`` (#1315 item
+    3, §1A.5): the console's policy is always a real ``ToolPolicy``, never ``None``."""
+
+    def test_unconfigured_is_an_empty_deny_list_not_none(self):
+        from maxim.runtime.tool_policy import ToolPolicy, policy_from_tools_settings
+        from maxim.tools.base import Effect
+
+        for deny in ((), None):
+            policy = policy_from_tools_settings(None, deny)
+            assert type(policy) is ToolPolicy and policy.ceiling == Effect.ALL
+            assert policy.permissions == AgentPermissions()
 
     def test_allow_only(self):
-        perms = tool_permissions_from_settings(("respond", "speak"), ())
+        from maxim.runtime.tool_policy import policy_from_tools_settings
+
+        perms = policy_from_tools_settings(("respond", "speak"), ()).permissions
         assert perms == AgentPermissions(tool_allow=frozenset({"respond", "speak"}))
 
     def test_deny_only_keeps_allow_open(self):
-        perms = tool_permissions_from_settings(None, ["bash"])
-        assert perms is not None
+        from maxim.runtime.tool_policy import policy_from_tools_settings
+
+        perms = policy_from_tools_settings(None, ["bash"]).permissions
         assert perms.tool_allow is None
         assert perms.tool_deny == frozenset({"bash"})
 
     def test_explicit_empty_allow_is_a_real_no_tools_gate(self):
-        perms = tool_permissions_from_settings((), ())
-        assert perms is not None
+        from maxim.runtime.tool_policy import policy_from_tools_settings
+
+        perms = policy_from_tools_settings((), ()).permissions
         assert perms.can_invoke_tool("respond")[0] is False

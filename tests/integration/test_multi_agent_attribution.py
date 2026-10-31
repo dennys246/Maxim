@@ -46,6 +46,7 @@ from maxim.runtime.bio_integration import (
     reset_agent_stash,
 )
 from maxim.runtime.tool_dispatch import record_outcome
+from tests.policy_helpers import TEST_POLICY
 
 
 @pytest.fixture
@@ -59,6 +60,7 @@ def agent_pair(tmp_path: Path) -> tuple[Any, Any]:
             persistence_dir=str(tmp_path / "agent_alpha"),
             remembers=True,
             learns=True,
+            policy=None,
         )
     )
     agent_b = factory.create_agent(
@@ -68,6 +70,7 @@ def agent_pair(tmp_path: Path) -> tuple[Any, Any]:
             persistence_dir=str(tmp_path / "agent_bravo"),
             remembers=True,
             learns=True,
+            policy=None,
         )
     )
     yield agent_a, agent_b
@@ -108,6 +111,7 @@ class TestMultiAgentNacAttribution:
                 for success in (True, False, True):
                     record_outcome(
                         bridge_booked=None,
+                        refused=None,
                         agent_id=agent_id,
                         tool_name=tool,
                         success=success,
@@ -214,6 +218,7 @@ class TestSharedNacIsolation:
             for i in range(5):
                 record_outcome(
                     bridge_booked=None,
+                    refused=None,
                     agent_id=agent_id,
                     tool_name=f"{tool_prefix}_{i}",
                     success=True,
@@ -269,6 +274,7 @@ class TestEmptyAgentIdRejected:
         with pytest.raises(ValueError, match="non-empty"):
             record_outcome(
                 bridge_booked=None,
+                refused=None,
                 agent_id="",
                 tool_name="t",
                 success=True,
@@ -465,6 +471,7 @@ class TestCreateFullAgentBioStackAgentIdPropagation:
                 with_executor=False,
                 with_pain_bridge=False,
                 with_fear_gate=False,
+                policy=None,
             )
         )
         assert instance.memory_hub is not None
@@ -481,6 +488,7 @@ class TestCreateFullAgentBioStackAgentIdPropagation:
                 with_executor=False,
                 with_pain_bridge=False,
                 with_fear_gate=False,
+                policy=None,
             )
         )
         b = factory.create_full_agent(
@@ -492,6 +500,7 @@ class TestCreateFullAgentBioStackAgentIdPropagation:
                 with_executor=False,
                 with_pain_bridge=False,
                 with_fear_gate=False,
+                policy=None,
             )
         )
         assert a.memory_hub is not None and b.memory_hub is not None
@@ -519,6 +528,7 @@ class TestCreateFullAgentBioStackAgentIdPropagation:
                 with_executor=False,
                 with_pain_bridge=False,
                 with_fear_gate=False,
+                policy=None,
             )
         )
         assert instance.nac is not None
@@ -567,6 +577,7 @@ class TestCreateFullAgentBodyStateWiring:
             with_pain_bridge=True,
             with_fear_gate=False,
             embodiment_ref="bodies/infant_humanoid",
+            policy=TEST_POLICY,
         )
 
     @staticmethod

@@ -439,7 +439,7 @@ class BenchSession:
     def execute_and_record(self, tool_name: str, clusters: dict[str, str], *, reasoning: str) -> Any:
         """Execute through the REAL Executor and learn through the REAL
         ``record_outcome`` intake — the loop's own sequence, hand-ticked."""
-        from maxim.runtime.tool_dispatch import read_learning_side_effects, record_outcome
+        from maxim.runtime.tool_dispatch import gate_refusal_of, read_learning_side_effects, record_outcome
 
         out = self.aut.executor.execute({"tool_name": tool_name, "params": {}})
         side = read_learning_side_effects(out)
@@ -447,6 +447,7 @@ class BenchSession:
             agent_id=self.agent_id,
             tool_name=tool_name,
             bridge_booked=getattr(out, "nac_failure_booked", None),  # #1200 Stage 2
+            refused=gate_refusal_of(out),  # #1315 item 3: a gate refusal books no NAc
             success=bool(getattr(out, "success", False)),
             result_summary=str(getattr(out, "output", ""))[:80] or None,
             error=getattr(out, "error", None),
