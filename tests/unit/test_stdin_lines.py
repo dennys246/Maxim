@@ -195,6 +195,19 @@ def test_windows_takes_the_blocking_fallback(monkeypatch: pytest.MonkeyPatch, pi
     assert not OperatorLines(None, threading.Event()).interruptible
 
 
+def test_a_reader_with_no_time_left_is_not_waited_for_and_not_blamed_on_stdin(
+    pipe: _PipeStdin, caplog: pytest.LogCaptureFixture
+) -> None:
+    stop = threading.Event()
+    thread = _reader(OperatorLines(pipe, stop), stop, [])
+    with caplog.at_level(logging.INFO, logger=SLN.logger.name):
+        assert stop_reader(thread, timeout_s=0.0) is False
+    assert [r.levelno for r in caplog.records] == [logging.INFO], "an expired bound is not a stuck reader"
+    assert "no time left" in caplog.records[0].getMessage()
+    stop.set()
+    assert stop_reader(thread) is True
+
+
 class _Prompt:
     def __init__(self) -> None:
         self.has_pending_prompt = True

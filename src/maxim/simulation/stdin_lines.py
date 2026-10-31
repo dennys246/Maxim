@@ -135,10 +135,16 @@ def read_operator_lines(
 def stop_reader(thread: threading.Thread, *, timeout_s: float = STOP_JOIN_S) -> bool:
     """Join the run's ``sim.stdin`` reader once the run's stop event is set; False, with a warning, if it is still
     running after ``timeout_s``: blocked in a read on a stdin ``select`` cannot poll (it takes, and drops, one more line),
-    or still inside a slow command."""
-    thread.join(timeout=timeout_s)
+    or still inside a slow command. With no time left (a stopped run past its bound) it is not waited for, and says
+    so instead: a polling reader still ends at its next poll."""
+    thread.join(timeout=max(0.0, timeout_s))
     if not thread.is_alive():
         return True
+    if timeout_s <= 0:
+        logger.info(
+            "the sim.stdin reader was not waited for: the stop's bound has no time left (it ends at its next poll)"
+        )
+        return False
     logger.warning(
         "the sim.stdin reader did not stop within %.1fs of the run's stop: it is still in a command, or blocked on a "
         "stdin that cannot be polled (then it takes, and drops, the next line typed)",
