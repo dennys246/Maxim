@@ -149,6 +149,25 @@ maxim.run(model="mistral-7b")
 
 The decorator infers `input_schema` from type hints and exports it as JSONSchema.
 
+### Declaring what a tool can cause (optional)
+
+A tool may declare its **effect**: everything it can cause, as a set of
+`maxim.tools.base.Effect` flags (`READ`, `SELF_SCOPE`, `WRITE_LOCAL`, `NETWORK`,
+`COMMS`, `ACTUATE`, `GOVERN`). Declare it in the class body
+(`effect = Effect.READ | Effect.NETWORK`), or pass it to the verbs:
+`@maxim.tool(effect=Effect.READ)` or `maxim.register_tool(tool, effect=Effect.READ)`.
+Use one route per class: `register_tool(effect=)` declares the effect on the
+tool's class, so it refuses a class that already declares one (every
+`@maxim.tool` function tool does; pass `effect=` to the decorator instead).
+A tool that declares nothing counts as `Effect.ALL`, and `run()` runs it exactly
+as before. So does a class whose own `effect` attribute is not an `Effect` (with one
+WARNING naming the class), or whose `effect` was reassigned after the class was
+defined. Only an agent built with a narrower tool ceiling (the atonia gate, #1315)
+refuses a tool whose effect exceeds it, and the refusal is logged.
+
+A user tool that takes a built-in tool's name replaces it, as before, and now
+logs a `tool_replaced` WARNING each time an agent is built.
+
 ### Reference
 
 - ABC: [`src/maxim/tools/base.py`](../../src/maxim/tools/base.py)

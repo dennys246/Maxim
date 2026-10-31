@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.exceptions import ToolEffectRefused
 from maxim.simulation.dm_schema import CampaignDef, EncounterDef, roll_dice
 
 log = logging.getLogger(__name__)
@@ -874,6 +875,9 @@ class SceneState:
             )
             self._registered_tools[name] = [t.name for t in tools]
             log.info("Scene: registered %d tools for %s", len(tools), name)
+        except ToolEffectRefused as e:
+            # The registry already logged the structured WARNING (#1315 item 2); none of the entity's tools registered.
+            log.debug("Scene: tools for %s refused by the effect ceiling: %s", name, e)
         except Exception as e:
             log.debug("Scene: failed to register tools for %s: %s", name, e)
 

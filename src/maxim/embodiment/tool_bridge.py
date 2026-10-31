@@ -28,7 +28,7 @@ from maxim.embodiment.sem import (
     _resolve_sensor_slot,
 )
 from maxim.proprioception.pain import drive_failure_sensor
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
 from maxim.utils.logging import log_swallowed_exception
 
@@ -295,6 +295,8 @@ def _affordance_speech_params(schema: AffordanceSchema) -> tuple[str, ...]:
 class SensorReadTool(Tool):
     """Auto-generated tool: read a sensor on an entity."""
 
+    effect = Effect.READ
+
     # Generated per-entity by ``generate_tools_for_entity``; lives in the
     # scene-scoped roster and grayscale-eligible when inactive. See
     # [docs/plans/deferred/sense_tool_registry.md] § "Tool metadata".
@@ -396,6 +398,8 @@ class ModulatorAffordanceTool(Tool):
     modes immediately (don't wait for 1Hz poll), and feeds the actual
     sensor deltas to Cerebellum for forward model training.
     """
+
+    effect = Effect.ALL  # its modulator backends do motion, speech and network, and it can spawn tools
 
     # See SensorReadTool.kind — same provenance rationale.
     kind = "sem-modulator-derived"
@@ -998,6 +1002,8 @@ class ModulatorAffordanceTool(Tool):
 class EntitySenseTool(Tool):
     """Auto-generated tool: read ALL sensors on an entity at once."""
 
+    effect = Effect.READ
+
     # See SensorReadTool.kind — same provenance rationale.
     kind = "sem-modulator-derived"
 
@@ -1044,7 +1050,8 @@ def generate_tools_for_entity(
     entity : Entity
         Root of the entity tree (walks descendants).
     registry : ToolRegistry
-        Tools are registered here as they are created.
+        Every generated tool is registered here at the end, all or nothing: if the registry's effect ceiling
+        refuses one, ``ToolEffectRefused`` propagates and none is registered.
     entity_map : EntityMap, optional
         If provided, entity tree is registered for name-based lookup.
 
@@ -1053,9 +1060,6 @@ def generate_tools_for_entity(
     list[Tool]
         All generated tools (also registered in *registry*).
     """
-    # Populate EntityMap if provided
-    if entity_map is not None:
-        entity_map.register(entity)
     existing: set[str] = set(registry.list_all())
     tools: list[Tool] = []
 
@@ -1064,7 +1068,6 @@ def generate_tools_for_entity(
         if ent.sensors:
             tname = _resolve_tool_name(f"sense_{ent.name}", ent, existing)
             tool = EntitySenseTool(ent, tname)
-            registry.register(tool)
             existing.add(tname)
             tools.append(tool)
 
@@ -1076,7 +1079,6 @@ def generate_tools_for_entity(
                 existing,
             )
             tool = SensorReadTool(ent, sensor, tname)
-            registry.register(tool)
             existing.add(tname)
             tools.append(tool)
 
@@ -1098,10 +1100,14 @@ def generate_tools_for_entity(
                     cerebellum=cerebellum,
                     entity_map=entity_map,
                 )
-                registry.register(tool)
                 existing.add(tname)
                 tools.append(tool)
 
+    # All or nothing (#1315 item 2): under a ceiling one refused tool registers none of the entity's tools, and the
+    # entity is not put in the EntityMap either.
+    registry.register_many(tools)
+    if entity_map is not None:
+        entity_map.register(entity)
     log.info(
         "Generated %d tools for entity tree '%s'",
         len(tools),

@@ -100,7 +100,7 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
-from .base import Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
+from .base import Effect, Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
 
 
 def _rebase_relative(path: str, allowed_dirs: list[str] | None) -> str:
@@ -121,6 +121,7 @@ def _rebase_relative(path: str, allowed_dirs: list[str] | None) -> str:
 
 class ReadFileTool(Tool):
     name = "read_file"
+    effect = Effect.READ
     description = "Read a file from disk"
     input_schema = {
         "path": str,
@@ -180,6 +181,7 @@ class ReadFileTool(Tool):
 
 class WriteFileTool(Tool):
     name = "write_file"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = "Write content to a file on disk safely"
     input_schema = {
         "path": str,
@@ -349,6 +351,7 @@ class WriteFileTool(Tool):
 
 class ExecuteFileTool(Tool):
     name = "execute_file"
+    effect = Effect.ALL  # runs a model-chosen file
     description = "Execute a file using the appropriate interpreter based on file extension."
     timeout: float = 10.0  # scripts get a shorter default than general tools
     input_schema = {
@@ -473,6 +476,7 @@ class EditFileTool(Tool):
     """
 
     name = "edit_file"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = (
         "Replace specific text in a file. Read the file first to see current contents. "
         "If old_text matches multiple locations, use context_before/context_after to disambiguate."
@@ -683,6 +687,7 @@ class GlobTool(Tool):
     """
 
     name = "glob"
+    effect = Effect.READ
     description = "Search for files and directories using glob patterns"
     input_schema = {
         "pattern": str,  # Required: glob pattern (e.g., "**/*.py")
@@ -792,6 +797,7 @@ class RequestDirectoryChangeTool(Tool):
     """
 
     name = "request_directory_change"
+    effect = Effect.READ | Effect.WRITE_LOCAL | Effect.GOVERN
     description = "Request to change the effective working directory for file operations"
     input_schema = {
         "path": str,  # Required: new directory path
@@ -876,6 +882,7 @@ class BashTool(Tool):
     """
 
     name = "bash"
+    effect = Effect.ALL  # runs a model-chosen shell command
     description = "Execute shell commands"
     input_schema = {
         "command": str,  # Required: command to execute

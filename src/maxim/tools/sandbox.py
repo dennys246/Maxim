@@ -15,7 +15,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolResult, git_dir_write_refusal
+from maxim.tools.base import Effect, Tool, ToolResult, git_dir_write_refusal
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
@@ -38,6 +38,7 @@ class ReadDataFileTool(Tool):
     """
 
     name = "read_data_file"
+    effect = Effect.READ
     description = "Read a file from the data directory. Only files within your instance's data folder or shared read-only areas are accessible."
 
     input_schema = {
@@ -115,6 +116,7 @@ class ReadSandboxFileTool(Tool):
     """Read files from the sandbox directory."""
 
     name = "read_sandbox_file"
+    effect = Effect.READ
     description = "Read a file from the sandbox directory."
 
     input_schema = {
@@ -172,6 +174,7 @@ class WriteSandboxFileTool(Tool):
     """Write files to the sandbox directory."""
 
     name = "write_sandbox_file"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = "Write a file to the sandbox directory. Can create scripts or data files."
 
     input_schema = {
@@ -244,6 +247,7 @@ class ListSandboxTool(Tool):
     """List files in the sandbox directory."""
 
     name = "list_sandbox"
+    effect = Effect.READ
     description = "List files and directories in the sandbox."
 
     input_schema = {
@@ -335,6 +339,7 @@ class ExecuteSandboxScriptTool(Tool):
     """
 
     name = "execute_sandbox_script"
+    effect = Effect.ALL  # runs a script in a subprocess
     description = "Execute a Python or shell script in the sandbox. Scripts are resource-limited and isolated."
 
     input_schema = {
@@ -423,6 +428,7 @@ class CreateSandboxScriptTool(Tool):
     """Create a new script in the sandbox."""
 
     name = "create_sandbox_script"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = "Create a new Python or shell script in the sandbox scripts directory."
 
     input_schema = {
@@ -472,6 +478,7 @@ class ListOtherInstanceOutputsTool(Tool):
     """List output files from other Maxim instances."""
 
     name = "list_other_outputs"
+    effect = Effect.READ
     description = "List files that other Maxim instances have written to shared outputs."
 
     input_schema = {
@@ -508,6 +515,7 @@ class ReadOtherInstanceOutputTool(Tool):
     """Read a file from another instance's shared outputs."""
 
     name = "read_other_output"
+    effect = Effect.READ
     description = "Read a file from another Maxim instance's shared outputs (read-only)."
 
     input_schema = {
@@ -568,6 +576,7 @@ class WriteToSharedOutputsTool(Tool):
     """Write a file to this instance's shared outputs directory."""
 
     name = "write_shared_output"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = "Write a file to your instance's shared outputs, visible to other instances."
 
     input_schema = {

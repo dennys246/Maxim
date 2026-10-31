@@ -978,11 +978,20 @@ _REGISTRY_READERS = frozenset(
         "is_tool_active",
         "get_auto_fire_tools",
         "get_tools_by_kind",
+        "ceiling",  # #1315 item 2: a read-only property, fixed at construction
         "find_similar",
     }
 )
 _REGISTRY_WRITERS = frozenset(
-    {"register", "deregister", "register_scene_tools", "activate_scene", "deactivate_scene", "deactivate_tool"}
+    {
+        "register",
+        "register_many",  # #1315 item 2: the all-or-nothing batch
+        "deregister",
+        "register_scene_tools",
+        "activate_scene",
+        "deactivate_scene",
+        "deactivate_tool",
+    }
 )
 
 

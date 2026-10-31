@@ -60,7 +60,7 @@ the sandbox's.
 **Ingress is out of scope for item 10.** A leader bound to `0.0.0.0` and inbound comms are the inbound row's
 (item 4, and the sandbox).
 
-## 1. Owner decisions (V1–V8 decided 2026-10-24, V9–V10 2026-10-25; all as recommended)
+## 1. Owner decisions (V1–V8 decided 2026-10-24, V9–V10 2026-10-25, V11–V16 2026-10-30; all as recommended)
 
 The recommendation is listed first in each row, and it is what was decided.
 
@@ -77,6 +77,12 @@ The recommendation is listed first in each row, and it is what was decided.
 | **V8** | Under offline, may Maxim run any subprocess or connect to any endpoint? (asked 2026-10-24 after the v4 delta round) | **Nothing at all.** No subprocess the hook can see, no socket endpoint, no allow-list. Multiprocessing spawn children still start, through the unaudited `fork_exec`, and are latched by self-engage; their callers (`embodied_runtime/media_loop.py`, `data/camera/display.py`) are on the robot path, which is refused anyway. Offline also means **solo**: binding the leader proxy's `http.server` triggers a reverse-DNS lookup, which is refused, so the leader cannot start. The CLI's `llm.offline` needs an in-process model (the `llama_cpp` or `transformers` backend) and refuses at startup otherwise. The git tools drop. | The spawned-server allowance and the pinned git argv drew most of the fail-open findings in three consecutive rounds (v2 #3/#4, v3 #1/#2/#7, v4 #1–#4): endpoint revocation, listener ownership, and git's config-driven filters running code the latch cannot see. Neither the observer nor AvServ needs them. |
 | **V9** | The observer's import closure cannot hold: `maxim.runtime.executor` loads about 830 modules, and `models/language/config.py` parses the user's `profiles.yml` at import (three-lens round, 2026-10-25) | **Lazy package inits:** PEP 562 in `runtime`, `agents`, `tools` and `utils`; the profile load moves to first use. It is a new step 0, its own PR (§1A.1). | It is the root cause, and it makes `import maxim` lighter everywhere. A leaf-module observer would duplicate `Executor`'s check (two dispatchers for one gate), and dropping the closure gate would let a hostile `XDG_CONFIG_HOME` be parsed before `open()` refuses. |
 | **V10** | What may a ceiling do to the stable verbs `maxim.tool` / `register_tool` (2026-10-25)? | **Nothing in this release.** `maxim.run` keeps ceiling `ALL`. Ceilings below `ALL` apply only to the observer, Talk and offline, where undeclared user tools drop loudly. `effect=` is added as an optional form (§1A.4). | Both verbs are ✅ stable. A narrowed `maxim.run` would silently stop running users' tools in a patch. |
+| **V11** | Does a tool that calls the LLM router (sense_presence's imagination, design_entity) carry `NETWORK` (item 2 build, 2026-10-30)? | **No: the router is infrastructure.** Cloud egress is governed by the lanes and the offline latch (V8: offline means in-process lanes). | The agent loop sends to the router every turn anyway. With `NETWORK`, an offline ceiling would drop `sense_presence`, an auto-fire tool, even with an in-process model. |
+| **V12** | What do the narrator's `send_message`, `extend_simulation` and `inject_pain` declare (2026-10-30)? | **`ALL`.** Each drives a full turn of the agent under test, which can use any of its tools. | "Everything it can cause, through any collaborator" (§2.1), the reasoning that makes `spawn_sub_simulation` `ALL`. A narrator registry stays at ceiling `ALL`. |
+| **V13** | `focus_interests` reaches a multiprocessing spawn: `passive_observation` opens the display process even with `show=False` (2026-10-30) | **Declare `ALL` now, and file the `show=False` display bug as its own issue (#1544).** Once that is fixed the sink is gone and the tool can declare `READ\|ACTUATE`. | An exemption would excuse a sink that is itself a bug; fixing vision code would widen item 2. |
+| **V14** | What do the no-op stubs (observation-only `maxim_command`, `move`, `track_target`, …) declare (2026-10-30)? | **The real tool's effect.** `create_stub_tool` takes a required `effect=`. | A ceiling then refuses a name the same way whether or not a robot is attached, and the mode gate's name sets (`HOST_ACTING_TOOLS` includes `maxim_command`) agree with `Effect`. |
+| **V15** | A third-party `Tool` with its own non-`Effect` `effect` attribute, or `MyTool.effect = ...` after the class is defined (item 2 review round, executor S2 and wire F1, both reproduced; 2026-10-30) | **It counts as `ALL`, with one WARNING per class.** `effect_of` returns `ALL` whenever a class's own value is not a valid `Effect` or no longer matches its record, so ceiling `ALL` (`maxim.run`) admits the tool and any narrower ceiling refuses it. `Effect(0)` stays a `TypeError`. | §2.2 had a `TypeError` and an admission refusal at `ALL`, which broke the stable `Tool` ABC in a patch, against V10. |
+| **V16** | The `NETWORK` definition says "any egress off the machine", but V11 exempts the router and the robot link was classified `ACTUATE` (architecture S1; 2026-10-30) | **Amend the definition:** `NETWORK` is egress the tool causes off the machine, other than the configured LLM lanes (V11) and the configured robot body, whose channel is `ACTUATE`. Offline still refuses both, at the lanes and the latch. | Otherwise every robot tool would carry `NETWORK` and drop under any ceiling without it. |
 
 **Flagged, not asked now:** `maxim.research` already exists (`api.py::research`, Experimental), so Profile A's builder
 needs another name when items 13 and 14 start.
@@ -566,6 +572,58 @@ test pins that every tool in those sets declares a matching `Effect` flag, so th
 
 ## 2. Item 2: `Tool.effect` and the registry ceiling
 
+> **Status: BUILT 2026-10-30** (branch `feat/1315-item2-tool-effect`). As built, where it differs from the text below:
+> - The effect classification (86 classes) is in each class body; owner decisions V11–V14 settled the four judgement
+>   calls. Defaults taken without asking: ambient logging is not `SELF_SCOPE`; a first-use model download is
+>   infrastructure, not a tool effect; the robot link is `ACTUATE`, not `NETWORK`; `sense_tools` is `READ|GOVERN`
+>   (it re-activates scene tools); a Maxim-owned directory outside the data home (the sim tmpdir, `sandbox/`,
+>   `data/`) is `WRITE_LOCAL`; `READ` accompanies every flag set whose tool returns state it read.
+> - `ToolEffectRefused` lives in `maxim/exceptions.py` (a `MaximError`; `tool_name`, `effect`, `ceiling` as sorted
+>   flag-name lists) and is re-exported by `tools/registry.py`. Every site that catches one logs it through
+>   `tools/registry.py::log_effect_refusal` (event `tool_effect_refused`).
+> - The admission check is `tools/registry.py::EffectAdmission`, a mixin both registries inherit. Under `ALL`, a
+>   replacement by a different class logs a `tool_replaced` WARNING; the same class re-registered (a scene refresh)
+>   is silent. Re-registering the same instance is never a replacement.
+> - `ToolRegistry.register_many` is the all-or-nothing batch that `generate_tools_for_entity` uses; the entity joins
+>   the `EntityMap` only after its tools register. `register_scene_tools` admits the whole batch before evicting.
+> - `Effect.ALL` is attached after the class, so iterating `Effect` yields the seven flags on Python 3.10 too.
+> - `register_tool(tool, effect=)` declares the effect on the tool's class through `tools/base.py::declare_effect`,
+>   which refuses to rewrite a different existing declaration.
+> - The pinned literal-name helpers (§2.1) are checked by
+>   `tests/unit/test_tool_effect.py::test_pinned_import_helpers_take_only_literal_or_table_names`: three call sites
+>   pass a variable, each read from a module-level table of string literals.
+> - Ten item-2 red gates flipped. `test_o2_o5_...` stays red until item 3's dispatch check.
+> - **Review round (three lenses, 2026-10-30; reports under `docs/plans/reviews/item2/`), folded:**
+>   - V15 and V16 (§1). `test_item2_effect_record_semantics` is amended to V15, as its docstring says.
+>   - `effect_of` returns `ALL` for a class whose own `effect` no longer matches its record, so a stale narrower
+>     record can never reach a later check (item 3's dispatch). `Effect.ALL` cannot be reassigned (a metaclass).
+>   - **The registry logs every refusal where it raises** (`tool_effect_refused`, with the reason), not each
+>     catching site, because 19 registration `try` blocks outside the diff catch `except Exception`. The three
+>     sites the diff touches log at debug only, so a refusal is logged once.
+>   - `SimToolRegistry.register_many`; `register_tool` checks the name before it declares; `autonomy_level` gains
+>     `COMMS` (it asks the operator); the stub `effect=` is required.
+> - **Not built here, and owed by item 3:**
+>   - §2.2's prompt-roster bullet (`permits` applies the ceiling) is item 3's, with the dispatch seam.
+>   - **Prerequisite before any registry below `ALL` ships:** the batch `try` blocks around `register` (for
+>     example `simulation/orchestrator.py`'s and `embodied_runtime/agentic_runtime.py`'s) stop at the first
+>     refusal and drop every later tool in the block. Each needs a per-tool handler.
+>   - Entity acquisition (`Executor._handle_entity_acquisition`) reparents the entity before its tools register,
+>     so a refusal leaves a body-owned entity with no tools.
+>   - Under a ceiling, one `ALL` affordance (`ModulatorAffordanceTool`) keeps every tool of that entity out,
+>     its `READ` `sense_*` tools included (all or nothing). Talk (#1431) should know this.
+> - **Delta round** ([`code_delta.md`](reviews/item2/code_delta.md)): D1 (fail-open, folded: a deleted declaration is a
+>   mismatch, and a class that declared once can never be declared again, tracked in `_EFFECT_DECLARED`); D4, D5, D6
+>   and D7 folded (`Effect` is exported from `maxim.tools`; a top-level `maxim.Effect` would be an owner call). Left
+>   for a follow-up, all fail-closed: D2 (a refusal at a broad-handler site logs twice), D3 (the invalid-effect
+>   warning is once per class lifetime), wire F4 (`tool_replaced` can name one qualname twice).
+> - **Second delta round** ([`code_delta2.md`](reviews/item2/code_delta2.md)): D1's fix holds; D8 (fail-open, only with
+>   a third-party base whose `__init_subclass__` skips `super()`) folded: `declare_effect` refuses a class with no
+>   record. The micro-round on that fold ([`code_delta3.md`](reviews/item2/code_delta3.md)) returned **STOP**; its two
+>   fail-closed NITs (a class under a hook that skips `super()` can no longer take `register_tool(effect=)`, only
+>   the undeclared `ALL` form; the refusal message names one cause of two) go to the follow-up with D2, D3 and F4.
+> - Stated residual: a deregister followed by a register is not a replacement, so the below-`ALL` replacement rule
+>   does not see it. The effect bound still holds for the new tool.
+
 ### 2.1 The flags, defined
 
 A tool's effect is **everything it can cause**, through itself or through any collaborator it holds or is wired to
@@ -575,7 +633,7 @@ later, not what it is for.
 |---|---|
 | `READ` | Reads state; changes nothing outside process memory. |
 | `SELF_SCOPE` | Writes only Maxim's own persisted state under the data home (memory, NAc, its own logs). |
-| `WRITE_LOCAL` | Writes, moves or deletes files outside the data home. **Not "runs processes or code":** a tool that spawns a process, or runs code in-process (`exec`, `eval`, or `importlib` of a model-chosen name), can cause anything, so it declares `ALL`. The one exception is a fixed argv on the pinned exemption list `tools/effect_exemptions.json`, with a reason (the git tools: fixed argv plus `tools/base.py::GIT_HARDENING_ARGS`). The exemption holds **online only**: under offline the hook refuses every spawn (V8), so the git tools drop. Git's config-driven filters run code even with that hardening. **Checked:** an AST test over the `Tool` subclass closure fails any class whose methods reach a sink, unless it declares `ALL` or is on the exemption list. **Sinks:** `subprocess.*`, `os.exec*`, `os.system`, `os.popen`, `os.spawn*`, `os.posix_spawn*`, `os.fork*`, `pty.spawn`, `asyncio.create_subprocess_*`, `multiprocessing.*`, `exec`, `eval`, `compile`, `importlib.import_module`, `__import__`, `runpy.*` and `ctypes.*`. **Reach:** the call graph across `src/maxim` modules (resolved imports, `self.` methods, module functions), not only the same module. **Sink rules:**
+| `WRITE_LOCAL` | Writes, moves or deletes files outside the data home. **Not "runs processes or code":** a tool that spawns a process, or runs code in-process (`exec`, `eval`, or `importlib` of a model-chosen name), can cause anything, so it declares `ALL`. The one exception is a fixed argv on the pinned exemption list `tests/fixtures/effect_exemptions.json` (§1A.3), with a reason (the git tools: fixed argv plus `tools/base.py::GIT_HARDENING_ARGS`). The exemption holds **online only**: under offline the hook refuses every spawn (V8), so the git tools drop. Git's config-driven filters run code even with that hardening. **Checked:** an AST test over the `Tool` subclass closure fails any class whose methods reach a sink, unless it declares `ALL` or is on the exemption list. **Sinks:** `subprocess.*`, `os.exec*`, `os.system`, `os.popen`, `os.spawn*`, `os.posix_spawn*`, `os.fork*`, `pty.spawn`, `asyncio.create_subprocess_*`, `multiprocessing.*`, `exec`, `eval`, `compile`, `importlib.import_module`, `__import__`, `runpy.*` and `ctypes.*`. **Reach:** the call graph across `src/maxim` modules (resolved imports, `self.` methods, module functions), not only the same module. **Sink rules:**
 - An import or compile sink counts only with a **non-literal** name argument. `__import__("logging")` is not a
   sink, and `compile` matches the builtin `Name` only, never `re.compile`.
 - `require_optional_dependency` / `optional_dependency_available` (`utils/optional_deps.py`) and
@@ -594,7 +652,7 @@ that never reach it.
 - third-party code.
 
 Under offline the hook refuses every spawn regardless, so these matter only for online ceilings. Each is the future-code adversary, which the review rounds and the census lists, not this test, catch. |
-| `NETWORK` | Any egress off the machine, DNS included, GETs included. |
+| `NETWORK` | Egress the tool causes off the machine, DNS included, GETs included; not the configured LLM lanes (V11) or the configured robot body, whose channel is `ACTUATE` (V16). |
 | `COMMS` | Reaches a person or a channel (messages, calls, email). |
 | `ACTUATE` | Physical output: motion, sound, a display. |
 | `GOVERN` | Changes Maxim's own authority: mode, autonomy level, internet switch, allowed directories, the tool set. |
@@ -616,13 +674,15 @@ Examples:
 - **The declaration** is `effect: ClassVar[Effect]` in the **class's own `__dict__`**. An inherited value does not
   count, because overriding `execute` must not inherit READ.
 - **The record.** `Tool.__init_subclass__` records it, or `ALL` when it is absent, in a module-private
-  `WeakKeyDictionary`. A non-`Effect` value or `Effect(0)` raises `TypeError`.
+  `WeakKeyDictionary`. `Effect(0)` raises `TypeError`. A non-`Effect` value records `ALL` with one WARNING (V15;
+  the v6 text had a `TypeError`).
 - **The lookup.** `effect_of(obj)` reads `type(obj)`'s record. A type with no record (a duck-typed tool, a mock, a
-  class made outside `Tool`) is `ALL`.
+  class made outside `Tool`) is `ALL`, and so is a type whose own value no longer matches its record (V15).
 - **Mutation is visible.** The mismatch check compares the record with `type(obj).__dict__.get("effect")` only, never
-  an inherited `getattr`. **An absent value with a recorded `ALL` is consistent, not a mismatch.** Only a present
-  value that differs from the record refuses admission, loudly. That catches `cls.effect = ...` after creation, and
-  undeclared test tools and stable `register_tool` tools still register under a ceiling of `ALL`. `create_stub_tool` and `@tool` put `effect` in the class body they build.
+  an inherited `getattr`. **An absent value with a recorded `ALL` is consistent, not a mismatch.** A present value
+  that differs from the record, or a deleted declaration (`del cls.effect`, delta D1), is a mismatch: the tool counts
+  as `ALL`, so a ceiling below `ALL` refuses it loudly and `ALL` still admits it (V15). Undeclared test tools and
+  stable `register_tool` tools still register under a ceiling of `ALL`. `create_stub_tool` and `@tool` put `effect` in the class body they build.
 - **The check** is one helper: `exceeds(e, ceiling) = bool(e & ~ceiling)`. `Flag` has no subset `<=`, and `IntFlag`
   compares integers (WRITE_LOCAL ≤ READ|NETWORK), so neither operator is used anywhere.
 - **The registry ceiling** is fixed at construction: a read-only property, `ALL` by default.
@@ -648,7 +708,7 @@ Examples:
 
 | Input | How it could lie | Answer |
 |---|---|---|
-| `type(tool).effect`, reassigned | `create_stub_tool` already reassigns class fields | Record versus own-`__dict__` mismatch refuses |
+| `type(tool).effect`, reassigned or deleted | `create_stub_tool` already reassigns class fields | Record versus own-`__dict__` mismatch: the tool counts as `ALL` (V15) |
 | Inherited `effect` | Subclass of a READ tool writes | Own `__dict__` only; undeclared means `ALL` |
 | `Effect(0)` | Passes every ceiling | Refused at class creation |
 | Instance attributes (`effect`, `auto_fire`, `kind`) | Set per instance | `effect` is never read from the instance; `auto_fire` is moot once `auto_sense` is checked (V6); `kind` is not the gate |

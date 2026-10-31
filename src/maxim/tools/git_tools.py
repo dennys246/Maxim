@@ -27,6 +27,7 @@ import os
 import subprocess
 
 from maxim.tools.base import (
+    Effect,
     GIT_HARDENING_ARGS,
     Tool,
     ToolErrorKind,
@@ -57,6 +58,7 @@ class GitDiffTool(Tool):
     """Show git differences between commits or working tree."""
 
     name = "git_diff"
+    effect = Effect.READ  # a fixed git argv: on tests/fixtures/effect_exemptions.json
     description = "Show git differences between commits or working tree"
     input_schema = {
         "ref1": (str, "HEAD"),
@@ -135,6 +137,7 @@ class GitCommitTool(Tool):
     """Commit staged changes to git."""
 
     name = "git_commit"
+    effect = Effect.READ | Effect.WRITE_LOCAL  # a fixed git argv: on tests/fixtures/effect_exemptions.json
     description = "Commit staged changes to git"
     input_schema = {
         "message": str,

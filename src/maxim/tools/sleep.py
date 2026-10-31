@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ class SleepTool(Tool):
     """
 
     name = "sleep"
+    effect = Effect.READ | Effect.GOVERN
     description = (
         "Enter low-power sleep mode. Call this when there is nothing to do. "
         "You will wake automatically when the user speaks or provides input."

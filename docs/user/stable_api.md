@@ -25,10 +25,10 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | `maxim.list_models() -> dict[str, list[ModelInfo]]` | ✅ | Profile discovery. |
 | `maxim.download_model(name) -> bool` | ✅ | Local LLM download. |
 | `maxim.delete_model(name) -> bool` | ✅ | Local LLM cleanup. |
-| `maxim.register_tool(tool)` | ✅ | Custom tool registration. Process-wide and **persistent** — every later `run()`/`imagine()`/`campaign()` sees the tool; same-name re-registration replaces. |
+| `maxim.register_tool(tool, *, effect=None)` | ✅ | Custom tool registration. Process-wide and **persistent** — every later `run()`/`imagine()`/`campaign()` sees the tool; same-name re-registration replaces. The optional `effect=` (a `maxim.tools.base.Effect`, added in the atonia gate, #1315) declares everything the tool can cause; without it the tool counts as `Effect.ALL`, which `run()` still runs. No shipped agent narrows its tools yet; when one does, an undeclared tool is refused there and the refusal is logged. |
 | `maxim.unregister_tool(name) -> bool` | ✅ | Remove one registration; `True` if found. |
 | `maxim.clear_registered_tools() -> int` | ✅ | Remove all registrations; returns the count. |
-| `maxim.tool` (decorator) | ✅ | Function-as-tool decorator. |
+| `maxim.tool` (decorator) | ✅ | Function-as-tool decorator. `@maxim.tool(effect=Effect.READ)` is the optional declared form (same rule as `register_tool`'s `effect=`). |
 | `maxim.get_version_info() -> dict` | ✅ | Version + git hash. |
 | `maxim.__version__` | ✅ | Package version string. |
 

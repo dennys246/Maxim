@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class DisplayModeTool(Tool):
     """
 
     name = "display_mode"
+    effect = Effect.READ | Effect.ACTUATE
     description = (
         "Adjust what the user sees. Use 'bio' to surface memory and "
         "learning activity when something important is happening. Use "
@@ -94,6 +95,7 @@ class RequestInteractionTool(Tool):
     """
 
     name = "request_interaction"
+    effect = Effect.READ | Effect.ACTUATE | Effect.COMMS
     description = (
         "Request user input for an important decision. Only use when "
         "the decision has significant consequences and the agent is "
@@ -200,6 +202,7 @@ class SetSceneTool(Tool):
     """
 
     name = "set_scene"
+    effect = Effect.ACTUATE
     description = (
         "Set the scene header to describe the current situation. Update when location, objective, or context changes."
     )
