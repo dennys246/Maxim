@@ -13,7 +13,7 @@ worktree, and the text that must be pinned is this checkout's. (``test_finish_re
 read ``maxim.__file__``.)
 
 ``PARTS`` lists FUNCTIONS, not whole modules, unlike ``loop_source()``. The orchestrator module also
-holds helpers (``_resolve_finish_reason``, ``_finish_runner``, ``_restore_aut_from_session``...) whose
+holds helpers (``_finish_runner``, ``_restore_aut_from_session``, and ``sim_teardown._resolve_finish_reason``...) whose
 bodies repeat strings the pins look for at the CALL sites. A whole-module text would make those pins
 vacuous: the slice-0 loop lesson, where five pins went vacuous that way.
 
@@ -86,12 +86,30 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("stall_detector.py", "_spinner_truth"),
     ("stall_detector.py", "_hard_abort"),
     ("stall_detector.py", "_nudge"),
+    # the tail slice (#1438 PR 1c, owner decision D5, 2026-10-30): everything after the orchestrator loop returns,
+    # in its order, over one SimTail (the interactive post-sim prompt stays in orchestrator.py)
+    ("sim_teardown.py", "shut_down_run"),
+    ("sim_teardown.py", "release_run_resources"),
+    ("sim_teardown.py", "save_run_report"),
+    ("sim_teardown.py", "roundup_and_emit_report"),
+    ("sim_teardown.py", "end_run"),
+    ("sim_teardown.py", "build_simulation_result"),
+    # The stop behaviour on the tail slice (#1438 PR 1c): split out of the moved phases, plus the stop branch.
+    ("sim_teardown.py", "_signal_shutdown"),
+    ("sim_teardown.py", "_wait_for_run"),
+    ("sim_teardown.py", "_emit_report_json"),
+    ("sim_teardown.py", "_end_stopped_run"),
+    ("sim_teardown.py", "print_run_report"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one
 # appends it here in the same commit as the move, and appends its functions to ``PARTS``.
 # ``test_orchestrator_source.py`` holds the registry complete (its docstring lists the checks and their limits).
-EXTRACTION_MODULES: tuple[str, ...] = ("maxim.simulation.tty_stdin", "maxim.simulation.stall_detector")
+EXTRACTION_MODULES: tuple[str, ...] = (
+    "maxim.simulation.tty_stdin",
+    "maxim.simulation.stall_detector",
+    "maxim.simulation.sim_teardown",
+)
 
 # Top-level functions of an extraction module that are NOT the run's code, with the reason: module-level
 # helpers of ``orchestrator.py`` that moved with the code they serve. They are not in ``PARTS``, so a pin on
@@ -101,6 +119,10 @@ MOVED_MODULE_HELPERS: dict[tuple[str, str], str] = {
     "terminal restore), moved with the raw reader that arms it",
     ("tty_stdin.py", "_sigterm_handler"): "module level in orchestrator.py at 17710609 (the SIGTERM hook the raw "
     "reader installs), moved with it",
+    ("sim_teardown.py", "_resolve_finish_reason"): "module level in orchestrator.py (the run's finish-reason "
+    "priority, #1002), moved with the tail, its only caller",
+    ("sim_teardown.py", "_sim_provenance"): "module level in orchestrator.py (the report's M1 provenance), moved with "
+    "the tail, its only caller",
 }
 
 # What ``orchestrator.py`` looked like at main 17710609, before any extraction slice, frozen: every ``maxim``
@@ -112,8 +134,10 @@ PRE_SLICE_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "orchest
 # A ``maxim`` module ``orchestrator.py`` imports that it did not at 17710609, and that is NOT an extraction
 # module (a fix needing a new dependency), with the reason. Empty at slice 0.
 NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
-    "maxim.utils.cancellation": "#1438 PR 1b: _resolve_finish_reason reads yield_requested() so a campaign "
-    "ended by a process stop reports the typed abort 'yielded', never a status the stop caused",
+    "maxim.exceptions": "#1438 PR 1c: a simulation started under a process stop request refuses with "
+    "StopStillPending (at entry, and again if the stop lands during the model load)",
+    "maxim.utils.cancellation": "#1438 PR 1c: a simulation started under a process stop request refuses "
+    "(current_stop() at entry; PR 1b's yield_requested() read moved to sim_teardown with _resolve_finish_reason)",
 }
 
 # A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run
@@ -127,6 +151,10 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
     ("report.py", "_provider_failures"): (
         "#997: build_report's provider-failure attribution block moved out verbatim (rule T, after the URL scrub "
         "touched it); report assembly, not orchestrator run code"
+    ),
+    ("report.py", "release_start_provenance"): (
+        "#1438 PR 1c: the release paired with capture_start_provenance, for a sim refused after its start was "
+        "captured (the orchestrator imports report, never serving_provenance); not orchestrator run code"
     ),
     ("report.py", "_record_dict"): (
         "#997: the one serialization point both report writers share, reducing endpoint URLs; not orchestrator run code"

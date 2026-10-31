@@ -40,6 +40,14 @@ class Deadline:
         """At most ``seconds`` from now, clamped to this deadline."""
         return Deadline(min(self.at, time.monotonic() + max(0.0, seconds)))
 
+    def ending_early(self, seconds: float) -> Deadline:
+        """This deadline brought forward by ``seconds`` (never before now): a reserve kept for whoever waits on the
+        work this bound limits. Not ``sub``, which counts from NOW. ``none()`` stays unbounded (and an infinite
+        ``seconds`` never makes it NaN)."""
+        if math.isinf(self.at):
+            return self
+        return Deadline(max(time.monotonic(), self.at - max(0.0, seconds)))
+
     def share(self, fraction: float) -> Deadline:
         """``fraction`` of the remaining budget, clamped to this deadline. No bound stays no bound."""
         if math.isinf(self.at):

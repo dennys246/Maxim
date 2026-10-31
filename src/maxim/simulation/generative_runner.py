@@ -113,7 +113,7 @@ class GenerativeCampaignResult:
     turns: list[dict[str, Any]] = field(default_factory=list)
     decisions: list[dict[str, Any]] = field(default_factory=list)
     aut_responses: list[str] = field(default_factory=list)
-    finish_reason: str = "completed"  # "completed", "max_turns", "error"
+    finish_reason: str = "completed"  # "completed", "max_turns", "error", "yielded" (a process stop, #1438)
     duration_s: float = 0.0
     entity_tools_generated: int = 0
     exported_yaml_path: str | None = None
@@ -337,6 +337,32 @@ def export_campaign_yaml(
 # ---------------------------------------------------------------------------
 
 
+def _narrate_turn(
+    narrator: Narrator, last_aut_response: str, use_two_call: bool, turn_idx: int
+) -> tuple[str, dict[str, Any], str | None]:
+    """One narrator turn: ``(narrative, decision, finish)``, where a non-None ``finish`` ends the campaign.
+
+    ``error`` when the narrator raised; ``yielded`` when a process stop was requested before or during the call
+    (#1438 PR 1c). The router abandons a call in flight at a stop and the narrator falls back to a stub decision, so
+    the stop is checked AFTER the call too: a fabricated fallback turn is never delivered or recorded.
+    """
+    from maxim.utils.cancellation import yield_requested
+
+    if yield_requested():
+        return "", {}, "yielded"
+    try:
+        if use_two_call:
+            narrative, decision = _two_call_turn(narrator, last_aut_response)
+        else:
+            narrative, decision = _single_call_turn(narrator, last_aut_response)
+    except Exception as e:
+        log.error("Narrator failed at turn %d: %s", turn_idx + 1, e)
+        return "", {}, "yielded" if yield_requested() else "error"
+    if yield_requested():
+        return "", {}, "yielded"
+    return narrative, decision, None
+
+
 def run_generative_campaign(
     goal: str,
     bridge: Any,
@@ -481,14 +507,9 @@ def run_generative_campaign(
                             n_tools,
                         )
 
-        try:
-            if use_two_call:
-                narrative, decision = _two_call_turn(narrator, last_aut_response)
-            else:
-                narrative, decision = _single_call_turn(narrator, last_aut_response)
-        except Exception as e:
-            log.error("Narrator failed at turn %d: %s", turn_idx + 1, e)
-            finish_reason = "error"
+        narrative, decision, finish = _narrate_turn(narrator, last_aut_response, use_two_call, turn_idx)
+        if finish is not None:
+            finish_reason = finish
             break
 
         if narrator.is_done and not narrative:

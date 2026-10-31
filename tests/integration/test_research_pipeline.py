@@ -164,7 +164,7 @@ class TestWriterReviewerPipeline:
 class TestDynamicAnalysisKeys:
     def test_orchestrator_analysis_uses_dynamic_keys(self):
         """The _build_basic_analysis helper doesn't hardcode campaign names."""
-        from maxim.simulation.orchestrator import _build_basic_analysis
+        from maxim.simulation.sim_types import build_basic_analysis as _build_basic_analysis
 
         # With None introspector, should return empty dict (not crash)
         result = _build_basic_analysis(None)
@@ -172,7 +172,7 @@ class TestDynamicAnalysisKeys:
 
     def test_build_basic_analysis_with_mock_introspector(self):
         """_build_basic_analysis with a mock introspector returns analysis data."""
-        from maxim.simulation.orchestrator import _build_basic_analysis
+        from maxim.simulation.sim_types import build_basic_analysis as _build_basic_analysis
 
         mock_intro = MagicMock()
         mock_intro.full_analysis.return_value = {
