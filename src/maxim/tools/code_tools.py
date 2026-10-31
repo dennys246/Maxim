@@ -7,7 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
 
@@ -15,6 +15,7 @@ class CodeSearchTool(Tool):
     """Search file contents with regex support."""
 
     name = "search_code"
+    effect = Effect.READ
     description = "Search file contents with regex support"
     input_schema = {
         "pattern": str,
@@ -120,6 +121,7 @@ class RunTestsTool(Tool):
     """
 
     name = "run_tests"
+    effect = Effect.ALL  # spawns a model-chosen argv
     description = "Run test suite and return structured results"
     timeout = 300.0  # 5 minutes for test suites
     input_schema = {

@@ -14,7 +14,7 @@ import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin, urlsplit
 
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 
 if TYPE_CHECKING:
     pass
@@ -261,6 +261,7 @@ class HttpFetchTool(Tool):
     """
 
     name = "http_fetch"
+    effect = Effect.READ | Effect.NETWORK
     description = "Fetch content from a URL with safety checks"
     input_schema = {
         "url": str,  # Required: URL to fetch

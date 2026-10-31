@@ -10,7 +10,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from maxim.provenance.types import ProvenanceVerbosity
-from maxim.tools.base import Tool
+from maxim.tools.base import Effect, Tool
 
 if TYPE_CHECKING:
     from maxim.provenance.collector import ProvenanceCollector
@@ -20,6 +20,7 @@ class ExplainTool(Tool):
     """Surface provenance trace for the current or recent decision."""
 
     name = "explain"
+    effect = Effect.READ
     description = (
         "Show why Maxim made a decision — what memories, concepts, "
         "and predictions informed it. Supports: current cycle, recent "

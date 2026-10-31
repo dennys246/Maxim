@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from maxim.mesh.naming import UMR
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,7 @@ class RecordExperimentTool(Tool):
     """Log a structured experiment entry with hypothesis, method, result, conclusion."""
 
     name = "record_experiment"
+    effect = Effect.READ | Effect.WRITE_LOCAL
     description = (
         "Record a structured experiment. Provide hypothesis (what you predicted), "
         "method (what you did — which tools, prompts, scenarios), result (what "
@@ -185,6 +186,7 @@ class QueryExperimentsTool(Tool):
     """Search past experiments by keyword or tag."""
 
     name = "query_experiments"
+    effect = Effect.READ
     description = (
         "Search the experiment log. Use keyword to search hypothesis, method, "
         "result, and conclusion fields. Use tag to filter by experiment tags. "

@@ -14,7 +14,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 from maxim.memory.layer import activate_after_use
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 from maxim.utils.content_safety import frame_tool_output
 from maxim.utils.logging import log_swallowed_exception
 
@@ -39,6 +39,7 @@ class SayTool(Tool):
     """
 
     name = "say"
+    effect = Effect.READ
     description = (
         "Say something aloud in the current scene. Use for speaking to "
         "NPCs, answering riddles, or saying passwords/names when prompted."
@@ -93,6 +94,7 @@ class ThinkTool(Tool):
     """
 
     name = "think"
+    effect = Effect.READ | Effect.SELF_SCOPE
     untrusted_output = True  # replays recalled memory text: its follow-up is framed external (Session R)
     description = (
         "Pause and reason about the current situation before acting. "
@@ -292,6 +294,7 @@ class ExamineTool(Tool):
     """
 
     name = "examine"
+    effect = Effect.READ | Effect.SELF_SCOPE
     untrusted_output = True  # replays recalled memory text: its follow-up is framed external (Session R)
     description = (
         "Examine an object, person, or feature in the current scene. "

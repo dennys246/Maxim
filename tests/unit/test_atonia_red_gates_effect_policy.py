@@ -485,9 +485,6 @@ def _probe_tool(name: str, effect: Any, *, ran: list[str] | None = None, auto_fi
 # ══ item 2 ══════════════════════════════════════════════════════════════
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 2: every concrete Tool declares its own non-zero effect"
-)
 def test_item2_every_tool_declares_own_effect() -> None:
     """Every concrete Tool subclass reachable from src/maxim (AST closure, nested classes included) assigns a
     non-zero ``effect`` in its OWN class body (§2.2: an inherited value does not count), and the two factories
@@ -528,11 +525,6 @@ def test_item2_every_tool_declares_own_effect() -> None:
         api.unregister_tool("_atonia_probe_fn")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 2: process/code runners declare Effect.ALL or sit on tests/fixtures/effect_exemptions.json",
-)
 def test_item2_process_and_code_runners_declare_all() -> None:
     """§2.1 WRITE_LOCAL row: a Tool class whose methods reach a sink (subprocess.*, os.exec*/system/popen/spawn*/
     posix_spawn*/fork*, pty.spawn, asyncio.create_subprocess_*, multiprocessing.*, exec, eval, compile/
@@ -566,11 +558,13 @@ def test_item2_process_and_code_runners_declare_all() -> None:
     assert not violations, f"{len(violations)} sink-reaching tools neither declare ALL nor are exempt: {violations}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 2: the effect record (§2.2)")
 def test_item2_effect_record_semantics() -> None:
-    """§2.2: ``Effect(0)`` and a non-Effect value are refused at class creation (TypeError); a subclass of a READ
-    tool with no own ``effect`` records ALL; reassigning ``cls.effect`` after creation makes admission refuse
-    (``ToolEffectRefused``, loudly); ``exceeds`` is the subset check, so WRITE_LOCAL exceeds READ|NETWORK."""
+    """§2.2, as amended by owner decision V15 (2026-10-30, the item 2 review round): ``Effect(0)`` is refused at
+    class creation (TypeError); a non-Effect value records ALL (a third-party tool's own ``effect`` attribute keeps
+    working under ceiling ALL), where §2.2 had a TypeError; a subclass of a READ tool with no own ``effect`` records
+    ALL; reassigning ``cls.effect`` after creation makes ``effect_of`` ALL, so a ceiling below ALL refuses it
+    (``ToolEffectRefused``, loudly) and ALL still admits it; ``exceeds`` is the subset check, so WRITE_LOCAL exceeds
+    READ|NETWORK."""
     base = _require_effect()
     from maxim.tools.base import Effect, Tool, ToolOutput, effect_of, exceeds
     from maxim.tools.registry import ToolRegistry
@@ -581,8 +575,8 @@ def test_item2_effect_record_semantics() -> None:
         return type("ZeroProbe", (Tool,), {"name": "zero", "effect": effect, "execute": lambda self, **kw: None})
 
     _expect_raises(TypeError, lambda: _make(Effect(0)), "Effect(0) was accepted at class creation")
-    _expect_raises(TypeError, lambda: _make("READ"), "a non-Effect effect was accepted at class creation")
-    _expect_raises(TypeError, lambda: _make(1), "an int effect was accepted at class creation")
+    for bad in ("READ", 1):
+        assert effect_of(_make(bad)()) == Effect.ALL, f"a non-Effect effect {bad!r} did not record ALL (V15)"
 
     read_tool = _probe_tool("read_probe", Effect.READ)
     assert effect_of(read_tool) == Effect.READ, "a declared READ tool does not record READ"
@@ -595,7 +589,11 @@ def test_item2_effect_record_semantics() -> None:
     mutated_cls = type(_probe_tool("mut_probe", Effect.READ))
     mutated = mutated_cls()
     mutated_cls.effect = Effect.ALL  # after creation: the record says READ
-    _expect_raises(refused, lambda: ToolRegistry().register(mutated), "a reassigned cls.effect was admitted")
+    assert effect_of(mutated) == Effect.ALL, "a reassigned cls.effect left the stale READ record in force"
+    _expect_raises(
+        refused, lambda: ToolRegistry(ceiling=Effect.READ).register(mutated), "a reassigned cls.effect was admitted"
+    )
+    ToolRegistry().register(mutated)  # V15: ceiling ALL still admits it
 
     assert exceeds(Effect.WRITE_LOCAL, Effect.READ | Effect.NETWORK), "WRITE_LOCAL does not exceed READ|NETWORK"
     assert not exceeds(Effect.READ, Effect.READ | Effect.NETWORK), "READ exceeds READ|NETWORK"
@@ -624,9 +622,6 @@ def _full_default_registry(tmp_path: Path) -> Any:
         raise ScenarioBroken(f"build_tool_registry raised: {type(e).__name__}: {e}") from e
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 2: a READ ceiling refuses every non-READ built-in tool"
-)
 def test_item2_registration_sweep_under_read_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Registration sweep (a): every built-in tool of a fully built default registry, registered into a
     ``ToolRegistry(ceiling=Effect.READ)``, raises ``ToolEffectRefused`` unless ``effect_of`` is READ."""
@@ -654,9 +649,6 @@ def test_item2_registration_sweep_under_read_ceiling(tmp_path: Path, monkeypatch
     assert not wrong, f"the READ ceiling admitted/refused wrongly: {wrong}"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 2: same-name replacement refused below ALL (V10)"
-)
 def test_item2_same_name_replacement_below_all_refuses() -> None:
     """§2.2/V10: under any ceiling below ALL a same-name replacement refuses; under ALL it is allowed (and the
     replacement wins), as ``register_tool`` needs. The refusal type is not pinned; ``ToolEffectRefused`` is chosen,
@@ -678,9 +670,6 @@ def test_item2_same_name_replacement_below_all_refuses() -> None:
     assert wide.get("dup") is second, "under ALL the replacement must be allowed (register_tool, V10)"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 2: SimToolRegistry.get raises KeyError below ALL"
-)
 def test_item2_sim_registry_unknown_name_raises_below_all() -> None:
     """§2.2: ``SimToolRegistry.get`` of an unknown name under a ceiling below ALL raises ``KeyError`` instead of
     fabricating a ``_FallbackRedirectTool``; under ALL the orchestrator's fallback stays."""
@@ -1347,9 +1336,6 @@ def _classes_named(tool_name: str) -> list[tuple[str, str]]:
     return out
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 §1A.11: the mode gate's name sets agree with Effect"
-)
 def test_1a11_mode_name_sets_declare_matching_effect(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """§1A.11: until the name sets collapse, every tool in ``modes/definitions.py``'s ``HOST_ACTING_TOOLS``,
     ``NETWORK_CAPABILITY_TOOLS`` and ``FILESYSTEM_CAPABILITY_TOOLS`` declares a matching flag. "Matching" is not
@@ -1405,9 +1391,6 @@ def test_1a11_mode_name_sets_declare_matching_effect(tmp_path: Path, monkeypatch
     assert not wrong, f"name sets and Effect disagree: {wrong}"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 2: entity tool generation is all-or-nothing under a ceiling"
-)
 def test_item2_entity_generation_is_all_or_nothing() -> None:
     """§2.2: ``generate_tools_for_entity`` builds the full list, checks every tool, then registers, so one
     above-ceiling tool means none of the entity's tools is registered. Whether it raises or returns is not
@@ -1435,9 +1418,6 @@ def test_item2_entity_generation_is_all_or_nothing() -> None:
     assert not added, f"a partial entity tool set was registered under the ceiling: {sorted(added)}"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 2: a ceiling refusal at injection logs a structured WARNING"
-)
 def test_item2_inject_refusal_warns_with_tool_and_ceiling(caplog: pytest.LogCaptureFixture) -> None:
     """§2.2 / §1A.4: below ALL, an undeclared user tool drops LOUDLY: ``api._inject_registered_tools`` emits a
     WARNING naming the tool and the ceiling. "Structured" is read as: the tool name and the ceiling's flag name
@@ -1478,11 +1458,6 @@ def test_item2_inject_refusal_warns_with_tool_and_ceiling(caplog: pytest.LogCapt
 
 
 @pytest.mark.parametrize("learning", [False, True])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 §1A.4 / V10: @maxim.tool(effect=) and register_tool(..., effect=) are accepted and dispatch",
-)
 def test_v10_declared_effect_forms_dispatch_under_maxim_run(
     learning: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

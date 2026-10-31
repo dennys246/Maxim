@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolResult
+from maxim.tools.base import Effect, Tool, ToolResult
 
 if TYPE_CHECKING:
     from maxim.utils.response_output import ResponseOutput
@@ -28,6 +28,7 @@ class RespondTool(Tool):
     """
 
     name = "respond"
+    effect = Effect.READ | Effect.WRITE_LOCAL | Effect.ACTUATE
     description = (
         "Send a response to the user. Use for answering questions, providing information, "
         "or explaining concepts. Short responses appear in CLI; long or complex responses "
@@ -105,6 +106,7 @@ class SpeakTool(Tool):
     """
 
     name = "speak"
+    effect = Effect.READ | Effect.ACTUATE
     description = (
         "Speak text aloud using text-to-speech. Use this to verbally "
         "communicate with the user. Also prints the text to CLI."

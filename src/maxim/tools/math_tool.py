@@ -23,13 +23,14 @@ from maxim.math.ips import IPS
 from maxim.math.math_types import MathMemory
 from maxim.math.types import MathCategory
 from maxim.math.workspace import NumericalWorkspace
-from maxim.tools.base import Tool
+from maxim.tools.base import Effect, Tool
 
 
 class MathTool(Tool):
     """Mathematical cognition tool — routes between IPS and Angular Gyrus."""
 
     name = "math"
+    effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Perform mathematical operations. "
         "Approximate (fast): compare, trend, anomaly, estimate_sum, estimate_mean, categorize, "

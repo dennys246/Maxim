@@ -10,11 +10,12 @@ from __future__ import annotations
 import logging
 import math
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput
+from maxim.tools.registry import EffectAdmission
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -153,25 +154,40 @@ NARRATOR_TOOL_DESCRIPTIONS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
 del _NARRATOR_TOOL_DESCRIPTIONS_SOURCE
 
 
-class SimToolRegistry:
+class SimToolRegistry(EffectAdmission):
     """Tool registry that redirects unknown tool calls instead of raising KeyError.
 
     When the LLM proposes a tool that doesn't exist (e.g., 'bash', 'glob'),
     this registry returns a FallbackRedirectTool that tells the LLM to use
     send_message instead. This prevents silent failures and stalls.
+
+    The redirect exists only under the default ceiling ``ALL`` (#1315 item 2): below it, :meth:`get` of an unknown
+    name raises ``KeyError``, because a fabricated tool is a tool nobody admitted.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, ceiling: Effect = Effect.ALL) -> None:
+        self._set_ceiling(ceiling)
         self._tools: dict[str, Tool] = {}
 
     def register(self, tool: Tool) -> None:
+        self._admit(tool, self._tools.get(tool.name))
         self._tools[tool.name] = tool
         # Keep _FallbackRedirectTool's tool list in sync
+        _FallbackRedirectTool._registered_tools = self.advertised()
+
+    def register_many(self, tools: Iterable[Tool]) -> None:
+        """Register *tools*, all or nothing (``ToolRegistry.register_many``'s contract)."""
+        batch = list(tools)
+        self._admit_all(batch, self._tools)
+        for tool in batch:
+            self._tools[tool.name] = tool
         _FallbackRedirectTool._registered_tools = self.advertised()
 
     def get(self, name: str) -> Tool:
         if name in self._tools:
             return self._tools[name]
+        if self.ceiling != Effect.ALL:
+            raise KeyError(f"Tool not registered: {name}")
         # A redirect that names the REQUESTED tool in its error. Its follow-up
         # type is looked up by the requested name (tool_dispatch reads the
         # action's tool_name, in this registry's tool_descriptions() and then
@@ -211,8 +227,8 @@ class SimToolRegistry:
 
     def find_similar(self, name: str, limit: int = 3) -> list[str]:
         """Executor error-recovery compat — suggest similar tool names."""
-        # Simple substring match (SimToolRegistry.get never raises KeyError,
-        # so this path is unreachable in practice, but robustness matters).
+        # Simple substring match (SimToolRegistry.get raises KeyError only below
+        # the ALL ceiling, #1315 item 2; under ALL it redirects instead).
         matches = [t for t in self._tools if name.lower() in t.lower() or t.lower() in name.lower()]
         return matches[:limit]
 
@@ -221,6 +237,7 @@ class _FallbackRedirectTool(Tool):
     """Returned for any unknown tool name — rejects with available tool list."""
 
     name = "respond"  # Not what the follow-up type reads: that is the requested name (SimToolRegistry.get)
+    effect = Effect.READ
     description = "Redirect for unknown tools"
     input_schema = {}
 
@@ -281,6 +298,7 @@ class SendMessageTool(Tool):
     """
 
     name = "send_message"
+    effect = Effect.ALL  # drives a full AUT turn, which can use any AUT tool
     description = (
         "Send a message to the agent under test. Waits for the agent to "
         "process and respond, then returns the response text, all actions "
@@ -334,6 +352,7 @@ class ObserveActionsTool(Tool):
     """
 
     name = "observe_actions"
+    effect = Effect.READ
     description = (
         "Read the full action history from the simulation, or actions since "
         "a given index. Returns tool names, success/failure, blocked status, "
@@ -375,6 +394,7 @@ class CheckCompletionTool(Tool):
     """
 
     name = "check_completion"
+    effect = Effect.READ
     description = (
         "Evaluate whether your simulation goal has been achieved based on "
         "the actions taken so far. Returns a completion assessment with "
@@ -438,6 +458,7 @@ class AnalyzeResultsTool(Tool):
     """
 
     name = "analyze_results"
+    effect = Effect.READ
     description = (
         "Analyze the full simulation history for patterns. Groups actions "
         "by tool, identifies blocked actions and reasons, detects repeated "
@@ -511,6 +532,7 @@ class GenerateScenarioTool(Tool):
     """
 
     name = "generate_scenario"
+    effect = Effect.READ
     description = (
         "Generate a YAML simulation scenario from a natural language "
         "description. Useful for creating replayable test cases from "
@@ -586,6 +608,8 @@ class DamageComponentTool(Tool):
     """
 
     name = "damage_component"
+    # SELF_SCOPE: it publishes pain the AUT learns from (NAc credit, persisted with the agent), not only body state.
+    effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Apply damage to a specific body part of the agent. Specify which "
         "component the body has (e.g., 'torso', 'legs', 'arms' on a humanoid) and the damage "
@@ -742,6 +766,7 @@ class OrchestratorActorTool(Tool):
     """
 
     name = "actor"
+    effect = Effect.ALL  # builds and runs a ModulatorAffordanceTool, which is ALL
     description = (
         "Have a scene entity perform one of its affordances against a "
         "target (default: the agent under test). Use this when the "
@@ -961,6 +986,8 @@ class SetEntitySensorTool(Tool):
     """
 
     name = "set_entity_sensor"
+    # SELF_SCOPE: it publishes pain the AUT learns from (NAc credit, persisted with the agent), not only body state.
+    effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Set an agent body sensor to a specific value, or adjust it by a delta "
         "(pass exactly one of value / delta). Use for feeding (reduce hunger), "
@@ -1114,6 +1141,7 @@ class InjectPainTool(Tool):
     """
 
     name = "inject_pain"
+    effect = Effect.ALL  # drives a full AUT turn, which can use any AUT tool
     description = (
         "Send a pain signal to the agent under test, with intensity from 0.0 to 1.0. "
         "Tests pain detection, movement inhibition, and harm prediction responses."
@@ -1155,6 +1183,7 @@ class InspectAUTTool(Tool):
     """
 
     name = "inspect_aut"
+    effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Query the agent-under-test's internal state. The query names one of the AGENT UNDER TEST's "
         "introspection subsystems (they are its tools, not yours; call them only as this tool's query): "
@@ -1261,6 +1290,7 @@ class SimRespondTool(Tool):
     """
 
     name = "respond"
+    effect = Effect.READ
     description = "Do NOT use this tool. Use send_message instead to talk to the agent under test."
     advertised = False  # registered to catch a stray call, never offered (#1042)
     input_schema = {
@@ -1289,6 +1319,7 @@ class ExtendSimulationTool(Tool):
     """
 
     name = "extend_simulation"
+    effect = Effect.ALL  # drives a full AUT turn, which can use any AUT tool
     description = (
         "Continue the current simulation with a new objective. The agent "
         "keeps its conversation history. Use when you discover something "
@@ -1345,6 +1376,7 @@ class SpawnSubSimulationTool(Tool):
     """
 
     name = "spawn_sub_simulation"
+    effect = Effect.ALL  # builds and runs a whole sub-agent
     description = (
         "Run an isolated sub-simulation with a fresh agent. The sub-agent "
         "starts with no memory of previous interactions. Use for independent "
@@ -1619,6 +1651,7 @@ class FinishSimulationTool(Tool):
     )
 
     name = "finish_simulation"
+    effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "End the current simulation and produce the final report. "
         "IMPORTANT: finishing is terminal — only call this when you "

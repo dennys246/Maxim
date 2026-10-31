@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Tool, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolOutput
 from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
@@ -93,6 +93,7 @@ class UniversalSenseTool(Tool):
     """
 
     name = "sense"
+    effect = Effect.READ
     description = "Sense the state of an entity — health, durability, position, etc. Name the entity you want to sense."
     input_schema: dict[str, Any] = {"entity_name": str}
 
@@ -140,6 +141,7 @@ class SensePresenceTool(Tool):
     """
 
     name = "sense_presence"
+    effect = Effect.READ | Effect.SELF_SCOPE
     description = (
         "Scan your surroundings for interactive entities — creatures, objects, "
         "NPCs, environmental features. Shows what exists around you and what "
@@ -288,6 +290,7 @@ class SenseToolsTool(Tool):
     """
 
     name = "sense_tools"
+    effect = Effect.READ | Effect.GOVERN
     description = (
         "Discover what physical actions you can perform. Describe what "
         "you want to do — e.g., 'attack with sword', 'repair equipment', "
