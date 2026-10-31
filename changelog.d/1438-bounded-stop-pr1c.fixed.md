@@ -18,4 +18,10 @@
     captures for 0.5 s. An exit with no stop keeps its whole bound.
   - A stopped sim's container is removed in the background. `run_provenance` / `serving_provenance` gain a
     `deadline=` that bounds every report-time wait and fails skipped checks closed (`unknown: stopped`,
-    `model_changed_during_run` unknown); the sim's stop tail passes it in a follow-up PR.
+    `model_changed_during_run` unknown); the sim's stop tail passes it.
+  - A stopped sim's end fits inside the console's stop: it saves an early, partial report.json and action log
+    (`provenance.stop_stage: "early"`) before any wait, bounds its waits for the agent and DM threads and the
+    orchestrator's own shutdown by a share of the stop's deadline (an adopted agent's join no longer waits 300 s),
+    saves the full report (`stop_stage: "late"`) only if time is left, skips the LLM roundup, and never shows the
+    interactive post-sim prompt. With no stop, the end of a run is unchanged; its code moved to
+    `simulation/sim_teardown.py`.

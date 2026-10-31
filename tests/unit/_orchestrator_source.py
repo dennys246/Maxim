@@ -94,6 +94,12 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("sim_teardown.py", "roundup_and_emit_report"),
     ("sim_teardown.py", "end_run"),
     ("sim_teardown.py", "build_simulation_result"),
+    # The stop behaviour on the tail slice (#1438 PR 1c): split out of the moved phases, plus the stop branch.
+    ("sim_teardown.py", "_signal_shutdown"),
+    ("sim_teardown.py", "_wait_for_run"),
+    ("sim_teardown.py", "_emit_report_json"),
+    ("sim_teardown.py", "_end_stopped_run"),
+    ("sim_teardown.py", "print_run_report"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one

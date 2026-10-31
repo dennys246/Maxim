@@ -11,6 +11,11 @@ unchanged: each phase below is the tail's code verbatim, in the tail's order, re
     -> (post-sim prompt or print_report, in orchestrator.py) -> build_simulation_result
 
 ``_resolve_finish_reason`` and ``_sim_provenance`` moved with the code: the tail was their only caller.
+
+Under a process stop request (#1438 PR 1c, owner decisions D2 and D4), :func:`end_run` reorders and bounds the same
+phases instead: it signals the loops, saves an EARLY, partial report before any wait, waits within the tail's share of
+the stop's deadline, releases what the run held, saves the LATE report only if time is left, and skips the LLM
+roundup. With no stop request every step, order and wait is the one above.
 """
 
 from __future__ import annotations
@@ -25,9 +30,19 @@ from typing import Any
 
 from maxim.simulation.report import run_provenance
 from maxim.simulation.sim_types import SimulationResult, build_basic_analysis as _build_basic_analysis
-from maxim.utils.cancellation import yield_requested
+from maxim.utils.cancellation import StopRequest, current_stop, yield_requested
+from maxim.utils.deadline import Deadline
 
 logger = logging.getLogger(__name__)
+
+# The tail's share of what is left of a stop's deadline when the tail starts. The console's drain
+# (console/server.py::_drain_and_stop_handle) joins the run thread for share(0.4) of ITS bound, so a tail started at
+# t0 into a budget B ends at t0 + 0.35 * (B - t0), inside that join while t0 < 0.077 B; a tail started later is caught
+# by MaximHandle.stop's campaign-lock wait (share(0.3)) instead. The rest of the deadline stays for the
+# SimulationResult, the handle's lease safety net and the drain's own agent shutdown.
+_SIM_TAIL_SHARE = 0.35
+# The late report save starts only with more than this left (or more than the early save took, if longer).
+_LATE_SAVE_FLOOR_S = 0.5
 
 
 @dataclass
@@ -75,14 +90,30 @@ class SimTail:
     pre_campaign_turns: Any
     campaign_analysis: Any
     dm_rollup: Any
+    # The process stop request the tail ran under (None: no stop), snapshotted ONCE by end_run; the orchestrator's
+    # post-sim prompt and build_simulation_result read this snapshot, never the live request.
+    stop: StopRequest | None = None
 
 
 def _sim_provenance(
-    start: dict[str, Any], orch_worker: Any, aut_worker: Any, resume: Any, adopted: Any, goal: str
+    start: dict[str, Any],
+    orch_worker: Any,
+    aut_worker: Any,
+    resume: Any,
+    adopted: Any,
+    goal: str,
+    deadline: Deadline | None = None,
 ) -> dict[str, Any]:
-    """The report's provenance (M1 + baseline floors B0): extracted so ``start_simulation_mode`` does not grow."""
+    """The report's provenance (M1 + baseline floors B0): extracted so ``start_simulation_mode`` does not grow.
+    ``deadline``: a stopped sim's tail bound (``run_provenance`` skips the end code stamp and caps its waits)."""
     return run_provenance(
-        start, llm_worker=orch_worker, aut_worker=aut_worker, resume=resume, adopted=adopted is not None, goal=goal
+        start,
+        llm_worker=orch_worker,
+        aut_worker=aut_worker,
+        resume=resume,
+        adopted=adopted is not None,
+        goal=goal,
+        deadline=deadline,
     )
 
 
@@ -115,19 +146,18 @@ def _resolve_finish_reason(orch_error: Any, finish_context: dict | None, operato
 def shut_down_run(tail: SimTail) -> None:
     """Signal every loop to stop, then wait for the AUT and DM threads, stop the LLM workers and shut the
     orchestrator instance down (persisting its memory)."""
+    _signal_shutdown(tail)
+    _wait_for_run(tail, bound=None)
+
+
+def _signal_shutdown(tail: SimTail) -> None:
+    """Tell every loop, LLM call and runner to stop. Never waits."""
     from maxim.simulation.sim_logger import display_status, get_active_display
 
     _is_interactive = tail.is_interactive
     stop_event = tail.stop_event
     bridge = tail.bridge
     orchestrator_source = tail.orchestrator_source
-    aut_thread = tail.aut_thread
-    _adopted = tail.adopted
-    _dm_thread = tail.dm_thread
-    _dm_error = tail.dm_error
-    aut_llm_worker = tail.aut_llm_worker
-    orch_llm_worker = tail.orch_llm_worker
-    _orch_instance = tail.orch_instance
 
     # ── Interactive: update scene header for post-sim phase ──────────────
     if _is_interactive:
@@ -161,6 +191,20 @@ def shut_down_run(tail: SimTail) -> None:
     except Exception as e:
         logger.warning("Error while signalling shutdown: %s", e, exc_info=True)
 
+
+def _wait_for_run(tail: SimTail, *, bound: Deadline | None) -> None:
+    """Wait for the AUT and DM threads, stop the LLM workers and shut the orchestrator instance down. ``bound`` (a
+    stopped sim's tail deadline) caps every wait; None: today's waits."""
+    from maxim.simulation.sim_logger import display_status
+
+    aut_thread = tail.aut_thread
+    _adopted = tail.adopted
+    _dm_thread = tail.dm_thread
+    _dm_error = tail.dm_error
+    aut_llm_worker = tail.aut_llm_worker
+    orch_llm_worker = tail.orch_llm_worker
+    _orch_instance = tail.orch_instance
+
     display_status("Waiting for AUT to finish...")
     try:
         # Adopted persistent agent: the loop's tail runs FULL consolidation
@@ -168,7 +212,8 @@ def shut_down_run(tail: SimTail) -> None:
         # Returning early would (a) restore the tool lease under a live loop
         # and (b) let a second campaign's on_session_start race the first's
         # on_session_end on the same MemoryHub. (Review fold: Executor #5.)
-        aut_thread.join(timeout=5.0 if _adopted is None else 300.0)
+        aut_join_s = 5.0 if _adopted is None else 300.0
+        aut_thread.join(timeout=aut_join_s if bound is None else bound.cap(aut_join_s))
         if aut_thread.is_alive():
             display_status("AUT thread did not stop in time (continuing anyway)")
     except Exception as e:
@@ -177,9 +222,9 @@ def shut_down_run(tail: SimTail) -> None:
     # Wait for DM campaign thread if it was started
     if _dm_thread is not None and _dm_thread.is_alive():
         try:
-            _dm_thread.join(timeout=5.0)
-        except Exception:
-            pass
+            _dm_thread.join(timeout=5.0 if bound is None else bound.cap(5.0))
+        except Exception as e:
+            logger.debug("Failed to join the DM campaign thread: %s", e)
     if _dm_error:
         logger.error("DM campaign thread failed: %s", _dm_error[0])
 
@@ -194,7 +239,11 @@ def shut_down_run(tail: SimTail) -> None:
     # Persist orchestrator memory (Phase 3: cross-session learning).
     # shutdown() ends the session it owns (or waits for the loop that took it over) + saves hippocampus/cerebellum.
     try:
-        _orch_instance.shutdown()
+        if bound is None:
+            _orch_instance.shutdown()
+        else:
+            # Its own session end and its wait for a loop holding the session both end at the tail's deadline.
+            _orch_instance.shutdown(deadline=bound, loop_wait=bound)
     except Exception as e:
         logger.debug("Failed to shutdown orchestrator instance: %s", e)
 
@@ -305,9 +354,14 @@ def release_run_resources(tail: SimTail) -> None:
         logger.debug("disable_sim_logging failed: %s", e)
 
 
-def save_run_report(tail: SimTail) -> tuple[Any, str, float, str]:
+def save_run_report(
+    tail: SimTail, *, provenance: dict[str, Any] | None = None, partial: bool = False
+) -> tuple[Any, str, float, str]:
     """Build the run's report and save it, its action log, the AUT's state and the experiment log; returns
-    ``(report, report_dir, duration, finish_reason)``."""
+    ``(report, report_dir, duration, finish_reason)``.
+
+    A stopped tail passes ``provenance`` (computed once, for both its saves; None: computed here) and ``partial`` for
+    its early save, which writes report.json and the action log only."""
     from maxim.simulation.sim_logger import display_status
 
     bridge = tail.bridge
@@ -418,7 +472,9 @@ def save_run_report(tail: SimTail) -> tuple[Any, str, float, str]:
         # timestamp and diverge from the JSONL log's session_id field.
         session_id=session_id,
         started_at=start_time,
-        provenance=_sim_provenance(start_provenance, orch_llm_worker, aut_llm_worker, resume_record, _adopted, goal),
+        provenance=provenance
+        if provenance is not None
+        else _sim_provenance(start_provenance, orch_llm_worker, aut_llm_worker, resume_record, _adopted, goal),
     )
 
     # Attach fixture/substrate metrics if present
@@ -436,6 +492,8 @@ def save_run_report(tail: SimTail) -> tuple[Any, str, float, str]:
     action_count = len(bridge.get_all_actions())
     display_status(f"Saving action log ({action_count} records)...")
     save_action_log(bridge, base_dir=report_dir, session_id=report.session_id)
+    if partial:
+        return report, report_dir, duration, finish_reason
 
     if persistent_agent is not None:
         # HANDLE seam (a), branch 3: the persistent agent's state lives in
@@ -474,7 +532,7 @@ def save_run_report(tail: SimTail) -> tuple[Any, str, float, str]:
 
 def roundup_and_emit_report(tail: SimTail, report: Any, report_dir: str) -> None:
     """Run the LLM roundup into the saved report, and emit the machine-readable report when one was requested."""
-    from maxim.simulation.report import analyze_simulation, emit_report_json, save_report
+    from maxim.simulation.report import analyze_simulation, save_report
     from maxim.simulation.sim_logger import display_status
 
     llm_router = tail.llm_router
@@ -498,12 +556,18 @@ def roundup_and_emit_report(tail: SimTail, report: Any, report_dir: str) -> None
     elif llm_router is not None:
         display_status("Skipping LLM roundup (session cost ceiling reached)")
 
+    _emit_report_json(report)
+
+
+def _emit_report_json(report: Any) -> None:
     # Emit machine-readable report when --report-json was requested via
     # MAXIM_REPORT_JSON.  Set by cli.py from args.report_json so the env
     # var is the contract — orchestrator does NOT import argparse.  Pop
     # (not just read) so that two back-to-back sims in the menu loop do
     # not silently overwrite the first sim's report file when only the
     # first invocation passed --report-json.
+    from maxim.simulation.report import emit_report_json
+
     _report_json_path = os.environ.pop("MAXIM_REPORT_JSON", "").strip()
     if _report_json_path:
         try:
@@ -514,12 +578,74 @@ def roundup_and_emit_report(tail: SimTail, report: Any, report_dir: str) -> None
 
 def end_run(tail: SimTail) -> tuple[Any, str, float, str]:
     """The run's end, before the post-sim prompt: shut down, release, save the report, then the roundup. Returns
-    ``(report, report_dir, duration, finish_reason)``."""
+    ``(report, report_dir, duration, finish_reason)``. Under a process stop request: :func:`_end_stopped_run`."""
+    tail.stop = current_stop()
+    if tail.stop is not None:
+        return _end_stopped_run(tail, tail.stop)
     shut_down_run(tail)
     release_run_resources(tail)
     report, report_dir, duration, finish_reason = save_run_report(tail)
     roundup_and_emit_report(tail, report, report_dir)
     return report, report_dir, duration, finish_reason
+
+
+def _end_stopped_run(tail: SimTail, stop: StopRequest) -> tuple[Any, str, float, str]:
+    """The run's end under a stop request, within ``_SIM_TAIL_SHARE`` of its deadline (#1438 PR 1c, D2 + D4).
+
+    The early report (report.json and the action log, ``stop_stage: "early"`` in its provenance) is saved before any
+    wait, so a stop that expires in a wait still leaves one; it reads live state while the AUT may still be ending, so
+    it is partial by name. The provenance is computed once, bounded, for both saves. The late, full save runs only if
+    more than the early save took (at least ``_LATE_SAVE_FLOOR_S``) is left, and may overshoot by its own duration.
+    No LLM roundup: a stopped run makes no new LLM call. A yielded run is a typed abort either way, so neither report
+    is evidence."""
+    bound = stop.deadline.share(_SIM_TAIL_SHARE)
+    _signal_shutdown(tail)
+    provenance = _sim_provenance(
+        tail.start_provenance,
+        tail.orch_llm_worker,
+        tail.aut_llm_worker,
+        tail.resume_record,
+        tail.adopted,
+        tail.goal,
+        deadline=bound,
+    )
+    started = time.monotonic()
+    report, report_dir, duration, finish_reason = save_run_report(
+        tail, provenance={**provenance, "stop_stage": "early"}, partial=True
+    )
+    early_s = time.monotonic() - started
+    _wait_for_run(tail, bound=bound)
+    release_run_resources(tail)
+    if bound.remaining() > max(_LATE_SAVE_FLOOR_S, early_s):
+        report, report_dir, duration, finish_reason = save_run_report(
+            tail, provenance={**provenance, "stop_stage": "late"}
+        )
+    else:
+        logger.warning(
+            "Stopped sim %s: late report save skipped (%.1fs left of the tail's bound, the early save took %.1fs); "
+            "report.json is the early, partial one, and the AUT state and experiment log were not saved",
+            report.session_id,
+            bound.remaining(),
+            early_s,
+        )
+    logger.info("LLM roundup skipped: a process stop is requested (%s)", stop.reason)
+    _emit_report_json(report)
+    return report, report_dir, duration, finish_reason
+
+
+def print_run_report(tail: SimTail, report: Any, report_dir: str) -> None:
+    """Print the report where there is no post-sim prompt: a non-interactive run, or an interactive one under a stop
+    (the prompt waits on a human and starts a new sim; neither belongs inside a stop), whose live display closes
+    first so the report prints to the terminal."""
+    from maxim.simulation.report import print_report
+
+    if tail.is_interactive:
+        from maxim.simulation.sim_logger import get_active_display
+
+        display = get_active_display()
+        if display is not None:
+            display.stop()
+    print_report(report, session_dir=Path(report_dir) / report.session_id)
 
 
 def build_simulation_result(
@@ -569,7 +695,9 @@ def build_simulation_result(
 
     # Subsystem snapshot
     _snapshot: dict[str, Any] = {}
-    if aut_introspector is not None:
+    if tail.stop is not None and tail.aut_thread.is_alive():
+        logger.info("Subsystem snapshot skipped: the AUT thread outlived the stopped tail and still holds its state")
+    elif aut_introspector is not None:
         try:
             _snapshot = aut_introspector.benchmark_snapshot()
         except Exception as e:

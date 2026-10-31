@@ -514,7 +514,9 @@ def test_the_sim_passes_its_start_and_its_workers_to_the_report() -> None:
     (call,) = _calls(orchestrator_tree(), "build_report")
     keywords = {kw.arg: kw.value for kw in call.keywords}
     assert ast.unparse(keywords["started_at"]) == "start_time"
+    # A stopped tail computes the provenance once and passes it in (#1438 PR 1c); otherwise it is computed here.
     assert ast.unparse(keywords["provenance"]) == (
+        "provenance if provenance is not None else "
         "_sim_provenance(start_provenance, orch_llm_worker, aut_llm_worker, resume_record, _adopted, goal)"
     )
     from maxim.simulation import sim_teardown
@@ -522,5 +524,10 @@ def test_the_sim_passes_its_start_and_its_workers_to_the_report() -> None:
     (inner,) = _calls(ast.parse(inspect.getsource(sim_teardown._sim_provenance)), "run_provenance")
     assert {kw.arg: ast.unparse(kw.value) for kw in inner.keywords} == {
         "llm_worker": "orch_worker", "aut_worker": "aut_worker", "resume": "resume",
-        "adopted": "adopted is not None", "goal": "goal",
+        "adopted": "adopted is not None", "goal": "goal", "deadline": "deadline",
     }  # fmt: skip
+    (stopped,) = _calls(ast.parse(inspect.getsource(sim_teardown._end_stopped_run)), "_sim_provenance")
+    assert [ast.unparse(a) for a in stopped.args] == [
+        "tail.start_provenance", "tail.orch_llm_worker", "tail.aut_llm_worker", "tail.resume_record",
+        "tail.adopted", "tail.goal",
+    ] and {kw.arg: ast.unparse(kw.value) for kw in stopped.keywords} == {"deadline": "bound"}  # fmt: skip

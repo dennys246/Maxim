@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 
 # Extracted to sim_types.py
 from maxim.simulation.report import capture_start_provenance  # noqa: E402
-from maxim.simulation.sim_teardown import SimTail, build_simulation_result, end_run  # noqa: E402
+from maxim.simulation.sim_teardown import (  # noqa: E402
+    SimTail,
+    build_simulation_result,
+    end_run,
+    print_run_report,
+)
 from maxim.simulation.sim_types import (  # noqa: E402
     SimulationResult,
     load_resume_context_at as _load_resume_context_at,
@@ -2589,7 +2594,7 @@ def start_simulation_mode(
     )
     report, report_dir, duration, finish_reason = end_run(_tail)
 
-    if _is_interactive:
+    if _is_interactive and _tail.stop is None:
         display = _show_report_and_post_sim_prompt(report, report_dir)
 
         # Wait for user input: a goal (continue) or Enter (finish).
@@ -2625,9 +2630,6 @@ def start_simulation_mode(
                 prompt_handler=prompt_handler,  # the caller's handler outlives /new too (D40)
             )
     else:
-        # Non-interactive: just print the report
-        from maxim.simulation.report import print_report
-
-        print_report(report, session_dir=Path(report_dir) / report.session_id)
+        print_run_report(_tail, report, report_dir)
 
     return build_simulation_result(_tail, report, report_dir, duration, finish_reason)

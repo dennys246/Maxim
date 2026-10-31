@@ -215,6 +215,17 @@ Departures from the text below:
 - **Report-time waits take `deadline=`** (`run_provenance`, `serving_provenance`); the tail passes it. Under it the end code stamp is skipped (`unknown: stopped`), and skipped probes stamp `model_changed_during_run: null`.
 - **A stopped sim's container removal is detached** (own session, reaped on the next append).
 
+**As built, PR 1c's tail (2026-10-30; the decomposition's tail slice, D5).** First a pure move: everything after the orchestrator loop returns moved verbatim to `simulation/sim_teardown.py` (`end_run` over one `SimTail`, then `build_simulation_result`), the characterization golden byte-identical. Then the stop behaviour, in `sim_teardown.end_run` only: it snapshots `current_stop()` once (`SimTail.stop`), and with none runs today's sequence. Under one (`_end_stopped_run`):
+- The tail's bound is `stop.deadline.share(0.35)` (`_SIM_TAIL_SHARE`; the arithmetic against the drain's `share(0.4)` run join is in its comment).
+- Order: signal every loop; provenance ONCE with `deadline=bound`; the EARLY save (report.json and the action log); the bounded waits (AUT join `bound.cap(5 or 300)`, DM join `bound.cap(5)`, `AgentInstance.shutdown(deadline=bound, loop_wait=bound)`); the release (lease, DN unsubscribe, sandbox, imagination, sim logging); the LATE full save only if more than `max(0.5 s, the early save's wall time)` is left (else logged by name); no roundup; `MAXIM_REPORT_JSON` emits the last report saved.
+- `build_simulation_result` skips `benchmark_snapshot()` while the AUT thread is still alive, and the orchestrator shows no post-sim prompt under a stop (`print_run_report` closes an interactive run's live display and prints).
+
+Departures from the approach note:
+- **`stop_stage` lives in the report's `provenance` block** (`"early"` / `"late"`), not a new `SimulationReport` field: a field would add a key to every report.json, stopped or not (and to the characterization golden), and the provenance block already takes additive keys.
+- **The AUT wait is the thread join alone**, no separate `wait_session_ended`: the AUT's loop ends its own session on its thread (PR 0), so the bounded join covers both.
+- **`_resolve_finish_reason` keeps reading `yield_requested()`**, not the snapshot: the request is sticky until its owner clears it after the drain, which waits for this tail.
+- **The sandbox release stays before the late save:** under a stop its container removal is already detached (not waited on).
+
 - **`utils/deadline.py::Deadline`:** frozen and monotonic. It has `remaining()`, `expired()`, `share(fraction of
   remaining)` and `sub(seconds)` (both clamped to the parent), and `Deadline.none()`. Never persisted.
 - **`StopRequest`** in `utils/cancellation.py`, the neutral home: memory, runtime, console and the CLI import it, and

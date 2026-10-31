@@ -750,7 +750,6 @@ def _names(events: list[tuple[str, Any]]) -> list[str]:
     return [name for name, _ in events]
 
 
-@_RED
 def test_g8_under_a_stop_the_report_is_saved_before_the_tail_waits_on_the_aut(_tail_run: Any) -> None:
     request_stop("test", Deadline.after(10.0))
     _tail_run.end_run(_tail_run.tail)
@@ -760,7 +759,6 @@ def test_g8_under_a_stop_the_report_is_saved_before_the_tail_waits_on_the_aut(_t
     )
 
 
-@_RED
 def test_g9_under_a_stop_the_tails_waits_are_bounded_by_the_stops_deadline(_tail_run: Any) -> None:
     request_stop("test", Deadline.after(4.0))
     _tail_run.end_run(_tail_run.tail)
@@ -770,14 +768,12 @@ def test_g9_under_a_stop_the_tails_waits_are_bounded_by_the_stops_deadline(_tail
     assert kwargs.get("deadline") is not None, "the orchestrator instance's shutdown ran unbounded under the stop"
 
 
-@_RED
 def test_g10_under_a_stop_the_tail_skips_the_llm_roundup(_tail_run: Any) -> None:
     request_stop("test", Deadline.after(10.0))
     _tail_run.end_run(_tail_run.tail)
     assert "analyze_simulation" not in _names(_tail_run.events), "the roundup made an LLM call under the stop (D4)"
 
 
-@_RED
 def test_g10_under_a_stop_an_interactive_sim_skips_the_post_sim_prompt() -> None:
     # The prompt blocks on stdin for a human, and starts a new sim on an answer: neither belongs inside a stop.
     import ast
@@ -806,3 +802,46 @@ def test_with_no_stop_the_tail_keeps_todays_order_and_roundup(_tail_run: Any) ->
     assert join_timeout == 300.0, "an adopted agent's full consolidation lost its 300 s join"
     [kwargs] = [arg for name, arg in _tail_run.events if name == "orch_shutdown"]
     assert kwargs == {}, "with no stop the orchestrator instance's shutdown is called as today"
+
+
+def test_under_a_stop_provenance_is_computed_once_bounded_and_stamps_each_save(
+    _tail_run: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import maxim.simulation.sim_teardown as teardown
+
+    calls: list[Any] = []
+    monkeypatch.setattr(teardown, "run_provenance", lambda *a, **k: calls.append(k.get("deadline")) or {"s": 1})
+    request_stop("test", Deadline.after(30.0))
+    _tail_run.end_run(_tail_run.tail)
+    assert len(calls) == 1 and calls[0] is not None, f"provenance ran {len(calls)}x, deadlines {calls}"
+    stages = [k["provenance"].get("stop_stage") for name, k in _tail_run.events if name == "build_report"]
+    assert stages == ["early", "late"], stages
+    assert _tail_run.events[-1][0] != "analyze_simulation"
+
+
+def test_under_a_spent_stop_the_late_save_is_skipped_and_the_early_report_stands(
+    _tail_run: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    import maxim.simulation.report as report_mod
+
+    emitted: list[Any] = []
+    monkeypatch.setattr(report_mod, "emit_report_json", lambda report, path: emitted.append(path))
+    monkeypatch.setenv("MAXIM_REPORT_JSON", str(tmp_path / "r.json"))
+    request_stop("test", Deadline.after(0.0))
+    _tail_run.end_run(_tail_run.tail)
+    names = _names(_tail_run.events)
+    assert names.count("build_report") == 1 and "save_aut_state" not in names, names
+    assert emitted == [str(tmp_path / "r.json")], "the early report was not emitted when the late save was skipped"
+
+
+def test_a_stopped_result_skips_the_snapshot_while_the_aut_still_runs(_tail_run: Any) -> None:
+    import maxim.simulation.sim_teardown as teardown
+
+    tail = _tail_run.tail
+    tail.stop = request_stop("test", Deadline.after(5.0))
+    tail.aut_thread = MagicMock(is_alive=lambda: True)
+    tail.aut_introspector = MagicMock()
+    report = SimpleNamespace(session_id="s", turns=0, total_actions=0, blocked_actions=0, llm_summary="")
+    result = teardown.build_simulation_result(tail, report, "/tmp", 0.0, "yielded")
+    tail.aut_introspector.benchmark_snapshot.assert_not_called()
+    assert result.subsystem_snapshot == {}
