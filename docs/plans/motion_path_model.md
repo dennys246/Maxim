@@ -302,7 +302,7 @@ Rules around the loop:
   - `accepted` resolves when the checks of 5.1 steps 1 to 4 pass and the first SDK call starts, or with the refusal.
   - `completed` resolves with the final `MotionOutcome`.
   - The worker calls `set_running_or_notify_cancel()` before it runs a callable, so a cancelled ticket never moves.
-- **Tools wait on `accepted` only.** That is when the reason is known. The wait is at most 25 s, under `Tool.timeout` and `per_tool_timeout` (30 s).
+- **Tools wait on `accepted` only.** That is when the reason is known. The wait is at most 20 s (25 s before the PR 2a review: under the 25 s lock wait, so a cancel lands first), under `Tool.timeout` and `per_tool_timeout` (30 s).
   - A timeout cancels the ticket and returns "not started: the motor is busy", never success.
   - MoveTool and FocusOnSound call the controller synchronously on the tool thread. They get the outcome directly (through `as_outcome`), and no ticket is involved.
   - **Their lock wait is bounded (delta N5).** The controller acquires `_motion_lock` with `acquire(timeout=25)` on a dispatch that does not come from the motor thread. A timeout returns `MotionOutcome(ok=False, kind="cancelled", reason="motor busy")`, so the tool never runs past `per_tool_timeout`.
@@ -445,8 +445,8 @@ Rules around the loop:
     - the reconnect drain → `superseded`;
     - close → `cancelled`.
 11. **Two-stage ticket.**
-    - A refused move's reason reaches MaximCommandTool within the 25 s wait.
-    - A busy motor beyond 25 s → "not started"; the ticket is cancelled and never moves.
+    - A refused move's reason reaches MaximCommandTool within the tool's wait (20 s since the PR 2a review).
+    - A busy motor beyond the tool's wait → "not started"; the ticket is cancelled and never moves.
     - MoveTool and FocusOnSound get the outcome synchronously.
 12. **Learners.**
     - **PR 1:** a refused or partial move, and any non-ok outcome, never reaches the motor worker's `record_gaze(success=True)`, `record_movement_outcome` or `_contract_bound`. The bounds file is unchanged after a burst of refusals.
@@ -560,7 +560,7 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 2. **The split order**: body, then relative yaw, then roll and pitch, as the Executor measured. The whole move is refused if any planned chunk fails.
 3. **The fresh-read timeouts:** 100 ms LAN, 300 ms tunnel, measured on the rig before release. `control_mode` must be enabled.
 4. **"Settled" after an SDK timeout:** two reads 100 ms apart within 0.5°.
-5. **The tool wait:** at most 25 s, on `accepted`. A timeout cancels the ticket.
+5. **The tool wait:** at most 20 s (PR 2a review; was 25 s), on `accepted`. A timeout cancels the ticket, which holds until `accepted`.
 6. **One API** (`goto_target -> MotionOutcome`, truthy iff ok), following the `SyncResult` precedent.
 7. **The lifecycle re-centre:** 2° deadband, 2 s floor, translation held. (O8 replaced "canned sleep antennas are exempt": the lifecycle steps are composed and clamped. The 0.2 rad pose-space INIT test and dropping the SDK's trailing 2 s sleep are choices for the delta round.)
 8. **The `enable_motors` failure:** no motion, `disable_motors()` best-effort.
@@ -783,10 +783,24 @@ Three lenses on `origin/main..HEAD` at b0894a2b. Wire found one DO-NOT-MERGE; th
 | §5.6 vs §5.8 (**owner: book nothing**) | `_maybe_turn_around` plans the turn first and records no pain start for one refused before it moves; `limit` returns None so look_at proceeds clamped |
 | Architecture S4 (**owner: fold into 2a**): DN's own turn booked a refused turn as executed | `executed = as_outcome(turn_around(...)).ok` |
 | Wire 4 (**owner: follow-up**): the SEM orient turn clamps and reads the mirror | comment fixed; #1560 |
-| Architecture S2: the exact/at_least duration rule was written four times | `hardware/controller.py::policy_duration`, used by the tools, `move_head`, `move_antenna` and look_at; the standalone path takes a typed `DurationPolicy` |
+| Architecture S2: the exact/at_least duration rule was written four times | `hardware/controller.py::policy_duration`, used by the tools, `move_head`, `move_antenna` and look_at (the last in the delta round); the standalone path takes a typed `DurationPolicy` |
 | Architecture S3: plugin docs | extension_api.md §1 and robot-setup.md document `read_body_yaw` and `mark_motion_accepted` |
 | Wire 3: headless Selfy opened a queue no worker drained (25 s stalls) | `_open_motor_queue` keeps the synchronous path without a robot |
 | NITs folded | `MOTION_ACCEPT_WAIT_S` 20 s; `ANTENNA_EXTRAS`; `MotionTicket`'s docstring says `on_accept` must not block or dispatch; `move_antenna` with no side raises before the queue; split antenna hold; stale comments (exceptions.py, motor_backend.py, motion_finite_1496.md) |
 | Not folded, recorded for 2b | the synchronous path (no queue) captures controller exceptions in the ticket, so DN's and gaze_manager's IK substring classifiers no longer see them there (Wire 7, Executor 7); tools report success at `accepted`, so a first SDK call that raises, a partial split or an IK failure reaches the model as success (Executor 8, by design: the tool waits on `accepted` only); `MotorQueue.submit`, `MotionTicket.on_accept` and `event_id` are 2b's plumbing with no 2a producer; the ±160° limit is planned outside the controller's lock, so a body moved between plan and dispatch is clamped by the controller, not refused |
 
 Each fold's guard is in `tests/unit/test_motion_outcomes_1499.py` ("Review round folds"), deletion-probed.
+
+### Delta round on the folds (2026-11-01)
+
+Executor + Wire: **SOUND, no further round owed** (four NITs, fail-closed or cosmetic). Architecture: one SHOULD-FIX,
+not fail-closed, so a further delta round is owed after it:
+
+| Finding | Fold |
+|---|---|
+| Architecture SF1: the stale-mirror re-read keyed on the last command enqueued, so an antenna or look-at queued after the failed move hid it (probe-verified: the retry was again a no-op reported as success) | `move` keeps the ticket of the move that wrote the mirror (`_mirror_ticket`); `_enqueue_motor` no longer records one |
+| Both lenses: `_controller_look_at` still wrote the duration rule inline | it calls `policy_duration`, now typed `DurationPolicy` |
+| Both lenses: `_maybe_turn_around`'s docstring still said a refused turn books a failure | rewritten: refused at planning books nothing, dispatched then refused books a failure, and a planning refusal still uses up the cooldown |
+| Architecture NIT 4: a withdrawn no-op logged a false "controller does not call mark_motion_accepted" | the Reachy controller's "nothing to move" accepts (and honours a cancel) like any dispatch |
+| Architecture NIT 5/6: `MOTION_ACCEPT_WAIT_S`'s comment; the design body's 25 s tool wait; a long changelog line | reworded; 20 s in §5.6, §9 and §12 |
+| Not folded | the automatic turn plans twice (two readbacks; a body moved between them books a failure for a turn that did not move): same plan/dispatch race as the row recorded for 2b; the mirror re-read can catch a mid-motion pose while an earlier accepted move runs (strictly better than the unreached target it replaces) |

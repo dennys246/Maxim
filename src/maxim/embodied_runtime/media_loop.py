@@ -764,8 +764,6 @@ class MediaLoopMixin:
             ticket = MotionTicket()
             ticket.claim()
             run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
-        # Movement reads it to re-sync a mirror its move wrote but never reached (_resync_mirror_if_unstarted).
-        self._last_motion_ticket = ticket
         return ticket
 
     def _clear_motor_queue(self) -> int:

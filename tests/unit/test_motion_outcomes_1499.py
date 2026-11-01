@@ -790,3 +790,33 @@ def test_move_antenna_with_no_side_is_refused_before_the_queue(daemon):
     with pytest.raises(ValueError):
         selfy.move_antenna()
     assert failures == []
+
+
+def test_a_command_queued_after_a_failed_move_does_not_hide_the_stale_mirror(daemon, monkeypatch):
+    """Delta round (Architecture SF1): the re-read keys on the move that wrote the mirror, not the last enqueue."""
+    import maxim.hardware.controller as hc
+    from maxim.tools.reachy import MaximCommandTool
+
+    monkeypatch.setattr(hc, "MOTION_ACCEPT_WAIT_S", 0.3)
+    selfy = _selfy(controller(daemon), daemon)
+    synced = []
+    selfy.sync_head_position = lambda: (synced.append(1), setattr(selfy, "yaw", 0.0))[-1]
+    stop = _start_worker(selfy)
+    try:
+        release, started = threading.Event(), threading.Event()
+        selfy._enqueue_motor(_blocker(release, started))
+        assert started.wait(2.0)
+        assert not MaximCommandTool(selfy).execute(command="move", params={"yaw": 10.0}).success
+        release.set()
+        other = selfy._enqueue_motor(lambda: True)  # an antenna gesture or a look-at that ran ok
+        assert other.completed.result(timeout=2.0).ok
+        before = len(daemon.gotos())
+        retry = MaximCommandTool(selfy).execute(command="move", params={"yaw": 10.0})
+        assert retry.success and synced
+        deadline = time.monotonic() + 2.0
+        while len(daemon.gotos()) == before and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(daemon.gotos()) > before
+    finally:
+        release.set()
+        stop.set()

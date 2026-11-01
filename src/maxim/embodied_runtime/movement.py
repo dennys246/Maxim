@@ -20,6 +20,7 @@ from maxim.hardware.controller import (
     MotionTicket,
     PixelTarget,
     as_outcome,
+    policy_duration,
     clamp_finite,
     floor_duration,
     normalize_method,
@@ -839,7 +840,10 @@ class MovementMixin:
         Returns the turn's outcome when a turn was tried (the caller returns it),
         or None when look_at should proceed: no turn was due, or the turn cannot
         fit inside the body limit, so the head moves clamped instead (#1499 5.8).
-        A refused turn is booked a failure with the pain bridge (D3).
+        A turn refused at planning books nothing with the pain bridge (owner,
+        2026-11-01); one dispatched and then refused or failed books a failure
+        (D3). A turn refused at planning still uses up the cooldown, so look_at
+        does not re-plan it every frame.
         """
         import time as time_module
 
@@ -917,11 +921,13 @@ class MovementMixin:
         superseded, cleared, cancelled or refused before its first SDK call
         left the mirror at a pose the robot never reached, so an identical
         retry would be a no-op reported as success. The worker re-reads after
-        a move that ran and failed; this covers the moves that never ran.
+        a move that ran and failed; this covers the moves that never ran. It
+        keys on the ticket of the move that wrote the mirror, not the last
+        command queued: an antenna or look-at in between does not hide it.
         """
-        ticket = getattr(self, "_last_motion_ticket", None)
+        ticket = getattr(self, "_mirror_ticket", None)
         if ticket is not None and ticket.never_started:
-            self._last_motion_ticket = None
+            self._mirror_ticket = None
             self.sync_head_position()
 
     def _restrict_horizontal(
@@ -1104,7 +1110,7 @@ class MovementMixin:
             return MotionTicket.resolved(MotionOutcome.refused("error", "no robot controller to dispatch the look-at"))
 
         def _controller_look_at(u_: int, v_: int, *, duration: float) -> Any:
-            target_duration = require_duration(duration) if duration_policy == "exact" else floor_duration(duration)
+            target_duration = policy_duration(duration, duration_policy)
             return robot.look_at_pixel(
                 PixelTarget(u=u_, v=v_, duration=target_duration, duration_policy=duration_policy)
             )
@@ -1270,7 +1276,7 @@ class MovementMixin:
             "x": self.x,
         }
 
-        return self._enqueue_motor(
+        ticket = self._enqueue_motor(
             move_head,
             self.mini,
             self.x,
@@ -1289,6 +1295,9 @@ class MovementMixin:
             duration_policy=duration_policy,
             _commanded_6d=commanded_6d,
         )
+        # The ticket of the move that wrote the mirror: if it never starts, the next move re-reads the pose.
+        self._mirror_ticket = ticket
+        return ticket
 
     def move_relative(
         self,

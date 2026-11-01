@@ -90,8 +90,9 @@ MOTION_DURATION_MAX_S = 10.0
 # kept well under ``Tool.timeout`` and the executor's per-tool timeout (30 s),
 # which also cover the tool's own work before it enqueues. Past it the tool
 # cancels the ticket (valid until ``accepted``) and reports "not started: the
-# motor is busy". It lives beside ``MOTION_LOCK_WAIT_S``'s robot-agnostic
-# counterparts because the controller's lock wait is what it waits behind.
+# motor is busy". It is deliberately shorter than the Reachy controller's
+# ``MOTION_LOCK_WAIT_S`` (25 s), so a tool's cancel lands while the worker is
+# still blocked on the motion lock, before anything is accepted.
 MOTION_ACCEPT_WAIT_S = 20.0
 
 # Canonical interpolation names. ``cartoon`` is refused: it overshoots its
@@ -372,7 +373,7 @@ def mark_motion_accepted() -> bool:
 # The one rule for a requested duration (#1499 5.5): an ``"exact"`` duration is
 # the caller's and is checked as given (``require_duration``); any other is a
 # default and is floored into range (``floor_duration``).
-def policy_duration(value: Any, policy: str) -> float:
+def policy_duration(value: Any, policy: DurationPolicy) -> float:
     """*value* as the duration a target ships with under *policy* (exact: checked; at_least: floored)."""
     return require_duration(value) if policy == "exact" else floor_duration(value)
 

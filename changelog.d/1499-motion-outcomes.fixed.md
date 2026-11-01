@@ -12,8 +12,9 @@
     waits for each move to complete.
   - The tools wait for `accepted` (at most 20 s, then "not started: the motor is busy"; a cancel holds until the move
     is accepted, so it never runs behind that answer) and return the controller's reason (`rate`, `path`,
-    `reference`, `limit`…) instead of "Motion command failed". A duration the model chose is `exact` and refused when too fast; an absent one is stretched. `track_target` and
-    `novelty_track` no longer advertise a 0.3 s default, which models copied into every call.
+    `reference`, `limit`…) instead of "Motion command failed". A duration the model chose is `exact` and refused
+    when too fast; an absent one is stretched. `track_target` and `novelty_track` no longer advertise a 0.3 s
+    default, which models copied into every call.
   - `turn_around` returns a `MotionOutcome`, plans from the daemon's fresh body yaw (never the mirror), and refuses
     a turn that would end past ±160° (`limit`) instead of shrinking it; the automatic turn in `look_at` then looks
     with the head clamped and books nothing with the pain bridge, and the Default Network's own turn is no longer

@@ -829,6 +829,8 @@ class ReachyMiniController(RobotController):
             logger.warning("goto_target refused (%s): %s", e.kind, e.reason)
             return MotionOutcome.refused(e.kind, e.reason)
         if composed is None:
+            if not mark_motion_accepted():  # a no-op is accepted like any dispatch, so a cancel is honoured
+                return MotionOutcome.refused("cancelled", "cancelled before the move started")
             return MotionOutcome(ok=True, reason="nothing to move", duration_s=0.0)
         pose, axes, body_commanded = composed
         return self._run_move(
