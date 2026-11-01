@@ -546,6 +546,63 @@ def delete_model(name: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _tear_down_run(
+    *,
+    stop_event: threading.Event,
+    llm_worker: Any | None,
+    instance: Any | None,
+    robot_lease: "_RunRobotLease | None",
+    saved_env: dict[str, str | None] | None,
+    active_error: BaseException | None,
+) -> None:
+    """run()'s cleanup: stop, shut the agent down, release the robot and the environment, then the run lock.
+
+    Every step runs even when an earlier one fails; the first cleanup failure is raised only when ``run()`` is not
+    already propagating ``active_error``.
+    """
+    cleanup_error: BaseException | None = None
+    try:
+        try:
+            stop_event.set()
+        except BaseException as e:
+            cleanup_error = e
+            logger.warning("Stop signal failed: %s", e)
+        if llm_worker is not None:
+            try:
+                llm_worker.stop()
+            except BaseException as e:
+                cleanup_error = cleanup_error or e
+                logger.warning("LLM worker shutdown failed: %s", e)
+        # Persist bio-system state on shutdown. shutdown() ends the memory
+        # session with its own ticket (consolidation + the saves, NAc beside EC),
+        # or waits for the loop that took the session over; with no hub (an agent
+        # without a Hippocampus or a NAc) it saves them itself. It also saves the
+        # cerebellum. Without
+        # it, learned memories and causal links are lost on exit (#1521).
+        if instance is not None:
+            try:
+                instance.shutdown()
+            except BaseException as e:
+                cleanup_error = cleanup_error or e
+                logger.warning("Agent instance shutdown failed: %s", e)
+        if robot_lease is not None:
+            try:
+                _release_run_robot(robot_lease)
+            except BaseException as e:
+                cleanup_error = cleanup_error or e
+                logger.warning("Robot lifecycle cleanup failed: %s", e)
+        if saved_env is not None:
+            try:
+                _restore_env(saved_env)
+            except BaseException as e:
+                cleanup_error = cleanup_error or e
+                logger.warning("Process environment restoration failed: %s", e)
+    finally:
+        _RUN_LOCK.release()
+    if cleanup_error is not None and active_error is None:
+        raise cleanup_error
+
+
 def _run_workspace(home: str) -> str:
     """``maxim.run``'s filesystem reach (#1342, owner decision 2026-10-31): ``<home>/.maxim_workspace``, created if
     missing. The home itself holds config, every agent's stores and the run reports, so it is out of reach."""
@@ -809,46 +866,14 @@ def run(
     except KeyboardInterrupt:
         logger.info("Agent loop interrupted by user.")
     finally:
-        active_error = sys.exc_info()[1]
-        cleanup_error: BaseException | None = None
-        try:
-            try:
-                stop_event.set()
-            except BaseException as e:
-                cleanup_error = e
-                logger.warning("Stop signal failed: %s", e)
-            if llm_worker is not None:
-                try:
-                    llm_worker.stop()
-                except BaseException as e:
-                    cleanup_error = cleanup_error or e
-                    logger.warning("LLM worker shutdown failed: %s", e)
-            # Persist bio-system state on shutdown. shutdown() calls
-            # on_session_end() (consolidation) + hippocampus.save() +
-            # nac.save() + bio_stack.save_cerebellum(). Without save(),
-            # learned memories and causal links are lost on exit.
-            if _api_instance is not None:
-                try:
-                    _api_instance.shutdown()
-                except BaseException as e:
-                    cleanup_error = cleanup_error or e
-                    logger.warning("Agent instance shutdown failed: %s", e)
-            if _robot_lease is not None:
-                try:
-                    _release_run_robot(_robot_lease)
-                except BaseException as e:
-                    cleanup_error = cleanup_error or e
-                    logger.warning("Robot lifecycle cleanup failed: %s", e)
-            if _saved_env is not None:
-                try:
-                    _restore_env(_saved_env)
-                except BaseException as e:
-                    cleanup_error = cleanup_error or e
-                    logger.warning("Process environment restoration failed: %s", e)
-        finally:
-            _RUN_LOCK.release()
-        if cleanup_error is not None and active_error is None:
-            raise cleanup_error
+        _tear_down_run(
+            stop_event=stop_event,
+            llm_worker=llm_worker,
+            instance=_api_instance,
+            robot_lease=_robot_lease,
+            saved_env=_saved_env,
+            active_error=sys.exc_info()[1],
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

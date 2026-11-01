@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "sha": "c360b044c5dd67f90c023085ee71abe058fec148",
+    "reason": "#1554's merge. A flake in the c962c414 push run (#1548; 1 failed: fear value -0.75 != cap -1.0) froze the push base at 041257c7, so the 8685ece5 (#1547) and c360b044 (#1554) push runs judged the three PRs' accumulated diff: every test passed, and only lint_coverage's split rule (router.py has no floor at 041257c7, missing 613 > carried 316) and changed-floor rule (maxim/simulation pin 2353 vs measured 2341) failed. Each PR passed lint_coverage against its own merge-base. Fixing forward would mean covering 297 router.py statements.",
+    "owner": "Denny Schaedig",
+    "date": "2026-11-01"
+  }
+]
