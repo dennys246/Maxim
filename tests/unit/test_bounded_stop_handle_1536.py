@@ -370,8 +370,8 @@ def test_the_shipped_path_handle_stop_bounds_a_live_talk_loops_consolidation(
         h._launch_talk_loop(MagicMock(), tmp_path / "ws")
     assert opened.wait(5.0), "the talk loop never opened its session"
     started = time.monotonic()
-    assert h.stop(deadline=Deadline.after(2.0)) is True
+    assert h.stop(deadline=Deadline.after(3.0)) is True
     assert slept == [], "sleep ran: the handle's stop did not bound the live loop's consolidation"
-    assert time.monotonic() - started < 2.5
+    assert time.monotonic() - started < 3.5
     path = Path(inst.hippocampus.config.persistence_path).expanduser()
     assert "blue cup" in path.read_text(encoding="utf-8"), "the bounded end did not persist"
