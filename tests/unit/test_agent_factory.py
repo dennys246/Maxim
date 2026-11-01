@@ -142,6 +142,18 @@ class TestAgentFactory:
         instance = factory.create_agent(cfg)
         assert instance.hippocampus is None
 
+    @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
+    def test_a_deliberate_no_hub_agent_reports_no_corruption(self, factory, caplog, on_corrupt):
+        """#1522: remembers=False is a configuration, not a failure. The hub needs a Hippocampus, so none is built,
+        and nothing is reported as corrupt (under "raise" that report refused to build the agent at all)."""
+        import logging
+
+        cfg = AgentConfig(agent_id=f"no_hub_{on_corrupt}", remembers=False, learns=True, on_corrupt=on_corrupt)
+        with caplog.at_level(logging.WARNING, logger="maxim"):
+            instance = factory.create_agent(cfg)
+        assert instance.memory_hub is None and instance.nac is not None
+        assert "memory_hub" not in caplog.text, caplog.text
+
     def test_creates_nac_when_learns(self, factory, guard_config):
         instance = factory.create_agent(guard_config)
         assert instance.nac is not None

@@ -1266,7 +1266,13 @@ class AgentFactory:
         auto_load: bool = False,
         corrupt: list[dict[str, str]] | None = None,
     ) -> Any:
-        """Create a MemoryHub coordinating the agent's memory systems."""
+        """Create a MemoryHub coordinating the agent's memory systems, or None when there is no Hippocampus."""
+        if hippocampus is None:
+            # build_memory_hub needs a Hippocampus. remembers=False asks for none, and one that failed to build was
+            # already reported as its own corruption entry, so a hub attempt here could only add a false
+            # "corrupt memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent (#1522).
+            log.debug("Agent %s: no Hippocampus, so no MemoryHub", agent_id)
+            return None
         try:
             from maxim.integration.memory_hub import build_memory_hub
             from maxim.time.scn import SCN
