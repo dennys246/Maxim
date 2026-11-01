@@ -607,8 +607,17 @@ head through pymaxim on the robot yet: `MaximHandle` gets the body only, and the
 the speaker sink. So the first head-motion run after the controller and robot handoff ship is where a body that
 turns on its own (auto-yaw re-enabled by another client) would show. Pulse's watcher reads
 `GET :8000/api/state/full?with_head_pose=true&with_body_yaw=true&with_target_body_yaw=true` (not an SDK client, so
-it cannot flip the setting). **Pass:** the present body yaw tracks the target body yaw throughout, tracking near the
-±65° clamp included.
+it cannot flip the setting), samples at 5 Hz and reports the largest head-to-body yaw reached. **Pass:** the present
+body yaw tracks the target body yaw (gap ≤ ~2°) in a run that reached ≥ 55° relative; a run that never reached 55°
+is INCONCLUSIVE.
+
+**The sweep that reaches the clamp (PR 3).** A conversational "look far left" may stop short of 65°, and no rig
+script drives the tracking path today (none calls `look_at_pixel`). PR 3 adds one, reviewed like any `scripts/`
+change and dry-run offline against the shared fake first. It drives `ReachyMiniController.look_at_pixel` at the
+image's left edge at the tracking cadence (0.3 s, `at_least`), so the head walks to the ±65° clamp the way DN
+tracking does. It holds there for about 5 s of edge look-ats, then sweeps right and back to centre. It prints the
+relative yaw it reached and refuses to start unless torque is on and the body is near 0. The owner runs it with
+pulse's watcher.
 
 ## 14. PR 1 build notes (2026-10-29, for the code review)
 
