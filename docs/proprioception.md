@@ -272,9 +272,16 @@ unwired). The canonical shape:
 
 ```python
 from maxim.runtime.bootstrap import build_executor
+from maxim.runtime.tool_policy import ToolPolicy
 
 # build_executor wires ToolPainBridge internally (required keyword-only pain_bus=)
-executor = build_executor(registry, pain_bus=pain_bus, nac=nac, hippocampus=hippocampus)
+executor = build_executor(
+    registry,
+    pain_bus=pain_bus,
+    policy=ToolPolicy.unrestricted(reason="my agent"),  # required keyword-only (#1315 item 3)
+    nac=nac,
+    hippocampus=hippocampus,
+)
 executor = PainInterceptorExecutor(executor, pain_bus=pain_bus)  # Layer 2
 executor = AnticipatoryPainExecutor(executor, assessor=PerceivedPainAssessor(nac=nac))  # Layer 1
 executor = FearGatedExecutor(executor, fear_agent)  # safety gate (outermost)

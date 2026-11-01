@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from tests.policy_helpers import TEST_POLICY
 
 from tests.unit._execute_learn_driver import run_once
 
@@ -90,7 +91,7 @@ def test_the_dispatch_gate_by_run_mode_and_grant(case):
     state = RuntimeState()
     if state_mode is not None:
         state.data["mode"] = state_mode
-    executor = _prepare_executor(build_executor(ToolRegistry(), pain_bus=None, permissions=None), None, state)
+    executor = _prepare_executor(build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY), None, state)
     if grant is not None:
         executor.set_operational_override(grant)
     assert (executor._mode_denial("bash") is None) is bash_runs

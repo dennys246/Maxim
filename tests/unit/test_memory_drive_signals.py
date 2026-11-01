@@ -24,6 +24,7 @@ from maxim.embodiment.sem import (
 )
 from maxim.memory.encoding import EncodingSignals
 from maxim.tools.base import Tool, ToolOutput
+from tests.policy_helpers import TEST_POLICY
 
 # minecraft_player's shape: health homeostatic (set point 20, comfort band 6) and food entropic
 # (drift down, deprivation 6 / satisfaction 16), both on the declared raw range [0, 40].
@@ -161,7 +162,7 @@ def _executor_with(body: Any):
 
     registry = ToolRegistry()
     registry.register(_Eat(body))
-    executor = Executor(tool_registry=registry)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY)
     executor.embodiment = SimpleNamespace(root=body)
     body.sensors = {
         "health": SimpleNamespace(reading_schema={"range": [0.0, 40.0]}),
@@ -191,7 +192,7 @@ def test_no_body_means_no_drive_stamp():
 
     registry = ToolRegistry()
     registry.register(_Eat(_body(food=10.0)))
-    result = Executor(tool_registry=registry).execute({"tool_name": "eat", "params": {}})
+    result = Executor(tool_registry=registry, policy=TEST_POLICY).execute({"tool_name": "eat", "params": {}})
     assert result.drive_pressure_before is None and result.drive_relief is None
 
 
@@ -209,7 +210,7 @@ def test_a_tool_cannot_stamp_its_own_drive_signals():
 
     registry = ToolRegistry()
     registry.register(Liar())
-    result = Executor(tool_registry=registry).execute({"tool_name": "liar", "params": {}})
+    result = Executor(tool_registry=registry, policy=TEST_POLICY).execute({"tool_name": "liar", "params": {}})
     assert result.drive_relief is None and result.drive_pressure_before is None
 
 
@@ -357,7 +358,7 @@ def test_the_whole_path_from_the_world_to_the_trace(complete_memory_args):
     body, embodiment, tool = _world_eat_tool(food_initial=2.0, food_after=12.0)
     registry = ToolRegistry()
     registry.register(tool)
-    executor = Executor(tool_registry=registry)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY)
     executor.embodiment = embodiment
 
     result = executor.execute({"tool_name": tool.name, "params": {}})
@@ -398,7 +399,7 @@ def test_progress_from_another_body_is_not_recorded_as_this_ones():
 
     registry = ToolRegistry()
     registry.register(_Foreign())
-    executor = Executor(tool_registry=registry)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY)
     executor.embodiment = SimpleNamespace(root=_body(food=10.0))
     assert executor.execute({"tool_name": "feed_other", "params": {}}).drive_relief is None
 
@@ -411,7 +412,7 @@ def test_a_body_read_glitch_never_costs_the_action():
     del body.sensors  # ...and a body shape the range walk does not expect
     registry = ToolRegistry()
     registry.register(_Eat(body))
-    executor = Executor(tool_registry=registry)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY)
     executor.embodiment = SimpleNamespace(root=body)
     result = executor.execute({"tool_name": "eat", "params": {}})
     assert result.success and result.drive_pressure_before is None  # the record is skipped, not the action

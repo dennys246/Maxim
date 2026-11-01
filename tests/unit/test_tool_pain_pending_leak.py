@@ -21,6 +21,7 @@ from maxim.proprioception.pain_bus import PainBus
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 
 class _Fails(Tool):
@@ -72,7 +73,7 @@ def _rig(
     registry = ToolRegistry()
     registry.register(_Fails())
     registry.register(_Raises())
-    executor = Executor(tool_registry=registry, pain_detector=detector, tool_pain_bridge=bridge)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY, pain_detector=detector, tool_pain_bridge=bridge)
     return executor, bridge, spy
 
 

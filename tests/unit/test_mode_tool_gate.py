@@ -18,6 +18,7 @@ import pytest
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolResult
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 
 class _Recorder(Tool):
@@ -39,7 +40,7 @@ def _executor(mode: dict[str, str], *names: str) -> tuple[Executor, dict[str, _R
     tools = {name: _Recorder(name) for name in names}
     for tool in tools.values():
         registry.register(tool)
-    executor = Executor(registry)
+    executor = Executor(registry, policy=TEST_POLICY)
     executor.set_mode_source(lambda: mode["name"])
     return executor, tools
 
@@ -114,7 +115,7 @@ def test_the_real_passive_registry() -> None:
     from maxim.runtime.bootstrap import build_executor, build_tool_registry
 
     registry = build_tool_registry(internet_launch_enabled=False, operational_mode="passive")
-    executor = build_executor(registry, pain_bus=None, permissions=None)
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY)
     executor.set_mode_source(lambda: "passive")
     registered = set(registry._tools)
     for acting in {"bash", "edit_file", "git_commit", "run_tests", "execute_file", "maxim_command"} & registered:

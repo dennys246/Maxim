@@ -34,6 +34,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from maxim.console.server import build_app  # noqa: E402
 from maxim.utils.paths import _reset_caches  # noqa: E402
+from tests.policy_helpers import TEST_POLICY  # noqa: E402
 
 _TOKEN = "mxc_" + "h" * 43
 _AUTH = {"Authorization": f"Bearer {_TOKEN}"}
@@ -1480,7 +1481,7 @@ def test_a_bridge_booked_failure_reaches_the_console_with_its_credit(runs):
     registry.register(_Fails())
     sink = RecordingSink()
     executor = InstrumentedExecutor(
-        build_executor(registry, pain_bus=None, permissions=None, nac=NAc(NACConfig())), sink
+        build_executor(registry, pain_bus=None, policy=TEST_POLICY, nac=NAc(NACConfig())), sink
     )
     out = executor.execute({"tool_name": "flaky_credit", "params": {}})
     assert out.nac_failure_booked == "tool:flaky_credit"

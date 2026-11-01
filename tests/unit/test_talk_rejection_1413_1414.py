@@ -17,6 +17,7 @@ import threading
 from typing import Any
 
 import pytest
+from tests.policy_helpers import TEST_POLICY
 
 # ── #1413: a hard rejection is fed back to the model ───────────────────────────────────────────────────────────
 
@@ -153,7 +154,7 @@ def _run_llm_loop(
         state,
         build_memory(),
         build_decision_engine(),
-        build_executor(ToolRegistry(), pain_bus=None, permissions=None),
+        build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY),
         autonomy_controller=autonomy,
         llm_worker=_Worker(),
         max_steps=ticks,

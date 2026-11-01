@@ -35,6 +35,10 @@ THE GATES, AND WHAT FLIPS EACH
   O2/O5   ``test_o2_o5_ceiling_refuses_acting_tools_the_mode_gate_allows``.
 Plus one passing regression guard, ``test_v10_registered_tools_dispatch_under_maxim_run``.
 
+STATUS. Every gate here has flipped: item 2's with #1545, item 3's (and O1, O2/O5, V7) with the item 3 change. Their
+``xfail`` decorators are removed, so each is now a regression guard; each was proved by deleting the mechanism it
+guards (the item 3 probes are listed in the approach notes' §3 "as built").
+
 PRECONDITIONS ARE NOT THE GATE. A fixture tool that cannot be built, a registry builder that raises, a seam that was
 never reached: those raise ``ScenarioBroken`` (not an ``AssertionError``), and every gate is
 ``xfail(strict=True, raises=AssertionError)``, so a broken scenario FAILS the run instead of hiding as the expected
@@ -687,9 +691,6 @@ def test_item2_sim_registry_unknown_name_raises_below_all() -> None:
 # ══ item 3 ══════════════════════════════════════════════════════════════
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 3: policy= required everywhere; permissions= removed"
-)
 def test_item3_policy_is_required_and_permissions_removed() -> None:
     """V3 + §1A.5: ``Executor(registry)``, ``build_executor(registry, pain_bus=None)`` and ``AgentConfig(...)``
     without a policy each raise TypeError; a duck-typed policy is a TypeError; everything after the registry is
@@ -730,7 +731,6 @@ def test_item3_policy_is_required_and_permissions_removed() -> None:
         raise AssertionError(f"AgentConfig(policy=None) must be accepted for no-executor configs: {e}") from e
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 3: ToolPolicy is sealed and unforgeable")
 def test_item3_tool_policy_is_sealed() -> None:
     """§3: no public constructor; ``__new__`` without the key raises; assignment and ``del`` raise; subclassing
     raises; ``copy.copy``/``deepcopy`` return the same object; pickling raises; the ``pins`` slot (v6.3: not
@@ -783,7 +783,6 @@ def test_item3_tool_policy_is_sealed() -> None:
     _expect_raises(TypeError, _pin_write, "the pinned mapping is writable")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 3: dispatch checks the object it runs")
 def test_item3_dispatch_checks_the_object_it_runs() -> None:
     """§3 "Dispatch checks the object it runs": register READ tool A; the registry then answers A on the first
     lookup and an above-ceiling tool B (same name) on every later one, so a check-then-get executor checks A and
@@ -881,11 +880,6 @@ def _sub_sim_rig(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNames
     return SimpleNamespace(tool=tool, loop_calls=loop_calls, registry_calls=registry_calls)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 3: a spawn under a narrow policy builds a child refusing bash",
-)
 def test_item3_composite_spawn_builds_narrowed_child(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """§3 composite: ``SpawnSubSimulationTool`` dispatched through an executor with a narrow policy reads
     ``current_policy`` and builds its child with ``current.narrowed(...)``, so the child refuses ``bash``. The loop
@@ -916,9 +910,6 @@ def test_item3_composite_spawn_builds_narrowed_child(tmp_path: Path, monkeypatch
         assert child.check(bash) is not None, "the child's check() lets bash through"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 3: a spawn with no current_policy refuses (fail-closed)"
-)
 def test_item3_composite_spawn_refuses_without_dispatch_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """§3: a composite reads ``current_policy`` and refuses if it is absent. ``.execute`` called directly (no
     executor dispatch, so no contextvar) returns a failed ToolOutput and builds no child. Today it builds one."""
@@ -933,9 +924,6 @@ def test_item3_composite_spawn_refuses_without_dispatch_policy(tmp_path: Path, m
 
 
 @pytest.mark.parametrize("which", ["both_refused", "sense_refused"])
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 3 / V6: auto_sense calls executor.check() before both calls"
-)
 def test_item3_auto_sense_checks_both_direct_calls(which: str) -> None:
     """V6 / §1A.10: ``runtime/loop_perception.py::auto_sense`` calls ``executor.check(tool)`` before BOTH of its
     direct calls -- the auto-fire loop and the interoception ``sense`` call. ``both_refused``: neither runs.
@@ -1003,11 +991,6 @@ def _drive_maxim_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, learnin
 
 
 @pytest.mark.parametrize("learning", [False, True])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 3 / O1: maxim.run's executor carries ToolPolicy.unrestricted (V10) and allowed_dirs == [home]",
-)
 def test_o1_maxim_run_executor_carries_v10_policy(
     learning: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1031,8 +1014,11 @@ def test_o1_maxim_run_executor_carries_v10_policy(
         if hasattr(t := run.executor.registry.get(n), "_allowed_dirs")
     }
     require(fs, "no filesystem tool in maxim.run's registry")
-    wrong = {n: d for n, d in fs.items() if d != [run.home]}
-    assert not wrong, f"filesystem tools are not confined to the run's home {run.home}: {wrong}"
+    # Owner decision 2026-10-31 (amends §1A.4's "allowed_dirs == [home]"): the run's WORKSPACE under its home, so
+    # the home's stores, config and other agents' homes stay out of reach (#1342 "workspace-only").
+    workspace = os.path.join(run.home, ".maxim_workspace")
+    wrong = {n: d for n, d in fs.items() if d != [workspace]}
+    assert not wrong, f"filesystem tools are not confined to the run's workspace {workspace}: {wrong}"
 
 
 @pytest.mark.parametrize("learning", [False, True])
@@ -1084,11 +1070,6 @@ def test_v10_registered_tools_dispatch_under_maxim_run(
 # ══ O2 / O5: the mode gate allows acting tools a ceiling must refuse ════
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 2+3 / O2,O5: a READ|SELF_SCOPE ceiling refuses write_file/send_message/call_user",
-)
 def test_o2_o5_ceiling_refuses_acting_tools_the_mode_gate_allows(tmp_path: Path) -> None:
     """advisor_mode.md O2/O5: the mode gate is a name list, and ``write_file``, ``send_message`` and ``call_user``
     pass it in passive mode. Under a ceiling of READ|SELF_SCOPE (allow-listed by name, so only the ceiling can
@@ -1187,11 +1168,6 @@ def _find_offline_ceiling() -> Any:
     raise AssertionError("item 3 / V7 not built: no OFFLINE_CEILING in tools/base, runtime/executor or tool_policy")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 3 / V7: OFFLINE_CEILING is enumerated and ANDed at the dispatch seam under the latch",
-)
 def test_v7_offline_ceiling_is_enumerated_and_anded_at_dispatch(tmp_path: Path) -> None:
     """§1A.2: ``OFFLINE_CEILING`` is exactly READ|SELF_SCOPE|WRITE_LOCAL|ACTUATE|GOVERN, and whenever
     ``is_offline()`` the seam ANDs it with the policy ceiling, at dispatch and in ``permits()``: under an
@@ -1235,9 +1211,6 @@ def test_v7_offline_ceiling_is_enumerated_and_anded_at_dispatch(tmp_path: Path) 
     assert sorted(out["ran"]) == ["c_read", "c_write"], f"tools ran under the latch: {out['ran']}"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 3: GATE_REFUSAL_KINDS is exactly the seven, snake_case"
-)
 def test_item3_gate_refusal_kinds_are_the_seven() -> None:
     """§1A.2 (v6.3): ``GATE_REFUSAL_KINDS`` is a frozenset of exactly NOT_REGISTERED, INACTIVE_SCENE,
     POLICY_CEILING, POLICY_PERMISSIONS, POLICY_PIN, MODE and OFFLINE; each value is its snake_case name (the
@@ -1260,9 +1233,6 @@ def _parents(tree: ast.AST) -> dict[int, ast.AST]:
     return out
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 3: gate kinds are produced only in runtime/executor.py"
-)
 def test_item3_gate_kinds_constructed_only_in_executor() -> None:
     """§1A.2 "Who may produce a gate kind": outside ``runtime/executor.py`` (and their definition in
     ``tools/base.py``) no ``src/maxim`` code produces a ``GATE_REFUSAL_KINDS`` member, so a tool body returning
@@ -1297,9 +1267,6 @@ def test_item3_gate_kinds_constructed_only_in_executor() -> None:
     assert not outside, f"gate refusal kinds produced outside runtime/executor.py: {outside}"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#1315 item 3: record_outcome takes refused= keyword-only, required"
-)
 def test_item3_record_outcome_refused_is_required_keyword() -> None:
     """§1A.2 "What counts as refused": ``runtime/tool_dispatch.py::record_outcome`` gains ``refused:
     ToolErrorKind | None``, keyword-only and REQUIRED (the TF8 ``bridge_booked`` precedent), so a call site that
