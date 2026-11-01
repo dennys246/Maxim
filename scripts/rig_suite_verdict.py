@@ -11,7 +11,8 @@ re-run passing makes the run a pass.
 
 The verdict reads only positive markers: the ``suite stage <name>: exit=N`` line suite_at_commit.sh prints for each
 stage, and pytest's ``FAILED <nodeid>`` summary lines. A stage with no line, a stage other than the fast suite that
-did not exit 0, a fast suite that ended other than 1 (tests failed), or any failure outside the list yields the
+did not exit 0, a fast suite that ended other than 1 (tests failed), any ERROR line (a fixture failed), or any
+failure outside the list yields the
 suite's own exit code. Stdlib only.
 """
 
@@ -37,6 +38,7 @@ RIG_KNOWN_FAILURES: tuple[str, ...] = (
 STAGES = ("fast-suite", "release-gates", "memory-hub", "ratchet")
 _STAGE = re.compile(r"^suite stage ([a-z-]+): (?:exit=(\d+)|(skipped))$")
 _FAILED = re.compile(r"^FAILED (\S+)")
+_ERROR = re.compile(r"^ERROR (\S+)")  # a fixture failed in setup or teardown: pytest exits 1 and prints ERROR
 
 
 def verdict(log: str, suite_exit: int, known: tuple[str, ...] = RIG_KNOWN_FAILURES) -> tuple[int, str, list[str]]:
@@ -59,7 +61,9 @@ def verdict(log: str, suite_exit: int, known: tuple[str, ...] = RIG_KNOWN_FAILUR
     if stages["fast-suite"] != 1:
         return suite_exit, f"rig suite: FAILED (exit {suite_exit}); the fast suite exited {stages['fast-suite']}", []
     failures = sorted({m.group(1) for line in log.splitlines() if (m := _FAILED.match(line))})
-    unknown = [f for f in failures if f not in known]
+    errors = sorted({m.group(1) for line in log.splitlines() if (m := _ERROR.match(line))})
+    # An ERROR is never calibrated, even on a listed test: the list excuses cadence assertions, not broken fixtures.
+    unknown = [f for f in failures if f not in known] + [f"{e} (ERROR)" for e in errors]
     if not failures or unknown:
         why = (
             "no FAILED lines to judge"

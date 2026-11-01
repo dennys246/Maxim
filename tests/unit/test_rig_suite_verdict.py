@@ -52,8 +52,22 @@ def test_a_skipped_release_gate_twin_still_calibrates():
         _log(fast=2),
         _log(failed=(*KNOWN[:1], "tests/unit/test_other.py::test_real_bug")),
         _log(failed=()),
+        _log() + "ERROR tests/unit/test_x.py::test_y - RuntimeError: teardown\n",
+        _log() + f"ERROR {KNOWN[0]} - RuntimeError: setup\n",
     ],
-    ids=["gates-1", "gates-2", "hub-1", "hub-internal", "ratchet", "fast-3", "fast-2", "unknown-failure", "no-failed"],
+    ids=[
+        "gates-1",
+        "gates-2",
+        "hub-1",
+        "hub-internal",
+        "ratchet",
+        "fast-3",
+        "fast-2",
+        "unknown-failure",
+        "no-failed",
+        "fixture-error",
+        "error-on-a-listed-test",
+    ],
 )
 def test_anything_else_keeps_the_suites_own_exit_code(log):
     assert V.verdict(log, 1)[0] == 1

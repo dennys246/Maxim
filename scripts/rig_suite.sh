@@ -86,11 +86,18 @@ poll() {  # poll <label> <worktree|""> <sha|"">: wait for `suite-exit=N`, print 
         if done_line="$(rig "grep -a -m1 '^suite-exit=[0-9]' $log || true")"; then
             fails=0
             [ -n "$done_line" ] && break
-            # No exit line yet: is the run still alive? (a reboot or an OOM kill never writes one)
-            if ! rig "kill -0 \$(cat $pidf) 2>/dev/null"; then
-                rig "grep -a -m1 '^suite-exit=[0-9]' $log" >/dev/null 2>&1 && continue  # it ended just now
-                echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2
-                exit 2
+            # No exit line yet: is the run still alive? (a reboot or an OOM kill never writes one.) The remote
+            # prints alive/dead/nopid and exits 0, so a nonzero rc is ssh itself (255), counted as unreachable.
+            local state=""
+            if state="$(rig "if [ ! -f $pidf ]; then echo nopid; elif kill -0 \$(cat $pidf) 2>/dev/null; then echo alive; else echo dead; fi")"; then
+                if [ "$state" = dead ]; then
+                    rig "grep -a -m1 '^suite-exit=[0-9]' $log" >/dev/null 2>&1 && continue  # it ended just now
+                    echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2
+                    exit 2
+                fi
+                [ "$state" = nopid ] && echo "rig suite: no pid file for $label (a run from before pid files?); polling the log only"
+            else
+                fails=$((fails + 1))
             fi
         else
             fails=$((fails + 1))
@@ -100,30 +107,34 @@ poll() {  # poll <label> <worktree|""> <sha|"">: wait for `suite-exit=N`, print 
         sleep 60
     done
     local_log="$(mktemp)"
-    trap 'rm -f "$local_log"' EXIT
+    trap "rm -f $(printf %q "$local_log")" EXIT
     rig "cat $log" | tee "$local_log"
     local code=0
     python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" || code=$?
     [ "$code" -eq 10 ] || exit "$code"
     # CALIBRATED is not a pass: re-run exactly those tests here, on the same commit, and only their pass counts.
-    local ids
-    ids="$(python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" | sed -n 's/^  //p' || true)"
+    local ids=() id
+    while IFS= read -r id; do ids+=("$id"); done < <(python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" | sed -n 's/^  //p' || true)
     if [ -z "$wt" ]; then
         echo "rig suite: CALIBRATED; before counting it, run these on that commit:"
-        echo "  python -m pytest -p no:cacheprovider $(echo $ids)"
+        printf '  python3 -m pytest -p no:cacheprovider'; printf " '%s'" "${ids[@]}"; echo
         exit 10
     fi
-    rerun "$wt" "$sha" $ids
+    rerun "$wt" "$sha" "${ids[@]}"
 }
 
 rerun() {  # rerun <worktree> <sha> <nodeid>...: the calibrated tests, locally, in a throwaway worktree of <sha>
-    local wt="$1" sha="$2" tree code=0
+    local wt="$1" sha="$2" tree code=0 main_checkout
     shift 2
-    tree="$(mktemp -d)"
+    # Under the main checkout's .worktrees/, as suite_at_commit.sh does (CLAUDE.md's worktree rule).
+    main_checkout="$(cd "$(git -C "$wt" rev-parse --git-common-dir)/.." && pwd)"
+    mkdir -p "$main_checkout/.worktrees"
+    tree="$(mktemp -d "$main_checkout/.worktrees/rig-rerun-${sha:0:12}.XXXXXX")"
     rmdir "$tree"
     git -C "$wt" worktree add --detach --quiet "$tree" "$sha"
-    (cd "$tree" && PYTHONPATH="$tree/src" python -m pytest -q -p no:cacheprovider "$@") || code=$?
-    git -C "$wt" worktree remove --force "$tree" >/dev/null 2>&1 || true
+    # Expanded now: an EXIT trap runs after this function's locals are gone.
+    trap "git -C $(printf %q "$wt") worktree remove --force $(printf %q "$tree") >/dev/null 2>&1 || true; rm -f $(printf %q "${local_log:-/nonexistent}")" EXIT
+    (cd "$tree" && PYTHONPATH="$tree/src" python3 -m pytest -q -p no:cacheprovider "$@") || code=$?
     if [ "$code" -eq 0 ]; then
         echo "rig suite: PASS (the rig's cadence failures re-ran locally on ${sha:0:12} and passed)"
         exit 0

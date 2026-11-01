@@ -85,7 +85,7 @@ It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN check
 
 **Since M47 (2026-10-11) it is also the coverage pre-check.** By default the fast suite runs with CI's exact measuring command and is followed by `scripts/lint_coverage.py --local`, so `PASSED` means diff coverage and the measurement-free pin rules passed. `--local` gates diff coverage (>= 80% of changed `src/maxim` lines), a pinned `missing` that rises above its base (`pin_rises`), and the floors file's format; **no floor gates locally, in either direction** (M60a, owner decision 2026-10-27: macOS reads 1-2 pt off CI's Linux, so the touched-package floors it used to gate gave false reds and false greens). Every floor result and a PR's own floor-pin edits are printed as notes; CI, the only floor authority, gates them. The script checks the installed coverage version before the suite runs. #1201, #1213, #1232 and #1240 each failed CI on the ratchet because no local run measured coverage.
 
-Each stage also prints `suite stage <name>: exit=N` (`fast-suite`, `release-gates` or `release-gates: skipped`, `memory-hub`, `ratchet`), and the overall status stays the last nonzero stage. `scripts/rig_suite_verdict.py` reads those lines; `tests/unit/test_rig_suite_verdict.py` pins them.
+Each stage also prints `suite stage <name>: exit=N` (`fast-suite`, `release-gates` or `release-gates: skipped`, `memory-hub`, `ratchet`), and the overall status stays the last nonzero stage. `--no-cov` prints no `ratchet` line (the rig always measures, and its verdict requires one). `scripts/rig_suite_verdict.py` reads those lines; `tests/unit/test_rig_suite_verdict.py` pins them.
 
 ### `scripts/rig_suite.sh`: the full suite on a second machine
 
