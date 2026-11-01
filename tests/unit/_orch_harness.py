@@ -16,7 +16,7 @@ uses. The slice-0 arms (owner decision (a), 2026-10-13):
      This arm exercises the narrator loop on the calling thread (§12), the stall-detector polling
      and the LLM-finish path. It also passes ``aut_model``, so the AUT gets its OWN router build
      (the dual-router path, §4) and the two roles' provenance can be told apart.
-  3. ``stdin``: operator commands fed through a queue-backed ``sys.stdin``: ``/status``, ``/pause``,
+  3. ``stdin``: operator commands fed through a pipe-backed ``sys.stdin`` (``QueueStdin``): ``/status``, ``/pause``,
      free text while paused (which goes to the AUT), ``/resume``, free text while running (which
      goes to the narrator as guidance), and ``/cancel``.
 
@@ -29,27 +29,26 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      The §9 RESUME branch (``resume_session``) is not reached; only the kickoff is.
   5. ``stall``: the stall detector (§11) with its idle threshold at 15 s (#1488; the clamp floor is 5 s) and a
      0.5 s poll (the arm's ``env``). Three probes; the diversity checkpoint lands during turn 3 and rides the narrator's
-     ``observe_actions`` follow-up (``held_inputs``); the narrator then finishes, and the detector's idle nudge
-     reaches the FINISHED narrator (#1259), which answers it with another ``finish_simulation``; the operator
-     ``/cancel`` follows that answer. WHY this shape (measured 2026-10-24): since D13 every action-less narrator
-     answer is a planning failure (the fourth aborts the run ``planning_failed``) and ``finish_simulation`` is its
-     only terminal tool, so a live narrator reaches the idle threshold only after it has finished, or behind a
-     wedged call (owner decision 2026-10-24: the post-finish path; #1259's fix removes it and re-homes this arm).
-     And a percept that reaches the narrator while its planning job is in flight rides the next FOLLOW-UP
-     (``agent_loop._take_deferred_inputs``, #1048): when that job instead ends the chain, the percept is planned only
-     when a later percept wakes the loop, and a second such percept races (two nudges, 15 s apart, in 2 of 8 fresh
-     runs; #1451). The idle-threshold reachability is #1452. The arm's ``observe_actions`` step gives the
-     checkpoint a follow-up to ride, so the nudge is the only post-finish percept. RE-HOMING (owed by #1259's
-     fix, which removes this path; the arm's gate scope is immutable): the remaining offline route to the idle
-     threshold is a WEDGED narrator call, i.e. a FakeRouter call registered in ``llm_call_registry`` the way
-     ``LLMRouter.generate_json`` registers its own (with ``allowed_s`` from the request context) and held past
-     ``stall_threshold.non_streaming_age_bound_s``, with that bound lowered by env, so ``stall_suppression``
-     judges it wedged (the D12/D14 path; keep ``MAXIM_SIM_HARD_ABORT=0``).
+     ``observe_actions`` follow-up (``held_inputs``). That follow-up is a WEDGED call (``_hold_for_stall_arm``): the
+     FakeRouter registers it in ``llm_call_registry`` the way ``LLMRouter`` registers its own (``allowed_s`` from the
+     request context), the hold jumps the detector's injected clock (``StallDetector.CLOCK``, a wall-plus-offset
+     ``_WallPlusOffset``) past ``stall_threshold.non_streaming_age_bound_s``, so ``stall_suppression`` judges the
+     call wedged and the detector injects its idle nudge (the D12/D14 path; every arm keeps
+     ``MAXIM_SIM_HARD_ABORT=0``), and the call answers ``observe_actions`` once the nudge has landed. The nudge,
+     which arrived while that planning job was in flight, rides the next follow-up (#1048); the narrator then
+     finishes, which ends the run (#1259). WHY a wedged call (measured 2026-10-24): since D13 every action-less
+     narrator answer is a planning failure (the fourth aborts the run ``planning_failed``) and ``finish_simulation``
+     is its only terminal tool, so a live narrator reaches the idle threshold only after it has finished, the path
+     #1259's fix removed, or behind a wedged call (#1452). A non-streaming call is wedged only past its allowed time
+     (at least 300 s by the call-timeout clamp) plus the margin, so the arm needs the injected clock (owner
+     decisions 2026-10-24 and 2026-10-30; the §11 slice). The arm's first ``observe_actions`` step gives the
+     checkpoint a follow-up to ride, and the wedged call's answer gives the nudge one, so no percept here waits
+     behind a job that ends the chain (#1451).
   6. ``new_goal``: interactive ON (``/new`` lives only in the interactive post-sim branch) with a line-read
-     stdin that claims a TTY and has no ``fileno``, so the raw reader falls back to the line reader. The
+     stdin that claims a TTY over a pipe, which ``tcgetattr`` refuses, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
      once, so the run re-enters ``start_simulation_mode``, then Enter. Each run's narrator probes once and
-     finishes, and an operator ``/cancel`` follows each finish (as in the narrator arm). The re-entry resolves
+     finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry resolves
      ``sandbox_backend="auto"`` (it does not forward the caller's), so ``check_docker_available`` is patched to
      False for every arm: never a container, whatever the box has installed. Two findings pinned as-is: the
      re-entry drops the caller's other arguments (#1453), and the AUT's learning does not carry over (#1454).
@@ -59,22 +58,22 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      points (``play_campaign``, mode "dm"; ``play_premise``, generative) also take ``_campaign_lock`` and wrap the
      run in a ``_safety_lease`` restore, which would mask the orchestrator's own branch-4 restore this arm pins.
      The arm calls ``start_simulation_mode(persistent_agent=...)`` directly, in the default narrator mode
-     (branches 3 and 4 do not read the mode). One probe, a finish and an operator
-     ``/cancel``. The trace's ``handle`` key reads the instance's registry and its persistent pain bus before the
+     (branches 3 and 4 do not read the mode). One probe and a finish, which ends the run (#1259).
+     The trace's ``handle`` key reads the instance's registry and its persistent pain bus before the
      run, at the end of turn 1 and after it (``_handle_view``); the harness stops the handle after the trace.
   8. ``imagination``: §7 with an embodied AUT (``entity_ref="bodies/base_humanoid"``, which builds the
      ComponentRegistry the ImaginationTrigger needs). The fake scene manifest names an indexed component and a
      novel entity (``_MANIFEST_ENTITIES``), which the fake designer builds (``_LANTERN``); the trace's
      ``imagination`` key records the trigger's calls and its teardown (stats, tag, decay, ``clear_ephemeral``).
-     One probe, a finish and an operator ``/cancel``. An embodied registry reads every shipped component, so
+     One probe and a finish, which ends the run (#1259). An embodied registry reads every shipped component, so
      ``scenario_inputs`` under the checkout's shipped data are pinned by path, their bytes masked
      (``_SHIPPED_DATA``).
 
 The TTY read loops (the raw-mode stdin reader and the post-sim raw-mode "new goal" prompt) are
 deliberately left uncharacterized (owner decision (e)). Every arm but ``new_goal`` runs non-interactive
 (``InteractiveMode.OFF``, the ``--interactive false`` path); ``new_goal`` runs interactive ON on a stdin that
-passes ``stdin_reader_raw``'s isatty check but whose ``fileno()`` raises, so the reader falls back to the line
-reader before it enters raw mode (the head of ``stdin_reader_raw`` runs; its raw loop never does). Either way the
+passes ``stdin_reader_raw``'s isatty check but is a pipe, which ``termios.tcgetattr`` refuses, so the reader falls back to
+the line reader before it enters raw mode (the head of ``stdin_reader_raw`` runs; its raw loop never does). Either way the
 line reader is the one exercised, and the post-sim raw reader is faked.
 
 ROUTER BUILDS. Every ``build_primary_router`` call returns a ``_RouterView``: the one shared
@@ -129,11 +128,12 @@ new_goal arm goes red, loudly):
     before the turn returns to its caller. The stdin arm uses it to feed operator lines and to wait
     until the reader has processed each one, so every command lands at a fixed point between two
     turns.
-  - ``finish``: in the narrator arm, the narrator's ``finish_simulation`` is followed by an operator
-    ``/cancel``. Without it the run idles out the AUT-side 180 s percept-source grace while the stall
-    detector nudges the finished narrator every 30 s, which is nondeterministic and three minutes
-    long. The test file's docstring records this as a src finding. ``finish_reason`` stays
-    ``completed``, because the LLM's ``finish_context`` outranks the operator stop.
+  - ``finish``: in the arms whose narrator finishes (narrator, new_goal, persistent_agent, imagination), the
+    narrator's ``finish_simulation`` arms a WATCHDOG (``_cancel_after_finish``): if the run's ``stop_event`` is
+    still clear ``FINISH_WATCHDOG_S`` (20 s) later, the harness sends the operator ``/cancel`` and records it in
+    ``stdin_lines`` as ``WATCHDOG_CANCEL``. Since #1259's fix the finish sets ``stop_event`` itself, so the
+    watchdog never fires (``test_finish_ends_run_1259.py`` asserts it); before it, these arms sent that
+    ``/cancel`` at once, because the run otherwise waited out the source's 180 s grace.
 
 NONDETERMINISM, NEUTRALISED. Every exclusion is a named constant below with its reason
 (``_RESULT_DROPPED``, ``_REPORT_DROPPED``, ``_PROVENANCE_MASKED``, ``_DATA_HOME_EXCLUDED``,
@@ -190,7 +190,6 @@ import io
 import json
 import logging
 import os
-import queue
 import re
 import sys
 import threading
@@ -242,11 +241,13 @@ ARMS: dict[str, dict[str, Any]] = {
     # §11 slice's injected clock; the golden test prints the loop's log on a mismatch.
     "stall": {
         "max_turns": 10,
+        # (Every arm runs with MAXIM_SIM_HARD_ABORT=0, which this one needs: its wedged call is old enough by the
+        # clock to trip the D12 abort, #1259's re-home.)
         "env": {"MAXIM_STALL_FLOOR_S": "15", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
         "events": True,
     },
-    # Interactive ON (``/new`` exists only there) on a line-read stdin that claims a TTY: no ``fileno``, so the raw
-    # reader falls back to the line reader (``tty_stdin.stdin_reader_raw``) and the post-sim branch reads a goal
+    # Interactive ON (``/new`` exists only there) on a line-read stdin that claims a TTY over a pipe (``tcgetattr``
+    # refuses it), so the raw reader falls back to the line reader (``tty_stdin.stdin_reader_raw``) and the post-sim branch reads a goal
     # through ``read_post_sim_goal_raw``, faked (``_post_sim_goals``).
     "new_goal": {"max_turns": 10, "interactive": True, "events": True},
     # HANDLE seam (a): a real console ``MaximHandle`` (the shipped producer, owner decision 2026-10-24) built inside
@@ -287,6 +288,12 @@ _REPORT_WRITERS = ("save_report", "save_action_log", "save_aut_state", "analyze_
 # (#1260: a narrator-only description must not reach the process-global dict).
 RUN_SIDE: dict[str, dict[str, Any]] = {}
 SETTLE_TIMEOUT_S = 30.0  # a harness wait that exceeds this is a hang, not a slow run
+# #1259: how long the harness waits after the narrator's ``finish_simulation`` for the run to
+# stop by itself (its ``stop_event``) before it sends the operator ``/cancel`` that ends the run anyway, recorded as a
+# watchdog line in ``stdin_lines``. Far above a stop that works (it is set inside the tool) and far below the 180 s
+# percept-source grace a run without the stop waits out.
+FINISH_WATCHDOG_S = 20.0
+WATCHDOG_CANCEL = f"watchdog: the run had not stopped {FINISH_WATCHDOG_S:.0f} s after finish_simulation (#1259)"
 _AUT_SETTLE_S = 3.0  # SimulationBridge's default settle_s: the same quiet window a turn waits for
 
 
@@ -444,7 +451,7 @@ class FakeRouter:
             # The inputs that rode this follow-up (``agent_loop._take_deferred_inputs``, #1048): what the narrator was
             # handed beside the tool result. Recorded only for these arms, so the slice-0 traces stay byte-identical.
             m = _NEW_INSTRUCTIONS.search(prompt)
-            call["held_inputs"] = m.group(1).strip()[:120] if m else None
+            call["held_inputs"] = _mask_stall(m.group(1).strip())[:120] if m else None  # masked before the cut
         if self.hold is not None:
             self.hold(role, call)
         answer = getattr(self, f"_answer_{role}")(call)
@@ -498,9 +505,9 @@ class FakeRouter:
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
     def _answer_stall_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
-        """Three probes, then ``finish_simulation``; after it, the queued diversity checkpoint and one idle nudge each
-        get a narrator plan, answered with another ``finish_simulation`` (the narrator's only terminal tool: since D13
-        an action-less answer is a planning failure, so a live narrator never idles before it finishes)."""
+        """Three probes, then ``observe_actions``, whose follow-up carries the diversity checkpoint and is the WEDGED
+        call (``_hold_for_stall_arm``): it answers ``observe_actions`` again, and that follow-up carries the idle nudge
+        that landed while the call was wedged; the narrator then finishes, which ends the run (#1259)."""
         if call["kind"] == "followup" and call["executed"] == "send_message":
             turn = call.get("turn")
             if turn in _STALL_PROBES:
@@ -508,15 +515,11 @@ class FakeRouter:
             if turn == 3:
                 return _act("observe_actions")
         if call["kind"] == "followup" and call["executed"] == "observe_actions":
-            return _act("finish_simulation", status="completed", reason="three probes delivered", summary="")
-        if call["kind"] == "plan":
-            req = call["request"]
-            if req.startswith("simulation goal:"):
-                return _act("send_message", text="Hello, who are you?")
-            if req.startswith("diversity checkpoint (turn 3):"):
-                return _act("finish_simulation", status="completed", reason="checkpoint after finish", summary="")
-            if req.startswith("system: stall detected ("):
-                return _act("finish_simulation", status="completed", reason="nudge after finish", summary="")
+            if (call.get("held_inputs") or "").startswith("SYSTEM: Stall detected ("):
+                return _act("finish_simulation", status="completed", reason="nudged after a wedged call", summary="")
+            return _act("observe_actions")
+        if call["kind"] == "plan" and call["request"].startswith("simulation goal:"):
+            return _act("send_message", text="Hello, who are you?")
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
     def _answer_aut(self, call: dict[str, Any]) -> dict[str, Any]:
@@ -594,14 +597,18 @@ def _describe(prompt: str) -> dict[str, Any]:
 
 
 class QueueStdin(io.TextIOBase):
-    """A ``sys.stdin`` whose lines arrive when the harness feeds them; ``input()`` reads it through
-    ``readline`` (no ``fileno``, so CPython takes the non-console path). ``reads`` counts readline
-    calls: the reader asking for line k+1 means it has processed line k."""
+    """A ``sys.stdin`` over an OS pipe whose lines arrive when the harness feeds them. Its ``fileno`` is the pipe's
+    read end, so the run's line reader polls it (``simulation/stdin_lines.py::OperatorLines``) and the run's stop
+    ends that read (#1541), as on a terminal. ``reads`` counts the reader's requests for a line (``note_read``, from
+    the ``OperatorLines.next_line`` hook in ``run_arm``, and ``readline``): the reader asking for line k+1 means it
+    has processed line k. Because it is selectable, no arm drives the reader's blocking fallback for a stdin with no
+    file descriptor (``OperatorLines._blocking_line``, ``stop_reader``'s warning); ``test_stdin_lines.py`` covers it."""
 
     def __init__(self, tty: bool = False) -> None:
         super().__init__()
         self._tty = tty
-        self._q: queue.Queue[str] = queue.Queue()
+        self._r, self._w = os.pipe()
+        self._w_open = True
         self._cv = threading.Condition()
         self.reads = 0
 
@@ -611,17 +618,37 @@ class QueueStdin(io.TextIOBase):
     def isatty(self) -> bool:
         return self._tty
 
-    def readline(self, size: int | None = -1) -> str:  # type: ignore[override]
+    def fileno(self) -> int:
+        return self._r
+
+    def note_read(self) -> None:
         with self._cv:
             self.reads += 1
             self._cv.notify_all()
-        return self._q.get()
+
+    def readline(self, size: int | None = -1) -> str:  # type: ignore[override]
+        self.note_read()
+        out = bytearray()
+        while not out.endswith(b"\n"):
+            byte = os.read(self._r, 1)
+            if not byte:
+                break
+            out += byte
+        return out.decode("utf-8")
 
     def feed(self, line: str) -> None:
-        self._q.put(line + "\n")
+        os.write(self._w, (line + "\n").encode("utf-8"))
 
     def eof(self) -> None:
-        self._q.put("")
+        if self._w_open:
+            self._w_open = False
+            os.close(self._w)
+
+    def close(self) -> None:  # the read end lives while a reader holds this object (a leaked one keeps it)
+        if not self.closed:
+            self.eof()
+            os.close(self._r)
+        super().close()
 
     def wait_reads(self, n: int, reader: threading.Thread | None) -> None:
         deadline = time.monotonic() + SETTLE_TIMEOUT_S
@@ -632,6 +659,26 @@ class QueueStdin(io.TextIOBase):
                 if time.monotonic() > deadline:
                     raise HarnessHang(f"stdin reader did not reach read #{n} (at {self.reads})")
                 self._cv.wait(0.05)
+
+
+class _WallPlusOffset:
+    """``StallDetector.CLOCK`` for the stall arm: the wall clock plus an offset the arm's hold sets, the clock's
+    contract (``simulation/stall_detector.py``: the registry stamps calls on the wall clock)."""
+
+    def __init__(self) -> None:
+        self.offset = 0.0
+
+    def __call__(self) -> float:
+        return time.time() + self.offset
+
+
+def _wedged_offset_s() -> float:
+    """How far the stall arm's clock jumps: past a non-streaming planning call's wedged-by-age bound (the worker's
+    call timeout it stamps as ``allowed_s``, plus the stall margin; ``stall_threshold.non_streaming_age_bound_s``),
+    with room for the call's real age; well under the registry's 1800 s stale-entry TTL."""
+    from maxim.runtime.stall_threshold import non_streaming_age_bound_s
+
+    return non_streaming_age_bound_s() + 30.0
 
 
 # Hangs raised by a causal hold on a thread the run owns (the fake AUT's LLM call): src may swallow them there, so
@@ -826,6 +873,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     spec = ARMS[arm]
     work = workdir.resolve()
     router = FakeRouter(arm)
+    stall_clock = _WallPlusOffset()  # the stall detector's clock in the stall arm (``_hold_for_stall_arm``)
     turns: list[dict[str, Any]] = []
     lifecycle: list[str] = []
     finish_calls: list[dict[str, Any]] = []
@@ -855,6 +903,16 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     counter = iter(range(1, 1_000_000))
     Bridge = bridge_mod.SimulationBridge
     orig_send, orig_finish, orig_bridge_init = Bridge.send_and_wait, Bridge.finish, Bridge.__init__
+    from maxim.simulation.stdin_lines import OperatorLines
+
+    orig_next_line = OperatorLines.next_line
+
+    def _counted_next_line(self: Any) -> str | None:
+        """The run's line reader asks for its next line: count it on the harness's stdin (``QueueStdin.reads``)."""
+        if isinstance(self._stdin, QueueStdin):
+            self._stdin.note_read()
+        return orig_next_line(self)
+
     Source = conv_mod.ConversationalSource
     orig_inject = Source.inject_cli
     bridges: list[Any] = []  # every SimulationBridge the run built (a /new re-entry builds a second)
@@ -954,6 +1012,21 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 lambda: any(e.get("text", "").startswith("DIVERSITY CHECKPOINT") for e in events),
                 "the stall detector's diversity checkpoint after turn 3",
             )
+        if (
+            role == "narrator"
+            and call["kind"] == "followup"
+            and call["executed"] == "observe_actions"
+            and (call.get("held_inputs") or "").startswith("DIVERSITY CHECKPOINT")
+        ):
+            # The WEDGED narrator call (#1259's re-home; owner decisions 2026-10-24 and 2026-10-30): this call is
+            # registered in llm_call_registry (FakeRouter.generate_json) and held here. The detector's clock jumps
+            # past the age it was allowed plus the margin, so stall_suppression judges it wedged, and the idle nudge
+            # fires; the call answers once the nudge has landed. The clock stays ahead: nothing later reads an age.
+            stall_clock.offset = _wedged_offset_s()  # read under the arm's env
+            _wait_for(
+                lambda: any(e.get("text", "").startswith("SYSTEM: Stall detected (") for e in events),
+                "the stall detector's idle nudge behind the wedged narrator call",
+            )
 
     cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
     post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
@@ -983,37 +1056,38 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
 
         return spy
 
-    def _answered_the_nudge() -> bool:
-        return any(c["request"].startswith("system: stall detected (") for c in router.calls["narrator"])
-
     if arm == "stall":
         router.hold = _hold_for_stall_arm
+
+    def _cancel_after_finish(bridge: Any) -> None:
+        """The narrator's finish ends the run (#1259). The operator ``/cancel`` these arms used to send after it is now
+        a watchdog on a harness thread: sent, and recorded in ``stdin_lines``, only if the run's ``stop_event`` is
+        still clear ``FINISH_WATCHDOG_S`` after the finish."""
+        assert isinstance(stdin, QueueStdin)
+
+        def watch() -> None:
+            if not bridge._stop_event.wait(FINISH_WATCHDOG_S):
+                stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": WATCHDOG_CANCEL})
+                stdin.feed("/cancel")
+
+        threading.Thread(target=watch, name="harness.finish_watchdog", daemon=True).start()
 
     def finish(self: Any) -> None:
         finish_calls.append(dict(self.finish_context))  # the finish_context each finish() saw
         orig_finish(self)
-        if arm == "stall" and not stdin_feed and _answered_the_nudge():
-            # The stall arm's /cancel: only once the finished narrator has planned on (and answered) the idle nudge.
-            assert isinstance(stdin, QueueStdin)
-            stdin.feed("/cancel")
-            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "the idle nudge's answer"})
         if (
             arm in ("new_goal", "persistent_agent", "imagination")
             and self.finish_context.get("initiated_by") == "llm_finish_tool"
             and not any(b is self for b in cancelled_bridges)
         ):  # each run's narrator finish is followed by its /cancel, as in the narrator arm
             cancelled_bridges.append(self)
-            assert isinstance(stdin, QueueStdin)
-            stdin.feed("/cancel")
-            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "finish_simulation"})
+            _cancel_after_finish(self)
         if (
             arm == "narrator"
             and len(finish_calls) == 1
             and self.finish_context.get("initiated_by") == "llm_finish_tool"
         ):
-            assert isinstance(stdin, QueueStdin)
-            stdin.feed("/cancel")  # module docstring: the post-finish grace is otherwise 180 s
-            stdin_feed.append({"line": "/cancel", "after_turn": len(turns), "after": "finish_simulation"})
+            _cancel_after_finish(self)  # module docstring: the post-finish grace is otherwise 180 s
 
     def display_status(message: str) -> None:
         lifecycle.append(f"status: {message}")
@@ -1079,6 +1153,12 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         *((report_mod, n, _report_spy(n)) for n in _REPORT_WRITERS),
         *((NAc, m, _credit_spy(m)) for m in _NAC_CREDIT_ENTRY_POINTS),
     ]
+    if isinstance(stdin, QueueStdin):
+        patches.append((OperatorLines, "next_line", _counted_next_line))
+    if arm == "stall":
+        from maxim.simulation.stall_detector import StallDetector
+
+        patches.append((StallDetector, "CLOCK", staticmethod(stall_clock)))
     if arm == "imagination":
         from maxim.embodiment.component_registry import ComponentRegistry
         from maxim.imagination.trigger import ImaginationTrigger

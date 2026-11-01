@@ -588,8 +588,10 @@ class MaximHandle:
             # talk first; the next talk() lazily rebuilds it. required=True:
             # if it will not stop, fail the run rather than run both.
             self._stop_talk_loop(required=True)
-            # Headless surface: force non-interactive so the sim never grabs
-            # stdin (the console serves this from a FastAPI worker thread).
+            # Headless surface: force non-interactive so the sim takes no
+            # raw-mode TTY reader or post-sim prompt (the console serves this
+            # from a FastAPI worker thread). Its line reader still reads the
+            # server's stdin, and stops when the run ends (#1541).
             # Prior mode is restored on exit — a library user embedding the
             # handle next to interactive CLI usage keeps their setting.
             from maxim.simulation.sim_logger import (
