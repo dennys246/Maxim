@@ -5,90 +5,131 @@
 #   RIG_SUITE_HOST=user@host scripts/rig_suite.sh <local-worktree> <label>
 #   RIG_SUITE_HOST=user@host scripts/rig_suite.sh --attach <label>     # re-attach to a run already going
 #
-# Setup on the rig, once: a bare-enough clone at $RIG_SUITE_DIR/repo (local disk, never a network share), fed only
-# by these pushes, so the rig needs no GitHub credentials; and a venv at $RIG_SUITE_DIR/venv with CI's exact pins
+# Setup on the rig, once: a clone at ~/$RIG_SUITE_DIR/repo (local disk, never a network share), fed only by these
+# pushes, so the rig needs no GitHub credentials; and a venv at ~/$RIG_SUITE_DIR/venv with CI's exact pins
 # (coverage and pytest-cov as lint_coverage.py's COVERAGE_VERSION demands, the ci-backends constraints). conftest.py
-# isolates HOME/XDG/HF before import, so the rig's own ~/.maxim is never touched.
+# isolates HOME/XDG/HF before import, so the rig's own ~/.maxim is never touched. The rig always runs ITS main's
+# suite_at_commit.sh (a PR that changes that script is not run by its own copy there).
 #
-# The remote run is detached (nohup) and logs to $RIG_SUITE_DIR/logs/<label>.log, ending with `suite-exit=N`; this
-# side polls that log, so a dropped SSH link loses nothing. If this script dies, re-attach with --attach <label>.
+# The remote run is detached (nohup), logs to ~/$RIG_SUITE_DIR/logs/<label>.log ending with `suite-exit=N`, and
+# records its pid beside it; this side polls the log, so a dropped SSH link loses nothing.
 #
-# Exit: the suite's own exit code, except 3 = CALIBRATED: the suite failed, but only on the rig's known cadence tests
-# (RIG_KNOWN_FAILURES below) and the coverage ratchet was clean. 3 is not a pass; read the log and decide, the way
-# prepr.sh's TAINTED-PASS works.
+# Exit: 0 = PASS, either outright or CALIBRATED with the listed tests re-run locally on the same commit and passing
+# (scripts/rig_suite_verdict.py: every stage passed except the fast suite, whose only failures are the known rig
+# cadence tests). 10 = CALIBRATED with no local re-run (--attach knows no worktree): run the printed command on that
+# commit before counting it. Otherwise the suite's own exit code. Only 0 counts as the full suite on that commit.
+#
+# The whole body is one function, called on the last line (as suite_at_commit.sh does): bash reads a script as it
+# runs, so an edit during a run cannot shift what the tail parses.
 set -euo pipefail
 
-host="${RIG_SUITE_HOST:?set RIG_SUITE_HOST=user@host (the SSH login of the rig)}"
-dir="${RIG_SUITE_DIR:-maxim-suites}"  # relative to the rig user's home
+main() {
+    local host dir here
+    host="${RIG_SUITE_HOST:?set RIG_SUITE_HOST=user@host (the SSH login of the rig)}"
+    dir="${RIG_SUITE_DIR:-maxim-suites}"
+    # dir is relative to the rig user's home and reaches remote shells: plain path characters only.
+    case "$dir" in /* | *..* | *[!A-Za-z0-9._/-]* | "") echo "rig suite: RIG_SUITE_DIR must be a relative path of [A-Za-z0-9._/-]" >&2; exit 2 ;; esac
+    here="$(cd "$(dirname "$0")" && pwd)"
 
-# Tests that fail on the rig even alone and pass on the development box and in CI: real-time cadence assertions
-# under macOS timer coalescing over SSH (calibrated 2026-10-27; the water-trial pair is also #954's wall-time class).
-RIG_KNOWN_FAILURES=(
-    "tests/unit/test_b1_floor_run.py::test_run_arm_seed_end_to_end_writes_a_serialisable_row_and_tears_down[q_explore_prior]"
-    "tests/unit/test_b1_floor_run.py::test_run_arm_seed_end_to_end_writes_a_serialisable_row_and_tears_down[random]"
-    "tests/unit/test_leader_proxy.py::TestKeepaliveEmitter::test_emits_at_configured_cadence"
-    "tests/unit/test_water_trial_smoke.py::test_water_trial_ticks_acts_and_the_staging_close_persists_fear"
-    "tests/unit/test_water_trial_smoke.py::test_donor_sequence_over_the_scripted_bridge_passes_the_staged_sanity"
-)
+    if [ "${1:-}" = "--attach" ]; then
+        check_label "${2:-}"
+        poll "$2" "" ""
+    fi
+    local wt="${1:?usage: rig_suite.sh <local-worktree> <label>}" label="${2:-}"
+    check_label "$label"
+    local sha main_sha
+    sha="$(git -C "$wt" rev-parse --verify HEAD^{commit})"
+    git -C "$wt" fetch -q origin main
+    main_sha="$(git -C "$wt" rev-parse --verify origin/main^{commit})"
+
+    # A label still running is refused: a second launch would truncate its log and both pollers would read one mix.
+    if rig "test -f ~/$dir/logs/$label.pid && kill -0 \$(cat ~/$dir/logs/$label.pid) 2>/dev/null"; then
+        echo "rig suite: a run labelled $label is still going (attach with --attach $label, or pick a new label)" >&2
+        exit 2
+    fi
+    # The rig's origin/main moves FORWARD only. A forced push of a stale worktree's origin/main used to move it back
+    # under a run in flight, whose coverage ratchet diffs against the merge-base with origin/main (other branches'
+    # changes read as its own). Only refs/remotes/origin/main is pushed: nothing on the rig reads refs/heads/main.
+    local push_err
+    if ! push_err="$(git -C "$wt" push -q "ssh://$host/~/$dir/repo" "$main_sha:refs/remotes/origin/main" 2>&1)"; then
+        case "$push_err" in
+            *non-fast-forward* | *"fetch first"* | *rejected*) echo "rig suite: the rig's origin/main is ahead of this worktree's; keeping the rig's" ;;
+            *) echo "rig suite: pushing origin/main to the rig failed: $push_err" >&2; exit 2 ;;
+        esac
+    fi
+    git -C "$wt" push -q -f "ssh://$host/~/$dir/repo" "$sha:refs/heads/suite/$label"
+    echo "rig suite: $label at ${sha:0:12} (log on the rig: ~/$dir/logs/$label.log)"
+    rig "
+      set -e
+      mkdir -p ~/$dir/logs
+      cd ~/$dir/repo
+      git merge-base --is-ancestor $main_sha refs/remotes/origin/main \
+        || { echo 'rig suite: the rig origin/main does not contain this worktree origin/main; refusing' >&2; exit 2; }
+      git checkout -q --detach refs/remotes/origin/main  # the runner script; it tests $sha in its own worktree
+      export PATH=\$HOME/$dir/venv/bin:\$PATH
+      nohup bash -c 'scripts/suite_at_commit.sh $sha; echo suite-exit=\$?' > ~/$dir/logs/$label.log 2>&1 < /dev/null &
+      echo \$! > ~/$dir/logs/$label.pid
+    "
+    poll "$label" "$wt" "$sha"
+}
+
+check_label() {  # labels reach remote shells and file names
+    case "$1" in "" | *[!A-Za-z0-9._-]*) echo "rig suite: label must be non-empty [A-Za-z0-9._-]" >&2; exit 2 ;; esac
+}
 
 rig() { ssh -o BatchMode=yes -o ConnectTimeout=20 "$host" "$@"; }
 
-verdict() {  # verdict <log-file> <suite-exit>: the exit code this script returns
-    local log="$1" code="$2" failed unknown
-    [ "$code" -eq 0 ] && return 0
-    failed="$(grep -aoE '^FAILED [^ ]+' "$log" | cut -d' ' -f2 | sort -u || true)"
-    unknown="$(printf '%s\n' "$failed" | grep -v '^$' | grep -vxF -f <(printf '%s\n' "${RIG_KNOWN_FAILURES[@]}") || true)"
-    if [ -n "$failed" ] && [ -z "$unknown" ] && grep -aq '^coverage ratchet: clean' "$log" \
-        && ! grep -aqE '^ERROR |^E +(ImportError|ModuleNotFoundError)' "$log"; then
-        echo "rig suite: CALIBRATED (exit 3): every failure is a known rig cadence test, and the ratchet is clean:"
-        printf '  %s\n' $failed
-        return 3
-    fi
-    [ -n "$unknown" ] && printf 'rig suite: failures outside the calibrated list:\n%s\n' "$unknown"
-    return "$code"
-}
-
-poll() {  # poll <label>: wait for the detached run's `suite-exit=N`, print its log, exit with the verdict
-    local remote_log="$dir/logs/$1.log" done_line="" local_log
+poll() {  # poll <label> <worktree|""> <sha|"">: wait for `suite-exit=N`, print the log, exit with the verdict
+    local label="$1" wt="$2" sha="$3" log="~/$dir/logs/$1.log" pidf="~/$dir/logs/$1.pid"
+    local done_line="" fails=0 started="$SECONDS" local_log
     while :; do
-        sleep 60
-        done_line="$(rig "grep -a -m1 '^suite-exit=[0-9]' $remote_log" 2>/dev/null || true)"
-        if [ -n "$done_line" ]; then
-            local_log="$(mktemp)"
-            rig "cat $remote_log" | tee "$local_log"
-            local code=0
-            verdict "$local_log" "${done_line#suite-exit=}" || code=$?
-            rm -f "$local_log"
-            exit "$code"
+        if done_line="$(rig "grep -a -m1 '^suite-exit=[0-9]' $log || true")"; then
+            fails=0
+            [ -n "$done_line" ] && break
+            # No exit line yet: is the run still alive? (a reboot or an OOM kill never writes one)
+            if ! rig "kill -0 \$(cat $pidf) 2>/dev/null"; then
+                rig "grep -a -m1 '^suite-exit=[0-9]' $log" >/dev/null 2>&1 && continue  # it ended just now
+                echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2
+                exit 2
+            fi
+        else
+            fails=$((fails + 1))
+            [ "$fails" -ge 30 ] && { echo "rig suite: the rig is unreachable (30 attempts); re-attach with --attach $label" >&2; exit 2; }
         fi
+        echo "rig suite: $label running ($(( (SECONDS - started) / 60 )) min)"
+        sleep 60
     done
+    local_log="$(mktemp)"
+    trap 'rm -f "$local_log"' EXIT
+    rig "cat $log" | tee "$local_log"
+    local code=0
+    python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" || code=$?
+    [ "$code" -eq 10 ] || exit "$code"
+    # CALIBRATED is not a pass: re-run exactly those tests here, on the same commit, and only their pass counts.
+    local ids
+    ids="$(python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" | sed -n 's/^  //p' || true)"
+    if [ -z "$wt" ]; then
+        echo "rig suite: CALIBRATED; before counting it, run these on that commit:"
+        echo "  python -m pytest -p no:cacheprovider $(echo $ids)"
+        exit 10
+    fi
+    rerun "$wt" "$sha" $ids
 }
 
-if [ "${1:-}" = "--attach" ]; then poll "${2:?usage: rig_suite.sh --attach <label>}"; fi
-wt="${1:?usage: rig_suite.sh <local-worktree> <label>}"
-label="${2:?usage: rig_suite.sh <local-worktree> <label>}"
-case "$label" in *[!A-Za-z0-9._-]*) echo "rig suite: label must be [A-Za-z0-9._-]" >&2; exit 2 ;; esac
-remote="ssh://$host/~/$dir/repo"
-sha="$(git -C "$wt" rev-parse HEAD)"
-git -C "$wt" fetch -q origin main
-main_sha="$(git -C "$wt" rev-parse origin/main)"
+rerun() {  # rerun <worktree> <sha> <nodeid>...: the calibrated tests, locally, in a throwaway worktree of <sha>
+    local wt="$1" sha="$2" tree code=0
+    shift 2
+    tree="$(mktemp -d)"
+    rmdir "$tree"
+    git -C "$wt" worktree add --detach --quiet "$tree" "$sha"
+    (cd "$tree" && PYTHONPATH="$tree/src" python -m pytest -q -p no:cacheprovider "$@") || code=$?
+    git -C "$wt" worktree remove --force "$tree" >/dev/null 2>&1 || true
+    if [ "$code" -eq 0 ]; then
+        echo "rig suite: PASS (the rig's cadence failures re-ran locally on ${sha:0:12} and passed)"
+        exit 0
+    fi
+    echo "rig suite: FAILED: the calibrated tests also fail locally on ${sha:0:12} (exit $code)" >&2
+    exit 1
+}
 
-# The two main refs move FORWARD only. A forced push of a stale worktree's origin/main used to move them backwards
-# under another run in flight; that run's coverage ratchet diffs against the merge-base with origin/main, so its
-# base slid back and other branches' changes read as its own. A non-forced push fails when the rig is already ahead:
-# keep the rig's main then, provided it contains this commit's base (checked on the rig below).
-git -C "$wt" push -q "$remote" "$main_sha:refs/heads/main" "$main_sha:refs/remotes/origin/main" 2>/dev/null \
-    || echo "rig suite: the rig's main is ahead of this worktree's origin/main; keeping the rig's"
-git -C "$wt" push -q -f "$remote" "HEAD:refs/heads/suite/$label"
-echo "rig suite: $label at ${sha:0:12} (log on the rig: ~/$dir/logs/$label.log)"
-rig "
-  set -e
-  mkdir -p ~/$dir/logs
-  cd ~/$dir/repo
-  git merge-base --is-ancestor $main_sha refs/remotes/origin/main \
-    || { echo 'rig suite: the rig main does not contain this worktree origin/main; refusing' >&2; exit 2; }
-  git checkout -q --detach refs/remotes/origin/main  # the runner script itself; it tests $sha in its own worktree
-  export PATH=\$HOME/$dir/venv/bin:\$PATH
-  nohup bash -c 'scripts/suite_at_commit.sh $sha; echo suite-exit=\$?' > ~/$dir/logs/$label.log 2>&1 < /dev/null &
-"
-poll "$label"
+main "$@"; exit "$?"
