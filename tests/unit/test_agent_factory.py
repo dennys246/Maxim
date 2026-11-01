@@ -8,6 +8,7 @@ import pytest
 
 from maxim.runtime.agent_factory import AgentConfig, AgentFactory, AgentInstance
 from maxim.runtime.agent_pool import AgentPool, TurnResult
+from tests.policy_helpers import TEST_POLICY, policy_for
 
 
 # ---------------------------------------------------------------------------
@@ -29,6 +30,7 @@ def guard_config():
         personality="A stern town guard.",
         remembers=True,
         learns=True,
+        policy=None,
     )
 
 
@@ -40,6 +42,7 @@ def merchant_config():
         personality="A shrewd merchant.",
         remembers=True,
         learns=False,
+        policy=None,
     )
 
 
@@ -50,11 +53,11 @@ def merchant_config():
 
 class TestAgentConfig:
     def test_defaults(self):
-        cfg = AgentConfig(agent_id="test")
+        cfg = AgentConfig(agent_id="test", policy=None)
         assert cfg.role == "npc"
         assert cfg.remembers is True
         assert cfg.learns is True
-        assert cfg.permissions is None
+        assert cfg.policy is None
         assert cfg.personality is None
 
     def test_custom_config(self):
@@ -64,23 +67,23 @@ class TestAgentConfig:
             agent_id="pc",
             role="pc",
             model_profile="large",
-            permissions=AgentPermissions(tool_allow=frozenset({"speak", "fight"})),
+            policy=policy_for(AgentPermissions(tool_allow=frozenset({"speak", "fight"}))),
             personality="A brave warrior.",
         )
         assert cfg.role == "pc"
         assert cfg.model_profile == "large"
-        assert cfg.permissions.can_invoke_tool("speak")[0] is True
-        assert cfg.permissions.can_invoke_tool("bash")[0] is False
+        assert cfg.policy.permissions.can_invoke_tool("speak")[0] is True
+        assert cfg.policy.permissions.can_invoke_tool("bash")[0] is False
 
     def test_dead_tool_whitelist_field_is_gone(self):
         """1.0-1.1.2 ``tool_whitelist`` was written to ``ToolRegistry.
         _tool_whitelist`` and read by nothing. It must not come back as a
-        silent no-op: the restriction is ``permissions``."""
+        silent no-op: the restriction is ``policy``."""
         from dataclasses import fields
 
         assert "tool_whitelist" not in {f.name for f in fields(AgentConfig)}
         with pytest.raises(TypeError):
-            AgentConfig(agent_id="x", tool_whitelist={"speak"})  # type: ignore[call-arg]
+            AgentConfig(agent_id="x", tool_whitelist={"speak"}, policy=None)  # type: ignore[call-arg]
 
     @pytest.mark.parametrize("bad", ["team:alpha", "a\x1fb", ""])
     def test_agent_id_with_a_key_separator_is_refused(self, bad):
@@ -90,7 +93,7 @@ class TestAgentConfig:
         from maxim.exceptions import InvalidAgentIdError
 
         with pytest.raises(InvalidAgentIdError, match="agent_id"):
-            AgentConfig(agent_id=bad)
+            AgentConfig(agent_id=bad, policy=None)
 
     def test_create_agent_refuses_a_colon_name_before_building_a_home(self, tmp_path):
         import maxim
@@ -138,9 +141,104 @@ class TestAgentFactory:
         assert instance.hippocampus is not None
 
     def test_skips_hippocampus_when_not_remembers(self, factory):
-        cfg = AgentConfig(agent_id="forgetful", remembers=False)
+        cfg = AgentConfig(agent_id="forgetful", remembers=False, policy=None)
         instance = factory.create_agent(cfg)
         assert instance.hippocampus is None
+
+    @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
+    @pytest.mark.parametrize(("remembers", "learns"), [(False, True), (True, False)])
+    def test_a_deliberate_no_hub_agent_reports_no_corruption(self, factory, caplog, remembers, learns, on_corrupt):
+        """#1522: an agent without a Hippocampus or a NAc is a configuration, not a failure. The hub needs both, so
+        none is built, and nothing is reported as corrupt (under "raise" that report refused to build the agent)."""
+        import logging
+
+        cfg = AgentConfig(
+            agent_id=f"no_hub_{int(remembers)}{int(learns)}_{on_corrupt}",
+            remembers=remembers,
+            learns=learns,
+            on_corrupt=on_corrupt,
+            policy=None,
+        )
+        with caplog.at_level(logging.WARNING, logger="maxim"):
+            instance = factory.create_agent(cfg)
+        assert instance.memory_hub is None
+        assert (instance.hippocampus is not None) is remembers and (instance.nac is not None) is learns
+        assert "memory_hub" not in caplog.text, caplog.text
+
+    @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
+    def test_a_no_hub_agent_never_reads_the_hub_stores_files(self, factory, on_corrupt):
+        """#1522 (the review rounds' audit): SCN and EC are only the hub's stores, so an agent with no hub builds and
+        reads neither. A bad ec.json beside a learns-only agent is not its file: under "raise" the agent still builds,
+        and under "warn" nothing is copied aside and its NAc is not reset beside an EC it never uses (it was, on every
+        load)."""
+        cfg = AgentConfig(
+            agent_id=f"no_hub_stale_ec_{on_corrupt}", remembers=False, learns=True, on_corrupt=on_corrupt, policy=None
+        )
+        first = factory.create_agent(cfg)
+        from maxim.decisions.nac import Valence
+
+        first.nac.observe(
+            event_type="tool",
+            event_signature="wolves_at_dusk",
+            outcome_type="result",
+            outcome_signature="fled",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=1.0,
+        )
+        first.shutdown()
+        agent_dir = factory._resolve_persistence_dir(cfg)
+        assert "wolves_at_dusk" in (agent_dir / "nac.json").read_text()
+        (agent_dir / "ec.json").write_text("{not json")
+        (agent_dir / "scn.json").write_text("{not json")
+        for _ in range(2):
+            factory.create_agent(cfg, auto_load=True).shutdown()
+        assert not [p.name for p in agent_dir.iterdir() if ".corrupt-" in p.name]
+        assert "wolves_at_dusk" in (agent_dir / "nac.json").read_text(), "the NAc was reset beside an EC it never uses"
+        assert (agent_dir / "ec.json").read_text() == "{not json", "a no-hub agent touched the hub's ec.json"
+
+    def test_a_no_hub_agent_is_not_warned_about_a_missing_ec(self, factory, caplog):
+        """#1522 delta round 3: a learns-only agent saves nac.json and, having no EC, never ec.json; the NAc/EC
+        pairing check warned about that half-present pair on every load."""
+        import logging
+
+        cfg = AgentConfig(agent_id="no_hub_pair", remembers=False, learns=True, policy=None)
+        factory.create_agent(cfg).shutdown()
+        with caplog.at_level(logging.WARNING, logger="maxim"):
+            factory.create_agent(cfg, auto_load=True).shutdown()
+        assert "Half-present" not in caplog.text, caplog.text
+
+    @pytest.mark.parametrize("error", [TypeError, RuntimeError])  # read as unreadable / as failed otherwise
+    def test_an_ec_constructor_defect_does_not_reset_the_nac(self, factory, monkeypatch, error):
+        """#1522 delta round 3: an EC whose constructor failed read no file, so the NAc beside the intact ec.json
+        keeps its biases (a loader regression must fail loudly, not read as a corrupt file)."""
+        from maxim.decisions.nac import Valence
+        from maxim.similarity import ec as ec_mod
+
+        cfg = AgentConfig(
+            agent_id=f"ec_ctor_defect_{error.__name__}", remembers=True, learns=True, on_corrupt="warn", policy=None
+        )
+        first = factory.create_agent(cfg)
+        first.nac.observe(
+            event_type="tool",
+            event_signature="wolves_at_dusk",
+            outcome_type="result",
+            outcome_signature="fled",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=1.0,
+        )
+        first.shutdown()
+        agent_dir = factory._resolve_persistence_dir(cfg)
+
+        def _broken(*a, **k):
+            raise error("constructor defect")
+
+        monkeypatch.setattr(ec_mod, "EntorhinalCortex", _broken)
+        second = factory.create_agent(cfg, auto_load=True)
+        try:
+            assert not [p.name for p in agent_dir.iterdir() if p.name.startswith("nac.json.corrupt-")]
+            assert second.nac.stats()["total_observations"] > 0, "the NAc was emptied beside an EC that never loaded"
+        finally:
+            second.shutdown()
 
     def test_creates_nac_when_learns(self, factory, guard_config):
         instance = factory.create_agent(guard_config)
@@ -175,7 +273,7 @@ class TestAgentFactory:
         assert guard_path != merchant_path
 
     def test_per_agent_persistence_directory(self, factory, tmp_path):
-        cfg = AgentConfig(agent_id="test_agent")
+        cfg = AgentConfig(agent_id="test_agent", policy=None)
         factory.create_agent(cfg)
         agent_dir = tmp_path / "agents" / "test_agent"
         assert agent_dir.is_dir()
@@ -193,7 +291,7 @@ class TestAgentFactory:
         # No Executor → no gate, and the config says so instead of carrying a
         # permissions object nothing enforces (D73's shape).
         assert instance.executor is None
-        assert instance.config.permissions is None
+        assert instance.config.policy is None
         assert not hasattr(instance.tool_registry, "_tool_whitelist")
 
     def test_create_agent_public_entry_refuses_tool_whitelist(self):
@@ -205,7 +303,7 @@ class TestAgentFactory:
 
 class TestPermissionsArming:
     """A fix ships with a CALLER: ``create_full_agent`` must pass
-    ``config.permissions`` into ``build_executor`` so the gate is live on
+    ``config.policy`` into ``build_executor`` so the gate is live on
     the instance's Executor — not merely constructible."""
 
     def _registry(self):
@@ -237,10 +335,11 @@ class TestPermissionsArming:
         from maxim.agents.permissions import AgentPermissions
 
         perms = AgentPermissions(tool_allow=frozenset({"speak"}))
-        cfg = AgentConfig(agent_id="gated", with_executor=True, permissions=perms)
+        cfg = AgentConfig(agent_id="gated", with_executor=True, policy=policy_for(perms))
         instance = factory.create_full_agent(cfg, tool_registry=self._registry())
         try:
-            assert instance.executor._permissions is perms
+            assert instance.executor.policy is cfg.policy  # the configured object itself, not a rebuilt one
+            assert instance.executor.policy.permissions == perms
             refused = instance.executor.execute({"tool_name": "read_stub", "params": {}})
             assert refused.success is False
             assert "allow-list" in (refused.error or "")
@@ -249,10 +348,14 @@ class TestPermissionsArming:
             instance.shutdown()
 
     def test_create_full_agent_without_permissions_has_no_gate(self, factory):
-        cfg = AgentConfig(agent_id="open", with_executor=True)
+        from maxim.agents.permissions import AgentPermissions
+        from maxim.tools.base import Effect
+
+        cfg = AgentConfig(agent_id="open", with_executor=True, policy=TEST_POLICY)
         instance = factory.create_full_agent(cfg, tool_registry=self._registry())
         try:
-            assert instance.executor._permissions is None
+            assert instance.executor.policy.permissions == AgentPermissions()
+            assert instance.executor.policy.ceiling == Effect.ALL
             assert instance.executor.execute({"tool_name": "read_stub", "params": {}}).success is True
         finally:
             instance.shutdown()
@@ -301,6 +404,7 @@ class TestCreateFullAgent:
         cfg = AgentConfig(
             agent_id="full_bio",
             with_bio_stack=True,
+            policy=None,
         )
         instance = factory.create_full_agent(cfg)
         assert instance.bio_stack is not None
@@ -311,7 +415,7 @@ class TestCreateFullAgent:
 
     def test_full_agent_without_bio_stack(self, factory):
         """Bio-stack is NOT constructed when with_bio_stack=False."""
-        cfg = AgentConfig(agent_id="no_bio")
+        cfg = AgentConfig(agent_id="no_bio", policy=None)
         instance = factory.create_full_agent(cfg)
         assert instance.bio_stack is None
         assert instance.pain_bus is None
@@ -324,6 +428,7 @@ class TestCreateFullAgent:
             agent_id="full_exec",
             with_bio_stack=True,
             with_executor=True,
+            policy=TEST_POLICY,
         )
         registry = ToolRegistry()
         instance = factory.create_full_agent(cfg, tool_registry=registry)
@@ -335,6 +440,7 @@ class TestCreateFullAgent:
         cfg = AgentConfig(
             agent_id="no_reg",
             with_executor=True,
+            policy=TEST_POLICY,
         )
         with pytest.raises(ValueError, match="tool_registry"):
             factory.create_full_agent(cfg)
@@ -347,6 +453,7 @@ class TestCreateFullAgent:
             agent_id="partial_exec",
             with_bio_stack=True,
             with_executor=True,
+            policy=TEST_POLICY,
         )
         shutdown_instances = []
         original_shutdown = AgentInstance.shutdown
@@ -376,6 +483,7 @@ class TestCreateFullAgent:
             with_bio_stack=True,
             with_executor=True,
             with_fear_gate=True,
+            policy=TEST_POLICY,
         )
         registry = ToolRegistry()
         instance = factory.create_full_agent(cfg, tool_registry=registry)
@@ -390,6 +498,7 @@ class TestCreateFullAgent:
         cfg = AgentConfig(
             agent_id="upgraded",
             with_bio_stack=True,
+            policy=None,
         )
         instance = factory.create_full_agent(cfg)
         # hippocampus/nac/memory_hub should come from bio-stack
@@ -408,7 +517,7 @@ class TestCreateFullAgent:
             return instance
 
         monkeypatch.setattr(factory, "create_agent", capture_skeleton)
-        cfg = AgentConfig(agent_id="worker_ownership", with_bio_stack=True)
+        cfg = AgentConfig(agent_id="worker_ownership", with_bio_stack=True, policy=None)
         instance = factory.create_full_agent(cfg)
 
         skeleton = skeleton_hubs[0]
@@ -452,7 +561,7 @@ class TestCreateFullAgent:
 
         monkeypatch.setattr(factory, "create_agent", capture_skeleton)
         monkeypatch.setattr(bio_stack_module, "build_bio_stack", capture_bio)
-        cfg = AgentConfig(agent_id="interrupt_ownership", with_bio_stack=True)
+        cfg = AgentConfig(agent_id="interrupt_ownership", with_bio_stack=True, policy=None)
 
         with pytest.raises(KeyboardInterrupt):
             factory.create_full_agent(cfg)
@@ -481,7 +590,7 @@ class TestCreateFullAgent:
         monkeypatch.setattr("maxim.runtime.bio_stack.build_bio_stack", fail_bio)
 
         with pytest.raises(RuntimeError, match="bio construction failed"):
-            factory.create_full_agent(AgentConfig(agent_id="rollback", with_bio_stack=True))
+            factory.create_full_agent(AgentConfig(agent_id="rollback", with_bio_stack=True, policy=None))
 
         skeleton = skeletons[0]
         skeleton.hippocampus.save.assert_not_called()
@@ -496,14 +605,15 @@ class TestCreateFullAgent:
         cfg = AgentConfig(
             agent_id="pre_bus",
             with_bio_stack=True,
+            policy=None,
         )
         instance = factory.create_full_agent(cfg, pain_bus=pre_bus)
         assert instance.pain_bus is pre_bus
 
     def test_full_agent_separate_persistence(self, factory, tmp_path):
         """Two full agents get separate persistence directories."""
-        cfg_a = AgentConfig(agent_id="agent_a", with_bio_stack=True)
-        cfg_b = AgentConfig(agent_id="agent_b", with_bio_stack=True)
+        cfg_a = AgentConfig(agent_id="agent_a", with_bio_stack=True, policy=None)
+        cfg_b = AgentConfig(agent_id="agent_b", with_bio_stack=True, policy=None)
         a = factory.create_full_agent(cfg_a)
         b = factory.create_full_agent(cfg_b)
         # Separate hippocampus instances
@@ -512,7 +622,7 @@ class TestCreateFullAgent:
 
     def test_full_agent_backward_compat(self, factory):
         """create_full_agent with no F2 flags behaves like create_agent."""
-        cfg = AgentConfig(agent_id="compat")
+        cfg = AgentConfig(agent_id="compat", policy=None)
         instance = factory.create_full_agent(cfg)
         assert instance.bio_stack is None
         assert instance.executor is None
@@ -654,7 +764,7 @@ class TestThreadSafety:
 
         def worker(idx: int) -> None:
             try:
-                cfg = AgentConfig(agent_id=f"agent_{idx}", personality=f"Agent {idx}")
+                cfg = AgentConfig(agent_id=f"agent_{idx}", personality=f"Agent {idx}", policy=None)
                 instance = factory.create_agent(cfg)
                 pool.add(instance)
                 result = pool.run_turn(f"agent_{idx}", "Hello")

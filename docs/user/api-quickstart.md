@@ -48,7 +48,8 @@ maxim.delete_model("llama-2-13b-chat")
 Your model choice persists across sessions automatically:
 
 ```python
-# First session — sets qwen as default
+# First session — sets qwen as default. "The workspace" is <home>/.maxim_workspace: maxim.run's path-taking file tools
+# reach only that directory (home_dir, default ~/.maxim), never your working directory.
 maxim.run(model="qwen2.5-14b-instruct", goal="inspect the workspace")
 
 # Next session — remembers qwen, no need to specify

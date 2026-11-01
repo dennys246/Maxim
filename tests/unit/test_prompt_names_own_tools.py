@@ -32,6 +32,7 @@ from maxim.agents.prompt_builder import (
     build_tool_guidance_extended,
     is_realtime_request,
 )
+from tests.policy_helpers import TEST_POLICY
 
 NARRATOR_TOOLS = {"send_message", "observe_actions", "check_completion"}
 FOREIGN = ("internet_search", "write_file", "read_file", "speak", "respond", "math", "focus_interests", "track_target")
@@ -521,7 +522,7 @@ def test_an_unregistered_tool_reply_names_only_advertised_tools_the_agent_has() 
     registry = ToolRegistry()
     registry.register(SimRespondTool())
     registry.register(CheckCompletionTool.__new__(CheckCompletionTool))
-    executor = Executor(tool_registry=registry)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY)
     first = executor.execute({"tool_name": "respondd", "params": {}}).error or ""
     assert "Did you mean" not in first and "'memory_recall'" not in first, "no decoy suggestion, no foreign hint"
     second = executor.execute({"tool_name": "respondd", "params": {}}).error or ""

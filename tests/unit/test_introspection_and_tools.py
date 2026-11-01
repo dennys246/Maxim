@@ -11,6 +11,7 @@ from maxim.simulation.introspection import Observer
 from maxim.tools.narrative import ExamineTool, SayTool, ThinkTool
 from maxim.tools.registry import ToolRegistry
 from maxim.runtime.executor import Executor, TOOL_ALIASES
+from tests.policy_helpers import TEST_POLICY
 
 
 # ── Lightweight fakes for subsystems ─────────────────────────────────
@@ -445,7 +446,7 @@ class TestThinkToolSchema:
         """
         registry = ToolRegistry()
         registry.register(ThinkTool())
-        exe = Executor(tool_registry=registry)
+        exe = Executor(tool_registry=registry, policy=TEST_POLICY)
         result = exe.execute({"tool_name": "think", "params": {}})
         # Executor should report failure from execute() (Empty thought),
         # not a ValueError from the validator.
@@ -460,7 +461,7 @@ class TestToolUsageTracking:
         registry = ToolRegistry()
         registry.register(SayTool())
         registry.register(ThinkTool())
-        return Executor(tool_registry=registry)
+        return Executor(tool_registry=registry, policy=TEST_POLICY)
 
     def test_tracks_attempted(self):
         exe = self._make_executor()
@@ -498,7 +499,7 @@ class TestToolUsageTracking:
         # Let's test with a registered alias target
         registry = ToolRegistry()
         registry.register(SayTool())
-        exe2 = Executor(tool_registry=registry)
+        exe2 = Executor(tool_registry=registry, policy=TEST_POLICY)
         exe2.execute({"tool_name": "speech", "params": {"text": "hello"}})
         assert len(exe2.alias_redirects) == 1
         assert exe2.alias_redirects[0] == ("speech", "say")

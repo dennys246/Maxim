@@ -335,7 +335,7 @@ def test_create_agent_without_loading_never_overwrites_an_existing_home(tmp_path
     home = tmp_path / "agents" / "a1"
     before = _seed_home(home)
     factory = AgentFactory(base_data_dir=tmp_path / "agents")
-    agent = factory.create_agent(AgentConfig(agent_id="a1"), auto_load=False)
+    agent = factory.create_agent(AgentConfig(agent_id="a1", policy=None), auto_load=False)
     with caplog.at_level(logging.ERROR):
         agent.shutdown()
     for name, data in before.items():
@@ -418,7 +418,7 @@ def test_load_agent_fresh_on_an_unreadable_ec_keeps_copies_and_saves(tmp_path: P
     _seed_home(home)
     _corrupt(home / "ec.json")
     factory = AgentFactory(base_data_dir=tmp_path / "agents")
-    agent = factory.create_agent(AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True)
+    agent = factory.create_agent(AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True)
     assert agent.nac.dump()["reward_bias"] == {}
     agent.shutdown()
     assert len(list(home.glob("ec.json.corrupt-*"))) == 1
@@ -437,7 +437,7 @@ def test_load_agent_raise_mode_makes_no_copies(tmp_path: Path, which: str) -> No
     _corrupt(home / f"{which}.json")
     factory = AgentFactory(base_data_dir=tmp_path / "agents")
     with pytest.raises(MemoryCorruptionError):
-        factory.create_agent(AgentConfig(agent_id="a1", on_corrupt="raise"), auto_load=True)
+        factory.create_agent(AgentConfig(agent_id="a1", on_corrupt="raise", policy=None), auto_load=True)
     assert not list(home.glob("*.corrupt-*"))
 
 
@@ -524,7 +524,7 @@ def test_load_agent_fresh_on_an_unreadable_store_keeps_a_copy_and_saves(tmp_path
     _seed_home(home)
     _corrupt(home / f"{which}.json")
     factory = AgentFactory(base_data_dir=tmp_path / "agents")
-    agent = factory.create_agent(AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True)
+    agent = factory.create_agent(AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True)
     agent.shutdown()
     assert len(list(home.glob(f"{which}.json.corrupt-*"))) == 1
     json.loads((home / f"{which}.json").read_text())  # saved fresh in place
@@ -550,7 +550,7 @@ def test_shutdown_logs_its_own_nac_refusal_at_error(tmp_path: Path, caplog) -> N
 
     home = tmp_path / "agents" / "a1"
     _seed_home(home)
-    agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(AgentConfig(agent_id="a1"))
+    agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(AgentConfig(agent_id="a1", policy=None))
     # #1438 PR 0: shutdown no longer saves NAc itself; its session end (the hub, in owner order) does, and that
     # refusal must still reach ERROR on the shutdown path.
     with caplog.at_level(logging.ERROR):
@@ -648,7 +648,7 @@ def test_load_agent_fresh_survives_a_wrongly_typed_ec_config(tmp_path: Path) -> 
     data["config"]["num_lsh_tables"] = "4"
     (home / "ec.json").write_text(json.dumps(data))
     agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(
-        AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True
+        AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True
     )
     assert isinstance(agent.memory_hub.ec.config.num_lsh_tables, int)
     agent.shutdown()
@@ -761,7 +761,7 @@ def test_the_factory_under_warn_empties_a_store_a_defect_left_half_loaded(tmp_pa
     monkeypatch.setattr(EntorhinalCortex, "_load_file", half_then_defect)
     with caplog.at_level(logging.ERROR):
         agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(
-            AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True
+            AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True
         )
     monkeypatch.undo()
     ec = agent.memory_hub.ec
@@ -796,7 +796,7 @@ def test_a_defect_after_the_nac_claimed_its_file_still_leaves_the_file_alone(tmp
     monkeypatch.setattr(NAc, "apply_wall_clock_decay", defect)
     monkeypatch.setattr(NAc, "_offline_decay_enabled", lambda self, apply_decay, *, caller: True)
     agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(
-        AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True
+        AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True
     )
     monkeypatch.undo()
     assert agent.nac.dump()["reward_bias"] == {}
@@ -819,7 +819,7 @@ def test_an_ec_that_fails_otherwise_empties_its_nac_in_the_factory(tmp_path: Pat
 
     monkeypatch.setattr(EntorhinalCortex, "_load_file", defect)
     agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(
-        AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True
+        AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True
     )
     monkeypatch.undo()
     assert agent.nac.dump()["reward_bias"] == {}
@@ -871,7 +871,7 @@ def test_an_atl_emptied_in_memory_is_not_re_read_by_the_session_start(tmp_path: 
 
     monkeypatch.setattr(ATL, "load_state", half_then_defect)
     agent = AgentFactory(base_data_dir=tmp_path / "agents").create_agent(
-        AgentConfig(agent_id="a1", on_corrupt="warn"), auto_load=True
+        AgentConfig(agent_id="a1", on_corrupt="warn", policy=None), auto_load=True
     )
     # create_agent opens the session (the hub's restore runs there): it must not have re-read atl.json.
     assert len(agent.atl._concepts) == 0

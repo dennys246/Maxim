@@ -141,7 +141,7 @@ def test_create_path_is_unaffected_by_corrupt_files(agent_home, tmp_path, caplog
     factory = AgentFactory(base_data_dir=str(tmp_path))
     # Fresh path: succeeds AND reads no persisted file at all.
     with caplog.at_level("WARNING"):
-        inst = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)))
+        inst = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home), policy=None))
     assert inst is not None, "create.agent() must not inherit load.agent()'s strictness"
     assert not any("Corrupt" in r.getMessage() for r in caplog.records), (
         "the fresh create path read a persisted file — fresh is not fresh (D28)"
@@ -151,7 +151,9 @@ def test_create_path_is_unaffected_by_corrupt_files(agent_home, tmp_path, caplog
     # Reading path: the corrupt files are genuinely parsed (anti-vacuity for
     # the blast-radius claim), warned about, and construction still succeeds.
     with caplog.at_level("WARNING"):
-        inst2 = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)), auto_load=True)
+        inst2 = factory.create_agent(
+            AgentConfig(agent_id="scout", persistence_dir=str(agent_home), policy=None), auto_load=True
+        )
     assert inst2 is not None, "auto_load create must warn-and-continue, not raise"
     assert any("Corrupt scn" in r.getMessage() for r in caplog.records), (
         "no corrupt file was actually read — the blast-radius assertion is vacuous"
@@ -172,14 +174,16 @@ def test_create_is_fresh_scn_does_not_leak_previous_temporal_state(agent_home, t
     assert (agent_home / "scn.json").exists()
 
     factory = AgentFactory(base_data_dir=str(tmp_path))
-    fresh = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)))
+    fresh = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home), policy=None))
     assert fresh.memory_hub.scn.get_signature("d28_probe") is None, (
         "a FRESH agent inherited the previous session's temporal state (D28)"
     )
     # The write side stays bound: a fresh agent persists at session end.
     assert fresh.memory_hub.scn.persistence_path == str(agent_home / "scn.json")
 
-    loaded = factory.create_agent(AgentConfig(agent_id="scout", persistence_dir=str(agent_home)), auto_load=True)
+    loaded = factory.create_agent(
+        AgentConfig(agent_id="scout", persistence_dir=str(agent_home), policy=None), auto_load=True
+    )
     assert loaded.memory_hub.scn.get_signature("d28_probe") is not None, (
         "auto_load=True stopped restoring SCN — the fix over-rotated"
     )
@@ -191,7 +195,7 @@ def test_auto_load_true_on_factory_still_raises_when_asked(tmp_path, agent_home)
 
     (agent_home / "hippocampus.json").write_text("{not json", encoding="utf-8")
     factory = AgentFactory(base_data_dir=str(tmp_path))
-    cfg = AgentConfig(agent_id="scout", persistence_dir=str(agent_home), on_corrupt="raise")
+    cfg = AgentConfig(agent_id="scout", persistence_dir=str(agent_home), on_corrupt="raise", policy=None)
     with pytest.raises(MemoryCorruptionError):
         factory.create_agent(cfg, auto_load=True)
 
@@ -222,10 +226,10 @@ def test_on_corrupt_typo_is_a_hard_error_not_a_silent_downgrade(tmp_path):
     from maxim.runtime.agent_factory import AgentConfig
 
     for good in ("warn", "raise"):
-        AgentConfig(agent_id="x", on_corrupt=good)
+        AgentConfig(agent_id="x", on_corrupt=good, policy=None)
     for bad in ("Raise", "RAISE", "fail", "error", ""):
         with pytest.raises(ValueError, match="on_corrupt"):
-            AgentConfig(agent_id="x", on_corrupt=bad)
+            AgentConfig(agent_id="x", on_corrupt=bad, policy=None)
 
 
 def test_failed_load_does_not_leak_the_memory_hub_worker(agent_home, tmp_path):

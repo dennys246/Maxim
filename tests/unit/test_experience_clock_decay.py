@@ -31,6 +31,7 @@ from typing import Any, Callable
 import pytest
 
 from maxim.decisions.nac import NAc, NACConfig
+from tests.policy_helpers import TEST_POLICY
 
 # One learning subject per run: decay pacing is a property of the clock, not of agent scoping (the per-agent
 # keying is exercised by tests/multi_agent_fixtures.py users, which S3a's Impact list already names).
@@ -336,7 +337,7 @@ def _drive_in(
         monkeypatch.setattr(time, "time", clock.time)
         monkeypatch.setattr(time, "monotonic", clock.monotonic)
 
-    executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     if body is not None:
         executor.embodiment = body
     state = RuntimeState()
@@ -763,8 +764,9 @@ def test_s0_which_builders_give_a_nac_without_a_hippocampus(tmp_path):
     learns=True``), and it gets NO MemoryHub at all, so it cannot reach the loop's NAc either (the loop takes
     its NAc only from the hub, ``_loop_bio_handles``). If that changes, D1's list changes: this test says so.
 
-    The ``bare.memory_hub is None`` pin is a DEFECT (#1366: a learns-only agent's hub build raises and is logged as
-    corruption). Update this assertion, and plan §(a)'s D1 list, when #1366 lands."""
+    The ``bare.memory_hub is None`` pin is the contract since #1522 (owner decision 2026-10-31): the hub needs both a
+    Hippocampus and a NAc, so a learns-only agent has none. If #1366 gives partial agents a hub, update this assertion
+    and plan §(a)'s D1 list."""
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
     from maxim.runtime.bio_stack import build_bio_stack
 
@@ -772,18 +774,16 @@ def test_s0_which_builders_give_a_nac_without_a_hippocampus(tmp_path):
     assert bio.nac is not None and bio.memory_hub.hippocampus is not None
 
     factory = AgentFactory(base_data_dir=tmp_path / "agents")
-    bare = factory.create_agent(AgentConfig(agent_id="xclock_bare", remembers=False, learns=True))
+    bare = factory.create_agent(AgentConfig(agent_id="xclock_bare", remembers=False, learns=True, policy=None))
     try:
         assert bare.nac is not None and bare.hippocampus is None
-        # Measured 2026-10-17: building the hub without a Hippocampus raises inside
-        # ``_create_memory_hub`` (AttributeError on ``connect_scn``), which is logged as "Corrupt memory_hub
-        # state" and leaves the hub None -- a pre-existing defect, recorded in the plan, not fixed in S0.
+        # No Hippocampus, no hub: the contract since #1522 (the hub needs both stores).
         assert bare.memory_hub is None
     finally:
         bare.shutdown()
 
     full = factory.create_full_agent(
-        AgentConfig(agent_id="xclock_full", remembers=False, learns=True, with_bio_stack=True)
+        AgentConfig(agent_id="xclock_full", remembers=False, learns=True, with_bio_stack=True, policy=None)
     )
     try:  # with a bio-stack, remembers=False does NOT drop the Hippocampus: the bio-stack's replaces it
         assert full.nac is not None and full.memory_hub.hippocampus is not None

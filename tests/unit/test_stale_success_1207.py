@@ -18,6 +18,7 @@ from maxim.decisions.nac import NAc, NACConfig
 from maxim.runtime.bootstrap import build_executor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 
 class _Flaky(Tool):
@@ -51,7 +52,7 @@ def _executor(*tools: Tool) -> tuple[Any, NAc, ToolRegistry]:
     registry = ToolRegistry()
     for tool in tools:
         registry.register(tool)
-    executor = build_executor(registry, pain_bus=None, permissions=None, nac=nac)
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY, nac=nac)
     assert executor._tool_pain_bridge is not None  # the production bridge, built because an NAc exists
     return executor, nac, registry
 
@@ -129,7 +130,7 @@ def test_with_a_pain_detector_a_never_run_call_books_no_failure() -> None:
 
     nac = NAc(NACConfig())
     registry = ToolRegistry()
-    executor = build_executor(registry, pain_bus=None, permissions=None, nac=nac, pain_detector=PainDetector())
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY, nac=nac, pain_detector=PainDetector())
     registry.register_scene_tools([_Scene()], scene_id="scene_1207")
     registry.deactivate_scene("scene_1207")
     out = executor.execute({"tool_name": "scene_1207", "params": {}})

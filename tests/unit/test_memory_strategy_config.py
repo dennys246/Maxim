@@ -202,7 +202,7 @@ def test_the_agent_factory_threads_it_too(monkeypatch, tmp_path):
     monkeypatch.setenv("MAXIM_MEMORY_RETRO_TAU_US", "7000000")
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
-    instance = AgentFactory(base_data_dir=tmp_path).create_agent(AgentConfig(agent_id="probe"))
+    instance = AgentFactory(base_data_dir=tmp_path).create_agent(AgentConfig(agent_id="probe", policy=None))
     try:
         assert instance.hippocampus.config.memory_strategy == "composite"
         assert instance.hippocampus.config.strength_s_base == 1234.0

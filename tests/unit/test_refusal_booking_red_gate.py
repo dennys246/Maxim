@@ -22,18 +22,22 @@ THE ASSERTION. Zero learning writes:
 - the pain bus's ``publish``;
 - ``ToolPainBridge``'s booking methods (``record_tool_start``/``_complete``/``_failure``/``_embodiment_failure``);
 - the plan bridge (``MemoryHub.record_plan_outcome``, the only path to ``PlanHistoryBridge.record_plan_outcome``);
+- NAc's pending events unchanged (a started invocation is retracted, #1207);
 - and NAc's state itself unchanged (a snapshot of its link and bias maps, ``_NAC_STATE``), so a write through an
   unspied NAc method cannot hide.
 
 AND exactly one entry in each of the carryover (``llm_worker.record_outcome``), ``recent_outcomes`` and the
 autonomy audit log (``AutonomyController.audit_log``). §1A.2 keeps those, so the model is told, and the
-``max_consecutive_failures`` counter still stops a model that keeps naming a refused tool.
+``max_consecutive_failures`` counter still sees a model that keeps naming a refused tool (whether that counter should
+also stop it is #1549: its violation is severity ``error``, which no approval blocker acts on today).
 
 TODAY every case books a negative through ``record_outcome`` (``NAc.observe``, plus goal credit, plus cluster reward
 when ``drive_relief_only`` is False) and ``execute_and_learn`` books the plan bridge. Under production wiring no
 pain is published for these refusals (the executor has no ``pain_detector``). The parallel batch writes NO autonomy
-audit entry at all, so the gate also demands one there (new work for item 3). Every case is xfail, so the one
-parametrised def carries one literal ``xfail(strict=True)`` (lint rule 3b).
+audit entry at all, so the gate also demands one there (new work for item 3).
+
+STATUS: flipped by item 3 (every case passes; the xfail decorators are removed, so this is now a regression guard).
+The ``offline_in_tool_body`` case engages the latch (owner decision 2026-10-31): see its setup.
 
 THE ONE LINE ITEM 3 TOUCHES. ``_build_executor`` builds through ``ToolPolicy`` once ``maxim.runtime.tool_policy``
 exists (``deny`` for the permissions kind, which then refuses as ``POLICY_PERMISSIONS``; ``unrestricted``
@@ -277,7 +281,7 @@ def _rig(kind: str) -> Rig:
 
         cleanup = off._reset_for_tests
     elif kind == "offline_in_tool_body":
-        off = _require_offline("OfflineRefusal")
+        off = _require_offline("OfflineRefusal", "engage", "_reset_for_tests")
         _require_effect()
 
         def body() -> Any:
@@ -286,6 +290,15 @@ def _rig(kind: str) -> Rig:
         probe = _effect_probe("probe_lazy_fetch", _require_effect().Effect.READ, body)
         registry.register(probe)
         must_not_run = False  # it runs, and its body meets the latch
+
+        # Scenario fix (owner decision 2026-10-31, approach notes §3 as built): the latch is ENGAGED, as it is
+        # whenever shipped code raises OfflineRefusal (``_offline.refuse`` and the audit hook raise only then).
+        # The v6.4 case raised it with the latch off, a state no shipped path reaches. The start-call exemption
+        # below is the one amended assertion (owner decision 2026-10-31, the bridge stays on under the latch).
+        def engage() -> None:
+            off.engage("red-gate probe: a tool body meets the latch")
+
+        cleanup = off._reset_for_tests
     else:  # pragma: no cover - the parametrisation is closed
         raise ScenarioBroken(f"unknown refusal kind {kind!r}")
     executor = _build_executor(registry, nac=nac, bus=bus, deny=deny, policy=policy)
@@ -392,15 +405,6 @@ def _check_refusal(kind: str, outputs: list[Any]) -> None:
 @pytest.mark.parametrize("drive_relief_only", [False, True], ids=["substrate_primary", "llm_primary"])
 @pytest.mark.parametrize("path", PATHS)
 @pytest.mark.parametrize("kind", KINDS)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "#1315 item 3 / §1A.2: a gate refusal books learning today (NAc observe, goal and cluster credit, plan "
-        "bridge) and the batch writes no autonomy audit entry; the new kinds' APIs do not exist. Flips when "
-        "record_outcome's refused= branch (GATE_REFUSAL_KINDS) lands for this kind on this path"
-    ),
-)
 def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_only: bool) -> None:
     """One refusal of ``kind`` through ``path``: zero learning writes and unchanged NAc state, and exactly one
     carryover, one ``recent_outcomes`` and one autonomy audit entry (§1A.2's booking table, "After" column)."""
@@ -419,7 +423,9 @@ def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_onl
         rig.executor.execute = capture
         bridge = rig.executor._tool_pain_bridge
         before = _nac_state(rig.nac)
+        pending_before = [e["id"] for e in rig.nac._pending_events]
         with (
+            patch.object(tool_dispatch, "capture_loop_action") as capture_episode,
             patch.object(rig.nac, "observe", wraps=rig.nac.observe) as nac_observe,
             patch.object(rig.nac, "credit_goal", wraps=rig.nac.credit_goal) as credit_goal,
             patch.object(rig.nac, "update_cluster_reward", wraps=rig.nac.update_cluster_reward) as cluster_reward,
@@ -447,17 +453,28 @@ def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_onl
             else:
                 _drive_parallel(rig, action, drive_relief_only)
         after = _nac_state(rig.nac)
+        pending_after = [e["id"] for e in rig.nac._pending_events]
 
         require(not (rig.must_not_run and getattr(rig.probe, "ran", False)), "the refused tool ran")
         _check_refusal(kind, outputs)
 
+        if kind == "offline_in_tool_body":
+            # Owner decision 2026-10-31 (approach notes §3 as built): the body RAN, so its invocation was started;
+            # the start is not a learning write when its pending NAc event is retracted (``finish_invocation``,
+            # #1207), which the pending-events check below asserts. Every BOOKING spy stays at zero.
+            spies.pop("ToolPainBridge.record_tool_start")
         writes = {name: spy.call_count for name, spy in spies.items() if spy.call_count}
         changed = sorted(name for name in _NAC_STATE if before[name] != after[name])
+        if pending_after != pending_before:
+            changed.append("_pending_events (a started invocation left pending)")
         kept = {
             "llm_worker.record_outcome (carryover)": rig.llm_worker.record_outcome.call_count,
             "recent_outcomes": len(rig.recent_outcomes),
             "AutonomyController.audit_log": len(rig.autonomy.audit_log),
         }
+        if path == "execute_and_learn":
+            # Owner decision 2026-10-31: a refused call is remembered (one episode, no credit), §1A.2's table.
+            kept["capture_loop_action (episode)"] = capture_episode.call_count
         wrong_kept = {name: n for name, n in kept.items() if n != 1}
         assert not writes and not changed and not wrong_kept, (
             f"{kind} via {path}: learning writes {writes or '{}'}; NAc state changed in {changed or '[]'}; "
@@ -468,11 +485,6 @@ def test_a_gate_refusal_books_no_learning(kind: str, path: str, drive_relief_onl
             rig.cleanup()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 3 / §1A.2: tools/base.py has no GATE_REFUSAL_KINDS yet",
-)
 def test_cases_cover_every_gate_refusal_kind() -> None:
     """Every member of ``GATE_REFUSAL_KINDS`` has a case in ``KIND_TO_REFUSAL``, so a new kind joins the gate.
     Fails today: the frozenset does not exist."""

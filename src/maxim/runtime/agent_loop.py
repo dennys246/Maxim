@@ -15,6 +15,7 @@ from maxim.utils.structured_logging import log_agentic
 
 # Extracted to tool_dispatch.py
 from maxim.runtime.tool_dispatch import (
+    book_agent_fallback_failure,
     safe_agent_name as _safe_agent_name,
     execute_parallel_actions as _execute_parallel,
 )
@@ -2013,33 +2014,19 @@ def _run_agentic_loop_body(
                                     )
 
                                 except Exception as e:
-                                    log_agentic(
-                                        "agent_loop",
-                                        "error",
-                                        {"context": "agent_fallback_action", "error": str(e)},
-                                        level="ERROR",
-                                    )
-                                    logger.debug(f"Agent fallback action failed: {e}")
-
-                                    # Track exception in recent_outcomes for LLM learning
-                                    _rec_outcome(
+                                    book_agent_fallback_failure(
+                                        e,
+                                        rec_outcome=_rec_outcome,
                                         agent_id=_loop_agent_id,
-                                        tool_name=action["tool_name"],
-                                        success=False,
-                                        result_summary=None,
-                                        error=str(e),
-                                        reasoning=getattr(ctrl.pending_proposal, "reasoning", "")
-                                        if ctrl.pending_proposal
-                                        else "",
+                                        action=action,
+                                        result=result,
+                                        proposal=ctrl.pending_proposal,
                                         recent_outcomes=recent_outcomes,
                                         max_recent=max_recent_outcomes,
                                         llm_worker=llm_worker,
                                         context_pool=context_pool,
                                         nac=_loop_nac,
-                                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                                        cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
-                                        clusters=getattr(ctrl.pending_proposal, "clusters", None),
-                                        bridge_booked=getattr(result, "nac_failure_booked", None),
+                                        state=state,
                                     )
                             else:
                                 # Log rejected action

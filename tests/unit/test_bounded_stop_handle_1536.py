@@ -36,6 +36,7 @@ def _agent(tmp_path: Path, agent_id: str = "bound_agent") -> Any:
         with_executor=False,
         with_pain_bridge=False,
         with_fear_gate=False,
+        policy=None,
     )
     return AgentFactory(base_data_dir=tmp_path).create_full_agent(config, tool_registry=ToolRegistry(), auto_load=True)
 

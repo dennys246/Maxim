@@ -59,6 +59,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import pytest
+from tests.policy_helpers import TEST_POLICY
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:  # run as a script by the characterization
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -230,7 +231,7 @@ def body_rig(
         bio = build_bio_stack(agent_id=BODY_AGENT, persistence_dir=str(workdir / BODY_AGENT))
         executor = build_executor(
             tool_registry=ToolRegistry(),
-            permissions=None,
+            policy=TEST_POLICY,
             agent_id=BODY_AGENT,
             pain_bus=bio.pain_bus,
             nac=bio.nac,
