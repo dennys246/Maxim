@@ -791,10 +791,17 @@ class AgentFactory:
         # loaded later made the public "restores Hippocampus, NAc, ATL" promise
         # false for every caller that just read the returned object.
         atl = self._create_atl(agent_dir, auto_load=auto_load, corrupt=corrupt)
+        # SCN and EC are built here, not inside the hub builder, so the set-aside below reaches them even for an
+        # agent with no hub (#1522 delta round: an unreadable ec.json used to reset a learns-only agent's NAc on
+        # every load, never replaced).
+        scn = self._create_scn(agent_dir, auto_load=auto_load, corrupt=corrupt)
+        ec = self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt)
         memory_hub = self._create_memory_hub(
             hippocampus,
             nac,
             atl,
+            scn=scn,
+            ec=ec,
             agent_dir=agent_dir,
             agent_id=config.agent_id,
             auto_load=auto_load,
@@ -807,8 +814,7 @@ class AgentFactory:
             # its place, so the agent persists consistently (#939, owner decision 2026-09-28).
             # #971: NAc, EC and SCN too, and NAc is reset beside an unreadable EC (its biases key on EC
             # node ids).
-            hub_ec = getattr(memory_hub, "ec", None) if memory_hub is not None else None
-            hub_scn = getattr(memory_hub, "scn", None) if memory_hub is not None else None
+            hub_ec, hub_scn = ec, scn  # the hub's own, when there is one
 
             def _unreadable(entry: str) -> bool:
                 return any(c["subsystem"] == entry and c.get("unreadable") for c in corrupt)
@@ -831,6 +837,18 @@ class AgentFactory:
                     if entry == "atl":
                         # The hub's session start must not read the corrupt file a second time.
                         store.restored_at_construction = True
+                    if memory_hub is None and entry in ("ec", "scn"):
+                        # With no hub nothing saves these stores later, so "the next save replaces it" must be
+                        # now: else the bad file stays, and every load resets the NAc beside it again (#1522).
+                        try:
+                            store.save()
+                        except Exception as e:
+                            log.error(
+                                "Agent %s: the fresh %s could not replace its unreadable file: %s",
+                                config.agent_id,
+                                entry,
+                                e,
+                            )
                 elif store is not None and _failed_otherwise(entry):
                     # Not bad content (an OSError, or a defect outside UNREADABLE_STORE_ERRORS): the file is
                     # left exactly as it is and never claimed, and the store must not run the session on
@@ -1261,14 +1279,53 @@ class AgentFactory:
         nac: Any | None,
         atl: Any | None,
         *,
+        scn: Any | None,
+        ec: Any | None,
         agent_dir: Path | None = None,
         agent_id: str,
         auto_load: bool = False,
         corrupt: list[dict[str, str]] | None = None,
     ) -> Any:
-        """Create a MemoryHub coordinating the agent's memory systems, or None when a store it needs is absent."""
+        """Create a MemoryHub over the agent's stores, or None when a store it needs is absent."""
+        # The hub needs both a Hippocampus and a NAc. An agent without one (remembers=False or learns=False) has
+        # no hub, by design: its shutdown saves its stores itself, and it gets no session-end decay or
+        # consolidation (#1522, owner decision 2026-10-31; #1366). A store that failed to build was already
+        # reported as its own corruption entry, so a hub attempt here could only add a false "corrupt
+        # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. SCN and EC are
+        # built first, by create_agent, so an unreadable scn.json or ec.json is still reported (D17: every bad file)
+        # and set aside under "warn" even with no hub. A missing SCN or EC failed to build: reported under its name.
+        stores = (("Hippocampus", hippocampus), ("NAc", nac), ("SCN", scn), ("EC", ec))
+        missing = [name for name, store in stores if store is None]
+        if missing:
+            log.debug("Agent %s: no %s, so no MemoryHub", agent_id, " or ".join(missing))
+            return None
         try:
             from maxim.integration.memory_hub import build_memory_hub
+
+            # build_memory_hub calls .connect() internally, so NPC agents
+            # now get PlanHistoryBridge + EscalationLearningBridge +
+            # FearCircuitBridge.  Pre-Wave-2 these were permanently dead
+            # (bare MemoryHub() with no .connect() call).  See
+            # memory_hub_unification.md Gap B.
+            return build_memory_hub(
+                hippocampus=hippocampus,
+                scn=scn,
+                nac=nac,
+                ec=ec,
+                atl=atl,
+                agent_id=agent_id,
+                load_persisted=auto_load,  # a fresh agent restores nothing at session start either (#972)
+            )
+        except Exception as e:
+            log.warning("Failed to create MemoryHub: %s", e)
+            _note_corruption(corrupt, "memory_hub", agent_dir / "memory_hub" if agent_dir else Path("memory_hub"), e)
+            return None
+
+    def _create_scn(
+        self, agent_dir: Path | None, *, auto_load: bool = False, corrupt: list[dict[str, str]] | None = None
+    ) -> Any:
+        """Create the agent's SCN, restoring it when ``auto_load``; None (reported) when it cannot be built."""
+        try:
             from maxim.time.scn import SCN
 
             # F0.5: SCN persistence path is bound at construction time, not
@@ -1298,34 +1355,10 @@ class AgentFactory:
                         scn.load(scn_path_str)
                     except Exception as e:  # D17: report, never swallow silently
                         _note_corruption(corrupt, "scn", scn_file, e)
-            ec = self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt)
-            # The hub needs both a Hippocampus and a NAc. An agent without one (remembers=False or learns=False) has
-            # no hub, by design: its shutdown saves its stores itself, and it gets no session-end decay or
-            # consolidation (#1522, owner decision 2026-10-31; #1366). A store that failed to build was already
-            # reported as its own corruption entry, so a hub attempt here could only add a false "corrupt
-            # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. SCN and EC are
-            # built first, so an unreadable scn.json or ec.json is still reported (D17: every bad file).
-            missing = [name for name, store in (("Hippocampus", hippocampus), ("NAc", nac)) if store is None]
-            if missing:
-                log.debug("Agent %s: no %s, so no MemoryHub", agent_id, " or ".join(missing))
-                return None
-            # build_memory_hub calls .connect() internally, so NPC agents
-            # now get PlanHistoryBridge + EscalationLearningBridge +
-            # FearCircuitBridge.  Pre-Wave-2 these were permanently dead
-            # (bare MemoryHub() with no .connect() call).  See
-            # memory_hub_unification.md Gap B.
-            return build_memory_hub(
-                hippocampus=hippocampus,
-                scn=scn,
-                nac=nac,
-                ec=ec,
-                atl=atl,
-                agent_id=agent_id,
-                load_persisted=auto_load,  # a fresh agent restores nothing at session start either (#972)
-            )
+            return scn
         except Exception as e:
-            log.warning("Failed to create MemoryHub: %s", e)
-            _note_corruption(corrupt, "memory_hub", agent_dir / "memory_hub" if agent_dir else Path("memory_hub"), e)
+            log.warning("Failed to create SCN: %s", e)
+            _note_corruption(corrupt, "scn", agent_dir / "scn.json" if agent_dir else Path("scn.json"), e)
             return None
 
     def _create_ec(
@@ -1343,10 +1376,15 @@ class AgentFactory:
         """
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
 
-        if agent_dir is None:
-            return EntorhinalCortex()
-        ec_path = agent_dir / "ec.json"
-        ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
+        ec_path = agent_dir / "ec.json" if agent_dir is not None else Path("ec.json")
+        try:
+            if agent_dir is None:
+                return EntorhinalCortex()
+            ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
+        except Exception as e:
+            log.warning("Failed to create EntorhinalCortex: %s", e)
+            _note_corruption(corrupt, "ec", ec_path, e)
+            return None
         if auto_load and ec_path.exists():
             try:
                 ec.load(str(ec_path))

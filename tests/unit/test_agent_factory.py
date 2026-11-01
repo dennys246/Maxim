@@ -169,8 +169,23 @@ class TestAgentFactory:
         agent_dir = factory._resolve_persistence_dir(cfg)
         agent_dir.mkdir(parents=True, exist_ok=True)
         (agent_dir / "ec.json").write_text("{not json")
-        with pytest.raises(MemoryCorruptionError, match="ec"):
+        with pytest.raises(MemoryCorruptionError) as excinfo:
             factory.create_agent(cfg, auto_load=True)
+        assert [c["subsystem"] for c in excinfo.value.context["corrupt"]] == ["ec"]
+
+    def test_without_a_hub_an_unreadable_ec_is_set_aside_once(self, factory):
+        """#1522 delta round: under "warn" the unreadable ec.json is copied aside and replaced even with no hub, so
+        the NAc reset beside it happens once, not on every load."""
+        cfg = AgentConfig(agent_id="no_hub_ec_aside", remembers=False, learns=True, on_corrupt="warn")
+        first = factory.create_agent(cfg)
+        first.nac.record_event("observation", "wolves_at_dusk")
+        first.shutdown()
+        agent_dir = factory._resolve_persistence_dir(cfg)
+        (agent_dir / "ec.json").write_text("{not json")
+        for _ in range(2):
+            factory.create_agent(cfg, auto_load=True).shutdown()
+        copies = sorted(p.name for p in agent_dir.iterdir() if ".corrupt-" in p.name)
+        assert [c.split(".corrupt-")[0] for c in copies] == ["ec.json", "nac.json"], copies
 
     def test_creates_nac_when_learns(self, factory, guard_config):
         instance = factory.create_agent(guard_config)

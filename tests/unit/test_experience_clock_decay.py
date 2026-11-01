@@ -776,9 +776,7 @@ def test_s0_which_builders_give_a_nac_without_a_hippocampus(tmp_path):
     bare = factory.create_agent(AgentConfig(agent_id="xclock_bare", remembers=False, learns=True))
     try:
         assert bare.nac is not None and bare.hippocampus is None
-        # Measured 2026-10-17: building the hub without a Hippocampus raises inside
-        # ``_create_memory_hub`` (AttributeError on ``connect_scn``), which is logged as "Corrupt memory_hub
-        # state" and leaves the hub None -- a pre-existing defect, recorded in the plan, not fixed in S0.
+        # No Hippocampus, no hub: the contract since #1522 (the hub needs both stores).
         assert bare.memory_hub is None
     finally:
         bare.shutdown()
