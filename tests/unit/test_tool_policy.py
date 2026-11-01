@@ -333,3 +333,12 @@ class TestReviewFolds:
         with pytest.raises(TypeError):
             p.__init__(_key=None, permissions=AgentPermissions(), ceiling=Effect.ALL, pins=None, reason="x")  # type: ignore[misc]
         assert p.ceiling == Effect.READ
+
+    def test_an_executor_agent_without_a_policy_is_refused(self, tmp_path: Any) -> None:
+        # prepr's mypy ratchet: AgentConfig.policy is Optional, so create_full_agent narrows it before build_executor;
+        # policy=None means "no executor", and asking for one without a policy is a TypeError naming the caller.
+        from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+        config = AgentConfig(agent_id="no_policy", persistence_dir=str(tmp_path), with_executor=True, policy=None)
+        with pytest.raises(TypeError, match=r"create_full_agent\(with_executor=True\)"):
+            AgentFactory(base_data_dir=tmp_path).create_full_agent(config, tool_registry=ToolRegistry())

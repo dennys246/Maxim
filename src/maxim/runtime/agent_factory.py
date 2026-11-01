@@ -1084,6 +1084,7 @@ class AgentFactory:
                     config.agent_id,
                 )
             from maxim.runtime.bootstrap import build_executor
+            from maxim.runtime.tool_policy import require_policy
 
             active_bio = instance.bio_stack
             # with_pain_bridge controls whether the ToolPainBridge
@@ -1104,7 +1105,7 @@ class AgentFactory:
                     component_registry=self._component_registry,
                     cerebellum=active_bio.cerebellum if active_bio is not None else None,
                     distributor=active_bio.distributor if active_bio is not None else None,
-                    policy=config.policy,
+                    policy=require_policy(config.policy, where="create_full_agent(with_executor=True)"),
                     agent_id=config.agent_id,
                 )
                 # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
