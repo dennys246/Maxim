@@ -546,7 +546,7 @@ def delete_model(name: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _release_run(
+def _tear_down_run(
     *,
     stop_event: threading.Event,
     llm_worker: Any | None,
@@ -575,8 +575,9 @@ def _release_run(
                 logger.warning("LLM worker shutdown failed: %s", e)
         # Persist bio-system state on shutdown. shutdown() ends the memory
         # session with its own ticket (consolidation + the saves, NAc beside EC),
-        # or waits for the loop that took the session over; with no hub it saves
-        # the Hippocampus and NAc itself. It also saves the cerebellum. Without
+        # or waits for the loop that took the session over; with no hub (an agent
+        # without a Hippocampus or a NAc) it saves them itself. It also saves the
+        # cerebellum. Without
         # it, learned memories and causal links are lost on exit (#1521).
         if instance is not None:
             try:
@@ -838,7 +839,7 @@ def run(
     except KeyboardInterrupt:
         logger.info("Agent loop interrupted by user.")
     finally:
-        _release_run(
+        _tear_down_run(
             stop_event=stop_event,
             llm_worker=llm_worker,
             instance=_api_instance,

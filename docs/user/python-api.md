@@ -494,7 +494,7 @@ On `agent.shutdown()`, all subsystems are saved. Use `maxim.load.agent()` to res
 agent = maxim.create.agent("scout", personality="cautious", remembers=True, learns=True)
 agent.hippocampus.store_observation("Wolves hunt at dusk")
 agent.nac.record_event("observation", "wolves_at_dusk")
-agent.shutdown()  # Ends the memory session: consolidates, then saves hippocampus, NAc beside EC, ATL, SCN
+agent.shutdown()  # Ends the memory session: saves hippocampus, EC, NAc, ATL, SCN, then consolidates; and the cerebellum
 
 # Later session — load persisted agent (memories survive)
 agent = maxim.load.agent("scout")

@@ -143,16 +143,34 @@ class TestAgentFactory:
         assert instance.hippocampus is None
 
     @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
-    def test_a_deliberate_no_hub_agent_reports_no_corruption(self, factory, caplog, on_corrupt):
-        """#1522: remembers=False is a configuration, not a failure. The hub needs a Hippocampus, so none is built,
-        and nothing is reported as corrupt (under "raise" that report refused to build the agent at all)."""
+    @pytest.mark.parametrize(("remembers", "learns"), [(False, True), (True, False)])
+    def test_a_deliberate_no_hub_agent_reports_no_corruption(self, factory, caplog, remembers, learns, on_corrupt):
+        """#1522: an agent without a Hippocampus or a NAc is a configuration, not a failure. The hub needs both, so
+        none is built, and nothing is reported as corrupt (under "raise" that report refused to build the agent)."""
         import logging
 
-        cfg = AgentConfig(agent_id=f"no_hub_{on_corrupt}", remembers=False, learns=True, on_corrupt=on_corrupt)
+        cfg = AgentConfig(
+            agent_id=f"no_hub_{int(remembers)}{int(learns)}_{on_corrupt}",
+            remembers=remembers,
+            learns=learns,
+            on_corrupt=on_corrupt,
+        )
         with caplog.at_level(logging.WARNING, logger="maxim"):
             instance = factory.create_agent(cfg)
-        assert instance.memory_hub is None and instance.nac is not None
+        assert instance.memory_hub is None
+        assert (instance.hippocampus is not None) is remembers and (instance.nac is not None) is learns
         assert "memory_hub" not in caplog.text, caplog.text
+
+    def test_without_a_hippocampus_an_unreadable_ec_is_still_reported(self, factory, tmp_path):
+        """D17 (review fold, #1522): SCN and EC are built before the no-hub return, so every bad file is reported."""
+        from maxim.exceptions import MemoryCorruptionError
+
+        cfg = AgentConfig(agent_id="no_hub_bad_ec", remembers=False, learns=True, on_corrupt="raise")
+        agent_dir = factory._resolve_persistence_dir(cfg)
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        (agent_dir / "ec.json").write_text("{not json")
+        with pytest.raises(MemoryCorruptionError, match="ec"):
+            factory.create_agent(cfg, auto_load=True)
 
     def test_creates_nac_when_learns(self, factory, guard_config):
         instance = factory.create_agent(guard_config)

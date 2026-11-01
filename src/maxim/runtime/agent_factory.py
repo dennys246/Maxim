@@ -567,8 +567,8 @@ class AgentInstance:
             raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
         if self.memory_hub is not None:
             return self._end_or_hand_over(self.memory_hub, consolidation, deadline, loop_wait or deadline)
-        # No hub (create.agent(remembers=False, learns=True), or a hub whose construction failed): nothing else
-        # saves these stores, and there is no EC to pair the NAc with.
+        # No hub (an agent without a Hippocampus or a NAc, by design since #1522, or a hub whose construction
+        # failed): nothing else saves these stores, and there is no EC to pair the NAc with.
         self._save_hippocampus()
         if self.nac is not None:
             try:
@@ -1266,13 +1266,7 @@ class AgentFactory:
         auto_load: bool = False,
         corrupt: list[dict[str, str]] | None = None,
     ) -> Any:
-        """Create a MemoryHub coordinating the agent's memory systems, or None when there is no Hippocampus."""
-        if hippocampus is None:
-            # build_memory_hub needs a Hippocampus. remembers=False asks for none, and one that failed to build was
-            # already reported as its own corruption entry, so a hub attempt here could only add a false
-            # "corrupt memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent (#1522).
-            log.debug("Agent %s: no Hippocampus, so no MemoryHub", agent_id)
-            return None
+        """Create a MemoryHub coordinating the agent's memory systems, or None when a store it needs is absent."""
         try:
             from maxim.integration.memory_hub import build_memory_hub
             from maxim.time.scn import SCN
@@ -1304,6 +1298,17 @@ class AgentFactory:
                         scn.load(scn_path_str)
                     except Exception as e:  # D17: report, never swallow silently
                         _note_corruption(corrupt, "scn", scn_file, e)
+            ec = self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt)
+            # The hub needs both a Hippocampus and a NAc. An agent without one (remembers=False or learns=False) has
+            # no hub, by design: its shutdown saves its stores itself, and it gets no session-end decay or
+            # consolidation (#1522, owner decision 2026-10-31; #1366). A store that failed to build was already
+            # reported as its own corruption entry, so a hub attempt here could only add a false "corrupt
+            # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. SCN and EC are
+            # built first, so an unreadable scn.json or ec.json is still reported (D17: every bad file).
+            missing = [name for name, store in (("Hippocampus", hippocampus), ("NAc", nac)) if store is None]
+            if missing:
+                log.debug("Agent %s: no %s, so no MemoryHub", agent_id, " or ".join(missing))
+                return None
             # build_memory_hub calls .connect() internally, so NPC agents
             # now get PlanHistoryBridge + EscalationLearningBridge +
             # FearCircuitBridge.  Pre-Wave-2 these were permanently dead
@@ -1313,7 +1318,7 @@ class AgentFactory:
                 hippocampus=hippocampus,
                 scn=scn,
                 nac=nac,
-                ec=self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt),
+                ec=ec,
                 atl=atl,
                 agent_id=agent_id,
                 load_persisted=auto_load,  # a fresh agent restores nothing at session start either (#972)
