@@ -211,7 +211,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 2032
+      "lines": 1995
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -390,6 +390,8 @@
     "run_generative_campaign tightened 313 -> 308 on 2026-10-30 (#1438 PR 1c, rule T): the narrator call moved to generative_runner.py::_narrate_turn, which carries the edit (a process stop is checked before and after the call, so an abandoned call's fallback turn is never delivered or recorded; a failure under a stop reports yielded).",
     "start_simulation_mode tightened 2414 -> 2399 on 2026-10-30 (#1438 PR 1c, an owner-approved fence touch, rule T): the entry reset moved to orchestrator.py::_refuse_a_stop_then_reset_llm_cancellation (which first refuses under a process stop request) and the model-load wait to _await_llm_ready_or_refuse (moved above SimulationBridge, refusing if the stop landed during the load); 2399 -> 2398 at the review fold, when the entry refusal moved above the start provenance capture.",
     "start_simulation_mode tightened 2398 -> 2035 on 2026-10-30 (#1438 PR 1c, the decomposition's tail slice, owner decision D5; Session A's terms): everything after the orchestrator loop returns moved verbatim to simulation/sim_teardown.py (end_run composing shut_down_run, release_run_resources, save_run_report and roundup_and_emit_report, then build_simulation_result; each 200 lines or fewer, over one SimTail), with _resolve_finish_reason and _sim_provenance; the interactive post-sim prompt stays.",
-    "start_simulation_mode tightened 2035 -> 2032 on 2026-10-30 (#1438 PR 1c, the stop behaviour on the tail slice): the post-sim prompt's guard reads the tail's stop snapshot (one line), paid for by moving the no-prompt branch's report print to sim_teardown.print_run_report, which also closes a stopped interactive run's live display."
+    "start_simulation_mode tightened 2035 -> 2032 on 2026-10-30 (#1438 PR 1c, the stop behaviour on the tail slice): the post-sim prompt's guard reads the tail's stop snapshot (one line), paid for by moving the no-prompt branch's report print to sim_teardown.print_run_report, which also closes a stopped interactive run's live display.",
+    "start_simulation_mode tightened 2032 -> 2007 on 2026-10-30 (#1259, rule T): the narrator's simulation-tool registrations left it for module-level orchestrator.py::_register_narrator_sim_tools, which carries the finish tool's new stop_event.",
+    "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail)."
   ]
 }

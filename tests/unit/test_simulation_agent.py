@@ -267,19 +267,44 @@ class TestSimulationTools:
 
         bridge = SimulationBridge()
         orch_source = ConversationalSource()
-        tool = FinishSimulationTool(bridge=bridge, orchestrator_source=orch_source)
+        stop = threading.Event()
+        tool = FinishSimulationTool(bridge=bridge, orchestrator_source=orch_source, stop_event=stop)
         result = tool.run(reason="goal achieved", summary="All tests passed")
         assert result.success
         assert result.output["finished"] is True
         assert bridge.percept_source.is_exhausted()
         assert orch_source.is_exhausted()
+        assert stop.is_set(), "the finish ends the run: the narrator loop stops on the run's stop_event (#1259)"
+
+    def test_finish_simulation_tool_requires_the_runs_stop_event_1259(self):
+        """Forgetting the stop is a TypeError, not a run that waits out the 180 s grace (#1259)."""
+        from maxim.simulation.tools import FinishSimulationTool
+
+        with pytest.raises(TypeError, match="stop_event"):
+            FinishSimulationTool(bridge=SimulationBridge())  # type: ignore[call-arg]
+
+    def test_finish_simulation_stops_the_run_even_when_a_signal_raises_1259(self, monkeypatch):
+        """The stop is set in a ``finally``: a failing bridge signal cannot leave the run waiting (#1259)."""
+        from maxim.simulation.tools import FinishSimulationTool
+
+        bridge = SimulationBridge()
+
+        def boom() -> None:
+            raise RuntimeError("bridge down")
+
+        monkeypatch.setattr(bridge, "finish", boom)
+        stop = threading.Event()
+        tool = FinishSimulationTool(bridge=bridge, stop_event=stop)
+        with pytest.raises(RuntimeError, match="bridge down"):
+            tool.execute(status="completed", reason="done", summary="")
+        assert stop.is_set()
 
     def test_finish_simulation_records_status(self):
         """LLM-initiated finish must write structured status to bridge."""
         from maxim.simulation.tools import FinishSimulationTool
 
         bridge = SimulationBridge()
-        tool = FinishSimulationTool(bridge=bridge)
+        tool = FinishSimulationTool(bridge=bridge, stop_event=threading.Event())
         result = tool.run(
             status="aborted",
             reason="tried 3 angles, AUT blocks all",
@@ -295,7 +320,7 @@ class TestSimulationTools:
         from maxim.simulation.tools import FinishSimulationTool
 
         bridge = SimulationBridge()
-        tool = FinishSimulationTool(bridge=bridge)
+        tool = FinishSimulationTool(bridge=bridge, stop_event=threading.Event())
         result = tool.run(reason="done")
         assert result.output["status"] == "completed"
 
@@ -305,7 +330,7 @@ class TestSimulationTools:
         from maxim.simulation.tools import FinishSimulationTool
 
         bridge = SimulationBridge()
-        tool = FinishSimulationTool(bridge=bridge)
+        tool = FinishSimulationTool(bridge=bridge, stop_event=threading.Event())
         result = tool.run(status="weird_value", reason="done")
         assert result.success
         assert result.output["status"] == "completed"
@@ -315,7 +340,7 @@ class TestSimulationTools:
 
         for status in FinishSimulationTool.VALID_STATUSES:
             bridge = SimulationBridge()
-            tool = FinishSimulationTool(bridge=bridge)
+            tool = FinishSimulationTool(bridge=bridge, stop_event=threading.Event())
             result = tool.run(status=status, reason="test")
             assert result.output["status"] == status, f"status={status!r} should round-trip"
 
@@ -327,7 +352,7 @@ class TestSimulationTools:
         from maxim.simulation.tools import FinishSimulationTool
 
         bridge = SimulationBridge()
-        tool = FinishSimulationTool(bridge=bridge)
+        tool = FinishSimulationTool(bridge=bridge, stop_event=threading.Event())
         tool.run(
             status="failed",
             reason="AUT allowed rm -rf on /",
