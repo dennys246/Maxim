@@ -14,13 +14,14 @@ import queue
 import threading
 import time
 import wave
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
 
 import numpy as np
 
 from maxim.embodied_runtime.movement import SyncResult
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import as_outcome
+from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, current_motion_ticket
 from maxim.inference.transcribe_audio import create_task_file
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.logging import log_swallowed_exception, warn
@@ -53,85 +54,206 @@ class IKWarningHandler(logging.Handler):
 
 IK_FAILURE_THRESHOLD = 3  # Reset to center after this many consecutive failures
 
+# The reasons a queued command is resolved without running (#1499 5.6).
+_REPLACED = "replaced by a newer motion command before it started"
+_QUEUE_FULL = "the motor queue was full, so the command was dropped"
+_CLEARED = "cleared from the motor queue before it started"
+_RECONNECT = "dropped from the motor queue on a reconnect"
+_CLOSED = "the motor queue closed (a stop) before it started"
+
+
+@dataclass(frozen=True)
+class QueuedMotion:
+    """One motor command: its ticket and the callable that dispatches it. Lives on the queue only."""
+
+    ticket: MotionTicket
+    fn: Callable[..., Any]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+
+
+class MotorQueue:
+    """The motor queue (#1499 5.6): latest-wins, and every command it removes is resolved.
+
+    The CLAUDE.md "push silent no-ops into types" rule: with a raw
+    ``queue.Queue`` a replaced or drained command vanished without a word and
+    the caller heard "queued" as success. Here a replaced command and the
+    ``Full`` case resolve ``superseded``; ``clear`` and the reconnect ``drain``
+    resolve ``superseded``; ``close`` (a stop) resolves what is queued, and
+    every later ``put``, ``cancelled``. Only ``get`` hands a command to the
+    worker, and only after claiming its ticket, so a cancelled ticket never
+    runs.
+    """
+
+    def __init__(self, maxsize: int = 4) -> None:
+        self._q: queue.Queue[QueuedMotion] = queue.Queue(maxsize=maxsize)
+        self._lock = threading.Lock()
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def put(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> MotionTicket:
+        """Queue *fn* with a new ticket, replacing any command still waiting (latest wins)."""
+        return self.submit(MotionTicket(), fn, args, kwargs)
+
+    def submit(
+        self, ticket: MotionTicket, fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> MotionTicket:
+        """Queue *fn* under a caller-built *ticket* (one carrying ``on_accept``); returns the ticket."""
+        with self._lock:
+            if self._closed:
+                ticket.resolve_unstarted("cancelled", _CLOSED)
+                return ticket
+            try:
+                self._q.get_nowait().ticket.resolve_unstarted("superseded", _REPLACED)
+            except queue.Empty:
+                pass
+            try:
+                self._q.put_nowait(QueuedMotion(ticket, fn, args, kwargs))
+            except queue.Full:
+                ticket.resolve_unstarted("superseded", _QUEUE_FULL)
+        return ticket
+
+    def get(self, timeout: float) -> QueuedMotion:
+        """The next command to run, its ticket claimed; ``queue.Empty`` on a timeout or a resolved command."""
+        item = self._q.get(timeout=timeout)
+        with self._lock:
+            if self._closed:
+                item.ticket.resolve_unstarted("cancelled", _CLOSED)
+                raise queue.Empty
+        if not item.ticket.start():
+            raise queue.Empty  # cancelled by its caller while it waited
+        return item
+
+    def clear(self) -> int:
+        """Remove every waiting command, each resolved ``superseded``; returns how many."""
+        return self._remove_all("superseded", _CLEARED)
+
+    def drain(self) -> int:
+        """The reconnect's drain: as ``clear``, with a reason that names the reconnect."""
+        return self._remove_all("superseded", _RECONNECT)
+
+    def close(self) -> int:
+        """A stop: resolve every waiting command ``cancelled``, and every later ``put`` too."""
+        with self._lock:
+            self._closed = True
+        return self._remove_all("cancelled", _CLOSED)
+
+    def _remove_all(self, kind: Any, reason: str) -> int:
+        removed = 0
+        with self._lock:
+            while True:
+                try:
+                    item = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                if item.ticket.resolve_unstarted(kind, reason):
+                    removed += 1
+        return removed
+
 
 def motor_worker(
-    motor_queue: queue.Queue,
+    motor_queue: MotorQueue,
     stop_event: threading.Event,
     maxim: Any,
 ) -> None:
-    """Drain *motor_queue* and execute motor commands until *stop_event* is set.
-
-    Each callable's result is read as a ``MotionOutcome`` (``as_outcome``; a
-    plugin's ``bool`` works too). The learners are booked a success ONLY when
-    the outcome is ok (#1499 O4, Architecture D1): a refused, partial,
-    cancelled or failed move, or a callable that returned nothing, never
-    reaches ``record_gaze(success=True)`` or the bounds learner. Only the
-    existing IK-failure detection books a failure.
-    """
+    """Take commands off *motor_queue* and run them until *stop_event* is set (``run_motion`` each)."""
     state = _IKState()
-
-    # Get reachy loggers to monitor for IK warnings (daemon logs to specific path)
-    reachy_loggers = [
-        logging.getLogger("reachy_mini"),
-        logging.getLogger("reachy_mini.daemon"),
-        logging.getLogger("reachy_mini.daemon.backend"),
-        logging.getLogger("reachy_mini.daemon.backend.robot.backend.throttled"),
-    ]
-
     while not stop_event.is_set():
         try:
-            fn, args, kwargs = motor_queue.get(timeout=0.1)
+            item = motor_queue.get(timeout=0.1)
         except queue.Empty:
             continue
+        run_motion(item, maxim, state)
 
-        # Create handler to detect IK failures
-        ik_handler = IKWarningHandler()
-        for rl in reachy_loggers:
-            rl.addHandler(ik_handler)
 
-        position_info = kwargs.pop("_position_info", None)  # Extract position if passed
-        commanded_6d = kwargs.pop("_commanded_6d", None)  # Extract 6D pose for bounds learning
-        movement_duration = kwargs.get("duration", 0.5)  # Get duration for sync timing
+# Reachy loggers watched for IK warnings (the daemon logs to these paths).
+_REACHY_LOGGERS = (
+    "reachy_mini",
+    "reachy_mini.daemon",
+    "reachy_mini.daemon.backend",
+    "reachy_mini.daemon.backend.robot.backend.throttled",
+)
 
-        try:
-            result = fn(*args, **kwargs)
 
-            if ik_handler.ik_failure_detected:
-                # Check if IK failure was detected via warnings
-                maxim.log.warning("IK failure detected: %s", ik_handler.failure_message)
-                state.failures += 1
-                _record_ik_failure(maxim, position_info, commanded_6d)
-                _maybe_recover_from_ik_failures(maxim, state)
-            else:
-                outcome = as_outcome(result)
-                if outcome.ok:
-                    # Movement succeeded - reset failure counter, book the learners
-                    state.failures = 0
-                    _record_success(maxim, position_info, commanded_6d, movement_duration)
-                elif result is None:
-                    # Not a controller dispatch (an antenna nudge, a compute-only call): nothing to book.
-                    maxim.log.debug("Motor command returned no outcome; the learners are not booked")
-                else:
-                    maxim.log.warning(
-                        "Motor command did not complete (%s): %s", outcome.kind, outcome.reason or "no reason given"
-                    )
-                    # Selfy writes its mirror before it enqueues: a refused or partial move must re-read the
-                    # real pose, as a raised MotionRefused always did, or an identical retry is a silent no-op.
-                    maxim.sync_head_position()
+def run_motion(item: QueuedMotion, maxim: Any, state: _IKState | None = None) -> MotionOutcome:
+    """Run one claimed command with its ticket bound, book the learners, and resolve the ticket.
 
-        except MotionRefused as e:
-            # A refused motion is bad input, not a lost connection (#1496): no
-            # connection-failure count, and the mirror re-reads the real pose
-            # (sync never raises; a non-finite readback keeps the mirror).
-            maxim.log.error("Motor command refused: %s", e)
-            maxim.sync_head_position()
-        except Exception as e:
-            # A raised command never feeds a learner (#1499 O4); it counts as a connection failure.
-            warn("Motor command failed: %s", e, logger=maxim.log)
-            maxim._note_connection_failure("motor", e)
-        finally:
-            for rl in reachy_loggers:
-                rl.removeHandler(ik_handler)
+    The one execution path for a queued command, used by the worker and by
+    Selfy's synchronous path (no queue). Each callable's result is read as a
+    ``MotionOutcome`` (``as_outcome``; a plugin's ``bool`` works too). The
+    learners are booked a success ONLY when the outcome is ok (#1499 O4,
+    Architecture D1): a refused, partial, cancelled or failed move, or a
+    callable that returned nothing, never reaches ``record_gaze(success=True)``
+    or the bounds learner. Only the existing IK-failure detection books a
+    failure. The ticket always resolves, whatever the callable did.
+    """
+    state = state if state is not None else _IKState()
+    ik_handler = IKWarningHandler()
+    loggers = [logging.getLogger(name) for name in _REACHY_LOGGERS]
+    for rl in loggers:
+        rl.addHandler(ik_handler)
+    kwargs = dict(item.kwargs)
+    position_info = kwargs.pop("_position_info", None)  # Extract position if passed
+    commanded_6d = kwargs.pop("_commanded_6d", None)  # Extract 6D pose for bounds learning
+    movement_duration = kwargs.get("duration", 0.5)  # Get duration for sync timing
+    outcome = MotionOutcome.refused("error", "the motor command did not run")
+    token = current_motion_ticket.set(item.ticket)
+    try:
+        result = item.fn(*item.args, **kwargs)
+        outcome = as_outcome(result)
+        if ik_handler.ik_failure_detected:
+            maxim.log.warning("IK failure detected: %s", ik_handler.failure_message)
+            outcome = MotionOutcome.refused("error", f"IK failure: {ik_handler.failure_message}")
+            state.failures += 1
+            _record_ik_failure(maxim, position_info, commanded_6d)
+            _maybe_recover_from_ik_failures(maxim, state)
+        else:
+            _book_outcome(maxim, state, outcome, result, position_info, commanded_6d, movement_duration)
+    except MotionRefused as e:
+        # A refused motion is bad input, not a lost connection (#1496): no
+        # connection-failure count, and the mirror re-reads the real pose
+        # (sync never raises; a non-finite readback keeps the mirror).
+        outcome = MotionOutcome.refused(e.kind, e.reason)
+        maxim.log.error("Motor command refused: %s", e)
+        maxim.sync_head_position()
+    except Exception as e:
+        # A raised command never feeds a learner (#1499 O4); it counts as a connection failure.
+        outcome = MotionOutcome.refused("error", f"motor command failed: {e}")
+        warn("Motor command failed: %s", e, logger=maxim.log)
+        maxim._note_connection_failure("motor", e)
+    finally:
+        current_motion_ticket.reset(token)
+        for rl in loggers:
+            rl.removeHandler(ik_handler)
+        item.ticket.finish(outcome)
+    return outcome
+
+
+def _book_outcome(
+    maxim: Any,
+    state: _IKState,
+    outcome: MotionOutcome,
+    result: Any,
+    position_info: Any,
+    commanded_6d: Any,
+    movement_duration: Any,
+) -> None:
+    """Book an ok outcome in the learners; re-read the pose after one that did not complete."""
+    if outcome.ok:
+        # Movement succeeded - reset failure counter, book the learners
+        state.failures = 0
+        _record_success(maxim, position_info, commanded_6d, movement_duration)
+    elif result is None:
+        # Not a controller dispatch (a standalone or compute-only call): nothing to book.
+        maxim.log.debug("Motor command returned no outcome; the learners are not booked")
+    else:
+        maxim.log.warning("Motor command did not complete (%s): %s", outcome.kind, outcome.reason or "no reason given")
+        # Selfy writes its mirror before it enqueues: a refused or partial move must re-read the
+        # real pose, as a raised MotionRefused always did, or an identical retry is a silent no-op.
+        maxim.sync_head_position()
 
 
 class _IKState:

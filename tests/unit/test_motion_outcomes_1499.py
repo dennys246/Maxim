@@ -31,8 +31,6 @@ from tests.unit._reachy_fakes import FakeDaemon, controller, head_pose, install
 
 D = math.radians
 
-_RED = pytest.mark.xfail(strict=True, reason="#1499 PR 2a: not built yet")
-
 
 @pytest.fixture
 def daemon(monkeypatch):
@@ -109,7 +107,6 @@ def _blocker(release: threading.Event, started: threading.Event):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_a_replaced_command_resolves_superseded():
     from maxim.embodied_runtime.workers import MotorQueue
 
@@ -120,7 +117,6 @@ def test_a_replaced_command_resolves_superseded():
     assert not second.completed.done()
 
 
-@_RED
 def test_a_full_queue_resolves_the_new_command_superseded(monkeypatch):
     from maxim.embodied_runtime.workers import MotorQueue
 
@@ -134,7 +130,6 @@ def test_a_full_queue_resolves_the_new_command_superseded(monkeypatch):
     assert _outcome_kind(ticket) == "superseded"
 
 
-@_RED
 def test_clear_and_the_reconnect_drain_resolve_superseded():
     from maxim.embodied_runtime.workers import MotorQueue
 
@@ -148,7 +143,6 @@ def test_clear_and_the_reconnect_drain_resolve_superseded():
     assert out.kind == "superseded" and "reconnect" in out.reason
 
 
-@_RED
 def test_close_cancels_what_is_queued_and_everything_after():
     from maxim.embodied_runtime.workers import MotorQueue
 
@@ -162,7 +156,6 @@ def test_close_cancels_what_is_queued_and_everything_after():
         q.get(timeout=0.05)
 
 
-@_RED
 def test_selfy_enqueue_returns_a_ticket_and_clear_resolves_it(daemon):
     from maxim.embodied_runtime.workers import MotorQueue
     from maxim.hardware.controller import MotionTicket
@@ -175,7 +168,6 @@ def test_selfy_enqueue_returns_a_ticket_and_clear_resolves_it(daemon):
     assert _outcome_kind(ticket) == "superseded"
 
 
-@_RED
 def test_the_reconnect_and_media_loop_no_longer_touch_the_raw_queue():
     """Raw queue access leaves connection.py and media_loop.py (5.6): only MotorQueue removes a command."""
     import inspect
@@ -193,7 +185,6 @@ def test_the_reconnect_and_media_loop_no_longer_touch_the_raw_queue():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_a_command_queued_behind_the_sleep_is_never_dispatched(daemon, monkeypatch):
     selfy = _selfy(controller(daemon), daemon)
     stop = _start_worker(selfy)
@@ -218,7 +209,6 @@ def test_a_command_queued_behind_the_sleep_is_never_dispatched(daemon, monkeypat
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_with_a_ticket_bound_the_controller_accepts_before_the_sdk_call(daemon):
     from maxim.hardware.controller import MotionTarget, MotionTicket, current_motion_ticket
 
@@ -241,7 +231,6 @@ def test_with_a_ticket_bound_the_controller_accepts_before_the_sdk_call(daemon):
     assert ticket.accepted.result(timeout=0) is None  # started, not refused
 
 
-@_RED
 def test_a_refusal_resolves_accepted_with_the_reason(daemon):
     selfy = _selfy(controller(daemon), daemon)
     daemon.rest_mode = "timeout"  # every fresh readback fails: reference
@@ -255,7 +244,6 @@ def test_a_refusal_resolves_accepted_with_the_reason(daemon):
         stop.set()
 
 
-@_RED
 def test_a_plugin_result_resolves_both_stages_through_the_worker(daemon):
     selfy = _selfy(controller(daemon), daemon)
     stop = _start_worker(selfy)
@@ -267,7 +255,6 @@ def test_a_plugin_result_resolves_both_stages_through_the_worker(daemon):
         stop.set()
 
 
-@_RED
 def test_a_ticket_cancelled_before_it_runs_never_moves(daemon):
     selfy = _selfy(controller(daemon), daemon)
     stop = _start_worker(selfy)
@@ -291,7 +278,6 @@ def test_a_ticket_cancelled_before_it_runs_never_moves(daemon):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_a_refused_queued_move_reaches_maxim_command_with_its_reason(daemon):
     from maxim.tools.reachy import MaximCommandTool
 
@@ -308,7 +294,6 @@ def test_a_refused_queued_move_reaches_maxim_command_with_its_reason(daemon):
         stop.set()
 
 
-@_RED
 def test_a_busy_motor_past_the_wait_is_not_started_and_never_moves(daemon, monkeypatch):
     import maxim.hardware.controller as hc
     from maxim.tools.reachy import MaximCommandTool
@@ -329,7 +314,6 @@ def test_a_busy_motor_past_the_wait_is_not_started_and_never_moves(daemon, monke
         stop.set()
 
 
-@_RED
 def test_maxim_command_reports_success_only_once_the_move_started(daemon):
     from maxim.tools.reachy import MaximCommandTool
 
@@ -338,12 +322,15 @@ def test_maxim_command_reports_success_only_once_the_move_started(daemon):
     try:
         result = MaximCommandTool(selfy).execute(command="move", params={"yaw": 10.0})
         assert result.success
-        assert daemon.gotos(), "success was reported before the move was dispatched"
+        # ``accepted`` resolves just before the worker's SDK call (§4), so the goto follows within a moment.
+        deadline = time.monotonic() + 2.0
+        while not daemon.gotos() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert daemon.gotos(), "success was reported for a move that was never dispatched"
     finally:
         stop.set()
 
 
-@_RED
 def test_move_tool_returns_the_controllers_reason(daemon):
     from maxim.tools.reachy import MoveTool
 
@@ -385,9 +372,9 @@ def _bind_controller(monkeypatch, ctl):
     import maxim.tools.reachy as tools_reachy
 
     monkeypatch.setattr(tools_reachy, "_is_robot_controller", lambda m: m is ctl)
+    monkeypatch.setattr(tools_reachy, "_get_robot_from_registry", lambda robot_id, maxim=None: ctl)
 
 
-@_RED
 def test_move_tool_marks_a_model_duration_exact_and_an_absent_one_at_least(monkeypatch):
     from maxim.tools.reachy import MoveTool
 
@@ -399,7 +386,6 @@ def test_move_tool_marks_a_model_duration_exact_and_an_absent_one_at_least(monke
     assert [t.duration_policy for t in ctl.targets] == ["exact", "at_least"]
 
 
-@_RED
 def test_maxim_command_marks_a_model_duration_exact(daemon, monkeypatch):
     from maxim.tools.reachy import MaximCommandTool
 
@@ -417,7 +403,6 @@ def test_maxim_command_marks_a_model_duration_exact(daemon, monkeypatch):
     assert seen == ["exact", "at_least"]
 
 
-@_RED
 def test_a_pose_table_duration_is_at_least(daemon, monkeypatch):
     """goto_pose's authored duration is not the model's choice (5.5): it stretches, never refuses."""
     selfy = _selfy(controller(daemon), daemon)
@@ -427,7 +412,6 @@ def test_a_pose_table_duration_is_at_least(daemon, monkeypatch):
     assert daemon.gotos() and float(daemon.gotos()[-1]["duration"]) >= 50 / 180 - 1e-6
 
 
-@_RED
 def test_the_track_tools_advertise_no_duration_default():
     """A schema default is copied into calls by models, which would make every track 'exact' (5.5)."""
     from maxim.tools import reachy, reachy_stubs
@@ -447,7 +431,6 @@ def test_the_track_tools_advertise_no_duration_default():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_selfy_move_returns_a_ticket_and_a_no_op_is_already_ok(daemon):
     from maxim.hardware.controller import MotionTicket
 
@@ -459,7 +442,6 @@ def test_selfy_move_returns_a_ticket_and_a_no_op_is_already_ok(daemon):
     assert out.ok and out.chunks_planned == 0
 
 
-@_RED
 def test_an_unreachable_look_at_returns_a_limit_ticket(daemon, monkeypatch):
     selfy = _selfy(controller(daemon), daemon)
     monkeypatch.setattr(selfy, "_is_pixel_reachable", lambda position, min_reachability: False)
@@ -467,7 +449,6 @@ def test_an_unreachable_look_at_returns_a_limit_ticket(daemon, monkeypatch):
     assert _outcome_kind(ticket) == "limit"
 
 
-@_RED
 def test_act_waits_for_each_move_to_complete_not_the_requested_time(daemon, monkeypatch):
     selfy = _selfy(controller(daemon), daemon)
     stop = _start_worker(selfy)
@@ -489,7 +470,6 @@ def test_act_waits_for_each_move_to_complete_not_the_requested_time(daemon, monk
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_turn_around_returns_an_outcome(daemon):
     from maxim.hardware.controller import MotionOutcome
 
@@ -498,7 +478,6 @@ def test_turn_around_returns_an_outcome(daemon):
     assert isinstance(out, MotionOutcome) and out.ok
 
 
-@_RED
 def test_turn_around_reads_the_body_from_the_fresh_readback_not_the_mirror(daemon):
     """The WS read fails and the mirror says 0°; the daemon says 100°: a +90° turn cannot fit (190° > 160°)."""
     _place(daemon, body_deg=100)
@@ -511,7 +490,6 @@ def test_turn_around_reads_the_body_from_the_fresh_readback_not_the_mirror(daemo
     assert len(daemon.gotos()) == before
 
 
-@_RED
 def test_a_turn_with_no_body_read_is_refused_not_guessed(daemon):
     ctl = controller(daemon)
     daemon.rest_mode = "timeout"
@@ -521,7 +499,6 @@ def test_a_turn_with_no_body_read_is_refused_not_guessed(daemon):
     assert daemon.gotos() == []
 
 
-@_RED
 def test_a_refused_turn_reaches_the_model_as_an_error(daemon):
     from maxim.tools.reachy import MaximCommandTool
 
@@ -532,7 +509,6 @@ def test_a_refused_turn_reaches_the_model_as_an_error(daemon):
     assert "limit" in (result.error or "") or "cannot" in (result.error or "")
 
 
-@_RED
 def test_look_at_books_a_refused_automatic_turn_as_a_failure(daemon):
     """_maybe_turn_around reads the outcome's truth (D3): a refused turn is not a success to the pain bridge."""
     from maxim.hardware.controller import MotionOutcome
@@ -560,7 +536,6 @@ def test_look_at_books_a_refused_automatic_turn_as_a_failure(daemon):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_move_antenna_is_dispatched_by_the_controller_under_the_rate_cap(daemon):
     selfy = _selfy(controller(daemon), daemon)
     ticket = selfy.move_antenna(right=80.0, left=80.0)  # degrees; no duration: a default, so stretched
@@ -570,7 +545,6 @@ def test_move_antenna_is_dispatched_by_the_controller_under_the_rate_cap(daemon)
     assert antenna_gotos and float(antenna_gotos[-1]["duration"]) >= 80 / 180 - 1e-6
 
 
-@_RED
 def test_an_explicit_too_fast_antenna_move_is_refused(daemon):
     selfy = _selfy(controller(daemon), daemon)
     ticket = selfy.move_antenna(right=80.0, left=80.0, duration=0.1, duration_policy="exact")
@@ -583,7 +557,6 @@ def test_an_explicit_too_fast_antenna_move_is_refused(daemon):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@_RED
 def test_the_simulated_controller_returns_motion_outcomes():
     import inspect
 

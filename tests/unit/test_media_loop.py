@@ -6,6 +6,8 @@ import logging
 import queue
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 from maxim.embodied_runtime.media_loop import MediaLoopMixin
 
@@ -38,74 +40,81 @@ class _TestMedia(MediaLoopMixin):
 
 
 class TestEnqueueMotorWithoutQueue:
-    """When _motor_queue is None, fn is called directly."""
+    """When _motor_queue is None, fn runs now and its result is the resolved ticket's outcome (#1499 5.6)."""
 
-    def test_calls_fn_directly_and_returns_result(self):
+    def test_calls_fn_directly_and_returns_a_resolved_ticket(self):
+        from maxim.hardware.controller import MotionOutcome
+
         media = _TestMedia()
         assert media._motor_queue is None
+        calls = []
 
-        result = media._enqueue_motor(lambda x, y: x + y, 3, 7)
-        assert result == 10
+        def fn(x, y):
+            calls.append((x, y))
+            return MotionOutcome(ok=True, chunks_planned=1, chunks_done=1)
+
+        ticket = media._enqueue_motor(fn, 3, 7)
+        assert calls == [(3, 7)]
+        assert ticket.completed.done() and ticket.completed.result().ok
+        assert ticket.accepted.result(timeout=0) is None
 
     def test_passes_kwargs(self):
         media = _TestMedia()
+        seen = {}
 
         def fn(a, *, b=0):
-            return a * b
+            seen["product"] = a * b
+            return True
 
-        assert media._enqueue_motor(fn, 5, b=4) == 20
+        assert media._enqueue_motor(fn, 5, b=4).completed.result(timeout=0).ok
+        assert seen == {"product": 20}
+
+    def test_a_raising_fn_resolves_the_ticket_instead_of_raising(self):
+        media = _TestMedia()
+
+        def fn():
+            raise RuntimeError("boom")
+
+        out = media._enqueue_motor(fn).completed.result(timeout=0)
+        assert not out.ok and out.kind == "error" and "boom" in out.reason
 
 
 class TestEnqueueMotorWithQueue:
-    """When _motor_queue exists, command is queued and None is returned."""
+    """When _motor_queue exists, the command is queued and its pending ticket returned."""
 
-    def test_puts_command_on_queue_and_returns_none(self):
+    def test_puts_command_on_queue_and_returns_its_ticket(self):
+        from maxim.embodied_runtime.workers import MotorQueue
+
         media = _TestMedia()
-        media._motor_queue = queue.Queue(maxsize=4)
+        media._motor_queue = MotorQueue(maxsize=4)
 
         sentinel = MagicMock()
-        result = media._enqueue_motor(sentinel, "a", key="val")
+        ticket = media._enqueue_motor(sentinel, "a", key="val")
 
-        assert result is None
+        assert not ticket.completed.done()
         sentinel.assert_not_called()
 
-        fn, args, kwargs = media._motor_queue.get_nowait()
-        assert fn is sentinel
-        assert args == ("a",)
-        assert kwargs == {"key": "val"}
+        item = media._motor_queue.get(timeout=0.1)
+        assert item.ticket is ticket
+        assert item.fn is sentinel
+        assert item.args == ("a",)
+        assert item.kwargs == {"key": "val"}
 
-    def test_drains_one_item_before_putting(self):
+    def test_a_newer_command_supersedes_the_waiting_one(self):
+        from maxim.embodied_runtime.workers import MotorQueue
+
         media = _TestMedia()
-        media._motor_queue = queue.Queue(maxsize=4)
+        media._motor_queue = MotorQueue(maxsize=4)
 
-        # Pre-fill one item
-        old_fn = MagicMock()
-        media._motor_queue.put_nowait((old_fn, (), {}))
-
+        old = media._enqueue_motor(MagicMock())
         new_fn = MagicMock()
         media._enqueue_motor(new_fn, 1)
 
-        # The old item was drained; only the new item should remain
-        fn, args, kwargs = media._motor_queue.get_nowait()
-        assert fn is new_fn
-        assert args == (1,)
-
-        # Queue should now be empty
-        assert media._motor_queue.empty()
-
-    def test_full_queue_silently_drops(self):
-        media = _TestMedia()
-        media._motor_queue = queue.Queue(maxsize=1)
-
-        # Fill queue so drain removes one, then put succeeds
-        media._motor_queue.put_nowait(("dummy", (), {}))
-        # Second put fills it again
-        media._enqueue_motor(lambda: None)
-
-        # Now the queue is full (maxsize=1).  A third enqueue should
-        # drain one and put the new one, so it still works at maxsize=1.
-        result = media._enqueue_motor(lambda: "ignored")
-        assert result is None
+        assert old.completed.result(timeout=0).kind == "superseded"
+        item = media._motor_queue.get(timeout=0.1)
+        assert item.fn is new_fn and item.args == (1,)
+        with pytest.raises(queue.Empty):
+            media._motor_queue.get(timeout=0.01)
 
 
 # -- _clear_motor_queue tests -----------------------------------------------
@@ -121,27 +130,28 @@ class TestClearMotorQueueNoQueue:
 
 
 class TestClearMotorQueueWithItems:
-    """When queue has items, returns the count of cleared items."""
+    """A waiting command is cleared and its ticket resolved superseded."""
 
-    def test_returns_count_of_cleared_items(self):
+    def test_returns_count_and_resolves_the_tickets(self):
+        from maxim.embodied_runtime.workers import MotorQueue
+
         media = _TestMedia()
-        q = queue.Queue(maxsize=8)
-        media._motor_queue = q
+        media._motor_queue = MotorQueue(maxsize=8)
+        ticket = media._enqueue_motor(MagicMock())
 
-        for i in range(5):
-            q.put_nowait((f"fn_{i}", (), {}))
-
-        cleared = media._clear_motor_queue()
-        assert cleared == 5
-        assert q.empty()
+        assert media._clear_motor_queue() == 1
+        assert ticket.completed.result(timeout=0).kind == "superseded"
+        assert media._clear_motor_queue() == 0
 
 
 class TestClearMotorQueueEmpty:
     """When queue exists but is empty, returns 0."""
 
     def test_returns_zero_for_empty_queue(self):
+        from maxim.embodied_runtime.workers import MotorQueue
+
         media = _TestMedia()
-        media._motor_queue = queue.Queue(maxsize=4)
+        media._motor_queue = MotorQueue(maxsize=4)
 
         assert media._clear_motor_queue() == 0
 

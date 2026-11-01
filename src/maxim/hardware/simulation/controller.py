@@ -16,7 +16,7 @@ from maxim.hardware.capabilities import (
     SIMULATED_CAPABILITIES,
     RobotConnectionState,
 )
-from maxim.hardware.controller import MotionTarget, PixelTarget, RobotController
+from maxim.hardware.controller import MotionOutcome, MotionTarget, PixelTarget, RobotController, mark_motion_accepted
 from maxim.hardware.simulation.streams import MockAudioStream, MockVideoStream
 from maxim.hardware.streams import AudioStream, VideoStream
 
@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 # serializes them (`event` + `data` extras — the pain_chain pattern);
 # plain messages would be invisible in the JSONL.
 _scenario_log = logging.getLogger("maxim.sim_doa")
+
+
+_NOT_CONNECTED = MotionOutcome.refused("error", "the simulated robot is not connected")
 
 
 def _normalize_angle(theta: float) -> float:
@@ -344,7 +347,7 @@ class SimulatedController(RobotController):
     # Motion Control
     # ─────────────────────────────────────────────────────────────────────────
 
-    def goto_target(self, target: MotionTarget) -> bool:
+    def goto_target(self, target: MotionTarget) -> MotionOutcome:
         """Move robot to target pose (simulated).
 
         Updates internal pose state to reflect the motion.
@@ -353,10 +356,12 @@ class SimulatedController(RobotController):
             target: Target pose specification.
 
         Returns:
-            True.
+            A ``MotionOutcome`` (#1499 O7): ok, with the move's duration, or a
+            refusal when not connected. The sim achieves what it is commanded.
         """
         if not self.is_connected():
-            return False
+            return _NOT_CONNECTED
+        mark_motion_accepted()
 
         # RETAINED-AXES TRIPWIRE (F1 fold, 2026-08-09): this sim fills
         # unspecified axes from its own stored pose, which is fine ONLY
@@ -432,9 +437,9 @@ class SimulatedController(RobotController):
             )
 
         logger.debug("Simulated motion to: %s", self._current_pose)
-        return True
+        return MotionOutcome(ok=True, duration_s=target.duration, chunks_planned=1, chunks_done=1)
 
-    def look_at_pixel(self, target: PixelTarget) -> bool:
+    def look_at_pixel(self, target: PixelTarget) -> MotionOutcome:
         """Move head to look at a pixel coordinate (simulated).
 
         Converts pixel to approximate head angles.
@@ -443,10 +448,11 @@ class SimulatedController(RobotController):
             target: Target pixel coordinates.
 
         Returns:
-            True.
+            A ``MotionOutcome``, as ``goto_target``.
         """
         if not self.is_connected():
-            return False
+            return _NOT_CONNECTED
+        mark_motion_accepted()
 
         # Simple conversion: center of frame = (0, 0)
         # Assume 640x480 resolution, 60 degree FOV
@@ -477,7 +483,7 @@ class SimulatedController(RobotController):
         self._update_state(current_pose=self._current_pose.copy())
 
         logger.debug("Simulated look at pixel (%d, %d) -> pitch=%.2f, yaw=%.2f", target.u, target.v, pitch, yaw)
-        return True
+        return MotionOutcome(ok=True, duration_s=target.duration, chunks_planned=1, chunks_done=1)
 
     def get_current_pose(self) -> dict[str, float]:
         """Get current joint positions.
@@ -491,34 +497,34 @@ class SimulatedController(RobotController):
     # Lifecycle
     # ─────────────────────────────────────────────────────────────────────────
 
-    def wake_up(self) -> bool:
+    def wake_up(self) -> MotionOutcome:
         """Wake up the robot (simulated).
 
         Returns:
-            True.
+            An ok ``MotionOutcome``, or a refusal when not connected.
         """
         if not self.is_connected():
-            return False
+            return _NOT_CONNECTED
 
         if self._simulate_delays:
             time.sleep(0.1)
 
         self._update_state(is_awake=True)
         logger.info("Simulated robot awake: %s", self._robot_id)
-        return True
+        return MotionOutcome(ok=True)
 
-    def goto_sleep(self) -> bool:
+    def goto_sleep(self) -> MotionOutcome:
         """Put the robot to sleep (simulated).
 
         Returns:
-            True.
+            An ok ``MotionOutcome``.
         """
         if self._simulate_delays:
             time.sleep(0.1)
 
         self._update_state(is_awake=False)
         logger.info("Simulated robot asleep: %s", self._robot_id)
-        return True
+        return MotionOutcome(ok=True)
 
     def start_recording(self) -> bool:
         """Start media recording/streaming.

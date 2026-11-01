@@ -702,3 +702,64 @@ a connection that was lost mid-run, recorded under MP9). Folded, test- and docs-
 during a split, and for the sleep re-latch's `is_awake=False` and `_stop_by_sleep` (each deletion-probed red); the
 `request_abort` docstring and the stop-fence bullet now say `goto_sleep` and `disconnect` use `_stop`. Not folded:
 the abort-lock test counts acquisitions rather than snapshotting the writes (NIT, fail-closed).
+
+## 15. PR 2a build notes (2026-11-01, for the code review)
+
+**PR 2 is split** (owner, before the build): **2a** is the queue, the ticket, the tools, `media_loop.act`,
+`turn_around`'s outcome, `move_antenna` delegation and the simulated controller's outcomes (gates 10, 11, 21, gate
+16's queue half, 26; 5.4, 5.5, 5.8). **2b** is the DN inbox (gate 13), `gaze_manager.look_opposite`, the pain
+bridge's start-at-accept and event ids (gate 14), the atomic retire, and `turn_around` binding its own ticket. Each
+part gets its own red gates and review round. Until 2b lands, DN still books its gaze moves at enqueue and the pain
+bridge records a start when a move is queued, as on `main` today.
+
+**Choices the build made that v8 did not fix:**
+1. **The ticket's state is its own, not `Future.cancel`.** `MotionTicket` claims itself (`start()`) under a lock
+   instead of `set_running_or_notify_cancel()`, so `completed` is never in the `CANCELLED` state and
+   `completed.result()` always returns a `MotionOutcome` (`cancelled` included). `cancel()` succeeds only before the
+   worker claims the ticket; a claimed one runs to its outcome.
+2. **`MotorQueue.get` claims the ticket**, and raises `queue.Empty` for one already resolved (cancelled by its caller,
+   or taken after `close`), so the worker never runs a resolved command.
+3. **One execution path.** `workers.run_motion` runs a claimed command with its ticket bound, books the learners,
+   re-reads the mirror after a non-ok outcome and resolves the ticket. The worker and Selfy's synchronous path (no
+   queue) both call it, so the synchronous path no longer raises a refusal to its caller: the ticket carries it.
+   An IK failure the daemon logs resolves the ticket `error`.
+4. **The tool's wait.** After `MOTION_ACCEPT_WAIT_S` the tool cancels the ticket; if the worker claimed it in the
+   same instant, the tool waits up to 5 s more for `accepted` (one fresh readback), then reports an error. A Selfy
+   method that returns something other than a ticket is an error ("the runtime returned no motion ticket"), never
+   success.
+5. **`turn_around` reads the body through a new `RobotController.read_body_yaw()`** (non-abstract: the default reads
+   `get_current_pose` and refuses `reference` without a finite `body_yaw`; the Reachy controller overrides it with
+   the fresh daemon readback). A turn that would end past ±160° is refused `limit` before the queue is cleared or DN
+   inhibited, instead of being shrunk to fit. The steps are not slept on when the controller reports the completed
+   duration (the Reachy controller's ok follows its final readback); a `bool`-returning controller keeps the old
+   wait. The trailing 0.5 s settle is gone for the same reason.
+6. **`goto_pose` no longer sleeps** the requested time: the ticket's `completed` says when the move is done.
+7. **`look_at_image`'s early returns** are resolved tickets: `limit` for an unreachable pixel, ok for
+   `perform_movement=False` (nothing moves), and the turn's outcome when an automatic turn handled it.
+8. **Antennas through the controller.** `MotionTarget.extras` `antenna_right`/`antenna_left` (radians, the SDK's
+   right-then-left order) compose into the target pose, so the rate cap and the final-target check cover them. An
+   antennas-only move holds the head at the readback pose (composing it would reset the head translation) and leaves
+   the stash as it was. A readback with no antenna positions refuses `reference`. The standalone `move_antenna` (no
+   controller; only tests call it) is unchanged.
+9. **`act` waits at most 60 s** for each move (the lock wait plus a long split), then cancels it if it has not
+   started; a move that does not complete ends the action.
+10. **The Selfy docstring `-> None`s become `-> MotionTicket`**; `move`'s no-op returns an ok ticket with zero chunks.
+
+**Two red gates' harnesses were corrected before they flipped** (disclosed per the red-gate rule; neither assertion
+changed): `test_maxim_command_reports_success_only_once_the_move_started` polls up to 2 s for the goto, since
+`accepted` resolves just before the worker's SDK call (§4), so asserting the goto in the same instant raced the
+worker thread; `_bind_controller` also binds `_get_robot_from_registry`, since the recording double is not a
+`RobotController` and the registry lookup missed it.
+
+**Found, not fixed here:** `ReachyMiniController.get_current_pose` labels antenna joint 0 `antenna_left`, but the
+SDK's order is right then left (`reachy_mini.py`'s joint list), as `move_antenna` and the readback parser assume.
+Nothing in 2a reads those keys; a follow-up issue owns it.
+
+**Tests migrated to the new contracts** (§7's list, plus one it missed): the `test_media_loop.py` enqueue and clear
+tests (`MotorQueue`, tickets); the worker drivers in `test_motion_path_1499.py` and `test_motion_finite_1496.py`
+(`MotorQueue`, stopping on the ticket rather than a timed drain); `turn_around ... is False` and the "rejected"
+wording in `test_motion_finite_1496.py` (truthiness and the controller's reason, D3); `_RecordingRobot` gains
+`read_body_yaw` (the ABC's default, which the duck-typed double did not inherit). **Not in §7:**
+`test_reachy_workspace_safety.py::test_turn_beyond_body_limit_is_clamped` pinned the old shrink-to-160°; decision 4
+inverts it, so it is rewritten in place as `test_turn_beyond_body_limit_is_refused_not_shrunk` (refused `limit`,
+nothing moves). Gate 26's own test is `test_turn_around_reads_the_body_from_the_fresh_readback_not_the_mirror`.

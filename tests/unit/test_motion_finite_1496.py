@@ -171,6 +171,9 @@ class _RecordingRobot:
     def get_current_pose(self):
         return {"yaw": self._body_yaw, "pitch": 0.0, "roll": 0.0, "body_yaw": self._body_yaw}
 
+    def read_body_yaw(self) -> float:
+        return self._body_yaw  # as RobotController.read_body_yaw's default: the pose's body_yaw
+
     def goto_target(self, target) -> bool:
         self.targets.append(target)
         return self._results.pop(0) if self._results else True
@@ -482,7 +485,8 @@ def test_turn_around_skips_step_two_when_step_one_is_rejected(no_sleep):
     robot = _RecordingRobot(results=[False])
     body = _body(mini=_Mini(), robot=robot)
     body.yaw = 12.0
-    assert body.turn_around(45, duration=5.0) is False
+    out = body.turn_around(45, duration=5.0)  # a MotionOutcome since #1499 (D3): read by truthiness
+    assert not out and out.kind == "error"
     assert len(robot.targets) == 1
     assert body.yaw == 12.0
 
@@ -592,28 +596,25 @@ def test_sync_keeps_the_mirror_on_a_non_finite_readback(body):
 
 
 def test_motor_worker_handles_a_refusal_without_a_connection_failure(caplog):
-    import queue
-
-    from maxim.embodied_runtime.workers import motor_worker
+    from maxim.embodied_runtime.workers import MotorQueue, motor_worker
     from maxim.motion.movement import move_head
 
     mini = _Mini(body=NAN)
     selfy = _body(mini=mini)
     failures: list = []
     selfy._note_connection_failure = lambda *a: failures.append(a)
-    q: queue.Queue = queue.Queue()
+    q = MotorQueue()
     stop = threading.Event()
-    q.put((move_head, (mini, 0, 0, 0, 0, 0, 10, 0.5), {"motion_lock": threading.RLock()}))
+    ticket = q.put(move_head, mini, 0, 0, 0, 0, 0, 10, 0.5, motion_lock=threading.RLock())
 
-    def _stop_when_drained():
-        while not q.empty():
-            stop.wait(0.01)
-        stop.wait(0.3)
+    def _stop_when_done():
+        ticket.completed.result(timeout=5.0)
         stop.set()
 
-    threading.Thread(target=_stop_when_drained, daemon=True).start()
+    threading.Thread(target=_stop_when_done, daemon=True).start()
     with caplog.at_level(logging.DEBUG):
         motor_worker(q, stop, selfy)
+    assert ticket.completed.result(timeout=0).kind == "non_finite"  # refused, and the ticket says so
     assert failures == []
     assert mini.motion_calls() == []
     assert any(r.levelno == logging.ERROR for r in caplog.records)
@@ -678,7 +679,7 @@ def test_a_non_finite_present_pose_refuses_every_motion_path(head):
     assert not ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=0.5))
 
     selfy = _body(mini=mini, robot=ctl)
-    selfy._enqueue_sdk_look_at(320, 240, (320, 240), 0.5, perform_movement=True)
+    selfy._enqueue_sdk_look_at(320, 240, (320, 240), 0.5)
     fn, args, kwargs = selfy.enqueued[-1]
     kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
     assert not fn(*args, **kwargs)  # through the controller (#1499 5.2): a refused outcome, not a raise
@@ -792,7 +793,8 @@ def test_move_tool_converts_numeric_strings_and_refuses_nan():
 def test_a_rejected_turn_is_an_error_not_a_success(no_sleep):
     robot = _RecordingRobot(results=[False])
     result = _command_tool(_body(mini=_Mini(), robot=robot)).execute(command="turn_around", params={"angle": 45})
-    assert result.success is False and "rejected" in (result.error or "")
+    # The controller's False reaches the model as an error with its reason (#1499 5.6), not success.
+    assert result.success is False and "the controller returned False" in (result.error or "")
     ok_robot = _RecordingRobot()
     assert (
         _command_tool(_body(mini=_Mini(), robot=ok_robot)).execute(command="turn_around", params={"angle": 45}).success

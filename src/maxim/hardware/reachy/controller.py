@@ -28,6 +28,7 @@ from maxim.hardware.controller import (
     PixelTarget,
     RobotController,
     clamp_finite,
+    mark_motion_accepted,
     normalize_method,
     require_duration,
     require_finite,
@@ -905,6 +906,10 @@ class ReachyMiniController(RobotController):
         pose, control_mode = mp.parse_full_state(data)
         return self._checked_pose(pose, control_mode)
 
+    def read_body_yaw(self) -> float:
+        """The body yaw from the fresh daemon readback (R1), never the WS mirror (#1499 5.8)."""
+        return self._fresh_readback(retry=True).body
+
     def _checked_pose(self, pose: mp.Pose, control_mode: str) -> mp.Pose:
         """A parsed readback that moves may start from: torque on and nothing impossible (R1, R2)."""
         if control_mode != "enabled":
@@ -991,10 +996,16 @@ class ReachyMiniController(RobotController):
         (R1): the stash is only checked for divergence.
         """
         head_requested = any(x is not None for x in (target.head_roll, target.head_pitch, target.head_yaw))
-        if not head_requested and target.body_yaw is None:
-            return None
+        antennas = self._compose_antennas(target, start, clamped)
         stash = self._last_commanded
         roll0, pitch0, rel0 = mp.euler_xyz(mp.relative_rotation(start.head, start.body))
+        if not head_requested and target.body_yaw is None:
+            if antennas is None:
+                return None
+            # Antennas only: the head holds where the readback has it (composing it
+            # would reset its translation), and the stash keeps what it had.
+            held = (stash.get("head_roll", roll0), stash.get("head_pitch", pitch0), stash.get("head_rel_yaw", rel0))
+            return mp.Pose(start.head, start.body, antennas), held, False
         body_commanded = target.body_yaw is not None
         body = (
             self._clamp(target.body_yaw, self._MAX_BODY_YAW_RAD, "body_yaw", clamped)
@@ -1017,7 +1028,28 @@ class ReachyMiniController(RobotController):
         )
         translation = self._body_frame_translation(target)
         world_t = None if translation is None else mp.rz(body) @ translation
-        return mp.Pose(mp.compose_head(roll, pitch, rel, body, world_t), body), (roll, pitch, rel), body_commanded
+        head = mp.compose_head(roll, pitch, rel, body, world_t)
+        return mp.Pose(head, body, antennas), (roll, pitch, rel), body_commanded
+
+    def _compose_antennas(self, target: MotionTarget, start: mp.Pose, clamped: list[str]) -> tuple[float, float] | None:
+        """(right, left) antenna target in radians (the SDK's order), or None when neither is asked to move (5.4).
+
+        A side not asked for holds its readback. The rate cap reads the antenna
+        delta from the readback, so a move with no antenna readback is refused
+        rather than dispatched unchecked.
+        """
+        right = target.extras.get("antenna_right")
+        left = target.extras.get("antenna_left")
+        if right is None and left is None:
+            return None
+        if start.antennas is None:
+            raise MotionRefused("reference", "the fresh readback has no antenna positions, so the move is not checked")
+        right0, left0 = start.antennas
+        limit = ANTENNA_LIMIT_RAD
+        return (
+            self._clamp(right0 if right is None else right, limit, "antenna_right", clamped),
+            self._clamp(left0 if left is None else left, limit, "antenna_left", clamped),
+        )
 
     @staticmethod
     def _body_frame_translation(target: MotionTarget) -> np.ndarray | None:
@@ -1128,6 +1160,10 @@ class ReachyMiniController(RobotController):
                 }
                 if chunk.antennas is not None:
                     kwargs["antennas"] = list(chunk.antennas)
+                if k == 1:
+                    # Every check passed and the first SDK call starts now: a queued
+                    # command's ticket is accepted here, under the lock (#1499 5.6, §4).
+                    mark_motion_accepted()
                 self._mini.goto_target(**kwargs)
             except MotionRefused as e:
                 if k == 1:

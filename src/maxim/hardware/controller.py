@@ -29,7 +29,11 @@ from __future__ import annotations
 import logging
 import math
 import numbers
+import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from concurrent.futures import Future
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -42,6 +46,7 @@ from maxim.hardware.capabilities import (
     RobotState,
 )
 from maxim.hardware.streams import AudioStream, VideoStream
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.embodiment.audio_localization import DoAReader
@@ -49,6 +54,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "MOTION_ACCEPT_WAIT_S",
     "MOTION_DURATION_MAX_S",
     "MOTION_DURATION_MIN_S",
     "DurationPolicy",
@@ -57,11 +63,14 @@ __all__ = [
     "MotionOutcomeKind",
     "MotionRefused",
     "MotionTarget",
+    "MotionTicket",
     "PixelTarget",
     "RobotController",
     "as_outcome",
     "clamp_finite",
+    "current_motion_ticket",
     "floor_duration",
+    "mark_motion_accepted",
     "normalize_method",
     "require_duration",
     "require_finite",
@@ -74,6 +83,11 @@ __all__ = [
 
 MOTION_DURATION_MIN_S = 0.1
 MOTION_DURATION_MAX_S = 10.0
+
+# How long a tool waits for a queued command's ``accepted`` stage (#1499 5.6):
+# under ``Tool.timeout`` and the executor's per-tool timeout (30 s). Past it the
+# tool cancels the ticket and reports "not started: the motor is busy".
+MOTION_ACCEPT_WAIT_S = 25.0
 
 # Canonical interpolation names. ``cartoon`` is refused: it overshoots its
 # target by 10%, past any clamp. Aliases keep their historical meanings.
@@ -178,8 +192,8 @@ class MotionOutcome:
     busy), ``"partial"`` (a split stopped after ``chunks_done`` chunks),
     ``"superseded"`` (replaced before it ran) or ``"error"`` (the controller
     failed, or a plugin returned ``False``). No non-ok outcome feeds the gaze or
-    workspace-bounds learners (#1499 O4). ``"superseded"`` has no producer until
-    PR 2's motor queue.
+    workspace-bounds learners (#1499 O4). ``"superseded"`` and a queued
+    ``"cancelled"`` come from ``embodied_runtime/workers.py::MotorQueue``.
     """
 
     ok: bool
@@ -195,6 +209,110 @@ class MotionOutcome:
     @classmethod
     def refused(cls, kind: MotionOutcomeKind, reason: str, *, chunks_planned: int = 0) -> MotionOutcome:
         return cls(ok=False, kind=kind, reason=reason, chunks_planned=chunks_planned)
+
+
+class MotionTicket:
+    """One queued motion command's two stages (#1499 5.6, §4; Architecture delta S2).
+
+    ``accepted`` resolves ``None`` when the command passed its checks and its
+    first SDK call is about to start, or with the refusal (a non-ok
+    ``MotionOutcome``) when it never started. ``completed`` resolves with the
+    final ``MotionOutcome``. Neither future is ever cancelled or left
+    pending: a command that is replaced, cleared, cancelled or closed out
+    before it runs resolves both with that outcome.
+
+    It lives here, beside ``MotionOutcome``, so ``hardware/`` never imports
+    ``embodied_runtime/``. ``on_accept`` is a callable carried on the ticket
+    (the pain bridge's start, PR 2b), so ``hardware/`` never imports
+    ``bridges/`` either. Never persisted, never sent over a wire.
+    """
+
+    def __init__(self, *, on_accept: Callable[[], Any] | None = None) -> None:
+        self.accepted: Future[MotionOutcome | None] = Future()
+        self.completed: Future[MotionOutcome] = Future()
+        self.on_accept = on_accept
+        self.event_id: Any = None
+        self._lock = threading.RLock()  # on_accept runs under it and may read the ticket
+        self._started = False
+
+    @classmethod
+    def resolved(cls, outcome: MotionOutcome) -> MotionTicket:
+        """A ticket already finished with *outcome* (a no-op, an early refusal)."""
+        ticket = cls()
+        ticket.finish(outcome)
+        return ticket
+
+    def start(self) -> bool:
+        """Claim the ticket to run it; False when it was already resolved (cancelled, superseded)."""
+        with self._lock:
+            if self.completed.done():
+                return False
+            self._started = True
+            return True
+
+    def resolve_unstarted(self, kind: MotionOutcomeKind, reason: str) -> bool:
+        """Resolve both stages with a refusal, unless the command already started. True when it did."""
+        with self._lock:
+            if self._started or self.completed.done():
+                return False
+            outcome = MotionOutcome.refused(kind, reason)
+            if not self.accepted.done():
+                self.accepted.set_result(outcome)
+            self.completed.set_result(outcome)
+            return True
+
+    def cancel(self, reason: str = "cancelled before it started") -> bool:
+        """Cancel a command that has not started; it never moves. False once it has started."""
+        return self.resolve_unstarted("cancelled", reason)
+
+    def mark_accepted(self) -> None:
+        """The only way ``accepted`` resolves ``None``: run ``on_accept``, store its id, resolve. Idempotent.
+
+        A raising ``on_accept`` is logged (Stage 1) and ``accepted`` still
+        resolves: the move is starting whatever its bookkeeping did.
+        """
+        with self._lock:
+            if self.accepted.done():
+                return
+            if self.on_accept is not None:
+                try:
+                    self.event_id = self.on_accept()
+                except Exception:
+                    log_swallowed_exception()
+            self.accepted.set_result(None)
+
+    def finish(self, outcome: MotionOutcome) -> None:
+        """Resolve ``completed`` (and ``accepted``, if the controller never did) with the final outcome.
+
+        A command that finished ok without the controller marking it (a
+        plugin returning ``True``, a no-op) is accepted through
+        ``mark_accepted``; a refusal that never started resolves ``accepted``
+        with the refusal itself.
+        """
+        if not self.accepted.done():
+            if outcome.ok:
+                self.mark_accepted()
+            else:
+                with self._lock:
+                    if not self.accepted.done():
+                        self.accepted.set_result(outcome)
+        with self._lock:
+            if not self.completed.done():
+                self.completed.set_result(outcome)
+
+
+# The ticket of the motion command now running on this thread, or None. The
+# motor worker binds it around each callable (set, then reset in ``finally``);
+# the controller marks it accepted once a dispatch passed its checks, just
+# before the first SDK call (§4). A synchronous caller binds nothing.
+current_motion_ticket: ContextVar[MotionTicket | None] = ContextVar("current_motion_ticket", default=None)
+
+
+def mark_motion_accepted() -> None:
+    """Mark the bound ticket accepted; a no-op when none is bound (a synchronous caller, a plugin)."""
+    ticket = current_motion_ticket.get()
+    if ticket is not None:
+        ticket.mark_accepted()
 
 
 def as_outcome(result: bool | MotionOutcome | None) -> MotionOutcome:
@@ -474,6 +592,26 @@ class RobotController(ABC):
             Dict mapping joint names to current angles (radians).
         """
         ...
+
+    def read_body_yaw(self) -> float:
+        """The body yaw now, radians, from the freshest read this robot offers (#1499 5.8).
+
+        A turn is planned from it, so a missing or non-finite reading raises
+        ``MotionRefused("reference")``: a turn is refused, never planned from a
+        guess. This default reads ``get_current_pose``; a controller with a
+        fresher source (the Reachy daemon's REST state) overrides it.
+        """
+        try:
+            pose = self.get_current_pose() or {}
+        except Exception as e:
+            raise MotionRefused("reference", f"the body yaw could not be read: {e}") from e
+        value = pose.get("body_yaw")
+        if value is None:
+            raise MotionRefused("reference", "the body yaw could not be read: the pose has no body_yaw")
+        try:
+            return require_finite("body_yaw", value)
+        except MotionRefused as e:
+            raise MotionRefused("reference", e.reason) from e
 
     def center_vision(self, duration: float = 0.5) -> bool | MotionOutcome:
         """Center the head to look straight ahead.

@@ -15,7 +15,11 @@ from typing import Any, Optional
 
 from maxim.exceptions import MotionRefused
 from maxim.hardware.controller import (
+    DurationPolicy,
+    MotionOutcome,
+    MotionTicket,
     PixelTarget,
+    as_outcome,
     clamp_finite,
     floor_duration,
     normalize_method,
@@ -135,8 +139,10 @@ class MovementMixin:
     _DEG_PER_PIXEL_H = 0.10  # degrees rotation per pixel horizontally
     _DEG_PER_PIXEL_V = 0.08  # degrees rotation per pixel vertically
 
-    def center_vision(self, *, duration: Optional[float] = None) -> None:
-        return self.goto_pose("centered", duration=duration)
+    def center_vision(
+        self, *, duration: Optional[float] = None, duration_policy: DurationPolicy = "at_least"
+    ) -> MotionTicket:
+        return self.goto_pose("centered", duration=duration, duration_policy=duration_policy)
 
     def mark_trainable_moment(self) -> None:
         sample = getattr(self, "_last_motor_sample", None)
@@ -159,14 +165,19 @@ class MovementMixin:
         except Exception as e:
             warn("Failed to mark trainable moment: %s", e, logger=self.log)
 
-    def goto_pose(self, name: str = "centered", *, duration: Optional[float] = None) -> None:
-        """Move the head to a named pose from ``default_poses.json``.
+    def goto_pose(
+        self, name: str = "centered", *, duration: Optional[float] = None, duration_policy: DurationPolicy = "at_least"
+    ) -> MotionTicket:
+        """Move the head to a named pose from ``default_poses.json``; returns the move's ticket.
 
         Validated before any motion (#1496): an unknown name, a pose that
         failed to parse (``load_poses`` keeps it as ``None``), a non-finite
-        value, or an out-of-range duration raises, with no motion and no
-        sleep. A duration given here, or stored in the pose, is explicit; only
-        the mirror's ``self.duration`` is a default and gets floored.
+        value, or an out-of-range duration raises, with no motion. A duration
+        given here, or stored in the pose, must lie in range; only the
+        mirror's ``self.duration`` is floored. A pose-table duration is
+        authored, not the model's choice, so it is ``"at_least"`` (#1499 5.5):
+        it stretches, never refuses. ``duration_policy`` covers a duration
+        passed here.
         """
         key = name.strip() if isinstance(name, str) else name
         poses = getattr(self, "poses", None) or {}
@@ -179,6 +190,7 @@ class MovementMixin:
             vals = tuple(require_finite(f"pose {key!r}[{i}]", pose[i]) for i in range(6))
             if duration is None and len(pose) >= 7:
                 duration = pose[6]
+                duration_policy = "at_least"
         elif key == "centered":
             # No pose table (a bare Selfy): the configured head pose is the centre.
             fallback = getattr(self, "_default_head_pose", None) or {}
@@ -198,22 +210,8 @@ class MovementMixin:
 
         # Dispatch through self.move() (2026-08-07 safety fold): move() owns the
         # workspace clamp, so a config-authored pose beyond limits cannot ship raw.
-        try:
-            self.move(
-                x=vals[0],
-                y=vals[1],
-                z=vals[2],
-                roll=vals[3],
-                pitch=vals[4],
-                yaw=vals[5],
-                duration=duration,
-            )
-        except MotionRefused:
-            raise
-        except Exception as e:
-            warn("Failed to center vision: %s", e, logger=self.log)
-
-        time.sleep(duration)
+        # No sleep: the ticket's ``completed`` says when the move is done (#1499).
+        return self.move(*vals, duration=duration, duration_policy=duration_policy)
 
     def sync_head_position(self) -> SyncResult:
         """Sync internal position tracking with actual hardware position.
@@ -661,8 +659,12 @@ class MovementMixin:
         perform_movement: bool = True,
         min_reachability: float = 0.2,
         clamp_to_bounds: bool = True,
-    ) -> None:
-        """Look at a position in image coordinates.
+        duration_policy: DurationPolicy = "at_least",
+    ) -> MotionTicket:
+        """Look at a position in image coordinates; returns the move's ticket (#1499 5.6).
+
+        An unreachable pixel returns a ticket already refused ``limit``; an
+        automatic turn returns the turn's outcome as a resolved ticket.
 
         Args:
             u: Horizontal pixel coordinate.
@@ -685,11 +687,14 @@ class MovementMixin:
         position = (int(u), int(v))
 
         if min_reachability > 0 and not self._is_pixel_reachable(position, min_reachability):
-            return
+            return MotionTicket.resolved(
+                MotionOutcome.refused("limit", f"pixel {position} is outside the learned reachable area")
+            )
 
         if not perform_movement:
-            self._enqueue_sdk_look_at(u, v, position, duration, perform_movement=False)
-            return
+            # The SDK would only compute a pose, and nothing reads a motor-queue
+            # result, so there is nothing to enqueue.
+            return MotionTicket.resolved(MotionOutcome(ok=True, reason="perform_movement=False: nothing moved"))
 
         # Sync to get accurate current position before computing offsets
         self.sync_head_position()
@@ -713,14 +718,15 @@ class MovementMixin:
         pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
 
         # If at a limit and target is further into it, rotate body instead of pushing servo
-        if self._maybe_turn_around(
+        turned = self._maybe_turn_around(
             du=du,
             looking_left=looking_left,
             looking_right=looking_right,
             h_usage=h_usage,
             pain_bridge=pain_bridge,
-        ):
-            return  # turn_around handled the movement
+        )
+        if turned is not None:
+            return MotionTicket.resolved(turned)  # turn_around handled the movement
 
         # Restrict du/dv based on pain risk or workspace usage near limits
         du = self._restrict_horizontal(du, looking_left, looking_right, h_usage, pain_bridge)
@@ -733,13 +739,13 @@ class MovementMixin:
         commanded_6d = self._build_commanded_6d(du, dv, cur_yaw, cur_pitch, cur_y, cur_z)
         self._record_pain_action_start(commanded_6d, position)
 
-        self._enqueue_sdk_look_at(
+        return self._enqueue_sdk_look_at(
             final_u,
             final_v,
             position,
             duration,
-            perform_movement=True,
             commanded_6d=commanded_6d,
+            duration_policy=duration_policy,
         )
 
     # ── look_at_image helpers ──────────────────────────────────────────────
@@ -827,10 +833,13 @@ class MovementMixin:
         looking_right: bool,
         h_usage: float,
         pain_bridge: Any,
-    ) -> bool:
+    ) -> MotionOutcome | None:
         """If movement would push past a limit, rotate the body instead.
 
-        Returns ``True`` if a turn was executed (caller should early-return).
+        Returns the turn's outcome when a turn was tried (the caller returns it),
+        or None when look_at should proceed: no turn was due, or the turn cannot
+        fit inside the body limit, so the head moves clamped instead (#1499 5.8).
+        A refused turn is booked a failure with the pain bridge (D3).
         """
         import time as time_module
 
@@ -841,7 +850,7 @@ class MovementMixin:
             looking_right and du > self._TURN_AROUND_MIN_PIXEL_OFFSET
         )
         if not (can_turn and target_is_beyond):
-            return False
+            return None
 
         should_turn = False
         turn_reason = ""
@@ -857,7 +866,7 @@ class MovementMixin:
             turn_reason = f"bounds_usage={h_usage:.2f}"
 
         if not should_turn:
-            return False
+            return None
 
         turn_angle = self._TURN_AROUND_ANGLE if looking_left else -self._TURN_AROUND_ANGLE
         self.log.info(
@@ -877,15 +886,18 @@ class MovementMixin:
             except Exception as e:
                 self.log.debug("Pain bridge record_action_start failed: %s", e)
 
-        turned = self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True)
+        turned = as_outcome(self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True))
 
         if pain_bridge is not None:
             try:
-                pain_bridge.record_action_complete(success=turned is not False)
+                pain_bridge.record_action_complete(success=bool(turned))
             except Exception as e:
                 self.log.debug("Pain bridge record_action_complete failed: %s", e)
 
-        return True
+        if turned.kind == "limit":
+            self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", turned.reason)
+            return None
+        return turned
 
     def _restrict_horizontal(
         self,
@@ -1030,53 +1042,49 @@ class MovementMixin:
         position: tuple[int, int],
         duration: float,
         *,
-        perform_movement: bool,
         commanded_6d: dict[str, float] | None = None,
-    ) -> None:
-        """Scale internal pixel coords to the SDK resolution and enqueue the call."""
+        duration_policy: DurationPolicy = "at_least",
+    ) -> MotionTicket:
+        """Scale internal pixel coords to the SDK resolution and enqueue the look-at; returns its ticket."""
         sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
         sdk_scale_y = self._SDK_IMAGE_HEIGHT / self._IMAGE_HEIGHT
         sdk_u = int(u * sdk_scale_x)
         sdk_v = int(v * sdk_scale_y)
 
-        if perform_movement:
-            self.log.warning(
-                "LOOK_AT_SDK: internal_pixel=(%d,%d) -> sdk_pixel=(%d,%d) scale=(%.2f,%.2f)",
-                u,
-                v,
-                sdk_u,
-                sdk_v,
-                sdk_scale_x,
-                sdk_scale_y,
-            )
+        self.log.warning(
+            "LOOK_AT_SDK: internal_pixel=(%d,%d) -> sdk_pixel=(%d,%d) scale=(%.2f,%.2f)",
+            u,
+            v,
+            sdk_u,
+            sdk_v,
+            sdk_scale_x,
+            sdk_scale_y,
+        )
 
         kwargs: dict[str, Any] = {
             "duration": float(duration),
-            "perform_movement": perform_movement,
             "_position_info": position,
         }
         if commanded_6d is not None:
             kwargs["_commanded_6d"] = commanded_6d
 
+        # #1499 5.2: the SDK's look_at_image(perform_movement=True) sends the
+        # body to 0 (F1). The move goes through the controller's look_at_pixel
+        # instead: head only, from a fresh readback, under the rate cap and the
+        # neck-path rule, with its MotionOutcome returned to the motor worker
+        # (which books the learners only on ok) and to the ticket.
         robot = getattr(self, "_robot", None)
-        if perform_movement:
-            # #1499 5.2: the SDK's look_at_image(perform_movement=True) sends the
-            # body to 0 (F1). The move goes through the controller's
-            # look_at_pixel instead: head only, from a fresh readback, under the
-            # rate cap and the neck-path rule, with its MotionOutcome returned to
-            # the motor worker (which books the learners only on ok).
-            if robot is None or not hasattr(robot, "look_at_pixel"):
-                self.log.error("look_at refused: no robot controller to dispatch it through (#1499)")
-                return
+        if robot is None or not hasattr(robot, "look_at_pixel"):
+            self.log.error("look_at refused: no robot controller to dispatch it through (#1499)")
+            return MotionTicket.resolved(MotionOutcome.refused("error", "no robot controller to dispatch the look-at"))
 
-            def _controller_look_at(u_: int, v_: int, *, duration: float, perform_movement: bool) -> Any:
-                return robot.look_at_pixel(PixelTarget(u=u_, v=v_, duration=floor_duration(duration)))
+        def _controller_look_at(u_: int, v_: int, *, duration: float) -> Any:
+            target_duration = require_duration(duration) if duration_policy == "exact" else floor_duration(duration)
+            return robot.look_at_pixel(
+                PixelTarget(u=u_, v=v_, duration=target_duration, duration_policy=duration_policy)
+            )
 
-            self._enqueue_motor(_controller_look_at, sdk_u, sdk_v, **kwargs)
-            return
-
-        # perform_movement=False: the SDK would only compute a pose, and nothing
-        # reads a motor-queue result, so there is nothing to enqueue.
+        return self._enqueue_motor(_controller_look_at, sdk_u, sdk_v, **kwargs)
 
     def move(
         self,
@@ -1087,9 +1095,14 @@ class MovementMixin:
         pitch: Optional[float] = None,
         yaw: Optional[float] = None,
         duration: Optional[float] = None,
-    ) -> None:
+        duration_policy: DurationPolicy = "at_least",
+    ) -> MotionTicket:
         """
-        Docstring for move
+        Move the head to an absolute pose; returns the move's ticket (#1499 5.6).
+
+        A pose equal to the mirror's returns a ticket already ok with zero
+        chunks. ``duration_policy="exact"`` (a duration the model chose) refuses
+        a move too fast for it; ``"at_least"`` stretches it.
 
         :param self: Description
         :param x: Description
@@ -1212,7 +1225,7 @@ class MovementMixin:
             and next_pitch == cur_pitch
             and next_yaw == cur_yaw
         ):
-            return
+            return MotionTicket.resolved(MotionOutcome(ok=True, reason="already at the requested pose"))
 
         self.x = float(next_x)
         self.y = float(next_y)
@@ -1231,7 +1244,7 @@ class MovementMixin:
             "x": self.x,
         }
 
-        self._enqueue_motor(
+        return self._enqueue_motor(
             move_head,
             self.mini,
             self.x,
@@ -1247,6 +1260,7 @@ class MovementMixin:
             # lock serializes the standalone path (no controller) too.
             motion_lock=getattr(getattr(self, "_robot", None), "_motion_lock", None),
             controller=getattr(self, "_robot", None),
+            duration_policy=duration_policy,
             _commanded_6d=commanded_6d,
         )
 
@@ -1254,8 +1268,8 @@ class MovementMixin:
         self,
         delta: tuple[float, float],
         duration: Optional[float] = None,
-    ) -> None:
-        """Move the head by a relative amount (used by DefaultNetwork scan actions).
+    ) -> MotionTicket:
+        """Move the head by a relative amount (used by DefaultNetwork scan actions); returns the ticket.
 
         This uses TRANSLATION-FIRST approach: the delta primarily affects
         translation (Y for horizontal, Z for vertical), with a smaller
@@ -1316,7 +1330,10 @@ class MovementMixin:
         )
 
         # Execute the 6D movement
-        self.move(x=new_x, y=new_y, z=new_z, roll=new_roll, pitch=new_pitch, yaw=new_yaw, duration=duration)
+        return self.move(x=new_x, y=new_y, z=new_z, roll=new_roll, pitch=new_pitch, yaw=new_yaw, duration=duration)
+
+    # The body's yaw limit, degrees: a turn that would end past it is refused (#1499 5.8).
+    _BODY_YAW_LIMIT_DEG = 160.0
 
     def turn_around(
         self,
@@ -1324,7 +1341,7 @@ class MovementMixin:
         *,
         duration: float = 5.0,
         recenter_head: bool = True,
-    ) -> bool:
+    ) -> MotionOutcome:
         """Rotate the body to bring a new area into view.
 
         This is used when the head is at its yaw limit and there's something
@@ -1334,23 +1351,34 @@ class MovementMixin:
         Args:
             angle: Degrees to rotate body. Positive = counterclockwise (left),
                    negative = clockwise (right).
-            duration: Time for the rotation in seconds (default 5.0).
+            duration: Time for the rotation in seconds (default 5.0). The step
+                durations are derived from it, so they are ``"at_least"``.
             recenter_head: If True, return head toward center during rotation.
 
         Returns:
-            True when the controller accepted both steps. False when there is no
-            controller, a step was rejected (the controller turns a dispatch-time
-            refusal into a rejection), or the turn failed; the body never turns
-            under a head that did not recentre (#1496).
+            The turn's ``MotionOutcome`` (#1499 5.8, D3): ok when both steps
+            completed. Otherwise the refusal, with its kind: ``limit`` when the
+            turn would end past ±160° (nothing moves), ``reference`` when the
+            body could not be read fresh (a turn is never planned from the
+            mirror), or the failed step's outcome. The body never turns under a
+            head that did not recentre (#1496).
 
         Raises:
             MotionRefused: a non-finite angle or an out-of-range duration, checked
-                before the motor queue is cleared or DN inhibited, so it changes
-                nothing; or a non-finite body readback, refused after the queue
-                was cleared (DN is still released).
+                before anything changes.
         """
         angle = require_finite("angle", angle)
         duration = require_duration(duration)
+
+        robot = getattr(self, "_robot", None)
+        if robot is None:
+            self.log.warning("turn_around: no robot controller — skipping body rotation")
+            return MotionOutcome.refused("error", "no robot controller to turn the body")
+        planned = self._plan_turn(robot, angle)
+        if isinstance(planned, MotionOutcome):
+            self.log.warning("turn_around refused (%s): %s", planned.kind, planned.reason)
+            return planned
+        current_body_yaw, target_body_yaw = planned
 
         self.log.info("turn_around: rotating body %.0f° over %.1fs (recenter_head=%s)", angle, duration, recenter_head)
 
@@ -1370,126 +1398,8 @@ class MovementMixin:
             except Exception as inh_e:
                 self.log.debug("Failed to inhibit DefaultNetwork: %s", inh_e)
 
-        import time as time_mod
-
-        from maxim.hardware.controller import MotionTarget
-
         try:
-            # THE DISPATCH PATH IS THE FIX (2026-08-07 safety fold). This
-            # method previously hand-rolled its 3-step sequence against the
-            # raw SDK (`self.mini.goto_target(...)`), bypassing
-            # ReachyMiniController.goto_target — and with it the head-frame
-            # composition, the workspace clamps, and the motion lock. The
-            # STEP-2 body rotation shipped `head=None`, so the daemon held
-            # the head at its RETAINED world pose (centered at world 0 from
-            # STEP 1) while the body rotated up to ±160° beneath it —
-            # commanding a head-relative angle far past the ±65° neck
-            # capability. That is the motor-destruction failure class from
-            # the 2026-08-07 hardware note. Routing through the controller
-            # gives: head rides along with the body (head-frame invariant),
-            # every axis clamped to physical limits, and the read→compose→
-            # dispatch TOCTOU closed by the controller's motion lock.
-            robot = getattr(self, "_robot", None)
-            if robot is None:
-                self.log.warning("turn_around: no robot controller — skipping body rotation")
-                return False
-
-            # Get ACTUAL current body yaw from the controller's pose read.
-            # A MISSING readback falls back to the mirror (#1499 owns that); a
-            # RETURNED non-finite one is refused, outside the try (#1496).
-            body_read: Any = None
-            try:
-                pose = robot.get_current_pose() or {}
-                body_read = pose.get("body_yaw")
-            except Exception as read_e:
-                self.log.debug("turn_around: body readback failed: %s", read_e)
-            if body_read is not None:
-                current_body_yaw = math.degrees(require_finite("readback body_yaw", body_read))
-            else:
-                current_body_yaw = float(getattr(self, "body_yaw", 0.0) or 0.0)
-
-            target_body_yaw = clamp_finite("body_yaw", current_body_yaw + angle, -160.0, 160.0)
-
-            self.log.info(
-                "turn_around: 2-step sequence starting (body %.1f -> %.1f)", current_body_yaw, target_body_yaw
-            )
-
-            # ═══════════════════════════════════════════════════════════════════
-            # STEP 1: Center the head RELATIVE TO THE BODY (prevents IK issues
-            # during the turn). head_yaw on MotionTarget is body-relative, so
-            # 0.0 means "straight ahead of the body", not world zero.
-            # ═══════════════════════════════════════════════════════════════════
-            # Derived step durations are floored into range, never refused.
-            step1_duration = floor_duration(min(2.0, duration * 0.3))
-            self.log.info("turn_around STEP 1: centering head (%.1fs)", step1_duration)
-            ok1 = False
-            try:
-                ok1 = robot.goto_target(
-                    MotionTarget(head_roll=0.0, head_pitch=0.0, head_yaw=0.0, duration=step1_duration)
-                )
-                if not ok1:
-                    self.log.warning("turn_around STEP 1: motion command rejected")
-                time_mod.sleep(step1_duration + 0.3)  # Wait for completion + buffer
-            except MotionRefused:
-                raise
-            except Exception as e1:
-                self.log.warning("turn_around STEP 1 failed: %s", e1)
-            if not ok1:
-                # Never turn the body under a head that did not recentre.
-                self.log.warning("turn_around: skipping the body rotation after STEP 1 failed")
-                return False
-
-            # ═══════════════════════════════════════════════════════════════════
-            # STEP 2: Rotate body. The controller composes a head matrix with
-            # the body delta added (head-frame invariant), so the head — and
-            # the camera/mics in it — ride along instead of counter-rotating.
-            # ═══════════════════════════════════════════════════════════════════
-            step2_duration = floor_duration(max(3.0, duration * 0.5))
-            body_yaw_rad = math.radians(target_body_yaw)
-
-            self.log.info("turn_around STEP 2: rotating body to %.1f° (%.1fs)", target_body_yaw, step2_duration)
-            ok2 = False
-            try:
-                ok2 = robot.goto_target(MotionTarget(body_yaw=body_yaw_rad, duration=step2_duration))
-                if not ok2:
-                    self.log.warning("turn_around STEP 2: motion command rejected")
-                time_mod.sleep(step2_duration + 0.3)  # Wait for completion + buffer
-            except MotionRefused:
-                raise
-            except Exception as e2:
-                self.log.warning("turn_around STEP 2 failed: %s", e2)
-
-            # ═══════════════════════════════════════════════════════════════════
-            # STEP 3: Settle and sync position
-            # ═══════════════════════════════════════════════════════════════════
-            self.log.info("turn_around STEP 3: settling and syncing")
-            time_mod.sleep(0.5)  # Let everything settle
-
-            # Sync with hardware to get accurate position
-            self.sync_head_position()
-
-            # Update internal tracking ONLY for a motion the controller
-            # accepted (executor-lens review fold): a rejected/failed turn
-            # must not leave the mirror asserting a rotation that never
-            # happened — sync_head_position above already restored the
-            # hardware truth, and overwriting it with the TARGET would
-            # corrupt every frame consumer until the next sync.
-            if ok1 and ok2:
-                self.body_yaw = target_body_yaw
-                if recenter_head:
-                    self.yaw = 0.0
-                    self.pitch = 0.0
-                    self.y = 0.0
-                    self.z = 0.0
-
-            self.log.info(
-                "turn_around complete: body_yaw %.1f -> %.1f (total %.1fs)",
-                current_body_yaw,
-                target_body_yaw,
-                step1_duration + step2_duration + 0.8,
-            )
-            return bool(ok2)
-
+            return self._run_turn(robot, current_body_yaw, target_body_yaw, duration, recenter_head)
         except MotionRefused:
             raise
         except Exception as e:
@@ -1497,7 +1407,7 @@ class MovementMixin:
             import traceback
 
             self.log.debug("turn_around traceback: %s", traceback.format_exc())
-            return False
+            return MotionOutcome.refused("error", f"turn_around failed: {e}")
 
         finally:
             # Release DefaultNetwork inhibition
@@ -1508,6 +1418,117 @@ class MovementMixin:
                 except Exception:
                     pass
 
+    def _plan_turn(self, robot: Any, angle: float) -> "tuple[float, float] | MotionOutcome":
+        """(current, target) body yaw in degrees, from the controller's fresh read; or the refusal (#1499 5.8).
+
+        The mirror (``self.body_yaw``) is never the start: a turn planned from a
+        stale body could end past the limit. A turn that would end past ±160°
+        is refused ``limit``, never clamped to a smaller turn the caller did not
+        ask for.
+        """
+        try:
+            current = math.degrees(require_finite("body_yaw", robot.read_body_yaw()))
+        except MotionRefused as e:
+            return MotionOutcome.refused("reference", f"the body yaw could not be read: {e.reason}")
+        except Exception as e:
+            return MotionOutcome.refused("reference", f"the body yaw could not be read: {e}")
+        target = current + angle
+        if abs(target) > self._BODY_YAW_LIMIT_DEG + 1e-9:
+            return MotionOutcome.refused(
+                "limit",
+                f"a {angle:+.0f}° turn from body {current:.0f}° would end at {target:.0f}°, "
+                f"past the ±{self._BODY_YAW_LIMIT_DEG:.0f}° body limit; it cannot fit",
+            )
+        return current, target
+
+    def _run_turn(
+        self, robot: Any, current_body_yaw: float, target_body_yaw: float, duration: float, recenter_head: bool
+    ) -> MotionOutcome:
+        """The turn's two steps through the controller, then the sync; the outcome of the step that ended it."""
+        from maxim.hardware.controller import MotionTarget
+
+        # THE DISPATCH PATH IS THE FIX (2026-08-07 safety fold). This
+        # method previously hand-rolled its 3-step sequence against the
+        # raw SDK (`self.mini.goto_target(...)`), bypassing
+        # ReachyMiniController.goto_target — and with it the head-frame
+        # composition, the workspace clamps, and the motion lock. The
+        # STEP-2 body rotation shipped `head=None`, so the daemon held
+        # the head at its RETAINED world pose (centered at world 0 from
+        # STEP 1) while the body rotated up to ±160° beneath it —
+        # commanding a head-relative angle far past the ±65° neck
+        # capability. That is the motor-destruction failure class from
+        # the 2026-08-07 hardware note. Routing through the controller
+        # gives: head rides along with the body (head-frame invariant),
+        # every axis clamped to physical limits, and the read→compose→
+        # dispatch TOCTOU closed by the controller's motion lock.
+        self.log.info("turn_around: 2-step sequence starting (body %.1f -> %.1f)", current_body_yaw, target_body_yaw)
+
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 1: Center the head RELATIVE TO THE BODY (prevents IK issues
+        # during the turn). head_yaw on MotionTarget is body-relative, so
+        # 0.0 means "straight ahead of the body", not world zero.
+        # ═══════════════════════════════════════════════════════════════════
+        # Derived step durations are floored into range, never refused.
+        step1_duration = floor_duration(min(2.0, duration * 0.3))
+        self.log.info("turn_around STEP 1: centering head (%.1fs)", step1_duration)
+        step1 = self._turn_step(
+            robot, MotionTarget(head_roll=0.0, head_pitch=0.0, head_yaw=0.0, duration=step1_duration), step1_duration
+        )
+        if not step1:
+            # Never turn the body under a head that did not recentre.
+            self.log.warning("turn_around STEP 1 did not complete (%s); skipping the body rotation", step1.reason)
+            return step1
+
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 2: Rotate body. The controller composes a head matrix with
+        # the body delta added (head-frame invariant), so the head — and
+        # the camera/mics in it — ride along instead of counter-rotating.
+        # ═══════════════════════════════════════════════════════════════════
+        step2_duration = floor_duration(max(3.0, duration * 0.5))
+        self.log.info("turn_around STEP 2: rotating body to %.1f° (%.1fs)", target_body_yaw, step2_duration)
+        step2 = self._turn_step(
+            robot, MotionTarget(body_yaw=math.radians(target_body_yaw), duration=step2_duration), step2_duration
+        )
+        if not step2:
+            self.log.warning("turn_around STEP 2 did not complete (%s): %s", step2.kind, step2.reason)
+
+        # STEP 3: sync with hardware to get accurate position
+        self.log.info("turn_around STEP 3: syncing")
+        self.sync_head_position()
+
+        # Update internal tracking ONLY for a motion the controller
+        # completed (executor-lens review fold): a rejected/failed turn
+        # must not leave the mirror asserting a rotation that never
+        # happened — sync_head_position above already restored the
+        # hardware truth, and overwriting it with the TARGET would
+        # corrupt every frame consumer until the next sync.
+        if step2:
+            self.body_yaw = target_body_yaw
+            if recenter_head:
+                self.yaw = 0.0
+                self.pitch = 0.0
+                self.y = 0.0
+                self.z = 0.0
+            self.log.info("turn_around complete: body_yaw %.1f -> %.1f", current_body_yaw, target_body_yaw)
+        return step2
+
+    def _turn_step(self, robot: Any, target: Any, step_duration: float) -> MotionOutcome:
+        """One turn step through the controller, read as a ``MotionOutcome``.
+
+        A controller that reports the completed duration (the Reachy one: ok
+        only after its final readback matched the target) is not waited on
+        again; one that reports a bare ``bool`` gets the old blind wait.
+        """
+        try:
+            outcome = as_outcome(robot.goto_target(target))
+        except MotionRefused:
+            raise
+        except Exception as e:
+            return MotionOutcome.refused("error", f"the turn step failed: {e}")
+        if outcome.ok and outcome.duration_s is None:
+            time.sleep(step_duration + 0.3)  # Wait for completion + buffer
+        return outcome
+
     def move_antenna(
         self,
         right: Optional[float] = None,
@@ -1517,7 +1538,9 @@ class MovementMixin:
         method: str = "minjerk",
         degrees: bool = True,
         relative: bool = False,
-    ) -> None:
+        duration_policy: DurationPolicy = "at_least",
+    ) -> MotionTicket:
+        """Move the antennas through the controller (#1499 5.4); returns the move's ticket."""
         if angle is not None:
             right = angle
             left = angle
@@ -1528,7 +1551,7 @@ class MovementMixin:
         duration = floor_duration(self.duration) if duration is None else require_duration(duration)
         method = normalize_method(method)
 
-        self._enqueue_motor(
+        return self._enqueue_motor(
             move_antenna,
             self.mini,
             right=right,
@@ -1537,4 +1560,6 @@ class MovementMixin:
             method=method,
             degrees=degrees,
             relative=relative,
+            controller=getattr(self, "_robot", None),
+            duration_policy=duration_policy,
         )
