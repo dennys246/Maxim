@@ -30,6 +30,7 @@ _scenario_log = logging.getLogger("maxim.sim_doa")
 
 
 _NOT_CONNECTED = MotionOutcome.refused("error", "the simulated robot is not connected")
+_CANCELLED = MotionOutcome.refused("cancelled", "cancelled before the move started")
 
 
 def _normalize_angle(theta: float) -> float:
@@ -361,7 +362,8 @@ class SimulatedController(RobotController):
         """
         if not self.is_connected():
             return _NOT_CONNECTED
-        mark_motion_accepted()
+        if not mark_motion_accepted():
+            return _CANCELLED
 
         # RETAINED-AXES TRIPWIRE (F1 fold, 2026-08-09): this sim fills
         # unspecified axes from its own stored pose, which is fine ONLY
@@ -452,7 +454,8 @@ class SimulatedController(RobotController):
         """
         if not self.is_connected():
             return _NOT_CONNECTED
-        mark_motion_accepted()
+        if not mark_motion_accepted():
+            return _CANCELLED
 
         # Simple conversion: center of frame = (0, 0)
         # Assume 640x480 resolution, 60 degree FOV

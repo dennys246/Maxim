@@ -148,7 +148,10 @@ def _body(mini=None, robot=None):
             self.enqueued: list[tuple] = []
 
         def _enqueue_motor(self, fn, *args, **kwargs):
+            from maxim.hardware.controller import MotionOutcome, MotionTicket
+
             self.enqueued.append((fn, args, kwargs))
+            return MotionTicket.resolved(MotionOutcome(ok=True))  # recorded, not run: accepted (#1499 5.6)
 
         def _clear_motor_queue(self) -> int:
             return 0

@@ -22,6 +22,7 @@ from maxim.hardware.capabilities import (
 )
 from maxim.exceptions import InvalidConfigError, MotionRefused
 from maxim.hardware.controller import (
+    ANTENNA_EXTRAS,
     HEAD_TRANSLATION_EXTRAS,
     MotionOutcome,
     MotionTarget,
@@ -1038,8 +1039,7 @@ class ReachyMiniController(RobotController):
         delta from the readback, so a move with no antenna readback is refused
         rather than dispatched unchecked.
         """
-        right = target.extras.get("antenna_right")
-        left = target.extras.get("antenna_left")
+        right, left = (target.extras.get(key) for key in ANTENNA_EXTRAS)
         if right is None and left is None:
             return None
         if start.antennas is None:
@@ -1160,10 +1160,11 @@ class ReachyMiniController(RobotController):
                 }
                 if chunk.antennas is not None:
                     kwargs["antennas"] = list(chunk.antennas)
-                if k == 1:
+                if k == 1 and not mark_motion_accepted():
                     # Every check passed and the first SDK call starts now: a queued
-                    # command's ticket is accepted here, under the lock (#1499 5.6, §4).
-                    mark_motion_accepted()
+                    # command's ticket is accepted here, under the lock (#1499 5.6, §4),
+                    # unless its tool cancelled it while it waited; then nothing moves.
+                    return MotionOutcome.refused("cancelled", "cancelled before the move started")
                 self._mini.goto_target(**kwargs)
             except MotionRefused as e:
                 if k == 1:

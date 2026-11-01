@@ -7,7 +7,14 @@ import numpy as np
 from pathlib import Path
 from typing import Any
 
-from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
+from maxim.hardware.controller import (
+    DurationPolicy,
+    clamp_finite,
+    floor_duration,
+    policy_duration,
+    require_duration,
+    require_finite,
+)
 from maxim.hardware.reachy.controller import ANTENNA_LIMIT_RAD, check_sdk_command
 from maxim.utils.logging import log_swallowed_exception, warn
 
@@ -266,7 +273,7 @@ def move_head(
                 head_pitch=math.radians(require_finite("pitch", pitch)),
                 head_yaw=math.radians(require_finite("yaw", yaw)),
                 extras=extras,
-                duration=_policy_duration(duration, duration_policy),
+                duration=policy_duration(duration, duration_policy),
                 duration_policy=duration_policy,
             )
         )
@@ -280,13 +287,8 @@ def move_head(
     return None
 
 
-def _policy_duration(duration: Any, policy: str) -> float:
-    """An ``"exact"`` duration is the caller's and is checked as given; a default one is floored into range."""
-    return require_duration(duration) if policy == "exact" else floor_duration(duration)
-
-
 def check_standalone_head_motion(
-    mini, x, y, z, roll, pitch, yaw, duration, *, duration_policy: str = "at_least"
+    mini, x, y, z, roll, pitch, yaw, duration, *, duration_policy: DurationPolicy = "at_least"
 ) -> None:
     """The standalone head dispatch: compose against the SDK's body read, rate-stretch, refuse a sweep, dispatch."""
     from maxim.exceptions import MotionRefused
@@ -304,7 +306,7 @@ def check_standalone_head_motion(
     x_w = x * math.cos(b) - y * math.sin(b)
     y_w = x * math.sin(b) + y * math.cos(b)
     pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
-    duration = _policy_duration(duration, duration_policy)
+    duration = policy_duration(duration, duration_policy)
     try:
         current = np.asarray(mini.get_current_head_pose(), dtype=float)
     except Exception:  # missing: the rate and path checks need a start, so this refuses below
@@ -317,8 +319,7 @@ def check_standalone_head_motion(
     ok, worst = mp.neck_path_ok(start, target)
     if not ok:
         raise MotionRefused("path", f"standalone move_head would sweep the neck to {worst:.0f}° mid-path")
-    policy = "exact" if duration_policy == "exact" else "at_least"
-    duration = mp.resolve_duration(duration, mp.move_delta_deg(start, target), "minimum_jerk", policy)
+    duration = mp.resolve_duration(duration, mp.move_delta_deg(start, target), "minimum_jerk", duration_policy)
     # Last mile (#1496): every scalar handed to the SDK, the duration's
     # range, and the present pose (defence in depth).
     duration, _ = check_sdk_command(mini, duration=duration, head=pose)
@@ -386,18 +387,19 @@ def _move_antenna_via_controller(
     """The controller branch of ``move_antenna``: one ``MotionTarget`` with the ``antenna_right/left`` extras."""
     from maxim.hardware.controller import MotionTarget
 
-    sides = {"antenna_right": right, "antenna_left": left}
+    from maxim.hardware.controller import ANTENNA_EXTRAS
+
+    sides = dict(zip(ANTENNA_EXTRAS, (right, left), strict=True))
     targets = {key: _to_rad(value, degrees=degrees) for key, value in sides.items() if value is not None}
     if relative:
         # A relative nudge needs a base; the controller re-reads the pose itself before it moves.
-        current_right, current_left = mini.get_present_antenna_joint_positions()
-        base = {"antenna_right": current_right, "antenna_left": current_left}
+        base = dict(zip(ANTENNA_EXTRAS, mini.get_present_antenna_joint_positions(), strict=True))
         targets = {key: require_finite(key, base[key]) + value for key, value in targets.items()}
     requested = 0.5 if duration is None else duration
     return controller.goto_target(
         MotionTarget(
             extras=targets,
-            duration=_policy_duration(requested, duration_policy),
+            duration=policy_duration(requested, duration_policy),
             method=method,
             duration_policy=duration_policy,
         )

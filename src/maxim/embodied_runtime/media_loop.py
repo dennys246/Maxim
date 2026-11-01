@@ -727,9 +727,14 @@ class MediaLoopMixin:
             stop_event.wait(timeout=0.5)
 
     def _open_motor_queue(self, *, active: bool) -> MotorQueue:
-        """The live loop's motor queue; Selfy enqueues on it only when *active* (parallel with motor)."""
+        """The live loop's motor queue; Selfy enqueues on it only when *active* (parallel with motor) with a robot.
+
+        The motor worker only starts with a robot, so without one (headless) a
+        queue would hold every command until a tool's wait ran out; the
+        synchronous path refuses at once instead.
+        """
         motor_queue = MotorQueue(maxsize=4)
-        self._motor_queue = motor_queue if active else None
+        self._motor_queue = motor_queue if active and self._robot is not None else None
         return motor_queue
 
     def _close_motor_queue(self) -> None:
@@ -754,10 +759,13 @@ class MediaLoopMixin:
         """
         q = getattr(self, "_motor_queue", None)
         if q is not None:
-            return q.put(fn, *args, **kwargs)
-        ticket = MotionTicket()
-        ticket.start()
-        run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
+            ticket = q.put(fn, *args, **kwargs)
+        else:
+            ticket = MotionTicket()
+            ticket.claim()
+            run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
+        # Movement reads it to re-sync a mirror its move wrote but never reached (_resync_mirror_if_unstarted).
+        self._last_motion_ticket = ticket
         return ticket
 
     def _clear_motor_queue(self) -> int:

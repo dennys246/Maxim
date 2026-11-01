@@ -609,3 +609,184 @@ def test_a_turn_whose_body_read_fails_dispatches_nothing():
     out = selfy.turn_around(30.0, duration=3.0)
     assert not out and out.kind == "reference"
     assert ctl.targets == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Review round folds (2026-11-01): each guards a fold, and each is deletion-probed
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _hold_until_in_hand(selfy, ctl):
+    """Hold the controller's lock, queue a move, and wait until the worker holds it (claimed, not accepted)."""
+    ctl._motion_lock.acquire()
+    ticket = selfy.move(yaw=10.0)
+    deadline = time.monotonic() + 2.0
+    while selfy._motor_queue._in_hand is not ticket and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert selfy._motor_queue._in_hand is ticket and not ticket.accepted.done()
+    return ticket
+
+
+def test_a_cancel_while_the_worker_waits_for_the_lock_holds_and_nothing_moves(daemon):
+    """Architecture S1: ``accepted`` is the point of no return, not the worker's claim."""
+    ctl = controller(daemon)
+    selfy = _selfy(ctl, daemon)
+    stop = _start_worker(selfy)
+    try:
+        ticket = _hold_until_in_hand(selfy, ctl)
+        assert ticket.cancel("not started: the motor is busy")
+        ctl._motion_lock.release()
+        time.sleep(0.3)
+        assert ticket.completed.result(timeout=0).kind == "cancelled"
+        assert daemon.gotos() == []
+    finally:
+        if ctl._motion_lock._is_owned():
+            ctl._motion_lock.release()
+        stop.set()
+
+
+@pytest.mark.parametrize("how", ["clear", "close"])
+def test_clear_and_close_withdraw_the_command_the_worker_holds(daemon, how):
+    """Executor 3: a command taken off the queue but not yet accepted is withdrawn by a clear or a stop."""
+    ctl = controller(daemon)
+    selfy = _selfy(ctl, daemon)
+    stop = _start_worker(selfy)
+    try:
+        q = selfy._motor_queue
+        ticket = _hold_until_in_hand(selfy, ctl)
+        assert getattr(q, how)() == 1
+        ctl._motion_lock.release()
+        time.sleep(0.3)
+        assert ticket.completed.result(timeout=0).kind == ("superseded" if how == "clear" else "cancelled")
+        assert daemon.gotos() == []
+    finally:
+        if ctl._motion_lock._is_owned():
+            ctl._motion_lock.release()
+        stop.set()
+
+
+def test_move_tool_on_selfy_reports_the_queued_outcome_and_the_exact_policy(daemon):
+    """Executor 1 / Wire 2: MoveTool's Selfy fallback waits on the ticket and marks a model duration exact."""
+    from maxim.tools.reachy import MoveTool
+
+    _place(daemon, body_deg=0)
+    selfy = _selfy(controller(daemon), daemon)
+    stop = _start_worker(selfy)
+    try:
+        result = MoveTool(selfy).execute(yaw=40.0, duration=0.1)
+        assert not result.success and "rate" in (result.error or "")
+        assert daemon.gotos() == []
+    finally:
+        stop.set()
+
+
+def test_a_move_that_never_started_does_not_leave_the_mirror_at_its_target(daemon, monkeypatch):
+    """Executor 2 (owner: stale flag + re-read): an identical retry after a 'not started' really moves."""
+    import maxim.hardware.controller as hc
+    from maxim.tools.reachy import MaximCommandTool
+
+    monkeypatch.setattr(hc, "MOTION_ACCEPT_WAIT_S", 0.3)
+    selfy = _selfy(controller(daemon), daemon)
+    synced = []
+    selfy.sync_head_position = lambda: (synced.append(1), setattr(selfy, "yaw", 0.0))[-1]  # the real pose: yaw 0
+    stop = _start_worker(selfy)
+    try:
+        release, started = threading.Event(), threading.Event()
+        selfy._enqueue_motor(_blocker(release, started))
+        assert started.wait(2.0)
+        first = MaximCommandTool(selfy).execute(command="move", params={"yaw": 10.0})
+        assert not first.success and "not started" in (first.error or "")
+        release.set()
+        time.sleep(0.2)
+        retry = MaximCommandTool(selfy).execute(command="move", params={"yaw": 10.0})
+        assert retry.success and synced
+        deadline = time.monotonic() + 2.0
+        while not daemon.gotos() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert daemon.gotos(), "the retry was a no-op against a mirror at a pose the robot never reached"
+    finally:
+        release.set()
+        stop.set()
+
+
+def test_an_automatic_turn_that_cannot_fit_books_nothing_and_looks_clamped(daemon):
+    """Owner 2026-11-01 (§5.8 over §5.6): a turn refused before it moves records no pain start and no completion."""
+    _place(daemon, body_deg=150)  # +45° would end at 195°, past ±160°
+    selfy = _selfy(controller(daemon), daemon)
+    starts, completes = [], []
+
+    class _Pain:
+        def get_pain_risk(self, sig):
+            return 1.0
+
+        def record_action_start(self, *a, **kw):
+            starts.append(a)
+
+        def record_action_complete(self, success=True, **kw):
+            completes.append(success)
+
+    before = len(daemon.gotos())
+    out = selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=_Pain())
+    assert out is None  # look_at proceeds with the head clamped
+    assert starts == [] and completes == []
+    assert len(daemon.gotos()) == before
+
+
+def test_dn_books_a_refused_turn_as_not_executed():
+    """Architecture S4 (owner: fold into 2a): DN's own turn reads the outcome, so a 'limit' refusal feeds no learner."""
+    from maxim.default_network.messages import ActionProposal
+    from maxim.default_network.network import DefaultNetwork
+    from maxim.hardware.controller import MotionOutcome
+
+    class _Maxim:
+        yaw = 0.0
+
+        def __init__(self, outcome):
+            self.outcome = outcome
+
+        def turn_around(self, angle, *, duration):
+            return self.outcome
+
+    dn = DefaultNetwork.__new__(DefaultNetwork)
+    turn = ActionProposal(behavior_name="b", action_type="turn_around", target=None, priority=1.0, confidence=1.0)
+    dn._maxim = _Maxim(MotionOutcome.refused("limit", "cannot fit"))
+    assert dn._dispatch_action_to_motor(turn, 5.0) == (False, False)
+    dn._maxim = _Maxim(MotionOutcome(ok=True))
+    assert dn._dispatch_action_to_motor(turn, 5.0) == (True, False)
+
+
+def test_headless_selfy_queues_nothing():
+    """Wire 3: with no robot the motor worker never starts, so the motion path stays synchronous."""
+    from maxim.embodied_runtime.media_loop import MediaLoopMixin
+
+    class _Headless(MediaLoopMixin):
+        _robot = None
+
+    host = _Headless()
+    host._open_motor_queue(active=True)
+    assert host._motor_queue is None
+
+
+def test_a_split_antenna_move_holds_the_antennas_until_the_final_chunk():
+    """Executor 6: intermediate chunks carry the start antennas, so the final chunk's antenna delta is rate-capped."""
+    import numpy as np
+
+    from maxim.hardware.reachy import motion_path as mp
+
+    start = mp.Pose(mp.compose_head(0.0, 0.0, 0.0, 0.0), 0.0, (0.0, 0.0))
+    target = mp.Pose(mp.compose_head(0.0, 0.0, 0.0, D(155)), D(155), (D(60), D(60)))
+    chunks = mp.plan_chunks(start, target)
+    assert len(chunks) > 1
+    assert all(c.antennas == (0.0, 0.0) for c in chunks[:-1])
+    assert np.allclose(chunks[-1].antennas, (D(60), D(60)))
+    assert mp.move_delta_deg(chunks[-2], chunks[-1]) >= 60 - 1e-6
+
+
+def test_move_antenna_with_no_side_is_refused_before_the_queue(daemon):
+    """Architecture NIT: a bad call is the caller's error, never a counted motor failure."""
+    selfy = _selfy(controller(daemon), daemon)
+    failures = []
+    selfy._note_connection_failure = lambda *a: failures.append(a)
+    with pytest.raises(ValueError):
+        selfy.move_antenna()
+    assert failures == []

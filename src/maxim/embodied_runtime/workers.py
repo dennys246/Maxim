@@ -80,15 +80,22 @@ class MotorQueue:
     the caller heard "queued" as success. Here a replaced command and the
     ``Full`` case resolve ``superseded``; ``clear`` and the reconnect ``drain``
     resolve ``superseded``; ``close`` (a stop) resolves what is queued, and
-    every later ``put``, ``cancelled``. Only ``get`` hands a command to the
-    worker, and only after claiming its ticket, so a cancelled ticket never
-    runs.
+    every later ``put``, ``cancelled``. ``clear``, ``drain`` and ``close`` also
+    withdraw the command the worker holds if the controller has not accepted
+    it yet (it is waiting for the motion lock), so nothing cleared or stopped
+    starts afterwards. ``get`` takes and claims a command under the queue's
+    lock, so no removal can miss one in flight.
+
+    Latest-wins keeps at most one command waiting; ``maxsize`` only bounds a
+    queue that a caller fills directly.
     """
 
     def __init__(self, maxsize: int = 4) -> None:
         self._q: queue.Queue[QueuedMotion] = queue.Queue(maxsize=maxsize)
         self._lock = threading.Lock()
+        self._ready = threading.Condition(self._lock)
         self._closed = False
+        self._in_hand: MotionTicket | None = None
 
     @property
     def closed(self) -> bool:
@@ -101,7 +108,7 @@ class MotorQueue:
     def submit(
         self, ticket: MotionTicket, fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> MotionTicket:
-        """Queue *fn* under a caller-built *ticket* (one carrying ``on_accept``); returns the ticket."""
+        """Queue *fn* under a caller-built *ticket* (PR 2b: one carrying ``on_accept``); returns the ticket."""
         with self._lock:
             if self._closed:
                 ticket.resolve_unstarted("cancelled", _CLOSED)
@@ -114,21 +121,30 @@ class MotorQueue:
                 self._q.put_nowait(QueuedMotion(ticket, fn, args, kwargs))
             except queue.Full:
                 ticket.resolve_unstarted("superseded", _QUEUE_FULL)
+            self._ready.notify()
         return ticket
 
     def get(self, timeout: float) -> QueuedMotion:
-        """The next command to run, its ticket claimed; ``queue.Empty`` on a timeout or a resolved command."""
-        item = self._q.get(timeout=timeout)
+        """The next command to run, taken and claimed in one step; ``queue.Empty`` on a timeout.
+
+        A command already resolved (cancelled by its caller) is skipped.
+        """
         with self._lock:
-            if self._closed:
-                item.ticket.resolve_unstarted("cancelled", _CLOSED)
-                raise queue.Empty
-        if not item.ticket.start():
-            raise queue.Empty  # cancelled by its caller while it waited
-        return item
+            deadline = time.monotonic() + timeout
+            while True:
+                if not self._closed:
+                    while not self._q.empty():
+                        item = self._q.get_nowait()
+                        if item.ticket.claim():
+                            self._in_hand = item.ticket
+                            return item
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise queue.Empty
+                self._ready.wait(remaining)
 
     def clear(self) -> int:
-        """Remove every waiting command, each resolved ``superseded``; returns how many."""
+        """Remove every waiting command, and withdraw an unaccepted one in hand, as ``superseded``; returns how many."""
         return self._remove_all("superseded", _CLEARED)
 
     def drain(self) -> int:
@@ -136,9 +152,10 @@ class MotorQueue:
         return self._remove_all("superseded", _RECONNECT)
 
     def close(self) -> int:
-        """A stop: resolve every waiting command ``cancelled``, and every later ``put`` too."""
+        """A stop: resolve every waiting command, and an unaccepted one in hand, ``cancelled``; and every later ``put``."""
         with self._lock:
             self._closed = True
+            self._ready.notify_all()
         return self._remove_all("cancelled", _CLOSED)
 
     def _remove_all(self, kind: Any, reason: str) -> int:
@@ -151,6 +168,9 @@ class MotorQueue:
                     break
                 if item.ticket.resolve_unstarted(kind, reason):
                     removed += 1
+            if self._in_hand is not None and self._in_hand.withdraw(kind, reason):
+                removed += 1
+            self._in_hand = None
         return removed
 
 

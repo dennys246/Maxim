@@ -877,6 +877,17 @@ class MovementMixin:
         )
         self._last_turn_around_time = now
 
+        # A turn refused before it could move books nothing (§5.8, owner 2026-11-01): plan it first, and
+        # record the pain start only for a turn that will be dispatched. A turn that cannot fit returns
+        # None, so look_at proceeds with the head clamped.
+        robot = getattr(self, "_robot", None)
+        planned = self._plan_turn(robot, turn_angle) if robot is not None else None
+        if isinstance(planned, MotionOutcome):
+            if planned.kind == "limit":
+                self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", planned.reason)
+                return None
+            return planned
+
         if pain_bridge is not None:
             try:
                 pain_bridge.record_action_start(
@@ -898,6 +909,20 @@ class MovementMixin:
             self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", turned.reason)
             return None
         return turned
+
+    def _resync_mirror_if_unstarted(self) -> None:
+        """Re-read the pose when the last queued move resolved without starting (#1499, owner 2026-11-01).
+
+        ``move`` writes the mirror (``self.x..yaw``) when it queues a move. One
+        superseded, cleared, cancelled or refused before its first SDK call
+        left the mirror at a pose the robot never reached, so an identical
+        retry would be a no-op reported as success. The worker re-reads after
+        a move that ran and failed; this covers the moves that never ran.
+        """
+        ticket = getattr(self, "_last_motion_ticket", None)
+        if ticket is not None and ticket.never_started:
+            self._last_motion_ticket = None
+            self.sync_head_position()
 
     def _restrict_horizontal(
         self,
@@ -1129,6 +1154,7 @@ class MovementMixin:
         )
         if duration is not None:
             duration = require_duration(duration)
+        self._resync_mirror_if_unstarted()
 
         # Update duration if specified
         if duration is not None:
@@ -1285,6 +1311,7 @@ class MovementMixin:
         )
 
         dx, dy = (require_finite("delta", d) for d in delta)
+        self._resync_mirror_if_unstarted()  # the deltas apply to the mirror read below
 
         # Convert from scaled units to actual movement amounts
         # Split between translation (primary) and rotation (secondary)
@@ -1544,6 +1571,9 @@ class MovementMixin:
         if angle is not None:
             right = angle
             left = angle
+        if right is None and left is None:
+            # Before the queue: a bad call is the caller's error, not a motor failure (#1499).
+            raise ValueError("At least one of right, left or angle must be provided.")
         # Validated synchronously (#1496); the motor-thread primitive re-checks.
         for side, value in (("right", right), ("left", left)):
             if value is not None:

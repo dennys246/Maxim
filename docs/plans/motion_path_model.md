@@ -713,20 +713,23 @@ part gets its own red gates and review round. Until 2b lands, DN still books its
 bridge records a start when a move is queued, as on `main` today.
 
 **Choices the build made that v8 did not fix:**
-1. **The ticket's state is its own, not `Future.cancel`.** `MotionTicket` claims itself (`start()`) under a lock
-   instead of `set_running_or_notify_cancel()`, so `completed` is never in the `CANCELLED` state and
-   `completed.result()` always returns a `MotionOutcome` (`cancelled` included). `cancel()` succeeds only before the
-   worker claims the ticket; a claimed one runs to its outcome.
-2. **`MotorQueue.get` claims the ticket**, and raises `queue.Empty` for one already resolved (cancelled by its caller,
-   or taken after `close`), so the worker never runs a resolved command.
+1. **The ticket's state is its own, not `Future.cancel`.** `MotionTicket` tracks its own claim and cancel under a
+   lock instead of `set_running_or_notify_cancel()`, so `completed` is never in the `CANCELLED` state and
+   `completed.result()` always returns a `MotionOutcome` (`cancelled` included). **`accepted` is the point of no
+   return** (review fold, Architecture S1): `cancel()` and `withdraw()` work until then, even while the worker holds
+   the command and waits for the motion lock, and the controller's `mark_motion_accepted()` returns False so it
+   refuses `cancelled` before its first SDK call.
+2. **`MotorQueue.get` takes and claims a command in one step under the queue's lock** (a `Condition`), skipping one
+   already resolved. `clear`, `drain` and `close` also withdraw the command the worker holds if it is not yet
+   accepted (review fold, Executor 3: a command popped just before a clear or a stop used to run after it).
 3. **One execution path.** `workers.run_motion` runs a claimed command with its ticket bound, books the learners,
    re-reads the mirror after a non-ok outcome and resolves the ticket. The worker and Selfy's synchronous path (no
    queue) both call it, so the synchronous path no longer raises a refusal to its caller: the ticket carries it.
    An IK failure the daemon logs resolves the ticket `error`.
-4. **The tool's wait.** After `MOTION_ACCEPT_WAIT_S` the tool cancels the ticket; if the worker claimed it in the
-   same instant, the tool waits up to 5 s more for `accepted` (one fresh readback), then reports an error. A Selfy
-   method that returns something other than a ticket is an error ("the runtime returned no motion ticket"), never
-   success.
+4. **The tool's wait.** After `MOTION_ACCEPT_WAIT_S` (20 s, under the 30 s tool timeouts, which also cover the
+   tool's work before it enqueues) the tool cancels the ticket; a cancel that lost the race finds `accepted` already
+   resolved, so there is no second wait. A Selfy method that returns something other than a ticket is an error ("the
+   runtime returned no motion ticket"), never success.
 5. **`turn_around` reads the body through a new `RobotController.read_body_yaw()`** (non-abstract: the default reads
    `get_current_pose` and refuses `reference` without a finite `body_yaw`; the Reachy controller overrides it with
    the fresh daemon readback). A turn that would end past ±160° is refused `limit` before the queue is cleared or DN
@@ -738,8 +741,10 @@ bridge records a start when a move is queued, as on `main` today.
    `perform_movement=False` (nothing moves), and the turn's outcome when an automatic turn handled it.
 8. **Antennas through the controller.** `MotionTarget.extras` `antenna_right`/`antenna_left` (radians, the SDK's
    right-then-left order) compose into the target pose, so the rate cap and the final-target check cover them. An
-   antennas-only move holds the head at the readback pose (composing it would reset the head translation) and leaves
-   the stash as it was. A readback with no antenna positions refuses `reference`. The standalone `move_antenna` (no
+   antennas-only move holds the head at the readback pose (composing it would reset the head translation) and writes
+   the stash only with the axes it already had, or the readback's where it had none. A readback with no antenna
+   positions refuses `reference`. A split that commands antennas holds them at their start on the intermediate
+   chunks, so the final chunk's antenna delta is rate-capped (review fold, Executor 6). The standalone `move_antenna` (no
    controller; only tests call it) is unchanged.
 9. **`act` waits at most 60 s** for each move (the lock wait plus a long split), then cancels it if it has not
    started; a move that does not complete ends the action.
@@ -753,7 +758,7 @@ worker thread; `_bind_controller` also binds `_get_robot_from_registry`, since t
 
 **Found, not fixed here:** `ReachyMiniController.get_current_pose` labels antenna joint 0 `antenna_left`, but the
 SDK's order is right then left (`reachy_mini.py`'s joint list), as `move_antenna` and the readback parser assume.
-Nothing in 2a reads those keys; a follow-up issue owns it.
+Nothing in 2a reads those keys; #1561 owns it.
 
 **Tests migrated to the new contracts** (§7's list, plus one it missed): the `test_media_loop.py` enqueue and clear
 tests (`MotorQueue`, tickets); the worker drivers in `test_motion_path_1499.py` and `test_motion_finite_1496.py`
@@ -763,3 +768,25 @@ wording in `test_motion_finite_1496.py` (truthiness and the controller's reason,
 `test_reachy_workspace_safety.py::test_turn_beyond_body_limit_is_clamped` pinned the old shrink-to-160°; decision 4
 inverts it, so it is rewritten in place as `test_turn_beyond_body_limit_is_refused_not_shrunk` (refused `limit`,
 nothing moves). Gate 26's own test is `test_turn_around_reads_the_body_from_the_fresh_readback_not_the_mirror`.
+
+### Pre-merge review round (2026-11-01): what it found and where each fold went
+
+Three lenses on `origin/main..HEAD` at b0894a2b. Wire found one DO-NOT-MERGE; the rest were SHOULD-FIX or NIT.
+
+| Finding | Fold |
+|---|---|
+| Wire DNM: `tests/unit/test_workers.py::TestMotorWorker` still drove a raw queue (5 failures) | migrated to `MotorQueue`; the ordering test queues the second command once the first ran (latest-wins) |
+| Architecture S1: the claim at `get` was the point of no return, so a move waiting on the lock could run after the tool reported "not started" | `accepted` is the point of no return (choice 1 above); the 5 s grace wait is gone |
+| Executor 3: `get` popped outside the queue's lock, so a `close`/`clear` could miss a command in flight | choice 2 above |
+| Executor 1 / Wire 2: MoveTool's Selfy fallback reported `moved` for a refused move and never passed the policy | it waits on the ticket and passes `duration_policy` |
+| Executor 2 (**owner: stale flag + re-read**): a move that never started left the mirror at its target, so an identical retry was a no-op reported as success | Selfy keeps its last ticket; `move` and `move_relative` re-read the pose when it `never_started` |
+| §5.6 vs §5.8 (**owner: book nothing**) | `_maybe_turn_around` plans the turn first and records no pain start for one refused before it moves; `limit` returns None so look_at proceeds clamped |
+| Architecture S4 (**owner: fold into 2a**): DN's own turn booked a refused turn as executed | `executed = as_outcome(turn_around(...)).ok` |
+| Wire 4 (**owner: follow-up**): the SEM orient turn clamps and reads the mirror | comment fixed; #1560 |
+| Architecture S2: the exact/at_least duration rule was written four times | `hardware/controller.py::policy_duration`, used by the tools, `move_head`, `move_antenna` and look_at; the standalone path takes a typed `DurationPolicy` |
+| Architecture S3: plugin docs | extension_api.md §1 and robot-setup.md document `read_body_yaw` and `mark_motion_accepted` |
+| Wire 3: headless Selfy opened a queue no worker drained (25 s stalls) | `_open_motor_queue` keeps the synchronous path without a robot |
+| NITs folded | `MOTION_ACCEPT_WAIT_S` 20 s; `ANTENNA_EXTRAS`; `MotionTicket`'s docstring says `on_accept` must not block or dispatch; `move_antenna` with no side raises before the queue; split antenna hold; stale comments (exceptions.py, motor_backend.py, motion_finite_1496.md) |
+| Not folded, recorded for 2b | the synchronous path (no queue) captures controller exceptions in the ticket, so DN's and gaze_manager's IK substring classifiers no longer see them there (Wire 7, Executor 7); tools report success at `accepted`, so a first SDK call that raises, a partial split or an IK failure reaches the model as success (Executor 8, by design: the tool waits on `accepted` only); `MotorQueue.submit`, `MotionTicket.on_accept` and `event_id` are 2b's plumbing with no 2a producer; the ±160° limit is planned outside the controller's lock, so a body moved between plan and dispatch is clamped by the controller, not refused |
+
+Each fold's guard is in `tests/unit/test_motion_outcomes_1499.py` ("Review round folds"), deletion-probed.

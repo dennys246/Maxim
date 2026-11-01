@@ -496,7 +496,8 @@ class MotionRefused(HardwareError, ValueError):
             of #1499's: ``"rate"`` (an explicit duration faster than the rate cap),
             ``"reference"`` (no fresh, trusted readback to move from), ``"path"``
             (the move would sweep the neck mid-path) and ``"limit"`` (a turn that
-            cannot fit within the body limit; no producer yet, PR 2's turn_around).
+            cannot fit within the body limit; ``Selfy.turn_around`` returns it as a
+            ``MotionOutcome`` kind, never raises it).
             No kind feeds the gaze or workspace-bounds learners (#1499 O4); a tool
             that reports one still reaches the tool-outcome path like any failure.
         reason: Human-readable reason, returned to the model by the tools.

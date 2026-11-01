@@ -14,8 +14,7 @@ from maxim.hardware.controller import (
     MotionTicket,
     as_outcome,
     clamp_finite,
-    floor_duration,
-    require_duration,
+    policy_duration,
     require_finite,
 )
 from maxim.inference.segment_vision import passive_observation
@@ -59,9 +58,8 @@ def _motion_duration_policy(params: dict[str, Any], key: str, default: float) ->
     default one is stretched to the rate cap and split along the path.
     """
     value = _motion_number(params, key)
-    if value is None:
-        return floor_duration(default), "at_least"
-    return require_duration(value), "exact"
+    policy: DurationPolicy = "at_least" if value is None else "exact"
+    return policy_duration(default if value is None else value, policy), policy
 
 
 def _policy_for(params: dict[str, Any], key: str) -> DurationPolicy:
@@ -69,29 +67,22 @@ def _policy_for(params: dict[str, Any], key: str) -> DurationPolicy:
     return "exact" if _motion_number(params, key) is not None else "at_least"
 
 
-# A command claimed by the worker just as the tool gave up waiting resolves its
-# ``accepted`` within one fresh readback; this bounds that last wait.
-_STARTED_GRACE_S = 5.0
-
-
 def _await_motion_start(ticket: Any) -> MotionOutcome | None:
     """Wait for a queued command's ``accepted`` stage: None once it started, else the refusal (#1499 5.6).
 
     The tool waits on ``accepted`` only, since that is when the reason is
-    known. Past ``MOTION_ACCEPT_WAIT_S`` the ticket is cancelled, so it never
-    moves, and the tool reports "not started", never success.
+    known. Past ``MOTION_ACCEPT_WAIT_S`` the ticket is cancelled, which holds
+    until ``accepted`` (the controller then refuses before its first SDK
+    call), so the move never runs behind a "not started". A cancel that lost
+    the race finds ``accepted`` already resolved, so the result is read at once.
     """
     if not isinstance(ticket, MotionTicket):
         return MotionOutcome.refused("error", f"the runtime returned no motion ticket ({type(ticket).__name__})")
     try:
         return ticket.accepted.result(timeout=_hc.MOTION_ACCEPT_WAIT_S)
     except FuturesTimeout:
-        if ticket.cancel("not started: the motor is busy"):
-            return ticket.completed.result(timeout=0)
-    try:
-        return ticket.accepted.result(timeout=_STARTED_GRACE_S)  # it started as the wait ran out
-    except FuturesTimeout:
-        return MotionOutcome.refused("error", "the move started but never reported its first dispatch")
+        ticket.cancel("not started: the motor is busy")
+    return ticket.accepted.result(timeout=0)  # resolved: by the cancel, or by the accept that beat it
 
 
 def _motion_error(outcome: MotionOutcome) -> str:
@@ -933,15 +924,13 @@ class MoveTool(Tool):
             if move_fn is None or not callable(move_fn):
                 return ToolResult(success=False, error="Maxim instance does not support move()")
 
-            move_fn(
-                x=x,
-                y=y,
-                z=z,
-                roll=roll,
-                pitch=pitch,
-                yaw=yaw,
-                duration=duration,
+            # Selfy queues the move (#1499 5.6): report what became of it, not that it was queued.
+            ticket = move_fn(
+                x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw, duration=duration, duration_policy=duration_policy
             )
+            refusal = _await_motion_start(ticket)
+            if refusal is not None:
+                return ToolResult(success=False, error=_motion_error(refusal))
 
             return ToolResult(
                 success=True,
