@@ -565,3 +565,47 @@ def test_the_simulated_controller_returns_motion_outcomes():
     for name in ("goto_target", "look_at_pixel", "wake_up", "goto_sleep"):
         annotation = inspect.signature(getattr(SimulatedController, name)).return_annotation
         assert "MotionOutcome" in str(annotation), name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Guards added after the deletion probes (each mechanism below survived deletion under the gates above)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_worker_binds_the_ticket_so_accepted_resolves_while_the_move_runs(daemon):
+    """Without the worker's binding, ``accepted`` would only resolve at ``completed``: a tool would wait out the move."""
+    selfy = _selfy(controller(daemon), daemon)
+    stop = _start_worker(selfy)
+    in_goto, release = threading.Event(), threading.Event()
+    real_goto = daemon.goto_target
+
+    def _slow_goto(**kw):
+        in_goto.set()
+        release.wait(5.0)
+        return real_goto(**kw)
+
+    daemon.goto_target = _slow_goto  # type: ignore[method-assign]
+    try:
+        ticket = selfy.move(yaw=10.0)
+        assert in_goto.wait(5.0)
+        assert ticket.accepted.done() and ticket.accepted.result(timeout=0) is None
+        assert not ticket.completed.done()
+    finally:
+        release.set()
+        stop.set()
+
+
+def test_a_turn_whose_body_read_fails_dispatches_nothing():
+    """5.8: the turn refuses at planning, even on a controller whose dispatch would succeed without a read."""
+    from maxim.exceptions import MotionRefused
+
+    ctl = _RecordingController()
+
+    def _no_read():
+        raise MotionRefused("reference", "no body read")
+
+    ctl.read_body_yaw = _no_read  # type: ignore[attr-defined]
+    selfy = _selfy(ctl, FakeDaemon())
+    out = selfy.turn_around(30.0, duration=3.0)
+    assert not out and out.kind == "reference"
+    assert ctl.targets == []
