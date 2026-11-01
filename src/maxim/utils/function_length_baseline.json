@@ -11,7 +11,7 @@
     {
       "file": "src/maxim/api.py",
       "qualname": "run",
-      "lines": 256
+      "lines": 224
     },
     {
       "file": "src/maxim/cli.py",
@@ -392,6 +392,7 @@
     "start_simulation_mode tightened 2398 -> 2035 on 2026-10-30 (#1438 PR 1c, the decomposition's tail slice, owner decision D5; Session A's terms): everything after the orchestrator loop returns moved verbatim to simulation/sim_teardown.py (end_run composing shut_down_run, release_run_resources, save_run_report and roundup_and_emit_report, then build_simulation_result; each 200 lines or fewer, over one SimTail), with _resolve_finish_reason and _sim_provenance; the interactive post-sim prompt stays.",
     "start_simulation_mode tightened 2035 -> 2032 on 2026-10-30 (#1438 PR 1c, the stop behaviour on the tail slice): the post-sim prompt's guard reads the tail's stop snapshot (one line), paid for by moving the no-prompt branch's report print to sim_teardown.print_run_report, which also closes a stopped interactive run's live display.",
     "start_simulation_mode tightened 2032 -> 2007 on 2026-10-30 (#1259, rule T): the narrator's simulation-tool registrations left it for module-level orchestrator.py::_register_narrator_sim_tools, which carries the finish tool's new stop_event.",
-    "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail)."
+    "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail).",
+    "api.py::run tightened 276 -> 244 on 2026-10-31 (#1521, rule T): the stale shutdown comment is corrected in the cleanup it describes, which moved verbatim to api._tear_down_run (the names it reads passed as keywords). Merged with #1555 (main's run at 256 after _run_workspace and _build_run_executor moved out): 224."
   ]
 }

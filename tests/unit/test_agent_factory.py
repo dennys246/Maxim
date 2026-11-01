@@ -145,6 +145,101 @@ class TestAgentFactory:
         instance = factory.create_agent(cfg)
         assert instance.hippocampus is None
 
+    @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
+    @pytest.mark.parametrize(("remembers", "learns"), [(False, True), (True, False)])
+    def test_a_deliberate_no_hub_agent_reports_no_corruption(self, factory, caplog, remembers, learns, on_corrupt):
+        """#1522: an agent without a Hippocampus or a NAc is a configuration, not a failure. The hub needs both, so
+        none is built, and nothing is reported as corrupt (under "raise" that report refused to build the agent)."""
+        import logging
+
+        cfg = AgentConfig(
+            agent_id=f"no_hub_{int(remembers)}{int(learns)}_{on_corrupt}",
+            remembers=remembers,
+            learns=learns,
+            on_corrupt=on_corrupt,
+            policy=None,
+        )
+        with caplog.at_level(logging.WARNING, logger="maxim"):
+            instance = factory.create_agent(cfg)
+        assert instance.memory_hub is None
+        assert (instance.hippocampus is not None) is remembers and (instance.nac is not None) is learns
+        assert "memory_hub" not in caplog.text, caplog.text
+
+    @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
+    def test_a_no_hub_agent_never_reads_the_hub_stores_files(self, factory, on_corrupt):
+        """#1522 (the review rounds' audit): SCN and EC are only the hub's stores, so an agent with no hub builds and
+        reads neither. A bad ec.json beside a learns-only agent is not its file: under "raise" the agent still builds,
+        and under "warn" nothing is copied aside and its NAc is not reset beside an EC it never uses (it was, on every
+        load)."""
+        cfg = AgentConfig(
+            agent_id=f"no_hub_stale_ec_{on_corrupt}", remembers=False, learns=True, on_corrupt=on_corrupt, policy=None
+        )
+        first = factory.create_agent(cfg)
+        from maxim.decisions.nac import Valence
+
+        first.nac.observe(
+            event_type="tool",
+            event_signature="wolves_at_dusk",
+            outcome_type="result",
+            outcome_signature="fled",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=1.0,
+        )
+        first.shutdown()
+        agent_dir = factory._resolve_persistence_dir(cfg)
+        assert "wolves_at_dusk" in (agent_dir / "nac.json").read_text()
+        (agent_dir / "ec.json").write_text("{not json")
+        (agent_dir / "scn.json").write_text("{not json")
+        for _ in range(2):
+            factory.create_agent(cfg, auto_load=True).shutdown()
+        assert not [p.name for p in agent_dir.iterdir() if ".corrupt-" in p.name]
+        assert "wolves_at_dusk" in (agent_dir / "nac.json").read_text(), "the NAc was reset beside an EC it never uses"
+        assert (agent_dir / "ec.json").read_text() == "{not json", "a no-hub agent touched the hub's ec.json"
+
+    def test_a_no_hub_agent_is_not_warned_about_a_missing_ec(self, factory, caplog):
+        """#1522 delta round 3: a learns-only agent saves nac.json and, having no EC, never ec.json; the NAc/EC
+        pairing check warned about that half-present pair on every load."""
+        import logging
+
+        cfg = AgentConfig(agent_id="no_hub_pair", remembers=False, learns=True, policy=None)
+        factory.create_agent(cfg).shutdown()
+        with caplog.at_level(logging.WARNING, logger="maxim"):
+            factory.create_agent(cfg, auto_load=True).shutdown()
+        assert "Half-present" not in caplog.text, caplog.text
+
+    @pytest.mark.parametrize("error", [TypeError, RuntimeError])  # read as unreadable / as failed otherwise
+    def test_an_ec_constructor_defect_does_not_reset_the_nac(self, factory, monkeypatch, error):
+        """#1522 delta round 3: an EC whose constructor failed read no file, so the NAc beside the intact ec.json
+        keeps its biases (a loader regression must fail loudly, not read as a corrupt file)."""
+        from maxim.decisions.nac import Valence
+        from maxim.similarity import ec as ec_mod
+
+        cfg = AgentConfig(
+            agent_id=f"ec_ctor_defect_{error.__name__}", remembers=True, learns=True, on_corrupt="warn", policy=None
+        )
+        first = factory.create_agent(cfg)
+        first.nac.observe(
+            event_type="tool",
+            event_signature="wolves_at_dusk",
+            outcome_type="result",
+            outcome_signature="fled",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=1.0,
+        )
+        first.shutdown()
+        agent_dir = factory._resolve_persistence_dir(cfg)
+
+        def _broken(*a, **k):
+            raise error("constructor defect")
+
+        monkeypatch.setattr(ec_mod, "EntorhinalCortex", _broken)
+        second = factory.create_agent(cfg, auto_load=True)
+        try:
+            assert not [p.name for p in agent_dir.iterdir() if p.name.startswith("nac.json.corrupt-")]
+            assert second.nac.stats()["total_observations"] > 0, "the NAc was emptied beside an EC that never loaded"
+        finally:
+            second.shutdown()
+
     def test_creates_nac_when_learns(self, factory, guard_config):
         instance = factory.create_agent(guard_config)
         assert instance.nac is not None
