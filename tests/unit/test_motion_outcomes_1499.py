@@ -820,3 +820,18 @@ def test_a_command_queued_after_a_failed_move_does_not_hide_the_stale_mirror(dae
     finally:
         release.set()
         stop.set()
+
+
+def test_a_cancelled_no_op_is_refused_not_reported_done(daemon):
+    """Delta round (Architecture NIT 4): a command that asks for nothing is accepted like any dispatch."""
+    from maxim.hardware.controller import MotionTarget, MotionTicket, current_motion_ticket
+
+    ctl = controller(daemon)
+    ticket = MotionTicket()
+    assert ticket.claim() and ticket.cancel("not started: the motor is busy")
+    token = current_motion_ticket.set(ticket)
+    try:
+        out = ctl.goto_target(MotionTarget(duration=1.0))  # no head axis, no body: nothing to move
+    finally:
+        current_motion_ticket.reset(token)
+    assert not out and out.kind == "cancelled"
