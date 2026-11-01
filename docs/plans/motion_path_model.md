@@ -804,3 +804,11 @@ not fail-closed, so a further delta round is owed after it:
 | Architecture NIT 4: a withdrawn no-op logged a false "controller does not call mark_motion_accepted" | the Reachy controller's "nothing to move" accepts (and honours a cancel) like any dispatch |
 | Architecture NIT 5/6: `MOTION_ACCEPT_WAIT_S`'s comment; the design body's 25 s tool wait; a long changelog line | reworded; 20 s in §5.6, §9 and §12 |
 | Not folded | the automatic turn plans twice (two readbacks; a body moved between them books a failure for a turn that did not move): same plan/dispatch race as the row recorded for 2b; the mirror re-read can catch a mid-motion pose while an earlier accepted move runs (strictly better than the unreached target it replaces) |
+
+### Second delta round (2026-11-01): SOUND, no further round owed
+
+Executor + Architecture on `3de4a944..45991bab` (the mirror-ticket fold, the no-op accept). Every path that writes
+the mirror is covered (`move`, and `move_relative`, `goto_pose`, `center_vision` and `act` through it; `turn_around`
+only on success, after its sync). Two NITs, both fail-closed, not folded: a successful turn leaves a stale
+`_mirror_ticket`, costing one extra re-read; and `move`'s "already at the requested pose" can answer ok against a
+pose a still-queued earlier move targets (the queue-window class, pre-existing; 2b's scope note).
