@@ -614,14 +614,7 @@ class MaximHandle:
             try:
                 return start_simulation_mode(persistent_agent=self.instance, **kwargs)
             finally:
-                dropped, restored = _safety_lease.restore(self.instance.tool_registry)
-                if dropped or restored:
-                    logger.warning(
-                        "Campaign exited without a clean lease restore — safety net dropped %d "
-                        "leaked campaign tools and re-registered %d persistent tools",
-                        len(dropped),
-                        len(restored),
-                    )
+                _restore_campaign_lease(self.instance, _safety_lease)
                 set_interactive_mode(_prior_mode)
         finally:
             self._campaign_lock.release()
@@ -742,3 +735,30 @@ class MaximHandle:
         finally:
             if acquired:
                 self._campaign_lock.release()
+
+
+def _restore_campaign_lease(instance: Any, lease: Any) -> None:
+    """The campaign's exception-path lease safety net (see ``MaximHandle._run_sim``).
+
+    Skipped under a process stop while the agent's memory session is still open or ending (#1438 PR 1c; owner
+    decision 2026-10-30): a stopped sim's bounded AUT join can expire while the campaign loop is still ending its
+    session, and a restore under a live loop is what the sim's own tail refuses too. The probe is broader than that
+    case (an instance's own session, opened before a sim that bailed under the stop, also skips it): the process is
+    stopping, and the lease is in-memory registry state nothing persists."""
+    from maxim.utils.cancellation import yield_requested
+
+    hub = getattr(instance, "memory_hub", None)
+    if yield_requested() and hub is not None and not hub.wait_session_ended(deadline_s=0.0):
+        logger.warning(
+            "Campaign lease safety net skipped: a process stop is requested and %r's memory session is still open or ending",
+            getattr(instance, "agent_id", "?"),
+        )
+        return
+    dropped, restored = lease.restore(instance.tool_registry)
+    if dropped or restored:
+        logger.warning(
+            "Campaign exited without a clean lease restore — safety net dropped %d "
+            "leaked campaign tools and re-registered %d persistent tools",
+            len(dropped),
+            len(restored),
+        )

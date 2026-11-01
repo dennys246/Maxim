@@ -252,7 +252,9 @@ def test_g10_the_backend_event_follows_the_request_even_when_a_request_races_a_c
         assert backend.is_shutdown_requested(), "a stop request does not reach the backend's shutdown event"
         assert "expected" in inspect.signature(cancellation.clear_stop_request).parameters
 
-        real_reset = backend.reset_shutdown
+        # The clear hook clears the event through the private _clear_shutdown_event (PR 1c: the public
+        # reset_shutdown() refuses under a request and takes the hook lock the clear already holds).
+        real_reset = backend._clear_shutdown_event
         racer: list[threading.Thread] = []
 
         def _slow_reset() -> None:
@@ -263,13 +265,14 @@ def test_g10_the_backend_event_follows_the_request_even_when_a_request_races_a_c
             time.sleep(0.2)
             real_reset()
 
-        monkeypatch.setattr(backend, "reset_shutdown", _slow_reset)
+        monkeypatch.setattr(backend, "_clear_shutdown_event", _slow_reset)
         assert cancellation.clear_stop_request(expected=first) is True
         for t in racer:
             t.join(timeout=5.0)
         assert current_stop() is not None and current_stop().reason == "second"
         assert backend.is_shutdown_requested(), "a clear's reset landed after a newer request's shutdown"
     finally:
+        # Refused while the "second" request is still set (PR 1c); the autouse clear re-arms the event after the test.
         backend.reset_shutdown()
 
 
@@ -408,7 +411,7 @@ def test_a_lifespan_stop_that_overruns_returns_at_the_budget_and_keeps_the_reque
 
 
 def test_a_run_ended_by_a_stop_request_is_yielded_and_a_typed_abort() -> None:
-    from maxim.simulation.orchestrator import _resolve_finish_reason
+    from maxim.simulation.sim_teardown import _resolve_finish_reason
     from maxim.simulation.sim_types import is_simulation_run_failure
 
     request_stop("test", Deadline.after(5.0))

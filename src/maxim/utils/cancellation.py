@@ -125,6 +125,27 @@ def is_cancelled() -> bool:
     return event is not None and event.is_set()
 
 
+# Set by a caller that abandons its own call when the process stop is requested: it binds the cancel event above AND
+# registered its stop event with ``register_stop_event`` (``LLMWorker``). ``LLMRouter._complete_text`` then runs the
+# call inline; every other call it abandons itself at a stop (#1438 PR 1c). A cancel event bound only for a timeout
+# does not set it, so binding one never silently loses the stop's abandon.
+_abandons_on_stop_var: ContextVar[bool] = ContextVar("maxim_abandons_on_stop", default=False)
+
+
+def mark_abandons_on_stop() -> Token[bool]:
+    """Declare that this context's caller abandons its call on the process stop; pair with ``reset_abandons_on_stop``."""
+    return _abandons_on_stop_var.set(True)
+
+
+def reset_abandons_on_stop(token: Token[bool]) -> None:
+    _abandons_on_stop_var.reset(token)
+
+
+def abandons_on_stop() -> bool:
+    """Whether this context's caller declared it abandons its own call on the process stop."""
+    return _abandons_on_stop_var.get()
+
+
 # ── The process stop request (#1438; docs/plans/bounded_stop.md §5) ─────────────────────────────────────────────
 # The THIRD cancellation primitive, beside the per-call ContextVar above and the LLM backend's process-wide
 # `models/language/cancellation.request_shutdown()`. It lives here, the neutral home, so memory, runtime, console and
@@ -192,9 +213,9 @@ def stop_event_registered(event: Any) -> Iterator[None]:
 
 def register_stop_hook(on_request: Callable[[], None], on_clear: Callable[[], None] | None = None) -> None:
     """Run ``on_request`` when the stop is requested and ``on_clear`` when that request is cleared. For a module
-    ``utils`` must not import: the LLM backend registers its ``request_shutdown`` / ``reset_shutdown`` pair here, so a
-    cleared stop re-arms the backend. Hooks must not block, and must not call ``request_stop``,
-    ``clear_stop_request`` or ``register_stop_hook`` (they run under the non-reentrant hook lock); each is guarded and
+    ``utils`` must not import: the LLM backend registers its shutdown event's set / clear pair here, so a cleared stop
+    re-arms the backend. Hooks must not block, and must not call ``request_stop``, ``clear_stop_request``,
+    ``register_stop_hook`` or ``reset_unless_stopped`` (they run under the non-reentrant hook lock); each is guarded and
     logged. Already requested:
     ``on_request`` runs now (a module imported after the request)."""
     with _hook_lock:
@@ -256,3 +277,18 @@ def clear_stop_request(expected: StopRequest | None = None) -> bool:
             hooks = [on_clear for _, on_clear in _stop_hooks if on_clear is not None]
         _run_hooks(hooks)
     return True
+
+
+def reset_unless_stopped(reset: Callable[[], None]) -> bool:
+    """Run ``reset`` only while no stop is requested; whether it ran (#1438 PR 1c).
+
+    A reset re-arms work a stop request stopped (the backend's ``reset_shutdown``), so one made under a live request
+    would undo it. Checked and run under the hook lock, so no request can land between the check and the reset; the
+    request's own hooks run under the same lock, after. ``reset`` must not take the hook lock."""
+    with _hook_lock:
+        stopped = _stop_request is not None
+        if not stopped:
+            reset()
+    if stopped:
+        logger.info("A reset was refused: a process stop is requested")
+    return not stopped

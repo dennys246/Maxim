@@ -40,12 +40,22 @@ from maxim.models.language import call_accounting
 from maxim.utils import scenario_inputs
 from maxim.utils.http import redact_urls, url_origin
 from maxim.utils.file_digest import BackgroundDigest, file_stat
+from maxim.utils.deadline import Deadline
 
 logger = logging.getLogger(__name__)
 
 # How long report time waits for a model-file hash, and for a role router's in-flight call to finish.
 HASH_JOIN_TIMEOUT_S = 300.0
 ROUTER_IDLE_TIMEOUT_S = 30.0
+# A role router's serving probes make two HTTP calls per peer backend, each capped at 4 s in total: under a report
+# deadline (a stopped sim, #1438 PR 1c) they start only with this much time left.
+PROBE_NEEDS_S = 4.0
+
+
+def _wait_s(deadline: Deadline | None, default_s: float) -> float:
+    """How long a report-time wait may block: its own default, capped by the report's deadline when it has one."""
+    return default_s if deadline is None else deadline.cap(default_s)
+
 
 _LOCK = threading.Lock()
 _TOKENS = itertools.count(1)
@@ -73,6 +83,13 @@ def _release_sim(token: int) -> tuple[dict[str, Any] | None, bool]:
     with _LOCK:
         reg = _ACTIVE.pop(token, None)
         return _STARTS.pop(token, None), (reg is None or reg["overlapped"])
+
+
+def release_serving_start(token: Any) -> None:
+    """Drop a start capture whose sim never ran (it refused to start, #1438 PR 1c), so a later sim is not stamped
+    ``concurrent_sims`` against it. An unknown or non-int token is a no-op."""
+    if type(token) is int:
+        _release_sim(token)
 
 
 def capture_serving_start(*, scenario_objects: Iterable[Any] = ()) -> int:
@@ -128,7 +145,7 @@ def _root(url: str) -> str:
     return base
 
 
-def _owned_identity(start_spawner: Any | None) -> tuple[dict[str, Any] | None, bool]:
+def _owned_identity(start_spawner: Any | None, deadline: Deadline | None = None) -> tuple[dict[str, Any] | None, bool]:
     """The owned server's identity fields, and whether the model changed during the run. A server spawned
     inside the window (none at the start) is a fresh spawn, not a change."""
     from maxim.runtime import llm_server
@@ -138,7 +155,7 @@ def _owned_identity(start_spawner: Any | None) -> tuple[dict[str, Any] | None, b
     if now is None:
         return None, changed
     digest = llm_server.active_spawner_digest()
-    sha = digest.result(HASH_JOIN_TIMEOUT_S) if digest is not None else None
+    sha = digest.result(_wait_s(deadline, HASH_JOIN_TIMEOUT_S)) if digest is not None else None
     if digest is not None and file_stat(digest.path) != digest.stat:
         changed = True
     if sha is None:
@@ -155,13 +172,19 @@ def _owned_identity(start_spawner: Any | None) -> tuple[dict[str, Any] | None, b
     }, changed
 
 
-def _join_identity(entry: dict[str, Any], owned: dict[str, Any] | None, llama_cache: dict[str, Any]) -> None:
+def _join_identity(
+    entry: dict[str, Any],
+    owned: dict[str, Any] | None,
+    llama_cache: dict[str, Any],
+    deadline: Deadline | None = None,
+) -> None:
     kind = entry["backend_kind"]
     if kind == "peer" and owned is not None and _root(entry["endpoint"]) == owned["root"]:
         entry.update({k: owned[k] for k in ("identity", "identity_source", "kv_quant")})
     elif kind == "llama":
         if entry["endpoint"] not in llama_cache:
-            sha = BackgroundDigest(entry["endpoint"]).result(HASH_JOIN_TIMEOUT_S) if entry["endpoint"] else None
+            digest = BackgroundDigest(entry["endpoint"]) if entry["endpoint"] else None
+            sha = digest.result(_wait_s(deadline, HASH_JOIN_TIMEOUT_S)) if digest is not None else None
             llama_cache[entry["endpoint"]] = {
                 "identity": sha,
                 "identity_source": "local_file" if sha else "local_file_unhashed",
@@ -200,20 +223,31 @@ def serving_provenance(
     resume: dict[str, Any] | None,
     adopted: bool,
     goal: str,
+    deadline: Deadline | None = None,
 ) -> dict[str, Any]:
-    """The B0 fields for the sim whose start capture is ``token``. Releases the sim's registration."""
+    """The B0 fields for the sim whose start capture is ``token``. Releases the sim's registration.
+
+    ``deadline`` (a stopped sim's report, #1438 PR 1c) caps every wait here: the routers' idle wait, the model-file
+    hash joins, and the serving probes, which are skipped once too little time is left. A check that did not run is
+    never stamped as passed: an unhashed file stamps ``local_file_unhashed``, and skipped probes leave
+    ``model_changed_during_run`` unknown (None) and the window incomplete. None: today's waits.
+    """
     start, overlapped = _release_sim(token) if type(token) is int else (None, True)
     if start is None:
         logger.warning("serving provenance: no start capture for token %r", token)
         return {"serving_captured": False, "concurrent_sims": overlapped, "aut_model_attribution": "not_established"}
     routers = [getattr(w, "router", None) for w in (llm_worker, aut_worker)]
     for router in routers:
-        if router is not None and hasattr(router, "wait_idle") and not router.wait_idle(ROUTER_IDLE_TIMEOUT_S):
+        if (
+            router is not None
+            and hasattr(router, "wait_idle")
+            and not router.wait_idle(_wait_s(deadline, ROUTER_IDLE_TIMEOUT_S))
+        ):
             logger.warning("serving provenance: router %s still busy at report time", router.call_serial)
     end = call_accounting.snapshot()
     window, problems = call_accounting.delta(start["calls"], end)
     problems += call_accounting.window_problems(start["calls"], end, window)
-    owned, changed = _owned_identity(start["spawner"])
+    owned, changed = _owned_identity(start["spawner"], deadline)
     role_serials = {getattr(r, "call_serial", None) for r in routers if r is not None}
     llama_cache: dict[str, Any] = {}
     served_ids: dict[str, set[str]] = {}
@@ -224,7 +258,7 @@ def serving_provenance(
         entries = []
         for key, n in r["entries"].items():
             entry = call_accounting.entry_dict(key, n)
-            _join_identity(entry, owned, llama_cache)
+            _join_identity(entry, owned, llama_cache, deadline)
             if entry["backend_kind"] != "llama":  # a llama endpoint is its model file path, not a URL
                 entry["endpoint"] = url_origin(entry["endpoint"])  # after the join, which matches the full URL (#997)
             entries.append(entry)
@@ -233,7 +267,11 @@ def serving_provenance(
         llm_calls[str(serial)] = {"entries": entries, "counts": r["counts"]}
     changed = changed or any(len(ids) > 1 for ids in served_ids.values())
     heads: dict[str, str | None] = {}
+    probes_skipped = False
     for router in {id(r): r for r in routers if r is not None and hasattr(r, "serving_probes")}.values():
+        if deadline is not None and deadline.remaining() < PROBE_NEEDS_S:
+            probes_skipped = True
+            continue
         for probe in router.serving_probes():
             cached, fresh = probe["cached_served_id"], probe["fresh_served_id"]
             changed = changed or bool(cached and fresh and cached != fresh)
@@ -245,6 +283,8 @@ def serving_provenance(
     ).hexdigest()
     from maxim.utils.seeding import get_global_seed
 
+    if probes_skipped:
+        problems.append("serving probes skipped (the report's deadline was spent)")
     problems = [redact_urls(p) for p in problems]  # an entry key in a problem string carries its endpoint (#997)
     if problems:
         logger.warning("serving provenance: incomplete call accounting: %s", "; ".join(problems))
@@ -257,7 +297,7 @@ def serving_provenance(
         },
         "sampling_complete": not problems,
         "sampling_problems": problems,
-        "model_changed_during_run": changed,
+        "model_changed_during_run": None if probes_skipped and not changed else changed,
         "concurrent_sims": overlapped,
         "leader_disk_heads": heads,
         "scenario_inputs": inputs,

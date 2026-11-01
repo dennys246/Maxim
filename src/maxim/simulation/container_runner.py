@@ -356,7 +356,16 @@ class LocalDockerRunner:
         return handle
 
     def stop(self, handle: ContainerHandle) -> None:
-        """Stop and remove the container. Idempotent."""
+        """Stop and remove the container. Idempotent.
+
+        Under a process stop request (#1438 PR 1c) the removal is DETACHED: ``docker rm -f`` (up to 15 s) would outlast
+        a stopped sim's budget, and a CLI killed by a timeout never reaches the daemon. See ``_remove_detached``.
+        """
+        from maxim.utils.cancellation import yield_requested
+
+        if yield_requested():
+            self._remove_detached(handle)
+            return
         result = self._run_docker(
             [self._docker, "rm", "-f", handle.container_id],
             timeout=15.0,
@@ -375,6 +384,28 @@ class LocalDockerRunner:
         except Exception:
             pass
         logger.info("Container stopped: %s", handle.name)
+
+    def _remove_detached(self, handle: ContainerHandle) -> None:
+        """Ask the daemon to remove the container without waiting for it: its own session (a supervisor killing this
+        process group does not kill it), no pipes, and a reference kept so it is never collected mid-run. The handle
+        leaves the at-exit list, whose synchronous ``rm -f`` would hold the exit for up to 10 s per container."""
+        try:
+            proc = subprocess.Popen(
+                [self._docker, "rm", "-f", handle.container_id],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as e:
+            logger.warning(
+                "Container %s not removed (a stop is requested; launching docker failed: %s)", handle.name, e
+            )
+            return
+        _DETACHED_REMOVALS[:] = [p for p in _DETACHED_REMOVALS if p.poll() is None]  # reap the finished ones
+        _DETACHED_REMOVALS.append(proc)
+        LocalDockerRunner._LIVE_HANDLES.discard(handle)
+        logger.info("Container %s: removal requested, not confirmed (a process stop is requested)", handle.name)
 
     # ── Exec + file I/O ──────────────────────────────────────────────────
 
@@ -559,6 +590,11 @@ class LocalDockerRunner:
                 )
             except Exception:
                 pass
+
+
+# Detached ``docker rm -f`` processes started under a stop (``LocalDockerRunner._remove_detached``): held so none is
+# collected (and warned about) while it still runs.
+_DETACHED_REMOVALS: list[subprocess.Popen[bytes]] = []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

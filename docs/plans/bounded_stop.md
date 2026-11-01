@@ -198,6 +198,40 @@ pass and two delta rounds (approach note in the session record) changed the text
   abandoned), the tail order with an early and a late report save, the bounded AUT join with a share and a reserve,
   refusal at start, the post-sim stdin prompt, `wait_ready` honouring a stop, and the reset re-check.
 
+**As built, PR 1c (2026-10-30; the half outside the sim tail, the tail follows as the orchestrator decomposition's tail slice).** An adversarial design pass took four rounds; the last came back SOUND WITH CONDITIONS. Owner decisions 2026-10-30:
+- D1: a sim started under a stop raises `StopStillPending` (`refused="simulation"`), before its start provenance, and again after the model load.
+- D2: report.json is saved early and late under a stop (tail).
+- D3: a direct router call is abandoned in ONE seam, `LLMRouter._complete_text`.
+- D4: the roundup is skipped only under a process stop request (tail).
+- D5: the fence touch is approved, built as the decomposition's tail slice with Session A.
+- The stop is typed where the API already raises (`LLMCallStopped`, from `generate`).
+
+Departures from the text below:
+- **Two abandoners, not one registry.** `LLMWorker` abandons its own call (its stop event is registered) and marks its context (`mark_abandons_on_stop`). The router abandons every other call on a helper thread named after the caller. A cancel event bound only for a timeout does not opt out.
+- **`reset_shutdown()` refuses under a request** (`reset_unless_stopped`, under the hook lock). The clear hook uses the private `_clear_shutdown_event`.
+- **`wait_ready` keys on the stop request,** never on the backend event, which every normal sim end sets.
+- **The runners re-check after each LLM-backed step** (`generative_runner._narrate_turn`; the DM after delivery and after classification), so no fallback built from an abandoned call is delivered or recorded. A human's interactive choice is kept.
+- **The session end keeps a reserve for its waiter.** This fixes 1b's shared-deadline overrun: `_end_bound`, 25% of the time left with a 1 s floor, only when the bound is a stop's deadline. The abandon test keeps the full bound, and the session's own capture flush keeps a 0.5 s floor; the hub's writer flushes stay unfloored.
+- **Report-time waits take `deadline=`** (`run_provenance`, `serving_provenance`); the tail passes it. Under it the end code stamp is skipped (`unknown: stopped`), and skipped probes stamp `model_changed_during_run: null`.
+- **A stopped sim's container removal is detached** (own session, reaped on the next append).
+
+**As built, PR 1c's tail (2026-10-30; the decomposition's tail slice, D5).** First a pure move: everything after the orchestrator loop returns moved verbatim to `simulation/sim_teardown.py` (`end_run` over one `SimTail`, then `build_simulation_result`), the characterization golden byte-identical. Then the stop behaviour, in `sim_teardown.end_run` only: it snapshots `current_stop()` once (`SimTail.stop`), and with none runs today's sequence. Under one (`_end_stopped_run`):
+- The tail's bound is `stop.deadline.share(0.35)` (`_SIM_TAIL_SHARE`; the arithmetic against the drain's `share(0.4)` run join is in its comment).
+- Order: signal every loop; provenance ONCE with `deadline=bound`; the EARLY save (report.json and the action log); the bounded waits (AUT join `bound.cap(5 or 300)`, DM join `bound.cap(5)`, `AgentInstance.shutdown(deadline=bound, loop_wait=bound)`); the release (lease, DN unsubscribe, sandbox, imagination, sim logging); the LATE full save only if more than `max(0.5 s, the early save's wall time)` is left (else logged by name); no roundup; `MAXIM_REPORT_JSON` emits the last report saved.
+- `build_simulation_result` skips `benchmark_snapshot()` while the AUT thread is still alive, and the orchestrator shows no post-sim prompt under a stop (`print_run_report` closes an interactive run's live display and prints).
+
+Departures from the approach note:
+- **`stop_stage` lives in the report's `provenance` block** (`"early"` / `"late"`), not a new `SimulationReport` field: a field would add a key to every report.json, stopped or not (and to the characterization golden), and the provenance block already takes additive keys.
+- **The AUT wait is the thread join alone**, no separate `wait_session_ended`: the AUT's loop ends its own session on its thread (PR 0), so the bounded join covers both.
+- **`_resolve_finish_reason` keeps reading `yield_requested()`**, not the snapshot: the request is sticky until its owner clears it after the drain, which waits for this tail.
+- **The sandbox release stays before the late save:** under a stop its container removal is already detached (not waited on).
+
+Added by the delta review round (2026-10-30):
+- **A live AUT is left alone** (owner decision 2026-10-30, Architecture SHOULD-FIX, Wire NIT): when the bounded AUT join expires, the release skips the lease restore, the DN pain-bridge unsubscribe and imagination's tag/decay/clear, logging each by name (`release_run_resources(aut_running=)`). The handle's lease safety net (`console/handle.py::_restore_campaign_lease`) skips likewise while the agent's session is still open or ending (`wait_session_ended(deadline_s=0)` False; broader than a live loop, which is harmless while the process stops). The result skips `benchmark_snapshot()` and the basic analysis too.
+- **A failed save never costs the release** (Executor SHOULD-FIX): a failed early save is logged and the waits and release still run, then the late save is tried whatever the time; a failed late save returns and emits the early report (report.json on disk may already be the late one if the failure came after it); only both failing raises, after the release.
+- **Residual, the post-snapshot window:** a stop that lands after `end_run`'s snapshot gets the no-stop tail (unbounded waits, the roundup, whose call D3 abandons, and the post-sim prompt). Unreachable today: only the console requests a stop, and it forces interactive off.
+- **Residual, the provenance's moment:** the one provenance call runs before the waits, so both reports carry serving counts as of the early save (calls still in flight then fail the B0 count check: fail closed, and a yielded run is never evidence).
+
 - **`utils/deadline.py::Deadline`:** frozen and monotonic. It has `remaining()`, `expired()`, `share(fraction of
   remaining)` and `sub(seconds)` (both clamped to the parent), and `Deadline.none()`. Never persisted.
 - **`StopRequest`** in `utils/cancellation.py`, the neutral home: memory, runtime, console and the CLI import it, and
