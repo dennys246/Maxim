@@ -174,8 +174,8 @@
       "missing": 319
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 72.9,
-      "missing": 316
+      "percent": 74.5,
+      "missing": 253
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
@@ -184,6 +184,10 @@
     "src/maxim/simulation/stall_detector.py": {
       "percent": 82.8,
       "missing": 43
+    },
+    "src/maxim/simulation/stdin_lines.py": {
+      "percent": 100.0,
+      "missing": 0
     }
   },
   "retired_files": []
