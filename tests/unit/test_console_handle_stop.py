@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from maxim.console.handle import MaximHandle
+from maxim.utils.deadline import Deadline
 
 
 class _FakeInstance:
@@ -38,6 +39,8 @@ def _bare_handle(*, talk_thread: threading.Thread | None = None) -> MaximHandle:
     h._talk_thread = talk_thread
     h._talk_stop = None
     h._talk_worker = None
+    h._talk_bound = None  # #1536: set in __init__, so a __new__ handle sets it too
+    h._ending_talk_loops = []
     h.instance = _FakeInstance()
     return h
 
@@ -77,7 +80,7 @@ class TestStopWaits:
         seen: dict[str, float] = {}
         h = _bare_handle()
 
-        def _spy(self, *, join_s: float = 20.0, required: bool = False) -> None:
+        def _spy(self, *, join_s: float = 20.0, required: bool = False, bound: Deadline | None = None) -> None:
             seen["join_s"] = join_s
 
         monkeypatch.setattr(MaximHandle, "_stop_talk_loop", _spy)

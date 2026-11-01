@@ -5,7 +5,7 @@ only the process stop, so the loop's full consolidation ran past the embedder's 
 owner decisions 2026-10-31): the handle gives each Talk loop it builds an ``EndBound``; ``stop()`` sets it before
 signalling; the bound cuts CONSOLIDATION only (persist, flushes and abandon follow the process stop alone); a loop
 already ending (a rest, a rebuild, a straggler) is bounded too. Each gate asserts its surface first, so on the pre-fix
-code it fails by assertion (``xfail(strict=True, raises=AssertionError)`` in the red-gate commit).
+code it fails by assertion (``xfail(strict=True, raises=AssertionError)`` in the red-gate commit), flipped here.
 """
 
 from __future__ import annotations
@@ -22,8 +22,6 @@ import pytest
 from maxim.utils import deadline as deadline_mod
 from maxim.utils.cancellation import request_stop
 from maxim.utils.deadline import Deadline
-
-RED = pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1536: flips with the per-loop end bound")
 
 
 def _agent(tmp_path: Path, agent_id: str = "bound_agent") -> Any:
@@ -53,7 +51,6 @@ def _has_surface() -> None:
 # ── G10: the bound source ───────────────────────────────────────────────────────────────────────────────────────
 
 
-@RED
 def test_g10_earliest_ignores_unbounded_and_the_holder_only_narrows() -> None:
     _has_surface()
     a, b = Deadline.after(5.0), Deadline.after(1.0)
@@ -72,7 +69,6 @@ def test_g10_earliest_ignores_unbounded_and_the_holder_only_narrows() -> None:
 # ── G1: the loop's clean end under a handle bound alone ─────────────────────────────────────────────────────────
 
 
-@RED
 def test_g1_a_handle_bound_cuts_the_clean_ends_consolidation_and_still_persists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -100,7 +96,6 @@ def test_g1_a_handle_bound_cuts_the_clean_ends_consolidation_and_still_persists(
 # ── G6/G9: with a process stop too, abandon and flush follow the process stop alone ─────────────────────────────
 
 
-@RED
 def test_g6_a_spent_handle_bound_never_abandons_an_abnormal_exit_the_process_stop_still_allows(
     tmp_path: Path,
 ) -> None:
@@ -123,7 +118,6 @@ def test_g6_a_spent_handle_bound_never_abandons_an_abnormal_exit_the_process_sto
 # ── G7: consolidation only, so the flushes keep their no-bound caps ─────────────────────────────────────────────
 
 
-@RED
 def test_g7_a_spent_handle_bound_leaves_the_capture_flush_at_its_no_bound_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -149,7 +143,6 @@ def test_g7_a_spent_handle_bound_leaves_the_capture_flush_at_its_no_bound_cap(
 # ── G8/G14/G15: the bound is read before each step, with its reserve computed once ─────────────────────────────
 
 
-@RED
 def test_g8_a_bound_set_after_consolidation_began_cuts_the_steps_still_to_run(monkeypatch: pytest.MonkeyPatch) -> None:
     _has_surface()
     from maxim.integration import session_end
@@ -165,7 +158,6 @@ def test_g8_a_bound_set_after_consolidation_began_cuts_the_steps_still_to_run(mo
     assert results["consolidation_skipped"] == ["promotion", "atl", "angular_gyrus"]
 
 
-@RED
 def test_g15_the_reserve_on_a_handle_bound_is_computed_once_per_bound() -> None:
     _has_surface()
     from maxim.runtime import bio_integration
@@ -200,7 +192,6 @@ def _handle() -> Any:
     return h
 
 
-@RED
 def test_g1h_stop_sets_the_live_talk_loops_bound_before_it_signals_the_loop() -> None:
     _has_surface()
     h = _handle()
@@ -214,7 +205,6 @@ def test_g1h_stop_sets_the_live_talk_loops_bound_before_it_signals_the_loop() ->
     assert seen == [d], "the loop was signalled before its bound was set"
 
 
-@RED
 def test_g16_a_loop_already_ending_from_a_rest_is_bounded_by_a_later_stop() -> None:
     _has_surface()
     h = _handle()
@@ -233,7 +223,6 @@ def test_g16_a_loop_already_ending_from_a_rest_is_bounded_by_a_later_stop() -> N
         straggler.join(1.0)
 
 
-@RED
 def test_g11_a_republished_straggler_keeps_its_bound() -> None:
     _has_surface()
     h = _handle()
@@ -270,3 +259,42 @@ def test_g5_a_stop_with_no_talk_loop_touches_no_bound() -> None:
     assert h.stop(deadline=Deadline.after(1.0)) is True
     kwargs = h.instance.shutdown.call_args.kwargs
     assert kwargs["deadline"] is not None  # shutdown's own end keeps its contract, untouched
+
+
+# ── The composition: the handle's bound reaches the loop, and the loop's reaches its session ─────────────────────
+
+
+def _calls_in(func: Any, callee: str) -> list[Any]:
+    import ast
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    return [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and (
+            (isinstance(n.func, ast.Name) and n.func.id == callee)
+            or (isinstance(n.func, ast.Attribute) and n.func.attr == callee)
+        )
+    ]
+
+
+def test_the_wrapper_hands_its_end_bound_to_the_runs_bio_session() -> None:
+    from maxim.runtime import agent_loop
+
+    [call] = _calls_in(agent_loop.run_agentic_loop, "bio_session")
+    kw = {k.arg: getattr(k.value, "id", None) for k in call.keywords}
+    assert kw.get("end_bound") == "end_bound", "run_agentic_loop drops the handle's bound before bio_session"
+
+
+def test_the_talk_loop_is_built_with_its_own_end_bound_and_publishes_it() -> None:
+    from maxim.console.handle import MaximHandle
+
+    [call] = _calls_in(MaximHandle._launch_talk_loop, "run_agentic_loop")
+    kw = {k.arg: getattr(k.value, "id", None) for k in call.keywords}
+    assert kw.get("end_bound") == "end_bound", "the talk loop is built without its EndBound"
+    source = inspect.getsource(MaximHandle._launch_talk_loop)
+    assert "end_bound = EndBound()" in source and "self._talk_bound = end_bound" in source
+    [stop_call] = _calls_in(MaximHandle.stop, "_stop_talk_loop")
+    assert any(k.arg == "bound" for k in stop_call.keywords), "stop() does not hand its deadline to the talk loop"

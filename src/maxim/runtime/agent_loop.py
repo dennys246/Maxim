@@ -44,6 +44,7 @@ from maxim.runtime import substrate_proposal as _sp
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.llm_worker import LLMWorker
+    from maxim.utils.deadline import EndBound
 
 # Import LLM types for runtime use (multi-step action creation + exact job state)
 from maxim.agents.llm_worker import LLMProposal
@@ -971,19 +972,25 @@ def run_agentic_loop(
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
+    end_bound: EndBound | None = None,  # #1536, wrapper-only: the bound a per-handle stop hands this run's session end
 ) -> None:
     """The agent loop: a thin wrapper over ``_run_agentic_loop_body``, which holds the loop and its full docstring.
 
     Split verbatim (docs/plans/bounded_stop.md §3 step 0) so session ownership can wrap the body in one seam
-    (``bio_session``, PR 0). Every argument is forwarded unchanged; the signature is the public one and is kept
-    identical to the body's. The run's inbound comms are held for exactly its lifetime (#1481)."""
+    (``bio_session``, PR 0). Every argument is forwarded unchanged and the signature is the body's, except
+    ``end_bound`` (#1536), which only this wrapper's ``bio_session`` reads. The run's inbound comms are held for
+    exactly its lifetime (#1481)."""
     # ONE seam owns the run's memory session (#1438 PR 0): claimed before the body's setup starts anything, ended on
     # every exit path. The owner is a fresh token per invocation, never a label. The loop's stop event is registered
     # with the process stop request for the run, so a stop ends the loop at its next tick (#1438 PR 1b).
     with (
         stop_event_registered(stop_event),
         bio_session(
-            memory_hub=memory_hub, hippocampus=hippocampus, owner=_LoopOwner(run_id), consolidation=consolidation
+            memory_hub=memory_hub,
+            hippocampus=hippocampus,
+            owner=_LoopOwner(run_id),
+            consolidation=consolidation,
+            end_bound=end_bound,
         ) as session,
         inbound_comms_subscription(agent) as inbound_inbox,
     ):

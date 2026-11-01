@@ -289,6 +289,8 @@ def test_g11_a_drain_that_leaves_a_campaign_running_keeps_the_request(monkeypatc
     h._campaign_lock = threading.Lock()
     h._talk_lock = threading.Lock()
     h._talk_bridge = h._talk_thread = h._talk_stop = h._talk_worker = None
+    h._talk_bound = None  # #1536: set in __init__, so a __new__ handle sets it too
+    h._ending_talk_loops = []
     h.instance = MagicMock()
     release = threading.Event()
     held = threading.Event()
@@ -326,6 +328,8 @@ def test_g6_a_per_handle_stop_makes_no_process_request() -> None:
     h._campaign_lock = threading.Lock()
     h._talk_lock = threading.Lock()
     h._talk_bridge = h._talk_thread = h._talk_stop = h._talk_worker = None
+    h._talk_bound = None  # #1536: set in __init__, so a __new__ handle sets it too
+    h._ending_talk_loops = []
     h.instance = MagicMock()
     h.instance.shutdown.return_value = True
     assert h.stop(deadline=Deadline.after(2.0)) is True
@@ -477,6 +481,8 @@ def test_a_talk_loop_that_ends_inside_the_shutdown_wait_is_not_an_overrun() -> N
     h._campaign_lock = threading.Lock()
     h._talk_lock = threading.Lock()
     h._talk_bridge = h._talk_stop = h._talk_worker = None
+    h._talk_bound = None  # #1536: set in __init__, so a __new__ handle sets it too
+    h._ending_talk_loops = []
     h._talk_thread = talk
     h.instance = MagicMock()
     h.instance.shutdown.side_effect = lambda **_kw: (talk.join(2.0), True)[1]  # waits for the loop's own end
