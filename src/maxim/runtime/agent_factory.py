@@ -777,7 +777,7 @@ class AgentFactory:
         atl = None
         memory_hub = None
 
-        if auto_load:
+        if auto_load and config.remembers and config.learns:  # only a hub agent has an EC to pair (#1522)
             check_nac_ec_pairing(agent_dir)
 
         if config.remembers:
@@ -816,7 +816,7 @@ class AgentFactory:
             # its place, so the agent persists consistently (#939, owner decision 2026-09-28).
             # #971: NAc, EC and SCN too, and NAc is reset beside an unreadable EC (its biases key on EC
             # node ids).
-            hub_ec, hub_scn = ec, scn  # the hub's own, when there is one
+            hub_ec, hub_scn = ec, scn  # the hub stores, built only for a hub agent
 
             def _unreadable(entry: str) -> bool:
                 return any(c["subsystem"] == entry and c.get("unreadable") for c in corrupt)
@@ -853,9 +853,16 @@ class AgentFactory:
                         config.agent_id,
                         entry,
                     )
-            if _unreadable("ec") and not _unreadable("nac"):
+            # Only beside an EC that started empty: one whose constructor failed (None) read no file, so the NAc's
+            # biases still match the ec.json on disk (#1522 delta round 3).
+            if hub_ec is not None and _unreadable("ec") and not _unreadable("nac"):
                 reset_nac_beside_unreadable_ec(nac, ec=hub_ec)
-            elif _failed_otherwise("ec") and nac is not None and not (_unreadable("nac") or _failed_otherwise("nac")):
+            elif (
+                hub_ec is not None
+                and _failed_otherwise("ec")
+                and nac is not None
+                and not (_unreadable("nac") or _failed_otherwise("nac"))
+            ):
                 # The EC started empty without its file being bad: the NAc's biases would point at nodes it
                 # does not hold. Empty the NAc too; neither file is bad, so neither is copied or saved over.
                 nac.start_fresh_in_memory()
