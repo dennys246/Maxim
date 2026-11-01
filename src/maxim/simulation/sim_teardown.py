@@ -30,6 +30,7 @@ from typing import Any
 
 from maxim.simulation.report import run_provenance
 from maxim.simulation.sim_types import SimulationResult, build_basic_analysis as _build_basic_analysis
+from maxim.simulation.stdin_lines import STOP_JOIN_S, stop_reader
 from maxim.utils.cancellation import StopRequest, current_stop, yield_requested
 from maxim.utils.deadline import Deadline
 
@@ -94,6 +95,9 @@ class SimTail:
     pre_campaign_turns: Any
     campaign_analysis: Any
     dm_rollup: Any
+    # The run's ``sim.stdin`` reader (#1541): joined by _wait_for_run, so none of this run's readers is left when
+    # end_run returns and the post-sim prompt reads stdin. None: no reader to join.
+    stdin_thread: Any = None
     # The process stop request the tail ran under (None: no stop), snapshotted ONCE by end_run; the orchestrator's
     # post-sim prompt and build_simulation_result read this snapshot, never the live request.
     stop: StopRequest | None = None
@@ -208,6 +212,11 @@ def _wait_for_run(tail: SimTail, *, bound: Deadline | None) -> None:
     aut_llm_worker = tail.aut_llm_worker
     orch_llm_worker = tail.orch_llm_worker
     _orch_instance = tail.orch_instance
+
+    # The run's stop is set: its stdin reader ends at its next poll. Joined FIRST, before the post-sim prompt reads
+    # stdin, so no reader of this run is left to take the next line typed (#1541).
+    if tail.stdin_thread is not None:
+        stop_reader(tail.stdin_thread, timeout_s=STOP_JOIN_S if bound is None else bound.cap(STOP_JOIN_S))
 
     display_status("Waiting for AUT to finish...")
     try:

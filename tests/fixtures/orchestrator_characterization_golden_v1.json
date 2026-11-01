@@ -1293,7 +1293,6 @@
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
-    "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
     "status: Waiting for AUT to finish...",
     "status: Stopping LLM workers...",
@@ -1933,13 +1932,7 @@
     "<STAMP>/bio_telemetry.jsonl",
     "<STAMP>/report.json"
    ],
-   "stdin_lines": [
-    {
-     "after": "finish_simulation",
-     "after_turn": 1,
-     "line": "/cancel"
-    }
-   ],
+   "stdin_lines": [],
    "threads_left_alive": {
     "added": [
      "plan-dashboard",
@@ -2261,7 +2254,6 @@
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
-    "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
     "status: Waiting for AUT to finish...",
     "status: Stopping LLM workers...",
@@ -2979,13 +2971,7 @@
     "<STAMP>/bio_telemetry.jsonl",
     "<STAMP>/report.json"
    ],
-   "stdin_lines": [
-    {
-     "after": "finish_simulation",
-     "after_turn": 2,
-     "line": "/cancel"
-    }
-   ],
+   "stdin_lines": [],
    "threads_left_alive": {
     "added": [
      "plan-dashboard",
@@ -3245,7 +3231,6 @@
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
-    "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
     "status: Waiting for AUT to finish...",
     "status: Stopping LLM workers...",
@@ -3260,7 +3245,6 @@
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
-    "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
     "status: Waiting for AUT to finish...",
     "status: Stopping LLM workers...",
@@ -3912,18 +3896,7 @@
     "<STAMP>/report.json",
     "<STAMP>/report.json"
    ],
-   "stdin_lines": [
-    {
-     "after": "finish_simulation",
-     "after_turn": 1,
-     "line": "/cancel"
-    },
-    {
-     "after": "finish_simulation",
-     "after_turn": 2,
-     "line": "/cancel"
-    }
-   ],
+   "stdin_lines": [],
    "threads_left_alive": {
     "added": [
      "plan-dashboard",
@@ -4258,7 +4231,6 @@
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
-    "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
     "status: Waiting for AUT to finish...",
     "status: Stopping LLM workers...",
@@ -4794,13 +4766,7 @@
     "<STAMP>/bio_telemetry.jsonl",
     "<STAMP>/report.json"
    ],
-   "stdin_lines": [
-    {
-     "after": "finish_simulation",
-     "after_turn": 1,
-     "line": "/cancel"
-    }
-   ],
+   "stdin_lines": [],
    "threads_left_alive": {
     "added": [
      "plan-dashboard",
@@ -6156,19 +6122,13 @@
    "bridge_finish_calls": [
     {
      "initiated_by": "llm_finish_tool",
-     "reason": "three probes delivered",
+     "reason": "nudged after a wedged call",
      "status": "completed",
      "summary": ""
     },
     {
      "initiated_by": "llm_finish_tool",
-     "reason": "nudge after finish",
-     "status": "completed",
-     "summary": ""
-    },
-    {
-     "initiated_by": "llm_finish_tool",
-     "reason": "nudge after finish",
+     "reason": "nudged after a wedged call",
      "status": "completed",
      "summary": ""
     }
@@ -6235,7 +6195,6 @@
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
-    "summary: Simulation cancelled by user.",
     "status: Shutting down agent loops...",
     "status: Waiting for AUT to finish...",
     "status: Stopping LLM workers...",
@@ -6244,7 +6203,7 @@
     "status: Saving action log (3 records)...",
     "status: Saving AUT state (<N> memories, 7 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 3 |   Finish: completed |   Orchestrator status: completed |     Reason: nudge after finish |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 7 |   Bio events: \u25b2 Learn: 13 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:scripted respond:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 3 |   Finish: completed |   Orchestrator status: completed |     Reason: nudged after a wedged call |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 7 |   Bio events: \u25b2 Learn: 12 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:scripted respond:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -6331,8 +6290,7 @@
        "activation": 0.3,
        "agent_id": "sim_orchestrator",
        "method": "update_eligibility",
-       "node_id": "tool:finish_simulation",
-       "post": 0.3,
+       "node_id": "tool:observe_actions",
        "temporal_sig": true
       },
       {
@@ -6340,6 +6298,7 @@
        "agent_id": "sim_orchestrator",
        "method": "update_eligibility",
        "node_id": "tool:finish_simulation",
+       "post": 0.3,
        "temporal_sig": true
       }
      ]
@@ -6395,12 +6354,8 @@
     },
     {
      "answer": {
-      "params": {
-       "reason": "three probes delivered",
-       "status": "completed",
-       "summary": ""
-      },
-      "tool_name": "finish_simulation"
+      "params": {},
+      "tool_name": "observe_actions"
      },
      "executed": "observe_actions",
      "held_inputs": "DIVERSITY CHECKPOINT (turn 3): the agent under test's tools so far (not yours): respond (2x). Its blocked tools: none. V",
@@ -6411,14 +6366,17 @@
     {
      "answer": {
       "params": {
-       "reason": "nudge after finish",
+       "reason": "nudged after a wedged call",
        "status": "completed",
        "summary": ""
       },
       "tool_name": "finish_simulation"
      },
-     "kind": "plan",
-     "request": "system: stall detected (<S>s idle, 3 aut actions so far). for context, the agent under test's last action was 'respond' "
+     "executed": "observe_actions",
+     "held_inputs": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far). For context, the agent under test's last action was 'respond' ",
+     "kind": "followup",
+     "request": "SIMULATION GOAL: check how the agent answers two short questions\n\nYou are a simulation orchestrator testing an AI agent.",
+     "turn": null
     }
    ],
    "other_llm_calls": {
@@ -6490,8 +6448,8 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 13,
-    "llm_finish_reason": "nudge after finish",
+    "learn_events_count": 12,
+    "llm_finish_reason": "nudged after a wedged call",
     "llm_finish_status": "completed",
     "llm_finish_summary": "",
     "llm_issues_found": [
@@ -7045,13 +7003,7 @@
     "<STAMP>/bio_telemetry.jsonl",
     "<STAMP>/report.json"
    ],
-   "stdin_lines": [
-    {
-     "after": "the idle nudge's answer",
-     "after_turn": 3,
-     "line": "/cancel"
-    }
-   ],
+   "stdin_lines": [],
    "threads_left_alive": {
     "added": [
      "plan-dashboard",
@@ -8270,5 +8222,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "3c35139f4cf2"
+ "generated_at_commit": "d9998dd1e044"
 }
