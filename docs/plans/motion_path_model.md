@@ -590,10 +590,14 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 3. **PR 3, the lint extension**, plus the facade follow-up issue. Pulse's robot report (2026-11-01) adds to it:
    `src/tests/basic_move.sh` builds `ReachyMini(...)` without `automatic_body_yaw=False`, and since the setting is
    daemon-wide, running it turns auto-yaw back on for every client. It gets `False`, and the lint checks that
-   every `ReachyMini(` in `src/` and `scripts/` passes `automatic_body_yaw=False`. **Owner, 2026-11-01:** the
-   controller also re-asserts `set_automatic_body_yaw(False)` under the motion lock before every dispatch (the
-   setting has no getter and any later client can turn it back on); a failed call refuses `reference`. This amends
-   O6 and lands in PR 3, after the extra SDK call's latency is measured on the rig (10 Hz tracking pays it too).
+   every `ReachyMini(` in `src/` and `scripts/` passes `automatic_body_yaw=False`. **Owner, 2026-11-01 (pulse's
+   rule, replacing an earlier per-dispatch answer):** the controller re-asserts `set_automatic_body_yaw(False)` on
+   adopt, after every SDK reconnect, and under the motion lock before each discrete (goto-style) move, but not on the
+   10 Hz look-at tracking stream; a failed call refuses `reference`. The setting has no getter and only a second SDK
+   client connecting mid-session can turn it back on (Pollen's daemon runs one app at a time, and dashboard moves go
+   through the daemon's HTTP routes, which do not send it); per-dispatch would cost about 10 SDK calls/s on the CM4.
+   Auto-yaw acts past 65° of head-to-body yaw and our clamp is exactly ±65°, so tracking can reach that threshold:
+   the hardware body-yaw test covers it. This amends O6 and lands in PR 3.
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
 
@@ -601,7 +605,10 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 install (app 0.4.6, pymaxim 1.3.3) verified the SDK opens with `automatic_body_yaw=False`, but nothing has moved the
 head through pymaxim on the robot yet: `MaximHandle` gets the body only, and the robot reaches pymaxim only through
 the speaker sink. So the first head-motion run after the controller and robot handoff ship is where a body that
-turns on its own (auto-yaw re-enabled by another client) would show. Watch the body yaw across that run.
+turns on its own (auto-yaw re-enabled by another client) would show. Pulse's watcher reads
+`GET :8000/api/state/full?with_head_pose=true&with_body_yaw=true&with_target_body_yaw=true` (not an SDK client, so
+it cannot flip the setting). **Pass:** the present body yaw tracks the target body yaw throughout, tracking near the
+±65° clamp included.
 
 ## 14. PR 1 build notes (2026-10-29, for the code review)
 
