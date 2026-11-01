@@ -587,9 +587,21 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 
    PR 1 alone removes the live sweep and cannot poison the learners.
 2. **PR 2, outcomes:** `MotorQueue`, the two-stage ticket, the tools, the DN inbox, the pain-bridge event ids and `media_loop.act`. Until it lands, a queued refusal is logged and ignored by the learners, but the model still hears "queued" as success, which is the state on `main` today.
-3. **PR 3, the lint extension**, plus the facade follow-up issue.
+3. **PR 3, the lint extension**, plus the facade follow-up issue. Pulse's robot report (2026-11-01) adds to it:
+   `src/tests/basic_move.sh` builds `ReachyMini(...)` without `automatic_body_yaw=False`, and since the setting is
+   daemon-wide, running it turns auto-yaw back on for every client. It gets `False`, and the lint checks that
+   every `ReachyMini(` in `src/` and `scripts/` passes `automatic_body_yaw=False`. **Owner, 2026-11-01:** the
+   controller also re-asserts `set_automatic_body_yaw(False)` under the motion lock before every dispatch (the
+   setting has no getter and any later client can turn it back on); a failed call refuses `reference`. This amends
+   O6 and lands in PR 3, after the extra SDK call's latency is measured on the rig (10 Hz tracking pays it too).
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
+
+**The hardware check names its first head-motion run as the body-yaw test** (pulse, 2026-11-01). Pulse's robot
+install (app 0.4.6, pymaxim 1.3.3) verified the SDK opens with `automatic_body_yaw=False`, but nothing has moved the
+head through pymaxim on the robot yet: `MaximHandle` gets the body only, and the robot reaches pymaxim only through
+the speaker sink. So the first head-motion run after the controller and robot handoff ship is where a body that
+turns on its own (auto-yaw re-enabled by another client) would show. Watch the body yaw across that run.
 
 ## 14. PR 1 build notes (2026-10-29, for the code review)
 
