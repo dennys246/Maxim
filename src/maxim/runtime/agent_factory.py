@@ -1290,9 +1290,9 @@ class AgentFactory:
         # reported as its own corruption entry, so a hub attempt here could only add a false "corrupt
         # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. create_agent builds
         # SCN and EC only for an agent with both stores; one that failed to build was reported under its own name.
-        stores = (("Hippocampus", hippocampus), ("NAc", nac), ("SCN", scn), ("EC", ec))
-        missing = [name for name, store in stores if store is None]
-        if missing:
+        if hippocampus is None or nac is None or scn is None or ec is None:  # spelled out so mypy narrows
+            stores = (("Hippocampus", hippocampus), ("NAc", nac), ("SCN", scn), ("EC", ec))
+            missing = [name for name, store in stores if store is None]
             log.debug("Agent %s: no %s, so no MemoryHub", agent_id, " or ".join(missing))
             return None
         try:
