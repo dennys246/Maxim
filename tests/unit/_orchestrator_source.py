@@ -114,6 +114,8 @@ PRE_SLICE_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "orchest
 NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
     "maxim.utils.cancellation": "#1438 PR 1b: _resolve_finish_reason reads yield_requested() so a campaign "
     "ended by a process stop reports the typed abort 'yielded', never a status the stop caused",
+    "maxim.runtime.tool_policy": "#1315 item 3: the AUT's and the narrator's AgentConfig carry a required ToolPolicy "
+    "(aut_tool_policy, orchestrator_tool_policy); a new dependency, not run code moved out",
 }
 
 # A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run

@@ -243,6 +243,7 @@ class TestPermissionsArming:
         cfg = AgentConfig(agent_id="gated", with_executor=True, policy=policy_for(perms))
         instance = factory.create_full_agent(cfg, tool_registry=self._registry())
         try:
+            assert instance.executor.policy is cfg.policy  # the configured object itself, not a rebuilt one
             assert instance.executor.policy.permissions == perms
             refused = instance.executor.execute({"tool_name": "read_stub", "params": {}})
             assert refused.success is False

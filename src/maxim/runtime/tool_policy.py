@@ -75,7 +75,7 @@ class ToolPolicy:
         pins: Mapping[str, Tool] | None,
         reason: str,
     ) -> None:
-        if _key is not _KEY:  # pragma: no cover - __new__ already refused it
+        if _key is not _KEY:  # __new__ does not run on a re-init: ``policy.__init__(...)`` must not widen it
             raise TypeError("ToolPolicy has no public constructor")
         if type(permissions) is not AgentPermissions:
             raise TypeError(f"ToolPolicy.permissions must be AgentPermissions, got {type(permissions).__name__}")
@@ -131,7 +131,8 @@ class ToolPolicy:
     @classmethod
     def pinned(cls, instances: Mapping[str, Tool], *, ceiling: Effect, reason: str) -> ToolPolicy:
         """Authorise these OBJECTS, not their names: dispatch requires that the resolved tool ``is`` the pinned
-        instance, and refuses aliases and every other name (layer ``"pin"``). The mapping is snapshotted, so a later
+        instance, and refuses aliases and every other registered name (layer ``"pin"``; an unregistered name is
+        refused at layer ``"registry"``). The mapping is snapshotted, so a later
         change to the caller's dict adds nothing."""
         return cls(
             _key=_KEY,
@@ -158,7 +159,8 @@ class ToolPolicy:
             sem_access_rules=p.sem_access_rules,
         )
         new_ceiling = self.ceiling if ceiling is None else self.ceiling & ceiling
-        return type(self)(_key=_KEY, permissions=perms, ceiling=new_ceiling, pins=self.pins, reason=self.reason)
+        reason = self.reason if self.reason.endswith("(narrowed)") else f"{self.reason} (narrowed)"
+        return type(self)(_key=_KEY, permissions=perms, ceiling=new_ceiling, pins=self.pins, reason=reason)
 
 
 def require_policy(policy: object, *, where: str) -> ToolPolicy:

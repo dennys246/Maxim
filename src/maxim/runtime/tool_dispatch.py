@@ -678,7 +678,8 @@ def _audit_parallel_action(
     autonomy_controller: Any, executor: Any, action: dict[str, Any], result: Any, reasoning: str, confidence: float
 ) -> None:
     """Write the executed parallel action's autonomy audit entry (#1315 item 3, §1A.2): the batch wrote none, so
-    ``max_consecutive_failures`` never saw a model that kept naming a refused tool in a batch."""
+    the audit trail missed a model that kept naming a refused tool in a batch. (The ``max_consecutive_failures``
+    violation it feeds is severity ``error``, which no approval blocker acts on today: #1549.)"""
     success = getattr(result, "success", True)
     autonomy_controller.log_action(
         action_type="executed",
@@ -775,10 +776,10 @@ def execute_parallel_actions(
             result = executor.execute(parallel_action)
             success = getattr(result, "success", True)
             parallel_results.append(_parallel_entry(tool_name, parallel_action, result))
-            _audit_parallel_action(autonomy_controller, executor, parallel_action, result, reasoning, confidence)
 
             if not success:
                 all_succeeded = False
+            _audit_parallel_action(autonomy_controller, executor, parallel_action, result, reasoning, confidence)
 
             log_agentic(
                 "agent_loop",
@@ -827,7 +828,7 @@ def execute_parallel_actions(
             # #1200 Stage 2: the signature the bridge booked a failure under (rejected / raised entries: None).
             bridge_booked=pr.get("_failure_booked"),
             # #1315 item 3: a gate refusal books no NAc. The autonomy rejection above stays a booked negative
-            # (pre-existing, inconsistent with #1185; filed for an owner line).
+            # (pre-existing, inconsistent with #1185; #1550).
             refused=pr.get("_refused"),
             cluster_id=cluster_id,
             clusters=clusters,

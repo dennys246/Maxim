@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 from maxim._offline import OfflineRefusal
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from maxim.embodiment.sem import InteroceptiveOutcome
 
 # Registration-time classifier for tool provenance / lifecycle. The four
@@ -257,11 +259,11 @@ class PolicyHandle(Protocol):
     for a child, never widen it. ``runtime/tool_policy.py::ToolPolicy`` implements it; ``tools/`` cannot import it."""
 
     @property
-    def ceiling(self) -> Effect: ...  # pragma: no cover - a Protocol
+    def ceiling(self) -> Effect: ...
 
     def narrowed(
-        self, *, ceiling: Effect | None = None, only: Any = None, deny: Any = ()
-    ) -> PolicyHandle: ...  # pragma: no cover - a Protocol
+        self, *, ceiling: Effect | None = None, only: Iterable[str] | None = None, deny: Iterable[str] = ()
+    ) -> PolicyHandle: ...
 
 
 _CURRENT_POLICY: contextvars.ContextVar[PolicyHandle | None] = contextvars.ContextVar(

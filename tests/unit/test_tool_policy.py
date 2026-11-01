@@ -258,3 +258,78 @@ class TestAgentFallbackBooking:
             state=SimpleNamespace(data={}),
         )
         assert calls and not nac.method_calls
+
+
+class TestReviewFolds:
+    """The item 3 review round's folds (docs/plans/reviews/item3/)."""
+
+    def test_a_body_cannot_claim_a_gate_kind(self) -> None:
+        # E2/A4: a tool that RAN and returned a gate kind is re-typed, so it still books its NAc negative.
+        body = _tool("liar", Effect.READ, body=lambda: ToolOutput(success=False, error_kind=ToolErrorKind.MODE))
+        out = Executor(ToolRegistry([body]), policy=ToolPolicy.unrestricted(reason=R)).execute({"tool_name": "liar"})
+        assert out.error_kind is ToolErrorKind.EXTERNAL_FAILURE
+        assert tool_dispatch.gate_refusal_of(out) is None
+
+    def test_policy_is_read_only(self) -> None:
+        # E3/A8: the V3 check runs once, at construction; the attribute cannot be swapped afterwards.
+        ex = Executor(ToolRegistry(), policy=ToolPolicy.only([], ceiling=Effect.READ, reason=R))
+        with pytest.raises(AttributeError):
+            ex.policy = ToolPolicy.unrestricted(reason=R)  # type: ignore[misc]
+
+    def test_permits_refuses_an_alias_under_a_pin(self) -> None:
+        # E5: permits() agrees with dispatch, which refuses an alias under a pinned policy.
+        pinned = _tool("respond", Effect.READ)
+        ex = Executor(
+            ToolRegistry([pinned]), policy=ToolPolicy.pinned({"respond": pinned}, ceiling=Effect.ALL, reason=R)
+        )
+        ex.register_aliases({"reply_alias_probe2": "respond"})
+        try:
+            assert ex.permits("respond") and not ex.permits("reply_alias_probe2")
+            assert ex.refuses("reply_alias_probe2") and not ex.refuses("respond")
+        finally:
+            ex.remove_aliases(["reply_alias_probe2"])
+
+    def test_refuses_covers_the_registry_layer(self) -> None:
+        ex = Executor(ToolRegistry([_tool("rd", Effect.READ)]), policy=ToolPolicy.unrestricted(reason=R))
+        assert ex.refuses("never_registered") and not ex.refuses("rd")
+
+    def test_narrowed_marks_its_reason(self) -> None:
+        n = ToolPolicy.unrestricted(reason=R).narrowed().narrowed()
+        assert n.reason == f"{R} (narrowed)"
+
+    def test_fear_gate_defers_to_the_gates(self) -> None:
+        # Owner decision 2026-10-31: a call the gates refuse gets no fear review and no fear block.
+        from maxim.runtime.fear_gate import FearGatedExecutor
+
+        ran: list[str] = []
+        net = _tool("net", Effect.NETWORK, ran)
+        inner = Executor(ToolRegistry([net]), policy=ToolPolicy.only(["net"], ceiling=Effect.READ, reason=R))
+        fear = MagicMock()
+        out = FearGatedExecutor(inner, fear).execute({"tool_name": "net", "params": {}})
+        assert out.error_kind is ToolErrorKind.POLICY_CEILING and not ran
+        assert not fear.review_action.called and not fear.review_code.called
+
+    def test_anticipatory_pain_defers_to_the_gates(self) -> None:
+        from maxim.runtime.pain_interceptor import AnticipatoryPainExecutor
+
+        inner = Executor(
+            ToolRegistry([_tool("net", Effect.NETWORK)]), policy=ToolPolicy.only(["net"], ceiling=Effect.READ, reason=R)
+        )
+        assessor = MagicMock()
+        out = AnticipatoryPainExecutor(inner, assessor).execute({"tool_name": "net", "params": {}})
+        assert out.error_kind is ToolErrorKind.POLICY_CEILING and not assessor.assess.called
+
+    def test_wrappers_still_review_what_the_gates_allow(self) -> None:
+        from maxim.runtime.pain_interceptor import AnticipatoryPainExecutor
+
+        inner = Executor(ToolRegistry([_tool("rd", Effect.READ)]), policy=ToolPolicy.unrestricted(reason=R))
+        assessor = MagicMock()
+        assert AnticipatoryPainExecutor(inner, assessor).execute({"tool_name": "rd", "params": {}}).success
+        assert assessor.assess.called
+
+    def test_a_reinit_cannot_widen_a_policy(self) -> None:
+        # Delta round D2: __new__ does not run on a re-init, so __init__ checks the key too.
+        p = ToolPolicy.only(["a"], ceiling=Effect.READ, reason=R)
+        with pytest.raises(TypeError):
+            p.__init__(_key=None, permissions=AgentPermissions(), ceiling=Effect.ALL, pins=None, reason="x")  # type: ignore[misc]
+        assert p.ceiling == Effect.READ

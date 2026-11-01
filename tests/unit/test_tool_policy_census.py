@@ -9,9 +9,10 @@ An AST scan over ``src/maxim`` (``scripts/`` is out of the census; ``scripts/ori
 4. every direct ``.execute(`` / ``.run(`` on a tool outside ``Executor`` (receivers named ``*tool*``, or the result
    of a registry ``get``/``find``).
 
-A new site fails the matching test until it is added to the pinned set with its reason. Stated blind spots:
-``getattr``, ``functools.partial``, ``executor.submit`` and ``**kwargs`` splats; the dispatch-time check is the
-backstop for all four.
+A new site fails the matching test until it is added to the pinned set with its reason. The callers of the helpers that
+return a permissive policy are pinned too, and ``ToolPolicy`` is never aliased. Stated blind spots: ``getattr``,
+``functools.partial``, ``executor.submit``, ``**kwargs`` splats, subscript receivers (``tools[name].execute``) and
+receivers named neither ``*tool*`` nor in ``KNOWN_TOOL_RECEIVERS``; the dispatch-time check is the backstop.
 
 Regression guard for the item 3 invariants in ``docs/agents/runtime-tools.md``.
 """
@@ -49,6 +50,19 @@ REGISTRIES_OUTSIDE_THE_BUILDER: dict[tuple[str, str, str], str] = {
     "executor (orchestrator_tool_policy)",
 }
 
+# The census-pinned helpers that RETURN a permissive policy (each one is in PERMISSIVE_CALLERS above): a call to one
+# is a permissive construction too, so its callers are pinned as well (architecture review A2).
+PERMISSIVE_HELPERS = frozenset(
+    {"cli_tool_policy", "aut_tool_policy", "orchestrator_tool_policy", "policy_from_tools_settings"}
+)
+
+PERMISSIVE_HELPER_CALLERS: dict[tuple[str, str, str], str] = {
+    ("cli.py", "_cli_agent_config", "cli_tool_policy"): "the CLI agent's AgentConfig",
+    ("simulation/orchestrator.py", "_aut_agent_config", "aut_tool_policy"): "the sim AUT's AgentConfig",
+    ("simulation/orchestrator.py", "_orchestrator_agent_config", "orchestrator_tool_policy"): "the narrator's",
+    ("console/handle.py", "MaximHandle.__init__", "policy_from_tools_settings"): "the console's tools settings",
+}
+
 DIRECT_TOOL_CALLS: dict[tuple[str, str, str], str] = {
     ("runtime/executor.py", "Executor._run_started", "tool.run"): "THE dispatch: runs the object the gates judged",
     ("runtime/loop_perception.py", "_checked_call", "tool.execute"): "auto_sense, after executor.check (V6)",
@@ -57,7 +71,12 @@ DIRECT_TOOL_CALLS: dict[tuple[str, str, str], str] = {
     "executor in the pipeline",
     ("simulation/tools.py", "OrchestratorActorTool.execute", "eph_tool.execute"): "the narrator's actor composite: "
     "runs inside the narrator's own dispatch (its tools are ALL, V12)",
+    ("runtime/loop_perception.py", "auto_sense", "_sense.execute"): "auto_sense's interoception call, after "
+    "executor.check (V6)",
 }
+
+#: Receiver names a direct call is recognised by beyond ``*tool*`` (wire review F12, executor review E9).
+KNOWN_TOOL_RECEIVERS = frozenset({"_sense"})
 
 
 def _calls() -> list[tuple[str, str, ast.Call]]:
@@ -111,6 +130,46 @@ def test_permissive_policy_callers_are_pinned() -> None:
     )
 
 
+def test_permissive_helper_callers_are_pinned() -> None:
+    found = {
+        (rel, where, _name(call.func) or "")
+        for rel, where, call in _calls()
+        if _name(call.func) in PERMISSIVE_HELPERS and not rel.startswith("runtime/tool_policy.py")
+    }
+    pinned = set(PERMISSIVE_HELPER_CALLERS)
+    assert found == pinned, f"unpinned: {sorted(found - pinned)}; stale pins: {sorted(pinned - found)}"
+
+
+def test_tool_policy_is_never_aliased() -> None:
+    """The factory scan matches ``ToolPolicy.<factory>`` and the permissive helpers by name, so neither is imported
+    under another name, ``ToolPolicy`` or one of its factories is never assigned to another name
+    (``U = ToolPolicy.unrestricted``), and ``ToolPolicy`` is never reached as a module attribute. Stated blind spots
+    (micro-round R1): an annotated or tuple assignment of a factory, and a helper bound to a plain name; none occurs
+    in ``src/`` today, and the dispatch-time check is the backstop."""
+    sites = []
+    for path in sorted(SRC.rglob("*.py")):
+        rel = path.relative_to(SRC).as_posix()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                sites += [
+                    f"{rel}: import {a.name} as {a.asname}"
+                    for a in node.names
+                    if a.asname and a.name in {"ToolPolicy", *PERMISSIVE_HELPERS}
+                ]
+            elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Name) and node.value.id == "ToolPolicy":
+                sites.append(f"{rel}: assigned at line {node.lineno}")
+            elif (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "ToolPolicy"
+            ):
+                sites.append(f"{rel}: ToolPolicy.{node.value.attr} assigned at line {node.lineno}")
+            elif isinstance(node, ast.Attribute) and node.attr == "ToolPolicy":
+                sites.append(f"{rel}: attribute access at line {node.lineno}")
+    assert not sites, f"ToolPolicy reached under another name: {sites}"
+
+
 def test_registries_outside_the_builder_are_pinned() -> None:
     found = {
         (rel, where, _name(call.func) or "")
@@ -126,7 +185,7 @@ def _tool_receiver(call: ast.Call) -> bool:
     if isinstance(receiver, ast.Call):
         return _name(receiver.func) in ("get", "find")
     name = _name(receiver) if receiver is not None else None
-    return name is not None and "tool" in name.lower()
+    return name is not None and ("tool" in name.lower() or name in KNOWN_TOOL_RECEIVERS)
 
 
 def test_direct_tool_calls_outside_the_executor_are_pinned() -> None:
@@ -140,5 +199,5 @@ def test_direct_tool_calls_outside_the_executor_are_pinned() -> None:
 
 
 def test_every_pin_has_a_reason() -> None:
-    for table in (PERMISSIVE_CALLERS, REGISTRIES_OUTSIDE_THE_BUILDER, DIRECT_TOOL_CALLS):
+    for table in (PERMISSIVE_CALLERS, PERMISSIVE_HELPER_CALLERS, REGISTRIES_OUTSIDE_THE_BUILDER, DIRECT_TOOL_CALLS):
         assert all(isinstance(r, str) and len(r) > 10 for r in table.values())

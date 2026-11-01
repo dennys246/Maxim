@@ -451,7 +451,9 @@ class TestBuildExecutorPermissions:
         from maxim.runtime.bootstrap import build_executor
 
         perms = AgentPermissions(tool_allow=frozenset({"respond"}))
-        executor = build_executor(self._registry(), pain_bus=None, policy=policy_for(perms))
+        policy = policy_for(perms)
+        executor = build_executor(self._registry(), pain_bus=None, policy=policy)
+        assert executor.policy is policy  # the object passed, not a rebuilt one
         assert executor.policy.permissions == perms
         result = executor.execute({"tool_name": "stub_tool", "params": {}})
         assert result.success is False

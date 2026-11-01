@@ -232,7 +232,8 @@ arrive: executor denials return before pain is booked, and NAc is booked downstr
 | `record_outcome` → `nac.observe`, goal credit, cluster reward; **and `execute_and_learn`'s own `PlanHistoryBridge` `nac.observe(NEGATIVE)`**, which is booked outside `record_outcome` and needs the same branch | **booked negative** | **not booked**, following the shipped #1185 precedent `runtime/tool_dispatch.py::book_machine_refusal` (a refusal no person made: `nac=None`, no cluster, no goal) |
 | `recent_outcomes`, `llm_worker.record_outcome` (the reasoning carryover), `context_pool` | booked | **booked**, as `book_machine_refusal` does, so the model is told the tool was refused |
 | `_tools_hallucinated` (feeds `failed_tools` hint, `MAXIM_TOOL_FAILURE_HINTS`) | booked | booked, unchanged for every gate kind, mode included, so the hint keeps working |
-| `AutonomyController` audit log (`log_action`), which `max_consecutive_failures` counts | booked | booked: **this is the counter that stops a model that keeps naming a refused tool** (the red gate drives it). `_consecutive_failures` only lengthens the hint |
+| Hippocampus episode (`capture_loop_action`) | booked | booked (owner decision 2026-10-31): memory of a refusal, no credit |
+| `AutonomyController` audit log (`log_action`), which `max_consecutive_failures` counts | booked | booked: the counter that SEES a model that keeps naming a refused tool (the red gate drives it). Correction, review round 2026-10-31: its violation is severity `error`, and no approval blocker acts on it today, so it stops nothing (#1549). `_consecutive_failures` only lengthens the hint |
 | `actions.jsonl` / `ActionRecord` / pulse | `success=False`, no kind | an optional `error_kind` (the enum `.value`). It is a full contract change, Session S's, so a hand-off: the producer `simulation/sinks.py`, the `actions.jsonl` header 1.2 → 1.3 with `console/run_store.py`'s version gate, the pydantic `console/schemas.py::ActionRecord` field, regenerated `console/openapi.json` and `contract_surface.json`, and the contract-version note to pulse. Shipping only the schema field would leave it always null |
 
 - **What counts as refused.** `record_outcome` gains `refused: ToolErrorKind | None`, **keyword-only and required**
@@ -275,7 +276,7 @@ arrive: executor denials return before pain is booked, and NAc is booked downstr
 - **Who may produce a gate kind.** An AST test pins that `GATE_REFUSAL_KINDS` members are constructed only in
   `runtime/executor.py` (and the `OFFLINE` mapping there). A tool body returning `MODE` cannot exempt itself from NAc.
 - **Out of scope, stated.** The parallel batch's autonomy `can_execute_action` rejection is a machine refusal that
-  books an NAc negative today, which is inconsistent with #1185. It is pre-existing and filed as a follow-up for an
+  books an NAc negative today, which is inconsistent with #1185. It is pre-existing and filed as a follow-up (#1550) for an
   owner line.
 - **The behavioural red gate is the enforcement, not this table.** For each kind in `GATE_REFUSAL_KINDS`, a refusal
   is driven through `execute_and_learn` **and** `execute_parallel_actions`, with spies on `NAc.observe`, the pain
@@ -731,13 +732,26 @@ Examples:
 >   allow-list is refused at layer `"permissions"`: the allow-list judges the name before the registry is asked.
 > - `Tool.run` re-raises `OfflineRefusal` (its broad `except` would otherwise turn it into an untyped failure), and
 >   `Executor._run_started` maps it to `OFFLINE` before any booking.
-> - **Owner decision 2026-10-31: under the offline latch the tool-pain bridge books nothing** (`_suppress_nac` gains
->   `is_offline()`, beside the human-driven and speculative cases). A body that meets the latch raises after
->   `record_tool_start`, whose pending NAc event later pain could link to. Dispatch's `record_outcome` still books
->   what ran. The atonia observer, the one offline consumer, is built with no bridge anyway.
-> - **Owner decision 2026-10-31, a red-gate scenario fix:** `test_refusal_booking_red_gate.py`'s
+> - **Owner decisions 2026-10-31 (the review round), the bridge stays on under the latch.** A body that meets the
+>   latch raises after `record_tool_start`; its pending NAc event is retracted by `finish_invocation` in `execute`'s
+>   `finally` (#1207), and the OFFLINE mapping comes before any booking, so nothing is learned. (A first build turned
+>   the bridge off under the latch on a wrong premise, that the event leaked and the observer was the only offline
+>   session; `MAXIM_OFFLINE=1` engages the latch for any run. Reverted.)
+> - **Owner decisions 2026-10-31, two red-gate amendments:** `test_refusal_booking_red_gate.py`'s
 >   `offline_in_tool_body` case engages the latch, as it is whenever shipped code raises `OfflineRefusal`
->   (`_offline.refuse` and the audit hook raise only then). Its assertions are unchanged.
+>   (`_offline.refuse` and the audit hook raise only then); and for that case only, the start call is not counted
+>   as a write, because the gate now asserts NAc's pending events net unchanged (for every case).
+> - **Owner decision 2026-10-31: the wrappers defer to the gates.** `FearGatedExecutor` and
+>   `AnticipatoryPainExecutor` ask `Executor.refuses(name)` (every dispatch gate, the registry layer included,
+>   counting nothing) and pass a refused call straight to the inner executor: no fear review, no anticipated pain.
+> - **Owner decision 2026-10-31: a refused call is remembered.** `capture_loop_action` still records one episode;
+>   the §1A.2 table gains that row, and the booking gate asserts exactly one capture on `execute_and_learn`.
+> - **Owner decision 2026-10-31 (amends §1A.4's `allowed_dirs == [home]`):** `maxim.run`'s file tools reach
+>   `<home>/.maxim_workspace` (`api._run_workspace`), not the whole home, which holds config and every agent's
+>   stores. The O1 gate asserts the workspace. The CHANGELOG entry is `breaking`.
+> - Review folds: a tool body returning a gate kind is re-typed `EXTERNAL_FAILURE` (E2/A4); `Executor.policy` is a
+>   read-only property (E3/A8); `permits()` refuses an alias under a pin (E5); the census also pins the callers of
+>   the permissive helpers and refuses an aliased `ToolPolicy` (A2), and pins `auto_sense`'s `_sense.execute`.
 > - `record_outcome(refused=)` routes through `tool_dispatch._learning_nac`: a gate kind sets `nac=None` (the
 >   `book_machine_refusal` precedent), a non-gate kind raises `ValueError`. Callers pass
 >   `tool_dispatch.gate_refusal_of(result)`. The agent-fallback booking moved into
@@ -746,9 +760,7 @@ Examples:
 >   booking gate demanded.
 > - The console builds its policy with `tool_policy.policy_from_tools_settings`; `agents/permissions.py::
 >   tool_permissions_from_settings` is deleted (§1A.5).
-> - `maxim.run` confines its filesystem tools to the run's home (`allowed_dirs_override`), #1342's first half; the
->   prefetch half stays on #1342.
-> - **Not built:** the sub-sim child's registry ceiling. `build_tool_registry` is pinned over 200 lines, and the
+> - **Not built (#1552):** the sub-sim child's registry ceiling. `build_tool_registry` is pinned over 200 lines, and the
 >   child's executor policy (the dispatcher's, narrowed) already refuses at dispatch and in `permits()`. The registry
 >   ceiling would add admission-time refusal only.
 > - The census lives in `tests/unit/test_tool_policy_census.py`. Its direct-call table pins two sites the notes did
@@ -760,8 +772,9 @@ Examples:
 >   `tool_dispatch._stash_timeout_retry` / `_observe_energy_cost` / `_parallel_entry`. Every touched pinned
 >   function shrank.
 > - **Deletion probes** (each mechanism removed, its gate red, then restored): the ceiling check; the pin;
->   `dispatching`; each of `auto_sense`'s two checks; `_learning_nac`; the offline bridge suppression;
->   `require_policy`; the spawn refusal; the home confinement.
+>   `dispatching`; each of `auto_sense`'s two checks; `_learning_nac`; `require_policy`; the spawn refusal; the
+>   workspace confinement; and, for the review folds, each wrapper's deference, the body re-tag, and
+>   `finish_invocation`'s pending-event retraction (the booking gate's offline case).
 
 **The defect (O1).** `Executor.__init__(tool_registry, pain_detector=None, tool_pain_bridge=None, permissions=None,
 embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source restricts nothing.
@@ -796,7 +809,7 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
     resolved tool `is` the pinned instance. Aliases are refused.
   - **`narrowed(*, ceiling=None, only=None, deny=())`:** never wider. It ANDs ceilings, intersects allow-lists, unions
     deny lists, keeps the stricter clearance, intersects `kind:` selectors, and keeps any pin. SEM rules are carried
-    unchanged; `can_access_sem` has no caller, which is filed. A ceiling is never built by complement.
+    unchanged; `can_access_sem` has no caller, which is filed (#1551). A ceiling is never built by complement.
 - **`Executor.__init__(registry, *, policy: ToolPolicy, …)`.** Everything after the registry is keyword-only, so a
   stale positional call cannot bind to `embodiment`. Anything that is not a `ToolPolicy` raises `TypeError`.
   `build_executor(*, policy=)` is the same: required, no default (V3).

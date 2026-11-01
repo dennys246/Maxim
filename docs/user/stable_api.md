@@ -14,7 +14,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | Symbol | Stable | Notes |
 |---|---|---|
 | `maxim.configure(...)` | ✅ | Logging + display settings. Keyword-only. |
-| `maxim.run(...)` | ✅ | Blocking agentic-cycle entry point. `goal` seeds canonical ingress but does not auto-stop the loop; `goal=None` installs no stdin reader. One call may be active per process. `robot` wakes the selected controller for direct motion and requires `headless=False`; full capture/vision/DoA remain on the CLI runtime. Its filesystem tools (`read_file`, `write_file`, `bash`, ...) reach only the run's home (`home_dir`), never the process working directory (#1342). |
+| `maxim.run(...)` | ✅ | Blocking agentic-cycle entry point. `goal` seeds canonical ingress but does not auto-stop the loop; `goal=None` installs no stdin reader. One call may be active per process. `robot` wakes the selected controller for direct motion and requires `headless=False`; full capture/vision/DoA remain on the CLI runtime. Its path-taking file tools (`read_file`, `write_file`, `edit_file`, `glob`, `search_code`, the git tools) refuse any path outside the run's workspace, `<home>/.maxim_workspace` (`home_dir`, default `~/.maxim`): not the process working directory, not the home's own stores and config (#1342). `bash` and `execute_file` are confined only by their working directory (a shell command, or the file's code, can reach any absolute path), and `maxim.run`'s passive mode refuses both. |
 | `maxim.imagine(...) -> Session` | ✅ | Generative simulation. Returns persistent Session. |
 | `maxim.connect(robot_type, ...) -> RobotController` | ✅ | Robot registry connection. |
 | `maxim.diagnose(...) -> DiagnosticReport` | ✅ | Local + peer diagnostics. |

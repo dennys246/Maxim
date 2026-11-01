@@ -1014,8 +1014,11 @@ def test_o1_maxim_run_executor_carries_v10_policy(
         if hasattr(t := run.executor.registry.get(n), "_allowed_dirs")
     }
     require(fs, "no filesystem tool in maxim.run's registry")
-    wrong = {n: d for n, d in fs.items() if d != [run.home]}
-    assert not wrong, f"filesystem tools are not confined to the run's home {run.home}: {wrong}"
+    # Owner decision 2026-10-31 (amends §1A.4's "allowed_dirs == [home]"): the run's WORKSPACE under its home, so
+    # the home's stores, config and other agents' homes stay out of reach (#1342 "workspace-only").
+    workspace = os.path.join(run.home, ".maxim_workspace")
+    wrong = {n: d for n, d in fs.items() if d != [workspace]}
+    assert not wrong, f"filesystem tools are not confined to the run's workspace {workspace}: {wrong}"
 
 
 @pytest.mark.parametrize("learning", [False, True])

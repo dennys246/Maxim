@@ -55,6 +55,7 @@ from maxim.proprioception.perceived_pain import (
     extract_paths_from_params,
 )
 from maxim.utils.logging import log_swallowed_exception
+from maxim.runtime.executor import gates_refuse
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +210,11 @@ class AnticipatoryPainExecutor:
         return getattr(self._inner, name)
 
     def execute(self, action: dict[str, Any]) -> Any:
-        """Assess anticipated pain, then delegate to inner executor."""
+        """Assess anticipated pain, then delegate to inner executor. A call the dispatch gates refuse books no
+        anticipated pain (#1315 item 3; owner decision 2026-10-31): it is delegated straight through."""
+        tool_name = action.get("tool_name")
+        if isinstance(tool_name, str) and gates_refuse(self._inner, tool_name):
+            return self._inner.execute(action)
         if self._assessor is not None:
             try:
                 self._assessor.assess(action)

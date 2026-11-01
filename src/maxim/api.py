@@ -546,6 +546,14 @@ def delete_model(name: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _run_workspace(home: str) -> str:
+    """``maxim.run``'s filesystem reach (#1342, owner decision 2026-10-31): ``<home>/.maxim_workspace``, created if
+    missing. The home itself holds config, every agent's stores and the run reports, so it is out of reach."""
+    from maxim.utils.filesystem_policy import ensure_workspace_exists
+
+    return ensure_workspace_exists(home)
+
+
 def _build_run_executor(
     *, learning: bool, tool_registry: Any, effective_home: str, home_dir: str | None
 ) -> tuple[Any, Any | None]:
@@ -753,9 +761,9 @@ def run(
             agent.wire_robot(_robot)
             logger.info("Robot connected and awake: %s", robot)
 
-        # Workspace-only (#1342, §1A.4): the filesystem tools reach the run's home, never the process CWD.
+        # Workspace-only (#1342; owner decision 2026-10-31): see _run_workspace.
         tool_registry = build_tool_registry(
-            internet_launch_enabled=False, maxim=_robot, allowed_dirs_override=[os.path.realpath(effective_home)]
+            internet_launch_enabled=False, maxim=_robot, allowed_dirs_override=[_run_workspace(effective_home)]
         )
         _inject_registered_tools(tool_registry)
 

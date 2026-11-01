@@ -10,8 +10,10 @@
     reach the pain detector.
   - `record_outcome` takes a required `refused=`. The parallel batch now writes an autonomy audit entry per executed
     action.
-  - Under the offline latch the tool-pain bridge books nothing.
+  - A tool body that returns a gate kind is re-typed `external_failure` (only the executor's own gates produce
+    one), and `Tool.run` re-raises an `OfflineRefusal` so the executor can map it to `offline`.
+  - `FearGatedExecutor` and `AnticipatoryPainExecutor` pass a call the gates will refuse straight through
+    (`Executor.refuses`): no fear review and no anticipated pain for a call that cannot run.
+  - A refused call through `execute_and_learn` is still remembered as an episode (no credit).
   - `SpawnSubSimulationTool` builds its child from the dispatching executor's policy, and refuses outside a dispatch.
   - `auto_sense` runs an auto-fire tool, or `sense`, only when the executor's gates would.
-- **`maxim.run()`'s filesystem tools reach only the run's home**, never the process working directory (#1342, first
-  half; the prefetch half stays open).

@@ -10,10 +10,10 @@ import uuid
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
-from maxim._offline import OfflineRefusal, is_offline
+from maxim._offline import OfflineRefusal
 from maxim.exceptions import ToolEffectRefused
 from maxim.runtime.tool_policy import ToolPolicy, dispatching, effective_ceiling, require_policy
-from maxim.tools.base import Tool, ToolErrorKind, ToolOutput, effect_names, effect_of, exceeds
+from maxim.tools.base import GATE_REFUSAL_KINDS, Tool, ToolErrorKind, ToolOutput, effect_names, effect_of, exceeds
 from maxim.utils.logging import log_swallowed_exception
 from maxim.tools.registry import ToolRegistry
 
@@ -134,7 +134,7 @@ class _Refusal(NamedTuple):
 
 def _refused_output(refusal: _Refusal, tool: object | None) -> ToolOutput:
     """The ToolOutput of a refused dispatch: ``error_kind`` is the gate kind, ``metadata`` names the layer and the
-    effect (``"unknown"`` when no tool object was resolved; no lookup is made to find one)."""
+    effect (``"unknown"`` when the caller resolved no tool object)."""
     effect: Any = effect_names(effect_of(tool)) if tool is not None else "unknown"
     return ToolOutput(
         success=False,
@@ -142,6 +142,27 @@ def _refused_output(refusal: _Refusal, tool: object | None) -> ToolOutput:
         error_kind=refusal.kind,
         metadata={"refusal_layer": refusal.layer, "effect": effect},
     )
+
+
+def _retag_body_gate_kind(tool_name: str, result: Any) -> Any:
+    """A tool that RAN cannot claim a gate refusal (#1315 item 3 review, E2): a body returning a
+    ``GATE_REFUSAL_KINDS`` kind would otherwise book no NAc, goal or cluster credit downstream. Re-typed as an
+    external failure, loudly; only the executor's own gates produce a gate kind."""
+    if isinstance(result, ToolOutput) and result.error_kind in GATE_REFUSAL_KINDS:
+        _log.warning(
+            "tool %r returned the gate refusal kind %s from a body that ran: booked as a failure that ran",
+            tool_name,
+            result.error_kind.value,
+        )
+        return dataclasses.replace(result, error_kind=ToolErrorKind.EXTERNAL_FAILURE)
+    return result
+
+
+def gates_refuse(executor: Any, tool_name: str) -> bool:
+    """Whether *executor* (an ``Executor``, or a wrapper delegating to one) would refuse *tool_name* at dispatch
+    (``Executor.refuses``). Only a literal ``True`` counts, so a stand-in without the method changes nothing."""
+    refuses = getattr(executor, "refuses", None)
+    return callable(refuses) and refuses(tool_name) is True
 
 
 class Executor:
@@ -161,7 +182,7 @@ class Executor:
         self._tool_pain_bridge = tool_pain_bridge
         # What this executor may dispatch (#1315 item 3): required, and a real ToolPolicy (V3). Everything after
         # the registry is keyword-only, so a stale positional call cannot bind to ``embodiment``.
-        self.policy: ToolPolicy = require_policy(policy, where="Executor")
+        self._policy: ToolPolicy = require_policy(policy, where="Executor")
         # Optional SEM Embodiment reference. Set by build_executor when
         # entity_ref is provided so callers can fetch the body without
         # re-instantiating it. Read pre-wrap (FearGatedExecutor and
@@ -199,6 +220,11 @@ class Executor:
         self._tools_succeeded: list[str] = []
         self._tools_hallucinated: list[str] = []
         self._consecutive_failures: int = 0
+
+    @property
+    def policy(self) -> ToolPolicy:
+        """What this executor may dispatch (#1315 item 3). Read-only: set once, checked once, at construction."""
+        return self._policy
 
     def register_aliases(self, aliases: dict[str, str]) -> None:
         """Register additional tool aliases at runtime.
@@ -347,9 +373,11 @@ class Executor:
         return None
 
     def check(self, tool: Tool) -> ToolOutput | None:
-        """Every dispatch gate on *tool* without dispatching it (V6): a refused ``ToolOutput`` (typed), or ``None``
-        when it would run. Never raises. ``auto_sense`` calls it before its direct calls. It does not set
-        ``current_policy``, so a composite run after it refuses (fail-closed)."""
+        """The policy gates on the tool OBJECT *tool* without dispatching it (V6): the forbids, the mode, the
+        permissions, the ceiling and the pin. A refused ``ToolOutput`` (typed), or ``None`` when they pass. It adds
+        no exception of its own (a raising forbid or mode source propagates). The registry layer (unregistered,
+        inactive scene) is not judged: the caller already holds the object. ``auto_sense`` calls it before its
+        direct calls. It does not set ``current_policy``, so a composite run after it refuses (fail-closed)."""
         name = getattr(tool, "name", "")
         refusal = self._permission_denial(name) or self._object_refusal(name, tool)
         return None if refusal is None else _refused_output(refusal, tool)
@@ -371,8 +399,30 @@ class Executor:
         """
         if self._permission_denial(tool_name) is not None:
             return False
+        if self.policy.pins is not None and self.resolve_tool_name(tool_name) != tool_name:
+            return False  # a pinned policy refuses an alias at dispatch (layer "pin")
         tool = self.registry.find(tool_name)
         return tool is None or self._object_refusal(tool_name, tool) is None
+
+    def refuses(self, tool_name: str) -> bool:
+        """True when :meth:`execute` would refuse a call named *tool_name* without running anything: any gate,
+        the registry layer (unregistered, inactive scene) included, judged as dispatch judges it (the deny half on
+        the raw name, then the alias). Counts nothing. An unregistered name counts as refused even where a
+        ``SimToolRegistry`` at ceiling ``ALL`` would answer a fallback decoy (fail-closed: the wrapper then delegates). The wrappers that act BEFORE dispatch
+        (``FearGatedExecutor``, ``AnticipatoryPainExecutor``) ask it first (owner decision 2026-10-31), so a call
+        the gates refuse gets no fear review and books no anticipated pain."""
+        if self._permission_denial(tool_name, deny_only=True) is not None:
+            return True
+        resolved = self.resolve_tool_name(tool_name)
+        if resolved != tool_name and self.policy.pins is not None:
+            return True
+        if self._permission_denial(resolved) is not None:
+            return True
+        scene = self.registry.get_tool_scene(resolved)
+        if scene is not None and not self.registry.is_tool_active(resolved):
+            return True
+        tool = self.registry.find(resolved)
+        return tool is None or self._object_refusal(resolved, tool) is not None
 
     def _refuse(self, refusal: _Refusal, tool_name: str, tool: object | None = None) -> ToolOutput:
         """Count a gate refusal where every refusal is counted (``_tools_hallucinated`` feeds the failed-tools hint;
@@ -488,10 +538,7 @@ class Executor:
 
             # A speculative call (prefetch, TF9) was not chosen by the agent: like a human-driven one, the bridge
             # books nothing for it. Read from the executor's context, never from the action dict (the model's JSON).
-            # Under the offline latch the bridge books nothing either (#1315 item 3, owner decision 2026-10-31): a
-            # body that meets the latch raises OfflineRefusal AFTER the start, and a started invocation leaves a
-            # pending NAc event that later pain could link to. Dispatch's record_outcome still books what ran.
-            _suppress_nac = get_interactive_mode() == InteractiveMode.ON or _SPECULATIVE.get() or is_offline()
+            _suppress_nac = get_interactive_mode() == InteractiveMode.ON or _SPECULATIVE.get()
 
         try:
             return self._run_started(tool_name, original_name, params, invocation_id, suppress_nac=_suppress_nac)
@@ -526,7 +573,8 @@ class Executor:
             self._consecutive_failures += 1
             error_msg = f"Tool {tool_name!r} is not active (belongs to scene {scene!r})."
             error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
-            result = _refused_output(_Refusal(ToolErrorKind.INACTIVE_SCENE, "registry", error_msg), None)
+            inactive = _Refusal(ToolErrorKind.INACTIVE_SCENE, "registry", error_msg)
+            result = _refused_output(inactive, self.registry.find(tool_name))
             return self._stamp_invocation(result, invocation_id, None)
 
         try:
@@ -596,6 +644,7 @@ class Executor:
 
         with self._lock:
             self._running = None
+        result = _retag_body_gate_kind(tool_name, result)
 
         if result.success:
             self._tools_succeeded.append(tool_name)

@@ -332,7 +332,11 @@ def test_run_wires_and_disconnects_robot(tmp_path, mocked_run_runtime, monkeypat
     )
 
     assert mocked_run_runtime.registry_calls == [
-        {"internet_launch_enabled": False, "maxim": robot, "allowed_dirs_override": [os.path.realpath(str(tmp_path))]}
+        {
+            "internet_launch_enabled": False,
+            "maxim": robot,
+            "allowed_dirs_override": [os.path.join(os.path.realpath(str(tmp_path)), ".maxim_workspace")],
+        }
     ]
     assert _RunTestAgent.instances[0].goal.robot is robot
     release.assert_called_once_with(lease)

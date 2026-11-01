@@ -13,6 +13,7 @@ from maxim.agents.permissions import (
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY, policy_for
 
 
 # ---------------------------------------------------------------------------
@@ -127,20 +128,20 @@ class TestAgentPermissions:
 
 class TestExecutorPermissionGate:
     def test_no_permissions_runs_tool(self):
-        exec_ = Executor(_registry_with(_OkTool()))
+        exec_ = Executor(_registry_with(_OkTool()), policy=TEST_POLICY)
         result = exec_.execute({"tool_name": "ok_tool", "params": {}})
         assert result.success is True
 
     def test_deny_blocks_at_dispatch(self):
         perms = AgentPermissions(tool_deny=frozenset({"ok_tool"}))
-        exec_ = Executor(_registry_with(_OkTool()), permissions=perms)
+        exec_ = Executor(_registry_with(_OkTool()), policy=policy_for(perms))
         result = exec_.execute({"tool_name": "ok_tool", "params": {}})
         assert result.success is False
         assert "denied" in (result.error or "").lower()
 
     def test_allow_list_blocks_unlisted(self):
         perms = AgentPermissions(tool_allow=frozenset({"say"}))
-        exec_ = Executor(_registry_with(_OkTool()), permissions=perms)
+        exec_ = Executor(_registry_with(_OkTool()), policy=policy_for(perms))
         result = exec_.execute({"tool_name": "ok_tool", "params": {}})
         assert result.success is False
         assert "allow-list" in (result.error or "").lower()
@@ -153,7 +154,7 @@ class TestExecutorPermissionGate:
         TOOL_ALIASES["shell"] = "bash"
         try:
             perms = AgentPermissions(tool_deny=frozenset({"bash"}))
-            exec_ = Executor(_registry_with(_BashTool()), permissions=perms)
+            exec_ = Executor(_registry_with(_BashTool()), policy=policy_for(perms))
             result = exec_.execute({"tool_name": "shell", "params": {}})
             assert result.success is False
             assert "bash" in (result.error or "")
@@ -301,7 +302,7 @@ class TestKindSelector:
 
         assert "registry" not in permissions_module.__dict__
         perms = AgentPermissions(tool_allow=frozenset({"kind:sem-modulator-derived"}))
-        exec_ = Executor(_registry_with(_OkTool(), _AffordanceTool()), permissions=perms)
+        exec_ = Executor(_registry_with(_OkTool(), _AffordanceTool()), policy=policy_for(perms))
         assert exec_.execute({"tool_name": "rusty_sword_slash", "params": {}}).success is True
         refused = exec_.execute({"tool_name": "ok_tool", "params": {}})
         assert refused.success is False
@@ -316,7 +317,7 @@ class TestKindSelector:
             name = "memory_recall"
 
         perms = AgentPermissions(tool_allow=frozenset({"memory_recall"}))
-        exec_ = Executor(_registry_with(_RecallTool()), permissions=perms)
+        exec_ = Executor(_registry_with(_RecallTool()), policy=policy_for(perms))
         assert exec_.execute({"tool_name": "recall", "params": {}}).success is True
         assert exec_.execute({"tool_name": "memory_recall", "params": {}}).success is True
         assert exec_.execute({"tool_name": "ok_tool", "params": {}}).success is False
@@ -326,13 +327,13 @@ class TestKindSelector:
             name = "memory_recall"
 
         perms = AgentPermissions(tool_deny=frozenset({"recall"}))
-        exec_ = Executor(_registry_with(_RecallTool()), permissions=perms)
+        exec_ = Executor(_registry_with(_RecallTool()), policy=policy_for(perms))
         assert exec_.execute({"tool_name": "recall", "params": {}}).success is False
         assert exec_.execute({"tool_name": "memory_recall", "params": {}}).success is True
 
     def test_executor_deny_selector_blocks_dispatch(self):
         perms = AgentPermissions(tool_deny=frozenset({"kind:sem-modulator-derived"}))
-        exec_ = Executor(_registry_with(_OkTool(), _AffordanceTool()), permissions=perms)
+        exec_ = Executor(_registry_with(_OkTool(), _AffordanceTool()), policy=policy_for(perms))
         assert exec_.execute({"tool_name": "ok_tool", "params": {}}).success is True
         assert exec_.execute({"tool_name": "rusty_sword_slash", "params": {}}).success is False
 
