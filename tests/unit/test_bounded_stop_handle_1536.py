@@ -158,7 +158,7 @@ def test_g8_a_bound_set_after_consolidation_began_cuts_the_steps_still_to_run(mo
     assert results["consolidation_skipped"] == ["promotion", "atl", "angular_gyrus"]
 
 
-def test_g15_the_reserve_on_a_handle_bound_is_computed_once_per_bound() -> None:
+def test_g15_the_reserve_on_a_handle_bound_is_sized_once_per_bound() -> None:
     _has_surface()
     from maxim.runtime import bio_integration
 
@@ -168,8 +168,37 @@ def test_g15_the_reserve_on_a_handle_bound_is_computed_once_per_bound() -> None:
     read = bio_integration._reserved_consolidation_bound(holder)
     first = read()
     time.sleep(0.05)
-    assert read() is first, "the reserve was re-derived from a falling remaining time"
-    assert first is not None and 19.0 - 5.0 - 0.5 < first.remaining() < 20.0 - 5.0 + 0.1  # ~25% reserve
+    second = read()
+    assert first is not None and second is not None
+    assert second.at == first.at, "the reserve was re-derived from a falling remaining time"
+    assert 19.0 - 5.0 - 0.5 < first.remaining() < 20.0 - 5.0 + 0.1  # ~25% reserve
+
+
+def test_g15b_the_reserve_is_sized_when_the_stop_sets_the_bound_not_at_the_first_read() -> None:
+    """Review SF-A (all three lenses): the flushes and persist run before the first consolidation read, so a reserve
+    sized at that read shrank by whatever they spent. It is sized from the time left when the bound was set."""
+    from maxim.runtime import bio_integration
+
+    holder = deadline_mod.EndBound()
+    raw = Deadline.after(20.0)  # above the 1 s floor: the 25% share is what moves
+    holder.set(raw)
+    read = bio_integration._reserved_consolidation_bound(holder)
+    assert read is not None
+    time.sleep(1.0)  # the end's work before consolidation
+    first = read()
+    assert first is not None
+    assert first.at == pytest.approx(raw.at - 5.0, abs=0.05), "the reserve was sized at the read, not at the set"
+
+
+def test_a_talk_racing_stop_cannot_launch_a_loop_stop_never_sees(tmp_path: Path) -> None:
+    """Review SF-2: stop() sets _stopped before its _talk_lock section, so the launch re-checks it under the lock."""
+    h = _handle()
+    h._stopped = True
+    h._talk_generation = None
+    h._workspace = tmp_path / "ws"
+    with pytest.raises(RuntimeError, match="stopped"):
+        h._ensure_talk_loop()
+    assert h._talk_thread is None
 
 
 # ── G1h/G11/G16: the handle sets the bound before signalling, on the live loop and on loops still ending ────────
@@ -294,7 +323,55 @@ def test_the_talk_loop_is_built_with_its_own_end_bound_and_publishes_it() -> Non
     [call] = _calls_in(MaximHandle._launch_talk_loop, "run_agentic_loop")
     kw = {k.arg: getattr(k.value, "id", None) for k in call.keywords}
     assert kw.get("end_bound") == "end_bound", "the talk loop is built without its EndBound"
-    source = inspect.getsource(MaximHandle._launch_talk_loop)
-    assert "end_bound = EndBound()" in source and "self._talk_bound = end_bound" in source
     [stop_call] = _calls_in(MaximHandle.stop, "_stop_talk_loop")
     assert any(k.arg == "bound" for k in stop_call.keywords), "stop() does not hand its deadline to the talk loop"
+
+
+def test_the_shipped_path_handle_stop_bounds_a_live_talk_loops_consolidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review SF-3: the real launch and the real ``stop(deadline=)`` on a real agent; only the loop body is a stub that
+    holds the session open in a real ``bio_session`` until the handle stops it."""
+    from maxim.runtime import agent_loop
+    from maxim.runtime.bio_integration import bio_session
+
+    inst = _agent(tmp_path)
+    inst.hippocampus.store_observation("the blue cup is on the shelf")
+    inst.hippocampus.flush(timeout=5.0)
+    slept: list[bool] = []
+    monkeypatch.setattr(
+        inst.memory_hub.hippocampus, "sleep", lambda *a, **k: (slept.append(True), time.sleep(3.0), {})[2]
+    )
+    opened = threading.Event()
+
+    def loop(
+        *_a: Any,
+        memory_hub: Any,
+        hippocampus: Any,
+        stop_event: threading.Event,
+        consolidation: Any,
+        end_bound: Any,
+        **_k: Any,
+    ) -> None:
+        with bio_session(
+            memory_hub=memory_hub,
+            hippocampus=hippocampus,
+            owner=object(),
+            consolidation=consolidation,
+            end_bound=end_bound,
+        ):
+            opened.set()
+            stop_event.wait(10.0)
+
+    monkeypatch.setattr(agent_loop, "run_agentic_loop", loop)
+    h = _handle()
+    h.instance = inst
+    with h._talk_lock:
+        h._launch_talk_loop(MagicMock(), tmp_path / "ws")
+    assert opened.wait(5.0), "the talk loop never opened its session"
+    started = time.monotonic()
+    assert h.stop(deadline=Deadline.after(2.0)) is True
+    assert slept == [], "sleep ran: the handle's stop did not bound the live loop's consolidation"
+    assert time.monotonic() - started < 2.5
+    path = Path(inst.hippocampus.config.persistence_path).expanduser()
+    assert "blue cup" in path.read_text(encoding="utf-8"), "the bounded end did not persist"

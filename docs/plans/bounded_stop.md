@@ -189,15 +189,18 @@ pass and two delta rounds (approach note in the session record) changed the text
   statuses the stop causes; it moved into 1b because 1b's stop already ends a campaign's AUT loop.
 - **The drain runs on a daemon thread**, never `asyncio.to_thread` (joined for up to 300 s at loop close).
 - **Not built:** `runtime.yield_timeout_s` (no consumer; PR 2 adds what it needs).
-- **A per-handle stop bounds the Talk loop's consolidation (#1536, closed; owner decisions 2026-10-31).**
+- **A per-handle stop bounds the Talk loop's consolidation (#1536; owner decisions 2026-10-31).**
   `MaximHandle.stop(deadline=)` still makes no process request. It hands its deadline to the Talk loop it built, by
   construction:
   - Each launch has its own `utils/deadline.py::EndBound`, which only narrows.
   - `stop()` sets it, and the bound of every loop still ending from a rest, a rebuild or a timed-out straggler, in
     the locked section that clears the handles, before any signal.
   - `run_agentic_loop`'s wrapper-only `end_bound=` reaches `bio_session`, which turns it into a
-    `consolidation_bound` read before each step in `session_end._consolidate`. The waiter reserve is computed once
-    per bound.
+    `consolidation_bound` read before each step in `session_end._consolidate`. The waiter reserve is sized from
+    the time the bound had left when `stop()` set it (`EndBound.snapshot`), so the flushes before consolidation
+    cannot shrink it.
+  - A `talk()` racing `stop()` re-checks `_stopped` under the talk lock before it launches, so it cannot start a
+    loop the stop never sees.
 
   It cuts consolidation only:
   - persist, the capture and writer flushes, re-save and the abnormal path's abandon follow the process stop alone,

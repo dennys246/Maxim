@@ -263,7 +263,7 @@ def bio_session(
     errors are logged and chained.
 
     ``end_bound`` (#1536) is the bound a per-handle ``MaximHandle.stop(deadline=)`` hands the Talk loop it built. It
-    cuts CONSOLIDATION only, read before each step, with the waiter reserve computed once per bound: persist, the
+    cuts CONSOLIDATION only, read before each step, with the waiter reserve sized when the stop sets it: persist, the
     flushes and the abnormal path's abandon follow the process stop alone (owner decisions 2026-10-31).
     """
     ticket = memory_hub.on_session_start(owner=owner, live=True) if memory_hub is not None else None
@@ -286,7 +286,6 @@ def bio_session(
             consolidation="lightweight",
             bound=bound,
             reserve_for_waiter=stop is not None,
-            consolidation_bound=_reserved_consolidation_bound(end_bound),
         )
         raise
     else:
@@ -304,20 +303,19 @@ def bio_session(
 
 
 def _reserved_consolidation_bound(end_bound: EndBound | None) -> Callable[[], Deadline | None] | None:
-    """A reader of ``end_bound`` for the consolidation steps: its deadline minus the waiter reserve
-    (:func:`_end_bound`), computed ONCE per bound value. Re-deriving the proportional reserve at each step would slide
-    it toward its 1 s floor as time runs out and starve the after-steps and the waiter (#1536 design pass, SF-A)."""
+    """A reader of ``end_bound`` for the consolidation steps: its deadline minus the waiter reserve, sized from the
+    time the bound had left when the stop SET it (:meth:`EndBound.snapshot`). Sizing it at the first read instead
+    let the flushes and persist, which run before consolidation, shrink it toward its 1 s floor and starve the
+    after-steps and the waiter (#1536 review SF-A)."""
     if end_bound is None:
         return None
-    seen: list[tuple[Deadline, Deadline | None]] = []
 
     def read() -> Deadline | None:
-        raw = end_bound.get()
-        if raw is None:
+        snap = end_bound.snapshot()
+        if snap is None:
             return None
-        if not seen or seen[0][0] is not raw:
-            seen[:] = [(raw, _end_bound(raw))]
-        return seen[0][1]
+        raw, remaining_at_set = snap
+        return raw.ending_early(_end_reserve_s(remaining_at_set))
 
     return read
 
@@ -379,7 +377,11 @@ def _end_bound(bound: Deadline | None) -> Deadline | None:
     such waiter and keeps its whole cap."""
     if bound is None:
         return None
-    return bound.ending_early(max(_END_RESERVE_FLOOR_S, _END_RESERVE_FRACTION * bound.remaining()))
+    return bound.ending_early(_end_reserve_s(bound.remaining()))
+
+
+def _end_reserve_s(remaining: float) -> float:
+    return max(_END_RESERVE_FLOOR_S, _END_RESERVE_FRACTION * remaining)
 
 
 # A spent bound still gets this long to flush queued captures: an expired reserve must never drop them at 0 s.
@@ -457,9 +459,9 @@ def _end_hub_session(
             if use_lightweight:
                 session_stats = memory_hub.on_session_end_lightweight(ticket, deadline=deadline)
             else:
-                # The keyword only when there is a bound: the no-bound call stays exactly what every hub accepts.
-                extra = {"consolidation_bound": consolidation_bound} if consolidation_bound is not None else {}
-                session_stats = memory_hub.on_session_end(ticket, deadline=deadline, **extra)
+                session_stats = memory_hub.on_session_end(
+                    ticket, deadline=deadline, consolidation_bound=consolidation_bound
+                )
             log_agentic(
                 "memory_hub",
                 "session_end",

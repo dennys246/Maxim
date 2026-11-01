@@ -380,8 +380,8 @@ class _SpyHub:
         self._ticket = None
         return True
 
-    def on_session_end(self, ticket, *, deadline=None) -> dict:
-        del deadline
+    def on_session_end(self, ticket, *, deadline=None, consolidation_bound=None) -> dict:
+        del deadline, consolidation_bound
         if self._end(ticket):
             self.full_calls += 1
         return {}

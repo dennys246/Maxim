@@ -75,14 +75,25 @@ class EndBound:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._deadline: Deadline | None = None
+        self._remaining_at_set = 0.0
 
     def set(self, deadline: Deadline | None) -> None:
+        """Narrow to ``deadline``, recording the time it had left NOW. ``None`` is no bound and changes nothing:
+        ``rest()`` and a config rebuild stop a loop through the same path without bounding it."""
         if deadline is None:
             return
         with self._lock:
             if self._deadline is None or deadline.at < self._deadline.at:
                 self._deadline = deadline
+                self._remaining_at_set = deadline.remaining()
 
     def get(self) -> Deadline | None:
+        """The bound, or ``None`` when no stop set one."""
         with self._lock:
             return self._deadline
+
+    def snapshot(self) -> tuple[Deadline, float] | None:
+        """The bound with the time it had left when it was set, so a reserve carved from it is sized at the stop,
+        not by however much the end had already spent before reading it; ``None`` when unset."""
+        with self._lock:
+            return None if self._deadline is None else (self._deadline, self._remaining_at_set)

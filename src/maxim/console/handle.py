@@ -383,8 +383,7 @@ class MaximHandle:
             self._stop_talk_loop(required=True)
         with self._talk_lock:
             stale_worker = self._talk_worker
-            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = None
-            self._talk_bound = None
+            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = self._talk_bound = None
         # A previous loop died (its thread raised and was logged). Its
         # LLMWorker owns a live thread pool — stop it BEFORE building a
         # replacement, or every failed turn leaks another pool (review
@@ -396,6 +395,10 @@ class MaximHandle:
                 logger.debug("stale talk LLMWorker.stop() raised", exc_info=True)
 
         with self._talk_lock:
+            # Re-checked under the lock: stop() sets _stopped before its own _talk_lock section, so a talk() that
+            # passed the unlocked check cannot launch a loop that stop() would never see, signal or bound (#1536).
+            if self._stopped:
+                raise RuntimeError("MaximHandle is stopped — build a new handle to talk again")
             if self._talk_bridge is not None and self._talk_thread is not None and self._talk_thread.is_alive():
                 return self._talk_bridge  # another caller won the race
 
@@ -524,13 +527,13 @@ class MaximHandle:
                 logger.exception("talk loop failed for agent %r", self.agent_id)
 
         thread = threading.Thread(target=_worker, name=f"console.talk.{self.agent_id}", daemon=True)
-        self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker = (
+        self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker, self._talk_bound = (
             bridge,
             thread,
             stop_event,
             worker,
+            end_bound,
         )
-        self._talk_bound = end_bound
         thread.start()
         return bridge
 
@@ -557,8 +560,7 @@ class MaximHandle:
                 self._talk_worker,
                 self._talk_bound,
             )
-            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = None
-            self._talk_bound = None
+            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = self._talk_bound = None
             self._ending_talk_loops = [(t, b) for t, b in self._ending_talk_loops if t.is_alive()]
             if thread is not None and talk_bound is not None:
                 if not any(t is thread for t, _b in self._ending_talk_loops):
@@ -579,13 +581,20 @@ class MaximHandle:
                     # build a second loop beside it and leak its worker. It stays "live" and is stopped again.
                     with self._talk_lock:
                         if self._talk_thread is None:
-                            self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker = (
+                            # With its bound, so a later stop(deadline=) bounds the straggler (#1536).
+                            (
+                                self._talk_bridge,
+                                self._talk_thread,
+                                self._talk_stop,
+                                self._talk_worker,
+                                self._talk_bound,
+                            ) = (
                                 bridge,
                                 thread,
                                 stop_event,
                                 worker,
+                                talk_bound,
                             )
-                            self._talk_bound = talk_bound  # a later stop(deadline=) bounds the straggler (#1536)
                     raise RuntimeError(
                         f"talk loop did not exit within {join_s:.0f}s — refusing to start a second "
                         "loop on the same bio-stack (try again once the turn settles)"
