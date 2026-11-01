@@ -37,7 +37,8 @@ end updates them consciously:
     ``_finish_runner`` in §9) are walk-only, and move to ``orchestrator_tree()`` when a slice splits
     the function.
   - ``test_narrator_reliability.py::test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_exempt``
-    (``_is_observe_only = `` before ``FinishSimulationTool(``; §5).
+    (``_is_observe_only = `` before ``FinishSimulationTool(``; §5; since #1259 the tool is built in
+    ``_register_narrator_sim_tools``, a later part, so the order holds as long as that part follows the function).
   - ``test_planning_liveness.py::TestDeadAutIsSurfaced::test_aut_worker_terminates_the_sim_on_loop_failure``
     (a ``split()`` region of the ``sim.aut`` worker §8). It holds as long as the region moves whole. (Its §11
     neighbour, ``test_519_abort_clock_is_nudge_proof``, became an AST check on ``StallDetector`` in the §11 slice.)
@@ -45,6 +46,11 @@ end updates them consciously:
     narrator loop call's ``percept_source=orchestrator_source``; §12).
   - ``tests/integration/test_persistent_agent_campaign.py::TestNonePathUnchanged::test_injection_branch_gates_are_wired``
     (two multi-line pins that carry the function body's indentation; §2-§3).
+  - ``test_stdin_reader_stops_1541.py::test_the_run_hands_its_reader_to_the_tail_and_ends_before_the_post_sim_prompt``
+    (the ``SimTail(..., stdin_thread=stdin_thread)`` keyword, and ``end_run(`` before
+    ``_show_report_and_post_sim_prompt(``; §13). The join itself is ``sim_teardown.py::_wait_for_run``'s first wait,
+    driven by its neighbour. A slice that moves the post-sim prompt keeps that order in its new home and re-points
+    the pin there.
 
 NOT ROUTED HERE (whole-MODULE readers, ``inspect.getsource(orchestrator)``). These follow the module, not
 the function. A slice that moves the code they pin into a new module updates them:
@@ -100,6 +106,18 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("sim_teardown.py", "_emit_report_json"),
     ("sim_teardown.py", "_end_stopped_run"),
     ("sim_teardown.py", "print_run_report"),
+    # #1259 (2026-10-30, rule T): the narrator's simulation-tool registrations, the finish tool's stop_event with them
+    ("orchestrator.py", "_register_narrator_sim_tools"),
+    # #1541 in #1259 (2026-10-30, rule T): the line reader's loop, from the nested _stdin_reader_line to
+    # stdin_lines.py::read_operator_lines over OperatorLines (its methods by bare name, as above), which the run's stop
+    # ends, and the teardown's bounded join of the reader
+    ("stdin_lines.py", "_selectable_fd"),
+    ("stdin_lines.py", "__init__"),
+    ("stdin_lines.py", "interruptible"),
+    ("stdin_lines.py", "next_line"),
+    ("stdin_lines.py", "_blocking_line"),
+    ("stdin_lines.py", "read_operator_lines"),
+    ("stdin_lines.py", "stop_reader"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one
@@ -109,6 +127,7 @@ EXTRACTION_MODULES: tuple[str, ...] = (
     "maxim.simulation.tty_stdin",
     "maxim.simulation.stall_detector",
     "maxim.simulation.sim_teardown",
+    "maxim.simulation.stdin_lines",
 )
 
 # Top-level functions of an extraction module that are NOT the run's code, with the reason: module-level

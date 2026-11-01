@@ -36,6 +36,7 @@ FILES=(
     src/maxim/runtime/loop_types.py
     src/maxim/simulation/tty_stdin.py
     src/maxim/simulation/stall_detector.py
+    src/maxim/simulation/stdin_lines.py
     src/maxim/bridges/
     src/maxim/planning/
 )
