@@ -6,7 +6,7 @@ Each agent created by the factory gets its own:
 - ATL (separate semantic concepts)
 - MemoryHub (independent coordinator)
 - ToolRegistry (empty until the runtime registers tools)
-- Executor (isolated tool execution, gated by ``AgentConfig.permissions``)
+- Executor (isolated tool execution, gated by ``AgentConfig.policy``)
 
 The factory does NOT create the full agent loop infrastructure
 (LoopController, ContextPool, etc.) — that's run_agentic_loop()'s job.
@@ -35,7 +35,7 @@ from typing import Any, Literal
 from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resolve_memory_strategy
 from maxim.decisions.nac import require_agent_id
 
-from maxim.agents.permissions import AgentPermissions
+from maxim.runtime.tool_policy import ToolPolicy
 
 from maxim.exceptions import StoreOverwriteRefused
 from maxim.utils.deadline import Deadline
@@ -57,11 +57,12 @@ class AgentConfig:
     entity_spec: str | None = None  # Component ref for SEM body
     persistence_dir: str | None = None  # Auto-generated if None
     model_profile: str | None = None  # LLM profile override (NPCs use cheaper models)
-    # Enforced tool gate, passed to ``build_executor(permissions=)`` by
-    # ``create_full_agent``. ``None`` = no gate (every registered tool).
-    # Replaces the 1.0-1.1.2 ``tool_whitelist`` field, which was written to
-    # ``ToolRegistry._tool_whitelist`` and never read by anything.
-    permissions: AgentPermissions | None = None
+    # What the executor may dispatch (#1315 item 3, V3), passed to ``build_executor(policy=)`` by
+    # ``create_full_agent``. REQUIRED and keyword-only (every other field has a default): ``AgentConfig(...)``
+    # without it is a TypeError. ``None`` means only "no executor is built" (``create_npc_agent``); it is never
+    # translated into a policy, and ``create_full_agent(with_executor=True)`` refuses it. Replaces the
+    # ``permissions`` field (§1A.5), which ``None`` made an allow-all.
+    policy: ToolPolicy | None = field(kw_only=True)
     personality: str | None = None  # System prompt overlay
     remembers: bool = True  # Enable hippocampus
     learns: bool = True  # Enable NAc
@@ -747,7 +748,7 @@ class AgentFactory:
         - ATL (separate concept layer)
         - MemoryHub (independent coordinator)
         - ToolRegistry (empty — the runtime registers tools per encounter;
-          ``config.permissions`` is enforced by the Executor that
+          ``config.policy`` is enforced by the Executor that
           ``create_full_agent`` builds, not by the registry)
 
         Args:
@@ -943,7 +944,7 @@ class AgentFactory:
             role="npc",
             entity_spec=entity_ref,
             model_profile=model_profile,
-            permissions=None,  # see docstring: no Executor → nothing to arm
+            policy=None,  # see docstring: no Executor is built, so there is nothing to arm
             personality=personality,
             remembers=remembers,
             learns=learns,
@@ -1083,6 +1084,7 @@ class AgentFactory:
                     config.agent_id,
                 )
             from maxim.runtime.bootstrap import build_executor
+            from maxim.runtime.tool_policy import require_policy
 
             active_bio = instance.bio_stack
             # with_pain_bridge controls whether the ToolPainBridge
@@ -1103,7 +1105,7 @@ class AgentFactory:
                     component_registry=self._component_registry,
                     cerebellum=active_bio.cerebellum if active_bio is not None else None,
                     distributor=active_bio.distributor if active_bio is not None else None,
-                    permissions=config.permissions,
+                    policy=require_policy(config.policy, where="create_full_agent(with_executor=True)"),
                     agent_id=config.agent_id,
                 )
                 # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
@@ -1351,7 +1353,7 @@ class AgentFactory:
 
         Tools are registered by the runtime (DM, generative runner, etc.)
         based on the encounter; restriction is NOT the registry's job —
-        ``AgentConfig.permissions`` is enforced by the Executor.
+        ``AgentConfig.policy`` is enforced by the Executor.
         """
         try:
             from maxim.tools.registry import ToolRegistry

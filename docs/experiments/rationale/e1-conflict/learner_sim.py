@@ -101,7 +101,7 @@ class Maxim:
 
     def outcome(self, tool: str, ok: bool, reward: float, food: float, oxy: float, done: bool) -> None:
         record_outcome(
-            bridge_booked=None, agent_id=AID, tool_name=tool, success=ok, result_summary="toy",
+            bridge_booked=None, refused=None, agent_id=AID, tool_name=tool, success=ok, result_summary="toy",
             error=None if ok else "toy failure", reasoning="", recent_outcomes=[], max_recent=10,
             llm_worker=None, context_pool=_Ctx(), nac=self.nac, embodiment_failed=False,
         )  # fmt: skip

@@ -105,7 +105,9 @@ def test_a_tilde_persistence_path_saves_under_home_not_the_working_directory(hom
 def test_an_agent_persistence_dir_expands_the_home_directory(home: Path) -> None:
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
-    AgentFactory()._resolve_persistence_dir(AgentConfig(agent_id="scout", persistence_dir="~/agents/scout"))
+    AgentFactory()._resolve_persistence_dir(
+        AgentConfig(agent_id="scout", persistence_dir="~/agents/scout", policy=None)
+    )
     assert (home / "agents" / "scout").is_dir() and not (Path.cwd() / "~").exists()
 
 

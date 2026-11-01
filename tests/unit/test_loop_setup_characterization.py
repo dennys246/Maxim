@@ -30,6 +30,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tests.policy_helpers import TEST_POLICY
 
 LOGGER = "maxim.runtime.agent_loop"
 INACTIVE = "planning liveness requested but inactive"
@@ -186,7 +187,7 @@ def _run(
     log.addHandler(handler)
     log.setLevel(logging.INFO)
 
-    executor = kwargs.pop("executor", None) or build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor = kwargs.pop("executor", None) or build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     state = RuntimeState()
     state.data["mode"] = "active"
     workspace = tmp_path / "ws"
@@ -556,7 +557,7 @@ def _probe_executor(tool: str, *, raises: bool) -> Any:
 
     registry = ToolRegistry()
     registry.register(_Probe())
-    executor = build_executor(registry, pain_bus=None, permissions=None)
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY)
     if raises:
 
         def _boom(action: Any, *a: Any, **k: Any) -> Any:

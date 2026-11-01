@@ -77,7 +77,9 @@ def test_the_orchestrator_shaped_full_agent_does_not_restore_its_atl(tmp_path: P
     home = tmp_path / "orchestrator"
     _seed_atl_and_ag(home)
     instance = AgentFactory(base_data_dir=tmp_path).create_full_agent(
-        AgentConfig(agent_id="orchestrator", persistence_dir=str(home), load_persisted=False, with_bio_stack=True)
+        AgentConfig(
+            agent_id="orchestrator", persistence_dir=str(home), load_persisted=False, with_bio_stack=True, policy=None
+        )
     )
     try:
         assert "last_runs_wolf" not in _names(instance.memory_hub.atl)
@@ -94,7 +96,7 @@ def test_a_fresh_factory_agent_does_not_restore_at_session_start(tmp_path: Path)
     home = tmp_path / "npc"
     _seed_atl_and_ag(home)
     before = (home / "atl.json").read_bytes()
-    agent = AgentFactory(base_data_dir=tmp_path).create_agent(AgentConfig(agent_id="npc"), auto_load=False)
+    agent = AgentFactory(base_data_dir=tmp_path).create_agent(AgentConfig(agent_id="npc", policy=None), auto_load=False)
     assert "last_runs_wolf" not in _names(agent.atl)
     agent.atl.find_or_create("this_runs_bear", "object")
     agent.shutdown()

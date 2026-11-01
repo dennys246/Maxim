@@ -23,6 +23,8 @@ from typing import Any
 
 import pytest
 
+from tests.policy_helpers import TEST_POLICY
+
 _CLUSTERS = {"interoception": "c_intero_7", "world": "c_world_3"}
 _TOOL = "probe_1083"
 
@@ -53,7 +55,7 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
 
     registry = ToolRegistry()
     registry.register(_Probe())
-    executor = build_executor(registry, pain_bus=None, permissions=None)
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY)
 
     proposed: list[int] = []
 

@@ -38,6 +38,7 @@ from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
 from maxim.embodiment.body import Embodiment  # noqa: E402
 from maxim.embodiment.component_registry import ComponentRegistry  # noqa: E402
 from maxim.runtime.executor import Executor  # noqa: E402
+from maxim.runtime.tool_policy import ToolPolicy  # noqa: E402
 from maxim.runtime.substrate_proposal import _read_drive_states  # noqa: E402
 from maxim.runtime.tool_dispatch import record_outcome  # noqa: E402
 from maxim.tools.registry import ToolRegistry  # noqa: E402
@@ -80,14 +81,14 @@ def _drives_at(food: int) -> tuple[tuple[str, float], ...]:
 def _executor_at(food: float) -> Executor:
     root = ComponentRegistry().instantiate("bodies/minecraft_player")
     root.vital_metrics.update(food=float(food), health=20.0, oxygen=14.0, saturation=0.0, is_in_water=1.0)
-    ex = Executor(tool_registry=ToolRegistry())
+    ex = Executor(tool_registry=ToolRegistry(), policy=ToolPolicy.unrestricted(reason="E1 argmax replay"))
     ex.embodiment = Embodiment(root=root)
     return ex
 
 
 def _book(nac: NAc, tool: str, *, success: bool) -> None:
     record_outcome(
-        bridge_booked=None, agent_id=AGENT, tool_name=tool, success=success, result_summary="replay",
+        bridge_booked=None, refused=None, agent_id=AGENT, tool_name=tool, success=success, result_summary="replay",
         error=None if success else "replay failure", reasoning="", recent_outcomes=[], max_recent=10,
         llm_worker=None, context_pool=_Ctx(), nac=nac, embodiment_failed=False,
     )  # fmt: skip

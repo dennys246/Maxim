@@ -30,6 +30,7 @@ from maxim.runtime.substrate_proposal import (
 )
 from maxim.runtime.bootstrap import build_executor
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +49,7 @@ def _build_cradle_aut(*, entity_ref: str = "bodies/infant_humanoid"):
     executor = build_executor(
         registry,
         pain_bus=pain_bus,
-        permissions=None,
+        policy=TEST_POLICY,
         nac=nac,
         entity_ref=entity_ref,
         component_registry=ComponentRegistry(),
@@ -244,7 +245,7 @@ class TestCradleSubstratePrimary:
         executor = build_executor(
             registry,
             pain_bus=None,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=None,
             entity_ref=None,
             component_registry=None,
@@ -578,6 +579,7 @@ class TestG4ClusterRewardWire:
 
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
             success=True,
@@ -601,6 +603,7 @@ class TestG4ClusterRewardWire:
         before = bias
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
             success=False,
@@ -636,6 +639,7 @@ class TestG4ClusterRewardWire:
 
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
             success=True,

@@ -51,7 +51,7 @@ def test_a_failed_npc_observation_is_reported_and_the_turn_completes(tmp_path: P
     reports: list[dict] = []
     monkeypatch.setattr(agent_pool, "log_swallowed_exception", lambda *a, **kw: reports.append(kw), raising=False)
     instance = AgentFactory(base_data_dir=str(tmp_path)).create_agent(
-        AgentConfig(agent_id="npc_1217", personality="stern", remembers=True)
+        AgentConfig(agent_id="npc_1217", personality="stern", remembers=True, policy=None)
     )
 
     def _boom(*args, **kwargs):

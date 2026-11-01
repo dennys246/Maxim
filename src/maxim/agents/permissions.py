@@ -37,28 +37,6 @@ KIND_SELECTOR_PREFIX = "kind:"
 than an exact tool name (``kind:sem-modulator-derived``)."""
 
 
-def tool_permissions_from_settings(
-    allow: tuple[str, ...] | list[str] | None,
-    deny: tuple[str, ...] | list[str] | None,
-) -> AgentPermissions | None:
-    """Build the console's ``AgentPermissions`` from resolved ``tools.*`` settings.
-
-    ``allow=None`` and an empty ``deny`` is "unconfigured" and returns
-    ``None`` — the executor then has no permission gate at all, which is
-    the pre-1.1.3 console behaviour. Anything else returns a real
-    ``AgentPermissions`` (an explicit empty ``allow=()`` is a legitimate
-    "no tools" list, not unconfigured). The ``tools`` section itself is
-    declared in ``runtime/config_loader.py::ToolsConfigSection``.
-    """
-    deny_set = frozenset(deny or ())
-    if allow is None and not deny_set:
-        return None
-    return AgentPermissions(
-        tool_allow=frozenset(allow) if allow is not None else None,
-        tool_deny=deny_set,
-    )
-
-
 @dataclass(frozen=True)
 class SEMAccessRule:
     """A single SEM access rule.

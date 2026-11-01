@@ -80,6 +80,7 @@ def _record(nac, *, success, embodiment_failed):
 
     record_outcome(
         bridge_booked=None,
+        refused=None,
         agent_id="a",
         tool_name="hearth_warm_self",
         success=success,
