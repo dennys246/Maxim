@@ -161,31 +161,33 @@ class TestAgentFactory:
         assert (instance.hippocampus is not None) is remembers and (instance.nac is not None) is learns
         assert "memory_hub" not in caplog.text, caplog.text
 
-    def test_without_a_hippocampus_an_unreadable_ec_is_still_reported(self, factory, tmp_path):
-        """D17 (review fold, #1522): SCN and EC are built before the no-hub return, so every bad file is reported."""
-        from maxim.exceptions import MemoryCorruptionError
-
-        cfg = AgentConfig(agent_id="no_hub_bad_ec", remembers=False, learns=True, on_corrupt="raise")
-        agent_dir = factory._resolve_persistence_dir(cfg)
-        agent_dir.mkdir(parents=True, exist_ok=True)
-        (agent_dir / "ec.json").write_text("{not json")
-        with pytest.raises(MemoryCorruptionError) as excinfo:
-            factory.create_agent(cfg, auto_load=True)
-        assert [c["subsystem"] for c in excinfo.value.context["corrupt"]] == ["ec"]
-
-    def test_without_a_hub_an_unreadable_ec_is_set_aside_once(self, factory):
-        """#1522 delta round: under "warn" the unreadable ec.json is copied aside and replaced even with no hub, so
-        the NAc reset beside it happens once, not on every load."""
-        cfg = AgentConfig(agent_id="no_hub_ec_aside", remembers=False, learns=True, on_corrupt="warn")
+    @pytest.mark.parametrize("on_corrupt", ["warn", "raise"])
+    def test_a_no_hub_agent_never_reads_the_hub_stores_files(self, factory, on_corrupt):
+        """#1522 (the review rounds' audit): SCN and EC are only the hub's stores, so an agent with no hub builds and
+        reads neither. A bad ec.json beside a learns-only agent is not its file: under "raise" the agent still builds,
+        and under "warn" nothing is copied aside and its NAc is not reset beside an EC it never uses (it was, on every
+        load)."""
+        cfg = AgentConfig(agent_id=f"no_hub_stale_ec_{on_corrupt}", remembers=False, learns=True, on_corrupt=on_corrupt)
         first = factory.create_agent(cfg)
-        first.nac.record_event("observation", "wolves_at_dusk")
+        from maxim.decisions.nac import Valence
+
+        first.nac.observe(
+            event_type="tool",
+            event_signature="wolves_at_dusk",
+            outcome_type="result",
+            outcome_signature="fled",
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=1.0,
+        )
         first.shutdown()
         agent_dir = factory._resolve_persistence_dir(cfg)
+        assert "wolves_at_dusk" in (agent_dir / "nac.json").read_text()
         (agent_dir / "ec.json").write_text("{not json")
+        (agent_dir / "scn.json").write_text("{not json")
         for _ in range(2):
             factory.create_agent(cfg, auto_load=True).shutdown()
-        copies = sorted(p.name for p in agent_dir.iterdir() if ".corrupt-" in p.name)
-        assert [c.split(".corrupt-")[0] for c in copies] == ["ec.json", "nac.json"], copies
+        assert not [p.name for p in agent_dir.iterdir() if ".corrupt-" in p.name]
+        assert "wolves_at_dusk" in (agent_dir / "nac.json").read_text(), "the NAc was reset beside an EC it never uses"
 
     def test_creates_nac_when_learns(self, factory, guard_config):
         instance = factory.create_agent(guard_config)

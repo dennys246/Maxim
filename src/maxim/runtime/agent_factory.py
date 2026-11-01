@@ -791,11 +791,13 @@ class AgentFactory:
         # loaded later made the public "restores Hippocampus, NAc, ATL" promise
         # false for every caller that just read the returned object.
         atl = self._create_atl(agent_dir, auto_load=auto_load, corrupt=corrupt)
-        # SCN and EC are built here, not inside the hub builder, so the set-aside below reaches them even for an
-        # agent with no hub (#1522 delta round: an unreadable ec.json used to reset a learns-only agent's NAc on
-        # every load, never replaced).
-        scn = self._create_scn(agent_dir, auto_load=auto_load, corrupt=corrupt)
-        ec = self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt)
+        # SCN and EC exist only as the hub's stores, and the hub needs a Hippocampus and a NAc: an agent without
+        # either builds and reads neither (#1522, owner decision 2026-10-31: no hub, so no hub stores). Probing them
+        # anyway reset a learns-only agent's NAc beside an EC it never uses, on every load (the review rounds' audit).
+        scn = ec = None
+        if hippocampus is not None and nac is not None:
+            scn = self._create_scn(agent_dir, auto_load=auto_load, corrupt=corrupt)
+            ec = self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt)
         memory_hub = self._create_memory_hub(
             hippocampus,
             nac,
@@ -837,18 +839,6 @@ class AgentFactory:
                     if entry == "atl":
                         # The hub's session start must not read the corrupt file a second time.
                         store.restored_at_construction = True
-                    if memory_hub is None and entry in ("ec", "scn"):
-                        # With no hub nothing saves these stores later, so "the next save replaces it" must be
-                        # now: else the bad file stays, and every load resets the NAc beside it again (#1522).
-                        try:
-                            store.save()
-                        except Exception as e:
-                            log.error(
-                                "Agent %s: the fresh %s could not replace its unreadable file: %s",
-                                config.agent_id,
-                                entry,
-                                e,
-                            )
                 elif store is not None and _failed_otherwise(entry):
                     # Not bad content (an OSError, or a defect outside UNREADABLE_STORE_ERRORS): the file is
                     # left exactly as it is and never claimed, and the store must not run the session on
@@ -1291,9 +1281,8 @@ class AgentFactory:
         # no hub, by design: its shutdown saves its stores itself, and it gets no session-end decay or
         # consolidation (#1522, owner decision 2026-10-31; #1366). A store that failed to build was already
         # reported as its own corruption entry, so a hub attempt here could only add a false "corrupt
-        # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. SCN and EC are
-        # built first, by create_agent, so an unreadable scn.json or ec.json is still reported (D17: every bad file)
-        # and set aside under "warn" even with no hub. A missing SCN or EC failed to build: reported under its name.
+        # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. create_agent builds
+        # SCN and EC only for an agent with both stores; one that failed to build was reported under its own name.
         stores = (("Hippocampus", hippocampus), ("NAc", nac), ("SCN", scn), ("EC", ec))
         missing = [name for name, store in stores if store is None]
         if missing:
