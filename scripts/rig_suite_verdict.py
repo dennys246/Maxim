@@ -41,6 +41,21 @@ _FAILED = re.compile(r"^FAILED (\S+)")
 _ERROR = re.compile(r"^ERROR (\S+)")  # a fixture failed in setup or teardown: pytest exits 1 and prints ERROR
 
 
+def _fast_suite_summary(log: str) -> list[str]:
+    """The fast suite's ``short test summary info`` lines: after its header, up to the fast-suite stage line. Empty
+    when there is none, which never calibrates."""
+    out: list[str] = []
+    inside = False
+    for line in log.splitlines():
+        if line.startswith("suite stage fast-suite:"):
+            break
+        if "short test summary info" in line:
+            inside, out = True, []
+        elif inside:
+            out.append(line)
+    return out
+
+
 def verdict(log: str, suite_exit: int, known: tuple[str, ...] = RIG_KNOWN_FAILURES) -> tuple[int, str, list[str]]:
     """``(exit code, message, calibrated failures)``. The failures list is non-empty only for CALIBRATED."""
     if suite_exit == 0:
@@ -60,8 +75,10 @@ def verdict(log: str, suite_exit: int, known: tuple[str, ...] = RIG_KNOWN_FAILUR
         return suite_exit, f"rig suite: FAILED (exit {suite_exit}); {failed}", []
     if stages["fast-suite"] != 1:
         return suite_exit, f"rig suite: FAILED (exit {suite_exit}); the fast suite exited {stages['fast-suite']}", []
-    failures = sorted({m.group(1) for line in log.splitlines() if (m := _FAILED.match(line))})
-    errors = sorted({m.group(1) for line in log.splitlines() if (m := _ERROR.match(line))})
+    # Only the fast suite's short summary: a test's captured output may itself start a line with FAILED or ERROR.
+    summary = _fast_suite_summary(log)
+    failures = sorted({m.group(1) for line in summary if (m := _FAILED.match(line))})
+    errors = sorted({m.group(1) for line in summary if (m := _ERROR.match(line))})
     # An ERROR is never calibrated, even on a listed test: the list excuses cadence assertions, not broken fixtures.
     unknown = [f for f in failures if f not in known] + [f"{e} (ERROR)" for e in errors]
     if not failures or unknown:

@@ -81,21 +81,27 @@ rig() { ssh -o BatchMode=yes -o ConnectTimeout=20 "$host" "$@"; }
 
 poll() {  # poll <label> <worktree|""> <sha|"">: wait for `suite-exit=N`, print the log, exit with the verdict
     local label="$1" wt="$2" sha="$3" log="~/$dir/logs/$1.log" pidf="~/$dir/logs/$1.pid"
-    local done_line="" fails=0 started="$SECONDS" local_log
+    local done_line="" fails=0 started="$SECONDS" local_log noted=""
     while :; do
-        if done_line="$(rig "grep -a -m1 '^suite-exit=[0-9]' $log || true")"; then
-            fails=0
+        # The exit line is the log's LAST line (the runner writes it after the suite): a match anywhere else could
+        # be a test's own output and would end the poll mid-run.
+        if done_line="$(rig "tail -n 1 $log 2>/dev/null | grep -a '^suite-exit=[0-9]' || true")"; then
             [ -n "$done_line" ] && break
             # No exit line yet: is the run still alive? (a reboot or an OOM kill never writes one.) The remote
             # prints alive/dead/nopid and exits 0, so a nonzero rc is ssh itself (255), counted as unreachable.
             local state=""
-            if state="$(rig "if [ ! -f $pidf ]; then echo nopid; elif kill -0 \$(cat $pidf) 2>/dev/null; then echo alive; else echo dead; fi")"; then
-                if [ "$state" = dead ]; then
-                    rig "grep -a -m1 '^suite-exit=[0-9]' $log" >/dev/null 2>&1 && continue  # it ended just now
-                    echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2
-                    exit 2
-                fi
-                [ "$state" = nopid ] && echo "rig suite: no pid file for $label (a run from before pid files?); polling the log only"
+            if state="$(rig "if [ ! -f $log ]; then echo nolog; elif [ ! -f $pidf ]; then echo nopid; elif kill -0 \$(cat $pidf) 2>/dev/null; then echo alive; else echo dead; fi")"; then
+                fails=0  # reset only when both checks reached the rig
+                case "$state" in
+                    nolog) echo "rig suite: no run labelled $label on the rig" >&2; exit 2 ;;
+                    dead)
+                        rig "tail -n 1 $log | grep -aq '^suite-exit=[0-9]'" && continue  # it ended just now
+                        echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2
+                        exit 2 ;;
+                    nopid)
+                        [ -n "$noted" ] || echo "rig suite: no pid file for $label (a run from before pid files?); polling the log only"
+                        noted=1 ;;
+                esac
             else
                 fails=$((fails + 1))
             fi
@@ -114,7 +120,7 @@ poll() {  # poll <label> <worktree|""> <sha|"">: wait for `suite-exit=N`, print 
     [ "$code" -eq 10 ] || exit "$code"
     # CALIBRATED is not a pass: re-run exactly those tests here, on the same commit, and only their pass counts.
     local ids=() id
-    while IFS= read -r id; do ids+=("$id"); done < <(python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" | sed -n 's/^  //p' || true)
+    while IFS= read -r id; do ids+=("$id"); done < <(python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" | sed -n 's/^  //p')
     if [ -z "$wt" ]; then
         echo "rig suite: CALIBRATED; before counting it, run these on that commit:"
         printf '  python3 -m pytest -p no:cacheprovider'; printf " '%s'" "${ids[@]}"; echo
@@ -127,7 +133,7 @@ rerun() {  # rerun <worktree> <sha> <nodeid>...: the calibrated tests, locally, 
     local wt="$1" sha="$2" tree code=0 main_checkout
     shift 2
     # Under the main checkout's .worktrees/, as suite_at_commit.sh does (CLAUDE.md's worktree rule).
-    main_checkout="$(cd "$(git -C "$wt" rev-parse --git-common-dir)/.." && pwd)"
+    main_checkout="$(cd "$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
     mkdir -p "$main_checkout/.worktrees"
     tree="$(mktemp -d "$main_checkout/.worktrees/rig-rerun-${sha:0:12}.XXXXXX")"
     rmdir "$tree"

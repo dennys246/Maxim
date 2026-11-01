@@ -18,7 +18,8 @@ KNOWN = V.RIG_KNOWN_FAILURES
 
 
 def _log(fast: int = 1, gates: str = "0", hub: int = 0, ratchet: int = 0, failed: tuple[str, ...] = KNOWN[:2]) -> str:
-    lines = [f"FAILED {f} - AssertionError: cadence" for f in failed]
+    lines = ["=========================== short test summary info ============================"]
+    lines += [f"FAILED {f} - AssertionError: cadence" for f in failed]
     lines += [f"suite stage fast-suite: exit={fast}"]
     lines += [
         "suite stage release-gates: skipped" if gates == "skipped" else f"suite stage release-gates: exit={gates}"
@@ -52,8 +53,11 @@ def test_a_skipped_release_gate_twin_still_calibrates():
         _log(fast=2),
         _log(failed=(*KNOWN[:1], "tests/unit/test_other.py::test_real_bug")),
         _log(failed=()),
-        _log() + "ERROR tests/unit/test_x.py::test_y - RuntimeError: teardown\n",
-        _log() + f"ERROR {KNOWN[0]} - RuntimeError: setup\n",
+        _log().replace(
+            "suite stage fast-suite",
+            "ERROR tests/unit/test_x.py::test_y - RuntimeError: teardown\nsuite stage fast-suite",
+        ),
+        _log().replace("suite stage fast-suite", f"ERROR {KNOWN[0]} - RuntimeError: setup\nsuite stage fast-suite"),
     ],
     ids=[
         "gates-1",
@@ -71,6 +75,16 @@ def test_a_skipped_release_gate_twin_still_calibrates():
 )
 def test_anything_else_keeps_the_suites_own_exit_code(log):
     assert V.verdict(log, 1)[0] == 1
+
+
+def test_failed_or_error_text_outside_the_summary_is_ignored():
+    """A test's captured output may start a line with FAILED or ERROR; only the short summary counts."""
+    noisy = "FAILED tests/unit/test_x.py::test_y printed by a test\nERROR from captured stdout\n" + _log()
+    assert V.verdict(noisy, 1)[0] == V.CALIBRATED
+
+
+def test_no_summary_section_never_calibrates():
+    assert V.verdict(_log().replace("short test summary info", "something else"), 1)[0] == 1
 
 
 def test_a_missing_stage_line_is_never_calibrated():
