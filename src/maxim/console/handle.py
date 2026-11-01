@@ -40,7 +40,7 @@ import threading
 from pathlib import Path
 from typing import Any, Literal
 
-from maxim.utils.deadline import Deadline
+from maxim.utils.deadline import Deadline, EndBound
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +229,10 @@ class MaximHandle:
         self._talk_thread: threading.Thread | None = None
         self._talk_stop: threading.Event | None = None
         self._talk_worker: Any = None  # LLMWorker owned by the talk loop
+        # The bound a per-handle stop hands the live talk loop's session end (#1536), one per launch, and the
+        # loops a stop/rest/rebuild already signalled that may still be ending: a later stop(deadline=) bounds them too.
+        self._talk_bound: EndBound | None = None
+        self._ending_talk_loops: list[tuple[threading.Thread, EndBound]] = []
 
     # ── modes ───────────────────────────────────────────────────────────
 
@@ -379,7 +383,7 @@ class MaximHandle:
             self._stop_talk_loop(required=True)
         with self._talk_lock:
             stale_worker = self._talk_worker
-            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = None
+            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = self._talk_bound = None
         # A previous loop died (its thread raised and was logged). Its
         # LLMWorker owns a live thread pool — stop it BEFORE building a
         # replacement, or every failed turn leaks another pool (review
@@ -391,6 +395,10 @@ class MaximHandle:
                 logger.debug("stale talk LLMWorker.stop() raised", exc_info=True)
 
         with self._talk_lock:
+            # Re-checked under the lock: stop() sets _stopped before its own _talk_lock section, so a talk() that
+            # passed the unlocked check cannot launch a loop that stop() would never see, signal or bound (#1536).
+            if self._stopped:
+                raise RuntimeError("MaximHandle is stopped — build a new handle to talk again")
             if self._talk_bridge is not None and self._talk_thread is not None and self._talk_thread.is_alive():
                 return self._talk_bridge  # another caller won the race
 
@@ -487,6 +495,8 @@ class MaximHandle:
             # the AUT; talk needs it for the same reason.
             agent.wire_memory_hub(self.instance.memory_hub)
 
+        end_bound = EndBound()  # this loop's own: the worker reads this local, never self._talk_bound
+
         def _worker() -> None:
             try:
                 run_agentic_loop(
@@ -511,21 +521,23 @@ class MaximHandle:
                     # Persistent agent: its session-end is the explicit
                     # full consolidation, never the sim default.
                     consolidation="full",
+                    end_bound=end_bound,
                 )
             except Exception:
                 logger.exception("talk loop failed for agent %r", self.agent_id)
 
         thread = threading.Thread(target=_worker, name=f"console.talk.{self.agent_id}", daemon=True)
-        self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker = (
+        self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker, self._talk_bound = (
             bridge,
             thread,
             stop_event,
             worker,
+            end_bound,
         )
         thread.start()
         return bridge
 
-    def _stop_talk_loop(self, *, join_s: float = 20.0, required: bool = False) -> bool:
+    def _stop_talk_loop(self, *, join_s: float = 20.0, required: bool = False, bound: Deadline | None = None) -> bool:
         """End the talk loop if one is running (idempotent). False when it was still alive after ``join_s``.
 
         ``required=True`` RAISES if the loop has not exited within ``join_s``.
@@ -535,15 +547,28 @@ class MaximHandle:
         stop the SHARED hippocampus capture worker mid-campaign (review
         finding). ``stop()`` keeps the proceed-loudly default — a hung loop
         must not make shutdown unbounded.
+
+        ``bound`` (#1536, ``stop(deadline=)``): set on this loop's ``EndBound`` and on every loop still ending, in the
+        SAME locked section that clears the handles and records this loop as ending, before any signal, so neither a
+        concurrent rest/rebuild nor a racing ``talk()`` leaves a loop the stop should bound unbounded.
         """
         with self._talk_lock:
-            bridge, thread, stop_event, worker = (
+            bridge, thread, stop_event, worker, talk_bound = (
                 self._talk_bridge,
                 self._talk_thread,
                 self._talk_stop,
                 self._talk_worker,
+                self._talk_bound,
             )
-            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = None
+            self._talk_bridge = self._talk_thread = self._talk_stop = self._talk_worker = self._talk_bound = None
+            self._ending_talk_loops = [(t, b) for t, b in self._ending_talk_loops if t.is_alive()]
+            if thread is not None and talk_bound is not None:
+                if not any(t is thread for t, _b in self._ending_talk_loops):
+                    self._ending_talk_loops.append((thread, talk_bound))
+            if talk_bound is not None:
+                talk_bound.set(bound)
+            for _t, ending_bound in self._ending_talk_loops:
+                ending_bound.set(bound)
         if bridge is not None:
             bridge.finish()  # ConversationalSource is_exhausted() → loop exits
         if stop_event is not None:
@@ -556,11 +581,19 @@ class MaximHandle:
                     # build a second loop beside it and leak its worker. It stays "live" and is stopped again.
                     with self._talk_lock:
                         if self._talk_thread is None:
-                            self._talk_bridge, self._talk_thread, self._talk_stop, self._talk_worker = (
+                            # With its bound, so a later stop(deadline=) bounds the straggler (#1536).
+                            (
+                                self._talk_bridge,
+                                self._talk_thread,
+                                self._talk_stop,
+                                self._talk_worker,
+                                self._talk_bound,
+                            ) = (
                                 bridge,
                                 thread,
                                 stop_event,
                                 worker,
+                                talk_bound,
                             )
                     raise RuntimeError(
                         f"talk loop did not exit within {join_s:.0f}s — refusing to start a second "
@@ -722,7 +755,7 @@ class MaximHandle:
             with self._talk_lock:
                 talk_thread = self._talk_thread
             talk_s = deadline.share(0.25).cap(talk_join_s) if deadline is not None else talk_join_s
-            self._stop_talk_loop(join_s=talk_s)
+            self._stop_talk_loop(join_s=talk_s, bound=deadline)
             if deadline is None:
                 ended = self.instance.shutdown(consolidation=consolidation, loop_wait=Deadline.after(talk_join_s))
             else:  # the loop's own end is bounded by the same stop (bio_session), so wait for it within the rest

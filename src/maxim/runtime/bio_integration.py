@@ -16,7 +16,7 @@ from typing import Any, Literal
 from maxim.integration.session_ownership import SessionTicket
 from maxim.memory.experience_clock import ExperienceClockStalled
 from maxim.utils.cancellation import current_stop
-from maxim.utils.deadline import Deadline
+from maxim.utils.deadline import Deadline, EndBound
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -250,6 +250,7 @@ def bio_session(
     hippocampus: Any | None,
     owner: Any,
     consolidation: Literal["full", "lightweight"] | None = None,
+    end_bound: EndBound | None = None,
 ) -> Iterator[BioSession]:
     """The ONE seam that opens and ends an agent loop's memory session (#1438 PR 0).
 
@@ -260,6 +261,10 @@ def bio_session(
     lightweight flavor, and only while the stop request's deadline (else a 30 s cap) has time left. The claim is
     released in a ``finally`` after those steps return. ``__exit__`` never replaces an in-flight exception: its own
     errors are logged and chained.
+
+    ``end_bound`` (#1536) is the bound a per-handle ``MaximHandle.stop(deadline=)`` hands the Talk loop it built. It
+    cuts CONSOLIDATION only, read before each step, with the waiter reserve sized when the stop sets it: persist, the
+    flushes and the abnormal path's abandon follow the process stop alone (owner decisions 2026-10-31).
     """
     ticket = memory_hub.on_session_start(owner=owner, live=True) if memory_hub is not None else None
     # The claim is held from here: everything after it runs inside the try, so no raise can leak a live claim.
@@ -276,7 +281,12 @@ def bio_session(
     except BaseException:
         stop = current_stop()
         bound = stop.deadline if stop is not None else Deadline.after(ABNORMAL_EXIT_CAP_S)
-        _close_session(session, consolidation="lightweight", bound=bound, reserve_for_waiter=stop is not None)
+        _close_session(
+            session,
+            consolidation="lightweight",
+            bound=bound,
+            reserve_for_waiter=stop is not None,
+        )
         raise
     else:
         # A clean exit under a process stop (the loop yielded) is bounded by that stop's deadline: the end persists
@@ -288,7 +298,26 @@ def bio_session(
             bound=stop.deadline if stop is not None else None,
             abandon_if_expired=False,
             reserve_for_waiter=stop is not None,
+            consolidation_bound=_reserved_consolidation_bound(end_bound),
         )
+
+
+def _reserved_consolidation_bound(end_bound: EndBound | None) -> Callable[[], Deadline | None] | None:
+    """A reader of ``end_bound`` for the consolidation steps: its deadline minus the waiter reserve, sized from the
+    time the bound had left when the stop SET it (:meth:`EndBound.snapshot`). Sizing it at the first read instead
+    let the flushes and persist, which run before consolidation, shrink it toward its 1 s floor and starve the
+    after-steps and the waiter (#1536 review SF-A)."""
+    if end_bound is None:
+        return None
+
+    def read() -> Deadline | None:
+        snap = end_bound.snapshot()
+        if snap is None:
+            return None
+        raw, remaining_at_set = snap
+        return raw.ending_early(_end_reserve_s(remaining_at_set))
+
+    return read
 
 
 def _close_session(
@@ -298,6 +327,7 @@ def _close_session(
     bound: Deadline | None,
     abandon_if_expired: bool = True,
     reserve_for_waiter: bool = False,
+    consolidation_bound: Callable[[], Deadline | None] | None = None,
 ) -> None:
     """Stop the session's workers, then end it as owner. Never raises: an exit must not replace an in-flight error.
 
@@ -325,6 +355,7 @@ def _close_session(
             capture=session.capture,
             consolidation=consolidation,
             deadline=_end_bound(bound) if reserve_for_waiter else bound,
+            consolidation_bound=consolidation_bound,
         )
     finally:
         if session.memory_hub is not None and session.ticket is not None:
@@ -346,7 +377,11 @@ def _end_bound(bound: Deadline | None) -> Deadline | None:
     such waiter and keeps its whole cap."""
     if bound is None:
         return None
-    return bound.ending_early(max(_END_RESERVE_FLOOR_S, _END_RESERVE_FRACTION * bound.remaining()))
+    return bound.ending_early(_end_reserve_s(bound.remaining()))
+
+
+def _end_reserve_s(remaining: float) -> float:
+    return max(_END_RESERVE_FLOOR_S, _END_RESERVE_FRACTION * remaining)
 
 
 # A spent bound still gets this long to flush queued captures: an expired reserve must never drop them at 0 s.
@@ -365,6 +400,7 @@ def end_bio_session(
     capture: Any | None = None,
     consolidation: Literal["full", "lightweight"] = "full",
     deadline: Deadline | None = None,
+    consolidation_bound: Callable[[], Deadline | None] | None = None,
 ) -> None:
     """Drain and stop this session's capture worker and end the MemoryHub session as owner; the hub's end saves the
     hippocampus with the stores keyed on its ids (#1438 PR 1a), and only a session with no hub to end saves it here.
@@ -385,7 +421,9 @@ def end_bio_session(
             hippocampus.stop_capture_worker(capture, timeout=_flush_timeout(deadline))
         except Exception as e:
             logger.warning("Failed to flush/stop the hippocampus capture worker: %s", e)
-    _end_hub_session(memory_hub, ticket, deadline=deadline, lightweight=use_lightweight)
+    _end_hub_session(
+        memory_hub, ticket, deadline=deadline, lightweight=use_lightweight, consolidation_bound=consolidation_bound
+    )
     # The hub's end saves the hippocampus (#1438 PR 1a). Save it here only when that did not cover it: no hub, no
     # ticket, a hub on another hippocampus, or an end that did not reach its save (a stale ticket, a raise).
     if hippocampus is not None and (
@@ -405,7 +443,12 @@ def end_bio_session(
 
 
 def _end_hub_session(
-    memory_hub: Any | None, ticket: SessionTicket | None, *, deadline: Deadline | None, lightweight: bool
+    memory_hub: Any | None,
+    ticket: SessionTicket | None,
+    *,
+    deadline: Deadline | None,
+    lightweight: bool,
+    consolidation_bound: Callable[[], Deadline | None] | None = None,
 ) -> None:
     """End the MemoryHub session as its owner (``end_bio_session``'s middle step)."""
     use_lightweight = lightweight
@@ -416,7 +459,9 @@ def _end_hub_session(
             if use_lightweight:
                 session_stats = memory_hub.on_session_end_lightweight(ticket, deadline=deadline)
             else:
-                session_stats = memory_hub.on_session_end(ticket, deadline=deadline)
+                session_stats = memory_hub.on_session_end(
+                    ticket, deadline=deadline, consolidation_bound=consolidation_bound
+                )
             log_agentic(
                 "memory_hub",
                 "session_end",

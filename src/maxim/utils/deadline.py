@@ -7,6 +7,7 @@ are carved from a parent and never exceed it, so a chain of waits cannot add up 
 from __future__ import annotations
 
 import math
+import threading
 import time
 from dataclasses import dataclass
 
@@ -57,3 +58,42 @@ class Deadline:
     def cap(self, seconds: float) -> float:
         """The wait to pass a blocking call: ``min(remaining, seconds)``."""
         return min(self.remaining(), seconds)
+
+    @staticmethod
+    def earliest(*deadlines: Deadline | None) -> Deadline | None:
+        """The earliest bounded deadline of ``deadlines``; ``None`` and :meth:`none` are no bound and never win, so
+        ``None`` when none is bounded."""
+        bounded = [d for d in deadlines if d is not None and not math.isinf(d.at)]
+        return min(bounded, key=lambda d: d.at) if bounded else None
+
+
+class EndBound:
+    """A bound handed to ONE loop after it started (#1536): the handle that built a Talk loop sets it when it stops
+    the loop, and the loop's session end reads it. ``set`` only narrows (an earlier deadline wins, a later one is
+    ignored), so two stops can never widen it. In-process only, never persisted."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._deadline: Deadline | None = None
+        self._remaining_at_set = 0.0
+
+    def set(self, deadline: Deadline | None) -> None:
+        """Narrow to ``deadline``, recording the time it had left NOW. ``None`` is no bound and changes nothing:
+        ``rest()`` and a config rebuild stop a loop through the same path without bounding it."""
+        if deadline is None:
+            return
+        with self._lock:
+            if self._deadline is None or deadline.at < self._deadline.at:
+                self._deadline = deadline
+                self._remaining_at_set = deadline.remaining()
+
+    def get(self) -> Deadline | None:
+        """The bound, or ``None`` when no stop set one."""
+        with self._lock:
+            return self._deadline
+
+    def snapshot(self) -> tuple[Deadline, float] | None:
+        """The bound with the time it had left when it was set, so a reserve carved from it is sized at the stop,
+        not by however much the end had already spent before reading it; ``None`` when unset."""
+        with self._lock:
+            return None if self._deadline is None else (self._deadline, self._remaining_at_set)
