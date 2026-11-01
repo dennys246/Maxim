@@ -46,6 +46,7 @@ import pytest
 from maxim.runtime.sim_adapter import NullSimulationAdapter
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 from tests.unit.test_loop_gates_characterization import _run as _gate_run
 
 pytestmark = pytest.mark.timeout(60)
@@ -198,7 +199,7 @@ def _executor(*tools: Tool, registry: Any = None) -> Any:
     reg = ToolRegistry() if registry is None else registry
     for t in tools:
         reg.register(t)
-    return build_executor(reg, pain_bus=None, permissions=None)
+    return build_executor(reg, pain_bus=None, policy=TEST_POLICY)
 
 
 def _infant_body() -> Any:

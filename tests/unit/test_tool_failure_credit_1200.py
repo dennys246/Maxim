@@ -27,6 +27,7 @@ from maxim.runtime import tool_dispatch
 from maxim.runtime.bootstrap import build_executor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 TOOL = "flaky_1200"
 
@@ -85,7 +86,7 @@ def _executor(*tools: Tool, nac: NAc | None = None) -> tuple[Any, NAc]:
     registry = ToolRegistry()
     for tool in tools:
         registry.register(tool)
-    return build_executor(registry, pain_bus=None, permissions=None, nac=nac), nac
+    return build_executor(registry, pain_bus=None, policy=TEST_POLICY, nac=nac), nac
 
 
 def _links(nac: NAc, signature: str, valence: Valence) -> list[Any]:
@@ -184,7 +185,7 @@ def test_a_tool_cannot_set_its_own_failure_stamp() -> None:
 
     registry = ToolRegistry()
     registry.register(_Forger())
-    executor = build_executor(registry, pain_bus=None, permissions=None)  # no bridge: nothing was booked
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY)  # no bridge: nothing was booked
     assert executor.execute({"tool_name": TOOL, "params": {}}).nac_failure_booked is None
 
 
@@ -202,6 +203,7 @@ def test_a_record_outcome_call_without_the_stamp_is_a_type_error() -> None:
             max_recent=5,
             llm_worker=None,
             context_pool=MagicMock(),
+            refused=None,
         )
 
 
@@ -293,7 +295,7 @@ def test_a_failure_with_no_bridge_books_through_dispatch_as_before() -> None:
     still books into the loop's NAc."""
     registry = ToolRegistry()
     registry.register(_Flaky())
-    executor = build_executor(registry, pain_bus=None, permissions=None)
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY)
     assert executor._tool_pain_bridge is None
     nac = NAc(NACConfig())
     _execute_and_learn(executor, nac, {"tool_name": TOOL, "params": {}})
@@ -336,6 +338,7 @@ def _record(nac: NAc, *, success: bool, bridge_booked: str | None, tool: str = T
         nac=nac,
         tool_params=params,
         bridge_booked=bridge_booked,
+        refused=None,
     )
 
 

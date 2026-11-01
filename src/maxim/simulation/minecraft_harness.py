@@ -222,6 +222,7 @@ def build_minecraft_aut(
     from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.runtime.bio_stack import build_bio_stack
     from maxim.runtime.bootstrap import build_executor
+    from maxim.runtime.tool_policy import ToolPolicy
     from maxim.simulation.minecraft import MinecraftClient, MinecraftPerceptSource
     from maxim.tools.registry import ToolRegistry
 
@@ -234,9 +235,8 @@ def build_minecraft_aut(
     registry = ToolRegistry()
     executor = build_executor(
         tool_registry=registry,
-        # Explicit opt-out (the required-keyword contract): the AUT runs
-        # unrestricted inside its OWN isolated sandbox home.
-        permissions=None,
+        # The AUT runs unrestricted inside its OWN isolated sandbox home (#1315 item 3: an explicit policy).
+        policy=ToolPolicy.unrestricted(reason="minecraft AUT: unrestricted inside its own sandbox home"),
         # agent_id MUST reach the Embodiment (architecture-lens review):
         # an agent_id-unaware body publishes PainSignals the reward
         # distributor SILENTLY SKIPS — embodied credit as a wired-in no-op,

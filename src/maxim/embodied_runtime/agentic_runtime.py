@@ -277,6 +277,69 @@ class AgenticRuntimeMixin:
                 warn("Failed to build comms stack: %s", e, logger=self.log)
         return gateway
 
+    def _build_runtime_executor(
+        self,
+        *,
+        registry: Any,
+        pain_bus: Any,
+        nac: Any,
+        memory_hub: Any,
+        tool_index: Any,
+        bio: Any,
+        body_ref: str | None,
+        body_registry: Any,
+        motor_factory: Any,
+    ) -> Any:
+        """The embodied runtime's executor, with its ToolPainBridge when NAc is wired (moved out of
+        ``_start_agentic_runtime``, #1315 item 3). Its policy is the robot's own agent's: ceiling ALL, gated at
+        dispatch by the run mode, the operator's launch grant and the autonomy forbids."""
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.runtime.tool_policy import ToolPolicy
+
+        policy = ToolPolicy.unrestricted(
+            reason="embodied runtime: the robot's own agent; the mode, grant and autonomy gates still run"
+        )
+        if nac is not None:
+            executor = build_executor(
+                registry,
+                pain_bus=pain_bus,
+                policy=policy,
+                nac=nac,
+                hippocampus=memory_hub.hippocampus if memory_hub else None,
+                scn=memory_hub.scn if memory_hub else None,
+                tool_index=tool_index,
+                distributor=bio.distributor if bio is not None else None,
+                agent_id=getattr(self, "agent_id", "reachy"),
+                entity_ref=body_ref,
+                component_registry=body_registry,
+                modulator_factory=motor_factory,
+            )
+            if motor_factory is not None:
+                self.log.info("SEM motor binding active: 'orient' affordances dispatch real body turns")
+            # Review fold E1: the LearnedToolIndex was populated BEFORE
+            # build_executor, so the SEM affordance tools it just registered
+            # are invisible to the passive-mode FILTERED prompt renderer
+            # (which partitions the index's own keyword universe). Register
+            # them now — idempotent, preserves learned weights.
+            if tool_index is not None:
+                try:
+                    from maxim.embodiment.tool_bridge import always_active_sem_tools
+
+                    for _sem_tool in always_active_sem_tools(registry):
+                        tool_index.register_tool(_sem_tool)
+                except Exception as e:
+                    self.log.warning("SEM tool-index registration failed: %s", e)
+            self._tool_pain_bridge = executor._tool_pain_bridge
+            self.log.debug(
+                "ToolPainBridge wired via build_executor (pain_bus=%s, body=%s)",
+                pain_bus is not None,
+                body_ref,
+            )
+        else:
+            executor = build_executor(registry, pain_bus=None, policy=policy)
+            self._tool_pain_bridge = None
+        return executor
+
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
 
@@ -302,7 +365,6 @@ class AgenticRuntimeMixin:
                 CaptureManager,
                 build_decision_engine,
                 build_evaluators,
-                build_executor,
                 build_memory,
                 build_state,
                 build_tool_registry,
@@ -589,45 +651,17 @@ class AgenticRuntimeMixin:
             except Exception as e:
                 self.log.warning("SEM motor binding unavailable: %s", e)
 
-        if nac is not None:
-            executor = build_executor(
-                registry,
-                pain_bus=_pain_bus,
-                permissions=None,
-                nac=nac,
-                hippocampus=memory_hub.hippocampus if memory_hub else None,
-                scn=memory_hub.scn if memory_hub else None,
-                tool_index=tool_index,
-                distributor=bio.distributor if bio is not None else None,
-                agent_id=getattr(self, "agent_id", "reachy"),
-                entity_ref=_body_ref,
-                component_registry=_body_registry,
-                modulator_factory=_motor_factory,
-            )
-            if _motor_factory is not None:
-                self.log.info("SEM motor binding active: 'orient' affordances dispatch real body turns")
-            # Review fold E1: the LearnedToolIndex was populated BEFORE
-            # build_executor, so the SEM affordance tools it just registered
-            # are invisible to the passive-mode FILTERED prompt renderer
-            # (which partitions the index's own keyword universe). Register
-            # them now — idempotent, preserves learned weights.
-            if tool_index is not None:
-                try:
-                    from maxim.embodiment.tool_bridge import always_active_sem_tools
-
-                    for _sem_tool in always_active_sem_tools(registry):
-                        tool_index.register_tool(_sem_tool)
-                except Exception as e:
-                    self.log.warning("SEM tool-index registration failed: %s", e)
-            self._tool_pain_bridge = executor._tool_pain_bridge
-            self.log.debug(
-                "ToolPainBridge wired via build_executor (pain_bus=%s, body=%s)",
-                _pain_bus is not None,
-                _body_ref,
-            )
-        else:
-            executor = build_executor(registry, pain_bus=None, permissions=None)
-            self._tool_pain_bridge = None
+        executor = self._build_runtime_executor(
+            registry=registry,
+            pain_bus=_pain_bus,
+            nac=nac,
+            memory_hub=memory_hub,
+            tool_index=tool_index,
+            bio=bio,
+            body_ref=_body_ref,
+            body_registry=_body_registry,
+            motor_factory=_motor_factory,
+        )
         if _granted_mode:
             # the operator's launch grant (#829) is the mode dispatch enforces, over the seeded run mode
             executor.set_operational_override(_granted_mode)

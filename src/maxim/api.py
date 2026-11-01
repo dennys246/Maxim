@@ -546,6 +546,53 @@ def delete_model(name: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _run_workspace(home: str) -> str:
+    """``maxim.run``'s filesystem reach (#1342, owner decision 2026-10-31): ``<home>/.maxim_workspace``, created if
+    missing. The home itself holds config, every agent's stores and the run reports, so it is out of reach."""
+    from maxim.utils.filesystem_policy import ensure_workspace_exists
+
+    return ensure_workspace_exists(home)
+
+
+def _build_run_executor(
+    *, learning: bool, tool_registry: Any, effective_home: str, home_dir: str | None
+) -> tuple[Any, Any | None]:
+    """``maxim.run``'s executor and, when ``learning``, the agent instance that owns it (moved out of ``run``,
+    #1315 item 3). Both branches carry the stable verb's policy: ceiling ``ALL`` (owner decision V10), so
+    ``@maxim.tool`` and ``register_tool`` tools behave as ``docs/user/stable_api.md`` documents."""
+    from maxim.runtime.bootstrap import build_executor
+    from maxim.runtime.tool_policy import ToolPolicy
+
+    policy = ToolPolicy.unrestricted(reason="maxim.run: stable verb, V10")
+    if not learning:
+        return build_executor(tool_registry, pain_bus=None, policy=policy), None
+
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+    _api_agent_home = _api_agent_dir(effective_home, default_home=not home_dir)
+    _api_config = AgentConfig(
+        agent_id=_API_AGENT_ID,
+        role="pc",
+        persistence_dir=str(_api_agent_home),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=True,
+        policy=policy,
+    )
+    _api_factory = AgentFactory(
+        base_data_dir=str(_api_agent_home.parent),
+    )
+    _api_instance = _api_factory.create_full_agent(
+        _api_config,
+        tool_registry=tool_registry,
+    )
+    logger.info(
+        "Bio-learning enabled — memories persist to %s. Disable with learning=False.",
+        _api_agent_home,
+    )
+    return _api_instance.executor, _api_instance
+
+
 def run(
     model: str = _API_DEFAULT_MODEL,
     *,
@@ -650,7 +697,6 @@ def run(
             build_decision_engine,
             build_environment,
             build_evaluators,
-            build_executor,
             build_memory,
             build_state,
             build_tool_registry,
@@ -715,42 +761,23 @@ def run(
             agent.wire_robot(_robot)
             logger.info("Robot connected and awake: %s", robot)
 
-        tool_registry = build_tool_registry(internet_launch_enabled=False, maxim=_robot)
+        # Workspace-only (#1342; owner decision 2026-10-31): see _run_workspace.
+        tool_registry = build_tool_registry(
+            internet_launch_enabled=False, maxim=_robot, allowed_dirs_override=[_run_workspace(effective_home)]
+        )
         _inject_registered_tools(tool_registry)
 
         # F5: Headless bio-learning via AgentFactory. Bio-learning ON by
         # default — learning is Maxim's identity. learning=False opts out.
-        if learning:
-            from maxim.runtime.agent_factory import AgentConfig, AgentFactory
-
-            _api_agent_home = _api_agent_dir(effective_home, default_home=not home_dir)
-            _api_config = AgentConfig(
-                agent_id=_API_AGENT_ID,
-                role="pc",
-                persistence_dir=str(_api_agent_home),
-                with_bio_stack=True,
-                with_executor=True,
-                with_pain_bridge=True,
-            )
-            _api_factory = AgentFactory(
-                base_data_dir=str(_api_agent_home.parent),
-            )
-            _api_instance = _api_factory.create_full_agent(
-                _api_config,
-                tool_registry=tool_registry,
-            )
-            executor = _api_instance.executor
+        executor, _api_instance = _build_run_executor(
+            learning=learning, tool_registry=tool_registry, effective_home=effective_home, home_dir=home_dir
+        )
+        if _api_instance is not None:
             _headless_hippocampus = _api_instance.hippocampus
             _headless_memory_hub = _api_instance.memory_hub
             _headless_pain_bus = _api_instance.pain_bus
             if _headless_memory_hub is not None:
                 agent.wire_memory_hub(_headless_memory_hub)
-            logger.info(
-                "Bio-learning enabled — memories persist to %s. Disable with learning=False.",
-                _api_agent_home,
-            )
-        else:
-            executor = build_executor(tool_registry, pain_bus=None, permissions=None)
 
         evaluators = build_evaluators()
 

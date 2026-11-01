@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from maxim.runtime.executor import gates_refuse
 from maxim.tools.base import ToolOutput
 
 if TYPE_CHECKING:
@@ -52,6 +53,10 @@ class FearGatedExecutor:
         """Review action with FearAgent, then execute if allowed."""
         tool_name = action.get("tool_name", "unknown")
         params = action.get("params", {}) if isinstance(action.get("params"), dict) else {}
+        if isinstance(tool_name, str) and gates_refuse(self._executor, tool_name):
+            # The dispatch gates refuse it (#1315 item 3; owner decision 2026-10-31): no fear review, no fear block
+            # booked. The inner executor returns the typed refusal, which teaches nothing.
+            return self._executor.execute(action)
 
         self._reviews += 1
 

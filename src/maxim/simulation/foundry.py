@@ -567,6 +567,7 @@ def run_gauntlet(
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
         from maxim.proprioception.pain_bus import build_pain_bus
         from maxim.runtime.bootstrap import build_executor
+        from maxim.runtime.tool_policy import ToolPolicy
         from maxim.tools.registry import ToolRegistry
 
         # Fresh bio-stack per candidate — uses build_pain_bus to auto-subscribe
@@ -590,7 +591,7 @@ def run_gauntlet(
         executor = build_executor(
             registry,
             pain_bus=pain_bus,
-            permissions=None,
+            policy=ToolPolicy.unrestricted(reason="foundry gauntlet: probes every affordance of the entity under test"),
             nac=nac,
             hippocampus=hippocampus,
         )

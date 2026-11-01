@@ -28,6 +28,8 @@ import pytest
 
 from tests.unit._loop_harness import _StepClock, assert_this_checkout, preimport_loop_graph
 
+from tests.policy_helpers import TEST_POLICY
+
 AGENT_ID = "cradle_gl2a"
 TARGET_HZ = 1e4
 CLUSTERS = {"interoception": "c_intero_gl2a"}
@@ -109,7 +111,7 @@ def run_cradle(
     registry = ToolRegistry()
     executor = build_executor(
         tool_registry=registry,
-        permissions=None,
+        policy=TEST_POLICY,
         agent_id=AGENT_ID,
         pain_bus=bio.pain_bus,
         nac=bio.nac,

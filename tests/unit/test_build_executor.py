@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.policy_helpers import TEST_POLICY, policy_for
 
 # ---------------------------------------------------------------------------
 # Required-keyword contract — the structural enforcement
@@ -47,7 +48,7 @@ class TestBuildExecutorRequiredKeyword:
         from maxim.runtime.bootstrap import build_executor
         from maxim.tools.registry import ToolRegistry
 
-        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+        executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
 
         assert executor is not None
         assert executor._tool_pain_bridge is None
@@ -94,7 +95,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=None,
-            permissions=None,
+            policy=TEST_POLICY,
             pain_detector=None,
             nac=nac,
         )
@@ -114,7 +115,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=None,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=None,
         )
 
@@ -132,7 +133,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=pain_bus,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=nac,
         )
 
@@ -151,7 +152,7 @@ class TestBuildExecutorBridgeWiring:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=None,
-            permissions=None,
+            policy=TEST_POLICY,
             pain_detector=pain_detector,
             nac=nac,
         )
@@ -169,7 +170,7 @@ class TestBuildExecutorBridgeWiring:
             build_executor(
                 ToolRegistry(),
                 pain_bus=PainBus(_allow_raw=True),
-                permissions=None,
+                policy=TEST_POLICY,
                 nac=None,
             )
 
@@ -201,7 +202,7 @@ class TestBuildExecutorFailFastPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=pain_bus,
-                permissions=None,
+                policy=TEST_POLICY,
                 pain_detector=pain_detector,
                 nac=nac,
             )
@@ -219,7 +220,7 @@ class TestBuildExecutorFailFastPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=None,
-                permissions=None,
+                policy=TEST_POLICY,
                 nac=nac,
                 entity_ref="weapons/rusty_sword",
                 component_registry=ComponentRegistry(),
@@ -237,7 +238,7 @@ class TestBuildExecutorFailFastPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=pain_bus,
-                permissions=None,
+                policy=TEST_POLICY,
                 nac=nac,
                 entity_ref="weapons/rusty_sword",
                 component_registry=None,
@@ -269,7 +270,7 @@ class TestBuildExecutorEmbodiment:
         executor = build_executor(
             registry,
             pain_bus=pain_bus,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -304,7 +305,7 @@ class TestBuildExecutorEmbodiment:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=pain_bus,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -329,7 +330,7 @@ class TestBuildExecutorEmbodiment:
             build_executor(
                 ToolRegistry(),
                 pain_bus=pain_bus,
-                permissions=None,
+                policy=TEST_POLICY,
                 nac=nac,
                 entity_ref="weapons/nonexistent_sword",
                 component_registry=ComponentRegistry(),
@@ -366,7 +367,7 @@ class TestBuildExecutorEndToEndCascade:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=pain_bus,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -436,10 +437,13 @@ class TestBuildExecutorPermissions:
         return registry
 
     def test_permissions_none_leaves_gate_off(self):
+        from maxim.agents.permissions import AgentPermissions
         from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.base import Effect
 
-        executor = build_executor(self._registry(), pain_bus=None, permissions=None)
-        assert executor._permissions is None
+        executor = build_executor(self._registry(), pain_bus=None, policy=TEST_POLICY)
+        assert executor.policy.permissions == AgentPermissions()
+        assert executor.policy.ceiling == Effect.ALL
         assert executor.execute({"tool_name": "stub_tool", "params": {}}).success is True
 
     def test_permissions_arm_the_executor_gate(self):
@@ -447,8 +451,10 @@ class TestBuildExecutorPermissions:
         from maxim.runtime.bootstrap import build_executor
 
         perms = AgentPermissions(tool_allow=frozenset({"respond"}))
-        executor = build_executor(self._registry(), pain_bus=None, permissions=perms)
-        assert executor._permissions is perms
+        policy = policy_for(perms)
+        executor = build_executor(self._registry(), pain_bus=None, policy=policy)
+        assert executor.policy is policy  # the object passed, not a rebuilt one
+        assert executor.policy.permissions == perms
         result = executor.execute({"tool_name": "stub_tool", "params": {}})
         assert result.success is False
         assert "allow-list" in (result.error or "")
@@ -473,7 +479,7 @@ class TestD79GenerationCollaborators:
         return build_executor(
             ToolRegistry(),
             pain_bus=PainBus(_allow_raw=True),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=MagicMock(),
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -507,7 +513,9 @@ class TestD79GenerationCollaborators:
         embodiment = MagicMock(name="embodiment")
         cerebellum = MagicMock(name="cerebellum")
         entity_map = MagicMock(name="entity_map")
-        executor = Executor(ToolRegistry(), embodiment=embodiment, cerebellum=cerebellum, entity_map=entity_map)
+        executor = Executor(
+            ToolRegistry(), policy=TEST_POLICY, embodiment=embodiment, cerebellum=cerebellum, entity_map=entity_map
+        )
         executor.generate_entity_tools(MagicMock(name="entity"))
         assert calls, "generate_entity_tools must route through generate_tools_for_entity"
         kwargs = calls[0]
@@ -581,7 +589,7 @@ class TestInteractiveAttributionGate:
 
         registry = ToolRegistry()
         registry.register(_Stub())
-        executor = build_executor(registry, pain_bus=None, permissions=None, pain_detector=None, nac=MagicMock())
+        executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY, pain_detector=None, nac=MagicMock())
         executor._tool_pain_bridge = MagicMock()
         return executor
 
@@ -598,6 +606,7 @@ class TestInteractiveAttributionGate:
         child = (
             "import json, sys\n"
             "from maxim.runtime.executor import Executor\n"
+            "from maxim.runtime.tool_policy import ToolPolicy\n"
             "from maxim.tools.base import Tool, ToolOutput\n"
             "from maxim.tools.registry import ToolRegistry\n"
             "class _Stub(Tool):\n"
@@ -608,7 +617,7 @@ class TestInteractiveAttributionGate:
             "        return ToolOutput(success=True, output='ran')\n"
             "registry = ToolRegistry()\n"
             "registry.register(_Stub())\n"
-            "out = Executor(registry).execute({'tool_name': 'stub_tool', 'params': {}})\n"
+            "out = Executor(registry, policy=ToolPolicy.unrestricted(reason='test')).execute({'tool_name': 'stub_tool', 'params': {}})\n"
             "print(json.dumps({'ok': out.success, 'loaded': 'maxim.simulation.sim_logger' in sys.modules}))\n"
         )
         env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path), "PYTHONPATH": str(src)}

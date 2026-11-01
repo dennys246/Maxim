@@ -15,12 +15,14 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
+from maxim.simulation.stdin_lines import OperatorLines, read_operator_lines
 from maxim.simulation.tty_stdin import read_post_sim_goal_raw, stdin_reader_raw
 from maxim.exceptions import StopStillPending
 from maxim.utils.cancellation import current_stop
@@ -481,6 +483,63 @@ def _restore_aut_from_session(
     return record
 
 
+def _register_narrator_sim_tools(
+    orch_registry: Any,
+    bridge: Any,
+    orchestrator_source: Any,
+    spawn_tool: Any,
+    stop_event: threading.Event,
+    llm_router: Any,
+    goal: str,
+    continuous: bool,
+    _aut_embodiment: Any,
+    _aut_entity_map: Any,
+    *,
+    min_turns: int,
+) -> None:
+    """The narrator's simulation tools, registered in roster order (moved out of ``start_simulation_mode``, #1259).
+    ``min_turns`` is the finish floor: 0 lets an observer end the session at any time."""
+    from maxim.simulation.tools import (
+        AnalyzeResultsTool,
+        CheckCompletionTool,
+        DamageComponentTool,
+        ExtendSimulationTool,
+        FinishSimulationTool,
+        InjectPainTool,
+        ObserveActionsTool,
+        OrchestratorActorTool,
+        SendMessageTool,
+        SetEntitySensorTool,
+        SimRespondTool,
+    )
+
+    orch_registry.register(SendMessageTool(bridge=bridge, embodiment=_aut_embodiment))
+    orch_registry.register(ObserveActionsTool(bridge=bridge))
+    orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
+    orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
+    orch_registry.register(InjectPainTool(bridge=bridge))
+    # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
+    # OrchestratorActorTool: scene entity affordances against the AUT —
+    # writes target_effect deltas through the SEM mechanics path.
+    # Only registered when embodiment is active (--embodiment flag).
+    if _aut_embodiment is not None:
+        orch_registry.register(OrchestratorActorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+        orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+        orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+    orch_registry.register(spawn_tool)
+    orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
+    orch_registry.register(
+        FinishSimulationTool(
+            bridge=bridge,
+            orchestrator_source=orchestrator_source,
+            spawn_tool=spawn_tool,
+            stop_event=stop_event,  # the narrator's finish ends the run (#1259)
+            min_turns=min_turns,
+        )
+    )
+    orch_registry.register(SimRespondTool())
+
+
 def _select_aut_prompt_handler(prompt_handler: Any, stop_event: Any) -> tuple[Any, Any]:
     """``(aut_handler, sim_handler)`` -- the handler the AUT's ``request_interaction`` tool asks, and the
     interactive SimPromptHandler the stdin reader must coordinate with (None unless one was built).
@@ -555,6 +614,58 @@ def _await_aut_session_end_before_new(aut_memory_hub: Any | None) -> None:
 
 
 _NEW_GOAL_SESSION_WAIT_S = 30.0
+
+
+def _aut_agent_config(*, sim_tmpdir: Any, entity_ref: str | None) -> Any:
+    """The sim AUT's ``AgentConfig`` (moved out of ``start_simulation_mode``, #1315 item 3), carrying its tool
+    policy: ``runtime/tool_policy.py::aut_tool_policy``."""
+    from maxim.runtime.agent_factory import AgentConfig
+    from maxim.runtime.tool_policy import aut_tool_policy
+
+    return AgentConfig(
+        agent_id="sim_aut",
+        role="pc",
+        persistence_dir=str(sim_tmpdir),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=entity_ref is not None,
+        with_fear_gate=False,
+        embodiment_ref=entity_ref,
+        policy=aut_tool_policy(),
+    )
+
+
+def _orchestrator_agent_config() -> Any:
+    """The sim narrator's ``AgentConfig`` (moved out of ``start_simulation_mode``, #1315 item 3), carrying its tool
+    policy: ``runtime/tool_policy.py::orchestrator_tool_policy`` (its tools drive the AUT, V12)."""
+    # with_pain_bridge=False: orch sim tools (send_message, observe_actions,
+    # etc.) never produce SEM embodiment pain. Bridge is still constructed
+    # for direct attribution (gated on nac), just not subscribed to pain_bus.
+    from maxim.runtime.agent_factory import AgentConfig
+    from maxim.runtime.tool_policy import orchestrator_tool_policy
+    from maxim.utils.paths import data_home as _data_home
+
+    return AgentConfig(
+        agent_id="sim_orchestrator",
+        role="npc",
+        persistence_dir=str(_data_home() / "orchestrator"),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=False,
+        with_fear_gate=False,
+        # Write-but-don't-read (review fold, Arch #2): shutdown() keeps
+        # persisting orch state for the future "Phase 3" cross-session
+        # orchestration work, but the orch must NOT restore it — reading
+        # an unaudited, ever-accumulating ~/.maxim/orchestrator home into
+        # every sim run would make the orchestrator/narrator a cross-run
+        # confound (the narrator-state-confound class), and ~/.maxim is
+        # shared across worktrees, so concurrent experiment sessions
+        # would cross-contaminate through it. Flip to True only as part
+        # of a deliberate, tuned Phase 3 (see the hippocampus NOTE at the
+        # orchestrator's run_agentic_loop call in start_simulation_mode).
+        load_persisted=False,
+        policy=orchestrator_tool_policy(),
+    )
 
 
 def _refuse_a_stop_then_reset_llm_cancellation() -> None:
@@ -700,21 +811,7 @@ def start_simulation_mode(
     from maxim.simulation.bridge import SimulationBridge
     from maxim.simulation.conversational_source import ConversationalSource
     from maxim.simulation.introspection import Observer
-    from maxim.simulation.tools import (
-        AnalyzeResultsTool,
-        CheckCompletionTool,
-        DamageComponentTool,
-        ExtendSimulationTool,
-        FinishSimulationTool,
-        InjectPainTool,
-        InspectAUTTool,
-        ObserveActionsTool,
-        OrchestratorActorTool,
-        SendMessageTool,
-        SetEntitySensorTool,
-        SimRespondTool,
-        SpawnSubSimulationTool,
-    )
+    from maxim.simulation.tools import DamageComponentTool, InspectAUTTool, SetEntitySensorTool, SpawnSubSimulationTool
 
     _refuse_a_stop_then_reset_llm_cancellation()
     start_time = time.time()
@@ -985,7 +1082,7 @@ def start_simulation_mode(
         aut_component_registry = ComponentRegistry()
         logger.info("AUT ComponentRegistry created for entity_ref=%r", entity_ref)
 
-    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.runtime.agent_factory import AgentFactory
 
     # pain_bus decision for executor subscription:
     # - entity_ref is None: with_pain_bridge=False → pain_bus not passed to
@@ -1005,16 +1102,7 @@ def start_simulation_mode(
         # what routes campaign episodes into the persistent agent's home.
         _aut_instance = _adopted.instance
     else:
-        _aut_config = AgentConfig(
-            agent_id="sim_aut",
-            role="pc",
-            persistence_dir=str(sim_tmpdir),
-            with_bio_stack=True,
-            with_executor=True,
-            with_pain_bridge=entity_ref is not None,
-            with_fear_gate=False,
-            embodiment_ref=entity_ref,
-        )
+        _aut_config = _aut_agent_config(sim_tmpdir=sim_tmpdir, entity_ref=entity_ref)
         _aut_factory = AgentFactory(
             component_registry=aut_component_registry,
             base_data_dir=sim_tmpdir,
@@ -1430,30 +1518,19 @@ def start_simulation_mode(
         sandbox_dirs=sandbox_dirs,
     )
     _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
-    orch_registry.register(SendMessageTool(bridge=bridge, embodiment=_aut_embodiment))
-    orch_registry.register(ObserveActionsTool(bridge=bridge))
-    orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
-    orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
-    orch_registry.register(InjectPainTool(bridge=bridge))
-    # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
-    # OrchestratorActorTool: scene entity affordances against the AUT —
-    # writes target_effect deltas through the SEM mechanics path.
-    # Only registered when embodiment is active (--embodiment flag).
-    if _aut_embodiment is not None:
-        orch_registry.register(OrchestratorActorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-        orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-        orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-    orch_registry.register(spawn_tool)
-    orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
-    orch_registry.register(
-        FinishSimulationTool(
-            bridge=bridge,
-            orchestrator_source=orchestrator_source,
-            spawn_tool=spawn_tool,
-            min_turns=0 if _is_observe_only else min_finish_turns,  # an observer may always end the session
-        )
+    _register_narrator_sim_tools(
+        orch_registry,
+        bridge,
+        orchestrator_source,
+        spawn_tool,
+        stop_event,
+        llm_router,
+        goal,
+        continuous,
+        _aut_embodiment,
+        _aut_entity_map,
+        min_turns=0 if _is_observe_only else min_finish_turns,
     )
-    orch_registry.register(SimRespondTool())
     aut_introspector = Observer(
         hippocampus=aut_hippocampus,
         nac=aut_nac,
@@ -1562,31 +1639,9 @@ def start_simulation_mode(
     # The orch gets its own isolated bio-stack with a separate NAc for
     # future adaptive orchestration. Persistence at ~/.maxim/orchestrator/
     # (not CWD-relative — agent longevity review found fragmentation risk).
-    # with_pain_bridge=False: orch sim tools (send_message, observe_actions,
-    # etc.) never produce SEM embodiment pain. Bridge is still constructed
-    # for direct attribution (gated on nac), just not subscribed to pain_bus.
     from maxim.utils.paths import data_home as _data_home
 
-    _orch_config = AgentConfig(
-        agent_id="sim_orchestrator",
-        role="npc",
-        persistence_dir=str(_data_home() / "orchestrator"),
-        with_bio_stack=True,
-        with_executor=True,
-        with_pain_bridge=False,
-        with_fear_gate=False,
-        # Write-but-don't-read (review fold, Arch #2): shutdown() keeps
-        # persisting orch state for the future "Phase 3" cross-session
-        # orchestration work, but the orch must NOT restore it — reading
-        # an unaudited, ever-accumulating ~/.maxim/orchestrator home into
-        # every sim run would make the orchestrator/narrator a cross-run
-        # confound (the narrator-state-confound class), and ~/.maxim is
-        # shared across worktrees, so concurrent experiment sessions
-        # would cross-contaminate through it. Flip to True only as part
-        # of a deliberate, tuned Phase 3 (see the hippocampus NOTE at the
-        # run_agentic_loop call below).
-        load_persisted=False,
-    )
+    _orch_config = _orchestrator_agent_config()
     _orch_factory = AgentFactory(base_data_dir=_data_home() / "orchestrator")
     _orch_instance = _orch_factory.create_full_agent(
         _orch_config,
@@ -2389,28 +2444,15 @@ def start_simulation_mode(
         return False
 
     def _stdin_reader_line() -> None:
-        """Fallback line-based stdin reader for non-TTY environments."""
-        while not stop_event.is_set():
-            # Mirror the raw reader's prompt handler check: if an agent
-            # tool is waiting for user input via SimPromptHandler, route
-            # the next line to deliver_response() instead of _process_line().
-            if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
-                try:
-                    line = input()
-                except (EOFError, KeyboardInterrupt):
-                    _stop_by_operator(stop_event, operator_stop)
-                    return
-                _sim_prompt_handler.deliver_response(line.strip())
-                continue
-            try:
-                line = input()
-            except EOFError:
-                return
-            except KeyboardInterrupt:
-                _stop_by_operator(stop_event, operator_stop)
-                break
-            if _process_line(line):
-                break
+        """Fallback line-based stdin reader for non-TTY environments; the run's stop ends it (#1541)."""
+        read_operator_lines(
+            lines=OperatorLines(sys.stdin, stop_event),
+            stop_event=stop_event,
+            operator_stop=operator_stop,
+            sim_prompt_handler=_sim_prompt_handler,
+            process_line=_process_line,
+            stop_by_operator=_stop_by_operator,
+        )
 
     _stdin_target = (
         functools.partial(
@@ -2553,6 +2595,7 @@ def start_simulation_mode(
     _tail = SimTail(
         is_interactive=_is_interactive,
         stop_event=stop_event,
+        stdin_thread=stdin_thread,
         bridge=bridge,
         orchestrator_source=orchestrator_source,
         aut_thread=aut_thread,

@@ -51,7 +51,11 @@ Top-level functions for common operations. All heavy imports are deferred.
 | `download_model(name)` | Download a local LLM model | `bool` |
 | `delete_model(name)` | Delete a downloaded model to free disk space | `bool` |
 
-`run(home_dir=...)` roots API-owned memory, data, and session files there.
+`run(home_dir=...)` roots API-owned memory, data, and session files there. Its path-taking file tools
+(`read_file`, `write_file`, `edit_file`, `glob`, `search_code`, the git tools) refuse any path outside
+`<home>/.maxim_workspace`: not the process working directory, not the home's own stores and config (#1342). `bash`
+and `execute_file` start in that workspace, but a shell command or the file's code can reach any absolute path; `run()`'s passive mode refuses
+both. Put the files a run should see in that workspace.
 Low-level runtime step snapshots still use CWD-relative `data/agents/`; complete
 `home_dir` ownership is tracked for 1.1.x as D15.
 

@@ -45,13 +45,21 @@ class TestToolErrorKind:
             "INVALID_INPUT": "invalid_input",
             "EXTERNAL_FAILURE": "external_failure",
             "VALIDATION": "validation",
+            # the dispatch gate's refusals (#1315 item 3, §1A.2)
+            "NOT_REGISTERED": "not_registered",
+            "INACTIVE_SCENE": "inactive_scene",
+            "POLICY_CEILING": "policy_ceiling",
+            "POLICY_PERMISSIONS": "policy_permissions",
+            "POLICY_PIN": "policy_pin",
+            "MODE": "mode",
+            "OFFLINE": "offline",
         }
         for name, value in expected.items():
             member = ToolErrorKind[name]
             assert member.value == value
 
     def test_member_count(self):
-        assert len(ToolErrorKind) == 7
+        assert len(ToolErrorKind) == 14
 
 
 class TestToolOutputErrorKind:

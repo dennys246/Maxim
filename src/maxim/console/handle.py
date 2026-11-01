@@ -165,9 +165,9 @@ class MaximHandle:
 
         # Hard tool allow/deny list from the operator config (``tools.allow``
         # / ``tools.deny``, env ``MAXIM_TOOLS_ALLOW`` / ``MAXIM_TOOLS_DENY``).
-        # Unconfigured → None → no gate, exactly the pre-1.1.3 console.
-        from maxim.agents.permissions import tool_permissions_from_settings
+        # Unconfigured → an empty deny list, ceiling ALL: the pre-1.1.3 console (#1315 item 3).
         from maxim.runtime.config_loader import resolve_setting
+        from maxim.runtime.tool_policy import policy_from_tools_settings
 
         tool_allow, _ = resolve_setting("tools.allow")
         tool_deny, _ = resolve_setting("tools.deny")
@@ -182,7 +182,7 @@ class MaximHandle:
             with_pain_bridge=body is not None,
             with_fear_gate=False,
             embodiment_ref=body,
-            permissions=tool_permissions_from_settings(tool_allow, tool_deny),
+            policy=policy_from_tools_settings(tool_allow, tool_deny),
         )
         factory = AgentFactory(component_registry=component_registry)
         # A ResponseOutput is what makes RespondTool/SpeakTool exist — without
@@ -455,7 +455,7 @@ class MaximHandle:
         # checked BEFORE autonomy's always-allowed shortcut — see
         # tests/unit/test_autonomy_forbid_precedence.py). A hard operator
         # allow-list is the separate `tools.allow` config, armed on the
-        # Executor (AgentConfig.permissions). Keep the supervision policy
+        # Executor (AgentConfig.policy). Keep the supervision policy
         # too: it becomes live if talk is ever run SUPERVISED, and the two agree.
         autonomy = talk_autonomy(self.instance.tool_registry)
 
@@ -588,8 +588,10 @@ class MaximHandle:
             # talk first; the next talk() lazily rebuilds it. required=True:
             # if it will not stop, fail the run rather than run both.
             self._stop_talk_loop(required=True)
-            # Headless surface: force non-interactive so the sim never grabs
-            # stdin (the console serves this from a FastAPI worker thread).
+            # Headless surface: force non-interactive so the sim takes no
+            # raw-mode TTY reader or post-sim prompt (the console serves this
+            # from a FastAPI worker thread). Its line reader still reads the
+            # server's stdin, and stops when the run ends (#1541).
             # Prior mode is restored on exit — a library user embedding the
             # handle next to interactive CLI usage keeps their setting.
             from maxim.simulation.sim_logger import (

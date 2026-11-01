@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
 import time
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput, current_policy
 from maxim.tools.registry import EffectAdmission
 from maxim.utils.logging import log_swallowed_exception
 
@@ -1435,6 +1436,15 @@ class SpawnSubSimulationTool(Tool):
         goal = kwargs.get("goal", "")
         if not goal:
             return ToolOutput(success=False, error="goal is required")
+        # The child is built from the DISPATCHING executor's policy, never wider (#1315 item 3, §3). Read here,
+        # synchronously: the sub-AUT's thread would not inherit the context. No dispatch, no policy: refuse.
+        parent_policy = current_policy()
+        if parent_policy is None:
+            return ToolOutput(
+                success=False,
+                error="spawn_sub_simulation runs only through an executor's dispatch: there is no policy to build "
+                "the child from",
+            )
 
         # Optional approach framing for the sub-goal message
         approach = kwargs.get("approach", None)
@@ -1462,7 +1472,7 @@ class SpawnSubSimulationTool(Tool):
 
         start = time.time()
         try:
-            sub_report = self._run_sub_simulation(goal)
+            sub_report = self._run_sub_simulation(goal, parent_policy.narrowed())
         except Exception as e:
             sub_report = {
                 "goal": goal,
@@ -1492,8 +1502,8 @@ class SpawnSubSimulationTool(Tool):
             sub_report["approach"] = approach
         return ToolOutput(success=True, output=sub_report)
 
-    def _run_sub_simulation(self, goal: str) -> dict[str, Any]:
-        """Bootstrap a fresh AUT and run one turn."""
+    def _run_sub_simulation(self, goal: str, policy: Any) -> dict[str, Any]:
+        """Bootstrap a fresh AUT and run one turn, its executor under ``policy`` (the dispatcher's, narrowed)."""
         import threading
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
         from maxim.agents.llm_worker import LLMWorker
@@ -1558,7 +1568,7 @@ class SpawnSubSimulationTool(Tool):
         # Sub-AUT executor is sandboxed for tool-internal use; explicit
         # opt-out from bio-learning. See
         # docs/plans/archive/executor_bootstrap_unification.md audit row #6.
-        sub_executor = build_executor(sub_registry, pain_bus=None, permissions=None)
+        sub_executor = build_executor(sub_registry, pain_bus=None, policy=policy)
 
         # Wrap sub-AUT executor with FearGatedExecutor
         try:
@@ -1634,8 +1644,17 @@ class FinishSimulationTool(Tool):
 
     Call this when the simulation goal is achieved, a stalemate is
     detected, OR when you determine the run has failed and you want
-    to abort early. Triggers clean shutdown: AUT grace period,
-    orchestrator exit. A report is generated in all cases.
+    to abort early. Triggers clean shutdown: both loops stop and
+    teardown runs. A report is generated in all cases.
+
+    The finish is a real stop (#1259): the tool sets the run's ``stop_event``, the one a campaign runner's finish sets
+    (``orchestrator._finish_runner``), so the narrator loop exits and teardown starts. The AUT's loop shares the event,
+    so it stops too, at its next stop check: an AUT action it has not yet executed may never run (and then earns no
+    credit), as after a campaign runner's finish; teardown then joins the AUT thread (5 s, or 300 s for an adopted agent). The stop is set in a
+    ``finally``, so a signal that raises before it cannot leave the run waiting. Before that it signalled only the
+    bridge and the narrator's percept source, and the run waited out the source's 180 s exhaustion grace while the stall
+    detector nudged the finished narrator. ``stop_event`` is required, so a construction that forgets it is a
+    ``TypeError``, not a run that never stops.
     """
 
     # Structured outcome labels so downstream tooling can aggregate
@@ -1679,10 +1698,17 @@ class FinishSimulationTool(Tool):
     }
 
     def __init__(
-        self, bridge: Any, orchestrator_source: Any = None, spawn_tool: Any = None, *, min_turns: int = 0
+        self,
+        bridge: Any,
+        orchestrator_source: Any = None,
+        spawn_tool: Any = None,
+        *,
+        stop_event: threading.Event,
+        min_turns: int = 0,
     ) -> None:
         super().__init__()
         self._bridge = bridge
+        self._stop_event = stop_event
         self._orchestrator_source = orchestrator_source
         self._spawn_tool = spawn_tool
         # The operator's explicit turn cap (--sim-max-turns): a run that asked for N turns is not ended early by
@@ -1724,16 +1750,22 @@ class FinishSimulationTool(Tool):
                 }
             )
 
-        # Tear down any active sub-AUT
-        if self._spawn_tool:
-            self._spawn_tool._teardown_sub()
+        try:
+            # Tear down any active sub-AUT
+            if self._spawn_tool:
+                self._spawn_tool._teardown_sub()
 
-        # Signal AUT to stop (grace period handles cleanup)
-        self._bridge.finish()
+            # Signal AUT to stop
+            self._bridge.finish()
 
-        # Signal orchestrator to stop
-        if self._orchestrator_source is not None:
-            self._orchestrator_source.finish()
+            # Signal orchestrator to stop
+            if self._orchestrator_source is not None:
+                self._orchestrator_source.finish()
+        finally:
+            # ...and end the run, even if a signal above raised: the narrator and AUT loops stop on this (#1259). The
+            # finish_context above outranks the stop when the report resolves its finish reason, so the run reports
+            # the narrator's status, not a cancel.
+            self._stop_event.set()
 
         return ToolOutput(
             success=True,

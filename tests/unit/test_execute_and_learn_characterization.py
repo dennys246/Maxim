@@ -46,6 +46,7 @@ def _expected(**overrides: Any) -> dict[str, Any]:
         # #1200 Stage 2: the signature the bridge booked a failure under, read off the output; the driver's stub
         # executor stamps none.
         "bridge_booked": None,
+        "refused": None,  # #1315 item 3: the tool ran, no gate refused it
         "cluster_id": CLUSTERS["interoception"],
         "clusters": CLUSTERS,
         "drive_credit_withheld": False,

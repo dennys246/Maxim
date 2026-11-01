@@ -162,6 +162,7 @@ def _agent(tmp_path: Path) -> Any:
         persistence_dir=str(tmp_path / "ledger_agent"),
         with_bio_stack=True,
         with_executor=False,
+        policy=None,
         with_pain_bridge=False,
         with_fear_gate=False,
     )

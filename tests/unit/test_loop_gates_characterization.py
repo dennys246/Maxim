@@ -31,6 +31,7 @@ from typing import Any, Callable
 import pytest
 
 from maxim.runtime.sim_adapter import NullSimulationAdapter
+from tests.policy_helpers import TEST_POLICY
 
 LOGGER = "maxim.runtime.agent_loop"
 IDLE = 0.0123  # a distinctive idle_sleep_s: the §0 pause and §0.6 idle sleeps are exactly this
@@ -207,7 +208,7 @@ def _run(
     monkeypatch.setattr(time, "sleep", _sleep)
 
     if executor is None:
-        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+        executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     if body is not None:
         executor.embodiment = body
     state = RuntimeState()
@@ -373,7 +374,7 @@ def test_the_operators_grant_wins_for_the_default_network(monkeypatch, tmp_path)
     from maxim.runtime.bootstrap import build_executor
     from maxim.tools.registry import ToolRegistry
 
-    executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     executor.set_operational_override("observe")
     run = _run(monkeypatch, tmp_path, steps=2, executor=executor)
     assert [e for e in run.ev if e[0] == "dn"] == [("dn", "observe"), ("dn", "observe")]
@@ -394,7 +395,7 @@ def _granted(grant: str | None) -> Any:
     from maxim.runtime.bootstrap import build_executor
     from maxim.tools.registry import ToolRegistry
 
-    executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     if grant is not None:
         executor.set_operational_override(grant)
     return executor

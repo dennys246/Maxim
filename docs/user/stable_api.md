@@ -14,7 +14,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | Symbol | Stable | Notes |
 |---|---|---|
 | `maxim.configure(...)` | ✅ | Logging + display settings. Keyword-only. |
-| `maxim.run(...)` | ✅ | Blocking agentic-cycle entry point. `goal` seeds canonical ingress but does not auto-stop the loop; `goal=None` installs no stdin reader. One call may be active per process. `robot` wakes the selected controller for direct motion and requires `headless=False`; full capture/vision/DoA remain on the CLI runtime. |
+| `maxim.run(...)` | ✅ | Blocking agentic-cycle entry point. `goal` seeds canonical ingress but does not auto-stop the loop; `goal=None` installs no stdin reader. One call may be active per process. `robot` wakes the selected controller for direct motion and requires `headless=False`; full capture/vision/DoA remain on the CLI runtime. Its path-taking file tools (`read_file`, `write_file`, `edit_file`, `glob`, `search_code`, the git tools) refuse any path outside the run's workspace, `<home>/.maxim_workspace` (`home_dir`, default `~/.maxim`): not the process working directory, not the home's own stores and config (#1342). `bash` and `execute_file` are confined only by their working directory (a shell command, or the file's code, can reach any absolute path), and `maxim.run`'s passive mode refuses both. |
 | `maxim.imagine(...) -> Session` | ✅ | Generative simulation. Returns persistent Session. |
 | `maxim.connect(robot_type, ...) -> RobotController` | ✅ | Robot registry connection. |
 | `maxim.diagnose(...) -> DiagnosticReport` | ✅ | Local + peer diagnostics. |
@@ -205,7 +205,7 @@ async def handler():
 This pattern is **stable in 1.0** for every public verb. Each verb satisfies three constraints:
 
 - **No internal `asyncio` usage that needs a running event loop.** Verbs are pure-sync internally; they don't `await` anything.
-- **No required stdin input.** Verbs don't call `input()` on the calling thread. (`imagine()` and `campaign()` spawn a daemon stdin-reader thread for slash-command support — that thread blocks on `input()` but handles `EOFError` gracefully and is not load-bearing for the verb's success.)
+- **No required stdin input.** Verbs don't call `input()` on the calling thread. (`imagine()` and `campaign()` spawn a daemon stdin-reader thread for slash-command support. It handles end of input gracefully, is not load-bearing for the verb's success, and stops when the run ends (#1541). On a selectable stdin (a terminal, a pipe or a file, on POSIX) it reads the file descriptor directly, so on a piped or file stdin, lines Python had already buffered before the run are not seen by the run (they stay for your own `input()`), and lines the reader read ahead past the last one it processed are lost to your `input()` afterwards; a terminal is unaffected.)
 - **No CWD assumption** — with three documented exceptions:
   - `maxim.benchmark(suite=...)` accepts a bare suite name like `"cognitive"` and looks for `./scenarios/benchmarks/cognitive.yaml` *relative to the current working directory*. This is a developer-checkout convenience. **From async / pip-install / arbitrary-CWD callers, pass an absolute path** — e.g. `suite="/abs/path/to/cognitive.yaml"`. The verb raises `ConfigurationError` (with the active CWD in the message) when the bare-name lookup fails so the failure mode is obvious.
   - `maxim.imagine(scenario=...)` accepts a YAML path; relative paths resolve against the CWD via `pathlib.Path(scenario)`. Same guidance — pass an absolute path from async or arbitrary-CWD contexts.

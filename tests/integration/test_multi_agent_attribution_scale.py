@@ -163,6 +163,7 @@ class TestRecordOutcomeScaleAttribution:
             for i in range(_N_PER_AGENT):
                 record_outcome(
                     bridge_booked=None,
+                    refused=None,
                     agent_id=agent_id,
                     tool_name=f"{agent_id}_tool_{i % 50}",
                     success=(i % 3 != 0),

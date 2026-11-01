@@ -23,6 +23,7 @@ def _agent(home: Path) -> Any:
         persistence_dir=str(home / "prune_agent"),
         with_bio_stack=True,
         with_executor=False,
+        policy=None,
         with_pain_bridge=False,
         with_fear_gate=False,
     )

@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from maxim.runtime.loop_setup import LoopRun, _novelty_gate
+from tests.policy_helpers import TEST_POLICY
 
 
 def test_a_novel_thought_is_shown_and_a_repeat_is_not():
@@ -81,7 +82,7 @@ def _build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **overrides: Any) ->
         state=RuntimeState(),
         memory=None,
         decision_engine=None,
-        executor=build_executor(ToolRegistry(), pain_bus=None, permissions=None),
+        executor=build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY),
         autonomy_controller=None,
         llm_worker=None,
         default_network=None,
@@ -579,7 +580,7 @@ def test_the_run_carries_its_registrys_tool_descriptions(monkeypatch, tmp_path):
     from maxim.simulation.tools import NARRATOR_TOOL_DESCRIPTIONS, SimToolRegistry
 
     assert dict(_build(monkeypatch, tmp_path).tool_overlay) == {}  # a plain ToolRegistry: the builtins only
-    narrator = build_executor(SimToolRegistry(), pain_bus=None, permissions=None)  # type: ignore[arg-type]
+    narrator = build_executor(SimToolRegistry(), pain_bus=None, policy=TEST_POLICY)  # type: ignore[arg-type]
     assert _build(monkeypatch, tmp_path, executor=narrator).tool_overlay is NARRATOR_TOOL_DESCRIPTIONS
 
 
@@ -593,7 +594,7 @@ def test_a_registry_without_tool_descriptions_fails_the_run_at_setup(monkeypatch
     from maxim.runtime.bootstrap import build_executor
     from maxim.tools.registry import ToolRegistry
 
-    executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+    executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
     executor.registry = registry
     executed: list[Any] = []
     monkeypatch.setattr(executor, "execute", lambda *a, **k: executed.append(a))

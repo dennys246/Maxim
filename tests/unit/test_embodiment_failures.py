@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 from maxim.embodiment.body import Embodiment
 from maxim.embodiment.sem import Entity, FailureMode, FailureTrigger
+from tests.policy_helpers import TEST_POLICY
 
 SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "scenarios" / "embodiment"
 
@@ -667,7 +668,7 @@ class TestExecutorEmbodimentAttributionWiring:
         bridge.record_tool_embodiment_failure = MagicMock(return_value=0.5)
         bridge.record_tool_complete = MagicMock()
 
-        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        exe = Executor(tool_registry=registry, policy=TEST_POLICY, tool_pain_bridge=bridge)
         result = exe.execute({"tool_name": "rusty_sword_slash", "params": {}})
 
         assert result.success is True  # The TOOL succeeded; the entity failed.
@@ -695,7 +696,7 @@ class TestExecutorEmbodimentAttributionWiring:
         bridge.record_tool_complete = MagicMock(return_value=0.0)
         bridge.record_tool_embodiment_failure = MagicMock()
 
-        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        exe = Executor(tool_registry=registry, policy=TEST_POLICY, tool_pain_bridge=bridge)
         result = exe.execute({"tool_name": "plain_search", "params": {}})
 
         assert result.success is True
@@ -715,7 +716,7 @@ class TestExecutorEmbodimentAttributionWiring:
         bridge.record_tool_complete = MagicMock(return_value=0.0)
         bridge.record_tool_embodiment_failure = MagicMock()
 
-        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        exe = Executor(tool_registry=registry, policy=TEST_POLICY, tool_pain_bridge=bridge)
         exe.execute({"tool_name": "rusty_sword_slash", "params": {}})
 
         bridge.record_tool_complete.assert_called_once()
@@ -815,7 +816,7 @@ class TestNeutralToolCompletion:
         registry.register(self._tool(side_effects))
         bridge = MagicMock()
         bridge.record_tool_complete = MagicMock(return_value=0.0)
-        exe = Executor(tool_registry=registry, tool_pain_bridge=bridge)
+        exe = Executor(tool_registry=registry, policy=TEST_POLICY, tool_pain_bridge=bridge)
         exe.execute({"tool_name": "reachy_turn_left", "params": {}})
         return bridge
 

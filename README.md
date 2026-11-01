@@ -199,6 +199,7 @@ state = maxim.observe("memory")                         # inspect a bio-system
 report = maxim.diagnose()                               # the same checks as `maxim doctor`
 
 maxim.run(model="mistral-7b", goal="inspect the workspace")   # needs a configured LLM backend
+# Its path-taking file tools reach only <home>/.maxim_workspace (home_dir, default ~/.maxim), not your working directory.
 
 # Controller-backed motion on a robot (robot and headless=True are contradictory)
 maxim.run(model="mistral-7b", goal="turn your head 20 degrees left", robot="reachy_mini", headless=False)
