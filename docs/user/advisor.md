@@ -57,7 +57,8 @@ nothing in the process can lower it again. The observer reads no Maxim config fi
 `MAXIM_*` settings only `MAXIM_OFFLINE`, the latch's own.
 
 The model is hashed once at `open()`, before it loads, and the report's `provenance.model_sha256` and banner name that
-hash. If the file is replaced while it loads, `open()` refuses.
+hash. If the file at that path has changed by the time the load finishes, `open()` refuses. llama.cpp loads by path,
+so a file swapped and swapped back during the load is not caught: keep the model where only you can write it.
 
 `session.limits` reads back the values the session actually runs with: `n_ctx`, `max_prompt_tokens`,
 `completion_tokens` and `n_gpu_layers`.

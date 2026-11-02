@@ -267,7 +267,10 @@ def completion_schema(max_calls: int) -> dict[str, Any]:
     text = {"type": "string", "maxLength": MAX_TEXT_CHARS}
     call = {
         "type": "object",
-        "properties": {"name": {"type": "string", "maxLength": MAX_CALL_NAME_CHARS}, "arguments": {"type": "object"}},
+        "properties": {
+            "name": {"type": "string", "minLength": 1, "maxLength": MAX_CALL_NAME_CHARS},
+            "arguments": {"type": "object"},
+        },
         "required": ["name", "arguments"],
         "additionalProperties": False,
     }
@@ -310,8 +313,8 @@ def _parse_completion(text: str, *, max_calls: int) -> dict[str, Any]:
     for call in calls:
         if not isinstance(call, dict) or set(call) != _CALL_KEYS:
             raise _SchemaInvalid(f"a call is not exactly {{name, arguments}}: {call!r}"[:200])
-        if not isinstance(call["name"], str) or len(call["name"]) > MAX_CALL_NAME_CHARS:
-            raise _SchemaInvalid("a call's name is not a short string")
+        if not isinstance(call["name"], str) or not 1 <= len(call["name"]) <= MAX_CALL_NAME_CHARS:
+            raise _SchemaInvalid("a call's name is not a non-empty short string")
         if not isinstance(call["arguments"], dict):
             raise _SchemaInvalid("a call's arguments are not an object")
     return obj
@@ -420,6 +423,7 @@ class AdvisorSession:
         self._stop_flag = False
         self._stop_deadline: float | None = None
         self._stop_reason = ""
+        self._turn_stop_reason: str | None = None
         self._closed = False
         self._in_turn = False
         self._released = False
@@ -446,7 +450,15 @@ class AdvisorSession:
         self._stop_flag = True
 
     def _stop_requested(self, per_call: Any) -> bool:
-        return self._stop_flag or (per_call is not None and bool(per_call.is_set()))
+        """Whether to stop now; the first stop seen in a turn is recorded as that turn's ``stop_reason``, so a later
+        ``close()`` cannot relabel a per-call stop (delta review N5)."""
+        if self._stop_flag:
+            self._turn_stop_reason = self._turn_stop_reason or self._stop_reason
+            return True
+        if per_call is not None and bool(per_call.is_set()):
+            self._turn_stop_reason = self._turn_stop_reason or "per_call"
+            return True
+        return False
 
     # ── one turn ──
 
@@ -476,9 +488,11 @@ class AdvisorSession:
             finally:
                 with self._state_lock:
                     self._in_turn = False
-                    if self._closed:  # close() ran during this turn and handed the release over
-                        self._release(raise_errors=False)
-                    self._turn_done.set()
+                    try:
+                        if self._closed:  # close() ran during this turn and handed the release over
+                            self._release(raise_errors=False)
+                    finally:
+                        self._turn_done.set()
 
     def _refuse_if_stopped(self) -> None:
         if self._closed or self._stop_flag:
@@ -486,6 +500,7 @@ class AdvisorSession:
 
     def _turn(self, batch: list[dict[str, Any]], *, in_play: bool, per_call_stop: Any) -> dict[str, Any]:
         report_id = str(uuid.uuid4())
+        self._turn_stop_reason = None
         cursor_in = self._cursor if in_play else None
         inputs = [
             {
@@ -510,7 +525,7 @@ class AdvisorSession:
         report = self._report_shell(report_id, cursor_in, len(batch), inputs, len(prompt.ids))
         report.update(self._judge(prompt, report_id, per_call_stop))
         if report["status"] == "abandoned" and report["reason"] == "stopped":
-            report["stop_reason"] = self._stop_reason if self._stop_flag else "per_call"
+            report["stop_reason"] = self._turn_stop_reason
         cursor_out = batch[-1]["cursor"] if report["status"] == "ok" and in_play else None
         if cursor_out is not None:
             report["covered"]["cursor_out"] = cursor_out
@@ -614,7 +629,8 @@ class AdvisorSession:
                 seq = self._log.append({"_record_kind": "proposal", "report_id": report_id, "arguments": out.output})
                 proposals.append({"seq": seq, "summary": out.output["summary"], "target": out.output.get("target")})
                 continue
-            record = _refusal_record(call["name"], out, ran=effect_names(effect_of(self._propose)))
+            ran = effect_names(effect_of(self._propose)) if call["name"] == self._propose.name else None
+            record = _refusal_record(call["name"], out, ran=ran)
             seq = self._log.append({"_record_kind": "refusal", "report_id": report_id, **record})
             refusals.append({"seq": seq, **record})
         return proposals, refusals
@@ -659,23 +675,25 @@ class AdvisorSession:
                     self._backend = None
                     if callable(release_model):
                         release_model()
-        except (OSError, AdvisorLogBroken) as e:
+        except Exception as e:  # noqa: BLE001 - from the turn's exit no caller is left; the turn's report stands
             if raise_errors:
                 raise
-            logger.warning("advisor session %s: releasing after the last turn failed: %s", self.session_id, e)
+            logger.warning("advisor session %s: releasing after the last turn failed: %r", self.session_id, e)
 
 
 class _Abandoned(Exception):
     """A stop landed between dispatches: the rest are skipped and the turn is abandoned."""
 
 
-def _refusal_record(name: str, out: ToolOutput, *, ran: list[str]) -> dict[str, Any]:
+def _refusal_record(name: str, out: ToolOutput, *, ran: list[str] | None) -> dict[str, Any]:
     """A refused (or failed) call as the report and the log record it, from the executor's own output.
 
     A gate refusal carries its layer and the named tool's effect (``"unknown"`` when no registry holds the name).
-    A call with no layer resolved, ran and failed its own input check: the pinned tool is the only one that can
-    run, so its layer is ``"tool"``, its effect is ``ran`` and its kind defaults to ``invalid_input`` (§1A.8;
-    review W3, owner decision 2026-11-02).
+    A call with no layer that names the pinned tool resolved, ran and failed its own input check: its layer is
+    ``"tool"``, its effect is ``ran`` (the pinned tool's) and its kind defaults to ``invalid_input`` (§1A.8; review
+    W3, owner decision 2026-11-02). Any other call with no layer never ran (the executor refused the action before
+    any lookup; the schema already refuses an empty name, delta review SF1), so its effect is ``"unknown"``, never
+    the pinned tool's, and it is logged as unexpected.
     """
     meta = out.metadata or {}
     layer = meta.get("refusal_layer")
@@ -686,7 +704,9 @@ def _refusal_record(name: str, out: ToolOutput, *, ran: list[str]) -> dict[str, 
     else:
         layer = "tool"
         kind = (out.error_kind or ToolErrorKind.INVALID_INPUT).value
-        effect = list(ran)
+        if ran is None:
+            logger.warning("advisor: call %r failed outside the gate without running: %s", name, out.error)
+        effect = list(ran) if ran is not None else UNKNOWN_EFFECT
     return {
         "name": str(name)[:MAX_CALL_NAME_CHARS],
         "error_kind": str(kind),
@@ -792,13 +812,22 @@ def open_session(
             model_sha256=model_sha256,
         )
     except BaseException:
-        try:
-            if log is not None:
-                log.close()
-        finally:
-            try:
-                dirs.close()
-            finally:
-                if backend is not None and callable(getattr(backend, "close", None)):
-                    backend.close()
+        _release_partial(log, dirs, backend)
         raise
+
+
+def _release_partial(log: AdvisorLog | None, dirs: _refusals.CheckedDirs, backend: Any) -> None:
+    """Release what a failed ``open()`` built. Each step runs; a step's failure is logged, so the caller re-raises
+    the error that failed ``open()``, never a cleanup error (delta review N4)."""
+    steps = [
+        ("the log", log.close if log is not None else None),
+        ("the directories", dirs.close),
+        ("the model", getattr(backend, "close", None) if backend is not None else None),
+    ]
+    for what, step in steps:
+        if not callable(step):
+            continue
+        try:
+            step()
+        except Exception as e:  # noqa: BLE001 - open()'s own error is the one raised; this one is logged
+            logger.warning("advisor open(): releasing %s after a failed open failed: %r", what, e)

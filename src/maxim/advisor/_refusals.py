@@ -60,7 +60,7 @@ def pin_model(path: str) -> tuple[tuple[int, int, int, int], str]:
     identity (device, inode, size, mtime) and its sha256, so :func:`check_model_unchanged` can refuse a file
     swapped before the load (review S1/S2/A3). A read failure is a refusal, never a raw ``OSError``."""
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK)  # a FIFO swapped in cannot block
     except OSError as e:
         raise AdvisorCompositionError(f"the model could not be opened: {path!r} ({e.strerror})") from e
     try:

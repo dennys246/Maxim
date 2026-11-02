@@ -664,6 +664,11 @@ def _imports_closed_local(tree: Any) -> bool:
                 return True
         if isinstance(node, ast.Import) and any(a.name.endswith("closed_local") for a in node.names):
             return True
+        # importlib.import_module("...closed_local") and `language.closed_local` attribute access
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.endswith("closed_local"):
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == "closed_local":
+            return True
     return False
 
 
@@ -697,3 +702,154 @@ def test_only_open_session_builds_the_dispatch_stack() -> None:
                 ):
                     callers.append((path.name, fn.name))
     assert callers == [("_session.py", "open_session")]
+
+
+# ── delta round 1 folds ──────────────────────────────────────────────────
+
+
+def test_an_empty_call_name_is_schema_invalid_and_logs_nothing(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace
+) -> None:
+    """SF1: an empty name never reaches the executor, so it cannot be recorded as the pinned tool having run."""
+    assert _session.completion_schema(4)["properties"]["calls"]["items"]["properties"]["name"]["minLength"] == 1
+    session = _open(monkeypatch, dirs, _Backend(dict(GOOD, calls=[{"name": "", "arguments": {}}])))
+    try:
+        report = session.ingest([EVENT])
+    finally:
+        session.close()
+    assert report["status"] == "error" and report["reason"].startswith("schema_invalid")
+    assert read_log(dirs.reports / f"advisor_log_{report['session_id']}.jsonl")["last_seq"] == 0
+
+
+def test_a_no_layer_failure_that_is_not_the_pinned_tool_claims_no_effect() -> None:
+    from maxim.tools.base import ToolOutput
+
+    out = ToolOutput(success=False, output=None, error="Invalid action")
+    row = _session._refusal_record("other", out, ran=None)
+    assert (row["layer"], row["effect"], row["error_kind"]) == ("tool", "unknown", "invalid_input")
+
+
+class _BadCloseBackend(_BlockingBackend):
+    def close(self) -> None:
+        self.closed += 1
+        raise RuntimeError("llama close failed")
+
+
+def test_a_release_error_after_a_handed_off_turn_is_logged_not_raised(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Delta N1: the turn's report stands and close() is signalled even when the model's release raises."""
+    backend = _BadCloseBackend()
+    session = _open(monkeypatch, dirs, backend)
+    result: dict[str, Any] = {}
+    worker = threading.Thread(target=lambda: result.update(report=session.ingest([EVENT])))
+    worker.start()
+    assert backend.entered.wait(10)
+    session.close()
+    backend.release.set()
+    worker.join(10)
+    assert result["report"]["status"] == "abandoned" and backend.closed == 1
+    assert session._turn_done.is_set() and "releasing after the last turn failed" in caplog.text
+
+
+def test_a_failed_open_raises_its_own_error_and_logs_a_failed_cleanup(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Delta N4: a cleanup step that raises is logged; the error that failed open() is the one raised."""
+    backend = _BadCloseBackend()
+
+    def no_log(*_a: Any, **_k: Any) -> Any:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(_session.AdvisorLog, "create", no_log)
+    with pytest.raises(OSError, match="No space"):
+        _open(monkeypatch, dirs, backend)
+    assert backend.closed == 1 and "releasing the model after a failed open failed" in caplog.text
+
+
+def test_a_per_call_stop_keeps_its_label_when_close_follows(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace
+) -> None:
+    """Delta N5: the first stop a turn sees names it. Here the per-call stop is seen mid-sampling, then close() lands
+    before the turn labels its report: the label stays ``per_call``."""
+    flag = threading.Event()
+    seen = threading.Event()
+    release = threading.Event()
+    backend = _Backend()
+
+    def complete(*_a: Any, **kw: Any) -> Any:
+        stopped = bool(kw["should_stop"]())
+        seen.set()
+        assert release.wait(10)
+        return SimpleNamespace(text="", deadline_hit=False, stopped=stopped, finish_reason="stop")
+
+    backend.complete_tokens = complete  # type: ignore[method-assign]
+    session = _open(monkeypatch, dirs, backend)
+    result: dict[str, Any] = {}
+    flag.set()
+    worker = threading.Thread(target=lambda: result.update(report=session.ingest([EVENT], stop=flag)))
+    worker.start()
+    assert seen.wait(10)
+    session.close()  # sets the session's stop while the turn still runs; hands the release to the turn
+    release.set()
+    worker.join(10)
+    assert result["report"]["stop_reason"] == "per_call" and session._released
+
+
+def test_a_dispatched_no_layer_failure_names_only_the_pinned_tool_s_effect(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace
+) -> None:
+    """SF1, through ``_dispatch``: a no-layer failure for any name but the pinned tool's never claims its effect."""
+    from maxim.tools.base import ToolOutput
+
+    calls = [{"name": "other", "arguments": {}}, {"name": "propose_action", "arguments": {"summary": ""}}]
+    session = _open(monkeypatch, dirs, _Backend(dict(GOOD, calls=calls)))
+    real = session._executor.execute
+
+    def execute(action: Any) -> Any:
+        if action["tool_name"] == "other":  # as the executor refuses an action before any lookup
+            return ToolOutput(success=False, output=None, error="Invalid action")
+        return real(action)
+
+    monkeypatch.setattr(session._executor, "execute", execute)
+    try:
+        report = session.ingest([EVENT])
+    finally:
+        session.close()
+    assert [(r["name"], r["effect"]) for r in report["refusals"]] == [
+        ("other", "unknown"),
+        ("propose_action", ["READ"]),
+    ]
+
+
+class _Interrupt(BaseException):
+    pass
+
+
+class _InterruptingCloseBackend(_BlockingBackend):
+    def close(self) -> None:
+        self.closed += 1
+        raise _Interrupt
+
+
+def test_close_is_signalled_even_when_the_handed_off_release_is_interrupted(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace
+) -> None:
+    """Delta N1: ``_turn_done`` is set in its own ``finally``, so not even a BaseException leaves close() waiting."""
+    backend = _InterruptingCloseBackend()
+    session = _open(monkeypatch, dirs, backend)
+    raised: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            session.ingest([EVENT])
+        except _Interrupt as e:
+            raised.append(e)
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    assert backend.entered.wait(10)
+    session.close()
+    backend.release.set()
+    worker.join(10)
+    assert raised and session._turn_done.is_set()

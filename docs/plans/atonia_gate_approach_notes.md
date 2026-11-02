@@ -949,7 +949,7 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 >   up"). `maxim/models/__init__.py` and `maxim/models/language/__init__.py` import eagerly, so importing
 >   `closed_local` loads `router`, `cost_tracker`, `config`, `cloud_dispatch` and `maxim.models.download`; nothing in
 >   them runs, and the env read-set and no-effect gates pass. Making those inits lazy, then forbidding the modules
->   in the closure gate, is the follow-up issue.
+>   in the closure gate, is the follow-up issue, #1569.
 > - **A root-cause fix in step 0b:** `_offline.engage()` read the five keys it writes (to restore them for tests),
 >   which the env read-set gate refuses. It now writes them without reading; `_reset_for_tests` removes them, and
 >   `tests/conftest.py::_reset_offline_latch` restores the pre-test values, as it already did.
@@ -962,6 +962,12 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 >   `scripts/suite_at_commit.sh` run before the suite (review A1/W4: a fresh tree lacks the gitignored files).
 > - The boundary's importers are pinned by AST, over `src/` and `scripts/` and every import form: only
 >   `advisor/_session.py` imports `closed_local`, and only `open_session` calls `_build_dispatch_stack`.
+> - Delta round 1 (Executor + Wire, Architecture): Architecture STOP; Executor + Wire found SF1, folded: an empty
+>   call name is schema-invalid (`minLength: 1` in the grammar, re-checked in the parse), and only a failure that
+>   names the pinned tool is recorded with its effect; any other no-layer failure is `"unknown"` and logged. Its
+>   NITs are folded too: the turn's exit always signals `close()` and logs any release error, `open()`'s cleanup logs
+>   a failed step and re-raises the original error, the model opens `O_NONBLOCK`, and `stop_reason` is the stop
+>   that fired first in the turn.
 > - Not folded (review NITs, recorded): the prompt cap is checked after the eager load (N3); the executor's
 >   attempted/hallucinated lists grow for a long-lived session (N6); `check_model` and `closed_local` each check
 >   for a regular file (each module refuses on its own).
