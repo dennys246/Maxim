@@ -8,6 +8,7 @@ allows exactly this function's iteration and no other (``test_advisor_gate.py::E
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from dataclasses import dataclass
@@ -45,6 +46,48 @@ def check_model(model: str | os.PathLike[str]) -> str:
     if not stat.S_ISREG(st.st_mode):
         raise AdvisorCompositionError(f"the model is not a regular file: {path!r}")
     return path
+
+
+_HASH_CHUNK = 1 << 20
+
+
+def _identity(st: os.stat_result) -> tuple[int, int, int, int]:
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def pin_model(path: str) -> tuple[tuple[int, int, int, int], str]:
+    """Open ``path`` once, refuse it unless it is a regular file, and hash it from that fd. Returns the file's
+    identity (device, inode, size, mtime) and its sha256, so :func:`check_model_unchanged` can refuse a file
+    swapped before the load (review S1/S2/A3). A read failure is a refusal, never a raw ``OSError``."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    except OSError as e:
+        raise AdvisorCompositionError(f"the model could not be opened: {path!r} ({e.strerror})") from e
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise AdvisorCompositionError(f"the model is not a regular file: {path!r}")
+        digest = hashlib.sha256()
+        offset = 0
+        while chunk := os.pread(fd, _HASH_CHUNK, offset):
+            digest.update(chunk)
+            offset += len(chunk)
+    except OSError as e:
+        raise AdvisorCompositionError(f"the model could not be read: {path!r} ({e.strerror})") from e
+    finally:
+        os.close(fd)
+    return _identity(st), digest.hexdigest()
+
+
+def check_model_unchanged(path: str, identity: tuple[int, int, int, int]) -> None:
+    """Refuse when ``path`` no longer names the file :func:`pin_model` hashed: the hash would name a model that did
+    not run. llama.cpp loads by path, so a swap and swap-back inside the load is not caught (the stated residual)."""
+    try:
+        now = _identity(os.stat(path))
+    except OSError as e:
+        raise AdvisorCompositionError(f"the model vanished during open(): {path!r} ({e.strerror})") from e
+    if now != identity:
+        raise AdvisorCompositionError(f"the model changed during open(): {path!r} is not the file that was hashed")
 
 
 @dataclass(frozen=True)

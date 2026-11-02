@@ -124,6 +124,11 @@ class AdvisorInputError(AdvisorError, ValueError):
     once cursors are in play (§1A.8 "Cursors")."""
 
 
+class AdvisorReportWriteFailed(AdvisorError, RuntimeError):
+    """``AdvisorSession.ingest`` could not write its report durably (#1315 item 1, review S5/W2). The turn's log
+    records stand; the session's cursor did not advance, so the caller re-feeds the batch (§1A.8 "Cursors")."""
+
+
 class AdvisorStopped(AdvisorError, RuntimeError):
     """``AdvisorSession.ingest`` was called on a stopped session (``request_stop``); no turn ran (§1A.8)."""
 
@@ -278,6 +283,11 @@ class ModelLoadError(ModelError):
     """Failed to load ML model."""
 
     pass
+
+
+class ClosedLocalError(ModelLoadError, ValueError):
+    """The atonia observer's closed backend will not load this model file (#1315 item 1): not a regular file, not a
+    readable GGUF, or a non-positive ``n_ctx``. Raised by ``maxim.models.language.closed_local``."""
 
 
 class ModelInferenceError(ModelError):
@@ -612,6 +622,7 @@ __all__ = [
     "AdvisorCompositionError",
     "AdvisorInputError",
     "AdvisorStopped",
+    "AdvisorReportWriteFailed",
     "SealedRegistryError",
     "AdvisorLogBroken",
     "AdvisorLogMalformed",
@@ -629,6 +640,7 @@ __all__ = [
     # Models
     "ModelError",
     "ModelLoadError",
+    "ClosedLocalError",
     "ModelInferenceError",
     "LLMCallStopped",
     "ModelConfigError",

@@ -53,6 +53,15 @@ main() {
     export PYTHONPATH="$tree/src"
 
     echo "suite at $short ($(git log -1 --format=%s "$commit"))"
+    # The observer's fetched GGUF fixtures (#1315 item 1) are gitignored, so this fresh tree lacks them: copy the
+    # invoking checkout's, then let the fetch script fetch whatever is still missing and re-verify every pinned
+    # sha256 (a copied file that does not match is refused). Without them the two defang gates fail.
+    if [ -f scripts/fetch_advisor_fixtures.py ]; then
+        if [ -d "$here/tests/fixtures/advisor/vocab" ]; then
+            find "$here/tests/fixtures/advisor/vocab" -maxdepth 1 -name '*.gguf' -exec cp -n {} tests/fixtures/advisor/vocab/ \;
+        fi
+        python scripts/fetch_advisor_fixtures.py || exit 2
+    fi
     status=0
     if [ "$cov" -eq 1 ]; then
         # The ratchet refuses a coverage.json from any other coverage version: say so now, not after the suite.

@@ -79,12 +79,12 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
   * Events are dicts ``{"event_id", "kind", "text", "payload"}``.
   * The latch: an in-process ``open()`` engages it; the ONE autouse reset in ``tests/conftest.py`` restores it.
 
-THE FIXTURES OWED (§1A.10). ``TINY_GGUF`` (a tiny runnable model, named with size/source/sha256 by the item-1
-PR and fetched by CI's model-cache step) and ``VOCAB_DIR`` (llama.cpp's ``models/ggml-vocab-*.gguf`` at a
-pinned tag; all four of ``PINNED_VOCABS`` are required) do not exist yet. Gates that need them assert the path
-exists, so they fail for that reason too; gates that need ``llama_cpp`` FAIL when it is missing, never skip. They
-deliberately carry NO ``requires_model_cache`` marker: the fixtures are in-repo, so a missing one is a failure,
-never a lane skip.
+THE FIXTURES (§1A.10; owner decision V17). ``TINY_GGUF`` (stories260K) and phi-3's vocab are committed; the
+other three of ``PINNED_VOCABS`` (llama.cpp's ``models/ggml-vocab-*.gguf`` at a pinned commit) are gitignored and
+fetched, size- and sha256-pinned, by ``python scripts/fetch_advisor_fixtures.py`` (CI's unit-test job and
+``scripts/suite_at_commit.sh`` run it). Gates that need them assert the path exists, so a fresh checkout that has
+not run the script fails them; gates that need ``llama_cpp`` FAIL when it is missing, never skip. They deliberately
+carry NO ``requires_model_cache`` marker: a missing fixture is a failure, never a lane skip.
 
 ``pytest.raises`` is not used inside a gate: a miss raises ``Failed``, which is not an ``AssertionError``, so it
 would turn the suite red instead of leaving the gate as data. ``_expect_raises`` asserts instead.
@@ -1724,7 +1724,7 @@ def _vocab_files() -> list[Path]:
     missing = [v for v in PINNED_VOCABS if f"ggml-vocab-{v}.gguf" not in names]
     assert not missing, (
         f"pinned vocab GGUFs missing (all four are required, §4.2): {missing}; none vendored under {pkg}, "
-        f"and the fixture dir {VOCAB_DIR} lacks them"
+        f"and the fixture dir {VOCAB_DIR} lacks them: run `python scripts/fetch_advisor_fixtures.py`"
     )
     return found
 

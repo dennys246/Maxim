@@ -13,15 +13,16 @@ skip, when a fixture is missing, so a checkout runs this once before the advisor
     python scripts/fetch_advisor_fixtures.py          # fetch what is missing, verify everything
     python scripts/fetch_advisor_fixtures.py --check  # verify only; exit 1 on anything missing or wrong
 
-CI runs it in the unit-test job before the tests (and before the netns sandbox, which has no network).
+CI runs it in the unit-test job before the tests (and before the netns sandbox, which has no network), and
+``scripts/suite_at_commit.sh`` runs it in its fresh tree (which also covers the rig's ``rig_suite.sh``).
 
 Sources (pinned):
 - llama.cpp ``models/ggml-vocab-*.gguf`` at commit 785322d17f2d51e5185cf996a1f4e46d87640841 (MIT);
 - ``ggml-org/models-moved`` (formerly ``ggml-org/models``) ``tinyllamas/stories260K.gguf`` at revision
   499bc8821c6b12b4e53c5bffcb21ec206f212d81 (MIT; Karpathy's llama2.c TinyStories model).
 
-Exits: 0 every fixture present and verified; 1 a fixture missing (``--check``) or failing verification; 2 a
-download that failed.
+Exits: 0 every fixture present and verified; 1 a fixture missing (``--check``) or a present one failing
+verification; 2 a download that failed, did not match its pin, or ran past its pinned size.
 """
 
 from __future__ import annotations
@@ -116,7 +117,11 @@ def fetch(fixture: Fixture, root: Path | None = None, *, timeout_s: float = 120.
     part = dest.with_name(dest.name + ".part")
     try:
         with urllib.request.urlopen(fixture.url, timeout=timeout_s) as resp, open(part, "wb") as out:
+            written = 0
             while chunk := resp.read(1 << 20):
+                written += len(chunk)
+                if written > fixture.size:  # never more than the pinned size on disk
+                    raise ValueError(f"{fixture.path}: the download exceeds its pinned {fixture.size} bytes")
                 out.write(chunk)
         partial = Fixture(part.relative_to(root).as_posix(), fixture.url, fixture.size, fixture.sha256, False)
         problem = verify(partial, root)

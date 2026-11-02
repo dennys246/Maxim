@@ -253,6 +253,7 @@ arrive: executor denials return before pain is booked, and NAc is booked downstr
   | `"ceiling"` | `POLICY_CEILING`, including the V7 offline AND |
   | `"pin"` | `POLICY_PIN`: a pinned policy's refusal of any non-pinned name, never `"permissions"` |
   | `"offline"` | `OFFLINE`, an `OfflineRefusal` raised inside a tool body |
+  | `"tool"` (observer report and log only; item 1) | the tool's own `ToolErrorKind`, `INVALID_INPUT` by default: the call resolved and ran, and the tool's input check refused it. Its `effect` is the tool's real effect, never `"unknown"` |
   - `"registry"` means the name is not dispatchable in this registry (`NOT_REGISTERED`, `INACTIVE_SCENE`).
   - The sealed registry is just a registry, so the executor needs no special case for it. **It is never
   `PERMISSION_DENIED`**, which tools return for their own path refusals: those keep booking their NAc negative,
@@ -427,10 +428,12 @@ takes, keyword-only:
 - **Stopping (D, session-scoped).**
   - The library installs no signal handler and never exits (bounded_stop.md's principle). The embedder's handler calls
     **`session.request_stop(deadline_s, reason="yield")`**.
-    - **"Callable from a signal handler" means exactly this:** it sets a `threading.Event` and stores the monotonic
-      deadline and the reason. It takes no lock, logs nothing, does no I/O, and never raises.
-    - `deadline_s` bounds how long the in-flight `ingest()` may take to return after the stop. The remaining
-      dispatches are skipped, and the report is written.
+    - **"Callable from a signal handler" means exactly this:** it assigns a stop flag, the monotonic deadline and
+      the reason as plain attributes (as built: not a `threading.Event`, whose `set()` takes a lock). It takes no
+      lock, logs nothing, does no I/O, and never raises.
+    - `deadline_s` bounds how long `close()` waits for the in-flight turn (as built, item 1 review; prefill cannot be
+      interrupted, so the turn itself may outlast it, and it then releases the session's resources as it ends). The
+      remaining dispatches are skipped, and the report is written, with `stop_reason` set to the reason.
     - An optional per-call `stop=` (a `threading.Event`-like object) abandons only that call.
   - **The process-wide `StopRequest` is not consulted.** It is sticky, and `MaximHandle.stop()` sets it too, so in an
     embedding process it would abandon unrelated sessions. This design also does not wait for bounded_stop PR 0.
@@ -461,7 +464,7 @@ takes, keyword-only:
 
 ```json
 {"_format_version": "1.0", "schema": "advisor_report/1", "session_id": "...", "report_id": "uuid4",
- "status": "ok | degraded | error | abandoned", "reason": "set unless ok",
+ "status": "ok | degraded | error | abandoned", "reason": "set unless ok", "stop_reason": "null unless stopped",
  "banner": "ADVISORY — Maxim v<maxim.__version__>, model <gguf sha256[:16]>; no action taken; not an alert.",
  "covered": {"cursor_in": "... | null", "cursor_out": "... | null", "events": 3},
  "prompt": {"tokens": 1834, "max_tokens": 7168},
@@ -894,13 +897,15 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 
 ## 4. Item 1: the atonia composition (`maxim.advisor`)
 
-> **Status: BUILT 2026-11-01** (branch `feat/1315-item1-advisor`, stacked on item 5's #1565; owner decisions V17
-> fixtures, V18 split, V19 the item-7 gate). As built, where it differs from the text below:
+> **Status: BUILT 2026-11-01, review folded 2026-11-02** (branch `feat/1315-item1-advisor`; item 5's #1565 merged
+> first; owner decisions V17 fixtures, V18 split, V19 the item-7 gate, and the three review decisions below). As
+> built, where it differs from the text below:
 > - `advisor/_session.py` holds `open_session` (exported lazily as `maxim.advisor.open`), `AdvisorSession`,
 >   `ProposeActionTool`, `SealedToolRegistry`, `_build_dispatch_stack` and `_backend_factory`. The open()-time checks
 >   are in `advisor/_refusals.py`, whose `code_loading_vars_set` is the one sanctioned env iteration. The errors
->   (`AdvisorCompositionError`, `AdvisorInputError`, `AdvisorStopped`, `SealedRegistryError`) live in
->   `maxim/exceptions.py` under `AdvisorError`.
+>   (`AdvisorCompositionError`, `AdvisorInputError`, `AdvisorStopped`, `AdvisorReportWriteFailed`,
+>   `SealedRegistryError`) live in `maxim/exceptions.py` under `AdvisorError`; `ClosedLocalError` lives there too,
+>   under `ModelLoadError`.
 > - `SealedToolRegistry` is passed to `Executor` untyped (`Any`), not through a `ToolRegistryLike` Protocol: retyping
 >   `Executor.registry` would retype every caller that registers through it. The registration sweep pins its
 >   behaviour instead.
@@ -913,10 +918,38 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 >   the whole segment one character at a time, not only the offending span.
 > - Each event becomes two framed segments: its text, and the canonical JSON of its id, kind, `occurred_at` and
 >   payload (the id and kind are caller-supplied, so they stay out of the trusted template).
-> - The report is written through `report_dir`'s fd as `advisor_report_<report_id>.json` by the new strict
->   `atomic_io.atomic_write_json_at`. The model's sha256 is computed once at `open()`.
-> - A `propose_action` whose arguments fail validation ran and failed: it is a `refusals` row with layer `"tool"`.
->   A non-ok turn reports `proposals: []`; the records it wrote stay in the log, up to `log_last_seq`.
+> - The report is written through `report_dir`'s fd as `advisor_report_<report_id>.json` by the new
+>   `atomic_io.atomic_write_json_at`, the one strict `atomic_write_*` name (the module docstring and the
+>   persistence brief carve it out). The cursor advances only AFTER the report lands; a report that did not raises
+>   `AdvisorReportWriteFailed` and leaves the cursor where it was.
+> - **The model is hashed once, before the load** (review S1/S2/A3): `_refusals.pin_model` opens the file once,
+>   checks it is regular and hashes it from that fd, inside `open()`'s cleanup guard; after the load,
+>   `check_model_unchanged` refuses when the path's (device, inode, size, mtime) changed. llama.cpp loads by path,
+>   so a swap and swap-back INSIDE the load is the stated residual. Anything that fails after the directories open
+>   releases the log (with its close record), the directories and the model.
+> - **Teardown (review B1/W1; owner decision 2026-11-02, "wait to deadline, hand off"):** `close()` stops the
+>   session and, with a turn running, waits for it until the `request_stop` deadline (not at all without one); a turn
+>   still running then (prefill cannot be interrupted) releases the log, the directories and the model itself as it
+>   ends, after writing its own report. So a report is never written through a closed (and reused) fd. `close()`
+>   also releases the model (`ClosedLocalBackend.close`). `request_stop` assigns plain attributes (no
+>   `threading.Event`, whose `set()` takes a lock; review S7) and reads only exact ints and floats and an exact
+>   `str` reason. A call queued on the turn lock re-checks the stop under it and raises `AdvisorStopped`.
+> - **The report gains `stop_reason`** (owner decision 2026-11-02): `null`, except on `abandoned`/`stopped`, where
+>   it is `request_stop`'s reason, `"close"` when `close()` stopped the turn, or `"per_call"` for `ingest(stop=)`.
+>   Two more `error` reasons: `prompt_build_error: <type>` (the tokenizer raised; nothing was sampled) and
+>   `completion_truncated` (the 1024-token budget ran out mid-object).
+> - **`ingest()` refuses before any turn** an event string that is not UTF-8-encodable (a lone surrogate) and a
+>   `stop=` without `is_set()`, as `AdvisorInputError`.
+> - A `propose_action` whose arguments fail validation ran and failed: it is a `refusals` row with **layer
+>   `"tool"`** (the tool's own input check, added to §1A.8's layer vocabulary), `error_kind` the tool's own
+>   `ToolErrorKind` (`invalid_input` by default) and `effect` the tool's real effect (`["READ"]`); review W3, owner
+>   decision 2026-11-02. The AvServ note names the new layer. A non-ok turn reports `proposals: []`; the records it
+>   wrote stay in the log, up to `log_last_seq`.
+> - **The router's modules are imported, not built** (review A5/W6; owner decision 2026-11-02, "reword and follow
+>   up"). `maxim/models/__init__.py` and `maxim/models/language/__init__.py` import eagerly, so importing
+>   `closed_local` loads `router`, `cost_tracker`, `config`, `cloud_dispatch` and `maxim.models.download`; nothing in
+>   them runs, and the env read-set and no-effect gates pass. Making those inits lazy, then forbidding the modules
+>   in the closure gate, is the follow-up issue.
 > - **A root-cause fix in step 0b:** `_offline.engage()` read the five keys it writes (to restore them for tests),
 >   which the env read-set gate refuses. It now writes them without reading; `_reset_for_tests` removes them, and
 >   `tests/conftest.py::_reset_offline_latch` restores the pre-test values, as it already did.
@@ -925,8 +958,13 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 > - **Item 7's `test_no_effect_c_level_cache` is skipped everywhere** (V19, #1566). Run for real, a new-file diff
 >   cannot fail on Linux (no Metal cache) or on a warm Mac cache; item 7 redesigns it.
 > - The fixtures (V17): `tiny_runnable.gguf` (stories260K) and the phi-3 vocab are committed. Command-r, qwen2 and
->   llama-bpe are fetched and sha256-verified by `scripts/fetch_advisor_fixtures.py`, which CI runs before the
->   suite.
+>   llama-bpe are fetched and sha256-verified by `scripts/fetch_advisor_fixtures.py`, which CI's unit-test job and
+>   `scripts/suite_at_commit.sh` run before the suite (review A1/W4: a fresh tree lacks the gitignored files).
+> - The boundary's importers are pinned by AST, over `src/` and `scripts/` and every import form: only
+>   `advisor/_session.py` imports `closed_local`, and only `open_session` calls `_build_dispatch_stack`.
+> - Not folded (review NITs, recorded): the prompt cap is checked after the eager load (N3); the executor's
+>   attempted/hallucinated lists grow for a long-lived session (N6); `check_model` and `closed_local` each check
+>   for a regular file (each module refuses on its own).
 > - Docs: [docs/user/advisor.md](../user/advisor.md) carries AD9's effect-channel table with the report-and-log row.
 
 ### 4.1 Why the observer does not run the loop (V1)
@@ -1316,8 +1354,9 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
   up on restart, or with #1411's config generation once that covers it.
 - The observer always engages.
 - **Tests reset the latch through `maxim._offline._reset_for_tests()`.** It exists in `src/`, but **a lint forbids
-  any caller outside `tests/`**, so production code cannot disengage the latch. It disengages, restores the five
-  `os.environ` keys to their pre-engage values, and keeps the `on_engage` callbacks. The conftest autouse fixture
+  any caller outside `tests/`**, so production code cannot disengage the latch. It disengages, removes the five
+  `os.environ` keys (as built in item 1: `engage()` no longer reads them, so the conftest fixture restores the
+  pre-test values), and keeps the `on_engage` callbacks. The conftest autouse fixture
   calls it after each test, and **fails** if `maxim._offline` is loaded but `_reset_for_tests` is missing. The hook
   is inert when not engaged, so it costs the suite nothing.
 
@@ -1435,7 +1474,7 @@ exemption):
 - **runtime-tools.md:** "one seam, five gates", the builder table, the four invariants (§1A.9). **llm-routing.md:**
   `MAXIM_OFFLINE`. **persistence-config.md:** the strict writers.
 - **DECISIONS.md:** D73's amendment.
-- **AvServ, through the owner:** the §1A.8 report shape.
+- **AvServ, through the owner:** the §1A.8 report shape, with item 1's as-built additions: the `stop_reason` field, the `prompt_build_error` and `completion_truncated` reasons, and the refusal layer `"tool"` (§4's status block).
 - **Every session:** notice of step 0a's import-timing change.
 
 ## 8. Where advisor_mode.md has gone stale (fold after the owner decisions)
@@ -1715,7 +1754,7 @@ realpath-keyed executables, `pinned_executable`); they are history, not instruct
 | Finding | Fold |
 |---|---|
 | Arch D1 (`close_all` dropped by v6.3), Wire D-S2 | `engage()`'s three steps; `on_engage` callbacks; a pooled-client red gate |
-| Arch D3, Exec S2/S3 | `_reset_for_tests` in `src/`, its callers linted to `tests/`; it restores the five env keys; the fixture fails if it is missing |
+| Arch D3, Exec S2/S3 | `_reset_for_tests` in `src/`, its callers linted to `tests/`; it removes the five env keys and the conftest fixture restores them (item 1); the fixture fails if it is missing |
 | Arch D4, the Exec pin NIT | One kind per layer; `"offline"` added; `pinned()` refuses at `"pin"` |
 | Exec S1 (`dir_fd` writes, rename destination) | Test fold |
 | Arch D2 (prefix-based reader list) | Test fold: exact reader list |

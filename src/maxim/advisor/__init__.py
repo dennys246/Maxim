@@ -22,12 +22,15 @@ _FROM_EXCEPTIONS = (
     "AdvisorCompositionError",
     "AdvisorInputError",
     "AdvisorStopped",
+    "AdvisorReportWriteFailed",
     "SealedRegistryError",
     "AdvisorLogBroken",
     "AdvisorLogMalformed",
 )
 
-__all__ = sorted([*_FROM_SESSION, *_FROM_EXCEPTIONS])
+_SUBMODULES = ("log",)
+
+__all__ = sorted([*_FROM_SESSION, *_FROM_EXCEPTIONS, *_SUBMODULES])
 
 
 def __getattr__(name: str) -> Any:
@@ -35,6 +38,10 @@ def __getattr__(name: str) -> Any:
         from maxim.advisor import _session
 
         return getattr(_session, _FROM_SESSION[name])
+    if name in _SUBMODULES:  # ``maxim.advisor.log.read_log`` in a reader process that never opened a session
+        import importlib
+
+        return importlib.import_module(f"maxim.advisor.{name}")
     if name in _FROM_EXCEPTIONS:
         from maxim import exceptions
 

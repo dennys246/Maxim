@@ -13,11 +13,13 @@ Example:
 
 Two fsync policies live here (#1315 §1A.3):
 
-- **Lenient** (every ``atomic_write_*`` helper and ``atomic_install_dir``): an fsync the filesystem refuses is
-  logged at DEBUG and skipped, because the data is still written. Use these for state Maxim can rebuild or redo.
-- **Strict** (:func:`fsync_strict`, :func:`append_line_fsync`): any ``OSError`` raises, so the caller can fail the
-  operation the write belongs to. The observer's log (``maxim.advisor.log``) uses them: a proposal or refusal
-  that was not durably recorded must fail its turn.
+- **Lenient** (every path-based ``atomic_write_*`` helper and ``atomic_install_dir``): an fsync the filesystem
+  refuses is logged at DEBUG and skipped, because the data is still written. Use these for state Maxim can rebuild
+  or redo.
+- **Strict** (:func:`fsync_strict`, :func:`append_line_fsync`, and :func:`atomic_write_json_at`, the one
+  ``atomic_write_*`` name that is strict, despite its prefix): any ``OSError`` raises, so the caller can fail the
+  operation the write belongs to. The observer's log and reports (``maxim.advisor``) use them: a proposal, refusal
+  or report that was not durably recorded must fail its turn. Never "unify" a strict writer onto the lenient ones.
 """
 
 from __future__ import annotations

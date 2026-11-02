@@ -47,13 +47,17 @@ Every argument is keyword-only:
 `open()` raises `advisor.AdvisorCompositionError` before building anything when:
 - a code-loading environment variable is set: `LD_PRELOAD`, `LD_AUDIT`, `LD_LIBRARY_PATH`, `LLAMA_CPP_LIB_PATH`,
   `LLAVA_CPP_LIB`, or any name starting `DYLD_`, `GGML_` or `LLAMA_`;
-- `model` is not an existing regular file;
+- `model` is not an existing regular file, cannot be read, or changes while `open()` loads it;
 - `home_dir` or `report_dir` is missing, not writable, a symlink, or the same as or inside the other;
 - a limit is out of range, or `max_prompt_tokens + 1024` exceeds `n_ctx`;
 - the model fails to load.
 
-`open()` also engages Maxim's process-wide **offline latch**, the same one `MAXIM_OFFLINE=1` raises. It is one way: nothing in the process can lower it again. The observer reads
-no Maxim config file, no `MAXIM_*` setting and no data home.
+`open()` also engages Maxim's process-wide **offline latch**, the same one `MAXIM_OFFLINE=1` raises. It is one way:
+nothing in the process can lower it again. The observer reads no Maxim config file and no data home, and of the
+`MAXIM_*` settings only `MAXIM_OFFLINE`, the latch's own.
+
+The model is hashed once at `open()`, before it loads, and the report's `provenance.model_sha256` and banner name that
+hash. If the file is replaced while it loads, `open()` refuses.
 
 `session.limits` reads back the values the session actually runs with: `n_ctx`, `max_prompt_tokens`,
 `completion_tokens` and `n_gpu_layers`.
@@ -61,14 +65,16 @@ no Maxim config file, no `MAXIM_*` setting and no data home.
 ## `ingest(events, *, stop=None)`
 
 Each event is a dict with `event_id`, `kind`, `text` and `payload` (anything JSON), plus optional `occurred_at` and
-`cursor`. Unknown fields, or a payload that is not JSON, raise `advisor.AdvisorInputError` before any turn.
+`cursor`. Unknown fields, a payload that is not JSON, a string that is not valid UTF-8 (a lone surrogate), or a
+`stop=` without `is_set()` raise `advisor.AdvisorInputError` before any turn.
 
 Every byte of every event reaches the model as **framed, untrusted data**. It is never part of the instructions. The
 prompt is built as token ids, and any special token an event could smuggle in is escaped. An event that cannot be
 escaped is listed in the report's `inputs` as `rejected: "special_token"`, so nothing is dropped silently.
 
 One `ingest()` is one bounded turn. It returns the report and also writes it to `report_dir` as
-`advisor_report_<report_id>.json`.
+`advisor_report_<report_id>.json`. If that write fails (a full disk), `ingest()` raises
+`advisor.AdvisorReportWriteFailed` and the session's cursor does not advance.
 
 ### The report
 
@@ -77,17 +83,20 @@ The schema is `advisor_report/1` (notes §1A.8). The fields you will read most:
 | Field | Meaning |
 |---|---|
 | `status` | `ok`, `error` or `abandoned`; `reason` is set unless `ok`. Never a false `ok`: a refused call leaves `ok` with `refusals` filled. |
+| `stop_reason` | `null`, except on `abandoned`/`stopped`: your `request_stop` reason, `"close"`, or `"per_call"` for `ingest(stop=)`. |
 | `happening`, `would_do.summary`, `rationale` | The model's own words: **untrusted text**. `would_do.executed` is always `false`. |
 | `confidence` | `{"value", "calibrated": false, "source": "model_self_report"}`: not a probability. |
 | `proposals` | The structured `propose_action` calls, each with its log `seq`. |
-| `refusals` | Every other call, with `error_kind`, the gate `layer` that refused it, and `effect`. |
+| `refusals` | Every other call, with `error_kind`, the `layer` that refused it, and `effect`. The layer is a gate layer (`registry`, `ceiling`, `pin`, …), or `tool` when `propose_action` ran and refused its own arguments. |
 | `covered` | `cursor_in`, `cursor_out` and the event count. |
 | `prompt` | `tokens` and `max_tokens`, so you can size your batches. |
 | `log_last_seq` | The last log record this report's turn wrote. |
 | `banner` | "ADVISORY — Maxim v…, model …; no action taken; not an alert." Show it with the report. |
 
 The failure statuses:
-- `error`: `prompt_too_long` (nothing was sampled), `completion_error: …`, `schema_invalid: …` or `log_write_failed: …`;
+- `error`: `prompt_too_long` (nothing was sampled), `prompt_build_error: …` (the tokenizer failed; nothing was
+  sampled), `completion_error: …`, `completion_truncated` (the 1024-token budget ran out mid-answer),
+  `schema_invalid: …` or `log_write_failed: …`;
 - `abandoned`: `deadline` (the turn timed out; the partial output is never parsed) or `stopped`.
 
 ### Cursors
@@ -100,9 +109,15 @@ Cursors are opaque strings that you supply and Maxim echoes back:
 
 ### Stopping
 
-- `session.request_stop(deadline_s, reason="yield")` is safe to call from a signal handler: it sets an event and
-  returns, with no lock, I/O or exception. The turn in flight ends at its next token or call as `abandoned`/`stopped`.
-  After that, `ingest()` raises `advisor.AdvisorStopped`.
+- `session.request_stop(deadline_s, reason="yield")` is safe to call from a signal handler: it sets three plain
+  attributes and returns, with no lock, I/O or exception. Pass a plain `int` or `float` and a `str`; anything else
+  reads as "now" and `"unnamed"`. The turn in flight ends at its next token or call as `abandoned`/`stopped`, with
+  your reason as `stop_reason`. After that, `ingest()` raises `advisor.AdvisorStopped`, including a call that was
+  already waiting for the turn.
+- `session.close()` stops the session too. With a turn in flight it waits for that turn until the `request_stop`
+  deadline (not at all if you never called it). A turn still running then, in an uninterruptible prefill, writes its
+  own report and releases the log, the directories and the model itself when it ends. So stop, then close, is safe
+  from any thread. `close()` releases the model's memory.
 - `ingest(..., stop=event)` abandons that one call only.
 - Maxim's process-wide stop signals do **not** stop the observer, so an embedding process's own shutdown cannot
   abandon a turn it did not start.
@@ -112,7 +127,7 @@ Cursors are opaque strings that you supply and Maxim echoes back:
 ### The log
 
 `report_dir/advisor_log_<session_id>.jsonl` records every proposal and refusal, each fsynced before the turn goes
-on. `close()` writes its close record. Read it with `maxim.advisor.log.read_log(path)`. A lost tail shows as the log's
+on. `close()` writes its close record. Read it with `maxim.advisor.log.read_log(path)`, which needs no session. A lost tail shows as the log's
 `last_seq` falling behind a report's `log_last_seq`.
 
 ## What the guarantee covers, by effect channel
@@ -126,7 +141,7 @@ yet reach, **your sandbox is the only guard**.
 | Actuation | None: `open()` takes no robot, embodiment, tools or registry. | Maxim |
 | Environment | The code-loading refusals above, and a pinned Python-level env read set. C-level reads inside `libllama` are invisible to Python. | Maxim (Python level); sandbox (C level) |
 | Context reads | None: no agent loop, no prefetch, no data home, no config file. | Maxim |
-| Egress | No router, no cloud lane, no download. The offline latch refuses Python-level connects, DNS and spawns. | Maxim (Python level); sandbox (native) |
+| Egress | No router or cloud lane is built and nothing is downloaded. (The router's modules are imported with `maxim.models`, and nothing in them runs.) The offline latch refuses Python-level connects, DNS and spawns. | Maxim (Python level); sandbox (native) |
 | Disk | Python-level writes go to `report_dir` only. A C-level Metal shader cache write on macOS is not yet measured (#1566). | Maxim (Python level); sandbox (C level, until item 7) |
 | Inbound | None: events arrive only as `ingest()` arguments. | Maxim |
 | **The report and the log** | **They carry the model's text.** Treat `happening`, `rationale`, `would_do`, proposals and refusal reasons as untrusted input wherever you display or forward them. | You |

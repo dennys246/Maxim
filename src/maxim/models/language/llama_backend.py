@@ -9,6 +9,9 @@ from maxim.utils.logging import warn
 from maxim.utils.optional_deps import require_optional_dependency
 
 
+logger = logging.getLogger(__name__)
+
+
 def llama_kwargs(
     model_path: str,
     *,
@@ -18,8 +21,9 @@ def llama_kwargs(
     seed: int | None = -1,
     vocab_only: bool = False,
 ) -> dict[str, Any]:
-    """The ``Llama(**kwargs)`` every Maxim llama.cpp load builds: ``_LlamaCppBackend`` and ``closed_local`` share it
-    (#1315 §1A.3), so a future GGML flag lands once.
+    """The ``Llama(**kwargs)`` for every in-process llama-cpp-python load: ``_LlamaCppBackend`` and ``closed_local``
+    share it (#1315 §1A.3), so a future GGML flag lands once. The spawned ``llama-server``
+    (``runtime/local_server_spawner.py``) takes command-line flags and builds its own.
 
     ``n_ctx`` is explicit, always: each caller owns its clamp (llama-cpp reads ``n_ctx=0`` as the model's full
     trained context; ``closed_local`` never passes it). ``n_gpu_layers`` -1 offloads every layer, ``n_threads``
@@ -35,9 +39,6 @@ def llama_kwargs(
     if vocab_only:
         kwargs["vocab_only"] = True
     return kwargs
-
-
-logger = logging.getLogger(__name__)
 
 
 class _LlamaCppBackend:

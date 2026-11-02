@@ -33,6 +33,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, BinaryIO
 
+from maxim.exceptions import ClosedLocalError
 from maxim.models.language.llama_backend import llama_kwargs
 from maxim.utils.optional_deps import require_optional_dependency
 
@@ -59,10 +60,6 @@ _GGUF_STRING, _GGUF_ARRAY = 8, 9
 # Bounds a hostile header cannot get past: a real model's metadata is a few hundred keys.
 _GGUF_MAX_KV = 1 << 16
 _GGUF_MAX_STRING = 1 << 24
-
-
-class ClosedLocalError(ValueError):
-    """The model file is not one the closed backend will load: not a regular file, or not a readable GGUF."""
 
 
 @dataclass(frozen=True)
@@ -177,7 +174,10 @@ def _refused_mask(llama_cpp: Any) -> int:
 
 
 def _token_attr(handle: Any, token_id: int) -> int:
-    """The one attribute lookup (a bitmask of ``LLAMA_TOKEN_ATTR_*``); tests patch it for the synthetic refuse case."""
+    """The one attribute lookup (a bitmask of ``LLAMA_TOKEN_ATTR_*``); tests patch it for the synthetic refuse case.
+
+    ``Llama._model`` is llama-cpp-python's private model wrapper (0.3.x). If a release renames it this raises
+    ``AttributeError`` on the first prompt, loudly: the defang gates fail, never pass with an unchecked token."""
     return int(handle._model.token_get_attr(int(token_id)))
 
 
@@ -189,6 +189,12 @@ class ClosedLocalBackend:
         self.n_ctx = int(n_ctx)
         self._refused_mask = refused_mask
         self._bos = int(llama.token_bos())
+
+    def close(self) -> None:
+        """Release the model (its weights and context) now, rather than when this object is collected. Idempotent."""
+        llama, self._llama = self._llama, None
+        if llama is not None and callable(getattr(llama, "close", None)):
+            llama.close()
 
     def _refused(self, ids: Sequence[int]) -> bool:
         return any(i == self._bos or _token_attr(self._llama, i) & self._refused_mask for i in ids)
