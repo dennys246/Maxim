@@ -146,7 +146,7 @@ Policy and enforcement: the `main`-is-ahead-of-PyPI invariant above; a `src/` ch
 
 ## Environment Variables — session-critical core
 
-Full per-subsystem tables (with the experiment/ablation toggles) live in the owning `docs/agents/` brief. The canonical truthy parser for MAXIM_* toggles is `cluster_bias_annotation.annotation_disabled_via_env` ("1"/"true"/"yes"/"on", case-insensitive).
+Full per-subsystem tables (with the experiment/ablation toggles) live in the owning `docs/agents/` brief. The canonical truthy parser for MAXIM_* toggles is `maxim._offline.truthy` (`cluster_bias_annotation.annotation_disabled_via_env` delegates to it) ("1"/"true"/"yes"/"on", case-insensitive).
 
 ```bash
 ANTHROPIC_API_KEY          # Claude backend (7 more provider keys: see docs/agents/llm-routing.md)
