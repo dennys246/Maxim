@@ -191,7 +191,9 @@ class TestBioSession:
             hub.on_session_start.assert_called_once_with(owner=owner, live=True)
             assert s.ticket is hub.on_session_start.return_value and s.memory_hub_enabled
             assert s.capture is hippo.start_capture_worker.return_value
-        hub.on_session_end.assert_called_once_with(s.ticket, deadline=None)  # a clean, non-sim exit: full, unbounded
+        hub.on_session_end.assert_called_once_with(
+            s.ticket, deadline=None, consolidation_bound=None
+        )  # a clean, non-sim exit: full, unbounded
         hippo.stop_capture_worker.assert_called_once_with(s.capture, timeout=5.0)  # only ITS worker (it flushes)
         hub.release_session_claim.assert_called_once_with(s.ticket)
 
@@ -278,7 +280,7 @@ class TestEndBioSession:
         hub, ticket = MagicMock(), object()
         hub.on_session_end.return_value = {"consolidated": 5}
         end_bio_session(memory_hub=hub, ticket=ticket, hippocampus=None)
-        hub.on_session_end.assert_called_once_with(ticket, deadline=None)
+        hub.on_session_end.assert_called_once_with(ticket, deadline=None, consolidation_bound=None)
 
     def test_default_consolidation_is_full(self):
         """HANDLE seam (b): the default is FULL consolidation (wrongly-lightweight loses data)."""

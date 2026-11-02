@@ -78,6 +78,7 @@ Diagnostics check:
 | Everything unreachable (macOS) | Local Network permission | System Settings → Privacy & Security → Local Network |
 | Connection timeout | Firewall | Check firewall allows ports 8000, 8443 |
 | Intermittent drops | Wi-Fi instability | Use wired ethernet if possible |
+| Robot can't reach the leader: `refused: '<name>.local' resolves to a public address (cleartext HTTP is allowed only to a private network)` | On an IPv6 network, `<name>.local` can resolve to the leader's global IPv6 address, and a plain `http://` leader URL may only reach a private address (#921, by design) | Give the robot the leader's private IPv4 address (`http://192.168.x.y:8099`), or an `https://` URL |
 
 ## RTSP Bridge (removed)
 The RTSP bridge for external video streaming was removed in the 1.0 cleanup (`tools/rtsp_bridge.py`), and its
