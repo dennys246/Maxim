@@ -1084,7 +1084,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
 >   - The `F_FULLFSYNC` → `fsync` fallback logs at DEBUG, not WARNING: it is a per-call capability answer, and the
 >     plain fsync still fails loudly.
 >   - `error_kind` and `layer` are checked as strings, not against the executor's vocabulary: checking the values
->     would import `runtime/` into the log. Item 1 builds one refusal dict for the report and the log, and reuses
+>     would import `tools/` (`ToolErrorKind`) or `runtime/` into the log, which its closure test forbids. `effect`'s
+>     sortedness is the caller's, not checked. Item 1 builds one refusal dict for the report and the log, and reuses
 >     `MAX_NAME_CHARS` for the report's `name`.
 >   - An interrupt between `os.open` and `create()`'s guard can leave a zero-byte file and leak one fd; `read_log`
 >     refuses that file, so it fails closed.

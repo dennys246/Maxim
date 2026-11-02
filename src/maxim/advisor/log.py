@@ -106,7 +106,8 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
     """Validate a caller's record against the closed schema and apply the field bounds.
 
     Refused before anything is written: an unknown kind, a missing or unknown field (``seq`` and ``ts`` included:
-    the log stamps those), a non-string text field, or an ``effect`` that is not a list of flag names.
+    the log stamps those), a non-string text field, or an ``effect`` that is neither a list of flag names nor
+    ``"unknown"``. Sortedness is the caller's (``tools/registry.py``'s serialised form), not checked here.
     """
     if not isinstance(record, dict):
         raise TypeError(f"an advisor log record is a dict, not {type(record).__name__}")
@@ -162,7 +163,7 @@ class AdvisorLog:
         """Create ``advisor_log_<session_id>.jsonl`` under ``report_dir_fd``, write the header, and fsync both.
 
         ``report_dir_fd`` is the report directory, opened read-only (``O_RDONLY|O_DIRECTORY|O_NOFOLLOW``).
-        ``session_id`` must be one safe path component and ``mode`` within 0640 (``ValueError``). ``O_EXCL`` through
+        ``session_id`` must be one safe path component and ``mode`` 0600 or 0640 (``ValueError``). ``O_EXCL`` through
         ``dir_fd``: a planted file or symlink at the name raises ``OSError`` and nothing is written through it.
         ``mode`` is applied exactly (``fchmod``), whatever the umask. On any failure the fd is closed; a header
         that was partly written stays, and :func:`read_log` refuses it.

@@ -240,7 +240,7 @@ def test_a_session_id_that_is_not_one_safe_component_is_refused(
 
 
 @pytest.mark.parametrize("mode", [0o666, 0o644, 0o700, 0o4600, 0, 0o400, 0o040])
-def test_a_mode_beyond_0640_is_refused(report_dir: tuple[Path, int], mode: int) -> None:
+def test_a_mode_other_than_0600_or_0640_is_refused(report_dir: tuple[Path, int], mode: int) -> None:
     d, dfd = report_dir
     with pytest.raises(ValueError, match="mode"):
         AdvisorLog.create(dfd, SESSION, mode=mode)
@@ -275,6 +275,7 @@ def test_the_log_is_a_context_manager_that_closes(report_dir: tuple[Path, int]) 
     with AdvisorLog.create(dfd, SESSION) as log:
         log.append(_proposal())
     assert log.closed and read_log(_path(d))["closed"] is True
+    assert log.last_seq == 1, "the close record is not a record: it must not move last_seq (delta 2 NIT 2)"
 
 
 @pytest.mark.parametrize(
