@@ -41,8 +41,11 @@ MAX_ARGUMENTS_BYTES = 4096
 MAX_NAME_CHARS = 128
 #: A refusal's ``reason`` is bounded to this many characters (§5, "the reason bounded").
 MAX_REASON_CHARS = 1024
-#: The mode bits a log may carry: 0600 by default, 0640 for an operator in the owner's group (§5).
+#: The mode bits a log may carry: 0600 by default, 0640 for an operator in the owner's group (§5). The owner's
+#: read and write bits are required.
 ALLOWED_MODE_BITS = 0o640
+#: A refusal's ``effect`` for a name no registry holds: the executor cannot know an effect it never resolved.
+UNKNOWN_EFFECT = "unknown"
 
 # A session id is one path component: it names a file under the report directory's fd and must never climb out.
 _SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
@@ -124,8 +127,9 @@ def _shape(record: dict[str, Any]) -> dict[str, Any]:
             shaped["arguments_truncated"] = True
         return shaped
     effect = record["effect"]
-    if not isinstance(effect, list) or not all(isinstance(flag, str) for flag in effect):
-        raise TypeError(f"a refusal's effect is a list of flag names (sorted), not {effect!r}")
+    # A sorted list of flag names, or "unknown" for a name no registry holds (executor._refused_output; §1A.8).
+    if effect != UNKNOWN_EFFECT and (not isinstance(effect, list) or not all(isinstance(flag, str) for flag in effect)):
+        raise TypeError(f"a refusal's effect is a list of flag names (sorted) or {UNKNOWN_EFFECT!r}, not {effect!r}")
     shaped["name"], name_cut = _bound_text(record["name"], MAX_NAME_CHARS)
     if name_cut:
         shaped["name_truncated"] = True
@@ -164,8 +168,8 @@ class AdvisorLog:
         that was partly written stays, and :func:`read_log` refuses it.
         """
         name = log_name(session_id)
-        if mode & ~ALLOWED_MODE_BITS:
-            raise ValueError(f"an advisor log's mode is within {ALLOWED_MODE_BITS:#o}, not {mode:#o}")
+        if mode & ~ALLOWED_MODE_BITS or mode & 0o600 != 0o600:
+            raise ValueError(f"an advisor log's mode is 0600 or 0640, within {ALLOWED_MODE_BITS:#o}, not {mode:#o}")
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
         fd = os.open(name, flags, mode, dir_fd=report_dir_fd)
         header = with_format_version(
@@ -205,8 +209,7 @@ class AdvisorLog:
             self._refuse_if_unusable()
             seq = self._seq + 1
             line = _encode({**_shape(record), "seq": seq, "ts": _now()})
-            self._write_synced(line)
-            self._seq = seq
+            self._write_synced(line, seq)
             return seq
 
     def close(self) -> None:
@@ -216,7 +219,9 @@ class AdvisorLog:
                 return
             try:
                 if not self.broken:
-                    self._write_synced(_encode({"_record_kind": "close", "last_seq": self._seq, "ts": _now()}))
+                    self._write_synced(
+                        _encode({"_record_kind": "close", "last_seq": self._seq, "ts": _now()}), self._seq
+                    )
             finally:
                 self.closed = True
                 os.close(self._fd)
@@ -227,12 +232,17 @@ class AdvisorLog:
         if self.closed:
             raise AdvisorLogBroken(f"advisor log {self.session_id!r} is closed")
 
-    def _write_synced(self, line: bytes) -> None:
+    def _write_synced(self, line: bytes, seq: int) -> None:
+        """Write and fsync ``line``, then count it as ``seq``; any exception in between breaks the log.
+
+        Not only ``OSError``: an interrupt after the write but before ``seq`` is counted would leave the line on
+        disk uncounted, and the next record would repeat its seq (#1315 item 5 review: Executor B1, delta SF2). So
+        the count is advanced inside the same guard.
+        """
         try:
             append_line_fsync(self._fd, line)
+            self._seq = seq
         except BaseException:
-            # Not only OSError: an interrupt between the write and the fsync leaves the line on disk with seq not
-            # advanced, and a later record would repeat that seq (#1315 item 5 review, Executor B1).
             self.broken = True
             raise
 

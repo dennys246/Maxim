@@ -239,7 +239,7 @@ def test_a_session_id_that_is_not_one_safe_component_is_refused(
     assert sorted(p.name for p in tmp_path.rglob("*")) == before
 
 
-@pytest.mark.parametrize("mode", [0o666, 0o644, 0o700, 0o4600])
+@pytest.mark.parametrize("mode", [0o666, 0o644, 0o700, 0o4600, 0, 0o400, 0o040])
 def test_a_mode_beyond_0640_is_refused(report_dir: tuple[Path, int], mode: int) -> None:
     d, dfd = report_dir
     with pytest.raises(ValueError, match="mode"):
@@ -255,9 +255,10 @@ def test_a_mode_beyond_0640_is_refused(report_dir: tuple[Path, int], mode: int) 
         (_refusal(error_kind=3), TypeError),
         (_refusal(effect=7), TypeError),
         (_refusal(effect=["READ", 1]), TypeError),
+        (_refusal(effect="READ"), TypeError),
         (_proposal(report_id=None), TypeError),
     ],
-    ids=["unknown_field", "layer_none", "error_kind_int", "effect_int", "effect_mixed", "report_id_none"],
+    ids=["unknown_field", "layer_none", "error_kind_int", "effect_int", "effect_mixed", "effect_str", "report_id_none"],
 )
 def test_the_record_schema_is_closed_and_typed(report_dir: tuple[Path, int], record: Any, exc: type[Exception]) -> None:
     """Unknown fields would be unbounded, and a non-string layer would persist unnoticed (Executor, Wire N-1)."""
@@ -326,3 +327,49 @@ def test_the_log_imports_no_runtime_tools_or_agents() -> None:
     out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "", f"maxim.advisor.log pulled in {out.stdout.strip()}"
+
+
+def test_an_unregistered_names_unknown_effect_is_logged(report_dir: tuple[Path, int]) -> None:
+    """``effect: "unknown"`` is what the executor reports for a name no registry holds: the observer's most common
+    refusal (§1A.8's example) must be loggable (delta round SF1)."""
+    d, dfd = report_dir
+    with AdvisorLog.create(dfd, SESSION) as log:
+        log.append(_refusal(effect="unknown", error_kind="not_registered", layer="registry"))
+    assert read_log(_path(d))["records"][0]["effect"] == "unknown"
+
+
+def test_an_interrupt_after_the_fsync_before_seq_is_counted_breaks_the_log(report_dir: tuple[Path, int]) -> None:
+    """The window the delta round reproduced: the record is fsynced, then an interrupt lands before ``seq`` is
+    counted. The log must break, or the next record repeats the seq and ``read_log`` refuses the whole file."""
+    import sys
+
+    d, dfd = report_dir
+    log = AdvisorLog.create(dfd, SESSION)
+    log.append(_proposal())
+    fired: list[int] = []
+
+    def tracer(frame: Any, event: str, arg: Any) -> Any:
+        if frame.f_code.co_filename != advisor_log.__file__:
+            return None
+        if event == "line" and not fired:
+            import linecache
+
+            if linecache.getline(frame.f_code.co_filename, frame.f_lineno).strip() == "self._seq = seq":
+                fired.append(frame.f_lineno)
+                raise KeyboardInterrupt
+        return tracer
+
+    previous = sys.gettrace()  # coverage's tracer, under CI: restore it, never clear it
+    sys.settrace(tracer)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            log.append(_proposal())
+    finally:
+        sys.settrace(previous)
+    assert fired, "the injection point (the seq count) was never reached"
+    assert log.broken, "an interrupt at the seq count left the log usable"
+    with pytest.raises(AdvisorLogBroken):
+        log.append(_proposal())
+    log.close()
+    view = read_log(_path(d))
+    assert view["last_seq"] == 2 and view["closed"] is False
