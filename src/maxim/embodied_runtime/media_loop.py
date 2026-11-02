@@ -18,7 +18,7 @@ from maxim.inference.transcribe_audio import load_whisper_config, watch_and_tran
 from maxim.utils.optional_deps import OptionalDependencyError, optional_dependency_installed
 from maxim.utils.gpu_compat import detect_blackwell
 from maxim.embodied_runtime.workers import MotorQueue, QueuedMotion, run_motion
-from maxim.hardware.controller import MotionOutcome, MotionTicket
+from maxim.hardware.controller import MotionOutcome, MotionTicket, RobotController
 
 # act() waits this long for one move to complete: the controller's lock wait
 # (25 s) plus a long split move. Past it the move is cancelled if it has not started.
@@ -33,6 +33,7 @@ class MediaLoopMixin:
 
     log: logging.Logger  # set by the host (Selfy.__init__)
     sleeping: bool  # the robot's sleep state; the host and the loop both write it
+    _robot: Optional[RobotController]  # set by the host (Selfy.__init__); None without a robot
 
     def live(
         self,

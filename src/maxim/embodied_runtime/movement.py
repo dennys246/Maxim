@@ -212,7 +212,8 @@ class MovementMixin:
         # Dispatch through self.move() (2026-08-07 safety fold): move() owns the
         # workspace clamp, so a config-authored pose beyond limits cannot ship raw.
         # No sleep: the ticket's ``completed`` says when the move is done (#1499).
-        return self.move(*vals, duration=duration, duration_policy=duration_policy)
+        x, y, z, roll, pitch, yaw = vals
+        return self.move(x, y, z, roll, pitch, yaw, duration=duration, duration_policy=duration_policy)
 
     def sync_head_position(self) -> SyncResult:
         """Sync internal position tracking with actual hardware position.
