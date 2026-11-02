@@ -769,6 +769,26 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 holes.append([s, s])
         return horizon, holes
 
+    def turn_records(self, capture_id: str, text: str) -> tuple[str, ...]:
+        """The turn's own records: its arrival capture, and every later record holding exactly its words (``text``),
+        because an action taken on the same observation stores them too. Earlier records of those words are earlier
+        episodes, which are ordinary memories (#1573). A capture not yet stored is still its own id."""
+        from maxim.memory.text import same_words
+
+        words = same_words(text)
+        with self._rwlock.read():
+            first = getattr(self._memories.get(capture_id), "capture_seq", None)
+            if not words or not isinstance(first, int):
+                return (capture_id,)
+            later = (
+                m.id
+                for m in self._memories.values()
+                if isinstance(seq := getattr(m, "capture_seq", None), int)
+                and seq > first
+                and same_words(m.input_text) == words
+            )
+            return (capture_id, *later)
+
     def next_capture_seq(self) -> int:
         """Reserve the next capture sequence number (Phase 2d-1). Monotonic per store, across loads --
         ordered, not contiguous: a capture the full queue drops has already taken its number. The clock

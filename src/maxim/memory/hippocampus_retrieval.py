@@ -95,26 +95,6 @@ class RetrievalMixin:
     association graph formation. Mixed into the Hippocampus class.
     """
 
-    def turn_records(self, capture_id: str, text: str) -> tuple[str, ...]:
-        """The turn's own records: its arrival capture, and every later record holding exactly its words (``text``),
-        because an action taken on the same observation stores them too. Earlier records of those words are earlier
-        episodes, which are ordinary memories (#1573). A capture not yet stored is still its own id."""
-        from maxim.memory.text import same_words
-
-        words = same_words(text)
-        with self._rwlock.read():
-            first = getattr(self._memories.get(capture_id), "capture_seq", None)
-            if not words or not isinstance(first, int):
-                return (capture_id,)
-            later = (
-                m.id
-                for m in self._memories.values()
-                if isinstance(seq := getattr(m, "capture_seq", None), int)
-                and seq > first
-                and same_words(m.input_text) == words
-            )
-            return (capture_id, *later)
-
     def recall(
         self,
         limit: int = 10,

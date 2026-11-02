@@ -714,7 +714,7 @@ class BioEnrichmentPipeline:
         if turn_input:
             self._turn_input = turn_input
             self._turn_capture_id = getattr(context, "own_capture_id", "") or ""
-        own_ids = self._turn_own_ids()
+        own_ids = self._turn_own_ids(self._hippocampus)
 
         def _add_memory(mem: Any, relevance: float, path: str) -> None:
             if mem.id in seen_ids:
@@ -824,14 +824,14 @@ class BioEnrichmentPipeline:
             log.debug("Bio-enrichment hippocampus query failed: %s", e)
             return [], [], horizon, holes, list(own_ids)
 
-    def _turn_own_ids(self) -> tuple[str, ...]:
+    def _turn_own_ids(self, hippocampus: Any) -> tuple[str, ...]:
         """The records this turn made, which recall never surfaces. A failed read costs at most one echo of the turn's
         later records, never the recall (as the horizon read above)."""
         capture_id = self._turn_capture_id
         if not capture_id:
             return ()
         try:
-            return tuple(self._hippocampus.turn_records(capture_id, self._turn_input))
+            return tuple(hippocampus.turn_records(capture_id, self._turn_input))
         except Exception:  # noqa: BLE001 -- logged; the arrival capture itself is still excluded
             log_swallowed_exception()
             return (capture_id,)
