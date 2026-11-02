@@ -94,6 +94,8 @@ class ProposeActionTool(Tool):
     name = _PINNED_NAME
     effect = Effect.READ
     description = "Propose an action for a human to consider. It records the proposal and acts on nothing."
+    # Never pass this to a grammar: llama-cpp-python renders maxLength N as N nested rules, and 0.3.36 segfaults at
+    # 2000 (see ``completion_schema``). Nothing converts it today; ``_BOUNDS`` is what enforces these limits.
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": {

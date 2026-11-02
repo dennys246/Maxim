@@ -1049,7 +1049,8 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
     `frame_tool_output(..., external=True)`) goes through `tokenize(seg, add_bos=False, special=False)`;
   - **every id in an untrusted span is then checked with `llama_token_get_attr`.** `special=False` skips only
     CONTROL and UNKNOWN, so USER_DEFINED tokens still come out of plain text: all 999 in command-r's vocab, all 290
-    in qwen2's, and `</s>` in phi-3's. The attribute is a **bitmask**. An id is
+    in qwen2's, and `</s>` in phi-3's on llama-cpp-python 0.3.8 (0.3.36 classes that one CONTROL, so it stays out,
+    while the other two are unchanged). The attribute is a **bitmask**. An id is
     refused when it has the `CONTROL`, `USER_DEFINED` or `UNKNOWN` bit. `NORMAL` and `BYTE` are plain text: newlines
     and emoji bytes in SPM and phi-3 vocabs are BYTE, and rejecting them would reject every multi-line event. A
     refused id is handled in one of two ways:

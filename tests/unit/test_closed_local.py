@@ -23,6 +23,7 @@ from maxim.utils.atomic_io import atomic_write_json_at
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "advisor"
 TINY = FIXTURES / "tiny_runnable.gguf"
 PHI3 = FIXTURES / "vocab" / "ggml-vocab-phi-3.gguf"
+COMMAND_R = FIXTURES / "vocab" / "ggml-vocab-command-r.gguf"
 
 
 def _s(text: bytes) -> bytes:
@@ -158,11 +159,17 @@ def test_a_passed_deadline_ends_sampling_at_the_first_token(tiny: closed_local.C
 
 
 def test_a_special_token_in_an_event_is_escaped_not_dropped() -> None:
-    """phi-3's ``</s>`` is USER_DEFINED and comes out of plain text: the segment is re-tokenized per character."""
-    backend = closed_local.open_closed_local_backend(PHI3, n_ctx=512, n_gpu_layers=0, seed=0, vocab_only=True)
-    whole = list(backend._llama.tokenize(b"say </s> now", add_bos=False, special=False))
+    """command-r's turn marker is USER_DEFINED and comes out of plain text: the segment is re-tokenized per character.
+
+    Not phi-3's ``</s>``: llama-cpp-python 0.3.8 has it USER_DEFINED, 0.3.36 has it CONTROL, and CONTROL stays out of
+    plain text, so the precondition below held on one version only. Command-r's marker holds on both.
+    """
+    assert COMMAND_R.exists(), "fetched fixture missing: run `python scripts/fetch_advisor_fixtures.py`"
+    event = "say <|START_OF_TURN_TOKEN|> now"
+    backend = closed_local.open_closed_local_backend(COMMAND_R, n_ctx=512, n_gpu_layers=0, seed=0, vocab_only=True)
+    whole = list(backend._llama.tokenize(event.encode(), add_bos=False, special=False))
     assert backend._refused(whole), "the fixture lost its plain-text special token: the escape path is untested"
-    prompt = backend.build_prompt("Observe:\n", ["say </s> now"])
+    prompt = backend.build_prompt("Observe:\n", [event])
     assert prompt.rejected == () and prompt.untrusted_spans[0] is not None
     start, end = prompt.untrusted_spans[0]
     assert not backend._refused(prompt.ids[start:end]) and end - start > len(whole)
