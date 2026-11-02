@@ -349,10 +349,21 @@ def test_die_runs_its_steps_on_a_helper_and_always_exits(monkeypatch: pytest.Mon
     monkeypatch.setattr(cli_signals.os, "_exit", exits.append)
     monkeypatch.setattr(cli_signals, "LAST_WORDS_S", 0.05)
     monkeypatch.setattr(cli_signals, "_kill_spawned_server", lambda: 1 / 0)
-    monkeypatch.setattr(cli_signals, "_last_words", lambda _reason: release.wait(5))
-    cli_signals._die(75, "reason")  # a kill that raises and a last line that blocks
+    started = threading.Event()
+
+    def _blocks(_reason: str) -> None:
+        started.set()
+        release.wait(5)
+
+    monkeypatch.setattr(cli_signals, "_last_words", _blocks)
+    begun = time.monotonic()
+    with pytest.raises(ZeroDivisionError):  # the stubbed exit returns; the real one never lets this surface
+        cli_signals._die(75, "reason")  # a kill that raises and a last line that blocks
+    took = time.monotonic() - begun
     release.set()
     assert exits == [75]
+    assert started.is_set(), "a failed kill skipped the last words"
+    assert took < 2, "the exit waited on the last words past their limit"
 
 
 def test_last_words_restore_the_terminal_then_write(monkeypatch: pytest.MonkeyPatch) -> None:

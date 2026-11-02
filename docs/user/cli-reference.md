@@ -48,7 +48,7 @@ repeated SIGTERM is ignored; a second Ctrl+C forces `130`. **Allow for the save:
 s, so wait for it to exit before starting another (`pkill` returns at once). **`75`** means the stop did not finish in
 time and the watchdog killed the spawned LLM server and ended the process, 31 s after the signal by default. A supervisor
 that sends SIGKILL sooner sets `MAXIM_SUPERVISOR_KILL_S` to its kill delay in seconds, and the CLI's budgets end before
-it. On native Windows Ctrl+C works as it always has (the first press cancels, the second forces exit `1`), with no
+it. On native Windows Ctrl+C keeps its older handling (the first press cancels, the second forces exit `1`), with no
 watchdog. A robot run ended by the watchdog skips the sleep pose, exactly as a SIGKILL would. `maxim serve` exits `0` after one
 signal (it used to die with `143`); its budget is `console.stop_budget_s` and it does not read
 `MAXIM_SUPERVISOR_KILL_S`, so keep that budget under a supervisor's kill delay. A second Ctrl+C on serve exits `130`.

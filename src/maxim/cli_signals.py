@@ -184,15 +184,12 @@ def _last_words(reason: str) -> None:
 def _die(code: int, reason: str) -> None:
     """End the process. No step may stop the exit: on a helper, the steps that can block."""
     try:
-        _kill_spawned_server()
-    except BaseException:  # noqa: BLE001 -- the exit below must happen whatever this did
-        pass
-    try:
-        helper = threading.Thread(target=_last_words, args=(reason,), name="maxim.last-words", daemon=True)
-        helper.start()
-        helper.join(LAST_WORDS_S)
-    except BaseException:  # noqa: BLE001 -- as above
-        pass
+        try:
+            _kill_spawned_server()
+        finally:
+            helper = threading.Thread(target=_last_words, args=(reason,), name="maxim.last-words", daemon=True)
+            helper.start()
+            helper.join(LAST_WORDS_S)
     finally:
         os._exit(code)
 
