@@ -8,15 +8,16 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
+from maxim._offline import OfflineRefusal
 from maxim.exceptions import ToolEffectRefused
-from maxim.tools.base import Tool, ToolOutput
+from maxim.runtime.tool_policy import ToolPolicy, dispatching, effective_ceiling, require_policy
+from maxim.tools.base import GATE_REFUSAL_KINDS, Tool, ToolErrorKind, ToolOutput, effect_names, effect_of, exceeds
 from maxim.utils.logging import log_swallowed_exception
 from maxim.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
-    from maxim.agents.permissions import AgentPermissions
     from maxim.bridges.tool_pain_bridge import ToolPainBridge
     from maxim.embodiment.body import Embodiment, OutcomeWindow
     from maxim.embodiment.sem import CauseRef, InteroceptiveOutcome
@@ -122,22 +123,66 @@ class _OutcomeStart:
 _UNREGISTERED_HINTS = (("memory_recall", "remember"), ("say", "speak aloud"), ("think", "reason"))
 
 
+class _Refusal(NamedTuple):
+    """One gate's refusal of a dispatch (#1315 item 3, §1A.2): the typed kind, the layer that made it (each layer
+    has exactly one kind, the table in §1A.2) and the reason the model is shown."""
+
+    kind: ToolErrorKind
+    layer: str
+    message: str
+
+
+def _refused_output(refusal: _Refusal, tool: object | None) -> ToolOutput:
+    """The ToolOutput of a refused dispatch: ``error_kind`` is the gate kind, ``metadata`` names the layer and the
+    effect (``"unknown"`` when the caller resolved no tool object)."""
+    effect: Any = effect_names(effect_of(tool)) if tool is not None else "unknown"
+    return ToolOutput(
+        success=False,
+        error=refusal.message,
+        error_kind=refusal.kind,
+        metadata={"refusal_layer": refusal.layer, "effect": effect},
+    )
+
+
+def _retag_body_gate_kind(tool_name: str, result: Any) -> Any:
+    """A tool that RAN cannot claim a gate refusal (#1315 item 3 review, E2): a body returning a
+    ``GATE_REFUSAL_KINDS`` kind would otherwise book no NAc, goal or cluster credit downstream. Re-typed as an
+    external failure, loudly; only the executor's own gates produce a gate kind."""
+    if isinstance(result, ToolOutput) and result.error_kind in GATE_REFUSAL_KINDS:
+        _log.warning(
+            "tool %r returned the gate refusal kind %s from a body that ran: booked as a failure that ran",
+            tool_name,
+            result.error_kind.value,
+        )
+        return dataclasses.replace(result, error_kind=ToolErrorKind.EXTERNAL_FAILURE)
+    return result
+
+
+def gates_refuse(executor: Any, tool_name: str) -> bool:
+    """Whether *executor* (an ``Executor``, or a wrapper delegating to one) would refuse *tool_name* at dispatch
+    (``Executor.refuses``). Only a literal ``True`` counts, so a stand-in without the method changes nothing."""
+    refuses = getattr(executor, "refuses", None)
+    return callable(refuses) and refuses(tool_name) is True
+
+
 class Executor:
     def __init__(
         self,
         tool_registry: ToolRegistry,
+        *,
+        policy: ToolPolicy,
         pain_detector: "PainDetector | None" = None,
         tool_pain_bridge: "ToolPainBridge | None" = None,
-        permissions: "AgentPermissions | None" = None,
         embodiment: "Embodiment | None" = None,
-        *,
         cerebellum: Any | None = None,
         entity_map: Any | None = None,
     ) -> None:
         self.registry = tool_registry
         self._pain_detector = pain_detector
         self._tool_pain_bridge = tool_pain_bridge
-        self._permissions = permissions
+        # What this executor may dispatch (#1315 item 3): required, and a real ToolPolicy (V3). Everything after
+        # the registry is keyword-only, so a stale positional call cannot bind to ``embodiment``.
+        self._policy: ToolPolicy = require_policy(policy, where="Executor")
         # Optional SEM Embodiment reference. Set by build_executor when
         # entity_ref is provided so callers can fetch the body without
         # re-instantiating it. Read pre-wrap (FearGatedExecutor and
@@ -175,6 +220,11 @@ class Executor:
         self._tools_succeeded: list[str] = []
         self._tools_hallucinated: list[str] = []
         self._consecutive_failures: int = 0
+
+    @property
+    def policy(self) -> ToolPolicy:
+        """What this executor may dispatch (#1315 item 3). Read-only: set once, checked once, at construction."""
+        return self._policy
 
     def register_aliases(self, aliases: dict[str, str]) -> None:
         """Register additional tool aliases at runtime.
@@ -262,8 +312,10 @@ class Executor:
             return f"{refusal} (the mode {mode_name!r} is unknown, so it is enforced as passive)" if refusal else None
         return mode_def.dispatch_refusal(tool_name)
 
-    def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> str | None:
-        """Return the denial reason for *tool_name*, or ``None`` when allowed.
+    def _permission_denial(self, tool_name: str, *, deny_only: bool = False) -> _Refusal | None:
+        """The NAME gates' refusal of *tool_name*, or ``None`` (#1315 item 3, §1A.2: the one seam ``permits()``,
+        the prompt roster and dispatch read), in order: the autonomy forbid source, the mode, the policy's
+        permissions. The ceiling and the pin judge the tool OBJECT (:meth:`_object_refusal`), after the one lookup.
 
         ``deny_only=True`` applies just the deny half — the pre-alias check,
         where an allow-list must NOT be judged yet (``recall`` → ``memory_recall``).
@@ -275,22 +327,60 @@ class Executor:
         ``registry.get`` anyway).
         """
         if self._forbid_source is not None and self._forbid_source(tool_name):
-            return f"Tool '{tool_name}' is forbidden here (autonomy safety constraint)."
+            return _Refusal(
+                ToolErrorKind.POLICY_PERMISSIONS,
+                "forbid",
+                f"Tool '{tool_name}' is forbidden here (autonomy safety constraint).",
+            )
         if not deny_only:
             # The mode is an allow-list judged on the CANONICAL name, like the allow half below.
             mode_denial = self._mode_denial(tool_name)
             if mode_denial is not None:
-                return mode_denial
-        if self._permissions is None:
-            return None
+                return _Refusal(ToolErrorKind.MODE, "mode", mode_denial)
         tool = self.registry.find(tool_name)
+        return self._permissions_refusal(tool_name, tool, deny_only=deny_only)
+
+    def _permissions_refusal(self, tool_name: str, tool: object | None, *, deny_only: bool = False) -> _Refusal | None:
+        """The policy's name gate (``AgentPermissions``) on *tool_name*, judged with *tool*'s ``kind``."""
+        permissions = self.policy.permissions
         kind = getattr(tool, "kind", None) if tool is not None else None
         if deny_only:
-            return self._permissions.denial_reason(tool_name, kind=kind)
-        allowed, reason = self._permissions.can_invoke_tool(tool_name, kind=kind)
+            reason = permissions.denial_reason(tool_name, kind=kind)
+            return None if reason is None else _Refusal(ToolErrorKind.POLICY_PERMISSIONS, "permissions", reason)
+        allowed, reason = permissions.can_invoke_tool(tool_name, kind=kind)
         if allowed:
             return None
-        return reason or "Permission denied."
+        return _Refusal(ToolErrorKind.POLICY_PERMISSIONS, "permissions", reason or "Permission denied.")
+
+    def _object_refusal(self, tool_name: str, tool: object) -> _Refusal | None:
+        """The gates that judge the resolved tool OBJECT (#1315 item 3, §3 "Dispatch checks the object it runs"):
+        the permissions on its own ``kind``, the ceiling (with the offline AND, V7) and the pin. Dispatch runs the
+        object this saw, so a registry that answers a different object later cannot slip one past it."""
+        refusal = self._permissions_refusal(tool_name, tool)
+        if refusal is not None:
+            return refusal
+        effect, ceiling = effect_of(tool), effective_ceiling(self.policy)
+        if exceeds(effect, ceiling):
+            return _Refusal(
+                ToolErrorKind.POLICY_CEILING,
+                "ceiling",
+                f"Tool '{tool_name}' is refused here: it can cause {'|'.join(effect_names(effect))}, beyond what "
+                f"this agent may cause ({'|'.join(effect_names(ceiling)) or 'nothing'}).",
+            )
+        pins = self.policy.pins
+        if pins is not None and pins.get(tool_name) is not tool:
+            return _Refusal(ToolErrorKind.POLICY_PIN, "pin", f"Tool '{tool_name}' is not one this agent may run.")
+        return None
+
+    def check(self, tool: Tool) -> ToolOutput | None:
+        """The policy gates on the tool OBJECT *tool* without dispatching it (V6): the forbids, the mode, the
+        permissions, the ceiling and the pin. A refused ``ToolOutput`` (typed), or ``None`` when they pass. It adds
+        no exception of its own (a raising forbid or mode source propagates). The registry layer (unregistered,
+        inactive scene) is not judged: the caller already holds the object. ``auto_sense`` calls it before its
+        direct calls. It does not set ``current_policy``, so a composite run after it refuses (fail-closed)."""
+        name = getattr(tool, "name", "")
+        refusal = self._permission_denial(name) or self._object_refusal(name, tool)
+        return None if refusal is None else _refused_output(refusal, tool)
 
     def _runnable_tools(self) -> list[str]:
         """Advertised tools the gate would let run -- what an error may suggest (#826, D82; a decoy is never
@@ -298,15 +388,48 @@ class Executor:
         return sorted(t for t in self.registry.advertised() if self.permits(t))
 
     def permits(self, tool_name: str) -> bool:
-        """True when the permission gate -- the loop's autonomy hard forbids (#1412), the live mode (#826)
-        and ``AgentPermissions`` -- would let *tool_name* run.
+        """True when every dispatch gate -- the loop's autonomy hard forbids (#1412), the live mode (#826), the
+        policy's permissions, and, for a registered tool, its ceiling (with the offline AND) and pin (#1315 item
+        3) -- would let *tool_name* run.
 
         The prompt roster asks this before ADVERTISING a tool: a tool the
         executor refuses at dispatch must not be offered to the model, or the
         model spends turns choosing tools that only ever return a denial
-        (bugs ledger D82). No mode source and no permissions → everything permits.
+        (bugs ledger D82).
         """
-        return self._permission_denial(tool_name) is None
+        if self._permission_denial(tool_name) is not None:
+            return False
+        if self.policy.pins is not None and self.resolve_tool_name(tool_name) != tool_name:
+            return False  # a pinned policy refuses an alias at dispatch (layer "pin")
+        tool = self.registry.find(tool_name)
+        return tool is None or self._object_refusal(tool_name, tool) is None
+
+    def refuses(self, tool_name: str) -> bool:
+        """True when :meth:`execute` would refuse a call named *tool_name* without running anything: any gate,
+        the registry layer (unregistered, inactive scene) included, judged as dispatch judges it (the deny half on
+        the raw name, then the alias). Counts nothing. An unregistered name counts as refused even where a
+        ``SimToolRegistry`` at ceiling ``ALL`` would answer a fallback decoy (fail-closed: the wrapper then delegates). The wrappers that act BEFORE dispatch
+        (``FearGatedExecutor``, ``AnticipatoryPainExecutor``) ask it first (owner decision 2026-10-31), so a call
+        the gates refuse gets no fear review and books no anticipated pain."""
+        if self._permission_denial(tool_name, deny_only=True) is not None:
+            return True
+        resolved = self.resolve_tool_name(tool_name)
+        if resolved != tool_name and self.policy.pins is not None:
+            return True
+        if self._permission_denial(resolved) is not None:
+            return True
+        scene = self.registry.get_tool_scene(resolved)
+        if scene is not None and not self.registry.is_tool_active(resolved):
+            return True
+        tool = self.registry.find(resolved)
+        return tool is None or self._object_refusal(resolved, tool) is not None
+
+    def _refuse(self, refusal: _Refusal, tool_name: str, tool: object | None = None) -> ToolOutput:
+        """Count a gate refusal where every refusal is counted (``_tools_hallucinated`` feeds the failed-tools hint;
+        ``_consecutive_failures`` lengthens it) and return it typed. No pain, no bridge: the tool never ran."""
+        self._tools_hallucinated.append(tool_name)
+        self._consecutive_failures += 1
+        return _refused_output(refusal, tool)
 
     def resolve_tool_name(self, tool_name: str) -> str:
         """The tool a call named *tool_name* runs: itself when registered, else its ``TOOL_ALIASES`` target
@@ -352,9 +475,7 @@ class Executor:
         # `memory_recall` was allowed (review finding, sandbox-launch).
         denial = self._permission_denial(tool_name, deny_only=True)
         if denial is not None:
-            self._tools_hallucinated.append(tool_name)
-            self._consecutive_failures += 1
-            return ToolOutput(success=False, error=denial)
+            return self._refuse(denial, tool_name)
 
         # ── Alias resolution ─────────────────────────────────────────
         original_name = tool_name
@@ -375,13 +496,16 @@ class Executor:
             # Update the action so downstream (bus, hippocampus) sees
             # the real tool name
             action = {**action, "tool_name": tool_name, "params": params}
+            if self.policy.pins is not None:  # a pinned policy authorises objects by their own name, never an alias
+                return self._refuse(
+                    _Refusal(ToolErrorKind.POLICY_PIN, "pin", f"Tool '{original_name}' is not one this agent may run."),
+                    original_name,
+                )
 
         # Full check on the CANONICAL name (deny + allow), aliased or not.
         denial = self._permission_denial(tool_name)
         if denial is not None:
-            self._tools_hallucinated.append(tool_name)
-            self._consecutive_failures += 1
-            return ToolOutput(success=False, error=denial)
+            return self._refuse(denial, tool_name)
 
         invocation_id = str(uuid.uuid4())
 
@@ -440,6 +564,8 @@ class Executor:
         # even if the LLM hallucinates a remembered name from a prior scene.
         # Only check for tools that ARE registered but inactive (scene tools).
         # Non-existent tools fall through to the KeyError path below.
+        # A gate refusal books no pain (#1315 item 3, §1A.2): the inactive and unregistered cases used to reach the
+        # pain detector through ``_report_failure``; like every gate kind, they now reach only the counters.
         scene = self.registry.get_tool_scene(tool_name)
         if scene is not None and not self.registry.is_tool_active(tool_name):
             with self._lock:
@@ -447,12 +573,12 @@ class Executor:
             self._consecutive_failures += 1
             error_msg = f"Tool {tool_name!r} is not active (belongs to scene {scene!r})."
             error_msg += f" Available tools: {', '.join(self._runnable_tools())}."
-            result = ToolOutput(success=False, error=error_msg)
-            self._report_failure(tool_name, invocation_id, result, params)
+            inactive = _Refusal(ToolErrorKind.INACTIVE_SCENE, "registry", error_msg)
+            result = _refused_output(inactive, self.registry.find(tool_name))
             return self._stamp_invocation(result, invocation_id, None)
 
         try:
-            tool = self.registry.get(tool_name)
+            tool = self.registry.get(tool_name)  # the ONE lookup: the gates below judge, and dispatch runs, this object
         except KeyError:
             with self._lock:
                 self._running = None
@@ -477,9 +603,14 @@ class Executor:
                 hints = [f"'{t}' to {use}" for t, use in _UNREGISTERED_HINTS if t in runnable]
                 if hints:
                     error_msg += f" Use {', '.join(hints)}."
-            result = ToolOutput(success=False, error=error_msg)
-            self._report_failure(tool_name, invocation_id, result, params)
+            result = _refused_output(_Refusal(ToolErrorKind.NOT_REGISTERED, "registry", error_msg), None)
             return self._stamp_invocation(result, invocation_id, None)
+
+        refusal = self._object_refusal(tool_name, tool)
+        if refusal is not None:
+            with self._lock:
+                self._running = None
+            return self._stamp_invocation(self._refuse(refusal, tool_name, tool), invocation_id, None)
 
         # The invocation starts only once it will run (#1207): an inactive or unregistered call never
         # queues an NAc pending event, so a later success cannot book it. ``execute`` still retires it.
@@ -488,12 +619,22 @@ class Executor:
         pressure_before = self._drive_pressure_snapshot()
         outcome = self._outcome_start(tool, tool_name)
         try:
-            if outcome is None or self.embodiment is None:
-                result = tool.run(**params)
-            else:
-                with self.embodiment.outcome_window() as window:
+            with dispatching(self.policy):  # a composite builds its child from THIS policy (tools/base.py)
+                if outcome is None or self.embodiment is None:
                     result = tool.run(**params)
-                outcome.window = window
+                else:
+                    with self.embodiment.outcome_window() as window:
+                        result = tool.run(**params)
+                    outcome.window = window
+        except OfflineRefusal as e:
+            # Mapped BEFORE any booking (§1A.2): an offline session must not learn aversion to the tools the latch
+            # refuses (actuation, lazy downloads). Booked like a gate refusal: no pain, no bridge, no NAc.
+            with self._lock:
+                self._running = None
+            refused = self._refuse(
+                _Refusal(ToolErrorKind.OFFLINE, "offline", f"Tool {tool_name!r}: {e}"), tool_name, tool
+            )
+            return self._stamp_invocation(refused, invocation_id, None)
         except Exception as e:
             with self._lock:
                 self._running = None
@@ -503,6 +644,7 @@ class Executor:
 
         with self._lock:
             self._running = None
+        result = _retag_body_gate_kind(tool_name, result)
 
         if result.success:
             self._tools_succeeded.append(tool_name)

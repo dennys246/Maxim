@@ -31,10 +31,10 @@ def factory(tmp_path):
 @pytest.fixture
 def two_agents(factory):
     guard = factory.create_agent(
-        AgentConfig(agent_id="npc_guard", role="npc", personality="stern", remembers=True, learns=True)
+        AgentConfig(agent_id="npc_guard", role="npc", personality="stern", remembers=True, learns=True, policy=None)
     )
     merchant = factory.create_agent(
-        AgentConfig(agent_id="npc_merchant", role="npc", personality="shrewd", remembers=True, learns=True)
+        AgentConfig(agent_id="npc_merchant", role="npc", personality="shrewd", remembers=True, learns=True, policy=None)
     )
     return guard, merchant
 
@@ -86,8 +86,8 @@ class TestMultiAgentIsolation:
         assert guard.memory_hub.scn is not merchant.memory_hub.scn
 
     def test_separate_persistence_directories(self, factory, tmp_path):
-        factory.create_agent(AgentConfig(agent_id="agent_a"))
-        factory.create_agent(AgentConfig(agent_id="agent_b"))
+        factory.create_agent(AgentConfig(agent_id="agent_a", policy=None))
+        factory.create_agent(AgentConfig(agent_id="agent_b", policy=None))
         assert (tmp_path / "agents" / "agent_a").is_dir()
         assert (tmp_path / "agents" / "agent_b").is_dir()
 

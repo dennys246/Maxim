@@ -23,6 +23,7 @@ from typing import Any
 
 from maxim.simulation.bridge import SimulationBridge
 from maxim.simulation.instrumented_executor import InstrumentedExecutor
+from tests.policy_helpers import TEST_POLICY
 
 _WORDS = "I am Maxim, and I remember the cavern."
 _SAID = "The password is heron."
@@ -41,7 +42,7 @@ def _aut(tmp_path: Any) -> tuple[SimulationBridge, InstrumentedExecutor]:
     for tool in (RespondTool(out), SpeakTool(out), SayTool()):
         registry.register(tool)
     bridge = SimulationBridge(response_timeout=5.0, settle_s=0.3)
-    executor = InstrumentedExecutor(build_executor(registry, pain_bus=None, permissions=None), bridge.action_sink)
+    executor = InstrumentedExecutor(build_executor(registry, pain_bus=None, policy=TEST_POLICY), bridge.action_sink)
     return bridge, executor
 
 
@@ -57,7 +58,7 @@ def _embodied_aut() -> tuple[SimulationBridge, InstrumentedExecutor, str]:
     tools = generate_tools_for_entity(ComponentRegistry().instantiate("bodies/base_humanoid"), registry)
     [speak] = [t.name for t in tools if t.name.endswith("_speak")]
     bridge = SimulationBridge(response_timeout=5.0, settle_s=0.3)
-    executor = InstrumentedExecutor(build_executor(registry, pain_bus=None, permissions=None), bridge.action_sink)
+    executor = InstrumentedExecutor(build_executor(registry, pain_bus=None, policy=TEST_POLICY), bridge.action_sink)
     return bridge, executor, speak
 
 
@@ -529,7 +530,7 @@ def test_a_tool_deregistered_mid_lookup_still_dispatches_and_records(tmp_path: A
 
     registry = _RacingRegistry([SayTool()])
     bridge = SimulationBridge(response_timeout=5.0, settle_s=0.3)
-    executor = InstrumentedExecutor(build_executor(registry, pain_bus=None, permissions=None), bridge.action_sink)
+    executor = InstrumentedExecutor(build_executor(registry, pain_bus=None, policy=TEST_POLICY), bridge.action_sink)
     out = executor.execute({"tool_name": "say", "params": {"text": _SAID}})
 
     [action] = bridge.get_all_actions()

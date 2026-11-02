@@ -14,7 +14,6 @@ from __future__ import annotations
 import threading
 import time
 
-
 from maxim.simulation.minecraft_harness import (
     FakeBridgeServer,
     MinecraftSyncPump,
@@ -24,6 +23,7 @@ from maxim.simulation.minecraft_harness import (
     smoke_verdict,
     verdict_is_green,
 )
+from tests.policy_helpers import TEST_POLICY
 
 
 class TestLoopKwargsPins:
@@ -115,7 +115,7 @@ class TestD77AcquisitionRegeneration:
         # fix for).
         from maxim.runtime.executor import Executor
 
-        ex = Executor(registry, embodiment=embodiment, entity_map=entity_map)
+        ex = Executor(registry, policy=TEST_POLICY, embodiment=embodiment, entity_map=entity_map)
         ex._handle_entity_acquisition({"entity_acquired": "minecraft_bread"})
         eat = registry.get("minecraft_bread_eat_bread")
         assert eat is not None, "acquisition must register the item's tools"

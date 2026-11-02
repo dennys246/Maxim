@@ -27,6 +27,7 @@ from maxim.cli import (
 )
 from maxim.cli_parser import _build_parser
 from maxim.cli_utils import reexec_with_mode
+from tests.policy_helpers import TEST_POLICY
 
 
 def _args(**overrides) -> argparse.Namespace:
@@ -143,7 +144,7 @@ def _executor(mode_source=None):
     from maxim.runtime.executor import Executor
     from maxim.tools.registry import ToolRegistry
 
-    executor = Executor(ToolRegistry())
+    executor = Executor(ToolRegistry(), policy=TEST_POLICY)
     if mode_source is not None:
         executor.set_mode_source(mode_source)
     return executor

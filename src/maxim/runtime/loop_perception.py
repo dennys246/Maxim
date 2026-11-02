@@ -239,6 +239,13 @@ def imagine(*, step_num: int, observation: Any, state: Any, imagination_trigger:
     return _imagination_results
 
 
+def _checked_call(executor: Any, tool: Any) -> Any:
+    """Run an auto-fire tool directly only when the executor's gates would dispatch it (V6, #1315 item 3:
+    ``Executor.check``, the dispatch seam without dispatch); otherwise its typed refusal, which is not shown."""
+    refusal = executor.check(tool)
+    return refusal if refusal is not None else tool.execute()
+
+
 def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
     """§1.15 AUTO-SENSE: passive perception (exteroception + interoception). Returns the auto-sense text
     (``""`` when there is no new percept or nothing to report)."""
@@ -289,7 +296,8 @@ def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
                     if _af_tool is None:
                         continue
                     try:
-                        _af_result = _af_tool.execute()
+                        # V6: a direct call outside dispatch runs only what dispatch would (#1315 item 3)
+                        _af_result = _checked_call(executor, _af_tool)
                         if _af_result.success and _af_result.output:
                             _auto_sense_parts.append(str(_af_result.output))
                     except Exception as _exc:
@@ -326,7 +334,9 @@ def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
                     _sense = _tool_reg.get("sense")
                 except KeyError:
                     pass
-                if _sense is not None and _presence_tool is not None:
+                if _sense is not None and _presence_tool is not None and executor.check(_sense) is not None:
+                    logger.debug("auto-sense interoception skipped: the executor's gates refuse %r", _sense.name)
+                elif _sense is not None and _presence_tool is not None:
                     try:
                         _emap = getattr(_presence_tool, "_entity_map", None)
                         if _emap is not None:

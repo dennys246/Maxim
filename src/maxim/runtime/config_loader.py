@@ -455,10 +455,11 @@ class ToolsConfigSection:
     """Hard tool allow/deny lists for console agents (``MaximHandle``).
 
     SHAPE-FROZEN at 1.0 (CC3) — path (b). Additive optional section
-    (1.1.3): both fields default to "unconfigured", which leaves
-    ``Executor._permissions`` ``None`` — byte-identical to the pre-1.1.3
-    console, where ``AgentPermissions`` existed but was never armed
-    outside campaign YAML.
+    (1.1.3): both fields default to "unconfigured", which gives the console
+    executor an empty deny list under ceiling ``ALL``
+    (``runtime/tool_policy.py::policy_from_tools_settings``, #1315 item 3) —
+    the behaviour of the pre-1.1.3 console, where ``AgentPermissions``
+    existed but was never armed outside campaign YAML.
 
     ``allow`` — when set, the ONLY tools the console agent may invoke
     (``None`` = every registered tool, the default). ``deny`` — tools

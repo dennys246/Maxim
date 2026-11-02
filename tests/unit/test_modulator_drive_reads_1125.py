@@ -29,6 +29,7 @@ from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 _QUALIFIED = ("arms.pressure", "arms.thermal", "head.thermal")
 _ROOT = ("azimuth", "core_temperature", "hunger", "thirst")
@@ -57,7 +58,7 @@ def _pressure_record(emb: Embodiment) -> dict[str, float]:
     """What the production entry stamps: ``Executor.execute`` -> ``drive_pressure_before``."""
     registry = ToolRegistry()
     registry.register(_Noop())
-    executor = Executor(tool_registry=registry)
+    executor = Executor(tool_registry=registry, policy=TEST_POLICY)
     executor.embodiment = emb
     result = executor.execute({"tool_name": "noop", "params": {}})
     assert result.success
@@ -179,7 +180,7 @@ def test_selection_and_record_readers_agree_with_the_resolver():
     from maxim.simulation.substrate_telemetry import _drive_snapshot
 
     root, emb = _infant()
-    executor = Executor(tool_registry=ToolRegistry())
+    executor = Executor(tool_registry=ToolRegistry(), policy=TEST_POLICY)
     executor.embodiment = emb
     drives = sorted(root.drive_specs)
     assert drives == sorted((*_QUALIFIED, *_ROOT))  # the infant's full roster, so nothing is skipped

@@ -21,6 +21,7 @@ its "Red on main" comment states; the fix flipped them. The by-class follow-up d
 from __future__ import annotations
 
 import pytest
+from tests.policy_helpers import TEST_POLICY
 
 from tests.unit._execute_learn_driver import run_once
 
@@ -75,7 +76,7 @@ def test_a_refused_confirmation_is_audited_with_the_operational_mode():
     from maxim.tools.registry import ToolRegistry
 
     state = SimpleNamespace(data={"mode": "live"})
-    executor = _prepare_executor(build_executor(ToolRegistry(), pain_bus=None, permissions=None), None, state)
+    executor = _prepare_executor(build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY), None, state)
     executor.set_operational_override("passive")
     autonomy = MagicMock()
     ctrl = LoopController(
@@ -138,7 +139,7 @@ def test_an_explicit_empty_run_mode_is_passive_at_dispatch():
 
     state = RuntimeState()
     state.data["mode"] = ""
-    executor = _prepare_executor(build_executor(ToolRegistry(), pain_bus=None, permissions=None), None, state)
+    executor = _prepare_executor(build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY), None, state)
     denial = executor._mode_denial("bash")
     assert denial is not None and "passive mode does not allow" in denial
 

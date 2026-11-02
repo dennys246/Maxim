@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 
+from tests.policy_helpers import TEST_POLICY
 from tests.unit._cradle_loop_driver import AGENT_ID, Step, run_cradle
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -295,7 +296,7 @@ def _executor(tmp_path: Path, agent_id: str, *extra_tools: Any) -> Any:
     bio = build_bio_stack(agent_id=agent_id or "gl2a_unbound", persistence_dir=str(tmp_path / (agent_id or "unbound")))
     executor = build_executor(
         tool_registry=registry,
-        permissions=None,
+        policy=TEST_POLICY,
         agent_id=agent_id,
         pain_bus=bio.pain_bus,
         nac=bio.nac,

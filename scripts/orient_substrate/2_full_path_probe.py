@@ -139,6 +139,7 @@ def run(arm, regime, *, seed, ticks=3000):
                 agent_id=AGENT,
                 tool_name=action,
                 bridge_booked=None,  # no executor: nothing was booked by a bridge (#1200 Stage 2)
+                refused=None,  # no executor: no dispatch gate refused it (#1315 item 3)
                 success=True,
                 result_summary="ok",
                 error=None,

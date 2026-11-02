@@ -795,7 +795,7 @@ def build_pain_bus(
             executor = build_executor(
                 registry,
                 pain_bus=pain_bus,
-                permissions=None,
+                policy=cli_tool_policy(),
                 nac=cli_nac,
                 hippocampus=cli_hippocampus,
                 ...,

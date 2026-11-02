@@ -41,6 +41,8 @@ from typing import Any
 
 import pytest
 
+from tests.policy_helpers import TEST_POLICY
+
 HUB_AGENT_ID = "hub_aut_1133"
 CLUSTERS = {"interoception": "c_intero_7", "world": "c_world_3"}
 REASONING = "probe the world"
@@ -292,7 +294,7 @@ def run_once(
                 return ToolOutput(success=True, output="second")
 
         registry.register(_Second())
-    executor = build_executor(registry, pain_bus=None, permissions=None)
+    executor = build_executor(registry, pain_bus=None, policy=TEST_POLICY)
     if grant is not None:
         executor.set_operational_override(grant)
 

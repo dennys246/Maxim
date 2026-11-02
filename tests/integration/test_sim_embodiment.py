@@ -21,7 +21,7 @@ from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.proprioception.pain_bus import PainBus
 from maxim.runtime.bootstrap import build_executor
 from maxim.tools.registry import ToolRegistry
-
+from tests.policy_helpers import TEST_POLICY
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,7 +55,7 @@ def _build_sim_aut_executor(
     executor = build_executor(
         ToolRegistry(),
         pain_bus=executor_pain_bus,
-        permissions=None,
+        policy=TEST_POLICY,
         nac=nac,
         entity_ref=entity_ref,
         component_registry=component_registry,
@@ -93,7 +93,7 @@ class TestSimEmbodimentWiring:
         build_executor(
             registry,
             pain_bus=pain_bus,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -113,7 +113,7 @@ class TestSimEmbodimentWiring:
         build_executor(
             registry,
             pain_bus=pain_bus,
-            permissions=None,
+            policy=TEST_POLICY,
             nac=nac,
             entity_ref="weapons/rusty_sword",
             component_registry=ComponentRegistry(),
@@ -151,7 +151,7 @@ class TestSimEmbodimentPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=None,
-                permissions=None,
+                policy=TEST_POLICY,
                 nac=NAc(NACConfig()),
                 entity_ref="weapons/rusty_sword",
                 component_registry=ComponentRegistry(),
@@ -165,7 +165,7 @@ class TestSimEmbodimentPreconditions:
             build_executor(
                 ToolRegistry(),
                 pain_bus=PainBus(_allow_raw=True),
-                permissions=None,
+                policy=TEST_POLICY,
                 nac=NAc(NACConfig()),
                 entity_ref="weapons/legendary_excalibur_that_does_not_exist",
                 component_registry=ComponentRegistry(),

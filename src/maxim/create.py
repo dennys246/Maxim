@@ -212,7 +212,7 @@ def agent(
             enforce a tool list — passing one raises ``ValueError`` rather
             than being written to a field nothing reads (D73). Build through
             ``AgentFactory.create_full_agent`` with ``with_executor=True`` and
-            ``AgentConfig.permissions`` to get an enforced allow-list.
+            ``AgentConfig(policy=ToolPolicy.only(...))`` to get an enforced allow-list.
         persistence_dir: Custom persistence directory.
 
     Returns:
@@ -239,7 +239,8 @@ def agent(
     if tool_whitelist is not None:
         raise ValueError(
             "maxim.create.agent builds no Executor, so tool_whitelist cannot be enforced; "
-            "use AgentFactory.create_full_agent(with_executor=True) with AgentConfig.permissions"
+            "use AgentFactory.create_full_agent(with_executor=True) with "
+            "AgentConfig(policy=maxim.runtime.tool_policy.ToolPolicy.only(...))"
         )
 
     from maxim.runtime.agent_factory import AgentConfig, AgentFactory, persisted_agent_state
@@ -252,7 +253,7 @@ def agent(
         personality=personality,
         remembers=remembers,
         learns=learns,
-        permissions=None,
+        policy=None,  # create.agent builds no Executor (D73): there is nothing to arm
         persistence_dir=persistence_dir,
     )
     # A fresh agent over an existing one would save over its NAc/EC/SCN while its memories survived:
@@ -263,7 +264,7 @@ def agent(
         if persistence_dir and agent_dir.name != name:
             how = (
                 "Continue it with AgentFactory().create_agent(AgentConfig(agent_id=..., "
-                f"persistence_dir={str(agent_dir)!r}), auto_load=True)"
+                f"persistence_dir={str(agent_dir)!r}, policy=None), auto_load=True)"
             )
         else:
             base = f", base_dir={str(agent_dir.parent)!r}" if persistence_dir else ""

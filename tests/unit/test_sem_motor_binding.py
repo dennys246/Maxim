@@ -34,6 +34,7 @@ from maxim.hardware.reachy.motor_backend import (
 )
 from maxim.decisions.nac import NAc
 from maxim.proprioception.pain_bus import build_pain_bus
+from tests.policy_helpers import TEST_POLICY
 
 
 def _bus():
@@ -99,7 +100,7 @@ class TestFactoryBinding:
         executor = build_executor(
             registry,
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -122,7 +123,7 @@ class TestFactoryBinding:
         executor = build_executor(
             registry,
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -275,7 +276,7 @@ class TestCreditMillGuard:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -302,6 +303,7 @@ class TestCreditMillGuard:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="a",
             tool_name="reachy_mini_turn_left",
             success=True,
@@ -328,6 +330,7 @@ class TestCreditMillGuard:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="a",
             tool_name="reachy_mini_turn_left",
             success=True,
@@ -373,7 +376,7 @@ class TestReviewFoldGuards:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -395,7 +398,7 @@ class TestReviewFoldGuards:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -431,7 +434,7 @@ class TestReviewFoldGuards:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -497,7 +500,7 @@ class TestMeasuredReliefCredit:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),
@@ -566,6 +569,7 @@ class TestMeasuredReliefCredit:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="a",
             tool_name="reachy_mini_turn_left",
             success=True,
@@ -596,6 +600,7 @@ class TestMeasuredReliefCredit:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="a",
             tool_name="warm_self",
             success=True,
@@ -620,6 +625,7 @@ class TestMeasuredReliefCredit:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            refused=None,
             agent_id="a",
             tool_name="say",
             success=True,
@@ -667,7 +673,7 @@ class TestMeasurementHonestyGates:
         executor = build_executor(
             ToolRegistry(),
             pain_bus=_bus(),
-            permissions=None,
+            policy=TEST_POLICY,
             nac=_nac(),
             entity_ref="bodies/reachy_mini",
             component_registry=ComponentRegistry(),

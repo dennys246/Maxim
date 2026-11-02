@@ -14,6 +14,7 @@ from maxim.planning.decision_engine import DecisionEngine
 from maxim.planning.planning import TaskPlanner
 from maxim.planning.policy import DefaultPolicy
 from maxim.runtime.executor import Executor
+from maxim.runtime.tool_policy import ToolPolicy, require_policy
 from maxim.runtime.state import RuntimeState
 from maxim.tools.code_tools import CodeSearchTool, RunTestsTool
 from maxim.tools.git_tools import GitDiffTool, GitCommitTool
@@ -34,7 +35,6 @@ from maxim.utils.filesystem_policy import (
 )
 
 if TYPE_CHECKING:
-    from maxim.agents.permissions import AgentPermissions
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.bus import AgentBus
     from maxim.agents.fear_agent import FearAgent
@@ -324,11 +324,60 @@ def build_tool_registry(
     return registry
 
 
+def _check_build_executor_args(
+    *,
+    pain_bus: "PainBus | None",
+    pain_detector: "PainDetector | None",
+    entity_ref: str | None,
+    component_registry: "ComponentRegistry | None",
+    nac: "NAc | None",
+    modulator_factory: Any,
+) -> None:
+    """``build_executor``'s fail-fast preconditions, run BEFORE any construction (moved out of it, #1315 item 3)."""
+    if pain_bus is not None and pain_detector is not None:
+        raise ValueError(
+            "build_executor: pain_bus AND pain_detector were both provided. "
+            "ToolPainBridge.__init__ uses pain_bus if set and silently ignores "
+            "pain_detector — pick one."
+        )
+    if entity_ref is not None and component_registry is None:
+        raise ValueError(
+            f"build_executor: entity_ref={entity_ref!r} was provided but "
+            "component_registry is None. Pass a ComponentRegistry instance "
+            "or leave entity_ref as None."
+        )
+    if entity_ref is not None and pain_bus is None:
+        raise ValueError(
+            f"build_executor: entity_ref={entity_ref!r} was provided but "
+            "pain_bus is None. Embodiment._publish_pain emits through the "
+            "bus; pass a PainBus instance."
+        )
+    if entity_ref is not None and nac is None:
+        raise ValueError(
+            f"build_executor: entity_ref={entity_ref!r} was provided but "
+            "nac is None. Embodiment failures need a bridge for NAc "
+            "attribution — pass an NAc instance."
+        )
+    if (pain_bus is not None or pain_detector is not None) and nac is None:
+        raise ValueError(
+            "build_executor: pain_bus or pain_detector was provided but nac "
+            "is None. Subscribing the bridge without NAc has no effect — "
+            "pass an NAc instance or set both subscription sources to None."
+        )
+    if modulator_factory is not None and entity_ref is None:
+        raise ValueError(
+            "build_executor: modulator_factory was provided but entity_ref "
+            "is None — there is no entity tree to attach backends to. "
+            "A silently-ignored factory is a virtual body that lies success "
+            "(sem_motor_binding.md); pass entity_ref or drop the factory."
+        )
+
+
 def build_executor(
     tool_registry: ToolRegistry,
     *,
     pain_bus: "PainBus | None",
-    permissions: "AgentPermissions | None",
+    policy: "ToolPolicy",
     nac: "NAc | None" = None,
     hippocampus: Any = None,
     scn: Any = None,
@@ -392,7 +441,8 @@ def build_executor(
             ``component_registry`` AND ``pain_bus`` AND ``nac``.
         component_registry: Required iff ``entity_ref`` is set.
         cerebellum: Optional ``Cerebellum`` for forward-model training.
-        permissions: Optional ``AgentPermissions``.
+        policy: REQUIRED ``ToolPolicy`` (#1315 item 3, V3): what the executor may dispatch. ``None`` is a
+            ``TypeError``, never an allow-all.
         modulator_factory: Optional ``attach_backends``-shaped factory
             (``(entity, mod_name, spec_modulator) -> backend | None``)
             attaching LIVE hardware backends to spec-declared modulators
@@ -428,43 +478,15 @@ def build_executor(
     ``self._tool_pain_bridge``.
     """
     # ── Fail-fast precondition checks (run BEFORE any construction) ──
-    if pain_bus is not None and pain_detector is not None:
-        raise ValueError(
-            "build_executor: pain_bus AND pain_detector were both provided. "
-            "ToolPainBridge.__init__ uses pain_bus if set and silently ignores "
-            "pain_detector — pick one."
-        )
-    if entity_ref is not None and component_registry is None:
-        raise ValueError(
-            f"build_executor: entity_ref={entity_ref!r} was provided but "
-            "component_registry is None. Pass a ComponentRegistry instance "
-            "or leave entity_ref as None."
-        )
-    if entity_ref is not None and pain_bus is None:
-        raise ValueError(
-            f"build_executor: entity_ref={entity_ref!r} was provided but "
-            "pain_bus is None. Embodiment._publish_pain emits through the "
-            "bus; pass a PainBus instance."
-        )
-    if entity_ref is not None and nac is None:
-        raise ValueError(
-            f"build_executor: entity_ref={entity_ref!r} was provided but "
-            "nac is None. Embodiment failures need a bridge for NAc "
-            "attribution — pass an NAc instance."
-        )
-    if (pain_bus is not None or pain_detector is not None) and nac is None:
-        raise ValueError(
-            "build_executor: pain_bus or pain_detector was provided but nac "
-            "is None. Subscribing the bridge without NAc has no effect — "
-            "pass an NAc instance or set both subscription sources to None."
-        )
-    if modulator_factory is not None and entity_ref is None:
-        raise ValueError(
-            "build_executor: modulator_factory was provided but entity_ref "
-            "is None — there is no entity tree to attach backends to. "
-            "A silently-ignored factory is a virtual body that lies success "
-            "(sem_motor_binding.md); pass entity_ref or drop the factory."
-        )
+    _check_build_executor_args(
+        pain_bus=pain_bus,
+        pain_detector=pain_detector,
+        entity_ref=entity_ref,
+        component_registry=component_registry,
+        nac=nac,
+        modulator_factory=modulator_factory,
+    )
+    require_policy(policy, where="build_executor")
 
     # ── Bridge construction (gated on nac, not subscription) ─────────
     # The bridge's PRIMARY value is direct attribution via
@@ -553,7 +575,7 @@ def build_executor(
         tool_registry=tool_registry,
         pain_detector=pain_detector,
         tool_pain_bridge=bridge,
-        permissions=permissions,
+        policy=policy,
         embodiment=embodiment,
         cerebellum=cerebellum,
         entity_map=entity_map,

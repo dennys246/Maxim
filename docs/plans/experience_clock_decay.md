@@ -131,10 +131,10 @@ through `create_full_agent(with_bio_stack=True)` (which replaces the skeleton's 
 `build_minecraft_aut`/`build_bio_stack`; the orchestrator's second loop call and `simulation/tools.py` pass no hub.
 `interactive.py::_run_scenario_turn` passes its caller's hub through and `run_interactive_sim` has no caller. The only
 NAc-without-Hippocampus is the bare `create_agent` path (`maxim.create.agent`, `create_npc_agent`, `maxim.load.agent`
-with `remembers=False, learns=True`), and it gets **no MemoryHub at all**: building one without a Hippocampus raises
-inside `_create_memory_hub` (`AttributeError` on `connect_scn`), logged as "Corrupt memory_hub state". That is a
-pre-existing defect (a learns-only agent silently loses its hub, mislabelled as corruption); S0 records it and does
-not fix it. Pinned by `test_experience_clock_decay.py::test_s0_which_builders_give_a_nac_without_a_hippocampus`
+with `remembers=False, learns=True`), and it gets **no MemoryHub at all**. That is the contract since #1522 (owner
+decision 2026-10-31): the hub needs both a Hippocampus and a NAc, so an agent without one has none, its shutdown saves
+its stores itself, and it gets no session-end decay or consolidation (whether a partial agent should is #1366's
+remaining question). Before #1522 the failed build was also mislabelled as corruption. Pinned by `test_experience_clock_decay.py::test_s0_which_builders_give_a_nac_without_a_hippocampus`
 (builders) and a code-reading audit of the callers. D1 stays: the loop gates run on a hub without a Hippocampus, so
 they hold S3a to it regardless.
 

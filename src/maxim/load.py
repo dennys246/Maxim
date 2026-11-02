@@ -293,6 +293,7 @@ def agent(
         # "fresh" maps to the factory's loud-but-continue mode; the corrupt
         # file is reported as a WARNING either way.
         on_corrupt="raise" if on_corrupt == "raise" else "warn",
+        policy=None,  # create_agent builds no Executor (D73): there is nothing to arm
     )
     return factory.create_agent(config, auto_load=True)
 

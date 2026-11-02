@@ -616,6 +616,58 @@ def _await_aut_session_end_before_new(aut_memory_hub: Any | None) -> None:
 _NEW_GOAL_SESSION_WAIT_S = 30.0
 
 
+def _aut_agent_config(*, sim_tmpdir: Any, entity_ref: str | None) -> Any:
+    """The sim AUT's ``AgentConfig`` (moved out of ``start_simulation_mode``, #1315 item 3), carrying its tool
+    policy: ``runtime/tool_policy.py::aut_tool_policy``."""
+    from maxim.runtime.agent_factory import AgentConfig
+    from maxim.runtime.tool_policy import aut_tool_policy
+
+    return AgentConfig(
+        agent_id="sim_aut",
+        role="pc",
+        persistence_dir=str(sim_tmpdir),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=entity_ref is not None,
+        with_fear_gate=False,
+        embodiment_ref=entity_ref,
+        policy=aut_tool_policy(),
+    )
+
+
+def _orchestrator_agent_config() -> Any:
+    """The sim narrator's ``AgentConfig`` (moved out of ``start_simulation_mode``, #1315 item 3), carrying its tool
+    policy: ``runtime/tool_policy.py::orchestrator_tool_policy`` (its tools drive the AUT, V12)."""
+    # with_pain_bridge=False: orch sim tools (send_message, observe_actions,
+    # etc.) never produce SEM embodiment pain. Bridge is still constructed
+    # for direct attribution (gated on nac), just not subscribed to pain_bus.
+    from maxim.runtime.agent_factory import AgentConfig
+    from maxim.runtime.tool_policy import orchestrator_tool_policy
+    from maxim.utils.paths import data_home as _data_home
+
+    return AgentConfig(
+        agent_id="sim_orchestrator",
+        role="npc",
+        persistence_dir=str(_data_home() / "orchestrator"),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=False,
+        with_fear_gate=False,
+        # Write-but-don't-read (review fold, Arch #2): shutdown() keeps
+        # persisting orch state for the future "Phase 3" cross-session
+        # orchestration work, but the orch must NOT restore it — reading
+        # an unaudited, ever-accumulating ~/.maxim/orchestrator home into
+        # every sim run would make the orchestrator/narrator a cross-run
+        # confound (the narrator-state-confound class), and ~/.maxim is
+        # shared across worktrees, so concurrent experiment sessions
+        # would cross-contaminate through it. Flip to True only as part
+        # of a deliberate, tuned Phase 3 (see the hippocampus NOTE at the
+        # orchestrator's run_agentic_loop call in start_simulation_mode).
+        load_persisted=False,
+        policy=orchestrator_tool_policy(),
+    )
+
+
 def _refuse_a_stop_then_reset_llm_cancellation() -> None:
     """A simulation's first act: refuse to start under a process stop request, then re-arm the LLM backend.
 
@@ -1030,7 +1082,7 @@ def start_simulation_mode(
         aut_component_registry = ComponentRegistry()
         logger.info("AUT ComponentRegistry created for entity_ref=%r", entity_ref)
 
-    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+    from maxim.runtime.agent_factory import AgentFactory
 
     # pain_bus decision for executor subscription:
     # - entity_ref is None: with_pain_bridge=False → pain_bus not passed to
@@ -1050,16 +1102,7 @@ def start_simulation_mode(
         # what routes campaign episodes into the persistent agent's home.
         _aut_instance = _adopted.instance
     else:
-        _aut_config = AgentConfig(
-            agent_id="sim_aut",
-            role="pc",
-            persistence_dir=str(sim_tmpdir),
-            with_bio_stack=True,
-            with_executor=True,
-            with_pain_bridge=entity_ref is not None,
-            with_fear_gate=False,
-            embodiment_ref=entity_ref,
-        )
+        _aut_config = _aut_agent_config(sim_tmpdir=sim_tmpdir, entity_ref=entity_ref)
         _aut_factory = AgentFactory(
             component_registry=aut_component_registry,
             base_data_dir=sim_tmpdir,
@@ -1596,31 +1639,9 @@ def start_simulation_mode(
     # The orch gets its own isolated bio-stack with a separate NAc for
     # future adaptive orchestration. Persistence at ~/.maxim/orchestrator/
     # (not CWD-relative — agent longevity review found fragmentation risk).
-    # with_pain_bridge=False: orch sim tools (send_message, observe_actions,
-    # etc.) never produce SEM embodiment pain. Bridge is still constructed
-    # for direct attribution (gated on nac), just not subscribed to pain_bus.
     from maxim.utils.paths import data_home as _data_home
 
-    _orch_config = AgentConfig(
-        agent_id="sim_orchestrator",
-        role="npc",
-        persistence_dir=str(_data_home() / "orchestrator"),
-        with_bio_stack=True,
-        with_executor=True,
-        with_pain_bridge=False,
-        with_fear_gate=False,
-        # Write-but-don't-read (review fold, Arch #2): shutdown() keeps
-        # persisting orch state for the future "Phase 3" cross-session
-        # orchestration work, but the orch must NOT restore it — reading
-        # an unaudited, ever-accumulating ~/.maxim/orchestrator home into
-        # every sim run would make the orchestrator/narrator a cross-run
-        # confound (the narrator-state-confound class), and ~/.maxim is
-        # shared across worktrees, so concurrent experiment sessions
-        # would cross-contaminate through it. Flip to True only as part
-        # of a deliberate, tuned Phase 3 (see the hippocampus NOTE at the
-        # run_agentic_loop call below).
-        load_persisted=False,
-    )
+    _orch_config = _orchestrator_agent_config()
     _orch_factory = AgentFactory(base_data_dir=_data_home() / "orchestrator")
     _orch_instance = _orch_factory.create_full_agent(
         _orch_config,

@@ -1164,6 +1164,26 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     return 0
 
 
+def _cli_agent_config(*, mem_dir: str | None, is_sim_mode: bool, embodiment_ref: str | None) -> Any:
+    """The CLI agent's ``AgentConfig`` (moved out of ``_main_impl``, #1315 item 3), carrying its tool policy:
+    ``runtime/tool_policy.py::cli_tool_policy``, the operator's own agent, gated at dispatch by the run mode and
+    the autonomy level."""
+    from maxim.runtime.agent_factory import AgentConfig
+    from maxim.runtime.tool_policy import cli_tool_policy
+
+    return AgentConfig(
+        agent_id="cli_agent",
+        role="pc",
+        persistence_dir=mem_dir,
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=not is_sim_mode,
+        with_fear_gate=not is_sim_mode,
+        embodiment_ref=embodiment_ref,
+        policy=cli_tool_policy(),
+    )
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -2246,7 +2266,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # + FearGatedExecutor construction. The factory composes
                 # build_bio_stack + build_executor + fear gating into a
                 # single create_full_agent call (Z1 per-instance Executor).
-                from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+                from maxim.runtime.agent_factory import AgentFactory
 
                 _mem_dir = str(Path(memory_path).parent) if memory_path else None
                 _embodiment_ref = getattr(args, "embodiment", None) if not _is_sim_mode else None
@@ -2256,15 +2276,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
                     _component_registry = ComponentRegistry()
 
-                _agent_config = AgentConfig(
-                    agent_id="cli_agent",
-                    role="pc",
-                    persistence_dir=_mem_dir,
-                    with_bio_stack=True,
-                    with_executor=True,
-                    with_pain_bridge=not _is_sim_mode,
-                    with_fear_gate=not _is_sim_mode,
-                    embodiment_ref=_embodiment_ref,
+                _agent_config = _cli_agent_config(
+                    mem_dir=_mem_dir, is_sim_mode=_is_sim_mode, embodiment_ref=_embodiment_ref
                 )
                 _factory = AgentFactory(
                     component_registry=_component_registry,

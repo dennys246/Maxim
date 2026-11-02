@@ -6,7 +6,7 @@ Each agent created by the factory gets its own:
 - ATL (separate semantic concepts)
 - MemoryHub (independent coordinator)
 - ToolRegistry (empty until the runtime registers tools)
-- Executor (isolated tool execution, gated by ``AgentConfig.permissions``)
+- Executor (isolated tool execution, gated by ``AgentConfig.policy``)
 
 The factory does NOT create the full agent loop infrastructure
 (LoopController, ContextPool, etc.) — that's run_agentic_loop()'s job.
@@ -35,7 +35,7 @@ from typing import Any, Literal
 from maxim.runtime.config_loader import resolve_hippocampus_memory_kwargs, resolve_memory_strategy
 from maxim.decisions.nac import require_agent_id
 
-from maxim.agents.permissions import AgentPermissions
+from maxim.runtime.tool_policy import ToolPolicy
 
 from maxim.exceptions import StoreOverwriteRefused
 from maxim.utils.deadline import Deadline
@@ -57,11 +57,12 @@ class AgentConfig:
     entity_spec: str | None = None  # Component ref for SEM body
     persistence_dir: str | None = None  # Auto-generated if None
     model_profile: str | None = None  # LLM profile override (NPCs use cheaper models)
-    # Enforced tool gate, passed to ``build_executor(permissions=)`` by
-    # ``create_full_agent``. ``None`` = no gate (every registered tool).
-    # Replaces the 1.0-1.1.2 ``tool_whitelist`` field, which was written to
-    # ``ToolRegistry._tool_whitelist`` and never read by anything.
-    permissions: AgentPermissions | None = None
+    # What the executor may dispatch (#1315 item 3, V3), passed to ``build_executor(policy=)`` by
+    # ``create_full_agent``. REQUIRED and keyword-only (every other field has a default): ``AgentConfig(...)``
+    # without it is a TypeError. ``None`` means only "no executor is built" (``create_npc_agent``); it is never
+    # translated into a policy, and ``create_full_agent(with_executor=True)`` refuses it. Replaces the
+    # ``permissions`` field (§1A.5), which ``None`` made an allow-all.
+    policy: ToolPolicy | None = field(kw_only=True)
     personality: str | None = None  # System prompt overlay
     remembers: bool = True  # Enable hippocampus
     learns: bool = True  # Enable NAc
@@ -567,8 +568,8 @@ class AgentInstance:
             raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
         if self.memory_hub is not None:
             return self._end_or_hand_over(self.memory_hub, consolidation, deadline, loop_wait or deadline)
-        # No hub (create.agent(remembers=False, learns=True), or a hub whose construction failed): nothing else
-        # saves these stores, and there is no EC to pair the NAc with.
+        # No hub (an agent without a Hippocampus or a NAc, by design since #1522, or a hub whose construction
+        # failed): nothing else saves these stores, and there is no EC to pair the NAc with.
         self._save_hippocampus()
         if self.nac is not None:
             try:
@@ -747,7 +748,7 @@ class AgentFactory:
         - ATL (separate concept layer)
         - MemoryHub (independent coordinator)
         - ToolRegistry (empty — the runtime registers tools per encounter;
-          ``config.permissions`` is enforced by the Executor that
+          ``config.policy`` is enforced by the Executor that
           ``create_full_agent`` builds, not by the registry)
 
         Args:
@@ -777,7 +778,7 @@ class AgentFactory:
         atl = None
         memory_hub = None
 
-        if auto_load:
+        if auto_load and config.remembers and config.learns:  # only a hub agent has an EC to pair (#1522)
             check_nac_ec_pairing(agent_dir)
 
         if config.remembers:
@@ -791,10 +792,19 @@ class AgentFactory:
         # loaded later made the public "restores Hippocampus, NAc, ATL" promise
         # false for every caller that just read the returned object.
         atl = self._create_atl(agent_dir, auto_load=auto_load, corrupt=corrupt)
+        # SCN and EC exist only as the hub's stores, and the hub needs a Hippocampus and a NAc: an agent without
+        # either builds and reads neither (#1522, owner decision 2026-10-31: no hub, so no hub stores). Probing them
+        # anyway reset a learns-only agent's NAc beside an EC it never uses, on every load (the review rounds' audit).
+        scn = ec = None
+        if hippocampus is not None and nac is not None:
+            scn = self._create_scn(agent_dir, auto_load=auto_load, corrupt=corrupt)
+            ec = self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt)
         memory_hub = self._create_memory_hub(
             hippocampus,
             nac,
             atl,
+            scn=scn,
+            ec=ec,
             agent_dir=agent_dir,
             agent_id=config.agent_id,
             auto_load=auto_load,
@@ -807,8 +817,7 @@ class AgentFactory:
             # its place, so the agent persists consistently (#939, owner decision 2026-09-28).
             # #971: NAc, EC and SCN too, and NAc is reset beside an unreadable EC (its biases key on EC
             # node ids).
-            hub_ec = getattr(memory_hub, "ec", None) if memory_hub is not None else None
-            hub_scn = getattr(memory_hub, "scn", None) if memory_hub is not None else None
+            hub_ec, hub_scn = ec, scn  # the hub stores, built only for a hub agent
 
             def _unreadable(entry: str) -> bool:
                 return any(c["subsystem"] == entry and c.get("unreadable") for c in corrupt)
@@ -845,9 +854,16 @@ class AgentFactory:
                         config.agent_id,
                         entry,
                     )
-            if _unreadable("ec") and not _unreadable("nac"):
+            # Only beside an EC that started empty: one whose constructor failed (None) read no file, so the NAc's
+            # biases still match the ec.json on disk (#1522 delta round 3).
+            if hub_ec is not None and _unreadable("ec") and not _unreadable("nac"):
                 reset_nac_beside_unreadable_ec(nac, ec=hub_ec)
-            elif _failed_otherwise("ec") and nac is not None and not (_unreadable("nac") or _failed_otherwise("nac")):
+            elif (
+                hub_ec is not None
+                and _failed_otherwise("ec")
+                and nac is not None
+                and not (_unreadable("nac") or _failed_otherwise("nac"))
+            ):
                 # The EC started empty without its file being bad: the NAc's biases would point at nodes it
                 # does not hold. Empty the NAc too; neither file is bad, so neither is copied or saved over.
                 nac.start_fresh_in_memory()
@@ -943,7 +959,7 @@ class AgentFactory:
             role="npc",
             entity_spec=entity_ref,
             model_profile=model_profile,
-            permissions=None,  # see docstring: no Executor → nothing to arm
+            policy=None,  # see docstring: no Executor is built, so there is nothing to arm
             personality=personality,
             remembers=remembers,
             learns=learns,
@@ -1083,6 +1099,7 @@ class AgentFactory:
                     config.agent_id,
                 )
             from maxim.runtime.bootstrap import build_executor
+            from maxim.runtime.tool_policy import require_policy
 
             active_bio = instance.bio_stack
             # with_pain_bridge controls whether the ToolPainBridge
@@ -1103,7 +1120,7 @@ class AgentFactory:
                     component_registry=self._component_registry,
                     cerebellum=active_bio.cerebellum if active_bio is not None else None,
                     distributor=active_bio.distributor if active_bio is not None else None,
-                    permissions=config.permissions,
+                    policy=require_policy(config.policy, where="create_full_agent(with_executor=True)"),
                     agent_id=config.agent_id,
                 )
                 # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
@@ -1261,14 +1278,52 @@ class AgentFactory:
         nac: Any | None,
         atl: Any | None,
         *,
+        scn: Any | None,
+        ec: Any | None,
         agent_dir: Path | None = None,
         agent_id: str,
         auto_load: bool = False,
         corrupt: list[dict[str, str]] | None = None,
     ) -> Any:
-        """Create a MemoryHub coordinating the agent's memory systems."""
+        """Create a MemoryHub over the agent's stores, or None when a store it needs is absent."""
+        # The hub needs both a Hippocampus and a NAc. An agent without one (remembers=False or learns=False) has
+        # no hub, by design: its shutdown saves its stores itself, and it gets no session-end decay or
+        # consolidation (#1522, owner decision 2026-10-31; #1366). A store that failed to build was already
+        # reported as its own corruption entry, so a hub attempt here could only add a false "corrupt
+        # memory_hub" entry, which on_corrupt="raise" turned into a refusal to build the agent. create_agent builds
+        # SCN and EC only for an agent with both stores; one that failed to build was reported under its own name.
+        if hippocampus is None or nac is None or scn is None or ec is None:  # spelled out so mypy narrows
+            stores = (("Hippocampus", hippocampus), ("NAc", nac), ("SCN", scn), ("EC", ec))
+            missing = [name for name, store in stores if store is None]
+            log.debug("Agent %s: no %s, so no MemoryHub", agent_id, " or ".join(missing))
+            return None
         try:
             from maxim.integration.memory_hub import build_memory_hub
+
+            # build_memory_hub calls .connect() internally, so NPC agents
+            # now get PlanHistoryBridge + EscalationLearningBridge +
+            # FearCircuitBridge.  Pre-Wave-2 these were permanently dead
+            # (bare MemoryHub() with no .connect() call).  See
+            # memory_hub_unification.md Gap B.
+            return build_memory_hub(
+                hippocampus=hippocampus,
+                scn=scn,
+                nac=nac,
+                ec=ec,
+                atl=atl,
+                agent_id=agent_id,
+                load_persisted=auto_load,  # a fresh agent restores nothing at session start either (#972)
+            )
+        except Exception as e:
+            log.warning("Failed to create MemoryHub: %s", e)
+            _note_corruption(corrupt, "memory_hub", agent_dir / "memory_hub" if agent_dir else Path("memory_hub"), e)
+            return None
+
+    def _create_scn(
+        self, agent_dir: Path | None, *, auto_load: bool = False, corrupt: list[dict[str, str]] | None = None
+    ) -> Any:
+        """Create the agent's SCN, restoring it when ``auto_load``; None (reported) when it cannot be built."""
+        try:
             from maxim.time.scn import SCN
 
             # F0.5: SCN persistence path is bound at construction time, not
@@ -1298,23 +1353,10 @@ class AgentFactory:
                         scn.load(scn_path_str)
                     except Exception as e:  # D17: report, never swallow silently
                         _note_corruption(corrupt, "scn", scn_file, e)
-            # build_memory_hub calls .connect() internally, so NPC agents
-            # now get PlanHistoryBridge + EscalationLearningBridge +
-            # FearCircuitBridge.  Pre-Wave-2 these were permanently dead
-            # (bare MemoryHub() with no .connect() call).  See
-            # memory_hub_unification.md Gap B.
-            return build_memory_hub(
-                hippocampus=hippocampus,
-                scn=scn,
-                nac=nac,
-                ec=self._create_ec(agent_dir, auto_load=auto_load, corrupt=corrupt),
-                atl=atl,
-                agent_id=agent_id,
-                load_persisted=auto_load,  # a fresh agent restores nothing at session start either (#972)
-            )
+            return scn
         except Exception as e:
-            log.warning("Failed to create MemoryHub: %s", e)
-            _note_corruption(corrupt, "memory_hub", agent_dir / "memory_hub" if agent_dir else Path("memory_hub"), e)
+            log.warning("Failed to create SCN: %s", e)
+            _note_corruption(corrupt, "scn", agent_dir / "scn.json" if agent_dir else Path("scn.json"), e)
             return None
 
     def _create_ec(
@@ -1332,10 +1374,15 @@ class AgentFactory:
         """
         from maxim.similarity.ec import ECConfig, EntorhinalCortex
 
-        if agent_dir is None:
-            return EntorhinalCortex()
-        ec_path = agent_dir / "ec.json"
-        ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
+        ec_path = agent_dir / "ec.json" if agent_dir is not None else Path("ec.json")
+        try:
+            if agent_dir is None:
+                return EntorhinalCortex()
+            ec = EntorhinalCortex(config=ECConfig(persistence_path=str(ec_path)))
+        except Exception as e:
+            log.warning("Failed to create EntorhinalCortex: %s", e)
+            _note_corruption(corrupt, "ec", ec_path, e)
+            return None
         if auto_load and ec_path.exists():
             try:
                 ec.load(str(ec_path))
@@ -1351,7 +1398,7 @@ class AgentFactory:
 
         Tools are registered by the runtime (DM, generative runner, etc.)
         based on the encounter; restriction is NOT the registry's job —
-        ``AgentConfig.permissions`` is enforced by the Executor.
+        ``AgentConfig.policy`` is enforced by the Executor.
         """
         try:
             from maxim.tools.registry import ToolRegistry

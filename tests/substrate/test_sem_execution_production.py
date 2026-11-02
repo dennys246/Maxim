@@ -35,7 +35,7 @@ from maxim.embodiment.component_registry import ComponentRegistry
 from maxim.proprioception.pain_bus import PainBus
 from maxim.runtime.bootstrap import build_executor
 from maxim.tools.registry import ToolRegistry
-
+from tests.policy_helpers import TEST_POLICY
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared world setup (production-path equivalent of _build_world)
@@ -55,7 +55,7 @@ def _build_production_world(*, sword_durability: float = 1.0):
     executor = build_executor(
         ToolRegistry(),
         pain_bus=pain_bus,
-        permissions=None,
+        policy=TEST_POLICY,
         nac=nac,
         entity_ref="weapons/rusty_sword",
         component_registry=component_registry,
@@ -277,7 +277,7 @@ class TestSEMProductionCascade:
 
         # The field must be declared in __init__ so it survives even
         # when no entity_ref is passed.
-        executor = build_executor(ToolRegistry(), pain_bus=None, permissions=None)
+        executor = build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY)
         assert hasattr(executor, "embodiment"), (
             "Executor missing the declared `embodiment` field. The "
             "executor_bootstrap_unification I1 fold made this a real "

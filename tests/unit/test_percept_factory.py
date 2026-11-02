@@ -78,7 +78,7 @@ class TestAgentPoolUnification:
 
         factory = AgentFactory(base_data_dir="/tmp/test_phase4_agents")
         pool = AgentPool()
-        instance = factory.create_agent(AgentConfig(agent_id="npc_test", personality="friendly"))
+        instance = factory.create_agent(AgentConfig(agent_id="npc_test", personality="friendly", policy=None))
         pool.add(instance)
 
         result = pool.run_turn("npc_test", "You see a merchant.")
@@ -97,7 +97,9 @@ class TestAgentPoolUnification:
 
         factory = AgentFactory(base_data_dir="/tmp/test_phase4_agents_obs")
         pool = AgentPool()
-        instance = factory.create_agent(AgentConfig(agent_id="npc_obs", personality="stern", remembers=True))
+        instance = factory.create_agent(
+            AgentConfig(agent_id="npc_obs", personality="stern", remembers=True, policy=None)
+        )
         pool.add(instance)
 
         pool.run_turn("npc_obs", "A dragon attacks.")

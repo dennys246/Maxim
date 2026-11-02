@@ -1,5 +1,5 @@
 """The console's hard tool allowlist — ``tools.allow`` / ``tools.deny`` →
-``AgentPermissions`` → ``Executor`` (1.1.3).
+``ToolPolicy`` → ``Executor`` (1.1.3; a ``ToolPolicy`` since #1315 item 3).
 
 Before this landed, ``AgentPermissions`` and the Executor's gate both
 existed, but no console path built one: ``create_full_agent`` called
@@ -34,7 +34,7 @@ def _build_handle(monkeypatch, tmp_path):
     """A MaximHandle whose factory step is faked down to build_executor.
 
     The fake keeps the real seam under test — it builds the executor the
-    way the real factory does (``permissions=config.permissions``) over
+    way the real factory does (``policy=config.policy``) over
     the handle's REAL tool registry — and skips the bio-stack.
     """
     from maxim.runtime import agent_factory
@@ -44,7 +44,7 @@ def _build_handle(monkeypatch, tmp_path):
 
     def fake_create_full_agent(self, config, *, tool_registry=None, pain_bus=None, fear_llm=None, auto_load=False):
         captured["config"] = config
-        executor = build_executor(tool_registry, pain_bus=None, permissions=config.permissions)
+        executor = build_executor(tool_registry, pain_bus=None, policy=config.policy)
         return agent_factory.AgentInstance(
             agent_id=config.agent_id,
             role=config.role,
@@ -64,19 +64,23 @@ def _build_handle(monkeypatch, tmp_path):
 
 class TestConsoleToolAllowlist:
     def test_unconfigured_leaves_the_gate_off(self, monkeypatch, tmp_path):
+        from maxim.agents.permissions import AgentPermissions
+        from maxim.tools.base import Effect
+
         handle, captured = _build_handle(monkeypatch, tmp_path)
-        assert captured["config"].permissions is None
-        assert handle.instance.executor._permissions is None
+        # Unconfigured is a permissive policy (no allow-list, empty deny list, ceiling ALL), never None.
+        assert captured["config"].policy is handle.instance.executor.policy
+        assert handle.instance.executor.policy.permissions == AgentPermissions()
+        assert handle.instance.executor.policy.ceiling == Effect.ALL
         assert "read_file" in handle.instance.tool_registry.list()
 
     def test_env_allow_list_refuses_read_file_at_the_executor(self, monkeypatch, tmp_path):
         monkeypatch.setenv("MAXIM_TOOLS_ALLOW", "respond,speak")
         handle, captured = _build_handle(monkeypatch, tmp_path)
 
-        perms = captured["config"].permissions
-        assert perms is not None
+        perms = captured["config"].policy.permissions
         assert perms.tool_allow == frozenset({"respond", "speak"})
-        assert handle.instance.executor._permissions is perms
+        assert handle.instance.executor.policy.permissions == perms
 
         result = handle.instance.executor.execute({"tool_name": "read_file", "params": {"path": "x"}})
         assert result.success is False
@@ -92,7 +96,7 @@ class TestConsoleToolAllowlist:
         denied = executor.execute({"tool_name": "bash", "params": {"command": "true"}})
         assert denied.success is False
         assert "denied" in (denied.error or "")
-        assert executor._permissions.can_invoke_tool("read_file")[0] is True
+        assert executor.policy.permissions.can_invoke_tool("read_file")[0] is True
 
     def test_config_json_allow_list_reaches_the_executor(self, monkeypatch, tmp_path):
         """The config.json path (``maxim config set tools.allow ...``), not
@@ -111,7 +115,7 @@ class TestConsoleToolAllowlist:
         cp.write_text(json.dumps({"tools": {"allow": ["respond"]}}))
         reset_config_cache()
         handle, captured = _build_handle(monkeypatch, tmp_path)
-        assert captured["config"].permissions.tool_allow == frozenset({"respond"})
+        assert captured["config"].policy.permissions.tool_allow == frozenset({"respond"})
         result = handle.instance.executor.execute({"tool_name": "read_file", "params": {"path": "x"}})
         assert result.success is False
         assert "allow-list" in (result.error or "")
@@ -147,20 +151,22 @@ class TestRosterAdvertisesOnlyPermittedTools:
         from maxim.runtime.bootstrap import build_executor
         from maxim.tools.registry import ToolRegistry
 
+        from tests.policy_helpers import TEST_POLICY, policy_for
+
         registry = ToolRegistry()
         registry.register(_Tool("respond"))
         registry.register(_Tool("read_file"))
         return build_executor(
             registry,
             pain_bus=None,
-            permissions=AgentPermissions(**permissions) if permissions is not None else None,
+            policy=policy_for(AgentPermissions(**permissions)) if permissions is not None else TEST_POLICY,
         )
 
     def test_permits_mirrors_the_dispatch_gate(self):
         from maxim.agents.permissions import AgentPermissions
 
         ex = self._executor({"tool_allow": frozenset({"respond"})})
-        assert isinstance(ex._permissions, AgentPermissions)
+        assert ex.policy.permissions == AgentPermissions(tool_allow=frozenset({"respond"}))
         assert ex.permits("respond") is True
         assert ex.permits("read_file") is False
         denied = ex.execute({"tool_name": "read_file", "params": {}})
@@ -190,14 +196,14 @@ class TestRosterAdvertisesOnlyPermittedTools:
 
 class TestSimAgentsUntouched:
     def test_orchestrator_agent_configs_carry_no_permissions(self):
-        """The sim AUT / orchestrator build their own ``AgentConfig`` without
-        ``permissions=`` — the console allowlist must not leak into them."""
+        """The sim AUT / orchestrator build their own ``AgentConfig`` with their own
+        ``policy=`` — the console allowlist must not leak into them."""
         import inspect
 
         from maxim.simulation import orchestrator
 
         src = inspect.getsource(orchestrator)
-        assert "permissions=tool_permissions_from_settings" not in src
+        assert "policy_from_tools_settings" not in src
         assert "MAXIM_TOOLS_ALLOW" not in src
 
 

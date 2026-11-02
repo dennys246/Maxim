@@ -12,6 +12,8 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+from tests.policy_helpers import TEST_POLICY
+
 
 def _controller(forbidden: set[str]):
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SafetyConstraints
@@ -65,7 +67,7 @@ def _talk_executor():
     autonomy = talk_autonomy(registry)
     state = RuntimeState()
     state.data["mode"] = "active"  # Talk's own run mode (console/handle.py): the mode alone lets bash run
-    executor = _prepare_executor(Executor(registry), None, state, autonomy_controller=autonomy)
+    executor = _prepare_executor(Executor(registry, policy=TEST_POLICY), None, state, autonomy_controller=autonomy)
     return executor, autonomy, registry
 
 
@@ -81,7 +83,9 @@ def test_the_real_talk_controller_hides_bash_from_the_roster_and_the_executor() 
 
     control_state = RuntimeState()
     control_state.data["mode"] = "active"
-    assert _prepare_executor(Executor(registry), None, control_state).permits("bash")  # control: no forbid wired
+    assert _prepare_executor(Executor(registry, policy=TEST_POLICY), None, control_state).permits(
+        "bash"
+    )  # control: no forbid wired
     assert not executor.permits("bash")
     shown = agent_loop._advertisable_tools(registry.list_all(), executor, autonomy)
     assert "bash" not in shown and "read_file" in shown

@@ -157,6 +157,8 @@ NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
     "StopStillPending (at entry, and again if the stop lands during the model load)",
     "maxim.utils.cancellation": "#1438 PR 1c: a simulation started under a process stop request refuses "
     "(current_stop() at entry; PR 1b's yield_requested() read moved to sim_teardown with _resolve_finish_reason)",
+    "maxim.runtime.tool_policy": "#1315 item 3: the AUT's and the narrator's AgentConfig carry a required ToolPolicy "
+    "(aut_tool_policy, orchestrator_tool_policy); a new dependency, not run code moved out",
 }
 
 # A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run

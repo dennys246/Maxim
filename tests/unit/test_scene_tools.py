@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from maxim.tools.base import Tool
 from maxim.tools.registry import DEFAULT_ACTIVE_TOOL_CAP, ToolRegistry
-
+from tests.policy_helpers import TEST_POLICY
 
 # ── Test fixtures ───────────────────────────────────────────────────────
 
@@ -433,7 +433,7 @@ class TestExecutorActiveGate:
         reg.register_scene_tools([_StubTool("sword_slash")], scene_id="arena")
         reg.deactivate_scene("arena")
 
-        executor = Executor(tool_registry=reg)
+        executor = Executor(tool_registry=reg, policy=TEST_POLICY)
         result = executor.execute({"tool_name": "sword_slash", "params": {}})
 
         assert not result.success
@@ -446,7 +446,7 @@ class TestExecutorActiveGate:
         reg = ToolRegistry()
         reg.register_scene_tools([_StubTool("sword_slash")], scene_id="arena")
 
-        executor = Executor(tool_registry=reg)
+        executor = Executor(tool_registry=reg, policy=TEST_POLICY)
         result = executor.execute({"tool_name": "sword_slash", "params": {}})
 
         assert result.success
@@ -457,7 +457,7 @@ class TestExecutorActiveGate:
         reg = ToolRegistry()
         reg.register(_StubTool("respond"))
 
-        executor = Executor(tool_registry=reg)
+        executor = Executor(tool_registry=reg, policy=TEST_POLICY)
         result = executor.execute({"tool_name": "respond", "params": {}})
 
         assert result.success

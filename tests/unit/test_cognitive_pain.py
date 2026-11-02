@@ -15,7 +15,7 @@ import pytest
 from maxim.agents.bus import ToolErrorKind
 from maxim.decisions.causal_link import CausalLink, TemporalDelta, Valence
 from maxim.proprioception.pain import PainConfig, PainDetector, PainSignal, PainType
-
+from tests.policy_helpers import TEST_POLICY
 
 # ---------------------------------------------------------------------------
 # 1. PainType has tool categories
@@ -376,7 +376,7 @@ class TestExecutorRunningTool:
         executor_ref: list[Executor] = []
         tool = SlowTool(executor_ref)
         registry.register(tool)
-        executor = Executor(tool_registry=registry)
+        executor = Executor(tool_registry=registry, policy=TEST_POLICY)
         executor_ref.append(executor)
 
         executor.execute({"tool_name": "slow", "params": {}})
@@ -796,7 +796,9 @@ class TestExecutorStampsInvocationRPE:
 
         registry = ToolRegistry()
         registry.register(OkTool())
-        assert Executor(tool_registry=registry).execute({"tool_name": "ok", "params": {}}).rpe is None
+        assert (
+            Executor(tool_registry=registry, policy=TEST_POLICY).execute({"tool_name": "ok", "params": {}}).rpe is None
+        )
 
     def test_stamps_rpe_after_tool_execution(self) -> None:
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
@@ -821,6 +823,7 @@ class TestExecutorStampsInvocationRPE:
         registry.register(OkTool())
         executor = Executor(
             tool_registry=registry,
+            policy=TEST_POLICY,
             pain_detector=detector,
             tool_pain_bridge=bridge,
         )

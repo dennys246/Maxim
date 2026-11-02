@@ -152,6 +152,14 @@ ALLOWLIST: list[dict[str, object]] = [
     },
     {
         "file": "runtime/executor.py",
+        "qualname": "Executor._permission_denial",
+        "count": 1,
+        "axis": "unrelated",
+        "ref": "#1315",
+        "reason": "the refusal LAYER label 'mode' (ToolOutput.metadata['refusal_layer'], notes §1A.2), not a mode read",
+    },
+    {
+        "file": "runtime/executor.py",
         "qualname": "Executor.set_operational_override",
         "count": 1,
         "axis": "grant-validation",

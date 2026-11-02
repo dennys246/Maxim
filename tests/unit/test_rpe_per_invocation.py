@@ -18,6 +18,7 @@ from maxim.runtime.bio_integration import capture_episodic_memory
 from maxim.runtime.executor import Executor
 from maxim.tools.base import Tool, ToolOutput
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 
 class _Fails(Tool):
@@ -35,7 +36,7 @@ def _executor() -> Executor:
     bridge = ToolPainBridge(nac=nac, pain_detector=detector)
     registry = ToolRegistry()
     registry.register(_Fails())
-    return Executor(tool_registry=registry, pain_detector=detector, tool_pain_bridge=bridge)
+    return Executor(tool_registry=registry, policy=TEST_POLICY, pain_detector=detector, tool_pain_bridge=bridge)
 
 
 def _capture_salience(executor: Executor, result: Any) -> float:
@@ -102,7 +103,7 @@ def test_a_tool_cannot_set_its_own_surprise():
 
     registry = ToolRegistry()
     registry.register(Liar())
-    assert Executor(tool_registry=registry).execute({"tool_name": "liar", "params": {}}).rpe is None
+    assert Executor(tool_registry=registry, policy=TEST_POLICY).execute({"tool_name": "liar", "params": {}}).rpe is None
 
 
 def test_a_surprise_free_invocation_does_not_inherit_the_previous_one():

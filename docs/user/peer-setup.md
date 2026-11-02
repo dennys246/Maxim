@@ -177,6 +177,8 @@ Or in the Cloudflare Dashboard: DNS → delete the A record for `<hostname>` →
 
 **Don't disable TLS verification.** A cert error almost always means you're reaching the wrong host. Fix the hostname.
 
+**Use the leader's IP, not `.local`, for a plain `http://` URL.** A cleartext `http://` leader URL may only reach a private (LAN or loopback) address (#921), because the bearer key travels in the clear. On a network with IPv6, `<leader>.local` can resolve to the leader's global IPv6 address, which counts as public, so the connection is refused with `refused: '<leader>.local' resolves to a public address (cleartext HTTP is allowed only to a private network)`. This is by design. Use the leader's private IPv4 address (`http://192.168.x.y:8099`) or an `https://` URL.
+
 **Watch what you paste into the hidden key prompt.** The prompt echoes nothing, so a mis-paste (your shell prompt, the URL, the `export MAXIM_LANE_LARGE_API_KEY=` prefix, a `✓` decoration character) gets silently stored as your key. If `peer show` displays something that doesn't look like a random string, that's what happened — `peer forget` and try again.
 
 **Copy only the key value, not the surrounding text.** `maxim tunnel key export` on the leader prints something like `export MAXIM_LANE_LARGE_API_KEY=jXzgjz...3LwzD4`. The key is **only** the part after `=`, without quotes, without `export`, without the variable name, without any leading checkmark or prompt decoration.

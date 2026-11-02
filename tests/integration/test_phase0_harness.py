@@ -32,6 +32,7 @@ from maxim.similarity.encoder import SensorEncoder
 from maxim.simulation.arcs import BUILTIN_ARCS, select_arc_for_goal
 from maxim.simulation.substrate_telemetry import SubstrateTelemetry
 from maxim.tools.registry import ToolRegistry
+from tests.policy_helpers import TEST_POLICY
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def _build_infant_aut():
     executor = build_executor(
         registry,
         pain_bus=pain_bus,
-        permissions=None,
+        policy=TEST_POLICY,
         nac=nac,
         entity_ref="bodies/infant_humanoid",
         component_registry=ComponentRegistry(),

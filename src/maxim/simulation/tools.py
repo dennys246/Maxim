@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput
+from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput, current_policy
 from maxim.tools.registry import EffectAdmission
 from maxim.utils.logging import log_swallowed_exception
 
@@ -1436,6 +1436,15 @@ class SpawnSubSimulationTool(Tool):
         goal = kwargs.get("goal", "")
         if not goal:
             return ToolOutput(success=False, error="goal is required")
+        # The child is built from the DISPATCHING executor's policy, never wider (#1315 item 3, §3). Read here,
+        # synchronously: the sub-AUT's thread would not inherit the context. No dispatch, no policy: refuse.
+        parent_policy = current_policy()
+        if parent_policy is None:
+            return ToolOutput(
+                success=False,
+                error="spawn_sub_simulation runs only through an executor's dispatch: there is no policy to build "
+                "the child from",
+            )
 
         # Optional approach framing for the sub-goal message
         approach = kwargs.get("approach", None)
@@ -1463,7 +1472,7 @@ class SpawnSubSimulationTool(Tool):
 
         start = time.time()
         try:
-            sub_report = self._run_sub_simulation(goal)
+            sub_report = self._run_sub_simulation(goal, parent_policy.narrowed())
         except Exception as e:
             sub_report = {
                 "goal": goal,
@@ -1493,8 +1502,8 @@ class SpawnSubSimulationTool(Tool):
             sub_report["approach"] = approach
         return ToolOutput(success=True, output=sub_report)
 
-    def _run_sub_simulation(self, goal: str) -> dict[str, Any]:
-        """Bootstrap a fresh AUT and run one turn."""
+    def _run_sub_simulation(self, goal: str, policy: Any) -> dict[str, Any]:
+        """Bootstrap a fresh AUT and run one turn, its executor under ``policy`` (the dispatcher's, narrowed)."""
         import threading
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
         from maxim.agents.llm_worker import LLMWorker
@@ -1559,7 +1568,7 @@ class SpawnSubSimulationTool(Tool):
         # Sub-AUT executor is sandboxed for tool-internal use; explicit
         # opt-out from bio-learning. See
         # docs/plans/archive/executor_bootstrap_unification.md audit row #6.
-        sub_executor = build_executor(sub_registry, pain_bus=None, permissions=None)
+        sub_executor = build_executor(sub_registry, pain_bus=None, policy=policy)
 
         # Wrap sub-AUT executor with FearGatedExecutor
         try:
