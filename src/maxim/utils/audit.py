@@ -177,6 +177,12 @@ LAYER_RULES: dict[str, dict[str, list[str]]] = {
     "hardware": {
         "must_not_import": ["embodied_runtime", "tools", "runtime", "agents", "planning"],
     },
+    # #1315 §1A.3: the observer (maxim.advisor) composes a sealed executor and a closed backend, never the agent,
+    # memory or network layers. runtime.agent_loop cannot be fenced here (the observer needs runtime.executor, and
+    # rules match the first segment only); test_advisor_gate.py::test_import_closure enforces that one.
+    "advisor": {
+        "must_not_import": ["agents", "memory", "default_network", "comms", "hivemind", "peer", "mesh", "tunnel"],
+    },
 }
 
 

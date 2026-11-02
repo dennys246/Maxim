@@ -10,10 +10,19 @@ This module centralizes that pattern with proper error handling:
 Example:
     from maxim.utils.atomic_io import atomic_write_json
     atomic_write_json(path, payload)
+
+Two fsync policies live here (#1315 §1A.3):
+
+- **Lenient** (every ``atomic_write_*`` helper and ``atomic_install_dir``): an fsync the filesystem refuses is
+  logged at DEBUG and skipped, because the data is still written. Use these for state Maxim can rebuild or redo.
+- **Strict** (:func:`fsync_strict`, :func:`append_line_fsync`): any ``OSError`` raises, so the caller can fail the
+  operation the write belongs to. The observer's log (``maxim.advisor.log``) uses them: a proposal or refusal
+  that was not durably recorded must fail its turn.
 """
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -271,3 +280,46 @@ def atomic_install_dir(staged: str, dest: str) -> None:
         os.rmdir(dest)  # raises on a populated directory
     os.rename(staged, dest)
     _fsync_path(os.path.dirname(os.path.abspath(dest)))
+
+
+# Errnos with which a filesystem says it cannot do F_FULLFSYNC at all (network and FAT-family mounts). fsync_strict
+# then falls back to a plain fsync, which still raises on failure.
+_FULLFSYNC_UNSUPPORTED = frozenset({errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOTTY})
+
+
+def fsync_strict(fd: int) -> None:
+    """Flush ``fd`` (a file or a directory opened read-only) to stable storage; any failure raises ``OSError``.
+
+    ``F_FULLFSYNC`` where the platform has it (macOS, where a plain ``fsync`` only reaches the drive's cache), else
+    ``os.fsync``. A filesystem that refuses ``F_FULLFSYNC`` as unsupported gets a plain ``os.fsync`` instead. The
+    strict policy (module docstring): nothing here is skipped. ``fcntl`` and its constant are looked up on each call,
+    so a test can stand the macOS branch in on Linux.
+    """
+    import fcntl
+
+    full = getattr(fcntl, "F_FULLFSYNC", None)
+    if full is None:
+        os.fsync(fd)
+        return
+    try:
+        fcntl.fcntl(fd, full)
+    except OSError as e:
+        if e.errno not in _FULLFSYNC_UNSUPPORTED:
+            raise
+        logger.debug("F_FULLFSYNC unsupported on fd %d (%s); using fsync", fd, e)
+        os.fsync(fd)
+
+
+def append_line_fsync(fd: int, line: bytes) -> None:
+    """Write all of ``line`` to ``fd`` and :func:`fsync_strict` it. Strict: any ``OSError`` raises.
+
+    ``os.write`` is looped until every byte is written, so a short write is completed, never left torn; a write
+    that makes no progress raises. ``fd`` should be opened ``O_APPEND``, so each line lands at the end.
+    """
+    view = memoryview(line)
+    while view:
+        written = os.write(fd, view)
+        if written <= 0:
+            raise OSError(f"os.write wrote {written} bytes of {len(view)}")
+        view = view[written:]
+    fsync_strict(fd)
