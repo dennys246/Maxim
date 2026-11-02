@@ -49,6 +49,8 @@ def _bare_handle(bridge=None):
     h._talk_thread = None
     h._talk_stop = None
     h._talk_worker = None
+    h._talk_bound = None  # #1536: set in __init__, so a __new__ handle sets it too
+    h._ending_talk_loops = []
     return h
 
 

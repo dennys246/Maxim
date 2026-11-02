@@ -189,9 +189,35 @@ pass and two delta rounds (approach note in the session record) changed the text
   statuses the stop causes; it moved into 1b because 1b's stop already ends a campaign's AUT loop.
 - **The drain runs on a daemon thread**, never `asyncio.to_thread` (joined for up to 300 s at loop close).
 - **Not built:** `runtime.yield_timeout_s` (no consumer; PR 2 adds what it needs).
-- **Known limit (#1536):** a per-handle `MaximHandle.stop(deadline=)` with no process request bounds its waits and
-  `AgentInstance.shutdown`, but not the session end of a Talk loop that owns the session (`bio_session`'s clean exit
-  reads only the process request). The console's own stop is bounded; the per-session bound is the issue's.
+- **A per-handle stop bounds the Talk loop's consolidation (#1536; owner decisions 2026-10-31).**
+  `MaximHandle.stop(deadline=)` still makes no process request. It hands its deadline to the Talk loop it built, by
+  construction:
+  - Each launch has its own `utils/deadline.py::EndBound`, which only narrows.
+  - `stop()` sets it, and the bound of every loop still ending from a rest, a rebuild or a timed-out straggler, in
+    the locked section that clears the handles, before any signal.
+  - `run_agentic_loop`'s wrapper-only `end_bound=` reaches `bio_session`, which turns it into a
+    `consolidation_bound` read before each step in `session_end._consolidate`. The waiter reserve is sized from
+    the time the bound had left when `stop()` set it (`EndBound.snapshot`), so the flushes before consolidation
+    cannot shrink it.
+  - A `talk()` racing `stop()` re-checks `_stopped` under the talk lock before it launches, so it cannot start a
+    loop the stop never sees.
+
+  It cuts consolidation only:
+  - persist, the capture and writer flushes, re-save and the abnormal path's abandon follow the process stop alone,
+    so an embedder's stop drops nothing learned;
+  - on the console drain the tighter handle bound may cut the Talk loop's consolidation below the process deadline.
+
+  A campaign's session and `shutdown(deadline=)` are untouched. That rules out the session-ledger design, which put
+  the bound on a running campaign's generation (design pass, DNB-1).
+
+  Residuals:
+  - a consolidation step already running when the bound arrives finishes;
+  - the Talk loop's in-flight LLM call is not abandoned on a per-handle stop, so the loop's exit is not bounded
+    (follow-up issue);
+  - flushes, persist and bookkeeping are never cut, so `stop()` can still return False when writers are busy;
+  - `rest()`'s own sleep after it stops the loop stays unbounded.
+
+  Approach note v5 and three design passes are in the PR.
 - **An embedder running its own `uvicorn.run`** (not `maxim serve`) gets no signal-time request and an unbounded
   uvicorn graceful wait before the lifespan's budget starts: say so in the note to pulse.
 - **1c:** stop checks in the DM and generative runners (their loops never check one, and direct router calls are not

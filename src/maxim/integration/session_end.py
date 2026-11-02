@@ -75,8 +75,17 @@ FLUSH_SHARE = 1 / 3
 FLUSH_CAP_S = 5.0
 
 
-def end_session(hub: MemoryHub, *, deadline: Deadline, consolidation: Literal["full", "lightweight"]) -> dict[str, Any]:
-    """Run phases a-d for ``hub``'s session (its ticket is already ENDING); returns the session-end stats."""
+def end_session(
+    hub: MemoryHub,
+    *,
+    deadline: Deadline,
+    consolidation: Literal["full", "lightweight"],
+    consolidation_bound: Callable[[], Deadline | None] | None = None,
+) -> dict[str, Any]:
+    """Run phases a-d for ``hub``'s session (its ticket is already ENDING); returns the session-end stats.
+
+    ``consolidation_bound`` (#1536) is a second bound on phase c only, read before each step: a per-handle stop's
+    deadline, which may arrive after the end began. Flush, persist and re-save follow ``deadline`` alone."""
     full = consolidation == "full"
     results: dict[str, Any] = {} if full else {"lightweight": True}
     _flush_writers(hub, deadline)
@@ -85,7 +94,7 @@ def end_session(hub: MemoryHub, *, deadline: Deadline, consolidation: Literal["f
     # phase b's save takes that backup, so it is still the previous session's file.
     # (A full end backs up even when the deadline then skips sleep: the backup is the previous session's file.)
     _persist(hub, results, backup=full and bool(getattr(hub.hippocampus.config, "auto_save_after_sleep", False)))
-    if full and _consolidate(hub, deadline, results):
+    if full and _consolidate(hub, deadline, results, consolidation_bound=consolidation_bound):
         _resave(hub)
     _end_bookkeeping(hub, results)
     hub.shutdown()  # the grounder and completer; the extractor was stopped in phase a (idempotent)
@@ -229,13 +238,22 @@ def _end_bookkeeping(hub: MemoryHub, results: dict[str, Any]) -> None:
             logger.warning("Provenance session end failed: %s", e)
 
 
-def _consolidate(hub: MemoryHub, deadline: Deadline, results: dict[str, Any]) -> list[str]:
-    """Phase c. Returns the steps that ran (any: phase d re-saves)."""
+def _consolidate(
+    hub: MemoryHub,
+    deadline: Deadline,
+    results: dict[str, Any],
+    *,
+    consolidation_bound: Callable[[], Deadline | None] | None = None,
+) -> list[str]:
+    """Phase c. Returns the steps that ran (any: phase d re-saves). Each step must fit the earlier of ``deadline`` and
+    ``consolidation_bound()``, read at that step, so a bound set mid-end still cuts the steps after it (#1536)."""
     skipped: list[str] = []
     ran: list[str] = []
 
     def _fits(name: str, reserve_s: float) -> bool:
-        if deadline.remaining() >= reserve_s:
+        late = consolidation_bound() if consolidation_bound is not None else None
+        limit = Deadline.earliest(deadline, late) or deadline
+        if limit.remaining() >= reserve_s:
             return True
         skipped.append(name)
         return False

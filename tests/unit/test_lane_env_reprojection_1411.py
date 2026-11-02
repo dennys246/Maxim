@@ -200,6 +200,8 @@ def test_a_live_talk_loop_is_rebuilt_after_a_config_write(monkeypatch, tmp_path)
     h._talk_lock = threading.Lock()
     alive = SimpleNamespace(is_alive=lambda: True)
     h._talk_bridge, h._talk_thread, h._talk_stop, h._talk_worker = object(), alive, None, None
+    h._talk_bound, h._ending_talk_loops = None, []  # #1536: set in __init__, so a __new__ handle sets them too
+    h._stopped = False  # #1536 review SF-2: the launch re-checks it under the talk lock
     h._talk_generation = config_generation()
     h._workspace = tmp_path / "ws"
     stopped: list[bool] = []
@@ -269,6 +271,7 @@ def test_a_talk_loop_that_will_not_stop_stays_visible(monkeypatch) -> None:
     straggler = SimpleNamespace(is_alive=lambda: True, join=lambda timeout=None: None)
     bridge = SimpleNamespace(finish=lambda: None)
     h._talk_bridge, h._talk_thread, h._talk_stop, h._talk_worker = bridge, straggler, threading.Event(), None
+    h._talk_bound, h._ending_talk_loops = None, []  # #1536: set in __init__, so a __new__ handle sets them too
     with pytest.raises(RuntimeError, match="did not exit"):
         h._stop_talk_loop(join_s=0.01, required=True)
     assert h._talk_thread is straggler and h._talk_bridge is bridge

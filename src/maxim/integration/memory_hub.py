@@ -952,16 +952,23 @@ class MemoryHub:
         )
         raise ExperienceClockStalled(captures=did[0], activations=did[1], results=results)
 
-    def on_session_end(self, ticket: SessionTicket, *, deadline: Deadline | None = None) -> dict[str, Any]:
+    def on_session_end(
+        self,
+        ticket: SessionTicket,
+        *,
+        deadline: Deadline | None = None,
+        consolidation_bound: Callable[[], Deadline | None] | None = None,
+    ) -> dict[str, Any]:
         """End the session ``ticket`` holds: save every store first, then consolidate within ``deadline``.
 
         The phases and the store/lock table: ``integration/session_end.py`` (#1438 PR 1a). ``deadline=None`` is no
         bound: every consolidation step runs, after the saves. A stale or foreign ticket ends nothing (``{}``).
+        ``consolidation_bound`` (#1536) bounds consolidation only, read before each step (a per-handle stop).
 
         Returns:
             Dict with consolidation statistics; ``consolidation_skipped`` names steps the deadline left no time for.
         """
-        return self._end(ticket, "on_session_end", "full", deadline)
+        return self._end(ticket, "on_session_end", "full", deadline, consolidation_bound)
 
     def on_session_end_lightweight(self, ticket: SessionTicket, *, deadline: Deadline | None = None) -> dict[str, Any]:
         """Lightweight session end for sim mode: the same saves as :meth:`on_session_end`, no consolidation.
@@ -981,11 +988,17 @@ class MemoryHub:
         closer: str,
         consolidation: Literal["full", "lightweight"],
         deadline: Deadline | None,
+        consolidation_bound: Callable[[], Deadline | None] | None = None,
     ) -> dict[str, Any]:
         if not self._begin_session_end(ticket, closer):
             return {}
         try:
-            results = end_session(self, deadline=deadline or Deadline.none(), consolidation=consolidation)
+            results = end_session(
+                self,
+                deadline=deadline or Deadline.none(),
+                consolidation=consolidation,
+                consolidation_bound=consolidation_bound,
+            )
             # (the ticket moved the session to ENDING at entry.)
             session_duration = time.time() - self._session_start_time
             results["session_duration_seconds"] = session_duration

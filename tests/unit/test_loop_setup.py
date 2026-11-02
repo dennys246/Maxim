@@ -618,7 +618,10 @@ def test_run_agentic_loop_is_a_wrapper_that_forwards_every_argument_to_the_body(
     body_only: frozenset[str] = frozenset(
         {"session", "inbound_inbox"}
     )  # the wrapper hands both to the body: the bio_session (#1438 PR 0) and the held inbound comms (#1481)
-    assert {p: v for p, v in body_params.items() if p not in body_only} == dict(wrapper_sig.parameters)
+    # Keyword-only parameters only the wrapper reads (its own bio_session): never forwarded to the body.
+    wrapper_only: frozenset[str] = frozenset({"end_bound"})  # #1536: a per-handle stop's bound on the session end
+    wrapper_params = {p: v for p, v in wrapper_sig.parameters.items() if p not in wrapper_only}
+    assert {p: v for p, v in body_params.items() if p not in body_only} == wrapper_params
     tree = ast.parse(Path(agent_loop.__file__).read_text())
     [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]
     calls = [
@@ -630,7 +633,7 @@ def test_run_agentic_loop_is_a_wrapper_that_forwards_every_argument_to_the_body(
     [call] = calls
     positional = [a.id for a in call.args if isinstance(a, ast.Name)]
     keywords = {k.arg: k.value.id for k in call.keywords if isinstance(k.value, ast.Name) and k.arg not in body_only}
-    params = wrapper_sig.parameters
+    params = wrapper_params
     assert len(call.args) == len(positional)  # no starred or non-name positional
     assert positional == [p for p, v in params.items() if v.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD]
     assert keywords == {p: p for p, v in params.items() if v.kind is inspect.Parameter.KEYWORD_ONLY}
