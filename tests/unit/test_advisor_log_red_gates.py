@@ -76,7 +76,7 @@ def _expect_raises(exc: type[BaseException] | tuple[type[BaseException], ...], f
 
 
 def _log_mod() -> Any:
-    assert importlib.util.find_spec("maxim.advisor") is not None, "item 1 not built: no maxim.advisor"
+    assert importlib.util.find_spec("maxim.advisor") is not None, "item 5 not built: no maxim.advisor package"
     assert importlib.util.find_spec("maxim.advisor.log") is not None, "item 5 not built: no maxim.advisor.log"
     mod = importlib.import_module("maxim.advisor.log")
     assert hasattr(mod, "AdvisorLog") and hasattr(mod, "read_log"), "item 5 not built: no AdvisorLog / read_log"

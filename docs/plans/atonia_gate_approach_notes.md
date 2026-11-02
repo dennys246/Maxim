@@ -1049,14 +1049,33 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
 > **Status: BUILT 2026-11-01** (branch `feat/1315-item5-advisor-log`; owner decision V18: item 5 ships before item 1).
 > As built, where it differs from the text below:
 > - `src/maxim/advisor/log.py`. `maxim.advisor` exists as an empty package: `open()` and the session are item 1's.
-> - The typed errors are `maxim.exceptions.AdvisorLogBroken` (`MaximError, RuntimeError`), raised by an append to a
->   broken or closed log, and `AdvisorLogMalformed` (`MaximError, ValueError`), raised by `read_log`.
-> - Over-bound proposal `arguments` become a prefix of their own JSON encoding, as a string whose encoding fits in
->   4 KiB, with `arguments_truncated`. A refusal's `reason` is bounded to 1,024 characters (`reason_truncated`).
-> - `create()` applies `mode` with `fchmod`, so the umask cannot narrow it.
-> - `read_log` also refuses a record after the close record, a close record whose `last_seq` disagrees with the
->   records, and a `seq` that does not rise. It calls `check_format_version` on the header.
-> - All of item 5's gates are flipped except O7, which needs item 1's `ingest()`.
+>   Because the package now exists before item 1, `test_advisor_gate.py::_require_advisor` checks for `open()`, so
+>   every item-1 gate still fails as "item 1 not built" (a precondition, not a re-pointed gate).
+> - The strict writers are `utils/atomic_io.py::fsync_strict` and `append_line_fsync` (§1A.3's layer table);
+>   `atomic_write_json_at` is item 1's. `F_FULLFSYNC` falls back to `fsync` only on an "unsupported" errno.
+> - The typed errors share `maxim.exceptions.AdvisorError` (item 1's errors join it): `AdvisorLogBroken`
+>   (`RuntimeError`), raised by an append to a broken or closed log, and `AdvisorLogMalformed` (`ValueError`),
+>   raised by `read_log`. Item 1 maps both the first `OSError` and a later `AdvisorLogBroken` to `error`.
+> - The log breaks on any exception from the write or fsync, `KeyboardInterrupt` included, so the record that broke
+>   it can be on disk one `seq` past `last_seq` (the report's `log_last_seq`). `read_log` reads it as the final
+>   record.
+> - The record schema is closed: exactly `{_record_kind, report_id, arguments}` or `{_record_kind, report_id, name,
+>   error_kind, layer, effect, reason}`, text fields `str` and `effect` a list of flag names. The log adds `seq`,
+>   `ts` (UTC ISO-8601, milliseconds, `+00:00`; item 1's `created_at` uses the same) and the truncation flags.
+> - Over-bound proposal `arguments` become the longest prefix of their own JSON encoding whose encoding, as a
+>   string, fits in 4 KiB, with `arguments_truncated`. A refusal's `reason` is bounded to 1,024 characters
+>   (`reason_truncated`).
+> - `create()` refuses a `session_id` that is not one path component (`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`) and a
+>   `mode` beyond 0640, and applies `mode` with `fchmod`, so the umask cannot narrow it.
+> - **The ordering rule for item 1:** `open()` creates the log after the backend has loaded and every refusal has
+>   run, so a load failure leaves no header-only log. `AdvisorLog` is a context manager for the failure paths after
+>   that.
+> - `read_log` reads regular files only (a FIFO is refused, not waited on). It also refuses a `_format_version`
+>   other than 1.0, a record after the close record, a close record whose `last_seq` disagrees, a `seq` that does
+>   not rise and nesting too deep to parse.
+> - `utils/audit.py::LAYER_RULES` gains `advisor` (§1A.3). `test_advisor_log.py` pins the log module's closure (no
+>   `runtime`, `tools` or `agents`) in a child process; item 1's `test_import_closure` covers the composition.
+> - All of item 5's gates are flipped except O7, which needs item 1's `ingest()`. Reviews: `docs/plans/reviews/item5/`.
 
 `simulation/report.py::save_action_log` is a session-end rewrite at "1.2" with no fsync. The log borrows its shape (a
 header plus records), not its durability. No fsync'd append helper exists, and the existing `atomic_io` helpers

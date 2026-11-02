@@ -58,6 +58,24 @@ class TestForbiddenImport:
         assert v.imported_module == "maxim.tools.base"
         assert v.rule == "agents must_not_import tools"
 
+    def test_the_advisor_is_fenced_from_the_agent_memory_and_network_layers(self, tmp_path):
+        """#1315 §1A.3: the observer may compose a sealed executor, never the agent, memory or network layers."""
+        advisor_dir = tmp_path / "advisor"
+        advisor_dir.mkdir()
+        (advisor_dir / "__init__.py").write_text("")
+        (advisor_dir / "bad.py").write_text(
+            "from maxim.agents.autonomy import X\nfrom maxim.memory.hippocampus import Y\nimport maxim.mesh\n"
+        )
+        (advisor_dir / "good.py").write_text("from maxim.runtime.executor import Executor\n")
+
+        rules = sorted(v.rule for v in audit_architecture(src_root=tmp_path))
+
+        assert rules == [
+            "advisor must_not_import agents",
+            "advisor must_not_import memory",
+            "advisor must_not_import mesh",
+        ]
+
     def test_allow_valid_import(self, tmp_path):
         agents_dir = tmp_path / "agents"
         agents_dir.mkdir()
@@ -164,6 +182,7 @@ class TestLayerRulesCoverage:
         "skills",
         "bridges",
         "hardware",
+        "advisor",  # #1315 §1A.3
     }
 
     def test_all_layers_present(self):

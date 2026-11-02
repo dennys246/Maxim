@@ -97,7 +97,11 @@ class LeaderRefusal(MaximError, RuntimeError):
     """
 
 
-class AdvisorLogBroken(MaximError, RuntimeError):
+class AdvisorError(MaximError):
+    """Base of the observer's errors (``maxim.advisor``, #1315 items 1 and 5), so an embedder catches them in one."""
+
+
+class AdvisorLogBroken(AdvisorError, RuntimeError):
     """The observer's proposal and refusal log refused a write (#1315 item 5).
 
     An earlier ``OSError`` (a write or fsync that failed, a full disk) marked the log broken, or it was closed. The
@@ -106,7 +110,7 @@ class AdvisorLogBroken(MaximError, RuntimeError):
     """
 
 
-class AdvisorLogMalformed(MaximError, ValueError):
+class AdvisorLogMalformed(AdvisorError, ValueError):
     """``maxim.advisor.log.read_log`` found a log it cannot vouch for (#1315 item 5).
 
     No header, a second header, a bad line before the last, a record after the close record, or a ``seq`` that does
@@ -582,6 +586,7 @@ __all__ = [
     "KeyFileUnusable",
     "StopStillPending",
     "LeaderRefusal",
+    "AdvisorError",
     "AdvisorLogBroken",
     "AdvisorLogMalformed",
     # Connection
