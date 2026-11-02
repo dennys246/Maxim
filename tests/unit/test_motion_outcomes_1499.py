@@ -767,7 +767,7 @@ def test_headless_selfy_queues_nothing():
     assert host._motor_queue is None
 
 
-def test_a_split_antenna_move_holds_the_antennas_until_the_final_chunk():
+def test_a_split_antenna_move_holds_the_antennas_until_the_final_chunk(daemon):
     """Executor 6: intermediate chunks carry the start antennas, so the final chunk's antenna delta is rate-capped."""
     import numpy as np
 
