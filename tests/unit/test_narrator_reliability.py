@@ -224,8 +224,37 @@ def test_the_loops_submit_gate_waits_for_the_job_in_flight() -> None:
     from tests.unit._loop_source import loop_source
 
     src = loop_source()  # the loop's modules (1.3.2 decomposition)
-    assert "_submit_held = _planning_submit_in_flight(llm_worker, _planning_liveness_on)" in src
+    assert "_submit_held = _submit_held_or_stopped(llm_worker, _planning_liveness_on, stop_event)" in src
     assert "ctrl.pending_proposal is None and not _submit_held:" in src
+
+
+def test_a_stopped_run_never_submits_and_a_live_one_waits_for_the_job_in_flight_1451() -> None:
+    """The tick whose action ended the run (the narrator's finish sets the stop, #1259) must not submit the inputs
+    held behind it: that LLM call's answer would never run (#1451). A broken stop event reads as not stopped, as at
+    the pre-tick gate."""
+    import threading
+    from types import SimpleNamespace
+
+    from maxim.runtime.agent_loop import _submit_held_or_stopped
+
+    from maxim.agents.llm_worker import LLMAttemptState
+
+    in_flight = SimpleNamespace(latest_attempt_state=lambda: LLMAttemptState.RUNNING)
+    idle = SimpleNamespace(latest_attempt_state=lambda: None)
+    stopped, live = threading.Event(), threading.Event()
+    stopped.set()
+
+    class _Broken:
+        def is_set(self) -> bool:
+            raise RuntimeError("broken event")
+
+    assert _submit_held_or_stopped(idle, True, stopped) is True
+    assert _submit_held_or_stopped(idle, False, stopped) is True  # the AUT, too: a stopped run plans nothing
+    assert _submit_held_or_stopped(idle, True, live) is False
+    assert _submit_held_or_stopped(idle, True, None) is False
+    assert _submit_held_or_stopped(idle, True, _Broken()) is False
+    assert _submit_held_or_stopped(in_flight, True, live) is True  # one planning job in flight (#1048)
+    assert _submit_held_or_stopped(in_flight, False, live) is False  # the AUT does not wait for it
 
 
 def test_an_input_held_behind_a_job_in_flight_rides_the_next_follow_up() -> None:

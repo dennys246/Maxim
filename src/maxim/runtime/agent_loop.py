@@ -34,7 +34,7 @@ from maxim.runtime.loop_external import (
     planning_submit_shared_kwargs,
     submit_tick_context,
 )
-from maxim.runtime.loop_controller import _handle_planning_failure
+from maxim.runtime.loop_controller import _handle_planning_failure, note_system_outcome, set_aside_run_end
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import perceive, percept_text, take_observation, take_user_input
@@ -387,6 +387,18 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
         # With "received CLI input" and "Submitted", tells an input that waited its turn from a stranded one (#1488).
         logger.debug("Planning job %s (#1048)", "in flight: new inputs wait" if held else "done: inputs are free")
     return held
+
+
+def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any) -> bool:
+    """Whether this tick must not submit: a planning job is still in flight (#1048), or the run has stopped. A tick
+    whose action ended the run (the narrator's finish sets the stop, #1259) would otherwise still submit the inputs
+    held behind it: an LLM call nobody reads (#1451)."""
+    try:
+        stopped = stop_event is not None and callable(getattr(stop_event, "is_set", None)) and stop_event.is_set()
+    except (AttributeError, RuntimeError) as exc:  # the pre-tick gate ignores a broken event too: not stopped
+        logger.debug("stop_event.is_set() failed at the submit gate: %s", exc)
+        stopped = False
+    return bool(stopped) or _planning_submit_in_flight(llm_worker, liveness_on)
 
 
 # Each worker's last planning-held state, for the change-only log above. Keyed by id(): a run builds a handful of
@@ -2054,6 +2066,7 @@ def _run_agentic_loop_body(
         # ─────────────────────────────────────────────────────────────────
         # 4. EXECUTE PENDING LLM ACTION (if autonomy allows)
         # ─────────────────────────────────────────────────────────────────
+        set_aside_run_end(ctrl, memory, executor, sim, _planning_liveness_on)  # re-plan once (#1451)
         if ctrl.pending_proposal and ctrl.pending_proposal.action:
             action = ctrl.pending_proposal.action
             confidence = ctrl.pending_proposal.confidence
@@ -2116,18 +2129,7 @@ def _run_agentic_loop_body(
                     f"Try a DIFFERENT tool or different parameters. "
                     f"Available tools: {', '.join(_other_tools[:8]) if _other_tools else 'none'}"
                 )
-                recent_outcomes.append(
-                    {
-                        "tool": _this_tool,
-                        "tool_name": _this_tool,
-                        "success": False,
-                        "result": _cap_msg,
-                        "error": "consecutive_tool_cap",
-                        "timestamp": time.time(),
-                    }
-                )
-                if len(recent_outcomes) > max_recent_outcomes:
-                    recent_outcomes.pop(0)
+                note_system_outcome(recent_outcomes, max_recent_outcomes, _this_tool, _cap_msg, "consecutive_tool_cap")
 
                 ctrl.pending_proposal = None
                 _consecutive_same_tool_count = 0
@@ -2402,7 +2404,7 @@ def _run_agentic_loop_body(
                 _loop_sensor_encoder=_loop_sensor_encoder,
             )
 
-        _submit_held = _planning_submit_in_flight(llm_worker, _planning_liveness_on)  # one in flight (#1048)
+        _submit_held = _submit_held_or_stopped(llm_worker, _planning_liveness_on, stop_event)  # #1048, #1451
         if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None and not _submit_held:
             now = time.time()
             if now - ctrl.last_llm_submit_time > ctrl.llm_submit_interval:

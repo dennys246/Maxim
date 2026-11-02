@@ -1671,6 +1671,7 @@ class FinishSimulationTool(Tool):
 
     name = "finish_simulation"
     effect = Effect.READ | Effect.SELF_SCOPE
+    ends_run = True  # it sets the run's stop_event: inputs held behind it get one re-plan first (#1451)
     description = (
         "End the current simulation and produce the final report. "
         "IMPORTANT: finishing is terminal — only call this when you "
