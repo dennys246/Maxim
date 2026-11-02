@@ -968,6 +968,14 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 >   NITs are folded too: the turn's exit always signals `close()` and logs any release error, `open()`'s cleanup logs
 >   a failed step and re-raises the original error, the model opens `O_NONBLOCK`, and `stop_reason` is the stop
 >   that fired first in the turn.
+> - **The grammar carries no length bound** (found by the rig suite; owner decision 2026-11-02). llama-cpp-python's
+>   JSON-schema converter renders `maxLength: N` as N nested optional rules; llama-cpp-python 0.3.36 (what CI and
+>   a fresh install get) segfaults the whole process parsing the 2000-character text fields at the first
+>   completion, where 0.3.8 does not. `completion_schema` is structure only (keys, types, `maxItems`, a non-empty
+>   name); `_parse_completion` still refuses an over-long field as `schema_invalid`, and the fixed 1024-token
+>   budget bounds the output. Guards: `test_closed_local.py::test_the_observer_grammar_carries_no_length_bound`
+>   and `::test_the_observer_s_full_grammar_completes_in_a_child_process` (the real schema, real llama-cpp, in a
+>   child), both red on 0.3.36 with the bound restored.
 > - Not folded (review NITs, recorded): the prompt cap is checked after the eager load (N3); the executor's
 >   attempted/hallucinated lists grow for a long-lived session (N6); `check_model` and `closed_local` each check
 >   for a regular file (each module refuses on its own).

@@ -201,3 +201,44 @@ def test_a_failed_write_leaves_no_temporary_name(tmp_path: Path, dir_fd: int, mo
     with pytest.raises(OSError):
         atomic_write_json_at(dir_fd, "r.json", {"a": 1})
     assert list(tmp_path.iterdir()) == []
+
+
+# ── the observer's full completion schema, run for real (item 1: the grammar segfault) ──
+
+
+def _schema_keys(obj: object) -> set[str]:
+    if isinstance(obj, dict):
+        return set(obj) | {k for v in obj.values() for k in _schema_keys(v)}
+    if isinstance(obj, list):
+        return {k for v in obj for k in _schema_keys(v)}
+    return set()
+
+
+@pytest.mark.parametrize("max_calls", [1, 8, 32])
+def test_the_observer_grammar_carries_no_length_bound(max_calls: int) -> None:
+    """llama-cpp-python renders ``maxLength: N`` as N nested rules; past 0.3.8 the native parser segfaults on 2000."""
+    from maxim.advisor._session import completion_schema
+
+    assert "maxLength" not in _schema_keys(completion_schema(max_calls))
+
+
+def test_the_observer_s_full_grammar_completes_in_a_child_process() -> None:
+    """The real schema through the real llama-cpp, in a child, so a native crash fails here instead of killing the
+    suite. 0.3.36 segfaulted (rc -11) on the old schema's 2000-character text fields; this pins every installed
+    version against the schema the observer actually sends."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, time\n"
+        "from maxim.advisor._session import completion_schema\n"
+        "from maxim.models.language import closed_local\n"
+        f"b = closed_local.open_closed_local_backend({str(TINY)!r}, n_ctx=512, n_gpu_layers=0, seed=0)\n"
+        "p = b.build_prompt('Observe:\\n', ['x'])\n"
+        "out = b.complete_tokens(p.ids, grammar=completion_schema(32), max_tokens=24, deadline=time.monotonic() + 60)\n"
+        "print('OK', out.text.lstrip()[:1])\n"
+    )
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=180)
+    assert r.returncode == 0, f"the observer's grammar crashed llama-cpp (rc={r.returncode}): {r.stderr[-400:]}"
+    assert r.stdout.strip() == "OK {"

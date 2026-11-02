@@ -224,6 +224,8 @@ def test_ingest_refuses_a_malformed_batch(monkeypatch: pytest.MonkeyPatch, dirs:
     "completion, reason",
     [
         (dict(GOOD, happening=7), "happening"),
+        (dict(GOOD, rationale="x" * 2001), "rationale"),
+        (dict(GOOD, calls=[{"name": "n" * 129, "arguments": {}}]), "name"),
         (dict(GOOD, confidence=1.5), "confidence"),
         (dict(GOOD, confidence=True), "confidence"),
         (dict(GOOD, calls="none"), "calls"),
@@ -234,6 +236,8 @@ def test_ingest_refuses_a_malformed_batch(monkeypatch: pytest.MonkeyPatch, dirs:
     ],
     ids=[
         "text_type",
+        "text_too_long",
+        "name_too_long",
         "confidence_range",
         "confidence_bool",
         "calls_type",

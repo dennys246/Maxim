@@ -263,14 +263,18 @@ class AdvisorLimits:
 
 
 def completion_schema(max_calls: int) -> dict[str, Any]:
-    """The closed JSON schema the completion's grammar enforces (and :func:`_parse_completion` re-checks)."""
-    text = {"type": "string", "maxLength": MAX_TEXT_CHARS}
+    """The closed JSON schema the completion's grammar enforces: structure only. :func:`_parse_completion` re-checks
+    it and also enforces the lengths (``MAX_TEXT_CHARS``, ``MAX_CALL_NAME_CHARS``).
+
+    No ``maxLength`` goes into the grammar (owner decision 2026-11-02): llama-cpp-python's JSON-schema converter
+    renders ``maxLength: N`` as N nested optional rules, and from 0.3.x releases after 0.3.8 the native grammar
+    parser recurses through them and segfaults the process at ``maxLength`` 2000 (measured on 0.3.36; 300 parses).
+    The fixed ``COMPLETION_TOKENS`` budget already bounds the output, and an over-long field is ``schema_invalid``.
+    """
+    text = {"type": "string"}
     call = {
         "type": "object",
-        "properties": {
-            "name": {"type": "string", "minLength": 1, "maxLength": MAX_CALL_NAME_CHARS},
-            "arguments": {"type": "object"},
-        },
+        "properties": {"name": {"type": "string", "minLength": 1}, "arguments": {"type": "object"}},
         "required": ["name", "arguments"],
         "additionalProperties": False,
     }
