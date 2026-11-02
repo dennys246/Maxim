@@ -13,7 +13,7 @@ loopback bind (`console/server.py::run_serve`), the control fields in the wire w
 [console_tunnel_hardening.md](console_tunnel_hardening.md). **Corrected 2026-10-29 (pulse):** the first draft called a reviewer's "LAN bind (A9)" wrong. It was right:
 `maxim serve` binds loopback only, and a device EMBEDDER (the Reachy app) binds its own LAN interface under A9
 (console_tunnel_hardening.md §Non-goals and A9). PD2 now says so. **Pre-merge round (Executor,
-Architecture, Wire integrity) folded 2026-10-29;** the owner decisions the folds took are listed in §Fold decisions.
+Architecture, Wire integrity) folded 2026-10-29;** the owner decisions the folds took are listed in §Fold decisions (confirmed 2026-10-31).
 
 **Companion plans, authoritative in their own areas:** [embodied_device.md](../embodied_device.md) (one owner per
 device contract; `embody()`; the embodied census) · [console_tunnel_hardening.md](console_tunnel_hardening.md)
@@ -223,9 +223,9 @@ evidence (embodied_device §3).
    placement decision?
 3. Phase 2's record schema: how coarse must location be before it is committable evidence?
 
-## Fold decisions (pre-merge round, 2026-10-29; owner to confirm)
+## Fold decisions (pre-merge round, 2026-10-29; owner confirmed 2026-10-31)
 
-The folds took these choices; each is the conservative reading and is reversible:
+The folds took these choices, each the conservative reading; the owner confirmed all five on 2026-10-31:
 1. **The tunnel plan's M3 (talk's tool gate) and the principal seam are pulled forward from tunnel PR 4 into 1.3.5** (P0-3, P0-4), with Phase 0's homing.
    PR 4's per-device tokens still fire with Phase 1.
 2. **P0-5 is a plan amendment in 1.3.5**; its census row and code wait for GL3.B1 (1.4).
