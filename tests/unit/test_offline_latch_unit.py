@@ -151,10 +151,11 @@ def test_a_failing_callback_does_not_stop_the_others(monkeypatch) -> None:
     assert _offline.is_offline() is True  # the latch is up anyway
 
 
-def test_reset_restores_the_env_keys_and_library_flags(monkeypatch) -> None:
-    """Executor N1 / Wire F5: without the restore every later test would see the engaged values."""
+def test_reset_restores_the_library_flags(monkeypatch) -> None:
+    """Executor N1 / Wire F5: without the restore every later test would see the engaged values. The five env keys
+    are restored by ``tests/conftest.py::_reset_offline_latch`` around every test, not by the reset: ``engage()``
+    never reads them (#1315 item 1's pinned env read set)."""
     monkeypatch.setenv("HF_HUB_OFFLINE", "0")
-    monkeypatch.delenv("YOLO_OFFLINE", raising=False)
     hf = types.SimpleNamespace(HF_HUB_OFFLINE=False)
     ultra = types.SimpleNamespace(ONLINE=True)
     monkeypatch.setitem(sys.modules, "huggingface_hub.constants", hf)
@@ -163,10 +164,49 @@ def test_reset_restores_the_env_keys_and_library_flags(monkeypatch) -> None:
     assert os.environ["HF_HUB_OFFLINE"] == "1" and os.environ["YOLO_OFFLINE"] == "true"
     assert hf.HF_HUB_OFFLINE is True and ultra.ONLINE is False
     _offline._reset_for_tests()
-    assert os.environ["HF_HUB_OFFLINE"] == "0"
-    assert "YOLO_OFFLINE" not in os.environ
     assert hf.HF_HUB_OFFLINE is False and ultra.ONLINE is True
+    assert not {key for key, _ in _offline.ENGAGE_ENV} & set(os.environ), "the reset left an engaged key behind"
     assert _offline.is_offline() is False and _offline.ledger() == ()
+
+
+def test_engage_reads_none_of_the_keys_it_writes(monkeypatch) -> None:
+    """The observer's env read set is pinned (#1315 item 1): ``engage()`` writes its five keys without reading any."""
+    reads: list[str] = []
+
+    class _Recording(dict):
+        def get(self, key, default=None):
+            reads.append(key)
+            return super().get(key, default)
+
+        def __getitem__(self, key):
+            reads.append(key)
+            return super().__getitem__(key)
+
+        def __contains__(self, key):
+            reads.append(key)
+            return super().__contains__(key)
+
+    monkeypatch.setattr(_offline, "_callbacks", [])  # other modules' on_engage callbacks are not engage()'s reads
+    monkeypatch.setattr(os, "environ", _Recording(os.environ))
+    _offline.engage("unit: no reads")
+    during = list(reads)  # before any assertion: the asserts below read the environment themselves
+    assert during == [], f"engage() read {during}"
+    assert dict.get(os.environ, "MAXIM_OFFLINE") == "1"
+
+
+def test_the_conftest_fixture_restores_the_keys_engage_writes() -> None:
+    """The restore moved to the harness: its key list must stay the latch's (a key added to ENGAGE_ENV and not to
+    the fixture would leak an engaged value into every later test)."""
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "conftest.py").read_text(encoding="utf-8"))
+    keys = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "_OFFLINE_ENV_KEYS" for t in node.targets)
+    )
+    assert set(keys) == {key for key, _ in _offline.ENGAGE_ENV}
 
 
 # ── the read sites' offline branches ──────────────────────────────────────

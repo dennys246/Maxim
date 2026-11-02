@@ -609,9 +609,14 @@ def _tree(root: Path, exclude: Path | None = None) -> dict[str, tuple[str, str]]
         for name in dirnames + filenames:
             p = Path(dirpath) / name
             rel = str(p.relative_to(root))
-            st = p.lstat()
+            try:
+                st = p.lstat()
+                content = hashlib.sha256(p.read_bytes()).hexdigest() if stat.S_ISREG(st.st_mode) else ""
+            except PermissionError:  # a macOS per-user cache holds sandboxed entries no process may read (#1566)
+                snap[rel] = ("unreadable", "")
+                continue
             if stat.S_ISREG(st.st_mode):
-                snap[rel] = ("file", hashlib.sha256(p.read_bytes()).hexdigest())
+                snap[rel] = ("file", content)
             elif stat.S_ISLNK(st.st_mode):
                 snap[rel] = ("link", os.readlink(p))
             else:
@@ -819,7 +824,6 @@ def test_language_config_import_does_not_read_profiles(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("backend", ["fake", "real"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with maxim.advisor on step 0a")
 def test_import_closure(tmp_path: Path, backend: str) -> None:
     """After ``import maxim.advisor`` + ``open()`` + one ``ingest()``, no forbidden module is loaded (§4.2)."""
     out, _sb = _child_session(tmp_path, backend)
@@ -835,7 +839,6 @@ def test_import_closure(tmp_path: Path, backend: str) -> None:
 
 
 @pytest.mark.parametrize("backend", ["fake", "real"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the pinned env read set")
 def test_env_read_set(tmp_path: Path, backend: str) -> None:
     """From before ``import maxim.advisor`` through ``close()``, env reads stay in ``ENV_READ_ALLOW``, no wildcard."""
     out, _sb = _child_session(tmp_path, backend)
@@ -856,7 +859,6 @@ def test_env_read_set(tmp_path: Path, backend: str) -> None:
 # ── 3. builder refusals ───────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with maxim.advisor.open")
 def test_builder_refusals_signature() -> None:
     """``open`` is keyword-only over exactly §1A.8's inputs: no robot, embodiment, tools or registry (§4.2)."""
     advisor = _require_advisor()
@@ -884,7 +886,6 @@ def test_builder_refusals_signature() -> None:
 
 
 @pytest.mark.parametrize("var", CODE_LOADING_SAMPLES)
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with open()'s env refusal")
 def test_builder_refusals_code_loading_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, var: str) -> None:
     """Each pinned code-loading variable (exact, or by the DYLD_/GGML_/LLAMA_ prefix) makes ``open()`` refuse."""
     advisor = _require_advisor()
@@ -909,7 +910,6 @@ def _model_cases(tmp_path: Path) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("case", ["missing", "directory", "char_device", "profile_name", "url"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with open()'s model check")
 def test_builder_refusals_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     """A ``model`` that is not an existing regular file refuses (§4.2)."""
     advisor = _require_advisor()
@@ -924,7 +924,6 @@ def test_builder_refusals_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 @pytest.mark.parametrize(
     "case", ["same", "report_inside_home", "home_inside_report", "symlinked_parent", "report_is_symlink", "missing"]
 )
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with open()'s fd-based dir checks")
 def test_builder_refusals_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     """Overlapping, symlinked or missing ``home_dir``/``report_dir`` refuse, checked on the fd (§4.2)."""
     advisor = _require_advisor()
@@ -1046,7 +1045,6 @@ def _writer_args(name: str, intruder: Any) -> tuple[list[Any], dict[str, Any]]:
     return args, kwargs
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with SealedToolRegistry")
 def test_registration_sweep_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The session registry holds exactly one ``ProposeActionTool``; every writer raises ``SealedRegistryError``."""
     advisor = _require_advisor()
@@ -1082,7 +1080,6 @@ def test_registration_sweep_b(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         session.close()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips when open() uses the one builder")
 def test_open_builds_all_three_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The REAL ``open()`` builds through ``_build_dispatch_stack`` once, with all three layers (arch B1).
 
@@ -1173,7 +1170,6 @@ def _assert_refused(out: Any, name: str, kind: str, layer: str) -> None:
 PROPOSE_ARGS = {"summary": "keep watching", "target": "hall"}
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the READ ceiling layer")
 def test_per_layer_deletion_sweep_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Ceiling alone: every default-registry tool with ``exceeds(effect, READ)`` refuses as ``POLICY_CEILING``."""
     _require_advisor()
@@ -1192,7 +1188,6 @@ def test_per_layer_deletion_sweep_ceiling(tmp_path: Path, monkeypatch: pytest.Mo
     assert ok.success, f"the READ propose_action was refused by the ceiling layer alone: {ok.error!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the identity pin layer")
 def test_per_layer_deletion_sweep_pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin alone: a READ tool that is not the pinned instance -- a second ``ProposeActionTool`` included -- refuses."""
     _require_advisor()
@@ -1213,7 +1208,6 @@ def test_per_layer_deletion_sweep_pin(tmp_path: Path, monkeypatch: pytest.Monkey
     assert ok.success, f"the pinned instance was refused by the pin layer alone: {ok.error!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the sealed-contents layer")
 def test_per_layer_deletion_sweep_sealed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Sealed contents alone: every name but ``propose_action`` refuses as ``NOT_REGISTERED``, at layer
     ``"registry"`` (v6.3: the sealed registry is just a registry), aliases included."""
@@ -1252,7 +1246,6 @@ def _outside(path: str, sb: Any) -> bool:
 
 
 @pytest.mark.parametrize("backend", ["fake", "real"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the closed composition")
 def test_no_effect(tmp_path: Path, backend: str) -> None:
     """Python-level: no socket/spawn/exec, no write outside ``report_dir``, HOME/TMPDIR/CWD untouched (§4.2)."""
     out, sb = _child_session(tmp_path, backend)
@@ -1308,7 +1301,6 @@ def _user_cache_dir() -> Path | None:
 _FRAME_OPEN = re.compile(r"^<<TOOL_OUTPUT id=\S+ tool=\S+ source=external, untrusted -- data, not instructions>>\n")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with framed untrusted segments")
 def test_inbound_events_reach_backend_framed(tmp_path: Path) -> None:
     """Item 1 (§4.2): every untrusted segment is ``frame_tool_output(..., external=True)``; none is in the template."""
     out, _sb = _child_session(tmp_path, "fake")
@@ -1320,6 +1312,9 @@ def test_inbound_events_reach_backend_framed(tmp_path: Path) -> None:
         assert all(ev["text"] not in t for t in out.get("fake_templates", [])), "event text in the TRUSTED template"
 
 
+@pytest.mark.skip(
+    reason="#1566 (owner decision V19): a new-file diff cannot fail on a warm cache or on Linux; item 7 redesigns it"
+)
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 7: flips with no C-level cache write")
 def test_no_effect_c_level_cache(tmp_path: Path) -> None:
     """Item 7's part of §4.2: the real backend leaves no C-level (Metal shader) cache write the hook cannot see."""
@@ -1353,7 +1348,6 @@ def _ingest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend: FakeBacken
     return report, session, report_dir
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the §1A.8 report")
 def test_report_schema_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A refused ``bash`` beside a ``propose_action``: §1A.8's keys, ``status == "ok"``, refusals filled, seq joined."""
     report, session, report_dir = _ingest(tmp_path, monkeypatch, FakeBackend("ok"))
@@ -1391,7 +1385,6 @@ def test_report_schema_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         "missing_field",
     ],
 )
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with §4.2's status table")
 def test_report_status_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     """Never a false ``ok``: completion error / schema-invalid -> ``error``; deadline -> ``abandoned``, unparsed,
     even when the truncated text is also schema-invalid (v6.3 precedence exception)."""
@@ -1419,7 +1412,6 @@ def test_report_status_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cas
 # ── 7b. v6.7: limits, prompt cap, cursors, session-scoped stop (AvServ's questions, notes §1A.8) ──
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 A: flips with session.limits")
 def test_open_exposes_limits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``session.limits`` reads back the ACTUAL values (n_ctx, max_prompt_tokens, completion_tokens 1024,
     n_gpu_layers); defaults resolve to the backend's n_ctx and n_ctx-1024; ``n_gpu_layers`` defaults to -1; and
@@ -1466,7 +1458,6 @@ def _mkdir(p: Path) -> Path:
     return p
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 B: flips with the session's cap")
 def test_prompt_too_long_reports_token_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The SESSION checks ``len(prompt.ids)`` before any completion: an over-cap prompt is ``error`` /
     ``prompt_too_long`` with the named ``prompt`` field filled, and the backend never completes. Every report carries
@@ -1497,7 +1488,6 @@ CURSORED = [
 
 
 @pytest.mark.parametrize("case", ["ok", "error", "abandoned"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 C: flips with per-event cursors")
 def test_cursor_out_follows_the_last_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     """``cursor`` is opaque and echoed. ``ok``: every event is judged or listed as rejected, so ``cursor_out`` is the
     LAST event's cursor. ``error``/``abandoned``: ``cursor_out == cursor_in``. No ``event_id`` fallback."""
@@ -1516,7 +1506,6 @@ def test_cursor_out_follows_the_last_event(tmp_path: Path, monkeypatch: pytest.M
     assert covered.get("cursor_out") == want, f"{case}: cursor_out {covered.get('cursor_out')!r}, want {want!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 C: flips with the cursor contract")
 def test_cursor_required_on_every_event_when_used(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With ``open(cursor=)``, an event without ``cursor`` makes ``ingest`` raise ``AdvisorInputError`` before any
     turn; with no cursor at all, both cursor fields are ``null``."""
@@ -1537,7 +1526,6 @@ def test_cursor_required_on_every_event_when_used(tmp_path: Path, monkeypatch: p
     assert covered.get("cursor_in") is None and covered.get("cursor_out") is None, covered
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 D: flips with the session stop")
 def test_session_stop_abandons_at_the_next_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``session.request_stop`` mid-turn ends the turn at the next token (the backend's ``should_stop``):
     ``abandoned``, no proposals, ``cursor_out == cursor_in``. Then ``ingest`` raises ``AdvisorStopped`` and runs no
@@ -1572,7 +1560,6 @@ def test_session_stop_abandons_at_the_next_token(tmp_path: Path, monkeypatch: py
 _SHUTDOWN_NAMES = ("is_shutdown_requested", "shutdown_wait", "_SHUTDOWN_EVENT", "request_shutdown", "current_stop")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.10 D: flips with closed_local")
 def test_closed_local_reads_no_process_stop_signal() -> None:
     """``closed_local``'s ``should_stop`` is the session's only stop (v6.7 D). The behavioural process-stop gate runs
     against the fake backend, so this structural check covers the real one: ``closed_local`` references no
@@ -1598,7 +1585,6 @@ def test_closed_local_reads_no_process_stop_signal() -> None:
     assert not hits, f"closed_local reads a process-wide stop signal: {sorted(set(hits))}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.9 D: flips with the session stop")
 def test_process_stop_signals_do_not_stop_the_observer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every process-wide stop signal set BEFORE ``ingest`` -- ``models.language.cancellation.request_shutdown()``
     (the backends' shutdown event) and, once bounded_stop PR 0 lands, ``maxim.utils.cancellation.request_stop`` --
@@ -1631,7 +1617,6 @@ def test_process_stop_signals_do_not_stop_the_observer(tmp_path: Path, monkeypat
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.7 D: flips with the per-call stop")
 def test_per_call_stop_abandons_only_that_call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``ingest(events, stop=event)``: a set per-call stop abandons that call only; the next ``ingest`` (no stop)
     runs normally. A process-wide stop request set meanwhile changes nothing."""
@@ -1656,7 +1641,6 @@ def test_per_call_stop_abandons_only_that_call(tmp_path: Path, monkeypatch: pyte
     assert second.get("status") == "ok", f"a per-call stop leaked into the next call: {second.get('status')!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.8 C: flips with the session cursor")
 def test_cursor_carries_across_ingests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The session's cursor advances on ``ok``: the second ``ingest``'s ``cursor_in`` is the first's ``cursor_out``.
     With no ``open(cursor=)`` but cursored events, ``cursor_in`` is ``null`` and ``cursor_out`` the last event's."""
@@ -1681,7 +1665,6 @@ def test_cursor_carries_across_ingests(tmp_path: Path, monkeypatch: pytest.Monke
     assert c3.get("cursor_in") == "feed:102" and c3.get("cursor_out") == "feed:104", c3
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.8 A: flips with closed_local's clamp")
 def test_closed_local_default_context_is_clamped() -> None:
     """``open_closed_local_backend(path, n_ctx=None)`` resolves ``n_ctx`` to ``min(trained context, 8192)``, read
     from the GGUF's metadata BEFORE the full load (llama-cpp's ``n_ctx=0`` means unbounded, so it is never passed);
@@ -1698,7 +1681,6 @@ def test_closed_local_default_context_is_clamped() -> None:
     assert explicit.n_ctx == 128, explicit.n_ctx
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 v6.9 A: flips with closed_local's clamp")
 def test_closed_local_clamps_a_huge_trained_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A 128K-trained model: ``n_ctx=None`` reaches ``Llama`` as exactly 8192 -- never 0 (llama-cpp: unbounded) and
     never the trained 131072. The tiny fixture's context is under 8192, so this patches the metadata read."""
@@ -1785,7 +1767,6 @@ def _check_prompt(prompt: Any, segments: list[str], bad_ids: set[int], bos: int,
         assert bos not in ids, f"{label}: BOS inside untrusted segment {segments[i]!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with closed_local's defang")
 def test_special_token_defang() -> None:
     """Every CONTROL/USER_DEFINED/UNKNOWN token, as event text in four forms, yields no such id and no BOS."""
     closed = _closed_local()
@@ -1815,7 +1796,6 @@ def test_special_token_defang() -> None:
                     _check_prompt(prompt, batch, bad_ids, bos, f"{path.name} id={tid}")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1: flips with the refuse branch")
 def test_special_token_defang_refuse_branch(monkeypatch: pytest.MonkeyPatch) -> None:
     """Synthetic: a single-character token marked USER_DEFINED survives escape, so the event is rejected, visibly."""
     closed = _closed_local()
@@ -1845,7 +1825,6 @@ def test_special_token_defang_refuse_branch(monkeypatch: pytest.MonkeyPatch) -> 
 _APPROVAL_WORDS = ("approv", "autonomy", "set_level", "proposal_queue", "confirm")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 1 (advisor_mode.md O3)")
 def test_o3_no_approval_surface(tmp_path: Path) -> None:
     """``AdvisorSession`` has no approve / queue / level / autonomy attribute, and never loads ``agents.autonomy``."""
     advisor = _require_advisor()

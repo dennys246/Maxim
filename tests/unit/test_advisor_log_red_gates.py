@@ -419,6 +419,8 @@ _COMPLETION = {
 
 
 class _FakeBackend:
+    n_ctx = 4096  # v6.8 A: the resolved context the session reads back (the integration gates' FakeBackend has it)
+
     def build_prompt(self, template: str, segments: Any) -> Any:
         n = len(list(segments))
         return SimpleNamespace(ids=list(range(n + 2)), untrusted_spans=[(1 + i, 2 + i) for i in range(n)], rejected=())
@@ -427,7 +429,6 @@ class _FakeBackend:
         return SimpleNamespace(text=json.dumps(_COMPLETION), deadline_hit=False, finish_reason="stop")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5 (advisor_mode.md O7): durable log")
 def test_o7_proposals_and_refusals_are_on_disk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """After ``ingest()`` and BEFORE ``close()``, the proposal and the refusal are records in the log file."""
     log_mod = _log_mod()

@@ -323,3 +323,33 @@ def append_line_fsync(fd: int, line: bytes) -> None:
             raise OSError(f"os.write wrote {written} bytes of {len(view)}")
         view = view[written:]
     fsync_strict(fd)
+
+
+def atomic_write_json_at(dir_fd: int, name: str, payload: Any, *, mode: int = 0o600) -> None:
+    """Write ``payload`` as JSON to ``name`` under the directory ``dir_fd``, atomically and STRICTLY (#1315 §1A.3).
+
+    A temporary name under the same ``dir_fd`` (``O_EXCL|O_NOFOLLOW``) is written in full, fsynced, renamed over
+    ``name`` through the fd, and the directory is fsynced: the path is never re-resolved, so a swapped parent
+    cannot redirect the write. Any ``OSError`` raises (the strict policy, module docstring) and the temporary name
+    is removed. ``name`` must be one path component. JSON is ASCII, with no NaN.
+    """
+    if not name or "/" in name or "\0" in name or name in (".", ".."):
+        raise ValueError(f"atomic_write_json_at writes one path component, not {name!r}")
+    data = (json.dumps(payload, ensure_ascii=True, allow_nan=False, indent=2) + "\n").encode("ascii")
+    tmp = f".{name}.{os.urandom(6).hex()}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open(tmp, flags, mode, dir_fd=dir_fd)
+    try:
+        try:
+            os.fchmod(fd, mode)
+            append_line_fsync(fd, data)
+        finally:
+            os.close(fd)
+        os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dir_fd)
+        except FileNotFoundError:
+            pass  # already renamed into place, or never created
+        raise
+    fsync_strict(dir_fd)

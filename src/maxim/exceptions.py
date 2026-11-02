@@ -110,6 +110,28 @@ class AdvisorLogBroken(AdvisorError, RuntimeError):
     """
 
 
+class AdvisorCompositionError(AdvisorError, ValueError):
+    """``maxim.advisor.open()`` refused to build the observer (#1315 item 1, §4.2 "Refusals at open()").
+
+    A pinned code-loading variable is set, the model is not an existing regular file, the home or report directory
+    is missing, not writable, a symlink or overlaps the other, a limit is out of range, or the backend failed to
+    load. Nothing was built, so there is no report.
+    """
+
+
+class AdvisorInputError(AdvisorError, ValueError):
+    """``AdvisorSession.ingest`` refused a batch before any turn ran: a malformed event, or a missing ``cursor``
+    once cursors are in play (§1A.8 "Cursors")."""
+
+
+class AdvisorStopped(AdvisorError, RuntimeError):
+    """``AdvisorSession.ingest`` was called on a stopped session (``request_stop``); no turn ran (§1A.8)."""
+
+
+class SealedRegistryError(AdvisorError, TypeError):
+    """A write to the observer's sealed tool registry: its contents are fixed at ``open()`` (§4.2)."""
+
+
 class AdvisorLogMalformed(AdvisorError, ValueError):
     """``maxim.advisor.log.read_log`` found a log it cannot vouch for (#1315 item 5).
 
@@ -587,6 +609,10 @@ __all__ = [
     "StopStillPending",
     "LeaderRefusal",
     "AdvisorError",
+    "AdvisorCompositionError",
+    "AdvisorInputError",
+    "AdvisorStopped",
+    "SealedRegistryError",
     "AdvisorLogBroken",
     "AdvisorLogMalformed",
     # Connection

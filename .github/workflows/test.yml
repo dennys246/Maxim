@@ -1239,6 +1239,9 @@ jobs:
           #   - agents/exec_agent.py: line-scoped to the PROPOSED_GOAL_TOOL
           #     constant import only (a future backend-class import in the
           #     same file still fails).
+          #   - advisor/: the ONLY importer of closed_local, the observer's
+          #     closed backend (#1315 item 1, notes §1A.3), which is not the
+          #     router by design (the router reads the data home and env).
           # Scope note: matches the `from maxim.models.language.X import`
           # form only (the codebase-wide convention); `import maxim.models.
           # language.X` and relative-import forms are out of scope for this
@@ -1247,7 +1250,7 @@ jobs:
           # allow-listed sites pre-filter — if the regex rots (module
           # rename, import-style migration), fail loudly instead of
           # passing vacuously forever.
-          BACKEND_IMPORT_ALL=$(grep -rnE --include="*.py" "from maxim\.models\.language\.(anthropic_backend|llama_backend|openai_backend|transformers_backend) import" src/maxim/ || true)
+          BACKEND_IMPORT_ALL=$(grep -rnE --include="*.py" "from maxim\.models\.language\.(anthropic_backend|llama_backend|openai_backend|transformers_backend|closed_local) import" src/maxim/ || true)
           if ! echo "$BACKEND_IMPORT_ALL" | grep -q "^src/maxim/agents/llm_agent\.py:"; then
             echo "ERROR: backend-import grep positive control failed — pattern no longer matches the"
             echo "       grandfathered agents/llm_agent.py site. Either llm_agent migrated to the"
@@ -1258,6 +1261,7 @@ jobs:
             | grep -v "^src/maxim/models/language/" \
             | grep -v "^src/maxim/agents/llm_agent\.py:" \
             | grep -vE "^src/maxim/agents/exec_agent\.py:.*PROPOSED_GOAL_TOOL" \
+            | grep -vE "^src/maxim/advisor/[a-z_]+\.py:.*from maxim\.models\.language\.closed_local import" \
             || true)
           if [ -n "$BACKEND_IMPORT_MATCHES" ]; then
             echo "ERROR: concrete LLM backend imported outside models/language/"

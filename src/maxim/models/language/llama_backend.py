@@ -8,6 +8,35 @@ from typing import Any
 from maxim.utils.logging import warn
 from maxim.utils.optional_deps import require_optional_dependency
 
+
+def llama_kwargs(
+    model_path: str,
+    *,
+    n_ctx: int,
+    n_gpu_layers: int | None = -1,
+    n_threads: int | None = None,
+    seed: int | None = -1,
+    vocab_only: bool = False,
+) -> dict[str, Any]:
+    """The ``Llama(**kwargs)`` every Maxim llama.cpp load builds: ``_LlamaCppBackend`` and ``closed_local`` share it
+    (#1315 §1A.3), so a future GGML flag lands once.
+
+    ``n_ctx`` is explicit, always: each caller owns its clamp (llama-cpp reads ``n_ctx=0`` as the model's full
+    trained context; ``closed_local`` never passes it). ``n_gpu_layers`` -1 offloads every layer, ``n_threads``
+    ``None`` lets llama.cpp choose, and ``seed`` -1 is random.
+    """
+    kwargs: dict[str, Any] = {"model_path": model_path, "n_ctx": int(n_ctx), "verbose": False}
+    if n_gpu_layers is not None:
+        kwargs["n_gpu_layers"] = int(n_gpu_layers)
+    if n_threads is not None:
+        kwargs["n_threads"] = int(n_threads)
+    if seed is not None and seed != -1:
+        kwargs["seed"] = int(seed)
+    if vocab_only:
+        kwargs["vocab_only"] = True
+    return kwargs
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,29 +128,15 @@ class _LlamaCppBackend:
                         n_ctx = limit
                         break
 
-                # Build kwargs with all supported options
-                llama_kwargs: dict[str, Any] = {
-                    "model_path": model_path,
-                    "n_ctx": n_ctx,
-                    "verbose": False,
-                }
-
-                # GPU layers (-1 = all available)
-                n_gpu_layers = getattr(self.cfg, "n_gpu_layers", -1)
-                if n_gpu_layers is not None:
-                    llama_kwargs["n_gpu_layers"] = int(n_gpu_layers)
-
-                # Thread count (None = auto)
-                n_threads = getattr(self.cfg, "n_threads", None)
-                if n_threads is not None:
-                    llama_kwargs["n_threads"] = int(n_threads)
-
-                # Seed (-1 = random)
-                seed = getattr(self.cfg, "seed", -1)
-                if seed is not None and seed != -1:
-                    llama_kwargs["seed"] = int(seed)
-
-                self._llm = Llama(**llama_kwargs)
+                self._llm = Llama(
+                    **llama_kwargs(
+                        model_path,
+                        n_ctx=n_ctx,
+                        n_gpu_layers=getattr(self.cfg, "n_gpu_layers", -1),
+                        n_threads=getattr(self.cfg, "n_threads", None),
+                        seed=getattr(self.cfg, "seed", -1),
+                    )
+                )
                 return True
             except Exception as e:
                 warn("Failed to load LLM model (%s): %s", model_path, e)

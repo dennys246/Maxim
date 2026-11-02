@@ -894,6 +894,41 @@ embodiment=None, …)` accepts `None`, and a bare `Executor` with no mode source
 
 ## 4. Item 1: the atonia composition (`maxim.advisor`)
 
+> **Status: BUILT 2026-11-01** (branch `feat/1315-item1-advisor`, stacked on item 5's #1565; owner decisions V17
+> fixtures, V18 split, V19 the item-7 gate). As built, where it differs from the text below:
+> - `advisor/_session.py` holds `open_session` (exported lazily as `maxim.advisor.open`), `AdvisorSession`,
+>   `ProposeActionTool`, `SealedToolRegistry`, `_build_dispatch_stack` and `_backend_factory`. The open()-time checks
+>   are in `advisor/_refusals.py`, whose `code_loading_vars_set` is the one sanctioned env iteration. The errors
+>   (`AdvisorCompositionError`, `AdvisorInputError`, `AdvisorStopped`, `SealedRegistryError`) live in
+>   `maxim/exceptions.py` under `AdvisorError`.
+> - `SealedToolRegistry` is passed to `Executor` untyped (`Any`), not through a `ToolRegistryLike` Protocol: retyping
+>   `Executor.registry` would retype every caller that registers through it. The registration sweep pins its
+>   behaviour instead.
+> - With the pin layer removed (test-only), the policy is `unrestricted` (narrowed to the ceiling when that layer is
+>   kept), not a name allow-list. The executor checks names before the registry, so an allow-list would refuse an
+>   unregistered name at layer "permissions", and the sealed sweep would measure the wrong layer.
+> - `closed_local.trained_context` parses the GGUF header in pure Python, bounded against a hostile header, rather
+>   than a vocab-only load. `complete_tokens(grammar=)` takes the closed JSON schema and builds the grammar with
+>   llama-cpp's `LlamaGrammar.from_json_schema`; sampling is greedy (temperature 0, seed 0). The escape re-tokenizes
+>   the whole segment one character at a time, not only the offending span.
+> - Each event becomes two framed segments: its text, and the canonical JSON of its id, kind, `occurred_at` and
+>   payload (the id and kind are caller-supplied, so they stay out of the trusted template).
+> - The report is written through `report_dir`'s fd as `advisor_report_<report_id>.json` by the new strict
+>   `atomic_io.atomic_write_json_at`. The model's sha256 is computed once at `open()`.
+> - A `propose_action` whose arguments fail validation ran and failed: it is a `refusals` row with layer `"tool"`.
+>   A non-ok turn reports `proposals: []`; the records it wrote stay in the log, up to `log_last_seq`.
+> - **A root-cause fix in step 0b:** `_offline.engage()` read the five keys it writes (to restore them for tests),
+>   which the env read-set gate refuses. It now writes them without reading; `_reset_for_tests` removes them, and
+>   `tests/conftest.py::_reset_offline_latch` restores the pre-test values, as it already did.
+> - Two pre-built fixtures were stale against later seams and are updated: the O7 gate's fake backend gains `n_ctx`
+>   (v6.8 A). `_tree` records sandboxed entries it cannot read.
+> - **Item 7's `test_no_effect_c_level_cache` is skipped everywhere** (V19, #1566). Run for real, a new-file diff
+>   cannot fail on Linux (no Metal cache) or on a warm Mac cache; item 7 redesigns it.
+> - The fixtures (V17): `tiny_runnable.gguf` (stories260K) and the phi-3 vocab are committed. Command-r, qwen2 and
+>   llama-bpe are fetched and sha256-verified by `scripts/fetch_advisor_fixtures.py`, which CI runs before the
+>   suite.
+> - Docs: [docs/user/advisor.md](../user/advisor.md) carries AD9's effect-channel table with the report-and-log row.
+
 ### 4.1 Why the observer does not run the loop (V1)
 
 On `run_agentic_loop`'s path the census found:
