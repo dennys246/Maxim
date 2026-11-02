@@ -88,10 +88,9 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
     ``finish_simulation``, the path the fix removes; since D13 a live narrator never idles otherwise (#1452). The
     arm now reaches the idle threshold behind a WEDGED narrator call, on the detector's injected clock
     (``StallDetector.CLOCK``, the §11 slice).
-  - #1453: the ``/new`` re-entry drops the caller's arguments (``sandbox_backend`` becomes ``"auto"``).
-  - #1454: on ``/new`` the AUT's learning does not carry over (a fresh ``sim_agent_*`` home per run).
-  - #1457: on ``/new``, ``--report-json`` is the first run's report while the caller gets the second run's
-    result (the new_goal arm's ``report_writes`` hold ``emit_report_json`` once, in the outer run).
+  - #1453, #1454, #1457 (FIXED, the ``/new`` slice): the re-entry carries the run settings and the AUT's saved state,
+    and ``--report-json`` describes the returned run (the new_goal arm's ``report_writes`` hold ``save_aut_state``
+    and ``emit_report_json`` twice each, and the fixture was regenerated for it in its own commit).
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
@@ -361,9 +360,8 @@ def test_new_goal_arm_the_post_sim_goal_re_enters_the_run_with_a_fresh_aut(
 ) -> None:
     """``/new`` (the interactive post-sim branch): the reader's goal re-enters ``start_simulation_mode``, which
     builds a second bridge, narrator source and throwaway AUT, and the caller gets the INNER run's result. The
-    first AUT's learning does not reach the second: its NAc is saved under the first run's own fresh
-    ``sim_agent_*`` dir and the re-entered run builds a new one (pinned as current behaviour, though the post-sim
-    prompt said "memory carries over" until 1.3.4 removed the claim, #1454; only the narrator's ``orchestrator/`` stores are shared)."""
+    second AUT has its own fresh ``sim_agent_*`` home and starts from the first run's saved state (#1454), so its
+    NAc holds both runs' links."""
     t = _trace("new_goal", tmp_path_factory)
     assert t["post_sim_reads"] == [NEW_GOAL, ""]  # asked after each run: a goal, then Enter
     plans = [c["request"] for c in t["narrator_calls"] if c["kind"] == "plan"]
@@ -372,12 +370,18 @@ def test_new_goal_arm_the_post_sim_goal_re_enters_the_run_with_a_fresh_aut(
     assert kickoffs == [("narrator#1", "SIMULATION GOAL: " + GOAL), ("narrator#2", "SIMULATION GOAL: " + NEW_GOAL)]
     assert [e["inject"] for e in t["events"] if e["inject"].startswith("aut")] == ["aut#1", "aut#2"]  # two bridges
     assert [turn["text"] for turn in t["turns"]] == ["Hello, who are you?", "What do you remember?"]
-    # Each run writes its own report; --report-json is emitted once (the outer run pops MAXIM_REPORT_JSON).
-    assert t["report_writes"] == [*_ONE_RUN_WRITES[:-1], "save_report", "emit_report_json", *_ONE_RUN_WRITES]
+    # Each run writes its own report and --report-json; /new saves the first AUT again once its session has ended.
+    assert t["report_writes"] == [
+        *_ONE_RUN_WRITES,
+        "emit_report_json",
+        "save_aut_state",
+        *_ONE_RUN_WRITES,
+        "emit_report_json",
+    ]
     assert t["result"]["goal"] == NEW_GOAL and t["report"]["goal"] == NEW_GOAL  # the inner run's
     assert t["result"]["finish_reason"] == "completed" and t["result"]["turns"] == 1
     assert t["data_home_files"].count("sim_sandbox/sim_agent_<STAMP>_<RAND>/nac.json") == 2  # one AUT home each
-    assert [len(links) for links in t["aut_nac"]["links"].values()] == [2]  # the inner AUT's turn only
+    assert set(t["aut_nac"]["goal_reward_bias"]) == {GOAL, NEW_GOAL}  # both runs' learning, on the inner AUT
 
 
 @pytest.mark.timeout(240)

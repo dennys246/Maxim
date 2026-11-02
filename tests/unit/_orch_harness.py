@@ -48,10 +48,10 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      stdin that claims a TTY over a pipe, which ``tcgetattr`` refuses, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
      once, so the run re-enters ``start_simulation_mode``, then Enter. Each run's narrator probes once and
-     finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry resolves
-     ``sandbox_backend="auto"`` (it does not forward the caller's), so ``check_docker_available`` is patched to
-     False for every arm: never a container, whatever the box has installed. Two findings pinned as-is: the
-     re-entry drops the caller's other arguments (#1453), and the AUT's learning does not carry over (#1454).
+     finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry carries the
+     run's settings (#1453), and ``sandbox_backend`` defaults to ``"auto"``, so ``check_docker_available`` is
+     patched to False for every arm: never a container, whatever the box has installed. The second AUT starts
+     from the first run's saved state (#1454).
   7. ``persistent_agent``: HANDLE seam (a). A real console ``MaximHandle()`` (the shipped producer of the
      INSTANCE; owner decision 2026-10-24) is built after the run's env is set, so its home is the run's data home
      (``agents/console_agent``), and its instance is adopted as the AUT. The CALL is not the handle's: its entry

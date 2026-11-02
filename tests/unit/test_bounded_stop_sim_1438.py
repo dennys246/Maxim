@@ -786,7 +786,7 @@ def test_g10_under_a_stop_an_interactive_sim_skips_the_post_sim_prompt() -> None
         for n in ast.walk(orchestrator_tree())
         if isinstance(n, ast.If)
         and any(
-            isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_show_report_and_post_sim_prompt"
+            isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_read_new_goal"
             for s in n.body
             for c in ast.walk(s)
         )

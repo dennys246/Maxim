@@ -269,6 +269,11 @@ def stdin_reader_raw(
             display.clear_prompt()
 
 
+# The post-sim prompt, in one place: the panel shows it and the raw reader shows it with what is typed. True since the
+# re-entered run's AUT starts from this run's saved state (#1454, owner decision 2026-10-26).
+POST_SIM_PROMPT = "Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> "
+
+
 def read_post_sim_goal_raw(*, _stdin: Any, display: Any) -> str:
     """The post-sim prompt's raw read loop: the typed goal, or "" on Enter alone, Ctrl+C or a failure."""
     _new_goal = ""
@@ -321,7 +326,7 @@ def read_post_sim_goal_raw(*, _stdin: Any, display: Any) -> str:
                 # Update prompt with typed text
                 if display is not None:
                     typed = "".join(_buf3)
-                    display.set_prompt(f"Tell me a new simulation to imagine, or press Enter to finish.\n\n> {typed}")
+                    display.set_prompt(f"{POST_SIM_PROMPT}{typed}")
         finally:
             _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _old3)
     except Exception:

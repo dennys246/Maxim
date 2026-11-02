@@ -588,13 +588,13 @@ def roundup_and_emit_report(tail: SimTail, report: Any, report_dir: str) -> None
 def _emit_report_json(report: Any) -> None:
     # Emit machine-readable report when --report-json was requested via
     # MAXIM_REPORT_JSON.  Set by cli.py from args.report_json so the env
-    # var is the contract — orchestrator does NOT import argparse.  Pop
-    # (not just read) so that two back-to-back sims in the menu loop do
-    # not silently overwrite the first sim's report file when only the
-    # first invocation passed --report-json.
+    # var is the contract — orchestrator does NOT import argparse.  Read,
+    # not popped: a /new re-entry must write it too, so the file describes
+    # the returned run (#1457). build_simulation_result pops it, once the
+    # run is the one the caller gets.
     from maxim.simulation.report import emit_report_json
 
-    _report_json_path = os.environ.pop("MAXIM_REPORT_JSON", "").strip()
+    _report_json_path = os.environ.get("MAXIM_REPORT_JSON", "").strip()
     if _report_json_path:
         try:
             emit_report_json(report, _report_json_path)
@@ -691,6 +691,9 @@ def build_simulation_result(
     tail: SimTail, report: Any, report_dir: str, duration: float, finish_reason: str
 ) -> SimulationResult:
     """The run's :class:`SimulationResult`, with the detailed data captured for programmatic access."""
+    # Popped here, on the run the caller gets, so a back-to-back sim in the menu loop does not overwrite this report
+    # file when only the first invocation passed --report-json.
+    os.environ.pop("MAXIM_REPORT_JSON", None)
     bridge = tail.bridge
     goal = tail.goal
     mode = tail.mode

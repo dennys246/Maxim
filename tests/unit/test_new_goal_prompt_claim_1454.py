@@ -1,18 +1,14 @@
-"""#1454 (interim, owner decision 2026-10-26): the post-sim ``/new`` prompt does not promise what the run does not do.
+"""#1454 (owner decision 2026-10-26): the post-sim ``/new`` prompt promises only what the run does.
 
-The interactive post-sim prompt read "Tell me a new simulation to imagine (memory carries over)", but the re-entered
-run builds a fresh throwaway AUT in its own ``sim_agent_*`` home, so the first run's learning does not reach it (pinned
-as current behaviour by the ``new_goal`` orchestrator characterization arm). 1.3.4 drops the claim. The 1.3.5 ``/new``
-slice makes the learning carry (owner decision on #1454) and restores the text in the same PR, so this pin is then
-re-pointed at the behaviour, deliberately, in that reviewed change.
+1.3.4 dropped "(memory carries over)" because the re-entered run built a fresh throwaway AUT. The 1.3.5 ``/new`` slice
+makes the learning carry, so the promise is back: this pin was re-pointed at the constant, deliberately, in that change.
+What makes it true is pinned by ``test_new_slice_1453_1454_1457.py``.
 """
 
 from __future__ import annotations
 
-from tests.unit._orchestrator_source import orchestrator_source
+from maxim.simulation.tty_stdin import POST_SIM_PROMPT
 
 
-def test_the_post_sim_prompt_does_not_promise_carried_memory_1454() -> None:
-    src = orchestrator_source()
-    assert "Tell me a new simulation to imagine" in src  # the prompt is still there, and read from its new home
-    assert "memory carries over" not in src
+def test_the_post_sim_prompt_promises_the_carried_memory_1454() -> None:
+    assert POST_SIM_PROMPT.startswith("Tell me a new simulation to imagine (memory carries over)")
