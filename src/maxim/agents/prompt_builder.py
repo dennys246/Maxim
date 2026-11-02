@@ -1016,6 +1016,13 @@ def _whole_frames(text: str) -> str:
     return drop_unbalanced_frames(text)[0]
 
 
+def _deferred_section(request: Any) -> str:
+    """The inputs a request carries that arrived while the previous planning job was in flight: a follow-up's
+    (#1048) and a re-plan's (#1451), defanged, under one heading; empty when it carries none."""
+    held = getattr(request, "deferred_inputs", None) or []
+    return "=== New Instructions ===\n" + "\n".join(_defanged(d) for d in held) if held else ""
+
+
 def _defanged(text: str) -> str:
     """A user's raw words with any frame-shaped marker neutralized in place (Session R, N3): text the agent did not
     frame can never open or close a frame, so a pasted ``<</TOOL_OUTPUT id=…>>`` cannot cut a section."""
@@ -1065,11 +1072,7 @@ class PromptBuilder:
         if action_followup_input:
             prompt = self._build_followup_prompt(action_followup_input, tools=set(request.available_tools))
             # Inputs held back while the previous planning request was in flight (#1048) follow the result.
-            deferred = (
-                "=== New Instructions ===\n" + "\n".join(_defanged(d) for d in request.deferred_inputs)
-                if request.deferred_inputs
-                else ""
-            )
+            deferred = _deferred_section(request)
             correction = build_followup_retry_correction(request)
             inbound = self._inbound_text(request)  # #1481: the follow-up bypasses the budgeter, so it states its rule
             inbound = framed_section(inbound, wording=INBOUND_WORDING) if inbound else ""
@@ -1102,8 +1105,9 @@ class PromptBuilder:
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M %p")
 
-        # Try simple answers first
-        if question_text:
+        # Try simple answers first, unless the request carries held inputs (#1451): a canned reply would answer only
+        # the request, and the held inputs, already marked read, would vanish unshown.
+        if question_text and not request.deferred_inputs:
             answer = generate_simple_answer(question_text, date_str, time_str)
             if answer:
                 import json
@@ -1112,6 +1116,12 @@ class PromptBuilder:
                 return f'{{"action":{{"tool_name":"respond","params":{{"message":{escaped_answer}}}}},"confidence":0.95,"reasoning":"direct_answer"}}'
 
         if not request.use_tool_prompting or not request.available_tools:
+            if request.deferred_inputs:  # only a planning-liveness loop carries them, and it prompts with tools
+                logger.warning(
+                    "a request with no tool prompt drops %d held input(s) unshown (#1451): %s",
+                    len(request.deferred_inputs),
+                    [d[:80] for d in request.deferred_inputs],
+                )
             if question_text:
                 return f"""ANSWER_ONLY|{question_text}"""
             return ""
@@ -1236,6 +1246,9 @@ class PromptBuilder:
             source="data",
             frame_wording=INBOUND_WORDING,
         )
+        # #1451: a re-plan carries every input held behind the answer it set aside. CRITICAL: the operator's words
+        # are why the request exists, and they are already marked read.
+        budgeter.add("held_inputs", _deferred_section(request), SectionPriority.CRITICAL, source="data")
         self._add_deliberation_transcript_section(budgeter, request.context, response_reserve)
         self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context, tools=set(request.available_tools))
@@ -1258,6 +1271,12 @@ class PromptBuilder:
                 self._n_ctx,
                 response_reserve,
             )
+            if "held_inputs" in dropped:  # #1451: already marked read, so their loss is said aloud
+                logger.warning(
+                    "the prompt budget dropped %d held input(s) unshown (#1451): %s",
+                    len(request.deferred_inputs),
+                    [d[:80] for d in request.deferred_inputs],
+                )
 
         return f"TOOL_PROMPT|{stable_text}{PROMPT_SEGMENT_DELIMITER}{dynamic_text}"
 

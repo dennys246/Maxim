@@ -124,6 +124,11 @@ class InMemoryMemory(Memory):
         if command:
             self._cli_inputs.append(str(command))
 
+    def recent_cli_inputs(self) -> list[str]:
+        """The CLI commands recorded, oldest first (the window ``build_context`` hands the loop as ``cli_inputs``),
+        without building a context: the loop reads which are still unread (#1451)."""
+        return list(self._cli_inputs)
+
     def record_transcript(self, text: str) -> None:
         """Record a transcript line for context building."""
         if text:

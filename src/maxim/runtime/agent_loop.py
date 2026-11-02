@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
-from maxim.utils.cancellation import stop_event_registered
+from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
 
@@ -34,7 +34,13 @@ from maxim.runtime.loop_external import (
     planning_submit_shared_kwargs,
     submit_tick_context,
 )
-from maxim.runtime.loop_controller import _handle_planning_failure
+from maxim.runtime.loop_controller import (
+    _handle_planning_failure,
+    is_unread_input,
+    note_system_outcome,
+    set_aside_run_end,
+    take_replan_inputs,
+)
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import perceive, percept_text, take_observation, take_user_input
@@ -389,6 +395,26 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     return held
 
 
+def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:
+    """The input a §6 submit answers: the new input, else the follow-up's original query, else a pending plan
+    modification's text (moved out of ``_run_agentic_loop_body``, rule T for #1451)."""
+    modification = pending_modification.get("user_modification", "") if pending_modification else ""
+    return new_cli_input or followup_original_query or modification
+
+
+def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any) -> bool:
+    """Whether this tick must not submit: a planning job is still in flight (#1048), or the run has stopped. A tick
+    whose action ended the run (the narrator's finish sets the stop, #1259) would otherwise still submit the inputs
+    held behind it: an LLM call nobody reads (#1451)."""
+    try:
+        stopped = stop_event is not None and callable(getattr(stop_event, "is_set", None)) and stop_event.is_set()
+    except (AttributeError, RuntimeError) as exc:  # the pre-tick gate (loop_gates §0) reads a broken event as clear
+        logger.debug("stop_event.is_set() failed at the submit gate (read as not stopped): %s", exc)
+        stopped = False
+    # The process stop request too (#1438 PR 1b), as at the pre-tick gate: a loop given no stop event yields here.
+    return bool(stopped) or yield_requested() or _planning_submit_in_flight(llm_worker, liveness_on)
+
+
 # Each worker's last planning-held state, for the change-only log above. Keyed by id(): a run builds a handful of
 # workers, and an id reused after one is collected costs at most one missing or extra DEBUG line.
 _PLANNING_HELD: dict[int, bool] = {}
@@ -400,11 +426,7 @@ def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: 
     Marks them processed. Empty for a loop without planning liveness."""
     if not liveness_on or context is None:
         return []
-    taken = [
-        c
-        for c in (context.cli_inputs or [])
-        if c and c not in processed_cli_inputs and not c.startswith("[ACTION_FOLLOWUP")
-    ]
+    taken = [c for c in (context.cli_inputs or []) if is_unread_input(c, processed_cli_inputs)]
     for c in taken:
         processed_cli_inputs.append(c)
     if taken:
@@ -2054,6 +2076,7 @@ def _run_agentic_loop_body(
         # ─────────────────────────────────────────────────────────────────
         # 4. EXECUTE PENDING LLM ACTION (if autonomy allows)
         # ─────────────────────────────────────────────────────────────────
+        set_aside_run_end(ctrl, memory, executor, sim, _planning_liveness_on)  # re-plan once (#1451)
         if ctrl.pending_proposal and ctrl.pending_proposal.action:
             action = ctrl.pending_proposal.action
             confidence = ctrl.pending_proposal.confidence
@@ -2116,18 +2139,7 @@ def _run_agentic_loop_body(
                     f"Try a DIFFERENT tool or different parameters. "
                     f"Available tools: {', '.join(_other_tools[:8]) if _other_tools else 'none'}"
                 )
-                recent_outcomes.append(
-                    {
-                        "tool": _this_tool,
-                        "tool_name": _this_tool,
-                        "success": False,
-                        "result": _cap_msg,
-                        "error": "consecutive_tool_cap",
-                        "timestamp": time.time(),
-                    }
-                )
-                if len(recent_outcomes) > max_recent_outcomes:
-                    recent_outcomes.pop(0)
+                note_system_outcome(recent_outcomes, max_recent_outcomes, _this_tool, _cap_msg, "consecutive_tool_cap")
 
                 ctrl.pending_proposal = None
                 _consecutive_same_tool_count = 0
@@ -2402,7 +2414,7 @@ def _run_agentic_loop_body(
                 _loop_sensor_encoder=_loop_sensor_encoder,
             )
 
-        _submit_held = _planning_submit_in_flight(llm_worker, _planning_liveness_on)  # one in flight (#1048)
+        _submit_held = _submit_held_or_stopped(llm_worker, _planning_liveness_on, stop_event)  # #1048, #1451
         if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None and not _submit_held:
             now = time.time()
             if now - ctrl.last_llm_submit_time > ctrl.llm_submit_interval:
@@ -3029,16 +3041,16 @@ def _run_agentic_loop_body(
                             shared=_shared_submit,
                             autonomy_level=autonomy_controller.current_level,
                             _failed_tools=_failed_tools,
-                            # Use modification text as triggering_input if no new input but pending modification
-                            triggering_input=new_cli_input
-                            or followup_original_query
-                            or (pending_modification.get("user_modification", "") if pending_modification else ""),
+                            triggering_input=_triggering_input(
+                                new_cli_input, followup_original_query, pending_modification
+                            ),
                             pending_modification=pending_modification,
                             prefetch_context_text=prefetch_context_text,
                             skip_exploration=skip_exploration,
                             deliberation_available=bio_enrichment_pipeline is not None,
                             processed_cli_inputs=processed_cli_inputs,
-                            _deferred_inputs=_deferred_inputs,
+                            _deferred_inputs=_deferred_inputs
+                            or take_replan_inputs(ctrl, memory, _planning_liveness_on),
                             inbound_feed=inbound_inbox,
                         )
                         ctrl.last_llm_submit_time = now

@@ -110,9 +110,12 @@ NEUTRALISED, NOT PINNED (the harness takes them out of the trace, so a fix does 
     ``MetricsRegistry``, never session-scoped. The harness hands each run a fresh registry
     (``_GlobalState``), so an earlier sim's (or test's) metrics cannot leak in; a run reading only its
     own is what a fix would produce, which is why it is not pinned as the leak.
-  - #1451: a narrator percept held behind an in-flight planning job rides only the next FOLLOW-UP; when that
-    job ends the chain it waits for a later percept, and a second such percept races. The stall arm gives
-    its checkpoint an ``observe_actions`` follow-up to ride, so the idle nudge is the only post-finish percept.
+  - #1451 (fixed): a narrator percept held behind an in-flight planning job rides the next FOLLOW-UP; when that
+    job's answer is ``finish_simulation``, the finish is set aside once and the narrator plans again with the
+    percept in view (``loop_controller.set_aside_run_end``; its own tests drive the harness's ``PROBE_ARMS``). A
+    stopped run submits nothing more: the stdin arm's operator ``/cancel`` lands during turn 2's ``send_message``,
+    so that call's follow-up is never planned. The stall arm still gives its checkpoint an ``observe_actions``
+    follow-up to ride.
   - #1455: ``extract_entity_phrases`` merges short noun phrases across the scene manifest's newline join; the
     imagination arm's manifest is sentence-form.
   - The box: every run gets the conftest model environment (offline, an empty cache: ``_model_isolation_env``)
