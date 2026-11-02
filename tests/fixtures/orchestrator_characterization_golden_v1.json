@@ -7500,16 +7500,6 @@
      "kind": "followup",
      "request": "SIMULATION GOAL: check how the agent answers two short questions\n\nYou are a simulation orchestrator testing an AI agent.",
      "turn": 1
-    },
-    {
-     "answer": {
-      "params": {},
-      "tool_name": "observe_actions"
-     },
-     "executed": "send_message",
-     "kind": "followup",
-     "request": "SIMULATION GOAL: check how the agent answers two short questions\n\nYou are a simulation orchestrator testing an AI agent.",
-     "turn": 2
     }
    ],
    "other_llm_calls": {
@@ -8222,5 +8212,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "d9998dd1e044"
+ "generated_at_commit": "a762f1aff734"
 }

@@ -1125,6 +1125,14 @@ class MemoryAgent(Agent, AgentOutputMixin):
     # Shared thread pool for parallel memory queries (4 workers = 4 query types)
     _context_pool: Any = None
 
+    def recent_cli_inputs(self) -> list[str]:
+        """The CLI inputs this agent has heard, oldest first (the same bounded window ``build_context`` hands the
+        loop as ``cli_inputs``), without building a context: the loop reads which are still unread (#1451). Only a
+        planning-liveness loop reads it, and today's only one, the sim narrator, is given an ``InMemoryMemory``; this
+        keeps the two context-building memories alike."""
+        with self._lock:
+            return list(self._cli_inputs)
+
     def build_context(self, persist_snapshot: bool = False) -> StructuredContext:
         """Build structured context for goal proposal.
 

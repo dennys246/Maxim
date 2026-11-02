@@ -17,7 +17,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMProposal
-from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name
+from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name, tool_to_run
 from maxim.runtime.dn_controller import DefaultNetworkController
 from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import (
@@ -169,6 +169,9 @@ class LoopController:
         self.planning_exhausted_status: str = "llm_wedged"
         self.planning_exhausted_reason: str = ""
         self.processed_cli_inputs: collections.deque[str] = collections.deque(maxlen=20)
+        # #1451: a run-ending answer was set aside for the inputs held behind it, and the re-plan's answer has not
+        # run yet. "Once": while it is set, a run-ending answer runs (``set_aside_run_end``).
+        self.run_end_set_aside: bool = False
         self.recent_outcomes: list[dict[str, Any]] = []
         self.max_recent_outcomes: int = 10
         self.agent_states: list[dict[str, Any]] = []
@@ -672,6 +675,115 @@ class LoopController:
 # Kept for log continuity; a later slice may adopt the module's own logger. The handlers' records keep
 # the ``maxim.runtime.agent_loop`` name they have always had (the SAME object as agent_loop.logger).
 _loop_logger = logging.getLogger("maxim.runtime.agent_loop")
+
+
+def note_system_outcome(recent_outcomes: list[Any], max_recent: int, tool: str, message: str, error: str) -> None:
+    """Tell the agent, through the recent outcomes its next prompt shows, why its call did not run: the
+    consecutive-same-tool cap (moved out of the loop's body) and a run-ending answer set aside (#1451). A failed outcome
+    of ``tool`` carrying a ``SYSTEM:`` message; the list is trimmed to its newest ``max_recent``. Never
+    ``pending_cli_input``: that single-slot user-input channel would overwrite real input."""
+    recent_outcomes.append(
+        {"tool": tool, "tool_name": tool, "success": False, "result": message, "error": error, "timestamp": time.time()}
+    )
+    if len(recent_outcomes) > max_recent:
+        recent_outcomes.pop(0)
+
+
+# Memory and executor types already warned about lacking what the re-plan reads (one WARNING per type, #1451).
+_REPLAN_OFF_WARNED: set[str] = set()
+
+
+def _warn_replan_off_once(obj: Any, lacks: str) -> None:
+    kind = type(obj).__qualname__
+    if kind not in _REPLAN_OFF_WARNED:
+        _REPLAN_OFF_WARNED.add(kind)
+        _loop_logger.warning("%s has no %s: held inputs cannot be re-planned (#1451)", kind, lacks)
+
+
+def is_unread_input(line: Any, processed_cli_inputs: Any) -> bool:
+    """THE test of an input the loop has heard but not yet submitted, shared by the follow-up's fold of held inputs
+    (``agent_loop._take_deferred_inputs``, #1048) and the re-plan (#1451). A synthetic follow-up line is not an input.
+    The triggering-input scan's own rules (the ``SKIP_LLM_COMMANDS`` list, a voice input without its wake word) are
+    not applied: they mark such inputs processed as the scan meets them, and a planning-liveness loop's inputs are
+    the narrator's CLI lines, which those rules never skip (its operator text arrives prefixed ``USER GUIDANCE:``)."""
+    return bool(line) and line not in processed_cli_inputs and not str(line).startswith("[ACTION_FOLLOWUP")
+
+
+def _unread_inputs(memory: Any, processed_cli_inputs: Any) -> list[str]:
+    """The inputs ``memory`` heard that the loop has not yet submitted (``is_unread_input``), oldest first. A memory
+    that cannot list what it heard (``recent_cli_inputs``: ``InMemoryMemory``, the narrator's, and ``MemoryAgent``)
+    reads as none, with one WARNING per type: the re-plan is then off for that loop, said aloud."""
+    recent = getattr(memory, "recent_cli_inputs", None)
+    if not callable(recent):
+        _warn_replan_off_once(memory, "recent_cli_inputs()")
+        return []
+    return [c for c in recent() if is_unread_input(c, processed_cli_inputs)]
+
+
+def set_aside_run_end(ctrl: Any, memory: Any, executor: Any, sim: Any, liveness_on: bool) -> None:
+    """Re-plan once (#1451; owner decisions 2026-10-30 and 2026-11-01). Called before the pending proposal runs.
+    Behaviour tier: invariant (a fixed rule of the loop, not an innate prior or learned).
+
+    When the proposal's tool ends the run (``Tool.ends_run``) and inputs arrived while it was being planned, the
+    agent decided to end the run without reading them. The FIRST such answer is set aside: the proposal is dropped,
+    a recent outcome tells the agent why, and the held inputs, still unread, are all planned on the next submit
+    (``take_replan_inputs``). The re-plan's answer then runs whatever it is: a run-ending answer with inputs held
+    again runs, and those inputs get one WARNING naming them ("unread at finish"). Every run-ending answer let through
+    re-arms the rule (a finish the tool refuses, below the run's turn floor, leaves the run going), and so does any
+    answer that does not end the run. Only a loop with planning liveness (the sim narrator) holds inputs, so only it
+    is affected. Scope: the primary action only. A run-ending tool among ``parallel_actions``, or one approved
+    through the SUPERVISED confirmation or the PLANNING queue, is not set aside (the narrator runs AUTONOMOUS and
+    plans one action; deliberation cycles 2+ submit without the held inputs, as for a follow-up).
+
+    ``ctrl.run_end_set_aside`` does two jobs: it marks the answer already set aside once, and it tells
+    ``take_replan_inputs`` the next submit is the re-plan. A re-plan that comes back without an action (a planning
+    failure, then its retry) leaves it set, so the retry carries the still-unread inputs again and the next
+    run-ending answer runs ("once")."""
+    proposal = ctrl.pending_proposal
+    action = getattr(proposal, "action", None)
+    if not liveness_on or not isinstance(action, dict):
+        return
+    tool_name = str(action.get("tool_name", "") or "")
+    tool = tool_to_run(executor, tool_name)
+    if tool is None and not callable(getattr(getattr(executor, "registry", None), "find", None)):  # no lookup
+        _warn_replan_off_once(executor, "registry.find()")
+    if getattr(tool, "ends_run", False) is not True:  # ``is True``: a mock's attribute is not a declaration
+        ctrl.run_end_set_aside = False
+        return
+    unread = _unread_inputs(memory, ctrl.processed_cli_inputs)
+    if ctrl.run_end_set_aside or not unread:
+        if unread:
+            _loop_logger.warning(
+                "%s runs with %d input(s) it was not shown, held behind its re-plan; unread at finish: %s (#1451)",
+                tool_name,
+                len(unread),
+                [c[:80] for c in unread],
+            )
+        ctrl.run_end_set_aside = False  # let through: the next run-ending answer may be set aside again
+        return
+    ctrl.run_end_set_aside = True
+    ctrl.pending_proposal = None
+    # The prompt shows an outcome's first 50 characters (``PromptBuilder._add_perception_sections``): the
+    # instruction leads.
+    note = (
+        f"SYSTEM: {len(unread)} new input(s) to read before finishing. Your {tool_name} was set aside because they "
+        "arrived while it was being planned: act on them, or finish again."
+    )
+    note_system_outcome(ctrl.recent_outcomes, ctrl.max_recent_outcomes, tool_name, note, "set_aside_for_held_inputs")
+    _loop_logger.info("%s set aside: %d input(s) arrived while it was being planned (#1451)", tool_name, len(unread))
+    sim.log("EXEC", f"SET ASIDE: {tool_name} ({len(unread)} input(s) held behind it; re-planning once, #1451)")
+
+
+def take_replan_inputs(ctrl: Any, memory: Any, liveness_on: bool) -> list[str]:
+    """The re-plan's submit carries EVERY input held behind the set-aside answer (#1451): the scan made the oldest
+    unread one this submit's request and marked it processed; the rest ride as the request's held inputs, the way a
+    follow-up carries them (#1048), and are marked processed (a refused submit releases them:
+    ``loop_external._release_unsent_deferred_inputs``). Empty unless a run-ending answer was just set aside."""
+    if not liveness_on or not ctrl.run_end_set_aside:
+        return []
+    taken = _unread_inputs(memory, ctrl.processed_cli_inputs)
+    ctrl.processed_cli_inputs.extend(taken)
+    return taken
 
 
 def _report_planning_exhaustion(ctrl: Any, sim: Any, *, reason: str, kind: str) -> bool:
