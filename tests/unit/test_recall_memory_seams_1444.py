@@ -642,6 +642,68 @@ def test_a_record_differing_in_one_part_of_the_episode_is_no_copy(tmp_path: Path
     assert h._memories[one].copy_key() != h._memories[two].copy_key()
 
 
+def test_a_number_in_an_outcome_keeps_two_episodes_apart(tmp_path: Path) -> None:
+    """A search key drops a number; a comparison cannot: 300 degrees and 30 degrees are different outcomes."""
+    h = _hippocampus(tmp_path)
+    hot = _did(h, "how hot is the stove", "read_sensor", ok=True, result={"output": {"temp_c": 300}})
+    cool = _did(h, "how hot is the stove", "read_sensor", ok=True, result={"output": {"temp_c": 30}})
+    assert {m.id for m in h.recall(query="stove", limit=5, collapse_copies=True)} == {hot, cool}
+
+
+def test_a_stamp_in_an_outcome_does_not_make_a_repeat_a_new_episode(tmp_path: Path) -> None:
+    """``scene_summary`` stamps its output: its repeats must still collapse, or they crowd out the answer again."""
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    own = ""
+    for n in range(6):
+        own = _say(h, _QUESTION)
+        result = {"output": {"timestamp": float(n), "objects": ["lamp"]}}
+        _did(h, _QUESTION, "scene_summary", ok=True, result=result)
+    ids, _paths = _ask(h, _QUESTION, own)
+    assert fact in ids
+
+
+def test_a_record_that_cannot_be_compared_is_kept_and_recall_survives(tmp_path: Path) -> None:
+    from maxim.memory.hippocampus_retrieval import distinct_copies
+
+    class _Broken:
+        def __repr__(self) -> str:
+            raise RuntimeError("no repr")
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    h._memories[fact].outcome.result = {"output": _Broken()}
+    assert distinct_copies([h._memories[fact]]) == [h._memories[fact]]
+
+
+def test_a_damaged_compressed_record_does_not_empty_recall(tmp_path: Path) -> None:
+    """A stored ``heard`` that is not text loads without complaint, and ``copy_key`` reads every ranked record."""
+    from maxim.memory.types import CompressedMemory
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    own = _say(h, _QUESTION)
+    h._memories["bad"] = CompressedMemory(id="bad", timestamp=1.0, goal="Denny favorite color", heard=["x"])
+    assert fact in _ask(h, _QUESTION, own)[0]
+
+
+def test_recall_collapses_copies_with_no_query_too(tmp_path: Path) -> None:
+    """The flag must not be silently ignored: ``memory_recall`` passes it with or without a query."""
+    h = _hippocampus(tmp_path)
+    older = _say(h, _FACT)
+    copies = [_say(h, _QUESTION) for _ in range(6)]
+    assert {m.id for m in h.recall(limit=5, collapse_copies=True)} == {older, copies[-1]}
+    assert len(h.recall(limit=5)) == 5
+
+
+def test_a_malformed_tool_name_does_not_empty_recall(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    h._memories[fact].action.tool_name = ["weird"]
+    own = _say(h, _QUESTION)
+    assert _ask(h, _QUESTION, own)[0] == [fact]
+
+
 def test_the_graph_path_excludes_the_turns_own_records() -> None:
     from types import SimpleNamespace
 

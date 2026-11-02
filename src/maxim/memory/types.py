@@ -488,6 +488,16 @@ def _kept_words(text: str) -> str:
     return bounded_words(text)
 
 
+def _without_stamps(value: Any, depth: int = 3) -> Any:
+    """``value`` with its ``timestamp`` keys removed to ``depth``: a tool that stamps its output would otherwise make every
+    repeat of one episode look different (``scene_summary``, #1573)."""
+    if depth > 0 and isinstance(value, dict):
+        return {k: _without_stamps(v, depth - 1) for k, v in value.items() if k != "timestamp"}
+    if depth > 0 and isinstance(value, list):
+        return [_without_stamps(v, depth - 1) for v in value]
+    return value
+
+
 def outcome_label(success: bool | None) -> str:
     """``"success"``, ``"failure"`` or ``"unknown"`` -- the one rendering of an outcome's tri-state (#843).
     ``None`` is not a failure: it is a memory that was never an action outcome (a percept)."""
@@ -932,12 +942,13 @@ class CompressedMemory(CompressedRecord):
         return self.heard
 
     def copy_key(self) -> tuple[Any, ...] | None:
-        """What makes two records copies of one episode (``EpisodicMemory.copy_key``). Compression keeps no result text,
-        so a compressed record is only ever a copy of another compressed one."""
+        """What makes two records copies of one episode (``EpisodicMemory.copy_key``). Compression keeps no result, so a
+        compressed record compares as having none: a copy of another compressed record of its words, tool and success,
+        and of an uncompressed arrival record, whose result is empty."""
         from maxim.memory.text import same_words
 
         words = same_words(self.heard)
-        return (words, self.tool_name or "", self.success, ()) if words else None
+        return (words, repr((self.tool_name or "", self.success, {}, None))) if words else None
 
     def to_context_dict(self) -> dict[str, Any]:
         """Format compressed memory for LLM context."""
@@ -1218,14 +1229,16 @@ class EpisodicMemory(MemoryRecord):
     def copy_key(self) -> tuple[Any, ...] | None:
         """What makes two records copies of one episode: the same words heard, the same tool and the same outcome. Two
         records of one line with different outcomes are two episodes (the stove burned, then it did not), and a record
-        that heard nothing is no one's copy (None) (#1573)."""
-        from maxim.memory.text import same_words, text_values
+        that heard nothing is no one's copy (None) (#1573). The whole outcome compares by ``repr``, which is hashable
+        for any stored value and keeps a number a search key would drop (300 degrees is not 30); when it was stamped
+        is not part of what happened (``_without_stamps``)."""
+        from maxim.memory.text import same_words
 
         words = same_words(self.input_text)
         if not words:
             return None
-        outcome = (*text_values(self.outcome.result), *text_values(self.outcome.error))
-        return (words, self.action.tool_name or "", self.outcome.success, tuple(same_words(t) for t in outcome))
+        outcome = (self.outcome.success, _without_stamps(self.outcome.result), self.outcome.error)
+        return (words, repr((self.action.tool_name or "", *outcome)))
 
     def to_context_dict(self) -> dict[str, Any]:
         """Format episodic memory for LLM context."""

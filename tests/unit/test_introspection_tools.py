@@ -149,7 +149,9 @@ class TestMemoryRecallTool:
         hip.recall.return_value = []
         tool = MemoryRecallTool(hippocampus=hip)
         tool.execute(tool_name="grab", success=True, object="cup")
-        hip.recall.assert_called_once_with(limit=5, tool="grab", success=True, object_detected="cup")
+        hip.recall.assert_called_once_with(
+            collapse_copies=True, limit=5, tool="grab", success=True, object_detected="cup"
+        )
 
     def test_expand_uses_spreading_activation(self):
         mem = FakeMemory()
@@ -177,7 +179,7 @@ class TestMemoryRecallTool:
         hip.recall.return_value = []
         tool = MemoryRecallTool(hippocampus=hip)
         tool.execute(limit=100)
-        hip.recall.assert_called_once_with(limit=20)
+        hip.recall.assert_called_once_with(collapse_copies=True, limit=20)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

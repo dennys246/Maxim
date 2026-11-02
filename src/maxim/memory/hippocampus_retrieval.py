@@ -8,6 +8,7 @@ from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label, record_active_goal
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.agents.working_memory import WorkingMemorySet
@@ -61,7 +62,11 @@ def distinct_copies(memories: list[EpisodicMemory | CompressedMemory]) -> list[E
     kept: list[EpisodicMemory | CompressedMemory] = []
     seen: set[tuple[Any, ...]] = set()
     for mem in memories:
-        key = mem.copy_key()
+        try:
+            key = mem.copy_key()
+        except Exception:  # noqa: BLE001 -- logged; a record that cannot be compared is kept, and recall keeps working
+            log_swallowed_exception()
+            key = None
         if key not in seen:  # None is never added, so a record that heard nothing is always kept
             kept.append(mem)
         if key is not None:
@@ -152,7 +157,7 @@ class RetrievalMixin:
             working_memory: If provided, each recalled memory is added as
                 a RECALL entry (reconsolidation pull into active context).
             exclude_ids: Never candidates, so they take no place inside ``limit`` and are not touched.
-            collapse_copies: With *query*, an episode stored many times takes one place (``distinct_copies``, #1573).
+            collapse_copies: An episode stored many times takes one place (``distinct_copies``, #1573).
 
         Returns:
             List of matching memories, ranked by relevance if *query* is
@@ -225,7 +230,7 @@ class RetrievalMixin:
                     results = _rank_by_relevance(results, query, limit, collapse_copies=collapse_copies)
                 else:
                     results.sort(key=lambda m: m.timestamp, reverse=True)
-                    results = results[:limit]
+                    results = (distinct_copies(results) if collapse_copies else results)[:limit]
 
         # Phase 2: Write lock for stats + touch + promotion scoring
         with self._rwlock.write():
