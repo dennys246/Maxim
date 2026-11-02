@@ -1046,6 +1046,18 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
 
 ## 5. Item 5: the proposal and refusal log (minimal)
 
+> **Status: BUILT 2026-11-01** (branch `feat/1315-item5-advisor-log`; owner decision V18: item 5 ships before item 1).
+> As built, where it differs from the text below:
+> - `src/maxim/advisor/log.py`. `maxim.advisor` exists as an empty package: `open()` and the session are item 1's.
+> - The typed errors are `maxim.exceptions.AdvisorLogBroken` (`MaximError, RuntimeError`), raised by an append to a
+>   broken or closed log, and `AdvisorLogMalformed` (`MaximError, ValueError`), raised by `read_log`.
+> - Over-bound proposal `arguments` become a prefix of their own JSON encoding, as a string whose encoding fits in
+>   4 KiB, with `arguments_truncated`. A refusal's `reason` is bounded to 1,024 characters (`reason_truncated`).
+> - `create()` applies `mode` with `fchmod`, so the umask cannot narrow it.
+> - `read_log` also refuses a record after the close record, a close record whose `last_seq` disagrees with the
+>   records, and a `seq` that does not rise. It calls `check_format_version` on the header.
+> - All of item 5's gates are flipped except O7, which needs item 1's `ingest()`.
+
 `simulation/report.py::save_action_log` is a session-end rewrite at "1.2" with no fsync. The log borrows its shape (a
 header plus records), not its durability. No fsync'd append helper exists, and the existing `atomic_io` helpers
 swallow fsync errors, so the new one must not borrow theirs.

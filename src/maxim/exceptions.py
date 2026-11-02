@@ -97,6 +97,23 @@ class LeaderRefusal(MaximError, RuntimeError):
     """
 
 
+class AdvisorLogBroken(MaximError, RuntimeError):
+    """The observer's proposal and refusal log refused a write (#1315 item 5).
+
+    An earlier ``OSError`` (a write or fsync that failed, a full disk) marked the log broken, or it was closed. The
+    log never writes to that fd again, so a torn line can only be the file's last one. The turn that hit it reports
+    ``error``.
+    """
+
+
+class AdvisorLogMalformed(MaximError, ValueError):
+    """``maxim.advisor.log.read_log`` found a log it cannot vouch for (#1315 item 5).
+
+    No header, a second header, a bad line before the last, a record after the close record, or a ``seq`` that does
+    not rise. Only a torn final line is dropped silently: a crash mid-append can only tear the last one.
+    """
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Connection Errors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -565,6 +582,8 @@ __all__ = [
     "KeyFileUnusable",
     "StopStillPending",
     "LeaderRefusal",
+    "AdvisorLogBroken",
+    "AdvisorLogMalformed",
     # Connection
     "MaximConnectionError",
     "ConnectionTimeoutError",
