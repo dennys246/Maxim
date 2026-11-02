@@ -257,6 +257,23 @@ def test_a_stopped_run_never_submits_and_a_live_one_waits_for_the_job_in_flight_
     assert _submit_held_or_stopped(in_flight, False, live) is False  # the AUT does not wait for it
 
 
+def test_a_process_stop_request_holds_the_submit_of_a_loop_given_no_stop_event_1451() -> None:
+    """The pre-tick gate's other stop (#1438 PR 1b): a requested process stop holds the submit too, mid-tick."""
+    from types import SimpleNamespace
+
+    from maxim.runtime.agent_loop import _submit_held_or_stopped
+    from maxim.utils.cancellation import clear_stop_request, request_stop
+    from maxim.utils.deadline import Deadline
+
+    idle = SimpleNamespace(latest_attempt_state=lambda: None)
+    assert _submit_held_or_stopped(idle, True, None) is False
+    request = request_stop("test", Deadline.after(5.0))
+    try:
+        assert _submit_held_or_stopped(idle, True, None) is True
+    finally:
+        clear_stop_request(expected=request)
+
+
 def test_an_input_held_behind_a_job_in_flight_rides_the_next_follow_up() -> None:
     from maxim.runtime.agent_loop import _take_deferred_inputs
 

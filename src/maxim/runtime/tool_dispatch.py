@@ -1118,16 +1118,24 @@ class ExecutionOutcome:
     followup: ActionFollowup | None
 
 
+def tool_to_run(executor: Any, tool_name: str) -> Any:
+    """The registered tool a call to ``tool_name`` would RUN, resolved through the executor's one alias resolver (a
+    ``reflect`` runs as ``think``), or ``None``. Its class declarations (``untrusted_output``, ``ends_run``) are read
+    off this tool, never off the proposed name."""
+    resolve = getattr(executor, "resolve_tool_name", None)
+    registry = getattr(executor, "registry", None)
+    ran = resolve(tool_name) if callable(resolve) else tool_name
+    find = getattr(registry, "find", None)
+    return find(ran) if callable(find) else None
+
+
 def _tool_followup(
     executor: Any, tool_name: str, result_str: str | None, proposal: Any, followup_type: str, mode: str
 ) -> ActionFollowup:
     """The follow-up a completed tool queues, stamped with whether the tool it RAN declares untrusted output
     (``Tool.untrusted_output``, Session R): resolved through the executor's one alias resolver, so a ``reflect``
     that ran as ``think`` carries ``think``'s declaration."""
-    resolve = getattr(executor, "resolve_tool_name", None)
-    registry = getattr(executor, "registry", None)
-    ran = resolve(tool_name) if callable(resolve) else tool_name
-    tool = registry.find(ran) if registry is not None and hasattr(registry, "find") else None
+    tool = tool_to_run(executor, tool_name)
     return ActionFollowup(
         tool=tool_name,
         result=result_str,

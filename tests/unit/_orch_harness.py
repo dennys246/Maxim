@@ -43,7 +43,7 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      (at least 300 s by the call-timeout clamp) plus the margin, so the arm needs the injected clock (owner
      decisions 2026-10-24 and 2026-10-30; the §11 slice). The arm's first ``observe_actions`` step gives the
      checkpoint a follow-up to ride, and the wedged call's answer gives the nudge one, so no percept here waits
-     behind a job that ends the chain (#1451).
+     behind the finish (that case, #1451's, is the ``PROBE_ARMS``' to drive).
   6. ``new_goal``: interactive ON (``/new`` lives only in the interactive post-sim branch) with a line-read
      stdin that claims a TTY over a pipe, which ``tcgetattr`` refuses, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
@@ -272,6 +272,9 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
     # ... and a second line lands while that re-plan is planned: "once" holds, so the second finish runs, and the
     # line it was not shown is warned about (owner decision 2026-11-01).
     "held_finish_twice": {"max_turns": 10, "events": True},
+    # Two lines land behind the first finish: the re-plan shows the narrator both (the first is its request, the
+    # second rides as a held input, ``loop_controller.take_replan_inputs``).
+    "held_finish_two_lines": {"max_turns": 10, "events": True},
 }
 # The operator lines the held_finish arms feed, in order (``_hold_for_held_finish``).
 HELD_GUIDANCE = ("please also ask which tools it has", "and ask what it remembers")
@@ -480,7 +483,7 @@ class FakeRouter:
             return self._answer_stall_narrator(call)
         if self.arm in ("new_goal", "persistent_agent", "imagination"):
             return self._answer_one_probe_narrator(call)
-        if self.arm in PROBE_ARMS:
+        if self.arm in ("held_finish", "held_finish_twice", "held_finish_two_lines"):
             return self._answer_held_finish_narrator(call)
         if call["kind"] == "followup" and call["executed"] == "send_message":
             turn = call.get("turn")
@@ -1054,6 +1057,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 "the stall detector's idle nudge behind the wedged narrator call",
             )
 
+    recorded: list[str] = []  # the held_finish arms: the lines the narrator's memory recorded, in order
+
     def _hold_for_held_finish(role: str, call: dict[str, Any]) -> None:
         """The held_finish arms (#1451): the narrator's planning call that answers ``finish_simulation`` (the turn-1
         follow-up; in ``held_finish_twice`` also the plan for the first line) answers only after the next operator line
@@ -1068,12 +1073,13 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         )
         if not (first or second):
             return
-        line = HELD_GUIDANCE[0 if first else 1]
-        _feed(line)
-        _wait_for(
-            lambda: any(e.get("text", "") == f"USER GUIDANCE: {line}" for e in events),
-            f"the operator line {line!r} on the narrator's source",
-        )
+        lines = HELD_GUIDANCE if first and arm == "held_finish_two_lines" else (HELD_GUIDANCE[0 if first else 1],)
+        for line in lines:
+            _feed(line)
+            _wait_for(
+                lambda line=line: f"USER GUIDANCE: {line}" in recorded,
+                f"the operator line {line!r} in the narrator's memory",
+            )
 
     cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
     post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
@@ -1206,6 +1212,18 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     ]
     if isinstance(stdin, QueueStdin):
         patches.append((OperatorLines, "next_line", _counted_next_line))
+    if arm in PROBE_ARMS:
+        from maxim.memory.base import InMemoryMemory
+
+        orig_record = InMemoryMemory.record_command
+
+        def record_command(self: Any, command: str) -> None:
+            """What the narrator's memory has heard (its ``InMemoryMemory``): the held_finish holds answer only once
+            the loop has perceived the line, as it would during a real planning call's seconds."""
+            orig_record(self, command)
+            recorded.append(str(command))
+
+        patches.append((InMemoryMemory, "record_command", record_command))
     if arm == "stall":
         from maxim.simulation.stall_detector import StallDetector
 

@@ -1126,7 +1126,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
     def recent_cli_inputs(self) -> list[str]:
         """The CLI inputs this agent has heard, oldest first (the same bounded window ``build_context`` hands the
-        loop as ``cli_inputs``), without building a context: the loop reads which are still unread (#1451)."""
+        loop as ``cli_inputs``), without building a context: the loop reads which are still unread (#1451). Only a
+        planning-liveness loop reads it, and today's only one, the sim narrator, is given an ``InMemoryMemory``; this
+        keeps the two context-building memories alike."""
         with self._lock:
             return list(self._cli_inputs)
 
