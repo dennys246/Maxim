@@ -650,19 +650,6 @@ def test_a_number_in_an_outcome_keeps_two_episodes_apart(tmp_path: Path) -> None
     assert {m.id for m in h.recall(query="stove", limit=5, collapse_copies=True)} == {hot, cool}
 
 
-def test_a_stamp_in_an_outcome_does_not_make_a_repeat_a_new_episode(tmp_path: Path) -> None:
-    """``scene_summary`` stamps its output: its repeats must still collapse, or they crowd out the answer again."""
-    h = _hippocampus(tmp_path)
-    fact = _say(h, _FACT)
-    own = ""
-    for n in range(6):
-        own = _say(h, _QUESTION)
-        result = {"output": {"timestamp": float(n), "objects": ["lamp"]}}
-        _did(h, _QUESTION, "scene_summary", ok=True, result=result)
-    ids, _paths = _ask(h, _QUESTION, own)
-    assert fact in ids
-
-
 def test_a_record_that_cannot_be_compared_is_kept_and_recall_survives(tmp_path: Path) -> None:
     from maxim.memory.hippocampus_retrieval import distinct_copies
 
