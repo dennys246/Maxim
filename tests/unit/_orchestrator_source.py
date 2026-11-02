@@ -136,8 +136,6 @@ EXTRACTION_MODULES: tuple[str, ...] = (
 MOVED_MODULE_HELPERS: dict[tuple[str, str], str] = {
     ("tty_stdin.py", "_restore_terminal"): "module level in orchestrator.py at 17710609 (the atexit/SIGTERM "
     "terminal restore), moved with the raw reader that arms it",
-    ("tty_stdin.py", "_sigterm_handler"): "module level in orchestrator.py at 17710609 (the SIGTERM hook the raw "
-    "reader installs), moved with it",
     ("sim_teardown.py", "_resolve_finish_reason"): "module level in orchestrator.py (the run's finish-reason "
     "priority, #1002), moved with the tail, its only caller",
     ("sim_teardown.py", "_sim_provenance"): "module level in orchestrator.py (the report's M1 provenance), moved with "

@@ -9,6 +9,7 @@ import wave
 from typing import Optional
 import numpy as np
 from maxim.utils.audio import resample_audio, run_in_own_process_group, to_int16
+from maxim.utils.cancellation import register_stop_event, unregister_stop_event
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
 from maxim.utils.logging import configure_logging, log_swallowed_exception, warn, warn_unless_refusal
 from maxim.data.camera.display import prepare_display, show_photo
@@ -157,8 +158,7 @@ class MediaLoopMixin:
         # Create media lock BEFORE starting agentic runtime (CaptureManager needs it)
         media_lock = threading.Lock()
         self._media_lock = media_lock
-        stop_event = threading.Event()
-        self._live_stop_event = stop_event
+        stop_event = self._open_live_stop_event()
 
         # Phase 2: Start agentic runtime automatically when not in sleep mode
         # The agentic system handles all decision-making; live() just does I/O
@@ -445,10 +445,28 @@ class MediaLoopMixin:
                 except Exception:
                     pass
 
-            self._motor_queue = None
-            self._media_lock = None
-            self._live_stop_event = None
+            self._release_live_run_handles()
             self.shutdown()
+
+    def _open_live_stop_event(self) -> threading.Event:
+        """The run's stop event, registered for the process stop request: a stop signal (#1344) ends the main
+        thread's loops (headless ``wait(0.5)``, the frame loop's queue poll) and the run's own shutdown follows."""
+        stop_event = threading.Event()
+        register_stop_event(stop_event)
+        self._live_stop_event = stop_event
+        return stop_event
+
+    def _close_live_stop_event(self) -> None:
+        stop_event = getattr(self, "_live_stop_event", None)
+        if stop_event is not None:
+            unregister_stop_event(stop_event)
+        self._live_stop_event = None
+
+    def _release_live_run_handles(self) -> None:
+        """The run's handles, dropped when ``live`` ends: the motor queue, the media lock and the stop event."""
+        self._motor_queue = None
+        self._media_lock = None
+        self._close_live_stop_event()
 
     def _init_audio(self, audio: bool, audio_len: float, *, tts: bool, tts_model: str | None) -> None:
         """The audio settings: mic capture, chunk length, and the spoken-response request (#1437).

@@ -134,6 +134,7 @@ If a component cannot be tested in isolation, the architecture is violated.
 A subsystem-level map only; [docs/reference.md](docs/reference.md) is the file-level module inventory (it does not yet cover every package, e.g. `console/`). Confirm a file exists under `src/maxim/` before citing it here.
 
 - `src/maxim/cli.py`: primary CLI entrypoint (`maxim` console script).
+- `src/maxim/cli_signals.py`: the CLI's SIGINT/SIGTERM handling and stop watchdog; the library never imports it.
 - `scripts/main.py`: legacy checkout entrypoint (delegates to `maxim.cli`).
 - `src/configs/`: version-controlled config templates and notes.
 - `src/maxim/embodied_runtime/selfy.py`: `Maxim` robot orchestrator class, composed from six mixins:

@@ -40,6 +40,19 @@ must act: a typed backend error (its fix hint is printed) or a security refusal 
 media-loop step that fails and is retried) is not a stop and does not change the code. Sims add `4`, a typed abort
 (incomplete or aborted run; [simulation.md](simulation.md) has the full contract), and share `2` and `130`.
 
+**SIGINT and SIGTERM** (every `maxim` command on Linux and macOS, since 1.3.4, [#1344](https://github.com/dennys246/Maxim/issues/1344)):
+with no memory session open a signal unwinds at once. Ctrl+C keeps the command's own code (`130` unless the command
+handles it itself), SIGTERM exits `0` (sim modes `4`, and `maxim roy run`). With a session open the run stops itself and
+saves: `0`, or `4` in a sim. A signal never hides a real failure: a non-sim command that failed keeps its code. A
+repeated SIGTERM is ignored; a second Ctrl+C forces `130`. **Allow for the save:** after a SIGTERM a run can live up to 32
+s, so wait for it to exit before starting another (`pkill` returns at once). **`75`** means the stop did not finish in
+time and the watchdog killed the spawned LLM server and ended the process, 31 s after the signal by default. A supervisor
+that sends SIGKILL sooner sets `MAXIM_SUPERVISOR_KILL_S` to its kill delay in seconds, and the CLI's budgets end before
+it. On native Windows Ctrl+C works as it always has (the first press cancels, the second forces exit `1`), with no
+watchdog. A robot run ended by the watchdog skips the sleep pose, exactly as a SIGKILL would. `maxim serve` exits `0` after one
+signal (it used to die with `143`); its budget is `console.stop_budget_s` and it does not read
+`MAXIM_SUPERVISOR_KILL_S`, so keep that budget under a supervisor's kill delay. A second Ctrl+C on serve exits `130`.
+
 **Server mode** (no action with an LLM enabled or the leader role; since the next release after 1.3.3, [#1338](https://github.com/dennys246/Maxim/issues/1338)):
 `0` stopped by Ctrl+C; `2` a security refusal; `1` the LLM is NOT READY (the router did not start, its init failed, or
 `wait_ready` timed out after 180 s) **and no LeaderProxy runs** (solo server mode). Behind a LeaderProxy (a leader) a

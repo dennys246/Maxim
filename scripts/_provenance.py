@@ -536,10 +536,24 @@ def find_own_report(data_home: Path | str, run_id: str, before: set[str]) -> tup
     return mine[0]
 
 
+# The ``finish_reason`` values that make an exit-0 sim usable evidence (#1344): a CLOSED set, so a new typed abort is
+# refused until someone lists it. Its sources: the orchestrator's verdict statuses that are not run failures
+# (``FinishSimulationTool.VALID_STATUSES`` minus ``sim_types.SIMULATION_FAILURE_FINISH_REASONS``: a confirmed negative
+# result is data), the turn cap, and every outcome the evidence records accept (``_evidence_records.FINISH_OK`` and
+# its ``campaign_end:`` prefix). A literal, not an import: this module imports nothing from ``maxim`` (a harness's
+# interpreter may import another checkout). tests/unit/test_bounded_stop_cli_1344.py pins it equal to its sources.
+SPAWN_SUCCESS_FINISH_REASONS = frozenset(
+    {"completed", "failed", "inconclusive", "blocked", "max_turns", "complete", "all_encounters_complete"}
+)
+SPAWN_SUCCESS_FINISH_PREFIX = "campaign_end:"
+
+
 def spawn_evidence(data_home: Path | str, run_id: str, before: set[str], *, returncode: int) -> tuple[Path, dict]:
     """After a spawn has exited: the report it wrote (:func:`find_own_report`), refusing a run whose sim
     exited non-zero (a typed abort or an error, D22): :class:`SimRunFailed` carries the report's evidence, so
-    the abort is recorded rather than dropped. Returns ``(session_dir, report)``."""
+    the abort is recorded rather than dropped. An exit 0 is refused too unless the report's ``finish_reason`` is in
+    :data:`SPAWN_SUCCESS_FINISH_REASONS` (#1344: a yield that a body mapped to 0 is never evidence). Returns
+    ``(session_dir, report)``."""
     try:
         session_dir, report = find_own_report(data_home, run_id, before)
     except OwnReportError as exc:
@@ -551,6 +565,15 @@ def spawn_evidence(data_home: Path | str, run_id: str, before: set[str], *, retu
     if returncode != 0:
         raise SimRunFailed(
             f"sub-sim exited {returncode} (finish_reason={report.get('finish_reason')!r})",
+            sims=[sim_evidence(session_dir, report)],
+        )
+    reason = report.get("finish_reason")
+    if not (
+        isinstance(reason, str)
+        and (reason in SPAWN_SUCCESS_FINISH_REASONS or reason.startswith(SPAWN_SUCCESS_FINISH_PREFIX))
+    ):
+        raise SimRunFailed(
+            f"sub-sim exited 0 but finish_reason={reason!r} is not a usable outcome",
             sims=[sim_evidence(session_dir, report)],
         )
     return session_dir, report

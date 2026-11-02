@@ -15,6 +15,7 @@ import atexit
 import functools
 import os
 import shutil
+import signal
 import sys
 import tempfile
 import time
@@ -313,14 +314,35 @@ _OFFLINE_ENV_KEYS = (
 )
 
 
-@pytest.fixture(autouse=True)
-def _clear_stop_request():
-    """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield."""
-    from maxim.utils.cancellation import clear_stop_request
+# What this pytest process started with: a background job inherits SIGINT ignored, not Python's default.
+_SESSION_SIGINT_HANDLER = signal.getsignal(signal.SIGINT)
 
-    clear_stop_request()
+
+@pytest.fixture(autouse=True)
+def _clear_stop_request(monkeypatch):
+    """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield.
+
+    Also the CLI's signal state (#1344): the noted-signal and ever-claimed flags reset, a signal-armed watchdog is
+    forgotten (`cli_signals._reset_for_tests`), `MAXIM_SUPERVISOR_KILL_S` is scrubbed, and a test that left a SIGINT
+    handler installed fails here instead of making a later Ctrl+C yield."""
+    from maxim.integration import session_ownership
+    from maxim.utils import cancellation
+
+    def _reset() -> None:
+        cancellation.clear_stop_request()
+        cancellation._signal_noted = False
+        session_ownership._ever_claimed = False
+        cli_signals = sys.modules.get("maxim.cli_signals")
+        if cli_signals is not None:
+            cli_signals._reset_for_tests()
+
+    monkeypatch.delenv("MAXIM_SUPERVISOR_KILL_S", raising=False)
+    _reset()
     yield
-    clear_stop_request()
+    _reset()
+    if signal.getsignal(signal.SIGINT) is not _SESSION_SIGINT_HANDLER:
+        signal.signal(signal.SIGINT, _SESSION_SIGINT_HANDLER)  # one leak must not error every later test
+        raise AssertionError("a test left a SIGINT handler installed")
 
 
 @pytest.fixture(autouse=True)
