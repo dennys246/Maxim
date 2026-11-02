@@ -824,12 +824,14 @@ def test_under_a_spent_stop_the_late_save_is_skipped_and_the_early_report_stands
     _tail_run: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     import maxim.simulation.report as report_mod
+    from maxim.simulation.sim_teardown import emit_requested_report
 
     emitted: list[Any] = []
     monkeypatch.setattr(report_mod, "emit_report_json", lambda report, path: emitted.append(path))
     monkeypatch.setenv("MAXIM_REPORT_JSON", str(tmp_path / "r.json"))
     request_stop("test", Deadline.after(0.0))
-    _tail_run.end_run(_tail_run.tail)
+    report, *_ = _tail_run.end_run(_tail_run.tail)
+    emit_requested_report(report)
     names = _names(_tail_run.events)
     assert names.count("build_report") == 1 and "save_aut_state" not in names, names
     assert emitted == [str(tmp_path / "r.json")], "the early report was not emitted when the late save was skipped"
@@ -876,6 +878,7 @@ def test_under_a_stop_a_failed_late_save_keeps_and_emits_the_early_report(
     _tail_run: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     import maxim.simulation.report as report_mod
+    from maxim.simulation.sim_teardown import emit_requested_report
 
     monkeypatch.setattr(report_mod, "save_aut_state", lambda **k: (_ for _ in ()).throw(OSError("disk full")))
     emitted: list[Any] = []
@@ -883,6 +886,7 @@ def test_under_a_stop_a_failed_late_save_keeps_and_emits_the_early_report(
     monkeypatch.setenv("MAXIM_REPORT_JSON", str(tmp_path / "r.json"))
     request_stop("test", Deadline.after(30.0))
     report, *_ = _tail_run.end_run(_tail_run.tail)
+    emit_requested_report(report)
     assert report.session_id == "tail-test" and emitted == [str(tmp_path / "r.json")]
 
 

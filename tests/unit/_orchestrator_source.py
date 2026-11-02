@@ -75,6 +75,11 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("tty_stdin.py", "read_post_sim_goal_raw"),
     # #1454's interim prompt fix (2026-10-26, rule T): the interactive post-sim report view + new-goal prompt
     ("orchestrator.py", "_show_report_and_post_sim_prompt"),
+    # the /new slice (#1453, #1454, #1457): the interactive post-sim block as one unit, and the save that /new carries
+    ("orchestrator.py", "_read_new_goal"),
+    ("orchestrator.py", "_save_for_new"),
+    ("sim_teardown.py", "save_session_aut_state"),
+    ("sim_teardown.py", "generative_for_new_goal"),
     # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
     # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
     # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it
@@ -97,13 +102,13 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("sim_teardown.py", "shut_down_run"),
     ("sim_teardown.py", "release_run_resources"),
     ("sim_teardown.py", "save_run_report"),
-    ("sim_teardown.py", "roundup_and_emit_report"),
+    ("sim_teardown.py", "run_roundup"),
     ("sim_teardown.py", "end_run"),
     ("sim_teardown.py", "build_simulation_result"),
     # The stop behaviour on the tail slice (#1438 PR 1c): split out of the moved phases, plus the stop branch.
     ("sim_teardown.py", "_signal_shutdown"),
     ("sim_teardown.py", "_wait_for_run"),
-    ("sim_teardown.py", "_emit_report_json"),
+    ("sim_teardown.py", "emit_requested_report"),
     ("sim_teardown.py", "_end_stopped_run"),
     ("sim_teardown.py", "print_run_report"),
     # #1259 (2026-10-30, rule T): the narrator's simulation-tool registrations, the finish tool's stop_event with them

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from maxim.simulation.stdin_lines import OperatorLines, read_operator_lines
-from maxim.simulation.tty_stdin import POST_SIM_PROMPT, read_post_sim_goal_raw, stdin_reader_raw
+from maxim.simulation.tty_stdin import read_post_sim_goal_raw, stdin_reader_raw
 from maxim.exceptions import StopStillPending
 from maxim.utils.cancellation import current_stop
 
@@ -35,8 +35,11 @@ from maxim.simulation.report import capture_start_provenance  # noqa: E402
 from maxim.simulation.sim_teardown import (  # noqa: E402
     SimTail,
     build_simulation_result,
+    emit_requested_report,
     end_run,
+    generative_for_new_goal,
     print_run_report,
+    save_session_aut_state,
 )
 from maxim.simulation.sim_types import (  # noqa: E402
     SimulationResult,
@@ -413,11 +416,13 @@ def _restore_aut_from_session(
     aut_hippocampus: Any,
     aut_nac: Any,
     aut_memory_hub: Any,
-    via: str | None = None,
+    carry_from: str | None = None,
 ) -> dict[str, Any] | None:
     """Restore the AUT's stores from ``--resume-sim``'s session directory, and say what happened (#1003).
 
-    ``via="/new"`` is the same restore for the re-entered run (#1454): it carries the stores, and no resume prompt.
+    ``carry_from`` is the same restore for the ``/new`` run (#1454), stamped ``via``: this process just saved those
+    files, so a store this run has and the session lacks is ``missing``, not ``absent``, and a carry that fell short
+    warns, because the post-sim prompt promised it.
 
     ``None`` when the run is not a resume. Otherwise ``{"requested", "state_dir", "stores"}``, one outcome per
     store: ``loaded``; ``absent`` (the prior session never wrote it); ``failed:<Exc>``; ``no_store_in_run``
@@ -425,6 +430,9 @@ def _restore_aut_from_session(
     the EXACT name given; the resume prompt resolves the name separately and also accepts a prefix (#1009),
     which :func:`maxim.simulation.report.resume_stamp` checks. Restores exactly as before: stamping only.
     """
+    if resume_session and carry_from:
+        raise ValueError("resume_session and carry_aut_from cannot be combined: /new sets carry_aut_from itself")
+    resume_session = resume_session or carry_from
     if not resume_session:
         return None
     from maxim.utils.paths import sim_reports as _sim_reports_dir
@@ -432,8 +440,8 @@ def _restore_aut_from_session(
     prev_dir = _sim_reports_dir() / resume_session
     paths = {name: prev_dir / f"aut_{name}.json" for name in ("hippocampus", "nac", "ec", "atl")}
     record: dict[str, Any] = {"requested": resume_session, "state_dir": str(prev_dir.resolve()), "stores": {}}
-    if via is not None:
-        record["via"] = via
+    if carry_from:
+        record["via"] = "/new"
     stores = record["stores"]
     # HANDLE seam (a), branch 2: gated on persistent_agent is None — an
     # adopted agent already restored its live state via auto_load at handle
@@ -453,7 +461,7 @@ def _restore_aut_from_session(
     def _restore(name: str, store: Any, load: Any, describe: Any) -> None:
         path = paths[name]
         if not path.exists():
-            stores[name] = "absent"
+            stores[name] = "missing" if carry_from and store is not None else "absent"
         elif store is None:
             stores[name] = "no_store_in_run"
         else:
@@ -485,6 +493,8 @@ def _restore_aut_from_session(
     _restore("ec", aut_ec, lambda p: aut_ec.load(p), lambda: f" ({len(aut_ec._substrate_nodes)} substrate nodes)")
     aut_atl = aut_memory_hub.atl if aut_memory_hub is not None else None
     _restore("atl", aut_atl, lambda p: aut_atl.load(p), lambda: "")
+    if carry_from and any(outcome.startswith(("failed", "missing")) for outcome in stores.values()):
+        logger.warning("/new did not carry all of the AUT's memory from %s: %s", carry_from, stores)
     return record
 
 
@@ -572,6 +582,11 @@ def _select_aut_prompt_handler(prompt_handler: Any, stop_event: Any) -> tuple[An
         return None, None
 
 
+# The post-sim prompt, in one place: the panel shows it, and the raw reader shows it with what is typed. True since the
+# re-entered run's AUT starts from this run's saved hippocampus, NAc, EC and ATL (#1454, owner decision 2026-10-26).
+POST_SIM_PROMPT = "Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> "
+
+
 def _show_report_and_post_sim_prompt(report: Any, report_dir: str) -> Any:
     """Show the report IN the Live panel so the user can scroll it, then prompt for a new goal; returns the active
     display (None without one). Moved out of ``start_simulation_mode``'s interactive tail (#1454's interim prompt
@@ -604,37 +619,27 @@ def _read_new_goal(report: Any, report_dir: str) -> str:
     """The interactive post-sim block: show the report, ask for a new goal, close the display. Returns the goal to
     re-enter with, or "" to finish. Live is still running while it waits, so arrow keys scroll the report."""
     display = _show_report_and_post_sim_prompt(report, report_dir)
-    new_goal = ""
-    stdin = sys.stdin
-    if stdin is not None and hasattr(stdin, "isatty") and stdin.isatty():
-        new_goal = read_post_sim_goal_raw(_stdin=stdin, display=display)
+    _new_goal = ""
+    _stdin = sys.stdin
+    _can_raw = _stdin is not None and hasattr(_stdin, "isatty") and _stdin.isatty()
+    if _can_raw:
+        _new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display, prompt=POST_SIM_PROMPT)
     if display is not None:
         display.set_urgent(False)
         display.stop()
-    return "" if new_goal.lower() in ("/cancel", "quit", "exit") else new_goal
+    return "" if _new_goal.lower() in ("/cancel", "quit", "exit") else _new_goal
 
 
 def _save_for_new(tail: Any, report: Any, report_dir: str) -> str | None:
     """Make this run's AUT state ready for the ``/new`` run; returns the session to carry it from (#1454).
 
     The session snapshot was saved once the AUT loop joined, which a slow session end can outlast, so ``/new`` waits
-    for the end and saves again. None for an adopted agent: the re-entered run adopts the same live agent, so nothing
-    needs carrying, and no session snapshot is written for it."""
+    for the end and saves again (``--resume-sim`` has no such wait: #1577). None for an adopted agent: the
+    re-entered run adopts the same live agent, so nothing needs carrying, and no session snapshot is written for it."""
     _await_aut_session_end_before_new(tail.aut_memory_hub)
     if tail.persistent_agent is not None:
         return None
-    from maxim.simulation.report import save_aut_state
-
-    hub = tail.aut_memory_hub
-    save_aut_state(
-        hippocampus=tail.aut_hippocampus,
-        nac=tail.aut_nac,
-        base_dir=report_dir,
-        session_id=report.session_id,
-        ec=hub.ec if hub is not None else None,
-        atl=hub.atl if hub is not None else None,
-        scn=hub.scn if hub is not None else None,
-    )
+    save_session_aut_state(tail, report.session_id, report_dir)
     return report.session_id
 
 
@@ -675,7 +680,6 @@ NEW_RUN_CARRIES = frozenset(
         "aut_model",
         "aut_mode",
         "research_telemetry",
-        "generative",
         "arc_yaml",
         "entity_ref",
         "persistent_agent",
@@ -685,6 +689,7 @@ NEW_RUN_CARRIES = frozenset(
 NEW_RUN_DROPS = frozenset(
     {
         "sim_debug",  # folded into ``debug`` before the settings are taken
+        "generative",  # replaced: :func:`maxim.simulation.sim_teardown.generative_for_new_goal`
         "resume_session",
         "pre_campaign_turns",
         "dm_campaign",
@@ -697,6 +702,14 @@ NEW_RUN_DROPS = frozenset(
 
 def _carried_settings(run_locals: dict[str, Any]) -> dict[str, Any]:
     """The ``/new`` run's settings, taken from the run's parameters by :data:`NEW_RUN_CARRIES`."""
+    # NOTE: /new recurses. Depth is bounded by human interaction
+    # (each level requires typing a new goal + running a full sim).
+    # RecursionError after ~50-100 is theoretically possible but
+    # extremely unlikely in practice.
+    # persistent_agent threads through: dropping it would silently
+    # rebuild a throwaway sim_aut for the follow-up goal — the exact
+    # mis-route this seam kills. Re-adoption re-snapshots the lease
+    # (the outer restore already ran above). (Review fold: Arch #3.)
     return {name: run_locals[name] for name in NEW_RUN_CARRIES}
 
 
@@ -1226,12 +1239,12 @@ def start_simulation_mode(
 
     # Restore AUT state from previous session if resuming; what loaded is stamped into the report (#1003).
     resume_record = _restore_aut_from_session(
-        resume_session or carry_aut_from,
+        resume_session,
         persistent_agent=persistent_agent,
         aut_hippocampus=aut_hippocampus,
         aut_nac=aut_nac,
         aut_memory_hub=aut_memory_hub,
-        via="/new" if carry_aut_from and not resume_session else None,
+        carry_from=carry_aut_from,
     )
 
     # Attach bio-system tracers based on --debug flags / env vars
@@ -2729,18 +2742,15 @@ def start_simulation_mode(
     if _is_interactive and _tail.stop is None:
         _new_goal = _read_new_goal(report, report_dir)
         if _new_goal:
-            # NOTE: This recurses. Depth is bounded by human interaction
-            # (each level requires typing a new goal + running a full sim).
-            # RecursionError after ~50-100 is theoretically possible but
-            # extremely unlikely in practice.
-            # persistent_agent threads through: dropping it would silently
-            # rebuild a throwaway sim_aut for the follow-up goal — the exact
-            # mis-route this seam kills. Re-adoption re-snapshots the lease
-            # (the outer restore already ran above). (Review fold: Arch #3.)
+            # This recurses: _carried_settings says why that is bounded, and why persistent_agent carries.
             return start_simulation_mode(
-                goal=_new_goal, **_new_run_settings, carry_aut_from=_save_for_new(_tail, report, report_dir)
+                goal=_new_goal,
+                **_new_run_settings,
+                generative=generative_for_new_goal(_new_goal, generative=generative, arc_yaml=arc_yaml),
+                carry_aut_from=_save_for_new(_tail, report, report_dir),
             )
     else:
         print_run_report(_tail, report, report_dir)
 
+    emit_requested_report(report)
     return build_simulation_result(_tail, report, report_dir, duration, finish_reason)

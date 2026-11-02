@@ -7,7 +7,7 @@ What makes it true is pinned by ``test_new_slice_1453_1454_1457.py``.
 
 from __future__ import annotations
 
-from maxim.simulation.tty_stdin import POST_SIM_PROMPT
+from maxim.simulation.orchestrator import POST_SIM_PROMPT
 
 
 def test_the_post_sim_prompt_promises_the_carried_memory_1454() -> None:

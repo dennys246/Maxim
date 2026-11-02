@@ -322,7 +322,7 @@ def test_the_sim_records_what_its_resume_did() -> None:
     fn = _start_simulation_mode()
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)]
     (restore,) = [c for c in calls if isinstance(c.func, ast.Name) and c.func.id == "_restore_aut_from_session"]
-    assert ast.unparse(restore.args[0]) == "resume_session or carry_aut_from"  # /new carries the same way (#1454)
+    assert ast.unparse(restore.args[0]) == "resume_session"
     (context,) = [c for c in calls if isinstance(c.func, ast.Name) and c.func.id == "_load_resume_context_at"]
     updates = [
         c

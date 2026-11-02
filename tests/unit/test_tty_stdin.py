@@ -119,18 +119,22 @@ def test_the_interactive_reader_call_matches_the_signature() -> None:
 
 
 def test_the_post_sim_call_matches_the_signature() -> None:
-    fn = _start_simulation_mode()
+    (fn,) = [
+        n for n in ast.walk(_tree("orchestrator.py")) if isinstance(n, ast.FunctionDef) and n.name == "_read_new_goal"
+    ]
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and ast.unparse(n.func) == "read_post_sim_goal_raw"]
     assert len(calls) == 1
     (call,) = calls
     assert not call.args
     assert {k.arg for k in call.keywords} == _keyword_only(tty_stdin.read_post_sim_goal_raw)
-    assert all(isinstance(k.value, ast.Name) and k.value.id == k.arg for k in call.keywords)
+    assert all(isinstance(k.value, ast.Name) for k in call.keywords)
     # Called only on a TTY, and its return value is the goal the run reads.
     guard = next(n for n in ast.walk(fn) if isinstance(n, ast.If) and ast.unparse(n.test) == "_can_raw")
     assert any(c is call for c in ast.walk(guard))
     (assign,) = [n for n in guard.body if isinstance(n, ast.Assign)]
-    assert ast.unparse(assign) == "_new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display)"
+    assert ast.unparse(assign) == (
+        "_new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display, prompt=POST_SIM_PROMPT)"
+    )
 
 
 def test_a_non_tty_stdin_falls_back_to_the_line_reader(monkeypatch) -> None:
@@ -296,7 +300,7 @@ def test_interactive_post_sim_calls_the_raw_goal_reader_on_a_tty(interactive_run
     rec = interactive_run
     assert len(rec["post_sim"]) == 1
     (kwargs,) = rec["post_sim"]
-    assert set(kwargs) == {"_stdin", "display"}
+    assert set(kwargs) == {"_stdin", "display", "prompt"}
     assert kwargs["_stdin"] is rec["stdin"]
     assert kwargs["display"] is rec["display"]
     # An empty goal finishes the run normally: one SimulationResult, no /new recursion.

@@ -293,11 +293,14 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
     either loaded or was never written by the prior session (``absent``). A store written but not loaded
     (``failed:<Exc>``, ``skipped_persistent_agent``) or not attempted (``not_restored``) makes it false.
     ``resumed_from_session`` names the resolved directory, and only when the resume loaded. A ``/new`` carry
-    (``via``, #1454) has no resume prompt, so it loads on its stores alone, and it says so."""
+    (``via``, #1454) has no resume prompt, so it loads on its stores alone, and at least one must have loaded."""
     stores = dict(resume.get("stores") or {})
     state_dir, context_dir = resume.get("state_dir"), resume.get("context_dir")
     via = resume.get("via")
-    context_ok = via is not None or (resume.get("context_loaded") and state_dir == context_dir)
+    if via is not None:
+        context_ok = "loaded" in stores.values()
+    else:
+        context_ok = resume.get("context_loaded") and state_dir == context_dir
     loaded = bool(
         context_ok
         and state_dir is not None

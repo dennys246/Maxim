@@ -1084,9 +1084,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
     post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
 
-    def _post_sim_goals(*, _stdin: Any, display: Any) -> str:
+    def _post_sim_goals(*, _stdin: Any, display: Any, prompt: str) -> str:
         """The post-sim raw-mode reader (``tty_stdin.read_post_sim_goal_raw``, a TTY loop left uncharacterized):
         a goal once, so the run re-enters ``start_simulation_mode``, then Enter (finish)."""
+        assert prompt == orch.POST_SIM_PROMPT  # one constant, the raw reader's and the panel's (#1454)
         goal = "" if post_sim_reads else NEW_GOAL
         post_sim_reads.append(goal)
         return goal
