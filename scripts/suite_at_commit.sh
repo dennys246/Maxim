@@ -63,6 +63,11 @@ main() {
         python scripts/fetch_advisor_fixtures.py || exit 2
     fi
     status=0
+    # One `suite stage <name>: exit=N` line per stage (scripts/rig_suite_verdict.py reads them: a verdict over the
+    # mixed log needs each stage's own result, not the last nonzero one). `stage` records it and keeps the
+    # overall status as before (the last nonzero stage).
+    stage() { echo "suite stage $1: exit=$2"; [ "$2" -eq 0 ] || status=$2; }
+    fast=0
     if [ "$cov" -eq 1 ]; then
         # The ratchet refuses a coverage.json from any other coverage version: say so now, not after the suite.
         python - <<'PY' || exit 2
@@ -77,21 +82,29 @@ PY
         rm -f .coverage coverage.json coverage.xml
         python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
             --junitxml=fast-suite.xml \
-            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report= || status=$?
+            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report= || fast=$?
     else
         python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
-            --junitxml=fast-suite.xml || status=$?
+            --junitxml=fast-suite.xml || fast=$?
     fi
+    stage fast-suite "$fast"
     # The release gate's runtime twin, as CI's unit-tests job runs it: it reads the report the suite just wrote.
     # A commit from before the gate existed has no lint to run: say so rather than fail every snapshot of it.
     if [ -f scripts/lint_release_gates.py ]; then
-        python scripts/lint_release_gates.py --junit fast-suite.xml || status=$?
+        gates=0
+        python scripts/lint_release_gates.py --junit fast-suite.xml || gates=$?
+        stage release-gates "$gates"
     else
         echo "suite at $short: no scripts/lint_release_gates.py at this commit — release-gate twin skipped"
+        echo "suite stage release-gates: skipped"
     fi
-    python -m pytest tests/integration/test_memory_hub.py -q -p no:cacheprovider || status=$?
+    hub=0
+    python -m pytest tests/integration/test_memory_hub.py -q -p no:cacheprovider || hub=$?
+    stage memory-hub "$hub"
     if [ "$cov" -eq 1 ]; then
-        python scripts/lint_coverage.py --local || status=$?
+        ratchet=0
+        python scripts/lint_coverage.py --local || ratchet=$?
+        stage ratchet "$ratchet"
     fi
     echo "suite at $short: $([ "$status" -eq 0 ] && echo PASSED || echo "FAILED (exit $status)")"
     exit "$status"

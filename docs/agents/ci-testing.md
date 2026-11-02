@@ -20,7 +20,7 @@
 |---|---|
 | Workflow | `.github/workflows/test.yml`: `unit-tests` (mypy public surface → fast suite under coverage inside `scripts/ci_netns.sh` → `test_memory_hub.py` → `scripts/lint_coverage.py` → `scripts/lint_release_gates.py --junit fast-suite.xml`); `lint` (ruff, the CI greps, every `scripts/lint_*.py`); `release-build`; nightly `slow-tests`, `model-cache-tests` (shared `.github/actions/model-cache-setup`, which caches the HuggingFace models), `repo-settings`, `secret-scan`; `release-audit` on non-PR events |
 | Workflow shape pins | `tests/unit/test_ci_workflow_shape.py`, `scripts/check_repo_settings.py --static` (required contexts map to unconditional jobs) |
-| Pre-push | `scripts/suite_at_commit.sh` (§4), `scripts/pr_merge_readiness.py` (merge readiness) |
+| Pre-push | `scripts/suite_at_commit.sh` (§4), `scripts/rig_suite.sh` (§4, a second machine), `scripts/pr_merge_readiness.py` (merge readiness) |
 | Coverage ratchet | `scripts/lint_coverage.py` (floors, diff coverage, the pinned `[tool.coverage]` table; `--local`, `--merge-floors`, `--pins-from-run`; the attempt-bound `coverage-json-<attempt>` artifact), `scripts/coverage_floors.json`, `scripts/coverage_exclusions.json`; coverage + pytest-cov versions are pinned exactly in test.yml |
 | Diff-scoped lints | judge a PR against its merge-base with `origin/main`, a push to `main` against `scripts/_lint_git.py::push_base` (last push whose job passed): `lint_coverage`, `lint_no_silent_swallows`, `lint_function_length`, `lint_mypy_ratchet`, `lint_atomic_io_ratchet`, `lint_fix_touches_tests` (needs `PR_TITLE`), `changelog_fragments check` (M83 step 3; it replaced `lint_unreleased_on_src_change` and `lint_unreleased_declared`), `lint_config_schema_append_only`, `lint_multi_agent_marker`, `lint_body_rest_neutral`, `lint_secrets`, `lint_ledger_format`, `lint_evidence_gate`, `lint_bf2_obligation`, `lint_release_gates` |
 | Tree-wide lints | `lint_claude_md_invariants`, `lint_backlog_ids`, `lint_version_sync`, `lint_claims_sync`, `lint_orphan_modules`, `lint_dead_imports`, `lint_harness_provenance`, `lint_prereg_precedes_data`, `lint_loop_mode_reads`, `lint_http_surface` |
@@ -87,6 +87,17 @@ It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN check
 
 **Since M47 (2026-10-11) it is also the coverage pre-check.** By default the fast suite runs with CI's exact measuring command and is followed by `scripts/lint_coverage.py --local`, so `PASSED` means diff coverage and the measurement-free pin rules passed. `--local` gates diff coverage (>= 80% of changed `src/maxim` lines), a pinned `missing` that rises above its base (`pin_rises`), and the floors file's format; **no floor gates locally, in either direction** (M60a, owner decision 2026-10-27: macOS reads 1-2 pt off CI's Linux, so the touched-package floors it used to gate gave false reds and false greens). Every floor result and a PR's own floor-pin edits are printed as notes; CI, the only floor authority, gates them. The script checks the installed coverage version before the suite runs. #1201, #1213, #1232 and #1240 each failed CI on the ratchet because no local run measured coverage.
 
+Each stage also prints `suite stage <name>: exit=N` (`fast-suite`, `release-gates` or `release-gates: skipped`, `memory-hub`, `ratchet`), and the overall status stays the last nonzero stage. `--no-cov` prints no `ratchet` line (the rig always measures, and its verdict requires one). `scripts/rig_suite_verdict.py` reads those lines; `tests/unit/test_rig_suite_verdict.py` pins them.
+
+### `scripts/rig_suite.sh`: the full suite on a second machine
+
+```bash
+RIG_SUITE_HOST=user@host scripts/rig_suite.sh <worktree> <label>   # push HEAD to the rig, run suite_at_commit.sh there
+RIG_SUITE_HOST=user@host scripts/rig_suite.sh --attach <label>     # re-attach to a run already going
+```
+
+A second full-suite runner (owner-approved 2026-10-27), so a suite need not wait for the development box's two-suite cap. It pushes the commit to a private clone on the rig (`~/$RIG_SUITE_DIR/repo`, fed only by these pushes) and runs the rig main's `suite_at_commit.sh` there under nohup, with CI's pinned venv; the poller reads the log, checks the run's pid each minute (a run that dies without finishing exits 2), and gives up on an unreachable rig after 30 tries. The rig's `origin/main` only moves forward (a stale worktree once moved it back under a run in flight, shifting that run's coverage base), and a label still running is refused. **Exit 0 is the only result that counts as the full suite on that commit:** a few real-time cadence tests fail on the rig even alone (`rig_suite_verdict.RIG_KNOWN_FAILURES`, kept honest by its test), so a run whose every stage passed except those is CALIBRATED, and the script then re-runs exactly those tests locally on the same commit; only their pass returns 0. `--attach` has no worktree to re-run in, so it exits 10 and prints the command to run on that commit.
+
 ## 5. Env vars owned
 
 | Var | Purpose | Owner |
@@ -94,6 +105,8 @@ It creates a uniquely named `.worktrees/suite-<sha>.XXXXXX` under the MAIN check
 | `MAXIM_RUN_MODEL_TESTS` | Opt in to `requires_model_cache` tests (skipped by default; set by the nightly model-cache and slow lanes) | `tests/conftest.py` |
 | `MAXIM_TEST_TTS_VOICE_DIR` | A directory holding the pinned `en_US-lessac-medium` voice for the real-piper tests (`tests/unit/test_tts_real_piper.py`); set by the R2 extras matrix's tts cells, which provision it (`scripts/extras_matrix.py assets`). Unset: those tests skip, which `--require-extras=tts` turns into a failure | `tests/unit/test_tts_real_piper.py` |
 | `MAXIM_NETNS_ENV_NAMES` | Set by `scripts/ci_netns.sh`: the comma-separated names it preserved across sudo, which the in-namespace arrival check verifies (exit 3 if one is missing). Names only, never values | `scripts/ci_netns.sh` |
+| `RIG_SUITE_HOST` | The SSH login of the rig `scripts/rig_suite.sh` runs suites on (required; no default, so no login is committed) | `scripts/rig_suite.sh` |
+| `RIG_SUITE_DIR` | The rig directory under its home holding `repo/`, `venv/` and `logs/` (default `maxim-suites`; a relative path of `[A-Za-z0-9._/-]`) | `scripts/rig_suite.sh` |
 | `MAXIM_EXPECT_NETNS` | Set by `scripts/ci_netns.sh`; arms the network-namespace positive control | `tests/unit/test_network_boundary.py` |
 
 ## 6. Lesson archive
