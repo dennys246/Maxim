@@ -594,9 +594,10 @@ def run_roundup(tail: SimTail, report: Any, report_dir: str) -> None:
 def generative_for_new_goal(goal: str, *, generative: bool, mode: str, arc_yaml: str | None) -> bool:
     """Whether the ``/new`` run is generative (owner decision 2026-11-02, amending #1453's list for this one setting).
 
-    An operator's choice carries: a named arc, or ``--dm`` (``mode="dm"``), which asks for a generative campaign
-    whatever the goal says. On plain ``--sim`` the flag was derived from the first goal, so the new goal derives its
-    own, as a fresh ``--sim`` would: a carried flag would run the typed goal inside an unrelated arc."""
+    An operator's choice carries: a named arc, or the ``dm`` mode, where the CLI chose the flag (``--dm <goal>`` asks
+    for a generative campaign whatever the goal says; a YAML DM campaign is not generative). On plain ``--sim`` the
+    flag was derived from the first goal, so the new goal derives its own, as a fresh ``--sim`` would: a carried flag
+    would run the typed goal inside an unrelated arc."""
     from maxim.simulation.arcs import select_arc_for_goal
 
     return generative if arc_yaml or mode == "dm" else select_arc_for_goal(goal) is not None

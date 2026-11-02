@@ -292,7 +292,8 @@ _LANTERN: dict[str, Any] = {
     },
 }
 # The new_goal arm: the goal the faked post-sim reader returns once (the ``/new`` re-entry), then "" (finish).
-NEW_GOAL = "check what the agent remembers"
+# It matches no arc: the /new run decides ``generative`` from its own goal, and this arm pins the narrator's re-entry.
+NEW_GOAL = "check what the agent says next"
 # The stall arm's narrator probes, by the turn whose follow-up sends the next one (turn 3's percept is the one the
 # fake AUT holds until the diversity checkpoint lands: ``_hold_for_stall_arm``).
 _STALL_PROBES = {1: "What is your favourite colour?", 2: "Name one tool you can use."}

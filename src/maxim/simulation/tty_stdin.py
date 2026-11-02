@@ -270,7 +270,8 @@ def stdin_reader_raw(
 
 
 def read_post_sim_goal_raw(*, _stdin: Any, display: Any, prompt: str) -> str:
-    """The post-sim prompt's raw read loop: the typed goal, or "" on Enter alone, Ctrl+C or a failure."""
+    """The post-sim prompt's raw read loop: the typed goal, or "" on Enter alone or a failure. Ctrl+C arrives as
+    the signal (cbreak keeps ISIG): the caller handles it."""
     _new_goal = ""
     try:
         import os as _os3

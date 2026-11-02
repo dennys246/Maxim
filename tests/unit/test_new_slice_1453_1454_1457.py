@@ -95,12 +95,19 @@ def test_campaign_scoped_inputs_do_not_carry_and_run_settings_do_1453() -> None:
         ("write me a poem", True, "generative", "arc.yaml", True),  # a named arc is the operator's choice
         ("cradle", False, "generative", "arc.yaml", False),
         ("write me a poem", True, "dm", None, True),  # so is --dm, whatever the goal says
+        ("cradle", False, "dm", None, False),  # and a YAML DM campaign, which is not generative
     ],
 )
 def test_generative_is_decided_for_the_new_goal_unless_an_arc_was_named(
     goal: str, generative: bool, mode: str, arc_yaml: str | None, expected: bool
 ) -> None:
     assert sim_teardown.generative_for_new_goal(goal, generative=generative, mode=mode, arc_yaml=arc_yaml) is expected
+
+
+def test_the_new_goal_arm_stays_on_the_narrator_path() -> None:
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    assert select_arc_for_goal(NEW_GOAL) is None  # an arc goal would turn the arm into a generative campaign
 
 
 @pytest.mark.timeout(240)

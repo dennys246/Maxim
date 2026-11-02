@@ -624,7 +624,7 @@ def _read_new_goal(report: Any, report_dir: str) -> str:
     if _can_raw:
         try:
             _new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display, prompt=POST_SIM_PROMPT)
-        except KeyboardInterrupt:  # cbreak keeps ISIG, so Ctrl+C arrives as the signal: it finishes, as Enter does
+        except KeyboardInterrupt:  # cbreak keeps ISIG, so a first Ctrl+C arrives as the signal: it finishes (#1580)
             logger.info("Ctrl+C at the post-sim prompt: finishing the run")
     if display is not None:
         display.set_urgent(False)
