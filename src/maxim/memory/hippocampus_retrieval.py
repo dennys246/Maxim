@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label, record_active_goal
@@ -20,6 +21,8 @@ def _rank_by_relevance(
     memories: list[EpisodicMemory | CompressedMemory],
     query: str,
     limit: int,
+    *,
+    one_per_heard: bool = False,
 ) -> list[EpisodicMemory | CompressedMemory]:
     """Rank memories by content-token overlap with a free-text query (#1064).
 
@@ -29,8 +32,11 @@ def _rank_by_relevance(
     none is NOT returned (owner decision D1, 2026-10-24): before, ~90-95% of a store scored 0 and recency filled
     every slot, so this path was mostly recency. Recency breaks ties among the rest; a query with no
     content token returns nothing.
+
+    ``one_per_heard`` gives a line heard many times one place, its best-ranked copy, before ``limit`` cuts the list
+    (#1573: five copies of a question left no place for its answer). A record that heard nothing is never collapsed.
     """
-    from maxim.memory.text import key_tokens
+    from maxim.memory.text import key_tokens, same_words
 
     query_tokens = set(key_tokens(query))
     if not query_tokens:
@@ -44,7 +50,20 @@ def _rank_by_relevance(
 
     # Sort by score descending, then recency as tiebreaker
     scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    return [mem for _, _, mem in scored[:limit]]
+    if not one_per_heard:
+        return [mem for _, _, mem in scored[:limit]]
+    ranked: list[EpisodicMemory | CompressedMemory] = []
+    heard: set[str] = set()
+    for _, _, mem in scored:
+        words = same_words(mem.input_text)
+        if words in heard:
+            continue
+        if words:
+            heard.add(words)
+        ranked.append(mem)
+        if len(ranked) == limit:
+            break
+    return ranked
 
 
 def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
@@ -68,6 +87,26 @@ class RetrievalMixin:
     association graph formation. Mixed into the Hippocampus class.
     """
 
+    def newest_holding_words(self, text: str) -> str | None:
+        """The id of the newest record that heard exactly ``text`` (``memory/text.py::same_words``), or None. On a turn
+        whose capture landed before its query, that record IS the turn's own capture (#1573): older copies are earlier
+        episodes, which are ordinary memories."""
+        from maxim.memory.text import same_words
+
+        words = same_words(text)
+        if not words:
+            return None
+        with self._rwlock.read():
+            holding = [m for m in self._memories.values() if same_words(m.input_text) == words]
+            if not holding:
+                return None
+
+            def order(m: EpisodicMemory | CompressedMemory) -> tuple[int, float]:
+                seq = getattr(m, "capture_seq", None)
+                return (seq if isinstance(seq, int) else -1, m.timestamp)
+
+            return max(holding, key=order).id
+
     def recall(
         self,
         limit: int = 10,
@@ -84,6 +123,8 @@ class RetrievalMixin:
         include_compressed: bool = True,
         working_memory: WorkingMemorySet | None = None,
         retrieval_context: "RetrievalContext | None" = None,
+        exclude_ids: Collection[str] = (),
+        one_per_heard: bool = False,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories matching filters (hash lookup + filtering).
 
@@ -107,6 +148,8 @@ class RetrievalMixin:
             include_compressed: Include CompressedMemory results (default True).
             working_memory: If provided, each recalled memory is added as
                 a RECALL entry (reconsolidation pull into active context).
+            exclude_ids: Never candidates, so they take no place inside ``limit`` and are not touched.
+            one_per_heard: With *query*, a line heard many times takes one place (``_rank_by_relevance``, #1573).
 
         Returns:
             List of matching memories, ranked by relevance if *query* is
@@ -159,7 +202,7 @@ class RetrievalMixin:
                 results = []
                 for memory_id in candidates:  # type: ignore[union-attr]
                     memory = self._memories.get(memory_id)
-                    if memory is None:
+                    if memory is None or memory_id in exclude_ids:
                         continue
 
                     # Skip compressed if not wanted
@@ -176,7 +219,7 @@ class RetrievalMixin:
 
                 # Rank by relevance if query provided, else by recency
                 if query and results:
-                    results = _rank_by_relevance(results, query, limit)
+                    results = _rank_by_relevance(results, query, limit, one_per_heard=one_per_heard)
                 else:
                     results.sort(key=lambda m: m.timestamp, reverse=True)
                     results = results[:limit]

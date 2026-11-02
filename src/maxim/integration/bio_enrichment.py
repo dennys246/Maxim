@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.text import RECALLED_WORDS_MAX_CHARS
+from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, same_words
 from maxim.memory.types import record_success
 from maxim.utils.logging import log_swallowed_exception
 
@@ -688,8 +688,10 @@ class BioEnrichmentPipeline:
         3. **Goal path**: query by goal (when goal matches prior sessions).
         4. **Substring path**: legacy full-text search (fallback).
 
-        A record holding exactly the turn's own words (``context.user_input``, else the turn's last) is skipped on
-        every path: it is this turn's own capture.
+        The turn's own capture is never recalled: the newest record holding exactly the turn's words
+        (``context.user_input``, else the turn's last). It is excluded before each path's limit, so it costs no place;
+        an older record of those words is an earlier episode and is recalled like any other (#1573). A line heard many
+        times takes one place, so repeats cannot crowd out what they ask about.
         """
         if self._hippocampus is None:
             return [], [], None, []
@@ -705,14 +707,20 @@ class BioEnrichmentPipeline:
         turn_input = (getattr(context, "user_input", "") or "") if context else ""
         if turn_input:
             self._turn_input = turn_input
-        own_words = _same_words(turn_input or self._turn_input)
+        own_ids: tuple[str, ...] = ()
+        shown_words: set[str] = set()
 
         def _add_memory(mem: Any, relevance: float, path: str) -> None:
             if mem.id in seen_ids:
                 return
             seen_ids.add(mem.id)
-            if own_words and _same_words(_input_text(mem)) == own_words:
+            if mem.id in own_ids:
                 return  # this turn's own capture, stored before the query ran
+            words = same_words(_input_text(mem))
+            if words in shown_words:
+                return  # the same line on another path: one place per line heard
+            if words:
+                shown_words.add(words)
             summary = self._summarize_episode(mem)
             valence = getattr(mem, "valence", None)
             if valence is None:
@@ -737,6 +745,9 @@ class BioEnrichmentPipeline:
             log_swallowed_exception()
 
         try:
+            own_id = self._hippocampus.newest_holding_words(turn_input or self._turn_input)
+            own_ids = (own_id,) if own_id else ()
+
             # Path 1: Graph-based retrieval via spreading activation.
             # Encode percept → EC READ-ONLY pattern completion → spreading
             # activation on binding graph → ATL concept names → hippocampus
@@ -785,7 +796,7 @@ class BioEnrichmentPipeline:
 
             # Path 2: the cue -- what was just said (#1447), on the content-token ranker (#1064).
             if len(summaries) < 3:
-                for mem in self._hippocampus.recall(query=text, limit=5):
+                for mem in self._hippocampus.recall(query=text, limit=5, exclude_ids=own_ids, one_per_heard=True):
                     if len(summaries) >= 3:
                         break
                     _add_memory(mem, relevance=0.8, path="cue")
@@ -798,8 +809,12 @@ class BioEnrichmentPipeline:
             if len(summaries) < 3:
                 goal = getattr(context, "active_goal", None) if context else None
                 if goal:
-                    goal_results = self._hippocampus.recall(query=goal, limit=5)
-                    for mem in goal_results[:3]:
+                    goal_results = self._hippocampus.recall(
+                        query=goal, limit=5, exclude_ids=own_ids, one_per_heard=True
+                    )
+                    for mem in goal_results:
+                        if len(summaries) >= 3:
+                            break
                         _add_memory(mem, relevance=0.7, path="goal")
 
             # Path 4: Substring fallback
@@ -1065,14 +1080,6 @@ class BioEnrichmentPipeline:
 # ``memory/text.py::bounded_words``, whose ``RECALLED_WORDS_MAX_CHARS`` compression keeps too (#1137); 80 holds an
 # outcome's gist.
 _RECALLED_RESULT_MAX_CHARS = 80
-
-
-def _same_words(text: str) -> str:
-    """``text`` as the same words compare: NFKC, case-folded, whitespace collapsed. Not the content keys, which are
-    lossy ("My name is Al" and "My name?" key alike; "yes" keys to nothing)."""
-    import unicodedata
-
-    return " ".join(unicodedata.normalize("NFKC", text).casefold().split())
 
 
 def _input_text(mem: Any) -> str:

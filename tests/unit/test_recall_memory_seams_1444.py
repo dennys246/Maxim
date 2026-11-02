@@ -421,6 +421,80 @@ def test_a_deliberation_cycle_never_recalls_the_turns_own_words(tmp_path: Path) 
     assert [s.memory_id for s in found] == [fact]
 
 
+# ── #1573: the turn's own capture is ONE record, and a repeated line takes one slot ──────────────────────────────
+
+
+def _ask(h: Any, question: str) -> tuple[list[str], list[str]]:
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    ctx = EnrichmentContext(active_goal="converse with the user", user_input=question)
+    found, paths, *_ = BioEnrichmentPipeline(hippocampus=h)._query_hippocampus_traced(question, [], context=ctx)
+    return [s.memory_id for s in found], paths
+
+
+def test_an_earlier_identical_ask_is_recalled_and_the_turns_own_capture_is_not(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    earlier = _say(h, _QUESTION)
+    own = _say(h, _QUESTION)
+    ids, paths = _ask(h, _QUESTION)
+    assert ids == [earlier] and own not in ids and paths == ["cue"]
+
+
+@pytest.mark.parametrize("repeats", [5, 6, 40])
+def test_a_repeated_question_does_not_lose_its_answer(tmp_path: Path, repeats: int) -> None:
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    asks = [_say(h, _QUESTION) for _ in range(repeats)]
+    ids, _paths = _ask(h, _QUESTION)
+    assert fact in ids
+    assert asks[-1] not in ids  # the turn's own capture
+    assert len(set(ids) & set(asks)) == 1  # a line repeated takes one place, however often it was heard
+
+
+def test_a_line_repeated_across_the_store_takes_one_place_on_the_goal_path(tmp_path: Path) -> None:
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    h = _hippocampus(tmp_path)
+    other = _say(h, "The lighthouse keeper naps on the cape every noon.")
+    copies = [_say(h, "The lighthouse keeper walks the cape every morning.") for _ in range(6)]
+    ctx = EnrichmentContext(active_goal="lighthouse keeper on the cape")
+    found, paths, *_ = BioEnrichmentPipeline(hippocampus=h)._query_hippocampus_traced("zzz qqq", [], context=ctx)
+    ids = [s.memory_id for s in found]
+    assert other in ids and len(set(ids) & set(copies)) == 1 and set(paths) == {"goal"}
+
+
+def test_a_record_with_no_heard_words_is_never_collapsed(tmp_path: Path) -> None:
+    """One place per HEARD line: an action record heard nothing, so it is not "the same words" as another."""
+    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
+    from maxim.memory.types import Action, EpisodicMemory, Perception
+
+    silent = [
+        EpisodicMemory(id=f"m{i}", timestamp=float(i), perception=Perception(), action=Action(tool_name="brass_key"))
+        for i in range(3)
+    ]
+    ranked = _rank_by_relevance(list(silent), "brass key", 5, one_per_heard=True)
+    assert [m.id for m in ranked] == ["m2", "m1", "m0"]
+
+
+def test_the_ranker_keeps_every_copy_unless_asked(tmp_path: Path) -> None:
+    """Every other caller of ``recall(query=...)`` keeps what it had: one place per line is the enrichment path's."""
+    h = _hippocampus(tmp_path)
+    ids = [_say(h, _QUESTION) for _ in range(3)]
+    assert {m.id for m in h.recall(query=_QUESTION, limit=5)} == set(ids)
+
+
+def test_the_newest_record_of_the_turns_words_is_its_own_capture_across_a_restart(tmp_path: Path) -> None:
+    """Words are compared as NFKC case-folded text, and identity needs no session: the newest copy is this turn's."""
+    h = _hippocampus(tmp_path)
+    _say(h, _QUESTION)
+    h.save()
+    resumed = _hippocampus(tmp_path)
+    resumed.load()
+    own = _say(resumed, _QUESTION.upper())
+    assert resumed.newest_holding_words(_QUESTION) == own
+    assert resumed.newest_holding_words("never said") is None and resumed.newest_holding_words("") is None
+
+
 def test_a_records_content_tokens_follow_a_replaced_field() -> None:
     from maxim.memory.types import EpisodicMemory, Perception
 
