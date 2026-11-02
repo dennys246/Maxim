@@ -107,6 +107,10 @@
       "percent": 80.6,
       "missing": 59
     },
+    "maxim/motion": {
+      "percent": 70.9,
+      "missing": 59
+    },
     "maxim/peer": {
       "percent": 73.3,
       "missing": 663
