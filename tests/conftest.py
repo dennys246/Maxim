@@ -319,12 +319,12 @@ _SESSION_SIGINT_HANDLER = signal.getsignal(signal.SIGINT)
 
 
 @pytest.fixture(autouse=True)
-def _clear_stop_request(monkeypatch):
+def _clear_stop_request():
     """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield.
 
     Also the CLI's signal state (#1344): the noted-signal and ever-claimed flags reset, a signal-armed watchdog is
-    forgotten (`cli_signals._reset_for_tests`), `MAXIM_SUPERVISOR_KILL_S` is scrubbed, and a test that left a SIGINT
-    handler installed fails here instead of making a later Ctrl+C yield."""
+    forgotten (`cli_signals._reset_for_tests`), and a test that left a SIGINT handler installed fails here instead of
+    making a later Ctrl+C yield."""
     from maxim.integration import session_ownership
     from maxim.utils import cancellation
 
@@ -336,13 +336,28 @@ def _clear_stop_request(monkeypatch):
         if cli_signals is not None:
             cli_signals._reset_for_tests()
 
-    monkeypatch.delenv("MAXIM_SUPERVISOR_KILL_S", raising=False)
     _reset()
     yield
     _reset()
     if signal.getsignal(signal.SIGINT) is not _SESSION_SIGINT_HANDLER:
         signal.signal(signal.SIGINT, _SESSION_SIGINT_HANDLER)  # one leak must not error every later test
         raise AssertionError("a test left a SIGINT handler installed")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_supervisor_kill_env():
+    """Scrub ``MAXIM_SUPERVISOR_KILL_S`` around every test (#1344): a leaked value moves the CLI's kill deadline.
+
+    Saved and restored by hand, as the other scrubs here are: an autouse fixture sorting before
+    ``_scripts_modules_not_replaced`` that requested ``monkeypatch`` would undo every ``monkeypatch.setitem`` AFTER
+    that guard's check, so the guard would report each one as a leak."""
+    saved = os.environ.pop("MAXIM_SUPERVISOR_KILL_S", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SUPERVISOR_KILL_S", None)
+        if saved is not None:
+            os.environ["MAXIM_SUPERVISOR_KILL_S"] = saved
 
 
 @pytest.fixture(autouse=True)
