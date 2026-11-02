@@ -270,3 +270,49 @@ class TestFailureCleanup:
             atomic_write_text(str(target), "x")
 
         assert not (tmp_path / "out.txt.tmp").exists()
+
+
+# ── The strict policy: fsync_strict / append_line_fsync (#1315 item 5) ─────
+
+
+class TestStrictFsync:
+    def test_without_full_fsync_it_is_a_plain_fsync(self, tmp_path, monkeypatch):
+        import fcntl
+
+        from maxim.utils import atomic_io
+
+        monkeypatch.delattr(fcntl, "F_FULLFSYNC", raising=False)
+        synced = []
+        monkeypatch.setattr(atomic_io.os, "fsync", lambda fd: synced.append(fd))
+        atomic_io.fsync_strict(5)
+        assert synced == [5]
+
+    def test_unsupported_full_fsync_falls_back_to_fsync_and_others_raise(self, monkeypatch):
+        import errno
+        import fcntl
+
+        from maxim.utils import atomic_io
+
+        monkeypatch.setattr(fcntl, "F_FULLFSYNC", 51, raising=False)
+        failure = {"errno": errno.ENOTSUP}
+
+        def refusing(fd, cmd, arg=0):
+            raise OSError(failure["errno"], "injected")
+
+        monkeypatch.setattr(fcntl, "fcntl", refusing)
+        synced = []
+        monkeypatch.setattr(atomic_io.os, "fsync", lambda fd: synced.append(fd))
+        atomic_io.fsync_strict(7)
+        assert synced == [7], "an unsupported F_FULLFSYNC gets a plain fsync"
+        failure["errno"] = errno.EIO
+        with pytest.raises(OSError):
+            atomic_io.fsync_strict(7)
+        assert synced == [7], "a real I/O error raises; it is never downgraded to fsync"
+
+    @pytest.mark.timeout(10)
+    def test_a_write_that_makes_no_progress_raises_instead_of_spinning(self, monkeypatch):
+        from maxim.utils import atomic_io
+
+        monkeypatch.setattr(atomic_io.os, "write", lambda fd, data: 0)
+        with pytest.raises(OSError, match="wrote 0 bytes"):
+            atomic_io.append_line_fsync(99, b"abc\n")

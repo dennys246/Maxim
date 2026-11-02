@@ -1046,9 +1046,55 @@ Replacing `ProposalQueue` closes the drain path only. Under V1 none of these is 
 
 ## 5. Item 5: the proposal and refusal log (minimal)
 
+> **Status: BUILT 2026-11-01** (branch `feat/1315-item5-advisor-log`; owner decision V18: item 5 ships before item 1).
+> As built, where it differs from the text below:
+> - `src/maxim/advisor/log.py`. `maxim.advisor` exists as an empty package: `open()` and the session are item 1's.
+>   Because the package now exists before item 1, `test_advisor_gate.py::_require_advisor` checks for `open()`, so
+>   every item-1 gate still fails as "item 1 not built" (a precondition, not a re-pointed gate).
+> - The strict writers are `utils/atomic_io.py::fsync_strict` and `append_line_fsync` (§1A.3's layer table);
+>   `atomic_write_json_at` is item 1's. `F_FULLFSYNC` falls back to `fsync` only on an "unsupported" errno.
+> - The typed errors share `maxim.exceptions.AdvisorError` (item 1's errors join it): `AdvisorLogBroken`
+>   (`RuntimeError`), raised by an append to a broken or closed log, and `AdvisorLogMalformed` (`ValueError`),
+>   raised by `read_log`. Item 1 maps both the first `OSError` and a later `AdvisorLogBroken` to `error`.
+> - The log breaks on any exception from the write, the fsync or the `seq` count after them (one guard),
+>   `KeyboardInterrupt` included, so the record that broke it can be on disk one `seq` past `last_seq` (the
+>   report's `log_last_seq`). `read_log` reads it as the final record.
+> - The record schema is closed: exactly `{_record_kind, report_id, arguments}` or `{_record_kind, report_id, name,
+>   error_kind, layer, effect, reason}`, text fields `str`, and `effect` a sorted list of flag names or `"unknown"`
+>   (the executor's value for a name no registry holds, §1A.8's example). The log adds `seq`,
+>   `ts` (UTC ISO-8601, milliseconds, `+00:00`; item 1's `created_at` uses the same) and the truncation flags.
+> - Over-bound proposal `arguments` become the longest prefix of their own JSON encoding whose encoding, as a
+>   string, fits in 4 KiB, with `arguments_truncated`. A refusal's `reason` is bounded to 1,024 characters
+>   (`reason_truncated`).
+> - `create()` refuses a `session_id` that is not one path component (`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`) and a
+>   `mode` other than 0600 or 0640, and applies `mode` with `fchmod`, so the umask cannot narrow it.
+> - **The ordering rule for item 1:** `open()` creates the log after the backend has loaded and every refusal has
+>   run, so a load failure leaves no header-only log. `AdvisorLog` is a context manager for the failure paths after
+>   that.
+> - `read_log` reads regular files only (a FIFO is refused, not waited on). It also refuses a `_format_version`
+>   other than 1.0, a record after the close record, a close record whose `last_seq` disagrees, a `seq` that does
+>   not rise and nesting too deep to parse.
+> - `utils/audit.py::LAYER_RULES` gains `advisor` (§1A.3). `test_advisor_log.py` pins the log module's closure (no
+>   `runtime`, `tools` or `agents`) in a child process; item 1's `test_import_closure` covers the composition.
+> - All of item 5's gates are flipped except O7, which needs item 1's `ingest()`. Reviews: `docs/plans/reviews/item5/`.
+> - **Not folded, with the reason:**
+>   - `read_log` reads the file whole: a log is one session's bounded records.
+>   - `O_CLOEXEC` and `O_NOFOLLOW` have no deletion test: each is redundant with `O_EXCL` and Python's
+>     non-inheritable fds, kept as defence in depth.
+>   - The `F_FULLFSYNC` → `fsync` fallback logs at DEBUG, not WARNING: it is a per-call capability answer, and the
+>     plain fsync still fails loudly.
+>   - `error_kind` and `layer` are checked as strings, not against the executor's vocabulary: checking the values
+>     would import `tools/` (`ToolErrorKind`) or `runtime/` into the log, which its closure test forbids. `effect`'s
+>     sortedness is the caller's, not checked. Item 1 builds one refusal dict for the report and the log, and reuses
+>     `MAX_NAME_CHARS` for the report's `name`.
+>   - An interrupt between `os.open` and `create()`'s guard can leave a zero-byte file and leak one fd; `read_log`
+>     refuses that file, so it fails closed.
+>   - For item 1: the child gate's `advisor_missing` branch is unreachable now; `maxim/advisor` owes a coverage floor
+>     once it passes 200 statements; §8 below still lists only `save_action_log` among the superseded mirrors.
+
 `simulation/report.py::save_action_log` is a session-end rewrite at "1.2" with no fsync. The log borrows its shape (a
 header plus records), not its durability. No fsync'd append helper exists, and the existing `atomic_io` helpers
-swallow fsync errors, so the new one must not borrow theirs.
+swallow fsync errors, so the new one must not borrow theirs. *(As built: the strict pair now lives in `atomic_io` beside them; see the status block above.)*
 
 - **`AdvisorLog.create(report_dir_fd, session_id, *, mode=0o600)`.** `report_dir_fd` is the
   `O_DIRECTORY|O_NOFOLLOW` fd that `open()` already checked (§4.2). The log holds one file fd for the whole session.
