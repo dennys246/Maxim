@@ -593,6 +593,10 @@ class Tool(ABC):
     # (a recalled utterance, a stored reflection), so its follow-up is framed as EXTERNAL, untrusted content. Read
     # off the tool a call actually runs (after alias resolution), stamped on the ``ActionFollowup`` at dispatch.
     untrusted_output: bool = False
+    # ``ends_run`` (#1451) — running this tool ends the run (the narrator's ``finish_simulation``). A planning loop
+    # with liveness sets such an answer aside once when inputs arrived while it was being planned, so the agent reads
+    # them before it ends the run (``loop_controller.set_aside_run_end``). Read off the tool the call would run.
+    ends_run: bool = False
     # ``effect`` (#1315 item 2) — everything this tool can cause (:class:`Effect`). Declared in each concrete class's
     # OWN body: an inherited value does not count, because a subclass overriding ``execute`` must not inherit READ.
     # Undeclared means ``ALL``. Read it with :func:`effect_of`, never ``tool.effect``.
