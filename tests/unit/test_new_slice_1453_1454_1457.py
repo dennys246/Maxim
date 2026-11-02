@@ -88,18 +88,19 @@ def test_campaign_scoped_inputs_do_not_carry_and_run_settings_do_1453() -> None:
 
 
 @pytest.mark.parametrize(
-    ("goal", "generative", "arc_yaml", "expected"),
+    ("goal", "generative", "mode", "arc_yaml", "expected"),
     [
-        ("write me a poem", True, None, False),  # the flag came from the first goal: this goal matches no arc
-        ("cradle", False, None, True),  # and the reverse: this goal does
-        ("write me a poem", True, "arc.yaml", True),  # a named arc is a run setting
-        ("cradle", False, "arc.yaml", False),
+        ("write me a poem", True, "generative", None, False),  # derived from the first goal: this one matches no arc
+        ("cradle", False, "generative", None, True),  # and the reverse: this one does
+        ("write me a poem", True, "generative", "arc.yaml", True),  # a named arc is the operator's choice
+        ("cradle", False, "generative", "arc.yaml", False),
+        ("write me a poem", True, "dm", None, True),  # so is --dm, whatever the goal says
     ],
 )
 def test_generative_is_decided_for_the_new_goal_unless_an_arc_was_named(
-    goal: str, generative: bool, arc_yaml: str | None, expected: bool
+    goal: str, generative: bool, mode: str, arc_yaml: str | None, expected: bool
 ) -> None:
-    assert sim_teardown.generative_for_new_goal(goal, generative=generative, arc_yaml=arc_yaml) is expected
+    assert sim_teardown.generative_for_new_goal(goal, generative=generative, mode=mode, arc_yaml=arc_yaml) is expected
 
 
 @pytest.mark.timeout(240)
@@ -213,6 +214,32 @@ def test_the_panel_shows_the_one_prompt_and_the_block_closes_it_1454(monkeypatch
     assert goal == ""  # /cancel finishes, in any case
     assert display.prompts == [orchestrator.POST_SIM_PROMPT]
     assert display.calls == ["urgent=True", "urgent=False", "stop"]
+
+
+def test_ctrl_c_at_the_prompt_finishes_and_closes_the_display_1457(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _interrupted(**_kw: Any) -> str:
+        raise KeyboardInterrupt
+
+    display = _Display()
+    monkeypatch.setattr("maxim.simulation.sim_logger.get_active_display", lambda: display)
+    monkeypatch.setattr("maxim.simulation.report.print_report", lambda *_a, **_k: None)
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(orchestrator, "read_post_sim_goal_raw", _interrupted)
+    assert orchestrator._read_new_goal(SimpleNamespace(session_id="s1"), "reports") == ""
+    assert display.calls[-1] == "stop"
+
+
+def test_a_failed_print_cannot_cost_the_machine_readable_report_1457(monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted: list[Any] = []
+
+    def _broken_pipe(*_a: Any) -> None:
+        raise BrokenPipeError
+
+    monkeypatch.setattr(sim_teardown, "emit_requested_report", emitted.append)
+    monkeypatch.setattr(sim_teardown, "print_run_report", _broken_pipe)
+    with pytest.raises(BrokenPipeError):
+        sim_teardown.finish_run(object(), "report", "reports", 1.0, "completed", show_report=True)
+    assert emitted == ["report"]
 
 
 def test_the_raw_reader_shows_the_prompt_it_is_given_1454() -> None:

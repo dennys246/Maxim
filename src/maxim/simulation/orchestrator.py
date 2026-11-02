@@ -34,11 +34,9 @@ logger = logging.getLogger(__name__)
 from maxim.simulation.report import capture_start_provenance  # noqa: E402
 from maxim.simulation.sim_teardown import (  # noqa: E402
     SimTail,
-    build_simulation_result,
-    emit_requested_report,
     end_run,
+    finish_run,
     generative_for_new_goal,
-    print_run_report,
     save_session_aut_state,
 )
 from maxim.simulation.sim_types import (  # noqa: E402
@@ -428,7 +426,8 @@ def _restore_aut_from_session(
     store: ``loaded``; ``absent`` (the prior session never wrote it); ``failed:<Exc>``; ``no_store_in_run``
     (written, but this run has no such store); ``skipped_persistent_agent``; ``not_restored``. The directory is
     the EXACT name given; the resume prompt resolves the name separately and also accepts a prefix (#1009),
-    which :func:`maxim.simulation.report.resume_stamp` checks. Restores exactly as before: stamping only.
+    which :func:`maxim.simulation.report.resume_stamp` checks. Restores exactly as before: stamping only. A carry adds
+    ``missing``.
     """
     if resume_session and carry_from:
         raise ValueError("resume_session and carry_aut_from cannot be combined: /new sets carry_aut_from itself")
@@ -623,7 +622,10 @@ def _read_new_goal(report: Any, report_dir: str) -> str:
     _stdin = sys.stdin
     _can_raw = _stdin is not None and hasattr(_stdin, "isatty") and _stdin.isatty()
     if _can_raw:
-        _new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display, prompt=POST_SIM_PROMPT)
+        try:
+            _new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display, prompt=POST_SIM_PROMPT)
+        except KeyboardInterrupt:  # cbreak keeps ISIG, so Ctrl+C arrives as the signal: it finishes, as Enter does
+            logger.info("Ctrl+C at the post-sim prompt: finishing the run")
     if display is not None:
         display.set_urgent(False)
         display.stop()
@@ -2739,18 +2741,16 @@ def start_simulation_mode(
     )
     report, report_dir, duration, finish_reason = end_run(_tail)
 
+    _new_goal = ""
     if _is_interactive and _tail.stop is None:
         _new_goal = _read_new_goal(report, report_dir)
-        if _new_goal:
-            # This recurses: _carried_settings says why that is bounded, and why persistent_agent carries.
-            return start_simulation_mode(
-                goal=_new_goal,
-                **_new_run_settings,
-                generative=generative_for_new_goal(_new_goal, generative=generative, arc_yaml=arc_yaml),
-                carry_aut_from=_save_for_new(_tail, report, report_dir),
-            )
-    else:
-        print_run_report(_tail, report, report_dir)
-
-    emit_requested_report(report)
-    return build_simulation_result(_tail, report, report_dir, duration, finish_reason)
+    if _new_goal:
+        # This recurses: _carried_settings says why that is bounded, and why persistent_agent carries.
+        return start_simulation_mode(
+            goal=_new_goal,
+            **_new_run_settings,
+            generative=generative_for_new_goal(_new_goal, generative=generative, mode=mode, arc_yaml=arc_yaml),
+            carry_aut_from=_save_for_new(_tail, report, report_dir),
+        )
+    show_report = not _is_interactive or _tail.stop is not None
+    return finish_run(_tail, report, report_dir, duration, finish_reason, show_report=show_report)

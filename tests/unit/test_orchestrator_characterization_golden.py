@@ -89,8 +89,8 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
     arm now reaches the idle threshold behind a WEDGED narrator call, on the detector's injected clock
     (``StallDetector.CLOCK``, the §11 slice).
   - #1453, #1454, #1457 (FIXED, the ``/new`` slice): the re-entry carries the run settings and the AUT's saved state,
-    and ``--report-json`` describes the returned run (the new_goal arm's ``report_writes`` hold ``save_aut_state``
-    and ``emit_report_json`` twice each, and the fixture was regenerated for it in its own commit).
+    and ``--report-json`` describes the returned run (the new_goal arm's ``report_writes`` hold one extra
+    ``save_aut_state`` and one ``emit_report_json``, and the fixture was regenerated for it in its own commit).
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
@@ -370,14 +370,9 @@ def test_new_goal_arm_the_post_sim_goal_re_enters_the_run_with_a_fresh_aut(
     assert kickoffs == [("narrator#1", "SIMULATION GOAL: " + GOAL), ("narrator#2", "SIMULATION GOAL: " + NEW_GOAL)]
     assert [e["inject"] for e in t["events"] if e["inject"].startswith("aut")] == ["aut#1", "aut#2"]  # two bridges
     assert [turn["text"] for turn in t["turns"]] == ["Hello, who are you?", "What do you remember?"]
-    # Each run writes its own report and --report-json; /new saves the first AUT again once its session has ended.
-    assert t["report_writes"] == [
-        *_ONE_RUN_WRITES,
-        "emit_report_json",
-        "save_aut_state",
-        *_ONE_RUN_WRITES,
-        "emit_report_json",
-    ]
+    # Each run writes its own report; /new saves the first AUT again once its session has ended; only the returned
+    # run writes --report-json.
+    assert t["report_writes"] == [*_ONE_RUN_WRITES, "save_aut_state", *_ONE_RUN_WRITES, "emit_report_json"]
     assert t["result"]["goal"] == NEW_GOAL and t["report"]["goal"] == NEW_GOAL  # the inner run's
     assert t["result"]["finish_reason"] == "completed" and t["result"]["turns"] == 1
     assert t["data_home_files"].count("sim_sandbox/sim_agent_<STAMP>_<RAND>/nac.json") == 2  # one AUT home each

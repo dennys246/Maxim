@@ -131,7 +131,7 @@ def test_the_post_sim_call_matches_the_signature() -> None:
     # Called only on a TTY, and its return value is the goal the run reads.
     guard = next(n for n in ast.walk(fn) if isinstance(n, ast.If) and ast.unparse(n.test) == "_can_raw")
     assert any(c is call for c in ast.walk(guard))
-    (assign,) = [n for n in guard.body if isinstance(n, ast.Assign)]
+    (assign,) = [n for n in ast.walk(guard) if isinstance(n, ast.Assign)]
     assert ast.unparse(assign) == (
         "_new_goal = read_post_sim_goal_raw(_stdin=_stdin, display=display, prompt=POST_SIM_PROMPT)"
     )

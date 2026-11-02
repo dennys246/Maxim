@@ -80,6 +80,7 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("orchestrator.py", "_save_for_new"),
     ("sim_teardown.py", "save_session_aut_state"),
     ("sim_teardown.py", "generative_for_new_goal"),
+    ("sim_teardown.py", "finish_run"),
     # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
     # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
     # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it

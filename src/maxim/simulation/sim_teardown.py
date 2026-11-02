@@ -8,8 +8,8 @@ unchanged: each phase below is the tail's code verbatim, in the tail's order, re
 ``orchestrator``) and calls the phases around it:
 
     end_run (shut_down_run -> release_run_resources -> save_run_report -> run_roundup)
-    -> (the post-sim prompt in orchestrator.py, or print_run_report) -> emit_requested_report
-    -> build_simulation_result
+    -> (the post-sim prompt in orchestrator.py, when the run is interactive)
+    -> finish_run (emit_requested_report -> print_run_report, without the prompt -> build_simulation_result)
 
 ``_resolve_finish_reason`` and ``_sim_provenance`` moved with the code: the tail was their only caller.
 
@@ -591,14 +591,15 @@ def run_roundup(tail: SimTail, report: Any, report_dir: str) -> None:
         display_status("Skipping LLM roundup (session cost ceiling reached)")
 
 
-def generative_for_new_goal(goal: str, *, generative: bool, arc_yaml: str | None) -> bool:
+def generative_for_new_goal(goal: str, *, generative: bool, mode: str, arc_yaml: str | None) -> bool:
     """Whether the ``/new`` run is generative (owner decision 2026-11-02, amending #1453's list for this one setting).
 
-    An explicit arc is a run setting, so it carries. Otherwise the flag was derived from the first goal, so the new
-    goal derives its own, as a fresh ``--sim`` would: a carried flag would run the typed goal inside an unrelated arc."""
+    An operator's choice carries: a named arc, or ``--dm`` (``mode="dm"``), which asks for a generative campaign
+    whatever the goal says. On plain ``--sim`` the flag was derived from the first goal, so the new goal derives its
+    own, as a fresh ``--sim`` would: a carried flag would run the typed goal inside an unrelated arc."""
     from maxim.simulation.arcs import select_arc_for_goal
 
-    return generative if arc_yaml else select_arc_for_goal(goal) is not None
+    return generative if arc_yaml or mode == "dm" else select_arc_for_goal(goal) is not None
 
 
 def emit_requested_report(report: Any) -> None:
@@ -702,6 +703,16 @@ def print_run_report(tail: SimTail, report: Any, report_dir: str) -> None:
             display.stop()
             set_active_display(None)  # else the report is routed into the stopped panel and never printed
     print_report(report, session_dir=Path(report_dir) / report.session_id)
+
+
+def finish_run(
+    tail: SimTail, report: Any, report_dir: str, duration: float, finish_reason: str, *, show_report: bool
+) -> SimulationResult:
+    """The returned run's last steps. The machine-readable report goes first, so a failed print cannot cost it."""
+    emit_requested_report(report)
+    if show_report:
+        print_run_report(tail, report, report_dir)
+    return build_simulation_result(tail, report, report_dir, duration, finish_reason)
 
 
 def build_simulation_result(
