@@ -22,7 +22,7 @@ def _rank_by_relevance(
     query: str,
     limit: int,
     *,
-    one_per_heard: bool = False,
+    collapse_copies: bool = False,
 ) -> list[EpisodicMemory | CompressedMemory]:
     """Rank memories by content-token overlap with a free-text query (#1064).
 
@@ -33,10 +33,10 @@ def _rank_by_relevance(
     every slot, so this path was mostly recency. Recency breaks ties among the rest; a query with no
     content token returns nothing.
 
-    ``one_per_heard`` gives a line heard many times one place, its best-ranked copy, before ``limit`` cuts the list
-    (#1573: five copies of a question left no place for its answer). A record that heard nothing is never collapsed.
+    ``collapse_copies`` gives an episode stored many times one place, before ``limit`` cuts the list
+    (``distinct_copies``, #1573).
     """
-    from maxim.memory.text import key_tokens, same_words
+    from maxim.memory.text import key_tokens
 
     query_tokens = set(key_tokens(query))
     if not query_tokens:
@@ -50,20 +50,23 @@ def _rank_by_relevance(
 
     # Sort by score descending, then recency as tiebreaker
     scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    if not one_per_heard:
-        return [mem for _, _, mem in scored[:limit]]
-    ranked: list[EpisodicMemory | CompressedMemory] = []
-    heard: set[str] = set()
-    for _, _, mem in scored:
-        words = same_words(mem.input_text)
-        if words in heard:
-            continue
-        if words:
-            heard.add(words)
-        ranked.append(mem)
-        if len(ranked) == limit:
-            break
-    return ranked
+    ordered = [mem for _, _, mem in scored]
+    return distinct_copies(ordered)[:limit] if collapse_copies else ordered[:limit]
+
+
+def distinct_copies(memories: list[EpisodicMemory | CompressedMemory]) -> list[EpisodicMemory | CompressedMemory]:
+    """``memories`` in order, keeping the first of each set of copies (``copy_key``; a record that heard nothing is
+    kept). Five stored copies of a question left no place for its answer (#1573). An innate prior: the store keeps
+    every copy, this is what a bounded view shows."""
+    kept: list[EpisodicMemory | CompressedMemory] = []
+    seen: set[tuple[Any, ...]] = set()
+    for mem in memories:
+        key = mem.copy_key()
+        if key not in seen:  # None is never added, so a record that heard nothing is always kept
+            kept.append(mem)
+        if key is not None:
+            seen.add(key)
+    return kept
 
 
 def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
@@ -87,25 +90,25 @@ class RetrievalMixin:
     association graph formation. Mixed into the Hippocampus class.
     """
 
-    def newest_holding_words(self, text: str) -> str | None:
-        """The id of the newest record that heard exactly ``text`` (``memory/text.py::same_words``), or None. On a turn
-        whose capture landed before its query, that record IS the turn's own capture (#1573): older copies are earlier
-        episodes, which are ordinary memories."""
+    def turn_records(self, capture_id: str, text: str) -> tuple[str, ...]:
+        """The turn's own records: its arrival capture, and every later record holding exactly its words (``text``),
+        because an action taken on the same observation stores them too. Earlier records of those words are earlier
+        episodes, which are ordinary memories (#1573). A capture not yet stored is still its own id."""
         from maxim.memory.text import same_words
 
         words = same_words(text)
-        if not words:
-            return None
         with self._rwlock.read():
-            holding = [m for m in self._memories.values() if same_words(m.input_text) == words]
-            if not holding:
-                return None
-
-            def order(m: EpisodicMemory | CompressedMemory) -> tuple[int, float]:
-                seq = getattr(m, "capture_seq", None)
-                return (seq if isinstance(seq, int) else -1, m.timestamp)
-
-            return max(holding, key=order).id
+            first = getattr(self._memories.get(capture_id), "capture_seq", None)
+            if not words or not isinstance(first, int):
+                return (capture_id,)
+            later = (
+                m.id
+                for m in self._memories.values()
+                if isinstance(seq := getattr(m, "capture_seq", None), int)
+                and seq > first
+                and same_words(m.input_text) == words
+            )
+            return (capture_id, *later)
 
     def recall(
         self,
@@ -124,7 +127,7 @@ class RetrievalMixin:
         working_memory: WorkingMemorySet | None = None,
         retrieval_context: "RetrievalContext | None" = None,
         exclude_ids: Collection[str] = (),
-        one_per_heard: bool = False,
+        collapse_copies: bool = False,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories matching filters (hash lookup + filtering).
 
@@ -149,7 +152,7 @@ class RetrievalMixin:
             working_memory: If provided, each recalled memory is added as
                 a RECALL entry (reconsolidation pull into active context).
             exclude_ids: Never candidates, so they take no place inside ``limit`` and are not touched.
-            one_per_heard: With *query*, a line heard many times takes one place (``_rank_by_relevance``, #1573).
+            collapse_copies: With *query*, an episode stored many times takes one place (``distinct_copies``, #1573).
 
         Returns:
             List of matching memories, ranked by relevance if *query* is
@@ -219,7 +222,7 @@ class RetrievalMixin:
 
                 # Rank by relevance if query provided, else by recency
                 if query and results:
-                    results = _rank_by_relevance(results, query, limit, one_per_heard=one_per_heard)
+                    results = _rank_by_relevance(results, query, limit, collapse_copies=collapse_copies)
                 else:
                     results.sort(key=lambda m: m.timestamp, reverse=True)
                     results = results[:limit]

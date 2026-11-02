@@ -1,4 +1,5 @@
-- **A repeated question no longer loses its answer** (#1573): recall skipped every record holding the turn's exact words
+- **A repeated question no longer loses its answer** (#1573): recall skipped every record holding the turn's exact words,
   after its five-result limit, so an earlier identical question was never recalled and a fact was lost once its question
-  had been stored five times. Only the turn's own capture is excluded now, before the limit, and on enrichment's paths a
-  line heard many times takes one place.
+  had been stored five times. The turn's own records are now excluded by identity, before the limit, on every recall path,
+  and an episode stored many times (the same words, tool and outcome) takes one place on enrichment's paths and in
+  `memory_recall`. The same line with different outcomes stays two memories. `enrichment_trace` gains `own_ids`.

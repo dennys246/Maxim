@@ -37,7 +37,13 @@ from maxim.runtime.loop_external import (
 from maxim.runtime.loop_controller import _handle_planning_failure
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
-from maxim.runtime.loop_perception import perceive, percept_text, take_observation, take_user_input
+from maxim.runtime.loop_perception import (
+    perceive,
+    percept_enrichment_context,
+    percept_text,
+    take_observation,
+    take_user_input,
+)
 
 # Module reference, not a name import: a test that patches the leaf also reaches the loop's call.
 from maxim.runtime import substrate_proposal as _sp
@@ -1307,7 +1313,7 @@ def _run_agentic_loop_body(
 
         # The tick's input, read ONCE from every channel and memorized as it arrives (Session R): §1.2 enriches it
         _user_input = take_user_input(observation, state, agent)
-        transcript, hard_override, cli_input, is_agentic_voice_input, _addressed = _user_input
+        transcript, hard_override, cli_input, is_agentic_voice_input, _addressed = _user_input[:5]
         _percept_enrichment_text = ""
         _percept_text_for_cycle = ""
         _pfc_gate_passed = False
@@ -1364,17 +1370,7 @@ def _run_agentic_loop_body(
                 # Gate-fired minimum: always enrich cycle 1 when gate passes
                 _enrich_text = _percept_text_for_cycle or _addressed  # a mailbox input (voice, CLI, API) too (D5)
                 if (_pfc_gate_passed or _addressed) and bio_enrichment_pipeline is not None and _enrich_text:
-                    from maxim.integration.bio_enrichment import EnrichmentContext
-
-                    # Collect entity refs resolved by ImaginationTrigger this tick
-                    _resolved_entity_refs = (
-                        tuple(r.ref for r in _imagination_results if r.ref) if _imagination_results else ()
-                    )
-                    _enrich_ctx = EnrichmentContext(
-                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
-                        resolved_entities=_resolved_entity_refs,
-                        user_input=_addressed,
-                    )
+                    _enrich_ctx = percept_enrichment_context(state, _imagination_results, _user_input)
                     _enrich_result = bio_enrichment_pipeline.enrich(  # recall-only when only addressed (D5)
                         _enrich_text,
                         context=_enrich_ctx,

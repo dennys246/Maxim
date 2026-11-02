@@ -21,6 +21,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any, Callable
 
 from maxim.memory.encoding import EncodingSignals
@@ -930,6 +931,14 @@ class CompressedMemory(CompressedRecord):
         compressed before 1.2. Raw stored text: render it only framed (#1444)."""
         return self.heard
 
+    def copy_key(self) -> tuple[Any, ...] | None:
+        """What makes two records copies of one episode (``EpisodicMemory.copy_key``). Compression keeps no result text,
+        so a compressed record is only ever a copy of another compressed one."""
+        from maxim.memory.text import same_words
+
+        words = same_words(self.heard)
+        return (words, self.tool_name or "", self.success, ()) if words else None
+
     def to_context_dict(self) -> dict[str, Any]:
         """Format compressed memory for LLM context."""
         return {
@@ -1197,12 +1206,26 @@ class EpisodicMemory(MemoryRecord):
         for value in (self.perception.cli_input, self.perception.transcript):
             if isinstance(value, str) and value.strip():
                 return value
-        observations = self.perception.observations or {}
+        observations = self.perception.observations
+        if not isinstance(observations, Mapping):  # a damaged store; recall reads this on every record
+            return ""
         for key in ("cli_input", "transcript", "text"):
             value = observations.get(key)
             if isinstance(value, str) and value.strip():
                 return value
         return ""
+
+    def copy_key(self) -> tuple[Any, ...] | None:
+        """What makes two records copies of one episode: the same words heard, the same tool and the same outcome. Two
+        records of one line with different outcomes are two episodes (the stove burned, then it did not), and a record
+        that heard nothing is no one's copy (None) (#1573)."""
+        from maxim.memory.text import same_words, text_values
+
+        words = same_words(self.input_text)
+        if not words:
+            return None
+        outcome = (*text_values(self.outcome.result), *text_values(self.outcome.error))
+        return (words, self.action.tool_name or "", self.outcome.success, tuple(same_words(t) for t in outcome))
 
     def to_context_dict(self) -> dict[str, Any]:
         """Format episodic memory for LLM context."""

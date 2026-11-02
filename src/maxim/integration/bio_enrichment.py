@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, same_words
+from maxim.memory.text import RECALLED_WORDS_MAX_CHARS
 from maxim.memory.types import record_success
 from maxim.utils.logging import log_swallowed_exception
 
@@ -114,9 +114,11 @@ class EnrichmentContext:
     entity_names: tuple[str, ...] = ()  # known entity names
     resolved_entities: tuple[str, ...] = ()  # entity refs resolved by ImaginationTrigger
     # The user's words this turn, when the text being enriched IS them (the loop's percept path); "" for a thought
-    # or a deliberation cycle. Recall skips a record holding exactly these words: the turn's own capture is stored
-    # asynchronously and would otherwise recall itself (Session R, F11/N6).
+    # or a deliberation cycle.
     user_input: str = ""
+    # The record those words became at arrival (``take_user_input``), "" if none: the turn's own capture, stored before
+    # the query, would otherwise recall itself (Session R F11/N6; by identity since #1573, earlier copies are memories).
+    own_capture_id: str = ""
 
     def to_gating_context(self) -> Any:
         """Convert to GatingContext for the scorer."""
@@ -182,6 +184,7 @@ class BioEnrichmentPipeline:
         # reward bias), so the trace's label is kept apart from it and changes no behaviour.
         self._trace_agent_id = trace_agent_id
         self._unrendered_episodes = 0  # recalled episodes that rendered as "past experience" (#1444)
+        self._turn_capture_id = ""  # the record ``_turn_input`` became at arrival, "" if none (#1573)
         self._turn_input = ""  # the latest user words the percept path enriched: the turn a thought belongs to
 
     def enrich(
@@ -258,7 +261,7 @@ class BioEnrichmentPipeline:
         keywords = self._extract_keywords(text)
 
         # Query bio-systems (each handles None gracefully)
-        memories, memory_paths, goal_path_horizon, goal_path_holes = self._query_hippocampus_traced(
+        memories, memory_paths, goal_path_horizon, goal_path_holes, own_ids = self._query_hippocampus_traced(
             text, keywords, context=ctx
         )
         predictions = self._query_nac(keywords)
@@ -285,6 +288,7 @@ class BioEnrichmentPipeline:
                     "memory_paths": memory_paths,
                     "goal_path_horizon": goal_path_horizon,
                     "goal_path_holes": goal_path_holes,
+                    "own_ids": own_ids,  # the turn's own records, excluded on every path (#1573)
                     "predictions": len(predictions),
                     "concepts": len(concepts),
                     "affordances": len(affordances),
@@ -671,7 +675,7 @@ class BioEnrichmentPipeline:
         text: str,
         keywords: list[str],
         context: "EnrichmentContext | None" = None,
-    ) -> tuple[list[EpisodicSummary], list[str], int | None, list[list[int]]]:
+    ) -> tuple[list[EpisodicSummary], list[str], int | None, list[list[int]], list[str]]:
         """Search hippocampus for episodes matching the text.
 
         Four retrieval paths, tried in order:
@@ -688,13 +692,15 @@ class BioEnrichmentPipeline:
         3. **Goal path**: query by goal (when goal matches prior sessions).
         4. **Substring path**: legacy full-text search (fallback).
 
-        The turn's own capture is never recalled: the newest record holding exactly the turn's words
-        (``context.user_input``, else the turn's last). It is excluded before each path's limit, so it costs no place;
-        an older record of those words is an earlier episode and is recalled like any other (#1573). A line heard many
-        times takes one place, so repeats cannot crowd out what they ask about.
+        The turn's own records are never recalled: its arrival capture (``context.own_capture_id``, inherited by the
+        turn's deliberation cycles and thoughts) and any later record holding its words (``Hippocampus.turn_records``).
+        They are excluded before every path's limit, so they cost no place; an earlier record of those words is an
+        earlier episode and is recalled like any other (#1573). On the cue, goal and substring paths an episode stored
+        many times takes one place (``distinct_copies``), so repeats cannot crowd out what they ask about; the graph
+        path takes no collapse (inert, D6).
         """
         if self._hippocampus is None:
-            return [], [], None, []
+            return [], [], None, [], []
 
         summaries: list[EpisodicSummary] = []
         paths: list[str] = []  # parallel to ``summaries`` (appended with it): which retrieval path surfaced each
@@ -707,20 +713,13 @@ class BioEnrichmentPipeline:
         turn_input = (getattr(context, "user_input", "") or "") if context else ""
         if turn_input:
             self._turn_input = turn_input
-        own_ids: tuple[str, ...] = ()
-        shown_words: set[str] = set()
+            self._turn_capture_id = getattr(context, "own_capture_id", "") or ""
+        own_ids = self._turn_own_ids()
 
         def _add_memory(mem: Any, relevance: float, path: str) -> None:
             if mem.id in seen_ids:
                 return
             seen_ids.add(mem.id)
-            if mem.id in own_ids:
-                return  # this turn's own capture, stored before the query ran
-            words = same_words(_input_text(mem))
-            if words in shown_words:
-                return  # the same line on another path: one place per line heard
-            if words:
-                shown_words.add(words)
             summary = self._summarize_episode(mem)
             valence = getattr(mem, "valence", None)
             if valence is None:
@@ -745,9 +744,6 @@ class BioEnrichmentPipeline:
             log_swallowed_exception()
 
         try:
-            own_id = self._hippocampus.newest_holding_words(turn_input or self._turn_input)
-            own_ids = (own_id,) if own_id else ()
-
             # Path 1: Graph-based retrieval via spreading activation.
             # Encode percept → EC READ-ONLY pattern completion → spreading
             # activation on binding graph → ATL concept names → hippocampus
@@ -788,7 +784,9 @@ class BioEnrichmentPipeline:
                                     concept = self._atl.get(node_id)
                                     name = getattr(concept, "name", "") if concept else ""
                                     if name:
-                                        mems = self._hippocampus.recall(object_detected=name, limit=2)
+                                        mems = self._hippocampus.recall(
+                                            object_detected=name, limit=2, exclude_ids=own_ids
+                                        )
                                         for mem in mems:
                                             _add_memory(mem, relevance=float(activation), path="graph")
                 except Exception as e:
@@ -796,7 +794,7 @@ class BioEnrichmentPipeline:
 
             # Path 2: the cue -- what was just said (#1447), on the content-token ranker (#1064).
             if len(summaries) < 3:
-                for mem in self._hippocampus.recall(query=text, limit=5, exclude_ids=own_ids, one_per_heard=True):
+                for mem in self._hippocampus.recall(query=text, limit=5, exclude_ids=own_ids, collapse_copies=True):
                     if len(summaries) >= 3:
                         break
                     _add_memory(mem, relevance=0.8, path="cue")
@@ -810,23 +808,33 @@ class BioEnrichmentPipeline:
                 goal = getattr(context, "active_goal", None) if context else None
                 if goal:
                     goal_results = self._hippocampus.recall(
-                        query=goal, limit=5, exclude_ids=own_ids, one_per_heard=True
+                        query=goal, limit=5, exclude_ids=own_ids, collapse_copies=True
                     )
-                    for mem in goal_results:
-                        if len(summaries) >= 3:
-                            break
+                    for mem in goal_results[:3]:
                         _add_memory(mem, relevance=0.7, path="goal")
 
             # Path 4: Substring fallback
             if len(summaries) < 3:
-                results = self._hippocampus.search_by_content(text, limit=5)
+                results = self._hippocampus.search_by_content(text, limit=5, exclude_ids=own_ids, collapse_copies=True)
                 for mem in results[:3]:
                     _add_memory(mem, relevance=0.5, path="substring")
 
-            return summaries[:3], paths[:3], horizon, holes
+            return summaries[:3], paths[:3], horizon, holes, list(own_ids)
         except Exception as e:
             log.debug("Bio-enrichment hippocampus query failed: %s", e)
-            return [], [], horizon, holes
+            return [], [], horizon, holes, list(own_ids)
+
+    def _turn_own_ids(self) -> tuple[str, ...]:
+        """The records this turn made, which recall never surfaces. A failed read costs at most one echo of the turn's
+        later records, never the recall (as the horizon read above)."""
+        capture_id = self._turn_capture_id
+        if not capture_id:
+            return ()
+        try:
+            return tuple(self._hippocampus.turn_records(capture_id, self._turn_input))
+        except Exception:  # noqa: BLE001 -- logged; the arrival capture itself is still excluded
+            log_swallowed_exception()
+            return (capture_id,)
 
     def _query_nac(self, keywords: list[str]) -> list[CausalPrediction]:
         """Query NAc for causal predictions matching keywords.

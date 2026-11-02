@@ -393,6 +393,9 @@ under `access_based` is 3 × `compression_age`, about 3 days. It ships as a rele
 
 ## 13. What remains (2026-10-28)
 
+**Superseded in part (#1573, 2026-11-02):** the self-recall skip of §3 (F11), §9 and §11 matched words, after the limit. It
+is now by identity, before the limit, and copies of an episode take one place: `docs/agents/bio-memory.md` states the rule.
+
 - **#1476: the T1-16 re-run.** T1-16 is STALE since 2026-10-25 (§7). The judge (`o19_verdict.py`'s `EXP63_PATHS`
   and R3′ order) rejects the new `cue` path, so it is rebuilt first, then Exp 63 re-runs on the shipped ranker. Until a
   stamped re-run lands, **1.3.4 makes no cross-session recall claim** (weak evidence never gates). It is a pure

@@ -135,9 +135,6 @@ class _StubHippocampus:
     def recall(self, **kwargs: Any) -> list:
         return []
 
-    def newest_holding_words(self, text: str) -> None:
-        return None
-
 
 class TestBioEnrichmentRecallIsReadOnly:
     """The caller half: the single production recall caller leaves EC untouched."""

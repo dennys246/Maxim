@@ -25,7 +25,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, overload
 from uuid import uuid4
 
@@ -65,7 +65,7 @@ from maxim.memory.episode import (
 )
 from maxim.memory.hippocampus_consolidation import ConsolidationMixin
 from maxim.memory.hippocampus_persistence import PersistenceMixin
-from maxim.memory.hippocampus_retrieval import RetrievalMixin
+from maxim.memory.hippocampus_retrieval import RetrievalMixin, distinct_copies
 from maxim.memory.layer import MemoryLayer
 from maxim.memory.rwlock import RWLock
 from maxim.memory.state_store import StateStore
@@ -1387,6 +1387,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         limit: int = 20,
         *,
         retrieval_context: RetrievalContext | None = None,
+        exclude_ids: Collection[str] = (),
+        collapse_copies: bool = False,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Search memories by text content across all fields.
 
@@ -1396,6 +1398,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         Args:
             query: Text to search for.
             limit: Maximum number of results.
+            exclude_ids: Never matches, so they take no place inside ``limit``.
+            collapse_copies: An episode stored many times takes one place (``distinct_copies``, #1573).
 
         Returns:
             Matching memories, most recent first.
@@ -1409,7 +1413,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         with self._rwlock.read():
             n_total = len(self._memories)
             for memory in self._memories.values():
-                if self._memory_matches_query(memory, query_lower):
+                if memory.id not in exclude_ids and self._memory_matches_query(memory, query_lower):
                     results.append(memory)
 
             # Structured trace for JSONL capture
@@ -1436,7 +1440,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             )
 
             results.sort(key=lambda m: m.timestamp, reverse=True)
-            return results[:limit]
+            return (distinct_copies(results) if collapse_copies else results)[:limit]
 
     @staticmethod
     def _searchable_values(memory: Any) -> list[Any]:
