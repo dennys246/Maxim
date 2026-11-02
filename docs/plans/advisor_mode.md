@@ -149,7 +149,9 @@ their side effects are channels of their own: `FearAgent.review_action` sends ac
 
 **The proposal and refusal log (item 5)** is a separate JSONL file, not new rows in `actions.jsonl`, because console
 consumers serve `actions.jsonl` rows as `ActionRecord` (Session S's contract). The writer mirrors
-`simulation/report.py::save_action_log`, with a header record that carries `_format_version`.
+`simulation/report.py::save_action_log`, with a header record that carries `_format_version`. *(Superseded: as built
+(#1315 item 5, notes §5), the log borrows that writer's shape only, not its durability. Each line is fsynced through
+`atomic_io`'s strict helpers before `append()` returns.)*
 
 **Genuinely new:**
 - `Tool.effect`, because nothing classifies effects today;
@@ -249,7 +251,8 @@ proposal log back into a dispatch.
   parent's and is never wider.
 - **The decorator.** `maxim.tool` gains `effect=`.
 - **Refusals are never silent.** A ceiling refusal at a swallowing seam (`api._inject_registered_tools` at WARNING,
-  `dm_runtime._register_entity_tools` at DEBUG) is written to item 5's log.
+  `dm_runtime._register_entity_tools` at DEBUG) is written to item 5's log. *(Superseded: item 5's log is the
+  observer's alone (notes §5). The swallowing seams log a structured WARNING in this release.)*
 - **The comms recipient allowlist (O4, non-advisor runs) is Session H's.**
 
 ### Item 3: the required `ToolPolicy`

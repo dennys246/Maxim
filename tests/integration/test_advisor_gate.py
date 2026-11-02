@@ -254,7 +254,10 @@ def require(cond: Any, msg: str) -> None:
 
 def _require_advisor() -> Any:
     assert importlib.util.find_spec("maxim.advisor") is not None, "item 1 not built: no maxim.advisor"
-    return importlib.import_module("maxim.advisor")
+    mod = importlib.import_module("maxim.advisor")
+    # Item 5 (V18: it ships first) creates the package for maxim.advisor.log; item 1 is built when open() exists.
+    assert hasattr(mod, "open"), "item 1 not built: maxim.advisor has no open()"
+    return mod
 
 
 def _session_mod() -> Any:

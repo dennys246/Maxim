@@ -76,7 +76,7 @@ def _expect_raises(exc: type[BaseException] | tuple[type[BaseException], ...], f
 
 
 def _log_mod() -> Any:
-    assert importlib.util.find_spec("maxim.advisor") is not None, "item 1 not built: no maxim.advisor"
+    assert importlib.util.find_spec("maxim.advisor") is not None, "item 5 not built: no maxim.advisor package"
     assert importlib.util.find_spec("maxim.advisor.log") is not None, "item 5 not built: no maxim.advisor.log"
     mod = importlib.import_module("maxim.advisor.log")
     assert hasattr(mod, "AdvisorLog") and hasattr(mod, "read_log"), "item 5 not built: no AdvisorLog / read_log"
@@ -160,7 +160,6 @@ class _SyncRecorder:
 # ── create() ──────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with AdvisorLog.create")
 def test_create_writes_header_and_fsyncs(report_dir: tuple[Path, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """The header is the first line, carries ``_format_version`` and ``advisor_log/1``, and is fsynced with the dir."""
     log_mod = _log_mod()
@@ -183,7 +182,6 @@ def test_create_writes_header_and_fsyncs(report_dir: tuple[Path, int], monkeypat
 
 
 @pytest.mark.parametrize("planted", ["file", "symlink", "dangling_symlink"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with O_EXCL|O_NOFOLLOW via dir_fd")
 def test_create_refuses_planted(report_dir: tuple[Path, int], tmp_path: Path, planted: str) -> None:
     """A planted file or symlink at the log's name refuses; nothing is written through it."""
     log_mod = _log_mod()
@@ -204,7 +202,6 @@ def test_create_refuses_planted(report_dir: tuple[Path, int], tmp_path: Path, pl
         assert not target.exists(), "create() created the target of a dangling symlink"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with create(mode=0o600)")
 def test_create_mode_defaults_0600(report_dir: tuple[Path, int]) -> None:
     """The default mode is 0600 (under a permissive umask); ``mode=0o640`` is passed through."""
     log_mod = _log_mod()
@@ -224,7 +221,6 @@ def test_create_mode_defaults_0600(report_dir: tuple[Path, int]) -> None:
 # ── append() ──────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with append()'s encoding")
 def test_append_one_ascii_line_per_record_no_nan(report_dir: tuple[Path, int]) -> None:
     """``ensure_ascii``, escaped newlines, one line per record; NaN raises and is never written."""
     log_mod = _log_mod()
@@ -243,7 +239,6 @@ def test_append_one_ascii_line_per_record_no_nan(report_dir: tuple[Path, int]) -
     log.close()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with seq / report_id / ts")
 def test_append_seq_monotonic_with_report_id_and_ts(report_dir: tuple[Path, int]) -> None:
     """``seq`` rises by record, and every record carries ``report_id`` and ``ts``."""
     log_mod = _log_mod()
@@ -260,7 +255,6 @@ def test_append_seq_monotonic_with_report_id_and_ts(report_dir: tuple[Path, int]
     log.close()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with the field bounds")
 def test_append_bounds_fields_with_flag(report_dir: tuple[Path, int]) -> None:
     """Proposal ``arguments`` are bounded to 4 KiB and refusal ``name`` to 128 characters, each with a flag."""
     log_mod = _log_mod()
@@ -290,7 +284,6 @@ def _inject_write_failure(monkeypatch: pytest.MonkeyPatch, protected: set[int]) 
 
 
 @pytest.mark.parametrize("where", ["write", "fsync"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with the broken-log rule")
 def test_append_oserror_marks_broken(report_dir: tuple[Path, int], monkeypatch: pytest.MonkeyPatch, where: str) -> None:
     """An ``OSError`` from ``os.write`` or the fsync raises, marks the log broken, and every later append raises."""
     log_mod = _log_mod()
@@ -312,7 +305,6 @@ def test_append_oserror_marks_broken(report_dir: tuple[Path, int], monkeypatch: 
         assert size_broken == size_before, "a failed os.write still left bytes"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with the write loop")
 def test_append_completes_short_write(report_dir: tuple[Path, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """A short ``os.write`` is completed by the loop: the line lands whole."""
     log_mod = _log_mod()
@@ -341,7 +333,6 @@ def test_append_completes_short_write(report_dir: tuple[Path, int], monkeypatch:
 
 
 @pytest.mark.parametrize("content", ["empty", "headerless", "two_headers", "bad_line_mid"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with read_log's strictness")
 def test_read_log_rejects_malformed(report_dir: tuple[Path, int], content: str) -> None:
     """An empty or headerless file, a second header, or a bad line before the last raises ``ValueError``."""
     log_mod = _log_mod()
@@ -362,7 +353,6 @@ def test_read_log_rejects_malformed(report_dir: tuple[Path, int], content: str) 
     _expect_raises(ValueError, lambda: log_mod.read_log(_path(d)), f"read_log() of a {content} file")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with read_log / close")
 def test_read_log_torn_tail_closed_and_last_seq(report_dir: tuple[Path, int]) -> None:
     """A torn final line is dropped; an open log reads ``closed=False``; ``close()`` writes the close record."""
     log_mod = _log_mod()
@@ -386,7 +376,6 @@ def test_read_log_torn_tail_closed_and_last_seq(report_dir: tuple[Path, int]) ->
     assert closed_view["closed"] is True and closed_view["last_seq"] == s2, closed_view
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1315 item 5: flips with the F_FULLFSYNC branch")
 def test_full_fsync_branch(report_dir: tuple[Path, int], monkeypatch: pytest.MonkeyPatch) -> None:
     """With ``fcntl.F_FULLFSYNC`` present (real on macOS, monkeypatched on Linux) create and append use it."""
     import fcntl
