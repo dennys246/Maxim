@@ -487,7 +487,7 @@ class FakeRouter:
             if turn == 1:
                 return _act("send_message", text="What is your favourite colour?")
             if turn == 2:
-                if self.arm == "stdin":  # the operator ends this arm (/cancel after turn 2)
+                if self.arm == "stdin":  # never asked since #1451: the /cancel during turn 2 stops the run first
                     return _act("observe_actions")
                 return _act(
                     "finish_simulation",
