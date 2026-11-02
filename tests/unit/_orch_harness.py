@@ -43,7 +43,7 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      (at least 300 s by the call-timeout clamp) plus the margin, so the arm needs the injected clock (owner
      decisions 2026-10-24 and 2026-10-30; the §11 slice). The arm's first ``observe_actions`` step gives the
      checkpoint a follow-up to ride, and the wedged call's answer gives the nudge one, so no percept here waits
-     behind a job that ends the chain (#1451).
+     behind the finish (that case, #1451's, is the ``PROBE_ARMS``' to drive).
   6. ``new_goal``: interactive ON (``/new`` lives only in the interactive post-sim branch) with a line-read
      stdin that claims a TTY over a pipe, which ``tcgetattr`` refuses, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
@@ -262,6 +262,22 @@ ARMS: dict[str, dict[str, Any]] = {
         "shipped_inputs": ("components/bodies/base_humanoid.yaml", "reflexes/humanoid.yaml"),  # its body + reflexes
     },
 }
+# PROBE ARMS: driven by ``run_arm`` exactly like ``ARMS``, but not golden-pinned (the golden parametrizes over
+# ``ARMS`` only). They are behaviour tests' fixtures: each answers one question about the composed run.
+PROBE_ARMS: dict[str, dict[str, Any]] = {
+    # #1451: an operator line (stdin free text, so the narrator's ``USER GUIDANCE``) lands while the narrator's
+    # ``finish_simulation`` is being planned (``_hold_for_held_finish``). Re-plan once: that finish is set aside and
+    # the narrator plans again with the line in view, then finishes.
+    "held_finish": {"max_turns": 10, "events": True},
+    # ... and a second line lands while that re-plan is planned: "once" holds, so the second finish runs, and the
+    # line it was not shown is warned about (owner decision 2026-11-01).
+    "held_finish_twice": {"max_turns": 10, "events": True},
+    # Two lines land behind the first finish: the re-plan shows the narrator both (the first is its request, the
+    # second rides as a held input, ``loop_controller.take_replan_inputs``).
+    "held_finish_two_lines": {"max_turns": 10, "events": True},
+}
+# The operator lines the held_finish arms feed, in order (``_hold_for_held_finish``).
+HELD_GUIDANCE = ("please also ask which tools it has", "and ask what it remembers")
 # The imagination arm's scene manifest, one sentence per entity. Short noun phrases ("a rusty sword") would hit a
 # phrase-extractor defect: ``extract_entity_phrases`` merges them across the manifest's newline join ("sword a brass
 # lantern", #1455); the arm characterizes §7's wiring and teardown, not the extractor.
@@ -467,12 +483,14 @@ class FakeRouter:
             return self._answer_stall_narrator(call)
         if self.arm in ("new_goal", "persistent_agent", "imagination"):
             return self._answer_one_probe_narrator(call)
+        if self.arm in ("held_finish", "held_finish_twice", "held_finish_two_lines"):
+            return self._answer_held_finish_narrator(call)
         if call["kind"] == "followup" and call["executed"] == "send_message":
             turn = call.get("turn")
             if turn == 1:
                 return _act("send_message", text="What is your favourite colour?")
             if turn == 2:
-                if self.arm == "stdin":  # the operator ends this arm (/cancel after turn 2)
+                if self.arm == "stdin":  # never asked since #1451: the /cancel during turn 2 stops the run first
                     return _act("observe_actions")
                 return _act(
                     "finish_simulation",
@@ -502,6 +520,17 @@ class FakeRouter:
         if call["kind"] == "followup" and call["executed"] == "send_message" and call.get("turn") == 1:
             which = "the new goal" if NEW_GOAL in call["request"] else "the first goal"
             return _act("finish_simulation", status="completed", reason=f"{which} probed", summary="")
+        return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
+
+    def _answer_held_finish_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
+        """One probe, then ``finish_simulation`` (held until an operator line lands: ``_hold_for_held_finish``); a
+        plan for that line answers ``finish_simulation`` again (held too in ``held_finish_twice``)."""
+        if call["kind"] == "plan" and call["request"].startswith("simulation goal:"):
+            return _act("send_message", text="Hello, who are you?")
+        if call["kind"] == "followup" and call["executed"] == "send_message" and call.get("turn") == 1:
+            return _act("finish_simulation", status="completed", reason="planned before the guidance", summary="")
+        if call["kind"] == "plan" and call["request"].startswith("user guidance:"):
+            return _act("finish_simulation", status="completed", reason="planned with the guidance in view", summary="")
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
     def _answer_stall_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
@@ -870,7 +899,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     from maxim.utils.paths import _reset_caches
 
     _assert_no_model_loaded()
-    spec = ARMS[arm]
+    spec = ARMS[arm] if arm in ARMS else PROBE_ARMS[arm]
     work = workdir.resolve()
     router = FakeRouter(arm)
     stall_clock = _WallPlusOffset()  # the stall detector's clock in the stall arm (``_hold_for_stall_arm``)
@@ -1028,6 +1057,30 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 "the stall detector's idle nudge behind the wedged narrator call",
             )
 
+    recorded: list[str] = []  # the held_finish arms: the lines the narrator's memory recorded, in order
+
+    def _hold_for_held_finish(role: str, call: dict[str, Any]) -> None:
+        """The held_finish arms (#1451): the narrator's planning call that answers ``finish_simulation`` (the turn-1
+        follow-up; in ``held_finish_twice`` also the plan for the first line) answers only after the next operator line
+        has reached the narrator's source, so the line arrives while that planning job is in flight."""
+        if role != "narrator":
+            return
+        first = call["kind"] == "followup" and call["executed"] == "send_message" and call.get("turn") == 1
+        second = (
+            arm == "held_finish_twice"
+            and call["kind"] == "plan"
+            and call["request"].startswith("user guidance: " + HELD_GUIDANCE[0])
+        )
+        if not (first or second):
+            return
+        lines = HELD_GUIDANCE if first and arm == "held_finish_two_lines" else (HELD_GUIDANCE[0 if first else 1],)
+        for line in lines:
+            _feed(line)
+            _wait_for(
+                lambda line=line: f"USER GUIDANCE: {line}" in recorded,
+                f"the operator line {line!r} in the narrator's memory",
+            )
+
     cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
     post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
 
@@ -1058,6 +1111,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
 
     if arm == "stall":
         router.hold = _hold_for_stall_arm
+    if arm in PROBE_ARMS:
+        router.hold = _hold_for_held_finish
 
     def _cancel_after_finish(bridge: Any) -> None:
         """The narrator's finish ends the run (#1259). The operator ``/cancel`` these arms used to send after it is now
@@ -1088,6 +1143,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             and self.finish_context.get("initiated_by") == "llm_finish_tool"
         ):
             _cancel_after_finish(self)  # module docstring: the post-finish grace is otherwise 180 s
+        if arm in PROBE_ARMS and self.finish_context.get("initiated_by") == "llm_finish_tool":
+            _cancel_after_finish(self)  # a finish that does not stop the run is a finding, not a 180 s wait
 
     def display_status(message: str) -> None:
         lifecycle.append(f"status: {message}")
@@ -1155,6 +1212,18 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     ]
     if isinstance(stdin, QueueStdin):
         patches.append((OperatorLines, "next_line", _counted_next_line))
+    if arm in PROBE_ARMS:
+        from maxim.memory.base import InMemoryMemory
+
+        orig_record = InMemoryMemory.record_command
+
+        def record_command(self: Any, command: str) -> None:
+            """What the narrator's memory has heard (its ``InMemoryMemory``): the held_finish holds answer only once
+            the loop has perceived the line, as it would during a real planning call's seconds."""
+            orig_record(self, command)
+            recorded.append(str(command))
+
+        patches.append((InMemoryMemory, "record_command", record_command))
     if arm == "stall":
         from maxim.simulation.stall_detector import StallDetector
 
