@@ -995,7 +995,9 @@ def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
     ticket = MotionTicket()
     dn = _dn(lambda u, v, duration: ticket)
     dn._gaze_history.record_gaze((100.0, 100.0))
+    dn._gaze_history._last_move_time -= 60.0
     assert dn.look_opposite(duration=0.5) is True
+    assert dn._gaze_history.should_move((400.0, 300.0))[2].startswith("dwell_time")
     assert dn._spatial_map.booked == []
     ticket.finish(MotionOutcome(ok=True))
     dn._drain_motion_outcomes()
@@ -1028,6 +1030,21 @@ def test_an_ik_exception_in_the_motor_callable_reads_as_ik(daemon):
     ticket = MotionTicket()
     ticket.claim()
     assert run_motion(QueuedMotion(ticket, _raises, (), {}), selfy).kind == "ik"
+
+
+def test_the_sdks_logged_ik_warning_reads_as_ik(daemon):
+    from maxim.embodied_runtime.workers import QueuedMotion, run_motion
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    selfy = _selfy(controller(daemon), daemon)
+
+    def _warns():
+        logging.getLogger("reachy_mini").warning("Collision detected or head pose not achievable")
+        return MotionOutcome(ok=True)
+
+    ticket = MotionTicket()
+    ticket.claim()
+    assert run_motion(QueuedMotion(ticket, _warns, (), {}), selfy).kind == "ik"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1186,7 +1203,16 @@ def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemo
     starts: list = []
     completes: list = []
     pain = _risky_pain(starts, completes)
+    gotos_at_start: list[int] = []
+    real_start = pain.record_action_start
+
+    def _spy_start(*a, **kw):
+        gotos_at_start.append(len(daemon.gotos()))
+        return real_start(*a, **kw)
+
+    pain.record_action_start = _spy_start
     ctl._motion_lock.acquire()  # move A
+    before = len(daemon.gotos())
     done = threading.Event()
 
     def _turn():
@@ -1199,6 +1225,16 @@ def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemo
     ctl._motion_lock.release()
     assert done.wait(10.0)
     assert len(starts) == 1 and completes == [(True, "turn-event")]
+    assert gotos_at_start == [before]  # at the first SDK call, not after the turn
+
+
+def test_turn_around_resolves_the_ticket_it_was_given(daemon):
+    from maxim.hardware.controller import MotionTicket
+
+    selfy = _selfy(controller(daemon), daemon)
+    ticket = MotionTicket()
+    turned = selfy.turn_around(30.0, duration=5.0, ticket=ticket)
+    assert ticket.completed.result(timeout=1.0) == turned
 
 
 def test_a_turn_refused_before_its_first_sdk_call_books_nothing_but_one_that_started_does(daemon):
