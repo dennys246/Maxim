@@ -61,7 +61,7 @@
     {
       "file": "src/maxim/embodied_runtime/media_loop.py",
       "qualname": "MediaLoopMixin.live",
-      "lines": 419
+      "lines": 418
     },
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
@@ -141,7 +141,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2154
+      "lines": 2144
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",

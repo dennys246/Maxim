@@ -7,7 +7,14 @@ import numpy as np
 from pathlib import Path
 from typing import Any
 
-from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
+from maxim.hardware.controller import (
+    DurationPolicy,
+    clamp_finite,
+    floor_duration,
+    policy_duration,
+    require_duration,
+    require_finite,
+)
 from maxim.hardware.reachy.controller import ANTENNA_LIMIT_RAD, check_sdk_command
 from maxim.utils.logging import log_swallowed_exception, warn
 
@@ -228,7 +235,9 @@ def _current_body_yaw_deg(mini) -> float:
 _REQUIRED: Any = object()
 
 
-def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=_REQUIRED, controller=None):
+def move_head(
+    mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=_REQUIRED, controller=None, duration_policy="at_least"
+):
     """Move the head to a BODY-RELATIVE pose: ``roll``/``pitch``/``yaw`` in degrees, ``x``/``y``/``z`` in mm.
 
     With a ``controller`` (every Selfy and worker caller), this DELEGATES to its
@@ -241,6 +250,9 @@ def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=_REQUIRE
     move the robot. The standalone path composes against the SDK's body read
     and applies the same rate rule (stretching) and path rule (refusing), since
     it cannot split. Returns ``None``; refusals raise ``MotionRefused``.
+
+    ``duration_policy``: ``"exact"`` when the caller (the model) chose the
+    duration, so a move too fast for it is refused; ``"at_least"`` stretches.
 
     FRAME: every caller works body-relative, and the SDK head pose matrix is
     WORLD-frame, so the body yaw is added at dispatch (the 2026-08-07 safety
@@ -261,7 +273,8 @@ def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=_REQUIRE
                 head_pitch=math.radians(require_finite("pitch", pitch)),
                 head_yaw=math.radians(require_finite("yaw", yaw)),
                 extras=extras,
-                duration=floor_duration(duration),
+                duration=policy_duration(duration, duration_policy),
+                duration_policy=duration_policy,
             )
         )
     if motion_lock is _REQUIRED:
@@ -270,11 +283,13 @@ def move_head(mini, x, y, z, roll, pitch, yaw, duration, *, motion_lock=_REQUIRE
 
     lock = motion_lock if motion_lock is not None else contextlib.nullcontext()
     with lock:
-        check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration)
+        check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration, duration_policy=duration_policy)
     return None
 
 
-def check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration) -> None:
+def check_standalone_head_motion(
+    mini, x, y, z, roll, pitch, yaw, duration, *, duration_policy: DurationPolicy = "at_least"
+) -> None:
     """The standalone head dispatch: compose against the SDK's body read, rate-stretch, refuse a sweep, dispatch."""
     from maxim.exceptions import MotionRefused
     from maxim.hardware.reachy import motion_path as mp
@@ -291,7 +306,7 @@ def check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration) -> N
     x_w = x * math.cos(b) - y * math.sin(b)
     y_w = x * math.sin(b) + y * math.cos(b)
     pose = head_pose_matrix(x_w, y_w, z, roll, pitch, yaw + body_yaw_deg)
-    duration = floor_duration(duration)
+    duration = policy_duration(duration, duration_policy)
     try:
         current = np.asarray(mini.get_current_head_pose(), dtype=float)
     except Exception:  # missing: the rate and path checks need a start, so this refuses below
@@ -304,7 +319,7 @@ def check_standalone_head_motion(mini, x, y, z, roll, pitch, yaw, duration) -> N
     ok, worst = mp.neck_path_ok(start, target)
     if not ok:
         raise MotionRefused("path", f"standalone move_head would sweep the neck to {worst:.0f}° mid-path")
-    duration = mp.resolve_duration(duration, mp.move_delta_deg(start, target), "minimum_jerk", "at_least")
+    duration = mp.resolve_duration(duration, mp.move_delta_deg(start, target), "minimum_jerk", duration_policy)
     # Last mile (#1496): every scalar handed to the SDK, the duration's
     # range, and the present pose (defence in depth).
     duration, _ = check_sdk_command(mini, duration=duration, head=pose)
@@ -320,16 +335,28 @@ def move_antenna(
     method: str = "minjerk",
     degrees: bool = True,
     relative: bool = False,
-) -> None:
+    controller: Any = None,
+    duration_policy: str = "at_least",
+) -> Any:
     """Move the antennas, always interpolated and bounded (#1496).
 
     ``duration=None`` takes the default; any explicit duration must lie in
     [0.1 s, 10 s] (an explicit 0 used to take the SDK's instant ``set_target``).
     Targets clamp to ±``ANTENNA_LIMIT_RAD``; NaN is refused. ``body_yaw=None``
     keeps the body still (the SDK's default of 0.0 would turn it to 0).
+
+    With a ``controller`` this DELEGATES to its ``goto_target`` (#1499 5.4): the
+    motion lock, the fresh readback and the rate cap (``duration_policy``) govern
+    the antennas as they do the head, and its ``MotionOutcome`` is returned.
+    Standalone it returns ``None``.
     """
     if right is None and left is None:
         raise ValueError("At least one of right or left must be provided.")
+
+    if controller is not None and hasattr(controller, "goto_target"):
+        return _move_antenna_via_controller(
+            mini, controller, right, left, duration, method, degrees, relative, duration_policy
+        )
 
     duration_s = floor_duration(0.5) if duration is None else require_duration(duration)
 
@@ -352,6 +379,31 @@ def move_antenna(
     ]
     duration_s, sdk_method = check_sdk_command(mini, duration=duration_s, antennas=target, method=method)
     mini.goto_target(antennas=target, duration=duration_s, method=sdk_method, body_yaw=None)
+
+
+def _move_antenna_via_controller(
+    mini, controller, right, left, duration, method, degrees, relative, duration_policy
+) -> Any:
+    """The controller branch of ``move_antenna``: one ``MotionTarget`` with the ``antenna_right/left`` extras."""
+    from maxim.hardware.controller import MotionTarget
+
+    from maxim.hardware.controller import ANTENNA_EXTRAS
+
+    sides = dict(zip(ANTENNA_EXTRAS, (right, left), strict=True))
+    targets = {key: _to_rad(value, degrees=degrees) for key, value in sides.items() if value is not None}
+    if relative:
+        # A relative nudge needs a base; the controller re-reads the pose itself before it moves.
+        base = dict(zip(ANTENNA_EXTRAS, mini.get_present_antenna_joint_positions(), strict=True))
+        targets = {key: require_finite(key, base[key]) + value for key, value in targets.items()}
+    requested = 0.5 if duration is None else duration
+    return controller.goto_target(
+        MotionTarget(
+            extras=targets,
+            duration=policy_duration(requested, duration_policy),
+            method=method,
+            duration_policy=duration_policy,
+        )
+    )
 
 
 def head_pose_matrix(x=0, y=0, z=0, roll=0, pitch=0, yaw=0):

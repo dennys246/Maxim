@@ -60,7 +60,16 @@ class AtlasController(RobotController):
     # reason when it did not), or a bool, which stays accepted in 1.x. Callers read either through as_outcome.
     def goto_target(self, target: MotionTarget) -> bool | MotionOutcome: ...
     def look_at_pixel(self, target: PixelTarget) -> bool | MotionOutcome: ...
-    def get_current_pose(self) -> dict[str, float]: ...
+    def get_current_pose(self) -> dict[str, float]: ...  # radians; include "body_yaw" if the body turns
+
+    # Optional (non-abstract) overrides, #1499:
+    # - read_body_yaw() -> float: the body yaw for planning a turn. The default reads get_current_pose()["body_yaw"]
+    #   and refuses the turn (MotionRefused "reference") when it is missing or not finite; override it if you have
+    #   a fresher source than your pose cache.
+    # Inside goto_target / look_at_pixel, call maxim.hardware.controller.mark_motion_accepted() once your checks
+    # pass, just before your first actuator command, and refuse (MotionOutcome kind "cancelled") without moving
+    # when it returns False: a tool that stopped waiting cancelled the move. Without the call, a queued move is
+    # only reported started when it completes, and a cancel cannot stop it.
 
     # Sleep / wake (same return contract)
     def wake_up(self) -> bool | MotionOutcome: ...

@@ -30,7 +30,10 @@ class _RecordingMaxim:
         self.calls = []
 
     def move(self, **kwargs):
+        from maxim.hardware.controller import MotionOutcome, MotionTicket
+
         self.calls.append(kwargs)
+        return MotionTicket.resolved(MotionOutcome(ok=True))  # Selfy's queued move returns its ticket (#1499 5.6)
 
 
 def _run(**params):

@@ -6,6 +6,7 @@ import queue
 import threading
 import time
 import wave
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Optional
 import numpy as np
 from maxim.utils.audio import resample_audio, run_in_own_process_group, to_int16
@@ -17,6 +18,12 @@ from maxim.inference.observation import display_detections, passive_observation
 from maxim.inference.transcribe_audio import load_whisper_config, watch_and_transcribe
 from maxim.utils.optional_deps import OptionalDependencyError, optional_dependency_installed
 from maxim.utils.gpu_compat import detect_blackwell
+from maxim.embodied_runtime.workers import MotorQueue, QueuedMotion, run_motion
+from maxim.hardware.controller import MotionOutcome, MotionTicket, RobotController
+
+# act() waits this long for one move to complete: the controller's lock wait
+# (25 s) plus a long split move. Past it the move is cancelled if it has not started.
+_ACT_MOVE_WAIT_S = 60.0
 
 _gpu_state = detect_blackwell()
 _original_cuda_devices = _gpu_state.original_cuda_devices
@@ -27,6 +34,7 @@ class MediaLoopMixin:
 
     log: logging.Logger  # set by the host (Selfy.__init__)
     sleeping: bool  # the robot's sleep state; the host and the loop both write it
+    _robot: Optional[RobotController]  # set by the host (Selfy.__init__); None without a robot
 
     def live(
         self,
@@ -174,8 +182,7 @@ class MediaLoopMixin:
         frame_save_queue: queue.Queue = queue.Queue(maxsize=512)
         audio_save_queue: queue.Queue = queue.Queue(maxsize=512) if self.audio else None
 
-        motor_queue: queue.Queue = queue.Queue(maxsize=4)
-        self._motor_queue = motor_queue if parallel and motor else None
+        motor_queue = self._open_motor_queue(active=parallel and motor)
 
         transcribe_process, transcribe_shutdown_file = self._start_transcription_worker(
             parallel=parallel, chunk_dir=chunk_dir, transcript_path=transcript_path, log_path=log_path
@@ -445,7 +452,7 @@ class MediaLoopMixin:
                 except Exception:
                     pass
 
-            self._release_live_run_handles()
+            self._release_live_handles()
             self.shutdown()
 
     def _open_live_stop_event(self) -> threading.Event:
@@ -461,12 +468,6 @@ class MediaLoopMixin:
         if stop_event is not None:
             unregister_stop_event(stop_event)
         self._live_stop_event = None
-
-    def _release_live_run_handles(self) -> None:
-        """The run's handles, dropped when ``live`` ends: the motor queue, the media lock and the stop event."""
-        self._motor_queue = None
-        self._media_lock = None
-        self._close_live_stop_event()
 
     def _init_audio(self, audio: bool, audio_len: float, *, tts: bool, tts_model: str | None) -> None:
         """The audio settings: mic capture, chunk length, and the spoken-response request (#1437).
@@ -714,6 +715,8 @@ class MediaLoopMixin:
 
         # Only move to sleep pose if not already sleeping
         if not self.sleeping:
+            # A stop: nothing still queued may run behind it (#1499 gate 16).
+            self._close_motor_queue()
             if self._robot is not None:
                 self._robot.goto_sleep()
             self.sleeping = True
@@ -738,47 +741,77 @@ class MediaLoopMixin:
         while not stop_event.is_set():
             stop_event.wait(timeout=0.5)
 
-    def _enqueue_motor(self, fn, *args, **kwargs):
-        q = getattr(self, "_motor_queue", None)
-        if q is None:
-            return fn(*args, **kwargs)
+    def _open_motor_queue(self, *, active: bool) -> MotorQueue:
+        """The live loop's motor queue; Selfy enqueues on it only when *active* (parallel with motor) with a robot.
 
-        try:
-            q.get_nowait()
-        except queue.Empty:
-            pass
-        try:
-            q.put_nowait((fn, args, kwargs))
-        except queue.Full:
-            pass
-        return None
+        The motor worker only starts with a robot, so without one (headless) a
+        queue would hold every command until a tool's wait ran out; the
+        synchronous path refuses at once instead.
+        """
+        motor_queue = MotorQueue(maxsize=4)
+        self._motor_queue = motor_queue if active and self._robot is not None else None
+        return motor_queue
+
+    def _close_motor_queue(self) -> None:
+        """A stop or the live teardown: every queued command resolves ``cancelled`` and none runs after it."""
+        q = getattr(self, "_motor_queue", None)
+        if q is not None:
+            q.close()
+        self._motor_queue = None
+
+    def _release_live_handles(self) -> None:
+        """The live teardown: close the motor queue (its commands resolve ``cancelled``), drop the loop's handles and
+        unregister the stop event."""
+        self._close_motor_queue()
+        self._media_lock = None
+        self._close_live_stop_event()
+
+    def _enqueue_motor(self, fn, *args, **kwargs) -> MotionTicket:
+        """Queue a motor command and return its ticket (#1499 5.6); with no queue, run it now.
+
+        The synchronous path goes through the worker's own ``run_motion``, so
+        the ticket, the learners and the mirror re-read behave the same either
+        way, and the ticket it returns is already resolved.
+        """
+        q = getattr(self, "_motor_queue", None)
+        if q is not None:
+            ticket = q.put(fn, *args, **kwargs)
+        else:
+            ticket = MotionTicket()
+            ticket.claim()
+            run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
+        return ticket
 
     def _clear_motor_queue(self) -> int:
-        """Clear all pending motor commands from the queue.
-
-        Returns:
-            Number of commands that were cleared.
-        """
+        """Clear all pending motor commands, each resolved ``superseded``; returns how many."""
         q = getattr(self, "_motor_queue", None)
         if q is None:
             return 0
-
-        cleared = 0
-        try:
-            while True:
-                q.get_nowait()
-                cleared += 1
-        except queue.Empty:
-            pass
-
+        cleared = q.clear()
         if cleared > 0:
             self.log.debug("Cleared %d pending motor commands from queue", cleared)
         return cleared
 
-    def act(self, action):
+    def act(self, action) -> MotionTicket:
+        """Play a named action's moves in order, each waiting for the last to complete (#1499 5.5).
+
+        Sleeping the requested time let a stretched move overlap the next, which
+        the latest-wins queue then dropped. Returns the last move's ticket; a
+        move that does not complete ends the action with its ticket.
+        """
+        ticket = MotionTicket.resolved(MotionOutcome(ok=True, reason="no moves"))
         for movement in self.actions[action]["movements"]:
-            self.move(movement[0], movement[1], movement[2], movement[3], movement[4], movement[5], movement[6])
-            time.sleep(movement[6])
+            ticket = self.move(*movement[:6], duration=movement[6])
+            try:
+                outcome = ticket.completed.result(timeout=_ACT_MOVE_WAIT_S)
+            except FuturesTimeout:
+                ticket.cancel("act gave up waiting for the motor")
+                self.log.warning("act(%s) stopped: a move did not complete within %.0f s", action, _ACT_MOVE_WAIT_S)
+                break
+            if not outcome.ok:
+                self.log.warning("act(%s) stopped: %s (%s)", action, outcome.reason, outcome.kind)
+                break
+        return ticket
 
     def speak(self, samples, *, sample_rate: int):
         """Play audio samples on the Reachy Mini speaker, by ``utils.audio.push_audio_to_device``'s decision table.

@@ -74,12 +74,12 @@ class _StubStore:
     def retrieve_on_cue(self, node_id, limit, multi_hop):
         return [("n1", 0.9)] if self._graph else []
 
-    def recall(self, *, query=None, object_detected=None, limit=5):
+    def recall(self, *, query=None, object_detected=None, limit=5, exclude_ids=(), collapse_copies=False):
         if object_detected:
             return self._graph
         return self._goal if query == GOAL else self._cue  # the goal path queries the goal; the cue, the input
 
-    def search_by_content(self, text, limit=5):
+    def search_by_content(self, text, limit=5, exclude_ids=(), collapse_copies=False):
         return self._substring
 
 

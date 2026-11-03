@@ -93,7 +93,7 @@ NoOpTrackTargetTool = create_stub_tool(
     input_schema={
         "target_class": (str, None),
         "deadzone_px": (int, 40),
-        "duration_s": (float, 0.3),
+        "duration_s": (float, None),  # absent = the real tool's 0.3 s default (#1499 5.5)
         "prefer_people": (bool, True),
     },
     output_fields={"tracked": False},
@@ -196,7 +196,7 @@ class NoOpNoveltyTrackTool(Tool):
         "action": (str, "track"),  # "track", "query", "reset"
         "novelty_threshold": (float, 0.5),
         "deadzone_px": (int, 40),
-        "duration_s": (float, 0.3),
+        "duration_s": (float, None),  # absent = the real tool's 0.3 s default (#1499 5.5)
         "top_k": (int, 5),
         "class_filter": (list, None),
     }

@@ -346,7 +346,7 @@ Where the build departs from the sections above, this section is the record. Eve
     other than `max`/`min`/`clip`; a handle aliased to a local not ending in `mini`; `getattr(self, "mini")`; a
     dynamic `getattr` name; the canned `wake_up`/`goto_sleep` (#1499).
 - **Refusals that reach the caller.**
-  - `Selfy.turn_around` returns a bool, and `maxim_command turn_around` turns False into a tool error. The controller
+  - `Selfy.turn_around` returned a bool (a `MotionOutcome` since #1499 PR 2a), and `maxim_command turn_around` turns False into a tool error. The controller
     converts a dispatch-time refusal into False, so this is how that refusal reaches the model.
   - DN still marks a turn as executed at dispatch, and a `MotionRefused` from a non-finite body readback inside
     `_maybe_turn_around`'s turn leaves its pain-bridge `record_action_start` unpaired (both #1499's recorder split).

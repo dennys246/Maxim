@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import math
-import queue
 import threading
 import time
 
@@ -477,18 +476,10 @@ def test_a_falsy_motor_result_never_reaches_the_learners():
         def sync_head_position(self):
             return True
 
-    q: queue.Queue = queue.Queue()
-    stop = threading.Event()
-    q.put((lambda **kw: False, (), {"_position_info": (0.1, 0.2), "_commanded_6d": {"yaw": 0.1}}))
-
-    def _stop_when_drained():
-        while not q.empty():
-            stop.wait(0.01)
-        stop.wait(0.3)
-        stop.set()
-
-    threading.Thread(target=_stop_when_drained, daemon=True).start()
-    motor_worker(q, stop, _Selfy())
+    ticket = _drive_worker(
+        motor_worker, _Selfy(), lambda **kw: False, {"_position_info": (0.1, 0.2), "_commanded_6d": {"yaw": 0.1}}
+    )
+    assert ticket.completed.result(timeout=0).kind == "error"
     assert ("gaze", True) not in booked
     assert not any(kind == "bounds" for kind, _ in booked)
 
@@ -903,20 +894,26 @@ def _run_worker(fn_result, *, with_info=True):
             syncs.append(1)
             return True
 
-    q: queue.Queue = queue.Queue()
-    stop = threading.Event()
     kwargs = {"_position_info": (0.1, 0.2), "_commanded_6d": {"yaw": 0.1}, "duration": 0.1} if with_info else {}
-    q.put((lambda **kw: fn_result, (), kwargs))
+    _drive_worker(motor_worker, _Selfy(), lambda **kw: fn_result, kwargs)
+    return booked, syncs
 
-    def _stop_when_drained():
-        while not q.empty():
-            stop.wait(0.01)
-        stop.wait(0.4)
+
+def _drive_worker(motor_worker, selfy, fn, kwargs):
+    """Run *motor_worker* over one queued command until its ticket resolves (#1499 PR 2a: a ``MotorQueue``)."""
+    from maxim.embodied_runtime.workers import MotorQueue
+
+    q = MotorQueue()
+    stop = threading.Event()
+    ticket = q.put(fn, **kwargs)
+
+    def _stop_when_done():
+        ticket.completed.result(timeout=5.0)
         stop.set()
 
-    threading.Thread(target=_stop_when_drained, daemon=True).start()
-    motor_worker(q, stop, _Selfy())
-    return booked, syncs
+    threading.Thread(target=_stop_when_done, daemon=True).start()
+    motor_worker(q, stop, selfy)
+    return ticket
 
 
 def test_a_completed_move_books_the_learners():

@@ -25,7 +25,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Literal, overload
 from uuid import uuid4
 
@@ -65,7 +65,7 @@ from maxim.memory.episode import (
 )
 from maxim.memory.hippocampus_consolidation import ConsolidationMixin
 from maxim.memory.hippocampus_persistence import PersistenceMixin
-from maxim.memory.hippocampus_retrieval import RetrievalMixin
+from maxim.memory.hippocampus_retrieval import RetrievalMixin, distinct_copies
 from maxim.memory.layer import MemoryLayer
 from maxim.memory.rwlock import RWLock
 from maxim.memory.state_store import StateStore
@@ -769,6 +769,26 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 holes.append([s, s])
         return horizon, holes
 
+    def turn_records(self, capture_id: str, text: str) -> tuple[str, ...]:
+        """The turn's own records: its arrival capture, and every later record holding exactly its words (``text``),
+        because an action taken on the same observation stores them too. Earlier records of those words are earlier
+        episodes, which are ordinary memories (#1573). A capture not yet stored is still its own id."""
+        from maxim.memory.text import same_words
+
+        words = same_words(text)
+        with self._rwlock.read():
+            first = getattr(self._memories.get(capture_id), "capture_seq", None)
+            if not words or not isinstance(first, int):
+                return (capture_id,)
+            later = (
+                m.id
+                for m in self._memories.values()
+                if isinstance(seq := getattr(m, "capture_seq", None), int)
+                and seq > first
+                and same_words(m.input_text) == words
+            )
+            return (capture_id, *later)
+
     def next_capture_seq(self) -> int:
         """Reserve the next capture sequence number (Phase 2d-1). Monotonic per store, across loads --
         ordered, not contiguous: a capture the full queue drops has already taken its number. The clock
@@ -1387,6 +1407,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         limit: int = 20,
         *,
         retrieval_context: RetrievalContext | None = None,
+        exclude_ids: Collection[str] = (),
+        collapse_copies: bool = False,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Search memories by text content across all fields.
 
@@ -1396,6 +1418,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         Args:
             query: Text to search for.
             limit: Maximum number of results.
+            exclude_ids: Never matches, so they take no place inside ``limit``.
+            collapse_copies: An episode stored many times takes one place (``distinct_copies``, #1573).
 
         Returns:
             Matching memories, most recent first.
@@ -1409,7 +1433,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         with self._rwlock.read():
             n_total = len(self._memories)
             for memory in self._memories.values():
-                if self._memory_matches_query(memory, query_lower):
+                if memory.id not in exclude_ids and self._memory_matches_query(memory, query_lower):
                     results.append(memory)
 
             # Structured trace for JSONL capture
@@ -1436,7 +1460,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             )
 
             results.sort(key=lambda m: m.timestamp, reverse=True)
-            return results[:limit]
+            return (distinct_copies(results) if collapse_copies else results)[:limit]
 
     @staticmethod
     def _searchable_values(memory: Any) -> list[Any]:

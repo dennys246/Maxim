@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 from typing import Any
 
@@ -282,7 +283,24 @@ def test_g5_live_itself_uses_the_registered_event_and_releases_it() -> None:
     tree = ast.parse(Path(media_loop.__file__).read_text())
     live = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "live")
     calls = {n.func.attr for n in ast.walk(live) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
-    assert {"_open_live_stop_event", "_release_live_run_handles"} <= calls
+    assert {"_open_live_stop_event", "_release_live_handles"} <= calls
+
+
+def test_g5_the_live_teardown_unregisters_the_stop_event() -> None:
+    """A released run's event must leave the stop registry: `_release_live_handles` is shared with the motor queue."""
+    from maxim.embodied_runtime import media_loop
+    from maxim.utils.cancellation import clear_stop_request, request_stop
+    from maxim.utils.deadline import Deadline
+
+    runtime = types.SimpleNamespace(_close_motor_queue=lambda: None, _media_lock=object())
+    runtime._close_live_stop_event = lambda: media_loop.MediaLoopMixin._close_live_stop_event(runtime)
+    event = media_loop.MediaLoopMixin._open_live_stop_event(runtime)
+    media_loop.MediaLoopMixin._release_live_handles(runtime)
+    request = request_stop("test", Deadline.after(5))
+    try:
+        assert not event.is_set() and runtime._live_stop_event is None and runtime._media_lock is None
+    finally:
+        clear_stop_request(request)
 
 
 def test_g6_the_post_sim_prompt_returns_when_a_stop_is_requested() -> None:
