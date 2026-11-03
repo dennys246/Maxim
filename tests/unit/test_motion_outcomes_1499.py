@@ -10,8 +10,11 @@ treated as a default, so it is stretched rather than refused.
 PR 2a: a ``MotorQueue`` that resolves every ticket it removes, a two-stage ``MotionTicket`` (``accepted`` when the
 checks pass and the first SDK call starts, ``completed`` with the outcome), the tools waiting on ``accepted`` and
 reporting the reason, the explicit-duration policies, ``turn_around`` returning an outcome from a fresh body read,
-``move_antenna`` through the controller, and the simulated controller's outcomes. The DN inbox and the pain bridge's
-event ids are PR 2b. Gates: §9 items 10, 11, 16 (queue half), 21, 26, and 5.4, 5.5, 5.8.
+``move_antenna`` through the controller, and the simulated controller's outcomes. Gates: §9 items 10, 11, 16 (queue
+half), 21, 26, and 5.4, 5.5, 5.8.
+
+PR 2b (the last section): the Default Network books a move when it finishes, on its own tick, and the pain bridge
+records a start when the move starts. Gates: §9 items 13, 14 and 12's PR 2 half.
 
 Written as strict xfails before the build (the red-gate rule); each drives the real controller over
 tests/unit/_reachy_fakes.py where a controller is involved.
@@ -835,3 +838,390 @@ def test_a_cancelled_no_op_is_refused_not_reported_done(daemon):
     finally:
         current_motion_ticket.reset(token)
     assert not out and out.kind == "cancelled"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR 2b, gate 13: DN books a move's outcome on its own tick
+# ─────────────────────────────────────────────────────────────────────────────
+
+_RED_2B = pytest.mark.xfail(strict=True, reason="#1499 PR 2b: not built yet")
+
+
+class _SpyMap:
+    """Stands in for the spatial map: every target reachable, every booking kept."""
+
+    def __init__(self) -> None:
+        self.booked: list[tuple] = []
+
+    def get_reachability(self, target) -> float:
+        return 1.0
+
+    def record_movement(self, target, success=True) -> None:
+        self.booked.append((target, success))
+
+
+def _dn(look_at):
+    """A real DefaultNetwork over a host whose ``look_at_image`` is *look_at*; no attention network, a spy map."""
+    from maxim.default_network.network import DefaultNetwork, DefaultNetworkConfig
+
+    class _Host:
+        yaw = 0.0
+        look_at_image = staticmethod(look_at)
+
+    dn = DefaultNetwork(_Host(), config=DefaultNetworkConfig(fear_gate_enabled=False))
+    dn._attention_network = None
+    dn._spatial_map = _SpyMap()
+    return dn
+
+
+def _look(target=(100.0, 100.0), **metadata):
+    from maxim.default_network.messages import ActionProposal
+
+    return ActionProposal(
+        behavior_name="b", action_type="look_at", target=target, priority=1.0, confidence=1.0, metadata=metadata
+    )
+
+
+@_RED_2B
+def test_dn_books_nothing_until_its_tick_after_the_move_finished():
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    ticket = MotionTicket()
+    dn = _dn(lambda u, v, duration: ticket)
+    published: list[bool] = []
+    dn._publish_action = lambda proposal, executed: published.append(executed)  # type: ignore[method-assign]
+
+    dn._execute_action(_look())
+    assert dn._spatial_map.booked == [] and published == []
+    assert dn._gaze_history.get_current_position() is None
+
+    applied_on: list[int] = []
+    real = dn._record_movement_result
+
+    def _spy(*a, **kw):
+        applied_on.append(threading.get_ident())
+        return real(*a, **kw)
+
+    dn._record_movement_result = _spy  # type: ignore[method-assign]
+    motor = threading.Thread(target=ticket.finish, args=(MotionOutcome(ok=True),))
+    motor.start()
+    motor.join()
+    assert dn._spatial_map.booked == [] and published == []  # the motor thread booked nothing
+
+    dn._drain_motion_outcomes()
+    assert applied_on == [threading.get_ident()] and motor.ident not in applied_on
+    assert dn._spatial_map.booked == [((100.0, 100.0), True)] and published == [True]
+    assert dn._gaze_history.get_current_position() == (100.0, 100.0)
+    assert dn.get_stats()["actions_executed"] == 1
+
+
+@_RED_2B
+@pytest.mark.parametrize("kind", ["rate", "path", "limit", "superseded", "cancelled", "partial", "error"])
+def test_a_move_that_did_not_complete_feeds_no_dn_learner(kind):
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome.refused(kind, "no")))
+    published: list[bool] = []
+    dn._publish_action = lambda proposal, executed: published.append(executed)  # type: ignore[method-assign]
+    dn._execute_action(_look(track_id=7))
+    dn._drain_motion_outcomes()
+    assert dn._spatial_map.booked == []
+    assert dn._gaze_history.get_current_position() is None
+    assert published == [False]
+    assert dn.get_stats()["actions_executed"] == 0
+
+
+@_RED_2B
+def test_an_ik_outcome_teaches_the_spatial_map_a_failure():
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome.refused("ik", "IK failure: no")))
+    dn._execute_action(_look())
+    dn._drain_motion_outcomes()
+    assert dn._spatial_map.booked == [((100.0, 100.0), False)]
+
+
+@_RED_2B
+def test_a_raising_dn_handler_is_logged_and_the_next_outcome_still_applies(caplog):
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome(ok=True)))
+    real = dn._record_movement_result
+    calls: list[object] = []
+
+    def _raises_once(proposal, *a, **kw):
+        calls.append(proposal)
+        if len(calls) == 1:
+            raise RuntimeError("a learner broke")
+        return real(proposal, *a, **kw)
+
+    dn._record_movement_result = _raises_once  # type: ignore[method-assign]
+    dn._execute_action(_look((10.0, 10.0)))
+    dn._execute_action(_look((20.0, 20.0)))
+    with caplog.at_level(logging.WARNING):
+        dn._drain_motion_outcomes()
+    assert "a learner broke" in caplog.text
+    assert dn._spatial_map.booked == [((20.0, 20.0), True)]
+
+
+def test_the_inbox_drains_while_dn_is_inhibited():
+    """An inhibited tick evaluates nothing, but a move that finished is still booked (a turn inhibits DN)."""
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome(ok=True)))
+    dn._execute_action(_look())
+    dn._inhibited = True
+    dn._running = True
+    dn._check_auto_release = lambda: setattr(dn, "_running", False)  # type: ignore[method-assign]
+    dn._run_loop()
+    assert dn._spatial_map.booked == [((100.0, 100.0), True)]
+
+
+@_RED_2B
+def test_the_dwell_gate_starts_at_dispatch_as_before():
+    """``record_gaze`` also starts the dwell. Booked only at completion, DN would re-issue the move every tick."""
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    ticket = MotionTicket()
+    dn = _dn(lambda u, v, duration: ticket)
+    dn._execute_action(_look())
+    should_move, _, reason = dn._gaze_history.should_move((400.0, 300.0))
+    assert not should_move and reason.startswith("dwell_time")
+
+    dn._gaze_history._last_move_time -= 60.0  # the dwell has passed by the time the move finishes
+    ticket.finish(MotionOutcome(ok=True))
+    dn._drain_motion_outcomes()
+    assert dn._gaze_history.get_current_position() == (100.0, 100.0)
+    assert dn._gaze_history.should_move((400.0, 300.0))[0]  # booking the arrival did not restart it
+
+
+@_RED_2B
+def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    ticket = MotionTicket()
+    dn = _dn(lambda u, v, duration: ticket)
+    dn._gaze_history.record_gaze((100.0, 100.0))
+    assert dn.look_opposite(duration=0.5) is True
+    assert dn._spatial_map.booked == []
+    ticket.finish(MotionOutcome(ok=True))
+    dn._drain_motion_outcomes()
+    assert len(dn._spatial_map.booked) == 1 and dn._spatial_map.booked[0][1] is True
+
+    refused = MotionTicket()
+    dn = _dn(lambda u, v, duration: refused)
+    dn._gaze_history.record_gaze((100.0, 100.0))
+    assert dn.look_opposite(duration=0.5) is True
+    refused.finish(MotionOutcome.refused("rate", "too fast"))
+    dn._drain_motion_outcomes()
+    assert dn._spatial_map.booked == []
+    assert dn._gaze_history.get_current_position() == (100.0, 100.0)
+
+    already = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome.refused("limit", "no")))
+    already._gaze_history.record_gaze((100.0, 100.0))
+    assert already.look_opposite(duration=0.5) is False  # it never started
+
+
+@_RED_2B
+def test_an_ik_exception_in_the_motor_callable_reads_as_ik(daemon):
+    """Wire 7, Executor 7: run_motion catches the exception, so DN's own classifier no longer sees it."""
+    from maxim.embodied_runtime.workers import QueuedMotion, run_motion
+    from maxim.hardware.controller import MotionTicket
+
+    selfy = _selfy(controller(daemon), daemon)
+
+    def _raises():
+        raise RuntimeError("IK solver: pose not achievable")
+
+    ticket = MotionTicket()
+    ticket.claim()
+    assert run_motion(QueuedMotion(ticket, _raises, (), {}), selfy).kind == "ik"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR 2b, gate 14: the pain bridge's start is the move's own, at accept
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_raising_on_accept_is_logged_and_accepted_still_resolves(caplog):
+    from maxim.hardware.controller import MotionTicket
+
+    def _raises():
+        raise RuntimeError("the bridge broke")
+
+    ticket = MotionTicket(on_accept=_raises)
+    with caplog.at_level(logging.WARNING):
+        assert ticket.mark_accepted()
+    assert ticket.accepted.result(timeout=1.0) is None and ticket.event_id is None
+    assert "the bridge broke" in caplog.text
+
+
+def _pain_bridge():
+    from maxim.bridges.pain_bridge import PainBridgeConfig, PainCircuitBridge
+    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.proprioception.pain import PainDetector
+
+    nac = NAc(NACConfig())
+    bridge = PainCircuitBridge(
+        nac=nac,
+        pain_detector=PainDetector(),
+        config=PainBridgeConfig(enable_predictive_harm=False, enable_joint_limit_prediction=False),
+    )
+    return bridge, nac
+
+
+class _Network:
+    def __init__(self, bridge) -> None:
+        self._pain_bridge = bridge
+
+
+@_RED_2B
+def test_a_queued_look_at_records_its_start_only_when_it_is_accepted(daemon):
+    """Wire 2: with the start at enqueue, B's start retired A and A's pain was booked against B."""
+    bridge, _ = _pain_bridge()
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._default_network = _Network(bridge)
+    stop = _start_worker(selfy)
+    release, started = threading.Event(), threading.Event()
+    try:
+        moving = selfy._motor_queue.put(_blocker(release, started))
+        assert started.wait(2.0)
+        queued = selfy.look_at_image(320, 240, duration=1.0)
+        assert not queued.accepted.done()
+        assert bridge._pending is None  # A's pain would still be A's
+        release.set()
+        moving.completed.result(timeout=5.0)
+        assert queued.completed.result(timeout=5.0).ok
+        assert bridge._pending is not None and queued.event_id == bridge._pending.event_id
+    finally:
+        release.set()
+        stop.set()
+
+
+@_RED_2B
+def test_a_look_at_replaced_before_it_was_accepted_records_nothing(daemon):
+    bridge, _ = _pain_bridge()
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._default_network = _Network(bridge)
+    stop = _start_worker(selfy)
+    release, started = threading.Event(), threading.Event()
+    try:
+        selfy._motor_queue.put(_blocker(release, started))
+        assert started.wait(2.0)
+        first = selfy.look_at_image(320, 240, duration=1.0)
+        selfy._clear_motor_queue()
+        assert _outcome_kind(first) == "superseded"
+        assert first.event_id is None and bridge._pending is None
+    finally:
+        release.set()
+        stop.set()
+
+
+@_RED_2B
+def test_a_completion_by_id_never_books_the_move_that_replaced_it():
+    bridge, nac = _pain_bridge()
+    old = bridge.record_action_start("a", target_yaw=1.0)
+    new = bridge.record_action_start("b", target_yaw=2.0)
+    bridge.record_action_complete(success=True, event_id=old)
+    assert bridge._pending is not None and bridge._pending.event_id == new
+    assert bridge._detector._pending_target is not None  # B's target is B's
+    assert [e["id"] for e in nac._pending_events] == [new]
+
+    bridge.record_action_complete(success=False, event_id=new)
+    assert bridge._pending is None and bridge._detector._pending_target is None
+
+
+@_RED_2B
+def test_two_concurrent_starts_retire_each_old_event_once_and_leak_nothing(monkeypatch):
+    """Wire scoped S2: forced by holding both starts inside NAc, which the atomic retire serializes."""
+    bridge, nac = _pain_bridge()
+    bridge.record_action_start("old")
+    barrier = threading.Barrier(2)
+    real = nac.record_event
+
+    def _together(*a, **kw):
+        try:
+            barrier.wait(timeout=0.2)
+        except threading.BrokenBarrierError:
+            pass  # the second start waits on the bridge's lock: the fix under test
+        return real(*a, **kw)
+
+    monkeypatch.setattr(nac, "record_event", _together)
+    threads = [threading.Thread(target=bridge.record_action_start, args=(s,)) for s in ("x", "y")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert [e["id"] for e in nac._pending_events] == [bridge._pending.event_id]
+
+
+def _risky_pain(starts: list, completes: list):
+    class _Pain:
+        def get_pain_risk(self, sig):
+            return 1.0
+
+        def record_action_start(self, *a, **kw):
+            starts.append(a)
+            return "turn-event"
+
+        def record_action_complete(self, success=True, *, event_id=None):
+            completes.append((success, event_id))
+
+    return _Pain()
+
+
+@_RED_2B
+def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemon):
+    """Wire scoped S1: a start before the dispatch waits behind A, then books A's pain against the turn."""
+    ctl = controller(daemon)
+    selfy = _selfy(ctl, daemon)
+    starts: list = []
+    completes: list = []
+    pain = _risky_pain(starts, completes)
+    ctl._motion_lock.acquire()  # move A
+    done = threading.Event()
+
+    def _turn():
+        selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
+        done.set()
+
+    threading.Thread(target=_turn, daemon=True).start()
+    time.sleep(0.2)
+    assert starts == []
+    ctl._motion_lock.release()
+    assert done.wait(10.0)
+    assert len(starts) == 1 and completes == [(True, "turn-event")]
+
+
+@_RED_2B
+def test_a_turn_refused_before_its_first_sdk_call_books_nothing_but_one_that_started_does(daemon):
+    from maxim.hardware.controller import MotionOutcome, current_motion_ticket, mark_motion_accepted
+
+    selfy = _selfy(controller(daemon), daemon)
+    starts: list = []
+    completes: list = []
+
+    def _turn(angle, *, ticket, **kw):
+        token = current_motion_ticket.set(ticket)
+        try:
+            return MotionOutcome.refused("rate", "too fast")
+        finally:
+            current_motion_ticket.reset(token)
+
+    selfy.turn_around = _turn  # type: ignore[method-assign]
+    pain = _risky_pain(starts, completes)
+    selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
+    assert starts == [] and completes == []
+
+    def _turn_started_then_failed(angle, *, ticket, **kw):
+        token = current_motion_ticket.set(ticket)
+        try:
+            assert mark_motion_accepted()
+            return MotionOutcome(ok=False, kind="partial", reason="step 2 stopped")
+        finally:
+            current_motion_ticket.reset(token)
+
+    selfy.turn_around = _turn_started_then_failed  # type: ignore[method-assign]
+    selfy._last_turn_around_time = 0.0
+    selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
+    assert len(starts) == 1 and completes == [(False, "turn-event")]
