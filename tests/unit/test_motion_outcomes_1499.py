@@ -860,34 +860,41 @@ def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queu
     assert len(daemon.gotos()) == before
 
 
-@pytest.mark.parametrize("raise_at", ["transcriber", "worker-start"])
-def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, monkeypatch, raise_at):
-    """The setup window: the stop event is open and the agentic runtime has started, then the setup raises.
-
-    Before PR 3 the outer try began after the setup, so the teardown never ran (owner decision 2026-11-03)."""
+def _live_setup_host(daemon, tmp_path, monkeypatch):
+    """A Selfy whose ``live`` runs its real setup and teardown, with the I/O around them stubbed."""
     import maxim.embodied_runtime.media_loop as media_loop
 
     monkeypatch.setattr(media_loop, "configure_logging", lambda *a, **k: None)
     monkeypatch.setattr(media_loop, "TrainingSampleLogger", lambda *_a: type("_L", (), {"start": lambda s: None})())
-    ctl = controller(daemon)
-    selfy = _selfy(ctl, daemon)
+    selfy = _selfy(controller(daemon), daemon)
     selfy.home_dir, selfy.epochs, selfy.interactive, selfy.verbose = str(tmp_path), None, False, False
     selfy.awaken = lambda **_k: None
     selfy._build_speech_output = lambda: None
     selfy._start_media_audio = lambda: (None, None)
     selfy._start_agentic_runtime = lambda: None  # DN would keep issuing moves from here on
+    selfy._start_transcription_worker = lambda **_k: (None, None)
     selfy._stop_media_io = lambda _lock: None
     selfy.shutdown = lambda: None
     selfy._start_cli_listener = selfy._start_key_listener = selfy._start_transcript_listener = lambda _stop: None
+    return selfy
 
-    if raise_at == "transcriber":
 
-        def _broken(**_k):
-            raise RuntimeError("the setup broke")
+def _refuse():
+    from maxim.exceptions import LeaderRefusal
 
-        selfy._start_transcription_worker = _broken
+    raise LeaderRefusal("the setup broke")
+
+
+@pytest.mark.parametrize("raise_at", ["refusal", "worker-start"])
+def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, monkeypatch, raise_at):
+    """The setup window: the stop event is open, then the setup raises (a leader refusal, which
+    ``warn_unless_refusal`` re-raises out of the agentic runtime's start, or a worker thread that will not start).
+
+    Before PR 3 the outer try began after the setup, so the teardown never ran (owner decision 2026-11-03)."""
+    selfy = _live_setup_host(daemon, tmp_path, monkeypatch)
+    if raise_at == "refusal":
+        selfy._start_agentic_runtime = _refuse
     else:  # the motor worker's start raises, so the threads list holds an unstarted thread for the teardown's join
-        selfy._start_transcription_worker = lambda **_k: (None, None)
         real_start = threading.Thread.start
 
         def _start(thread):
@@ -908,6 +915,37 @@ def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, 
         assert selfy._live_stop_event is None  # released, so the process stop registry no longer holds it
     finally:
         selfy._close_live_stop_event()
+
+
+def test_a_shutdown_that_fails_after_a_refusal_does_not_hide_the_refusal(daemon, tmp_path, monkeypatch, caplog):
+    """The CLI exits 2 with the fix hint on a refusal; a crash in the shutdown behind it must not turn that into 1."""
+    from maxim.exceptions import LeaderRefusal
+
+    selfy = _live_setup_host(daemon, tmp_path, monkeypatch)
+    selfy._start_agentic_runtime = _refuse
+
+    def _broken_shutdown():
+        raise OSError("the speaker would not close")
+
+    selfy.shutdown = _broken_shutdown
+    try:
+        with caplog.at_level(logging.ERROR), pytest.raises(LeaderRefusal):
+            selfy.live(vision=False, run_id="refusal-shutdown")
+        assert "the speaker would not close" in caplog.text
+    finally:
+        selfy._close_live_stop_event()
+
+
+def test_a_shutdown_that_fails_after_a_normal_run_still_raises(daemon):
+    """Only an exception already leaving ``live`` is protected; with none, a shutdown error reaches the caller."""
+    selfy = _selfy(controller(daemon), daemon)
+
+    def _broken_shutdown():
+        raise OSError("the speaker would not close")
+
+    selfy.shutdown = _broken_shutdown
+    with pytest.raises(OSError, match="would not close"):
+        selfy._shutdown_after_live()
 
 
 def test_the_teardown_latches_the_controller_so_a_body_turn_after_a_stop_is_refused(daemon):

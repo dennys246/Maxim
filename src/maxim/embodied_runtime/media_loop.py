@@ -3,6 +3,7 @@ import logging
 import multiprocessing as mp
 import os
 import queue
+import sys
 import threading
 import time
 import wave
@@ -330,7 +331,7 @@ class MediaLoopMixin:
             self._stop_transcription_worker(transcribe_process, transcribe_shutdown_file)
 
             self._release_live_handles()
-            self.shutdown()
+            self._shutdown_after_live()
 
     def _observe_frame(self, photo) -> None:
         """The display-only observation step for one frame; movement decisions belong to the agentic runtime."""
@@ -397,74 +398,16 @@ class MediaLoopMixin:
                     e,
                 )
 
-    def _stop_transcription_worker(
-        self, transcribe_process: Optional[mp.process.BaseProcess], transcribe_shutdown_file: Optional[str]
-    ) -> None:
-        """The live teardown's transcriber stop: the shutdown file, then SIGTERM, then SIGKILL."""
-        # Signal transcription worker to shut down via file
-        if transcribe_shutdown_file is not None:
-            try:
-                # Create shutdown signal file
-                with open(transcribe_shutdown_file, "w") as f:
-                    f.write("shutdown\n")
-            except Exception:
-                pass
-
-        if transcribe_process is not None:
-            # Phase 1: Wait briefly for graceful shutdown via file signal
-            try:
-                transcribe_process.join(timeout=2.0)
-            except Exception:
-                pass
-
-            # Phase 2: Send SIGTERM if still alive
-            if transcribe_process.is_alive():
-                try:
-                    transcribe_process.terminate()
-                except Exception:
-                    pass
-                # Also send SIGTERM directly via os.kill for reliability
-                try:
-                    import signal
-
-                    os.kill(transcribe_process.pid, signal.SIGTERM)
-                except Exception:
-                    pass
-                try:
-                    transcribe_process.join(timeout=1.0)
-                except Exception:
-                    pass
-
-            # Phase 3: Force kill if still alive
-            if transcribe_process.is_alive():
-                self.log.warning("Transcription process did not respond to SIGTERM, sending SIGKILL")
-                try:
-                    transcribe_process.kill()
-                except Exception:
-                    pass
-                # Also send SIGKILL directly for reliability
-                try:
-                    import signal
-
-                    os.kill(transcribe_process.pid, signal.SIGKILL)
-                except Exception:
-                    pass
-                try:
-                    transcribe_process.join(timeout=1.0)
-                except Exception:
-                    pass
-
-            # Final check
-            if transcribe_process.is_alive():
-                self.log.error("Transcription process could not be terminated (pid=%d)", transcribe_process.pid)
-
-        # Cleanup shutdown file
-        if transcribe_shutdown_file is not None:
-            try:
-                if os.path.exists(transcribe_shutdown_file):
-                    os.remove(transcribe_shutdown_file)
-            except Exception:
-                pass
+    def _shutdown_after_live(self) -> None:
+        """The live teardown's last step. While an exception leaves ``live`` (a setup refusal, a loop error), a shutdown
+        that also fails is logged, so the caller still gets the original: a ``LeaderRefusal`` keeps its exit code."""
+        if sys.exc_info()[0] is None:
+            self.shutdown()
+            return
+        try:
+            self.shutdown()
+        except Exception as e:
+            self.log.error("Shutdown after the failed live run also failed: %s", e, exc_info=True)
 
     def _open_live_stop_event(self) -> threading.Event:
         """The run's stop event, registered for the process stop request: a stop signal (#1344) ends the main
@@ -699,6 +642,75 @@ class MediaLoopMixin:
         except Exception as e:
             self.log.error("Voice input is OFF: failed to start the transcription worker: %s", e)
             return None, None
+
+    def _stop_transcription_worker(
+        self, transcribe_process: Optional[mp.process.BaseProcess], transcribe_shutdown_file: Optional[str]
+    ) -> None:
+        """The live teardown's transcriber stop: the shutdown file, then SIGTERM, then SIGKILL, then the file's cleanup."""
+        # Signal transcription worker to shut down via file
+        if transcribe_shutdown_file is not None:
+            try:
+                # Create shutdown signal file
+                with open(transcribe_shutdown_file, "w") as f:
+                    f.write("shutdown\n")
+            except Exception:
+                pass
+
+        if transcribe_process is not None:
+            # Phase 1: Wait briefly for graceful shutdown via file signal
+            try:
+                transcribe_process.join(timeout=2.0)
+            except Exception:
+                pass
+
+            # Phase 2: Send SIGTERM if still alive
+            if transcribe_process.is_alive():
+                try:
+                    transcribe_process.terminate()
+                except Exception:
+                    pass
+                # Also send SIGTERM directly via os.kill for reliability
+                try:
+                    import signal
+
+                    os.kill(transcribe_process.pid, signal.SIGTERM)
+                except Exception:
+                    pass
+                try:
+                    transcribe_process.join(timeout=1.0)
+                except Exception:
+                    pass
+
+            # Phase 3: Force kill if still alive
+            if transcribe_process.is_alive():
+                self.log.warning("Transcription process did not respond to SIGTERM, sending SIGKILL")
+                try:
+                    transcribe_process.kill()
+                except Exception:
+                    pass
+                # Also send SIGKILL directly for reliability
+                try:
+                    import signal
+
+                    os.kill(transcribe_process.pid, signal.SIGKILL)
+                except Exception:
+                    pass
+                try:
+                    transcribe_process.join(timeout=1.0)
+                except Exception:
+                    pass
+
+            # Final check
+            if transcribe_process.is_alive():
+                self.log.error("Transcription process could not be terminated (pid=%d)", transcribe_process.pid)
+
+        # Cleanup shutdown file
+        if transcribe_shutdown_file is not None:
+            try:
+                if os.path.exists(transcribe_shutdown_file):
+                    os.remove(transcribe_shutdown_file)
+            except Exception:
+                pass
 
     def sleep(
         self,
