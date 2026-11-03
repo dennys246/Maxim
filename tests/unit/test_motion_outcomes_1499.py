@@ -74,6 +74,8 @@ def _selfy(ctl, daemon):
             self.mode = "active"
             self.sleeping = False
             self.verbosity = 0
+            self._stop_fence_lock = threading.Lock()
+            self._live_stopped = False
 
         def sync_head_position(self):
             return SyncResult.OK
@@ -869,6 +871,7 @@ def test_the_teardown_latches_the_controller_so_a_body_turn_after_a_stop_is_refu
     stop = threading.Event()
     selfy._begin_live_teardown(stop, "lock")
     assert stop.is_set() and io == ["lock"] and selfy._motor_queue.closed
+    assert selfy._live_stopped  # outlives the stop event, which the teardown drops before shutdown
     before = len(daemon.gotos())
     turned = selfy.turn_around(30.0, duration=5.0)
     assert not turned and turned.kind == "cancelled"
@@ -928,12 +931,102 @@ def test_a_reconnect_that_finishes_after_the_stop_relatches_and_wakes_nothing():
             self.mode = "active"
             self.mini = None
             self._reconnect_lock = threading.Lock()
+            self._stop_fence_lock = threading.Lock()
+            self._live_stopped = False
 
         def _degrade_capabilities(self):
             calls.append("degrade")
 
     assert _Host()._soft_reconnect(reason="test") is False
     assert calls == ["reconnect", "stop_motion"]
+
+
+def test_a_stop_during_the_reconnects_wake_lands_after_it_and_holds(daemon):
+    """The next reader: a stop between the re-check and the wake woke the robot. The fence serializes them."""
+    from maxim.embodied_runtime.connection import ConnectionMixin
+    from maxim.embodied_runtime.media_loop import MediaLoopMixin
+
+    ctl = controller(daemon)
+    stop = threading.Event()
+    in_wake, release = threading.Event(), threading.Event()
+    real_wake = ctl.wake_up
+
+    def _slow_wake():
+        in_wake.set()
+        release.wait(5.0)
+        return real_wake()
+
+    ctl.wake_up = _slow_wake
+    ctl.reconnect = lambda timeout, max_attempts: True
+    ctl.start_recording = lambda: None
+
+    class _Host(ConnectionMixin, MediaLoopMixin):
+        def __init__(self):
+            self.log = logging.getLogger("test.motion_outcomes_1499")
+            self._robot = ctl
+            self._motor_queue = None
+            self._live_stop_event = stop
+            self._closed = False
+            self._simulation = False
+            self._woke_up = True
+            self.mode = "active"
+            self.mini = None
+            self._reconnect_lock = threading.Lock()
+            self._stop_fence_lock = threading.Lock()
+            self._live_stopped = False
+            self._capabilities = type("Caps", (), {"has_audio": False})()
+            self.resumed = False
+
+        def _degrade_capabilities(self):
+            pass
+
+        def _reset_connection_failures(self):
+            pass
+
+        def _restore_capabilities(self):
+            self.resumed = True
+
+    host = _Host()
+    reconnecting = threading.Thread(target=host._soft_reconnect, kwargs={"reason": "test"}, daemon=True)
+    reconnecting.start()
+    assert in_wake.wait(5.0)
+
+    host._stop_media_io = lambda lock: None  # type: ignore[method-assign]
+    tearing = threading.Thread(target=host._begin_live_teardown, args=(stop, None), daemon=True)
+    tearing.start()
+    time.sleep(0.1)
+    assert not stop.is_set()  # the stop waits for the wake
+    release.set()
+    reconnecting.join(10.0)
+    tearing.join(5.0)
+    assert host.resumed  # the reconnect ran to its end, not into an error
+    assert ctl._stop_latched  # it landed after the wake, so the robot stays stopped
+
+
+def test_a_reconnect_after_the_stop_event_is_dropped_still_sees_the_stop():
+    from maxim.embodied_runtime.connection import ConnectionMixin
+
+    calls: list[str] = []
+
+    class _Robot:
+        def stop_motion(self):
+            calls.append("stop_motion")
+
+    class _Host(ConnectionMixin):
+        log = logging.getLogger("test.motion_outcomes_1499")
+        _robot = _Robot()
+        _live_stop_event = None  # _release_live_handles dropped it; shutdown has not set _closed yet
+        _closed = False
+        _live_stopped = True
+
+    assert _Host()._stopped_during_reconnect() and calls == ["stop_motion"]
+
+
+def test_a_new_live_loop_clears_the_last_stop(daemon):
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._live_stopped = True
+    selfy._open_motor_queue(active=True)
+    assert selfy._live_stopped is False
 
 
 def test_a_stop_that_raises_does_not_cost_the_rest_of_the_teardown(daemon, caplog):

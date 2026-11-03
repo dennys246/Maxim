@@ -25,7 +25,8 @@
     run synchronously while DN was still issuing them, and a body turn never went through the queue at all. The
     teardown now leaves a closed queue and, first of all, sets the controller's stop latch
     (`RobotController.stop_motion()`, a no-op by default for plugins), which a successful wake or a new connect
-    clears. A soft reconnect that finishes after the stop re-latches and wakes nothing. The sleep pose still runs,
+    clears. A soft reconnect that finishes after the stop re-latches and wakes nothing: its check and wake hold the
+    same lock as the teardown's stop, so the stop lands before the check or after the wake, never between. The sleep pose still runs,
     and a stop that fails is logged without costing the rest of the teardown. A command the motor worker takes as it
     stops does not run either.
   Queued moves still book no pain completion, as before: the completion clears the detector's target, which would

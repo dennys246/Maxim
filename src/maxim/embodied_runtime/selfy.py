@@ -163,6 +163,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         }
         self._media_lock: threading.Lock | None = None
         self._reconnect_lock = threading.Lock()
+        # The live teardown's stop and a soft reconnect's wake never interleave (#1499): one lands whole first.
+        self._stop_fence_lock = threading.Lock()
+        self._live_stopped = False  # set by the teardown, cleared when the next live loop opens its queue
         self._last_reconnect_ts = 0.0
         self._reconnect_cooldown_s = 20.0
         self._reconnect_window_s = 5.0

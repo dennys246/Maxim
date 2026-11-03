@@ -270,15 +270,34 @@ class ConnectionMixin:
         except Exception:
             pass
 
+    def _resume_after_reconnect(self) -> None:
+        """Restart the recording and, unless asleep, wake the robot; under the stop fence (see the caller)."""
+        try:
+            self._robot.start_recording()
+        except Exception as e:
+            warn("Failed to start recording after reconnect: %s", e, logger=self.log)
+
+        if getattr(self, "_woke_up", False):
+            mode = str(getattr(self, "mode", "") or "").strip().lower()
+            if mode != "sleep":
+                try:
+                    self._robot.wake_up()
+                except Exception as e:
+                    warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+
     def _stopped_during_reconnect(self) -> bool:
         """True when the live loop stopped while the reconnect blocked: re-latch, and wake nothing (#1499).
 
         The connect clears the teardown's latch (``stop_motion``), and the
         wake after it would clear it too, so a robot stopped mid-reconnect
-        would move again until shutdown disconnects it.
+        would move again until shutdown disconnects it. The caller holds the
+        stop fence, so a stop cannot land between this check and the wake.
+        ``_live_stopped`` outlives the stop event, which the teardown drops
+        before ``shutdown`` sets ``_closed``.
         """
         stop_event = getattr(self, "_live_stop_event", None)
-        if not (getattr(self, "_closed", False) or (stop_event is not None and stop_event.is_set())):
+        stopped = getattr(self, "_live_stopped", False) or getattr(self, "_closed", False)
+        if not (stopped or (stop_event is not None and stop_event.is_set())):
             return False
         self.log.warning("Soft reconnect: the live loop stopped meanwhile; the robot stays stopped")
         self._robot.stop_motion()
@@ -376,21 +395,10 @@ class ConnectionMixin:
                 warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
                 self._degrade_capabilities()
                 return False
-            if self._stopped_during_reconnect():
-                return False
-
-            try:
-                self._robot.start_recording()
-            except Exception as e:
-                warn("Failed to start recording after reconnect: %s", e, logger=self.log)
-
-            if getattr(self, "_woke_up", False):
-                mode = str(getattr(self, "mode", "") or "").strip().lower()
-                if mode != "sleep":
-                    try:
-                        self._robot.wake_up()
-                    except Exception as e:
-                        warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+            with self._stop_fence_lock:  # the teardown's stop lands before this check or after the wake, never between
+                if self._stopped_during_reconnect():
+                    return False
+                self._resume_after_reconnect()
 
             motor_queue = getattr(self, "_motor_queue", None)
             if motor_queue is not None:

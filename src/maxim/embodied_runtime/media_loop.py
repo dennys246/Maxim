@@ -735,6 +735,7 @@ class MediaLoopMixin:
         """
         motor_queue = MotorQueue(maxsize=4)
         self._motor_queue = motor_queue if active and self._robot is not None else None
+        self._live_stopped = False  # a new loop: the last one's stop no longer holds a reconnect back
         return motor_queue
 
     def _close_motor_queue(self) -> None:
@@ -759,14 +760,16 @@ class MediaLoopMixin:
         controller's latch refuses the rest (a body turn, a tool's direct
         dispatch) until the next wake.
         """
-        stop_event.set()
-        try:
-            self._close_motor_queue()
-            robot = getattr(self, "_robot", None)
-            if robot is not None:
-                robot.stop_motion()
-        except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)
-            self.log.error("Stopping motion at the live teardown failed: %s", e, exc_info=True)
+        with self._stop_fence_lock:  # a soft reconnect's wake lands whole before this, or sees the stop
+            self._live_stopped = True
+            stop_event.set()
+            try:
+                self._close_motor_queue()
+                robot = getattr(self, "_robot", None)
+                if robot is not None:
+                    robot.stop_motion()
+            except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)
+                self.log.error("Stopping motion at the live teardown failed: %s", e, exc_info=True)
         self._stop_media_io(media_lock)
 
     def _release_live_handles(self) -> None:

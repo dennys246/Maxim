@@ -903,7 +903,12 @@ and calls `RobotController.stop_motion()`, the Reachy controller's existing disc
 successful wake or a new connect; `goto_sleep` still runs), so one fence covers every path. Its reader found the one
 way round it: a soft reconnect in flight at the stop connects (clearing the latch) and then wakes. It now re-checks the
 stop after the connect, re-latches and wakes nothing. A raising `stop_motion` (a plugin) is logged and the teardown
-goes on; the latch reports `is_awake=False`, as a disconnect does.
+goes on; the latch reports `is_awake=False`, as a disconnect does. The next reader found the re-check was
+check-then-act: a stop between it and the wake still woke the robot, because a wake requested after a stop clears it
+by design. Selfy's `_stop_fence_lock` now covers the teardown's stop and the reconnect's check, recording restart and
+wake, so the two never interleave; `_live_stopped` (set at the stop, cleared when the next loop opens its queue)
+closes the gap where the teardown has dropped the stop event and `shutdown` has not yet set `_closed`. No controller
+API changed.
 
 ### Pre-merge review round and its deltas (2026-11-02)
 
