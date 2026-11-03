@@ -900,7 +900,8 @@ synchronously. The worker also withdraws a command it took as the stop landed. A
 (`turn_around`, from DN's look-at at the yaw bound, DN's turn proposals and the tool) dispatch directly and still ran.
 **Owner (2026-11-03): latch at teardown, in 2b.** The teardown's first step, `_begin_live_teardown`, closes the queue
 and calls `RobotController.stop_motion()`, the Reachy controller's existing disconnect-style latch (cleared by a
-successful wake or a new connect; `goto_sleep` still runs), so one fence covers every path. Its reader found the one
+successful wake or a new connect at first, a successful wake only since the reader below; `goto_sleep` still runs),
+so one fence covers every path. Its reader found the one
 way round it: a soft reconnect in flight at the stop connects (clearing the latch) and then wakes. It now re-checks the
 stop after the connect, re-latches and wakes nothing. A raising `stop_motion` (a plugin) is logged and the teardown
 goes on; the latch reports `is_awake=False`, as a disconnect does. The next reader found the re-check was
@@ -918,7 +919,9 @@ whole-fence reader then found two more: the connect itself cleared the latch, so
 reconnect re-latched (a single-chunk body turn runs whole); and the wake word's wake read the generation when it ran,
 not when it was asked for. Now `stop_motion` latches as a sleep does (only a successful wake clears it), the reconnect
 does not even start after the stop flag, and `wake_up_agentic` enqueues `wake_up_unless_stopped_since` with the token
-taken at the call. The teardown's order (flag and event, then latch) is pinned by a test.
+taken at the call. The teardown's order (flag and event, then the queue's close, then the latch) is pinned by a test: a token taken
+after the latch must meet a closed queue, or the wake word's synchronous wake would run. A token that is not the
+controller's refuses the wake.
 
 ### Pre-merge review round and its deltas (2026-11-02)
 

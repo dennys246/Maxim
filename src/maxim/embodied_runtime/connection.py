@@ -303,9 +303,10 @@ class ConnectionMixin:
     def _stopped_during_reconnect(self) -> bool:
         """True when the live loop stopped while the reconnect blocked: re-latch, and wake nothing (#1499).
 
-        The connect clears the teardown's latch (``stop_motion``), and the
-        wake after it would clear it too, so a robot stopped mid-reconnect
-        would move again until shutdown disconnects it. ``_live_stopped`` outlives the stop event, which the teardown drops
+        The wake after the connect would clear the teardown's latch
+        (``stop_motion``), so a robot stopped mid-reconnect would move again
+        until shutdown disconnects it. Re-latching here is belt and braces: a
+        connect does not clear that latch. ``_live_stopped`` outlives the stop event, which the teardown drops
         before ``shutdown`` sets ``_closed``.
         """
         stop_event = getattr(self, "_live_stop_event", None)

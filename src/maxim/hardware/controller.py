@@ -582,13 +582,14 @@ class RobotController(ABC):
         ...
 
     def stop_motion(self) -> None:
-        """Refuse every new move until the next successful wake or connect (#1499): a stop without a sleep.
+        """Refuse every new move until the next successful wake (#1499): a stop without a sleep.
 
-        The live loop calls it first in its teardown, while DN and the agentic
-        thread may still issue moves. The default does nothing; a controller
-        with a stop latch overrides it, and then no path (queued or direct)
-        moves the robot after a stop. A soft reconnect that finishes after the
-        stop calls it again, since a connect clears the latch.
+        A connect must not clear it, or a soft reconnect finishing after the
+        stop would let a move start before it re-latched. The live teardown
+        calls it after stopping the loop and closing the motor queue, while DN
+        and the agentic thread may still issue moves. The default does
+        nothing; a controller with a stop latch overrides it, and then no path
+        (queued or direct) moves the robot after a stop.
         """
 
     def stop_token(self) -> object | None:

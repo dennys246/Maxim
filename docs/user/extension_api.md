@@ -66,10 +66,11 @@ class AtlasController(RobotController):
     # - read_body_yaw() -> float: the body yaw for planning a turn. The default reads get_current_pose()["body_yaw"]
     #   and refuses the turn (MotionRefused "reference") when it is missing or not finite; override it if you have
     #   a fresher source than your pose cache.
-    # - stop_motion() -> None: refuse every new move until your next successful wake or connect. The live loop calls
-    #   it first in its teardown; the default does nothing.
+    # - stop_motion() -> None: refuse every new move until your next successful wake; a connect must NOT clear it (a
+    #   soft reconnect can finish after the stop). The live teardown calls it after stopping the loop and closing the
+    #   motor queue; the default does nothing.
     # - stop_token() -> object | None and wake_up_unless_stopped_since(token): a wake that refuses when a stop came
-    #   after the token (the soft reconnect's). Defaults: no token, and a plain wake_up().
+    #   after the token (the soft reconnect's and the wake word's). Defaults: no token, and a plain wake_up().
     # Inside goto_target / look_at_pixel, call maxim.hardware.controller.mark_motion_accepted() once your checks
     # pass, just before your first actuator command, and refuse (MotionOutcome kind "cancelled") without moving
     # when it returns False: a tool that stopped waiting cancelled the move. Without the call, a queued move is

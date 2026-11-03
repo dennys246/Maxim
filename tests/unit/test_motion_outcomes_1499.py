@@ -1098,11 +1098,11 @@ def test_the_teardown_stops_the_loop_before_it_latches():
     from maxim.embodied_runtime.media_loop import MediaLoopMixin
 
     stop = threading.Event()
-    seen: list[tuple[bool, bool]] = []
+    seen: list[tuple[bool, bool, bool]] = []
 
     class _Robot:
         def stop_motion(self):
-            seen.append((host._live_stopped, stop.is_set()))
+            seen.append((host._live_stopped, stop.is_set(), host._motor_queue.closed))
 
     class _Host(MediaLoopMixin):
         log = logging.getLogger("test.motion_outcomes_1499")
@@ -1115,7 +1115,9 @@ def test_the_teardown_stops_the_loop_before_it_latches():
 
     host = _Host()
     host._begin_live_teardown(stop, None)
-    assert seen == [(True, True)]
+    # The queue closes before the latch too: the wake word takes its token, then reads the queue, so a token taken
+    # after the latch always meets a closed queue (on the synchronous path, a None queue would run the wake).
+    assert seen == [(True, True, True)]
 
 
 def test_a_reconnect_does_not_start_after_the_stop_flag():
@@ -1127,6 +1129,43 @@ def test_a_reconnect_does_not_start_after_the_stop_flag():
         _live_stop_event = None
 
     assert _Host()._soft_reconnect(reason="test") is False
+
+
+def test_the_wake_words_queued_wake_is_refused_by_a_stop_before_it_runs(daemon):
+    """The whole-fence readers: the queued wake read the generation when it ran, so a stop before that was undone."""
+    from maxim.embodied_runtime.agentic_runtime import AgenticRuntimeMixin
+    from maxim.embodied_runtime.workers import MotorQueue, run_motion
+
+    ctl = controller(daemon)
+    selfy = _selfy(ctl, daemon)
+    selfy._motor_queue = MotorQueue(maxsize=4)  # open, with no worker: the wake waits on it
+    selfy._start_agentic_runtime = lambda: None
+    selfy._request_mode = lambda mode: None
+    AgenticRuntimeMixin.wake_up_agentic(selfy)
+    ctl.stop_motion()  # the teardown's latch lands before the worker runs the wake
+    item = selfy._motor_queue.get(timeout=1.0)
+    out = run_motion(item, selfy)
+    assert not out and out.kind == "cancelled"
+    assert daemon.gotos() == [] and ctl._stop_latched
+
+
+def test_a_wake_with_a_token_that_is_not_one_refuses(daemon):
+    ctl = controller(daemon)
+    out = ctl.wake_up_unless_stopped_since(None)
+    assert not out and out.kind == "cancelled" and daemon.gotos() == []
+
+
+def test_a_queue_close_that_raises_still_latches(daemon, caplog):
+    selfy = _selfy(controller(daemon), daemon)
+
+    def _raises():
+        raise RuntimeError("the queue broke")
+
+    selfy._close_motor_queue = _raises  # type: ignore[method-assign]
+    selfy._stop_media_io = lambda lock: None  # type: ignore[method-assign]
+    with caplog.at_level(logging.ERROR):
+        selfy._begin_live_teardown(threading.Event(), None)
+    assert selfy._robot._stop_latched and "the queue broke" in caplog.text
 
 
 def test_a_stop_that_raises_does_not_cost_the_rest_of_the_teardown(daemon, caplog):

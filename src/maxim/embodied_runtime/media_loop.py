@@ -767,11 +767,16 @@ class MediaLoopMixin:
         """
         # In this order: a soft reconnect reads the stop token, then checks the flag and the event, so a stop
         # either shows in that check or moves the token on (connection.py::_resume_after_reconnect).
+        # The queue closes before the latch: the wake word takes its stop token and then reads the queue, so a token
+        # taken after the latch always meets a closed queue. A failure in one step never skips the next.
         self._live_stopped = True
         stop_event.set()
         try:
             self._close_motor_queue()
-            robot = getattr(self, "_robot", None)
+        except Exception as e:
+            self.log.error("Closing the motor queue at the live teardown failed: %s", e, exc_info=True)
+        robot = getattr(self, "_robot", None)
+        try:
             if robot is not None:
                 robot.stop_motion()
         except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)

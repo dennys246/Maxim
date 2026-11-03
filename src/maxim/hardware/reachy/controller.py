@@ -1559,8 +1559,8 @@ class ReachyMiniController(RobotController):
         generation on, and this refuses ``cancelled``. No lock is held across
         the wake, so a stop still cuts it at its next step.
         """
-        if not isinstance(token, int):
-            return self.wake_up()
+        if not isinstance(token, int):  # not one of ours: no proof that no stop came, so no wake
+            return MotionOutcome.refused("cancelled", "the wake's stop token is not this controller's")
         return self._wake(token)
 
     def _wake(self, requested_gen: int) -> MotionOutcome:

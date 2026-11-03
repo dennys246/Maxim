@@ -23,7 +23,7 @@
     ticket, so a retry of a move about to fail no longer reads as done.
   - On the Reachy controller, nothing moves the robot after the live loop stops. The teardown used to drop the queue, which made the next move
     run synchronously while DN was still issuing them, and a body turn never went through the queue at all. The
-    teardown now leaves a closed queue and, first of all, sets the controller's stop latch
+    teardown now stops the loop, closes the queue and then sets the controller's stop latch
     (`RobotController.stop_motion()`, a no-op by default for plugins), which only a successful wake clears, as a
     sleep's does: a soft reconnect's connect no longer clears it. The wake word's wake carries the stop token too. A soft reconnect that finishes after the stop re-latches and wakes nothing: its wake is tied
     to the controller's stop generation, read before its last check (`RobotController.stop_token()` and
