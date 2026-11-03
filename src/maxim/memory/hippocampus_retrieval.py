@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label, record_active_goal
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.agents.working_memory import WorkingMemorySet
@@ -20,6 +22,8 @@ def _rank_by_relevance(
     memories: list[EpisodicMemory | CompressedMemory],
     query: str,
     limit: int,
+    *,
+    collapse_copies: bool = False,
 ) -> list[EpisodicMemory | CompressedMemory]:
     """Rank memories by content-token overlap with a free-text query (#1064).
 
@@ -29,6 +33,9 @@ def _rank_by_relevance(
     none is NOT returned (owner decision D1, 2026-10-24): before, ~90-95% of a store scored 0 and recency filled
     every slot, so this path was mostly recency. Recency breaks ties among the rest; a query with no
     content token returns nothing.
+
+    ``collapse_copies`` gives an episode stored many times one place, before ``limit`` cuts the list
+    (``distinct_copies``, #1573).
     """
     from maxim.memory.text import key_tokens
 
@@ -44,7 +51,27 @@ def _rank_by_relevance(
 
     # Sort by score descending, then recency as tiebreaker
     scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    return [mem for _, _, mem in scored[:limit]]
+    ordered = [mem for _, _, mem in scored]
+    return distinct_copies(ordered)[:limit] if collapse_copies else ordered[:limit]
+
+
+def distinct_copies(memories: list[EpisodicMemory | CompressedMemory]) -> list[EpisodicMemory | CompressedMemory]:
+    """``memories`` in order, keeping the first of each set of copies (``copy_key``; a record that heard nothing is
+    kept). Five stored copies of a question left no place for its answer (#1573). An innate prior: the store keeps
+    every copy, this is what a bounded view shows."""
+    kept: list[EpisodicMemory | CompressedMemory] = []
+    seen: set[tuple[Any, ...]] = set()
+    for mem in memories:
+        try:
+            key = mem.copy_key()
+        except Exception:  # noqa: BLE001 -- logged; a record that cannot be compared is kept, and recall keeps working
+            log_swallowed_exception()
+            key = None
+        if key not in seen:  # None is never added, so a record that heard nothing is always kept
+            kept.append(mem)
+        if key is not None:
+            seen.add(key)
+    return kept
 
 
 def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
@@ -84,6 +111,8 @@ class RetrievalMixin:
         include_compressed: bool = True,
         working_memory: WorkingMemorySet | None = None,
         retrieval_context: "RetrievalContext | None" = None,
+        exclude_ids: Collection[str] = (),
+        collapse_copies: bool = False,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories matching filters (hash lookup + filtering).
 
@@ -107,6 +136,8 @@ class RetrievalMixin:
             include_compressed: Include CompressedMemory results (default True).
             working_memory: If provided, each recalled memory is added as
                 a RECALL entry (reconsolidation pull into active context).
+            exclude_ids: Never candidates, so they take no place inside ``limit`` and are not touched.
+            collapse_copies: An episode stored many times takes one place (``distinct_copies``, #1573).
 
         Returns:
             List of matching memories, ranked by relevance if *query* is
@@ -159,7 +190,7 @@ class RetrievalMixin:
                 results = []
                 for memory_id in candidates:  # type: ignore[union-attr]
                     memory = self._memories.get(memory_id)
-                    if memory is None:
+                    if memory is None or memory_id in exclude_ids:
                         continue
 
                     # Skip compressed if not wanted
@@ -176,10 +207,10 @@ class RetrievalMixin:
 
                 # Rank by relevance if query provided, else by recency
                 if query and results:
-                    results = _rank_by_relevance(results, query, limit)
+                    results = _rank_by_relevance(results, query, limit, collapse_copies=collapse_copies)
                 else:
                     results.sort(key=lambda m: m.timestamp, reverse=True)
-                    results = results[:limit]
+                    results = (distinct_copies(results) if collapse_copies else results)[:limit]
 
         # Phase 2: Write lock for stats + touch + promotion scoring
         with self._rwlock.write():
