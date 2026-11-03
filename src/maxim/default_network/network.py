@@ -1323,13 +1323,13 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             if hasattr(self._maxim, "move_relative"):
                 return self._maxim.move_relative(proposal.metadata.get("delta", (0, 0)))
         if proposal.action_type == "track" and proposal.target and has_look:
-            return self._dispatch_track(proposal, duration)
+            return self._dispatch_track(proposal, proposal.target, duration)
         if proposal.action_type == "turn_around" and hasattr(self._maxim, "turn_around"):
             return self._dispatch_turn(proposal)
         return None
 
-    def _dispatch_track(self, proposal: ActionProposal, duration: float) -> Any:
-        u, v = proposal.target
+    def _dispatch_track(self, proposal: ActionProposal, target: tuple[float, float], duration: float) -> Any:
+        u, v = target
         track_duration = floor_duration(duration * 0.5)  # Half duration for tracking
         if proposal.behavior_name == "social":
             cur_yaw = float(getattr(self._maxim, "yaw", 0.0) or 0.0)

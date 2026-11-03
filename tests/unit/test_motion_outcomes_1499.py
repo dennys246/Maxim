@@ -1085,6 +1085,19 @@ def test_a_re_latch_that_raises_is_logged_on_the_capture_thread(caplog):
     assert "the plugin's stop broke" in caplog.text
 
 
+def test_a_stop_with_no_robot_still_reports_stopped():
+    from maxim.embodied_runtime.connection import ConnectionMixin
+
+    class _Host(ConnectionMixin):
+        log = logging.getLogger("test.motion_outcomes_1499")
+        _robot = None  # nothing to re-latch
+        _live_stop_event = None
+        _closed = False
+        _live_stopped = True
+
+    assert _Host()._stopped_during_reconnect()
+
+
 def test_a_new_live_loop_clears_the_last_stop(daemon):
     """Cleared when the loop arms its stop event, before ``awaken`` and the runtime start, not later."""
     selfy = _selfy(controller(daemon), daemon)
