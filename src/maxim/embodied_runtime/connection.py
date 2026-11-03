@@ -7,16 +7,18 @@ and runtime capability degradation/restoration via ConnectionState callbacks.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
+from maxim.hardware.controller import as_outcome
 from maxim.utils.gpu_compat import is_connection_error
 from maxim.utils.logging import warn
 
 if TYPE_CHECKING:
-    pass  # ReachyMini imported dynamically
+    from maxim.hardware.controller import RobotController
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +139,13 @@ class ConnectionMixin:
     Handles CV2 resource release, media cleanup, connection failure tracking,
     and soft reconnection logic. Self-contained reconnection state machine.
     """
+
+    log: logging.Logger  # set by the host (Selfy.__init__)
+    _robot: Optional[RobotController]  # set by the host (Selfy.__init__); None without a robot
+    _simulation: bool
+    _reconnect_lock: threading.Lock
+    _reconnect_thresholds: dict[str, int]
+    _connection_failures: dict[str, dict[str, Any]]
 
     def _release_cv2(self) -> None:
         try:
@@ -270,8 +279,60 @@ class ConnectionMixin:
         except Exception:
             pass
 
+    def _resume_after_reconnect(self, robot: RobotController) -> bool:
+        """Restart the recording and, unless asleep, wake the robot; False when the loop stopped first (#1499).
+
+        The wake is tied to the stop generation read before the last check:
+        the teardown stops the loop before it latches, so a stop either shows
+        in that check or moves the generation on and the controller refuses
+        the wake. A stop during the wake still cuts it, as any stop does.
+        """
+        try:
+            robot.start_recording()
+        except Exception as e:
+            warn("Failed to start recording after reconnect: %s", e, logger=self.log)
+
+        if getattr(self, "_woke_up", False):
+            mode = str(getattr(self, "mode", "") or "").strip().lower()
+            if mode != "sleep":
+                token = robot.stop_token()
+                if self._stopped_during_reconnect():
+                    return False
+                try:
+                    woke = as_outcome(robot.wake_up_unless_stopped_since(token))
+                except Exception as e:
+                    warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+                    return True
+                if not woke and woke.kind == "cancelled":
+                    self.log.warning("Soft reconnect: the live loop stopped during the wake (%s)", woke.reason)
+                    return False
+        return True
+
+    def _stopped_during_reconnect(self) -> bool:
+        """True when the live loop stopped while the reconnect blocked: re-latch, and wake nothing (#1499).
+
+        The wake after the connect would clear the teardown's latch
+        (``stop_motion``), so a robot stopped mid-reconnect would move again
+        until shutdown disconnects it. Re-latching here is belt and braces: a
+        connect does not clear that latch. ``_live_stopped`` outlives the stop event, which the teardown drops
+        before ``shutdown`` sets ``_closed``.
+        """
+        stop_event = getattr(self, "_live_stop_event", None)
+        stopped = getattr(self, "_live_stopped", False) or getattr(self, "_closed", False)
+        if not (stopped or (stop_event is not None and stop_event.is_set())):
+            return False
+        self.log.warning("Soft reconnect: the live loop stopped meanwhile; the robot stays stopped")
+        robot = self._robot
+        if robot is None:
+            return True
+        try:
+            robot.stop_motion()
+        except Exception as e:  # a plugin's stop: this runs on a capture thread, which must not die of it
+            self.log.error("Re-latching after the reconnect failed: %s", e, exc_info=True)
+        return True
+
     def _soft_reconnect(self, *, reason: str, error: object | None = None) -> bool:
-        if getattr(self, "_closed", False):
+        if getattr(self, "_closed", False) or getattr(self, "_live_stopped", False):
             return False
         stop_event = getattr(self, "_live_stop_event", None)
         if stop_event is not None and stop_event.is_set():
@@ -362,19 +423,10 @@ class ConnectionMixin:
                 warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
                 self._degrade_capabilities()
                 return False
-
-            try:
-                self._robot.start_recording()
-            except Exception as e:
-                warn("Failed to start recording after reconnect: %s", e, logger=self.log)
-
-            if getattr(self, "_woke_up", False):
-                mode = str(getattr(self, "mode", "") or "").strip().lower()
-                if mode != "sleep":
-                    try:
-                        self._robot.wake_up()
-                    except Exception as e:
-                        warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+            if self._stopped_during_reconnect():
+                return False
+            if not self._resume_after_reconnect(self._robot):
+                return False
 
             motor_queue = getattr(self, "_motor_queue", None)
             if motor_queue is not None:

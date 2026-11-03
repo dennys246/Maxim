@@ -7,7 +7,7 @@ import threading
 import time
 import wave
 from concurrent.futures import TimeoutError as FuturesTimeout
-from typing import Optional
+from typing import Any, Optional
 import numpy as np
 from maxim.utils.audio import resample_audio, run_in_own_process_group, to_int16
 from maxim.utils.cancellation import register_stop_event, unregister_stop_event
@@ -382,8 +382,7 @@ class MediaLoopMixin:
                                     e,
                                 )
         finally:
-            stop_event.set()
-            self._stop_media_io(media_lock)
+            self._begin_live_teardown(stop_event, media_lock)
             for t in threads:
                 t.join(timeout=2.0)
 
@@ -457,8 +456,12 @@ class MediaLoopMixin:
 
     def _open_live_stop_event(self) -> threading.Event:
         """The run's stop event, registered for the process stop request: a stop signal (#1344) ends the main
-        thread's loops (headless ``wait(0.5)``, the frame loop's queue poll) and the run's own shutdown follows."""
+        thread's loops (headless ``wait(0.5)``, the frame loop's queue poll) and the run's own shutdown follows.
+
+        Opening it clears the last loop's stop (``_live_stopped``), so that stop no longer holds a soft reconnect
+        back (#1499)."""
         stop_event = threading.Event()
+        self._live_stopped = False
         register_stop_event(stop_event)
         self._live_stop_event = stop_event
         return stop_event
@@ -753,11 +756,44 @@ class MediaLoopMixin:
         return motor_queue
 
     def _close_motor_queue(self) -> None:
-        """A stop or the live teardown: every queued command resolves ``cancelled`` and none runs after it."""
+        """A stop or the live teardown: every queued command resolves ``cancelled`` and none runs after it.
+
+        The closed queue stays until the next ``live`` opens one, so a later
+        command is cancelled too. ``_motor_queue`` being None runs a command
+        synchronously, and DN keeps issuing until shutdown stops it. A loop
+        with no queue (not parallel) gets a closed one for the same reason.
+        """
         q = getattr(self, "_motor_queue", None)
-        if q is not None:
-            q.close()
-        self._motor_queue = None
+        if q is None:
+            q = MotorQueue(maxsize=4)
+        q.close()
+        self._motor_queue = q
+
+    def _begin_live_teardown(self, stop_event: threading.Event, media_lock: Any) -> None:
+        """The teardown's first step: stop the loop and fence motion before anything is joined (#1499).
+
+        DN and the agentic thread keep issuing moves until shutdown stops
+        them, seconds later. The closed queue cancels a queued one; the
+        controller's latch refuses the rest (a body turn, a tool's direct
+        dispatch) until the next wake.
+        """
+        # In this order: a soft reconnect reads the stop token, then checks the flag and the event, so a stop
+        # either shows in that check or moves the token on (connection.py::_resume_after_reconnect).
+        # The queue closes before the latch: the wake word takes its stop token and then reads the queue, so a token
+        # taken after the latch always meets a closed queue. A failure in one step never skips the next.
+        self._live_stopped = True
+        stop_event.set()
+        try:
+            self._close_motor_queue()
+        except Exception as e:
+            self.log.error("Closing the motor queue at the live teardown failed: %s", e, exc_info=True)
+        robot = getattr(self, "_robot", None)
+        try:
+            if robot is not None:
+                robot.stop_motion()
+        except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)
+            self.log.error("Stopping motion at the live teardown failed: %s", e, exc_info=True)
+        self._stop_media_io(media_lock)
 
     def _release_live_handles(self) -> None:
         """The live teardown: close the motor queue (its commands resolve ``cancelled``), drop the loop's handles and
@@ -766,20 +802,21 @@ class MediaLoopMixin:
         self._media_lock = None
         self._close_live_stop_event()
 
-    def _enqueue_motor(self, fn, *args, **kwargs) -> MotionTicket:
+    def _enqueue_motor(self, fn, *args, _on_accept=None, **kwargs) -> MotionTicket:
         """Queue a motor command and return its ticket (#1499 5.6); with no queue, run it now.
 
+        After a stop the queue is a closed one, so the command is cancelled.
         The synchronous path goes through the worker's own ``run_motion``, so
         the ticket, the learners and the mirror re-read behave the same either
-        way, and the ticket it returns is already resolved.
+        way, and the ticket it returns is already resolved. ``_on_accept`` runs
+        when the move starts (the ticket's ``on_accept``).
         """
         q = getattr(self, "_motor_queue", None)
         if q is not None:
-            ticket = q.put(fn, *args, **kwargs)
-        else:
-            ticket = MotionTicket()
-            ticket.claim()
-            run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
+            return q.put(fn, *args, _on_accept=_on_accept, **kwargs)
+        ticket = MotionTicket(on_accept=_on_accept)
+        ticket.claim()
+        run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
         return ticket
 
     def _clear_motor_queue(self) -> int:
