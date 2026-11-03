@@ -860,13 +860,11 @@ def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queu
     assert len(daemon.gotos()) == before
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1499 PR 3 (owner decision 2026-11-03): a raise between live()'s stop event and its outer try skips the "
-    "teardown, so the queue stays open and the controller never latches",
-)
-def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, monkeypatch):
-    """The setup window: the stop event is open and the agentic runtime has started, then the setup raises."""
+@pytest.mark.parametrize("raise_at", ["transcriber", "worker-start"])
+def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, monkeypatch, raise_at):
+    """The setup window: the stop event is open and the agentic runtime has started, then the setup raises.
+
+    Before PR 3 the outer try began after the setup, so the teardown never ran (owner decision 2026-11-03)."""
     import maxim.embodied_runtime.media_loop as media_loop
 
     monkeypatch.setattr(media_loop, "configure_logging", lambda *a, **k: None)
@@ -880,13 +878,26 @@ def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, 
     selfy._start_agentic_runtime = lambda: None  # DN would keep issuing moves from here on
     selfy._stop_media_io = lambda _lock: None
     selfy.shutdown = lambda: None
+    selfy._start_cli_listener = selfy._start_key_listener = selfy._start_transcript_listener = lambda _stop: None
 
-    def _broken(**_k):
-        raise RuntimeError("the transcriber start broke")
+    if raise_at == "transcriber":
 
-    selfy._start_transcription_worker = _broken
+        def _broken(**_k):
+            raise RuntimeError("the setup broke")
+
+        selfy._start_transcription_worker = _broken
+    else:  # the motor worker's start raises, so the threads list holds an unstarted thread for the teardown's join
+        selfy._start_transcription_worker = lambda **_k: (None, None)
+        real_start = threading.Thread.start
+
+        def _start(thread):
+            if thread.name == "maxim.motor":
+                raise RuntimeError("the setup broke")
+            real_start(thread)
+
+        monkeypatch.setattr(threading.Thread, "start", _start)
     try:
-        with pytest.raises(RuntimeError, match="transcriber start broke"):
+        with pytest.raises(RuntimeError, match="the setup broke"):
             selfy.live(vision=False, run_id="setup-window")
         assert selfy._motor_queue is not None and selfy._motor_queue.closed
         before = len(daemon.gotos())

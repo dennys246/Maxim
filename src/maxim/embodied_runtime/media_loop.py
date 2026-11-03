@@ -167,111 +167,112 @@ class MediaLoopMixin:
         media_lock = threading.Lock()
         self._media_lock = media_lock
         stop_event = self._open_live_stop_event()
-
-        # Phase 2: Start agentic runtime automatically when not in sleep mode
-        # The agentic system handles all decision-making; live() just does I/O
-        # Note: Must happen AFTER _media_lock is created for CaptureManager to use it
-        audio_input_rate, audio_output_rate = self._start_media_audio()
-        if mode != "sleep":
-            try:
-                self._start_agentic_runtime()
-            except Exception as e:
-                warn_unless_refusal("Failed to start agentic runtime: %s", e, logger=self.log)
-
-        frame_obs_queue: queue.Queue = queue.Queue(maxsize=1)
-        frame_save_queue: queue.Queue = queue.Queue(maxsize=512)
-        audio_save_queue: queue.Queue = queue.Queue(maxsize=512) if self.audio else None
-
-        motor_queue = self._open_motor_queue(active=parallel and motor)
-
-        transcribe_process, transcribe_shutdown_file = self._start_transcription_worker(
-            parallel=parallel, chunk_dir=chunk_dir, transcript_path=transcript_path, log_path=log_path
-        )
-        self.log.debug("Continuing with main loop setup after transcription worker...")
-
-        # Import worker functions from workers module
-        from maxim.embodied_runtime.workers import (
-            motor_worker,
-            frame_capture_worker,
-            audio_capture_worker,
-            video_writer_worker,
-            audio_writer_worker,
-        )
-
         threads: list[threading.Thread] = []
-        cli_thread = self._start_cli_listener(stop_event)
-        if cli_thread is not None:
-            threads.append(cli_thread)
-            cli_thread.start()
+        transcribe_process: Optional[mp.process.BaseProcess] = None
+        transcribe_shutdown_file: Optional[str] = None
+        try:  # from here on a raise still runs the teardown, which fences motion (#1499)
+            # Phase 2: Start agentic runtime automatically when not in sleep mode
+            # The agentic system handles all decision-making; live() just does I/O
+            # Note: Must happen AFTER _media_lock is created for CaptureManager to use it
+            audio_input_rate, audio_output_rate = self._start_media_audio()
+            if mode != "sleep":
+                try:
+                    self._start_agentic_runtime()
+                except Exception as e:
+                    warn_unless_refusal("Failed to start agentic runtime: %s", e, logger=self.log)
 
-        key_thread = self._start_key_listener(stop_event)
-        if key_thread is not None:
-            threads.append(key_thread)
-            key_thread.start()
+            frame_obs_queue: queue.Queue = queue.Queue(maxsize=1)
+            frame_save_queue: queue.Queue = queue.Queue(maxsize=512)
+            audio_save_queue: queue.Queue = queue.Queue(maxsize=512) if self.audio else None
 
-        transcript_thread = self._start_transcript_listener(stop_event)
-        if transcript_thread is not None:
-            threads.append(transcript_thread)
-            transcript_thread.start()
+            motor_queue = self._open_motor_queue(active=parallel and motor)
 
-        has_robot = self._robot is not None
-        if parallel:
-            if vision and has_robot:
-                threads.append(
-                    threading.Thread(
-                        target=frame_capture_worker,
-                        args=(stop_event, media_lock, self, frame_save_queue, frame_obs_queue),
-                        name="maxim.capture.video",
-                        daemon=True,
-                    )
-                )
-                threads.append(
-                    threading.Thread(
-                        target=video_writer_worker,
-                        args=(stop_event, self, frame_save_queue, video_path),
-                        name="maxim.write.video",
-                        daemon=True,
-                    )
-                )
-            if motor and has_robot:
-                threads.append(
-                    threading.Thread(
-                        target=motor_worker, args=(motor_queue, stop_event, self), name="maxim.motor", daemon=True
-                    )
-                )
-            if self.audio and has_robot:
-                threads.append(
-                    threading.Thread(
-                        target=audio_capture_worker,
-                        args=(stop_event, media_lock, self, audio_save_queue, audio_input_rate, audio_output_rate),
-                        name="maxim.capture.audio",
-                        daemon=True,
-                    )
-                )
-                threads.append(
-                    threading.Thread(
-                        target=audio_writer_worker,
-                        args=(
-                            stop_event,
-                            self,
-                            audio_save_queue,
-                            audio_path,
-                            chunk_dir,
-                            audio_input_rate,
-                            audio_output_rate,
-                            transcribe_process,
-                        ),
-                        name="maxim.write.audio",
-                        daemon=True,
-                    )
-                )
+            transcribe_process, transcribe_shutdown_file = self._start_transcription_worker(
+                parallel=parallel, chunk_dir=chunk_dir, transcript_path=transcript_path, log_path=log_path
+            )
+            self.log.debug("Continuing with main loop setup after transcription worker...")
 
-            for t in threads:
-                if t is key_thread or t is transcript_thread or t is cli_thread:
-                    continue
-                t.start()
+            # Import worker functions from workers module
+            from maxim.embodied_runtime.workers import (
+                motor_worker,
+                frame_capture_worker,
+                audio_capture_worker,
+                video_writer_worker,
+                audio_writer_worker,
+            )
 
-        try:
+            cli_thread = self._start_cli_listener(stop_event)
+            if cli_thread is not None:
+                threads.append(cli_thread)
+                cli_thread.start()
+
+            key_thread = self._start_key_listener(stop_event)
+            if key_thread is not None:
+                threads.append(key_thread)
+                key_thread.start()
+
+            transcript_thread = self._start_transcript_listener(stop_event)
+            if transcript_thread is not None:
+                threads.append(transcript_thread)
+                transcript_thread.start()
+
+            has_robot = self._robot is not None
+            if parallel:
+                if vision and has_robot:
+                    threads.append(
+                        threading.Thread(
+                            target=frame_capture_worker,
+                            args=(stop_event, media_lock, self, frame_save_queue, frame_obs_queue),
+                            name="maxim.capture.video",
+                            daemon=True,
+                        )
+                    )
+                    threads.append(
+                        threading.Thread(
+                            target=video_writer_worker,
+                            args=(stop_event, self, frame_save_queue, video_path),
+                            name="maxim.write.video",
+                            daemon=True,
+                        )
+                    )
+                if motor and has_robot:
+                    threads.append(
+                        threading.Thread(
+                            target=motor_worker, args=(motor_queue, stop_event, self), name="maxim.motor", daemon=True
+                        )
+                    )
+                if self.audio and has_robot:
+                    threads.append(
+                        threading.Thread(
+                            target=audio_capture_worker,
+                            args=(stop_event, media_lock, self, audio_save_queue, audio_input_rate, audio_output_rate),
+                            name="maxim.capture.audio",
+                            daemon=True,
+                        )
+                    )
+                    threads.append(
+                        threading.Thread(
+                            target=audio_writer_worker,
+                            args=(
+                                stop_event,
+                                self,
+                                audio_save_queue,
+                                audio_path,
+                                chunk_dir,
+                                audio_input_rate,
+                                audio_output_rate,
+                                transcribe_process,
+                            ),
+                            name="maxim.write.audio",
+                            daemon=True,
+                        )
+                    )
+
+                for t in threads:
+                    if t is key_thread or t is transcript_thread or t is cli_thread:
+                        continue
+                    t.start()
+
             if not vision or not has_robot:
                 if has_robot:
                     self.log.info("Audio-only mode: recording until Ctrl+C.")
@@ -319,140 +320,151 @@ class MediaLoopMixin:
                     # Use CaptureManager frames when available (already segmented)
                     # Movement decisions are handled by the agentic runtime
                     if self.observation_period and self.current_epoch % self.observation_period == 0:
-                        try:
-                            with self._observation_lock:
-                                # Check if CaptureManager has a recent frame with detections
-                                capture_manager = getattr(self, "_capture_manager", None)
-                                if capture_manager is not None:
-                                    captured = capture_manager.get_latest_frame()
-                                    if captured is not None and captured.segmented:
-                                        # Use pre-segmented frame from CaptureManager
-                                        if self.verbosity >= 2:
-                                            self.log.debug(
-                                                "Display frame from CaptureManager (epoch=%d, detections=%d)",
-                                                self.current_epoch,
-                                                len(captured.detections or []),
-                                            )
-                                        target_info = (
-                                            display_detections(
-                                                captured.frame,
-                                                captured.detections,
-                                                segmenter=None,  # Already segmented
-                                                window_name="Maxim Observation",
-                                                wait_ms=1,
-                                                show_pose=True,
-                                            )
-                                            if self.verbose
-                                            else None
-                                        )
-                                    else:
-                                        # Fall back to passive_observation if no segmented frame
-                                        if self.verbosity >= 2:
-                                            self.log.debug(
-                                                "Display fallback to passive_observation (epoch=%d, captured=%s)",
-                                                self.current_epoch,
-                                                captured is not None,
-                                            )
-                                        target_info = passive_observation(self, photo, show=self.verbose)
-                                else:
-                                    # No CaptureManager, use legacy behavior
-                                    if self.verbosity >= 2:
-                                        self.log.debug(
-                                            "Display using legacy passive_observation (epoch=%d)",
-                                            self.current_epoch,
-                                        )
-                                    target_info = passive_observation(self, photo, show=self.verbose)
-
-                                # Store target info for agentic system to act on
-                                if target_info is not None:
-                                    try:
-                                        self._last_detection_target = target_info
-                                    except Exception:
-                                        pass
-                        except Exception as e:
-                            if self.verbosity >= 2:
-                                self.log.exception(
-                                    "Observation step failed (mode=%s)",
-                                    getattr(self, "mode", "reflection"),
-                                )
-                            else:
-                                self.log.error(
-                                    "Observation step failed (mode=%s): %s",
-                                    getattr(self, "mode", "reflection"),
-                                    e,
-                                )
+                        self._observe_frame(photo)
         finally:
             self._begin_live_teardown(stop_event, media_lock)
             for t in threads:
-                t.join(timeout=2.0)
+                if t.ident is not None:  # a raise in the setup can leave a thread in the list unstarted
+                    t.join(timeout=2.0)
 
-            # Signal transcription worker to shut down via file
-            if transcribe_shutdown_file is not None:
-                try:
-                    # Create shutdown signal file
-                    with open(transcribe_shutdown_file, "w") as f:
-                        f.write("shutdown\n")
-                except Exception:
-                    pass
-
-            if transcribe_process is not None:
-                # Phase 1: Wait briefly for graceful shutdown via file signal
-                try:
-                    transcribe_process.join(timeout=2.0)
-                except Exception:
-                    pass
-
-                # Phase 2: Send SIGTERM if still alive
-                if transcribe_process.is_alive():
-                    try:
-                        transcribe_process.terminate()
-                    except Exception:
-                        pass
-                    # Also send SIGTERM directly via os.kill for reliability
-                    try:
-                        import signal
-
-                        os.kill(transcribe_process.pid, signal.SIGTERM)
-                    except Exception:
-                        pass
-                    try:
-                        transcribe_process.join(timeout=1.0)
-                    except Exception:
-                        pass
-
-                # Phase 3: Force kill if still alive
-                if transcribe_process.is_alive():
-                    self.log.warning("Transcription process did not respond to SIGTERM, sending SIGKILL")
-                    try:
-                        transcribe_process.kill()
-                    except Exception:
-                        pass
-                    # Also send SIGKILL directly for reliability
-                    try:
-                        import signal
-
-                        os.kill(transcribe_process.pid, signal.SIGKILL)
-                    except Exception:
-                        pass
-                    try:
-                        transcribe_process.join(timeout=1.0)
-                    except Exception:
-                        pass
-
-                # Final check
-                if transcribe_process.is_alive():
-                    self.log.error("Transcription process could not be terminated (pid=%d)", transcribe_process.pid)
-
-            # Cleanup shutdown file
-            if transcribe_shutdown_file is not None:
-                try:
-                    if os.path.exists(transcribe_shutdown_file):
-                        os.remove(transcribe_shutdown_file)
-                except Exception:
-                    pass
+            self._stop_transcription_worker(transcribe_process, transcribe_shutdown_file)
 
             self._release_live_handles()
             self.shutdown()
+
+    def _observe_frame(self, photo) -> None:
+        """The display-only observation step for one frame; movement decisions belong to the agentic runtime."""
+        try:
+            with self._observation_lock:
+                # Check if CaptureManager has a recent frame with detections
+                capture_manager = getattr(self, "_capture_manager", None)
+                if capture_manager is not None:
+                    captured = capture_manager.get_latest_frame()
+                    if captured is not None and captured.segmented:
+                        # Use pre-segmented frame from CaptureManager
+                        if self.verbosity >= 2:
+                            self.log.debug(
+                                "Display frame from CaptureManager (epoch=%d, detections=%d)",
+                                self.current_epoch,
+                                len(captured.detections or []),
+                            )
+                        target_info = (
+                            display_detections(
+                                captured.frame,
+                                captured.detections,
+                                segmenter=None,  # Already segmented
+                                window_name="Maxim Observation",
+                                wait_ms=1,
+                                show_pose=True,
+                            )
+                            if self.verbose
+                            else None
+                        )
+                    else:
+                        # Fall back to passive_observation if no segmented frame
+                        if self.verbosity >= 2:
+                            self.log.debug(
+                                "Display fallback to passive_observation (epoch=%d, captured=%s)",
+                                self.current_epoch,
+                                captured is not None,
+                            )
+                        target_info = passive_observation(self, photo, show=self.verbose)
+                else:
+                    # No CaptureManager, use legacy behavior
+                    if self.verbosity >= 2:
+                        self.log.debug(
+                            "Display using legacy passive_observation (epoch=%d)",
+                            self.current_epoch,
+                        )
+                    target_info = passive_observation(self, photo, show=self.verbose)
+
+                # Store target info for agentic system to act on
+                if target_info is not None:
+                    try:
+                        self._last_detection_target = target_info
+                    except Exception:
+                        pass
+        except Exception as e:
+            if self.verbosity >= 2:
+                self.log.exception(
+                    "Observation step failed (mode=%s)",
+                    getattr(self, "mode", "reflection"),
+                )
+            else:
+                self.log.error(
+                    "Observation step failed (mode=%s): %s",
+                    getattr(self, "mode", "reflection"),
+                    e,
+                )
+
+    def _stop_transcription_worker(
+        self, transcribe_process: Optional[mp.process.BaseProcess], transcribe_shutdown_file: Optional[str]
+    ) -> None:
+        """The live teardown's transcriber stop: the shutdown file, then SIGTERM, then SIGKILL."""
+        # Signal transcription worker to shut down via file
+        if transcribe_shutdown_file is not None:
+            try:
+                # Create shutdown signal file
+                with open(transcribe_shutdown_file, "w") as f:
+                    f.write("shutdown\n")
+            except Exception:
+                pass
+
+        if transcribe_process is not None:
+            # Phase 1: Wait briefly for graceful shutdown via file signal
+            try:
+                transcribe_process.join(timeout=2.0)
+            except Exception:
+                pass
+
+            # Phase 2: Send SIGTERM if still alive
+            if transcribe_process.is_alive():
+                try:
+                    transcribe_process.terminate()
+                except Exception:
+                    pass
+                # Also send SIGTERM directly via os.kill for reliability
+                try:
+                    import signal
+
+                    os.kill(transcribe_process.pid, signal.SIGTERM)
+                except Exception:
+                    pass
+                try:
+                    transcribe_process.join(timeout=1.0)
+                except Exception:
+                    pass
+
+            # Phase 3: Force kill if still alive
+            if transcribe_process.is_alive():
+                self.log.warning("Transcription process did not respond to SIGTERM, sending SIGKILL")
+                try:
+                    transcribe_process.kill()
+                except Exception:
+                    pass
+                # Also send SIGKILL directly for reliability
+                try:
+                    import signal
+
+                    os.kill(transcribe_process.pid, signal.SIGKILL)
+                except Exception:
+                    pass
+                try:
+                    transcribe_process.join(timeout=1.0)
+                except Exception:
+                    pass
+
+            # Final check
+            if transcribe_process.is_alive():
+                self.log.error("Transcription process could not be terminated (pid=%d)", transcribe_process.pid)
+
+        # Cleanup shutdown file
+        if transcribe_shutdown_file is not None:
+            try:
+                if os.path.exists(transcribe_shutdown_file):
+                    os.remove(transcribe_shutdown_file)
+            except Exception:
+                pass
 
     def _open_live_stop_event(self) -> threading.Event:
         """The run's stop event, registered for the process stop request: a stop signal (#1344) ends the main
