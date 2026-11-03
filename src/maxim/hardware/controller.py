@@ -581,6 +581,15 @@ class RobotController(ABC):
         """Disconnect from the robot."""
         ...
 
+    def stop_motion(self) -> None:
+        """Refuse every new move until the next successful wake or connect (#1499): a stop without a sleep.
+
+        The live loop calls it first in its teardown, while DN and the agentic
+        thread may still issue moves. The default does nothing; a controller
+        with a stop latch overrides it, and then no path (queued or direct)
+        moves the robot after a stop.
+        """
+
     def is_connected(self) -> bool:
         """Check if robot is connected."""
         return self._state.is_connected

@@ -896,7 +896,11 @@ None, which `_enqueue_motor` reads as the synchronous path, so `close`'s "every 
 next look-at executed, before the controller's latch at disconnect. A `parallel=False` loop had the same exposure.
 Now None means only that no queue was ever opened (or this loop has none): a stop always leaves a closed queue, until
 the next `live` opens one. `sleep` is unaffected, since its `live(motor=False)` opens no queue and the wake runs
-synchronously. The worker also withdraws a command it took as the stop landed.
+synchronously. The worker also withdraws a command it took as the stop landed. A reader of that fold found body turns
+(`turn_around`, from DN's look-at at the yaw bound, DN's turn proposals and the tool) dispatch directly and still ran.
+**Owner (2026-11-03): latch at teardown, in 2b.** The teardown's first step, `_begin_live_teardown`, closes the queue
+and calls `RobotController.stop_motion()`, the Reachy controller's existing disconnect-style latch (cleared by a
+successful wake or a new connect; `goto_sleep` still runs), so one fence covers every path.
 
 ### Pre-merge review round and its deltas (2026-11-02)
 

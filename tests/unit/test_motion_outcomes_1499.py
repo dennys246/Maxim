@@ -859,6 +859,65 @@ def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queu
     assert len(daemon.gotos()) == before
 
 
+def test_the_teardown_latches_the_controller_so_a_body_turn_after_a_stop_is_refused(daemon):
+    """The second reader of the stop fold: ``turn_around`` dispatches directly, so the queue alone did not cover it."""
+    ctl = controller(daemon)
+    selfy = _selfy(ctl, daemon)
+    selfy._open_motor_queue(active=True)
+    io: list = []
+    selfy._stop_media_io = lambda lock: io.append(lock)  # type: ignore[method-assign]
+    stop = threading.Event()
+    selfy._begin_live_teardown(stop, "lock")
+    assert stop.is_set() and io == ["lock"] and selfy._motor_queue.closed
+    before = len(daemon.gotos())
+    turned = selfy.turn_around(30.0, duration=5.0)
+    assert not turned and turned.kind == "cancelled"
+    assert len(daemon.gotos()) == before
+
+
+def test_a_wake_after_the_teardown_moves_again(daemon):
+    from maxim.hardware.controller import MotionTarget
+
+    ctl = controller(daemon)
+    ctl.stop_motion()
+    assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0)).kind == "cancelled"
+    assert ctl.wake_up()
+    assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0))
+
+
+def test_a_new_connect_clears_the_teardowns_latch_but_not_a_sleeps(daemon):
+    """A stop without a sleep: a controller reused by a new run is not left refusing every move."""
+    from maxim.hardware.controller import MotionTarget
+
+    ctl = controller(daemon)
+    ctl.stop_motion()
+    ctl._clear_latch_after_connect()  # connect's step, without the SDK handshake
+    assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0))
+
+
+def test_the_sleep_pose_still_runs_after_the_teardown(daemon):
+    """Shutdown parks the head after the teardown: the latch must not refuse ``goto_sleep``."""
+    ctl = controller(daemon)
+    ctl.stop_motion()
+    assert ctl.goto_sleep()
+
+
+def test_the_live_teardown_fences_motion_first():
+    """``live`` is too wide to drive here, so this pins the wiring: the first statement of its teardown is the fence."""
+    import ast
+    import inspect
+    import textwrap
+
+    from maxim.embodied_runtime.media_loop import MediaLoopMixin
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(MediaLoopMixin.live)))
+    finals = [n.finalbody for n in ast.walk(tree) if isinstance(n, ast.Try) and n.finalbody]
+    outer = max(finals, key=len)
+    first = outer[0]
+    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
+    assert ast.unparse(first.value.func) == "self._begin_live_teardown"
+
+
 def test_a_new_live_loop_opens_a_fresh_queue_after_a_teardown(daemon):
     selfy = _selfy(controller(daemon), daemon)
     selfy._media_lock = selfy._live_stop_event = None

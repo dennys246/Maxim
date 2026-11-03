@@ -7,7 +7,7 @@ import threading
 import time
 import wave
 from concurrent.futures import TimeoutError as FuturesTimeout
-from typing import Optional
+from typing import Any, Optional
 import numpy as np
 from maxim.utils.audio import resample_audio, run_in_own_process_group, to_int16
 from maxim.utils.data_management import CLIInputLogger, TrainingSampleLogger, build_home
@@ -382,8 +382,7 @@ class MediaLoopMixin:
                                     e,
                                 )
         finally:
-            stop_event.set()
-            self._stop_media_io(media_lock)
+            self._begin_live_teardown(stop_event, media_lock)
             for t in threads:
                 t.join(timeout=2.0)
 
@@ -751,6 +750,21 @@ class MediaLoopMixin:
             q = MotorQueue(maxsize=4)
         q.close()
         self._motor_queue = q
+
+    def _begin_live_teardown(self, stop_event: threading.Event, media_lock: Any) -> None:
+        """The teardown's first step: stop the loop and fence motion before anything is joined (#1499).
+
+        DN and the agentic thread keep issuing moves until shutdown stops
+        them, seconds later. The closed queue cancels a queued one; the
+        controller's latch refuses the rest (a body turn, a tool's direct
+        dispatch) until the next wake.
+        """
+        stop_event.set()
+        self._close_motor_queue()
+        robot = getattr(self, "_robot", None)
+        if robot is not None:
+            robot.stop_motion()
+        self._stop_media_io(media_lock)
 
     def _release_live_handles(self) -> None:
         """The live teardown: close the motor queue (its commands resolve ``cancelled``), drop the loop's handles."""

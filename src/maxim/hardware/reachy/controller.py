@@ -652,6 +652,15 @@ class ReachyMiniController(RobotController):
             )
             return False
 
+    def stop_motion(self) -> None:
+        """Latch and end any move at its next chunk, as a disconnect does, without disconnecting (#1499).
+
+        A successful wake or a new connect clears it; ``goto_sleep`` still runs
+        (it latches anyway). Called first in the live teardown, so a body turn
+        or a direct dispatch after a stop is refused too, not only a queued one.
+        """
+        self._stop(by_sleep=False)
+
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
         # Latch (nothing new starts; connect clears it unless a sleep set it) and the stop
