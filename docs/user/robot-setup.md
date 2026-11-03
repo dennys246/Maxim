@@ -128,10 +128,21 @@ Reachy Mini was the first robot Maxim supported, but the architecture was always
            gripper = target.extras.get("gripper_left", 0.0)
            return self._sdk.move(yaw=yaw, left_arm=left_arm, gripper=gripper, ...)
        def look_at_pixel(self, target: PixelTarget) -> bool | MotionOutcome: ...
-       def get_current_pose(self) -> dict[str, float]: ...
+       def get_current_pose(self) -> dict[str, float]: ...  # radians; "body_yaw" is required for body turns
        def wake_up(self) -> bool | MotionOutcome: ...
        def goto_sleep(self) -> bool | MotionOutcome: ...
        # ... see hardware/reachy/controller.py for the full list
+   ```
+
+   Two #1499 hooks, both optional (see [extension_api.md](extension_api.md) §1):
+   - `read_body_yaw()` plans `turn_around`. Its default reads `get_current_pose()["body_yaw"]` and refuses the turn
+     when that is missing or not finite, so a controller whose body turns must report `body_yaw`.
+   - Call `mark_motion_accepted()` (from `maxim.hardware.controller`) just before the first actuator command in
+     `goto_target` / `look_at_pixel`, and refuse without moving when it returns False:
+
+   ```python
+   if not mark_motion_accepted():
+       return MotionOutcome.refused("cancelled", "cancelled before the move started")
    ```
 
 2. **Register via the `maxim.robots` entry-point group** in your package's `pyproject.toml`:

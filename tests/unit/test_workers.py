@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 from maxim.embodied_runtime.workers import (
     IK_FAILURE_THRESHOLD,
     IKWarningHandler,
+    MotorQueue,
     frame_capture_worker,
     motor_worker,
 )
@@ -116,14 +117,14 @@ class TestMotorWorker:
 
     def test_executes_queued_command(self):
         """motor_worker should call the function pulled from the queue."""
-        mq = queue.Queue()
+        mq = MotorQueue()
         stop = threading.Event()
         maxim = _make_mock_maxim()
 
         called = threading.Event()
         fn = MagicMock(side_effect=lambda: called.set())
 
-        mq.put((fn, (), {}))
+        mq.put(fn)
 
         t = threading.Thread(target=motor_worker, args=(mq, stop, maxim), daemon=True)
         t.start()
@@ -136,7 +137,7 @@ class TestMotorWorker:
 
     def test_stops_when_event_set(self):
         """motor_worker should exit once stop_event is set."""
-        mq = queue.Queue()
+        mq = MotorQueue()
         stop = threading.Event()
         maxim = _make_mock_maxim()
 
@@ -148,14 +149,14 @@ class TestMotorWorker:
 
     def test_handles_command_exception(self):
         """motor_worker should call _note_connection_failure on exception."""
-        mq = queue.Queue()
+        mq = MotorQueue()
         stop = threading.Event()
         maxim = _make_mock_maxim()
 
         error = RuntimeError("servo fault")
         fn = MagicMock(side_effect=error)
 
-        mq.put((fn, (), {}))
+        mq.put(fn)
 
         t = threading.Thread(target=motor_worker, args=(mq, stop, maxim), daemon=True)
         t.start()
@@ -169,7 +170,7 @@ class TestMotorWorker:
 
     def test_executes_multiple_commands_in_order(self):
         """motor_worker should process commands sequentially."""
-        mq = queue.Queue()
+        mq = MotorQueue()
         stop = threading.Event()
         maxim = _make_mock_maxim()
 
@@ -177,11 +178,14 @@ class TestMotorWorker:
         fn1 = MagicMock(side_effect=lambda: results.append(1))
         fn2 = MagicMock(side_effect=lambda: results.append(2))
 
-        mq.put((fn1, (), {}))
-        mq.put((fn2, (), {}))
-
         t = threading.Thread(target=motor_worker, args=(mq, stop, maxim), daemon=True)
         t.start()
+
+        # Latest-wins (#1499 MotorQueue): a second command queued while the first still waits
+        # supersedes it, so queue the second once the first has run.
+        first = mq.put(fn1)
+        first.completed.result(timeout=2.0)
+        mq.put(fn2)
 
         # Wait for both items to be processed
         deadline = time.time() + 2.0
@@ -195,7 +199,7 @@ class TestMotorWorker:
 
     def test_ik_failure_detection_via_log(self):
         """motor_worker should detect IK failures emitted as log warnings."""
-        mq = queue.Queue()
+        mq = MotorQueue()
         stop = threading.Event()
         maxim = _make_mock_maxim()
 
@@ -203,7 +207,7 @@ class TestMotorWorker:
             logger = logging.getLogger("reachy_mini")
             logger.warning("IK error on joint 5")
 
-        mq.put((emit_ik_warning, (), {}))
+        mq.put(emit_ik_warning)
 
         t = threading.Thread(target=motor_worker, args=(mq, stop, maxim), daemon=True)
         t.start()
@@ -220,12 +224,12 @@ class TestMotorWorker:
 
     def test_passes_args_and_kwargs(self):
         """motor_worker should forward args and kwargs to the command function."""
-        mq = queue.Queue()
+        mq = MotorQueue()
         stop = threading.Event()
         maxim = _make_mock_maxim()
 
         fn = MagicMock()
-        mq.put((fn, (1, "two"), {"three": 3}))
+        mq.put(fn, 1, "two", three=3)
 
         t = threading.Thread(target=motor_worker, args=(mq, stop, maxim), daemon=True)
         t.start()

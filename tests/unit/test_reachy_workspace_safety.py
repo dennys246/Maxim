@@ -301,12 +301,14 @@ class TestTurnAroundRoutesThroughController:
         # Head must ride along: world head yaw ≈ target body yaw.
         assert _world_yaw_of(step2["head"]) == pytest.approx(math.radians(90.0), abs=1e-3)
 
-    def test_turn_beyond_body_limit_is_clamped(self):
+    def test_turn_beyond_body_limit_is_refused_not_shrunk(self):
+        """Inverted by #1499 5.8 (decision 4): a turn that cannot fit is refused ``limit``; it used to clamp to 160°."""
         ctl, fake = _make_controller()
         host = _TurnHost(ctl)
-        host.turn_around(300.0, duration=5.0)
-        step2 = fake.calls[-1]  # the 160° body step splits into chunks (#1499 R5); the last carries the target
-        assert step2["body_yaw"] == pytest.approx(math.radians(160.0), abs=1e-6)
+        before = len(fake.calls)
+        out = host.turn_around(300.0, duration=5.0)
+        assert not out and out.kind == "limit"
+        assert len(fake.calls) == before, "a refused turn moves nothing"
 
     def test_no_controller_skips_motion_instead_of_raw_sdk(self):
         host = _TurnHost(None)

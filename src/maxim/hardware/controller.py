@@ -29,7 +29,11 @@ from __future__ import annotations
 import logging
 import math
 import numbers
+import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from concurrent.futures import Future
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -42,6 +46,7 @@ from maxim.hardware.capabilities import (
     RobotState,
 )
 from maxim.hardware.streams import AudioStream, VideoStream
+from maxim.utils.logging import log_swallowed_exception
 
 if TYPE_CHECKING:
     from maxim.embodiment.audio_localization import DoAReader
@@ -49,6 +54,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ANTENNA_EXTRAS",
+    "MOTION_ACCEPT_WAIT_S",
     "MOTION_DURATION_MAX_S",
     "MOTION_DURATION_MIN_S",
     "DurationPolicy",
@@ -57,12 +64,16 @@ __all__ = [
     "MotionOutcomeKind",
     "MotionRefused",
     "MotionTarget",
+    "MotionTicket",
     "PixelTarget",
     "RobotController",
     "as_outcome",
     "clamp_finite",
+    "current_motion_ticket",
     "floor_duration",
+    "mark_motion_accepted",
     "normalize_method",
+    "policy_duration",
     "require_duration",
     "require_finite",
 ]
@@ -74,6 +85,15 @@ __all__ = [
 
 MOTION_DURATION_MIN_S = 0.1
 MOTION_DURATION_MAX_S = 10.0
+
+# How long a tool waits for a queued command's ``accepted`` stage (#1499 5.6),
+# kept well under ``Tool.timeout`` and the executor's per-tool timeout (30 s),
+# which also cover the tool's own work before it enqueues. Past it the tool
+# cancels the ticket (valid until ``accepted``) and reports "not started: the
+# motor is busy". It is deliberately shorter than the Reachy controller's
+# ``MOTION_LOCK_WAIT_S`` (25 s), so a tool's cancel lands while the worker is
+# still blocked on the motion lock, before anything is accepted.
+MOTION_ACCEPT_WAIT_S = 20.0
 
 # Canonical interpolation names. ``cartoon`` is refused: it overshoots its
 # target by 10%, past any clamp. Aliases keep their historical meanings.
@@ -164,6 +184,10 @@ MotionOutcomeKind = MotionRefusalKind | Literal["superseded", "cancelled", "part
 # ``motion/movement.py::move_head`` when it delegates, read by ``ReachyMiniController`` (#1499 5.4).
 HEAD_TRANSLATION_EXTRAS = ("head_x", "head_y", "head_z")
 
+# ``MotionTarget.extras`` keys for the antennas, radians, in the Reachy SDK's (right, left) order: written by
+# ``motion/movement.py::move_antenna`` when it delegates, read by ``ReachyMiniController`` (#1499 5.4).
+ANTENNA_EXTRAS = ("antenna_right", "antenna_left")
+
 
 @dataclass(frozen=True)
 class MotionOutcome:
@@ -178,8 +202,8 @@ class MotionOutcome:
     busy), ``"partial"`` (a split stopped after ``chunks_done`` chunks),
     ``"superseded"`` (replaced before it ran) or ``"error"`` (the controller
     failed, or a plugin returned ``False``). No non-ok outcome feeds the gaze or
-    workspace-bounds learners (#1499 O4). ``"superseded"`` has no producer until
-    PR 2's motor queue.
+    workspace-bounds learners (#1499 O4). ``"superseded"`` and a queued
+    ``"cancelled"`` come from ``embodied_runtime/workers.py::MotorQueue``.
     """
 
     ok: bool
@@ -195,6 +219,163 @@ class MotionOutcome:
     @classmethod
     def refused(cls, kind: MotionOutcomeKind, reason: str, *, chunks_planned: int = 0) -> MotionOutcome:
         return cls(ok=False, kind=kind, reason=reason, chunks_planned=chunks_planned)
+
+
+class MotionTicket:
+    """One queued motion command's two stages (#1499 5.6, §4; Architecture delta S2).
+
+    ``accepted`` resolves ``None`` when the command passed its checks and its
+    first SDK call is about to start, or with the refusal (a non-ok
+    ``MotionOutcome``) when it never started. ``completed`` resolves with the
+    final ``MotionOutcome``. Neither future is ever cancelled or left
+    pending: a command that is replaced, cleared, cancelled or closed out
+    before it starts resolves both with that outcome.
+
+    **``accepted`` is the point of no return.** ``cancel()`` works until then,
+    even while the worker holds the command and waits for the motion lock;
+    the controller's ``mark_motion_accepted()`` then returns False and it
+    refuses ``cancelled`` before its first SDK call. So a tool that gave up
+    waiting never has the move run behind its "not started".
+
+    It lives here, beside ``MotionOutcome``, so ``hardware/`` never imports
+    ``embodied_runtime/``. ``on_accept`` is a callable carried on the ticket
+    (the pain bridge's start, PR 2b), so ``hardware/`` never imports
+    ``bridges/`` either. ``on_accept`` runs under the controller's motion lock
+    and this ticket's lock: it must not block or dispatch motion. Never
+    persisted, never sent over a wire.
+    """
+
+    def __init__(self, *, on_accept: Callable[[], Any] | None = None) -> None:
+        self.accepted: Future[MotionOutcome | None] = Future()
+        self.completed: Future[MotionOutcome] = Future()
+        self.on_accept = on_accept
+        self.event_id: Any = None  # on_accept's return (PR 2b: the pain event id)
+        self._lock = threading.RLock()  # on_accept runs under it and may read the ticket
+        self._claimed = False
+        self._cancelled = False
+
+    @classmethod
+    def resolved(cls, outcome: MotionOutcome) -> MotionTicket:
+        """A ticket already finished with *outcome* (a no-op, an early refusal)."""
+        ticket = cls()
+        ticket.finish(outcome)
+        return ticket
+
+    @property
+    def never_started(self) -> bool:
+        """Resolved without its move starting (superseded, cancelled, refused before the first SDK call)."""
+        return self.completed.done() and self.accepted.done() and self.accepted.result() is not None
+
+    def claim(self) -> bool:
+        """The worker takes the command off the queue to run it; False when it was already resolved."""
+        with self._lock:
+            if self.completed.done():
+                return False
+            self._claimed = True
+            return True
+
+    def resolve_unstarted(self, kind: MotionOutcomeKind, reason: str) -> bool:
+        """The queue removes a command it holds: resolve both stages, unless a worker claimed it. True when it did."""
+        with self._lock:
+            if self._claimed or self.completed.done():
+                return False
+            self._resolve(MotionOutcome.refused(kind, reason))
+            return True
+
+    def cancel(self, reason: str = "cancelled before it started") -> bool:
+        """Cancel the command unless it was already accepted (or resolved); it then never moves."""
+        return self.withdraw("cancelled", reason)
+
+    def withdraw(self, kind: MotionOutcomeKind, reason: str) -> bool:
+        """Resolve the command with *kind* unless it was already accepted (or resolved); it then never moves.
+
+        Valid while a worker holds it, up to ``accepted``: the controller's
+        ``mark_motion_accepted()`` then returns False and nothing moves.
+        """
+        with self._lock:
+            if self.accepted.done() or self.completed.done():
+                return False
+            self._cancelled = True
+            self._resolve(MotionOutcome.refused(kind, reason))
+            return True
+
+    def _resolve(self, outcome: MotionOutcome) -> None:
+        if not self.accepted.done():
+            self.accepted.set_result(outcome)
+        self.completed.set_result(outcome)
+
+    def mark_accepted(self) -> bool:
+        """The only way ``accepted`` resolves ``None``: run ``on_accept``, store its id, resolve.
+
+        Returns False when the ticket was already resolved with a refusal (a
+        cancel won the race): the caller must not start the move. Idempotent:
+        a second call returns True without running ``on_accept`` again. A
+        raising ``on_accept`` is logged (Stage 1) and ``accepted`` still
+        resolves: the move is starting whatever its bookkeeping did.
+        """
+        with self._lock:
+            if self.accepted.done():
+                return self.accepted.result() is None
+            if self.on_accept is not None:
+                try:
+                    self.event_id = self.on_accept()
+                except Exception:
+                    log_swallowed_exception()
+            self.accepted.set_result(None)
+            return True
+
+    def finish(self, outcome: MotionOutcome) -> None:
+        """Resolve ``completed`` (and ``accepted``, if the controller never did) with the final outcome.
+
+        A command that finished ok without the controller marking it (a
+        plugin returning ``True``, a no-op) is accepted through
+        ``mark_accepted``; a refusal that never started resolves ``accepted``
+        with the refusal itself. A ticket already resolved keeps its outcome;
+        a cancelled one whose callable moved anyway (a controller that never
+        calls ``mark_motion_accepted``) is logged, since its caller was told
+        the move did not start.
+        """
+        with self._lock:
+            if self.completed.done():
+                if outcome.ok and self._cancelled:
+                    logger.warning(
+                        "a motion ran after its ticket was cancelled: the controller does not call "
+                        "mark_motion_accepted() before its first actuator command (#1499)"
+                    )
+                return
+            if not self.accepted.done():
+                if outcome.ok:
+                    self.mark_accepted()
+                else:
+                    self.accepted.set_result(outcome)
+            self.completed.set_result(outcome)
+
+
+# The ticket of the motion command now running on this thread, or None. The
+# motor worker binds it around each callable (set, then reset in ``finally``);
+# the controller marks it accepted once a dispatch passed its checks, just
+# before the first SDK call (§4). A synchronous caller binds nothing.
+current_motion_ticket: ContextVar[MotionTicket | None] = ContextVar("current_motion_ticket", default=None)
+
+
+def mark_motion_accepted() -> bool:
+    """Mark the bound ticket accepted, just before a dispatch's first actuator command.
+
+    Returns False when the ticket was cancelled first: the caller must then
+    refuse ``cancelled`` and move nothing. True when no ticket is bound (a
+    synchronous caller). A controller plugin calls this too, so a tool that
+    stops waiting can still cancel its move (docs/user/extension_api.md).
+    """
+    ticket = current_motion_ticket.get()
+    return True if ticket is None else ticket.mark_accepted()
+
+
+# The one rule for a requested duration (#1499 5.5): an ``"exact"`` duration is
+# the caller's and is checked as given (``require_duration``); any other is a
+# default and is floored into range (``floor_duration``).
+def policy_duration(value: Any, policy: DurationPolicy) -> float:
+    """*value* as the duration a target ships with under *policy* (exact: checked; at_least: floored)."""
+    return require_duration(value) if policy == "exact" else floor_duration(value)
 
 
 def as_outcome(result: bool | MotionOutcome | None) -> MotionOutcome:
@@ -474,6 +655,26 @@ class RobotController(ABC):
             Dict mapping joint names to current angles (radians).
         """
         ...
+
+    def read_body_yaw(self) -> float:
+        """The body yaw now, radians, from the freshest read this robot offers (#1499 5.8).
+
+        A turn is planned from it, so a missing or non-finite reading raises
+        ``MotionRefused("reference")``: a turn is refused, never planned from a
+        guess. This default reads ``get_current_pose``; a controller with a
+        fresher source (the Reachy daemon's REST state) overrides it.
+        """
+        try:
+            pose = self.get_current_pose() or {}
+        except Exception as e:
+            raise MotionRefused("reference", f"the body yaw could not be read: {e}") from e
+        value = pose.get("body_yaw")
+        if value is None:
+            raise MotionRefused("reference", "the body yaw could not be read: the pose has no body_yaw")
+        try:
+            return require_finite("body_yaw", value)
+        except MotionRefused as e:
+            raise MotionRefused("reference", e.reason) from e
 
     def center_vision(self, duration: float = 0.5) -> bool | MotionOutcome:
         """Center the head to look straight ahead.

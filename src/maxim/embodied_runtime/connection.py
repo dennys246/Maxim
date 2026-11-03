@@ -7,7 +7,6 @@ and runtime capability degradation/restoration via ConnectionState callbacks.
 from __future__ import annotations
 
 import logging
-import queue
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -379,11 +378,7 @@ class ConnectionMixin:
 
             motor_queue = getattr(self, "_motor_queue", None)
             if motor_queue is not None:
-                try:
-                    while True:
-                        motor_queue.get_nowait()
-                except queue.Empty:
-                    pass
+                motor_queue.drain()  # each dropped command resolves superseded (#1499 5.6)
 
             self._reset_connection_failures()
             self._restore_capabilities()

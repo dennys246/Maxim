@@ -93,5 +93,5 @@ def test_the_run_hands_its_reader_to_the_tail_and_ends_before_the_post_sim_promp
     (tail,) = [c for c in calls if ast.unparse(c.func) == "SimTail"]
     assert "stdin_thread=stdin_thread" in [ast.unparse(k) for k in tail.keywords], "the tail joins THIS run's reader"
     (end,) = [c.lineno for c in calls if ast.unparse(c.func) == "end_run"]
-    (prompt,) = [c.lineno for c in calls if ast.unparse(c.func) == "_show_report_and_post_sim_prompt"]
+    (prompt,) = [c.lineno for c in calls if ast.unparse(c.func) == "_read_new_goal"]
     assert end < prompt, "the run ends (and joins its reader) before the post-sim prompt reads stdin"
