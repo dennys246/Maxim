@@ -13,11 +13,13 @@ Example:
 
 Two fsync policies live here (#1315 §1A.3):
 
-- **Lenient** (every ``atomic_write_*`` helper and ``atomic_install_dir``): an fsync the filesystem refuses is
-  logged at DEBUG and skipped, because the data is still written. Use these for state Maxim can rebuild or redo.
-- **Strict** (:func:`fsync_strict`, :func:`append_line_fsync`): any ``OSError`` raises, so the caller can fail the
-  operation the write belongs to. The observer's log (``maxim.advisor.log``) uses them: a proposal or refusal
-  that was not durably recorded must fail its turn.
+- **Lenient** (every path-based ``atomic_write_*`` helper and ``atomic_install_dir``): an fsync the filesystem
+  refuses is logged at DEBUG and skipped, because the data is still written. Use these for state Maxim can rebuild
+  or redo.
+- **Strict** (:func:`fsync_strict`, :func:`append_line_fsync`, and :func:`atomic_write_json_at`, the one
+  ``atomic_write_*`` name that is strict, despite its prefix): any ``OSError`` raises, so the caller can fail the
+  operation the write belongs to. The observer's log and reports (``maxim.advisor``) use them: a proposal, refusal
+  or report that was not durably recorded must fail its turn. Never "unify" a strict writer onto the lenient ones.
 """
 
 from __future__ import annotations
@@ -323,3 +325,33 @@ def append_line_fsync(fd: int, line: bytes) -> None:
             raise OSError(f"os.write wrote {written} bytes of {len(view)}")
         view = view[written:]
     fsync_strict(fd)
+
+
+def atomic_write_json_at(dir_fd: int, name: str, payload: Any, *, mode: int = 0o600) -> None:
+    """Write ``payload`` as JSON to ``name`` under the directory ``dir_fd``, atomically and STRICTLY (#1315 §1A.3).
+
+    A temporary name under the same ``dir_fd`` (``O_EXCL|O_NOFOLLOW``) is written in full, fsynced, renamed over
+    ``name`` through the fd, and the directory is fsynced: the path is never re-resolved, so a swapped parent
+    cannot redirect the write. Any ``OSError`` raises (the strict policy, module docstring) and the temporary name
+    is removed. ``name`` must be one path component. JSON is ASCII, with no NaN.
+    """
+    if not name or "/" in name or "\0" in name or name in (".", ".."):
+        raise ValueError(f"atomic_write_json_at writes one path component, not {name!r}")
+    data = (json.dumps(payload, ensure_ascii=True, allow_nan=False, indent=2) + "\n").encode("ascii")
+    tmp = f".{name}.{os.urandom(6).hex()}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open(tmp, flags, mode, dir_fd=dir_fd)
+    try:
+        try:
+            os.fchmod(fd, mode)
+            append_line_fsync(fd, data)
+        finally:
+            os.close(fd)
+        os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dir_fd)
+        except FileNotFoundError:
+            pass  # already renamed into place, or never created
+        raise
+    fsync_strict(dir_fd)
