@@ -210,10 +210,7 @@ def test_the_known_rest_shape_variants_parse(daemon, mode):
 # target (1.8.3 serves no target to read). The controller tracks the target its own last goto left, and refuses a
 # dispatch whose present head sits more than 65° + 1° (provisional) from it.
 
-_OLD_TARGET = pytest.mark.xfail(strict=True, reason="#1563: the old-target neck check is not built")
 
-
-@_OLD_TARGET
 def test_a_present_head_past_the_clamp_from_the_old_body_target_refuses(daemon):
     ctl = controller(daemon)
     assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))  # the daemon's body target is now 10°
@@ -234,7 +231,6 @@ def test_a_present_head_within_the_margin_moves(daemon):
     assert ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
 
 
-@_OLD_TARGET
 def test_the_controller_tracks_the_body_target_its_goto_left(daemon):
     ctl = controller(daemon)
     assert ctl._daemon_body_target is None, "unknown until Maxim's first goto on this connection"
@@ -246,7 +242,6 @@ def test_the_controller_tracks_the_body_target_its_goto_left(daemon):
     assert ctl._daemon_body_target == pytest.approx(D(21))
 
 
-@_OLD_TARGET
 def test_a_chunk_re_check_refuses_on_the_old_target_too(daemon):
     ctl = controller(daemon)
     read = ctl._fresh_readback()
@@ -256,12 +251,22 @@ def test_a_chunk_re_check_refuses_on_the_old_target_too(daemon):
     assert e.value.kind == "reference"
 
 
-@_OLD_TARGET
 def test_a_disconnect_forgets_the_body_target(daemon):
     ctl = controller(daemon)
     assert ctl.goto_target(_target(body_yaw=D(20), duration=1.0))
+    ctl._tunnel_proc = None  # the fake controller never opened a tunnel
+    ctl._video_stream = ctl._audio_stream = None
     ctl.disconnect()
     assert ctl._daemon_body_target is None
+
+
+def test_a_goto_that_timed_out_still_leaves_its_body_target(daemon):
+    """The daemon took the goto; only its reply timed out, so the target is the commanded body."""
+    daemon.timeout_on_goto = 0
+    ctl = controller(daemon)
+    out = ctl.goto_target(_target(body_yaw=D(20), duration=1.0))
+    assert not out
+    assert ctl._daemon_body_target == pytest.approx(D(20))
 
 
 def test_an_unknown_body_target_does_not_refuse(daemon):

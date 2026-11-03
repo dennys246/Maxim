@@ -599,7 +599,7 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    Auto-yaw acts past 65° of head-to-body yaw and our clamp is exactly ±65°, so tracking can reach that threshold:
    the hardware body-yaw test covers it. This amends O6 and lands in PR 3.
 
-   **#1563 stays open (owner, 2026-11-03).** The daemon's IK composes the head against its body *target*, while
+   **#1563 (owner, 2026-11-03).** The daemon's IK composes the head against its body *target*, while
    the controller's clamp is checked against the *present* body. The SDK 1.8.3 source (the robot's version) narrows
    the issue. A head-only goto with `body_yaw=None` does not keep the old target: `GotoMove` replaces `None` with
    the daemon's present body and sets the target to it on every tick (F2). Two windows remain. First, each tick
@@ -610,9 +610,17 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    it, its `FullState` response model drops it, and no other REST or WebSocket route carries it. Built that way,
    the check refused every move on the robot, wake and sleep included, while every fake served the field. So the
    check was dropped (owner, 2026-11-03). `tests/unit/test_reachy_sdk_contract_1499.py` now pins the route's real
-   keys, and the fakes are checked against them. Maxim's own body target is still covered by the 5° stash
-   divergence refusal (R1). The other two windows wait for a daemon that serves the target: the ask goes to pulse
-   for upstream, and the contract test goes red when an SDK starts serving it.
+   keys, and the fakes are checked against them. Its replacement (owner, the same day) follows from tick 1's
+   geometry: the first tick's head pose is the *present* head (interpolation time ≈ 0), so the danger is the
+   present head being past the clamp from the old target. The controller tracks the target its own last goto left
+   (`_daemon_body_target`): the chunk's body when commanded, else the body that chunk started from, which is what
+   `GotoMove` sets. It is kept through a timed-out goto, which the daemon took, and forgotten on disconnect. Before
+   every chunk (`_run_move`'s first, `_recheck_before_chunk`'s later ones), a present head more than 65° + 1° from
+   it refuses `reference`. The 1° is provisional, for servo noise at the clamp, where a hold leaves the head at
+   exactly 65° from the target; the sweep's hold measures it. Two residuals remain, stated here. A target set by
+   another client is §8's single-client assumption. The first move after a connect has no tracked target, so the
+   check is skipped. #1563 closes on PR 3. The upstream ask (pulse, then Pollen) is for `FullState` to serve the
+   target, and the contract test goes red when an SDK does.
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
 

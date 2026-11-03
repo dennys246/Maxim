@@ -80,6 +80,11 @@ _STATE_FULL_QUERY = (
 _STASH_DIVERGENCE_REFUSE_RAD = math.radians(5.0)
 # A readback body or neck beyond its limit by more than this is impossible (R2).
 _IMPOSSIBLE_MARGIN_RAD = math.radians(5.0)
+# #1563 (owner, 2026-11-03): on a goto's first control tick the daemon's IK pairs the PRESENT head with its OLD body
+# target, which 1.8.3 never serves (FullState drops it). The controller tracks the target its own last goto left and
+# refuses a dispatch whose present head is further than the clamp plus this from it. Provisional 1°: servo noise at
+# the clamp (the sweep's hold measures it). A target another client set is the stated single-client residual (§8).
+_OLD_TARGET_MARGIN_RAD = math.radians(1.0)
 # After an SDK timeout: settled when within 2° of the timed-out chunk, or when
 # stable within 0.5° for a full second (the move ended somewhere else).
 _SETTLED_NEAR_RAD = math.radians(2.0)
@@ -338,6 +343,10 @@ class ReachyMiniController(RobotController):
         self._unsettled: tuple[mp.Pose, mp.Pose | None, float | None] | None = None
         # True once set_automatic_body_yaw(False) has been asserted on this handle (O6).
         self._auto_yaw_asserted = False
+        # The body target the daemon's IK holds after Maxim's last goto (#1563): the chunk's body when commanded,
+        # else the body that chunk started from (GotoMove sets the target to it). None until Maxim's first goto on
+        # this connection, and the check is then skipped (§13's residual).
+        self._daemon_body_target: float | None = None
         # The stop latch (owner, 2026-10-29): set by goto_sleep and disconnect.
         # While set, goto_target and look_at_pixel refuse, so a head or body
         # command that starts after a stop never moves the robot, and the robot
@@ -672,6 +681,7 @@ class ReachyMiniController(RobotController):
         self._stop(by_sleep=False)
         self._unsettled = None  # a reconnect starts from a fresh read (§12 item 18)
         self._auto_yaw_asserted = False
+        self._daemon_body_target = None  # another client may move the body before the next connection's first goto
         self._stop_ssh_tunnel()
         if self._mini is None:
             return
@@ -1161,7 +1171,11 @@ class ReachyMiniController(RobotController):
                 )
             try:
                 if k > 1:
-                    self._recheck_before_chunk(previous, chunk)
+                    here = self._recheck_before_chunk(previous, chunk)
+                else:
+                    here = start
+                    self._require_neck_ok_for_old_target(start)
+                left_target = chunk.body if body_commanded else here.body
                 body_yaw = chunk.body if body_commanded else None
                 checked, sdk_m = check_sdk_command(
                     self._mini,
@@ -1187,6 +1201,7 @@ class ReachyMiniController(RobotController):
                     # unless its tool cancelled it while it waited; then nothing moves.
                     return MotionOutcome.refused("cancelled", "cancelled before the move started")
                 self._mini.goto_target(**kwargs)
+                self._daemon_body_target = left_target
             except MotionRefused as e:
                 if k == 1:
                     logger.warning("goto_target refused (%s): %s", e.kind, e.reason)
@@ -1195,6 +1210,7 @@ class ReachyMiniController(RobotController):
             except TimeoutError as e:
                 # F4: the daemon may still be moving. Refuse until it settles.
                 self._unsettled = (chunk, None, None)
+                self._daemon_body_target = left_target  # the daemon took the goto; only its reply timed out
                 return self._partial(f"chunk {k}/{n} timed out ({e}); waiting for the robot to settle", total, n, done)
             except Exception as e:
                 if k == 1:
@@ -1220,7 +1236,7 @@ class ReachyMiniController(RobotController):
             return self._partial("the robot did not reach the target (final readback)", total, n, done)
         return MotionOutcome(ok=True, duration_s=total, chunks_planned=n, chunks_done=done)
 
-    def _recheck_before_chunk(self, previous: mp.Pose, chunk: mp.Pose) -> None:
+    def _recheck_before_chunk(self, previous: mp.Pose, chunk: mp.Pose) -> mp.Pose:
         """Before chunk k > 1: the robot must be where chunk k − 1 went, and chunk k's path from there must pass (R5).
 
         Catches a chunk the daemon dropped silently while the client reported
@@ -1233,6 +1249,24 @@ class ReachyMiniController(RobotController):
         ok, worst = mp.neck_path_ok(read, chunk)
         if not ok:
             raise MotionRefused("path", f"from the re-read pose the next chunk would sweep the neck to {worst:.0f}°")
+        self._require_neck_ok_for_old_target(read)
+        return read
+
+    def _require_neck_ok_for_old_target(self, here: mp.Pose) -> None:
+        """Refuse when the present head is past the clamp from the daemon's old body target (#1563).
+
+        A goto's first control tick composes the present head against the body target the last goto left, not the
+        present body, so the readback's own neck check does not cover it.
+        """
+        if self._daemon_body_target is None:
+            return
+        twist = mp.neck_twist(here.head, self._daemon_body_target)
+        if abs(twist) > self._MAX_HEAD_REL_YAW_RAD + _OLD_TARGET_MARGIN_RAD:
+            raise MotionRefused(
+                "reference",
+                f"the head is {math.degrees(twist):+.0f}° from the daemon's body target "
+                f"({math.degrees(self._daemon_body_target):+.0f}°), past the neck clamp for the move's first tick",
+            )
 
     @staticmethod
     def _partial(reason: str, total: float, planned: int, done: int) -> MotionOutcome:
