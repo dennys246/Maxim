@@ -356,6 +356,14 @@ def _dirs(tmp_path: Path) -> tuple[Path, Path, Path]:
     return home_dir, report_dir, model
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_code_loading_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``open()`` refuses these on purpose, and a host may set them: GitHub's setup-python sets ``LD_LIBRARY_PATH``."""
+    for name in list(os.environ):
+        if name in CODE_LOADING_EXACT or name.startswith(CODE_LOADING_PREFIXES):
+            monkeypatch.delenv(name)
+
+
 def _open(advisor: Any, tmp_path: Path, **over: Any) -> Any:
     home_dir, report_dir, model = _dirs(tmp_path)
     kw: dict[str, Any] = {"home_dir": home_dir, "model": model, "report_dir": report_dir}

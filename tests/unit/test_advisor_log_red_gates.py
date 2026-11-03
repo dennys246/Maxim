@@ -436,6 +436,9 @@ def test_o7_proposals_and_refusals_are_on_disk(tmp_path: Path, monkeypatch: pyte
     sess = importlib.import_module("maxim.advisor._session")
     assert hasattr(sess, "_backend_factory"), "item 1 not built: no _session._backend_factory seam"
     monkeypatch.setattr(sess, "_backend_factory", lambda *a, **k: _FakeBackend())
+    # open() refuses these on purpose, and a host may set them: GitHub's setup-python sets LD_LIBRARY_PATH.
+    for name in importlib.import_module("maxim.advisor._refusals").code_loading_vars_set():
+        monkeypatch.delenv(name)
     advisor = importlib.import_module("maxim.advisor")
     home_dir, rdir = tmp_path / "home", tmp_path / "reports"
     home_dir.mkdir()

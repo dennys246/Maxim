@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from maxim import advisor
-from maxim.advisor import _session
+from maxim.advisor import _refusals, _session
 from maxim.advisor.log import read_log
 from maxim.exceptions import (
     AdvisorCompositionError,
@@ -25,6 +25,14 @@ from maxim.exceptions import (
     AdvisorStopped,
     SealedRegistryError,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_code_loading_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``open()`` refuses these on purpose, and a host may set them: GitHub's setup-python sets ``LD_LIBRARY_PATH``."""
+    for name in _refusals.code_loading_vars_set():
+        monkeypatch.delenv(name)
+
 
 GOOD = {
     "happening": "a person passed",
