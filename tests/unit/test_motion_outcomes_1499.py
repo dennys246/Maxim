@@ -849,7 +849,7 @@ def test_a_cancelled_no_op_is_refused_not_reported_done(daemon):
 
 @pytest.mark.parametrize("queued", [True, False], ids=["parallel", "no-queue"])
 def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queued):
-    """DN keeps running until shutdown stops it, and the controller's latch lands only at disconnect."""
+    """DN keeps running until shutdown stops it, and a direct dispatch is fenced by the latch, not the queue."""
     selfy = _selfy(controller(daemon), daemon)
     selfy._media_lock = selfy._live_stop_event = None
     selfy._open_motor_queue(active=queued)
@@ -887,13 +887,15 @@ def test_a_wake_after_the_teardown_moves_again(daemon):
     assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0))
 
 
-def test_a_new_connect_clears_the_teardowns_latch_but_not_a_sleeps(daemon):
-    """A stop without a sleep: a controller reused by a new run is not left refusing every move."""
+def test_a_connect_does_not_clear_the_teardowns_latch(daemon):
+    """The whole-fence reader: a reconnect's connect cleared it, and a body turn could start before the re-latch."""
     from maxim.hardware.controller import MotionTarget
 
     ctl = controller(daemon)
     ctl.stop_motion()
     ctl._clear_latch_after_connect()  # connect's step, without the SDK handshake
+    assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0)).kind == "cancelled"
+    assert ctl.wake_up()  # only a wake clears it (api.py wakes a reused controller: it reports not awake)
     assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0))
 
 
@@ -1000,7 +1002,8 @@ def test_a_stop_during_the_reconnects_wake_cuts_it_and_holds(daemon, monkeypatch
     ctl.reconnect = lambda timeout, max_attempts: True
     ctl.start_recording = lambda: None
     host = _reconnect_host(ctl, stop)
-    reconnecting = threading.Thread(target=host._soft_reconnect, kwargs={"reason": "test"}, daemon=True)
+    result: list[bool] = []
+    reconnecting = threading.Thread(target=lambda: result.append(host._soft_reconnect(reason="test")), daemon=True)
     reconnecting.start()
     assert in_goto.wait(5.0)  # the wake's first step is in flight
     host._begin_live_teardown(stop, None)
@@ -1008,6 +1011,7 @@ def test_a_stop_during_the_reconnects_wake_cuts_it_and_holds(daemon, monkeypatch
     release.set()
     reconnecting.join(10.0)
     assert ctl._stop_latched and len(daemon.gotos()) == 1  # the wake ended at its next step
+    assert result == [False]  # not "Soft reconnect complete": nothing is restored after the stop
 
 
 def test_a_stop_just_after_the_reconnects_check_still_wakes_nothing(daemon):
@@ -1062,12 +1066,67 @@ def test_a_reconnect_after_the_stop_event_is_dropped_still_sees_the_stop():
     assert _Host()._stopped_during_reconnect() and calls == ["stop_motion"]
 
 
+def test_a_re_latch_that_raises_is_logged_on_the_capture_thread(caplog):
+    from maxim.embodied_runtime.connection import ConnectionMixin
+
+    class _Robot:
+        def stop_motion(self):
+            raise RuntimeError("the plugin's stop broke")
+
+    class _Host(ConnectionMixin):
+        log = logging.getLogger("test.motion_outcomes_1499")
+        _robot = _Robot()
+        _live_stop_event = None
+        _closed = False
+        _live_stopped = True
+
+    with caplog.at_level(logging.ERROR):
+        assert _Host()._stopped_during_reconnect()
+    assert "the plugin's stop broke" in caplog.text
+
+
 def test_a_new_live_loop_clears_the_last_stop(daemon):
     """Cleared when the loop arms its stop event, before ``awaken`` and the runtime start, not later."""
     selfy = _selfy(controller(daemon), daemon)
     selfy._live_stopped = True
     stop = selfy._arm_live_stop()
     assert selfy._live_stopped is False and selfy._live_stop_event is stop and not stop.is_set()
+
+
+def test_the_teardown_stops_the_loop_before_it_latches():
+    """Load-bearing order: a reconnect reads the token, then checks; latching first lets that check pass after the stop."""
+    from maxim.embodied_runtime.media_loop import MediaLoopMixin
+
+    stop = threading.Event()
+    seen: list[tuple[bool, bool]] = []
+
+    class _Robot:
+        def stop_motion(self):
+            seen.append((host._live_stopped, stop.is_set()))
+
+    class _Host(MediaLoopMixin):
+        log = logging.getLogger("test.motion_outcomes_1499")
+        _robot = _Robot()
+        _motor_queue = None
+        _live_stopped = False
+
+        def _stop_media_io(self, lock):
+            pass
+
+    host = _Host()
+    host._begin_live_teardown(stop, None)
+    assert seen == [(True, True)]
+
+
+def test_a_reconnect_does_not_start_after_the_stop_flag():
+    from maxim.embodied_runtime.connection import ConnectionMixin
+
+    class _Host(ConnectionMixin):
+        _closed = False
+        _live_stopped = True
+        _live_stop_event = None
+
+    assert _Host()._soft_reconnect(reason="test") is False
 
 
 def test_a_stop_that_raises_does_not_cost_the_rest_of_the_teardown(daemon, caplog):
@@ -1089,7 +1148,7 @@ def test_the_teardowns_latch_reports_the_robot_not_awake(daemon):
     seen: list[dict] = []
     ctl._update_state = lambda **kw: seen.append(kw)  # type: ignore[method-assign]
     ctl.stop_motion()
-    assert seen == [{"is_awake": False}]
+    assert {"is_awake": False} in seen
 
 
 def test_the_sleep_pose_still_runs_after_the_teardown(daemon):

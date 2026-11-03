@@ -21,11 +21,11 @@
     or a port collision no longer counts. Plugins report `kind="ik"` themselves.
   - `move` answering "already at the requested pose" while that pose is still queued now returns the queued move's
     ticket, so a retry of a move about to fail no longer reads as done.
-  - Nothing moves the robot after the live loop stops. The teardown used to drop the queue, which made the next move
+  - On the Reachy controller, nothing moves the robot after the live loop stops. The teardown used to drop the queue, which made the next move
     run synchronously while DN was still issuing them, and a body turn never went through the queue at all. The
     teardown now leaves a closed queue and, first of all, sets the controller's stop latch
-    (`RobotController.stop_motion()`, a no-op by default for plugins), which a successful wake or a new connect
-    clears. A soft reconnect that finishes after the stop re-latches and wakes nothing: its wake is tied
+    (`RobotController.stop_motion()`, a no-op by default for plugins), which only a successful wake clears, as a
+    sleep's does: a soft reconnect's connect no longer clears it. The wake word's wake carries the stop token too. A soft reconnect that finishes after the stop re-latches and wakes nothing: its wake is tied
     to the controller's stop generation, read before its last check (`RobotController.stop_token()` and
     `wake_up_unless_stopped_since()`, which plugins without a latch inherit as a plain wake), so a stop either shows in
     that check or refuses the wake, and a stop during the wake still cuts it. The sleep pose still runs,

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from maxim.hardware.controller import as_outcome
 from maxim.utils.gpu_compat import is_connection_error
 from maxim.utils.logging import warn
 
@@ -290,9 +291,13 @@ class ConnectionMixin:
                 if self._stopped_during_reconnect():
                     return False
                 try:
-                    self._robot.wake_up_unless_stopped_since(token)
+                    woke = as_outcome(self._robot.wake_up_unless_stopped_since(token))
                 except Exception as e:
                     warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+                    return True
+                if not woke and woke.kind == "cancelled":
+                    self.log.warning("Soft reconnect: the live loop stopped during the wake (%s)", woke.reason)
+                    return False
         return True
 
     def _stopped_during_reconnect(self) -> bool:
@@ -308,11 +313,14 @@ class ConnectionMixin:
         if not (stopped or (stop_event is not None and stop_event.is_set())):
             return False
         self.log.warning("Soft reconnect: the live loop stopped meanwhile; the robot stays stopped")
-        self._robot.stop_motion()
+        try:
+            self._robot.stop_motion()
+        except Exception as e:  # a plugin's stop: this runs on a capture thread, which must not die of it
+            self.log.error("Re-latching after the reconnect failed: %s", e, exc_info=True)
         return True
 
     def _soft_reconnect(self, *, reason: str, error: object | None = None) -> bool:
-        if getattr(self, "_closed", False):
+        if getattr(self, "_closed", False) or getattr(self, "_live_stopped", False):
             return False
         stop_event = getattr(self, "_live_stop_event", None)
         if stop_event is not None and stop_event.is_set():

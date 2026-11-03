@@ -152,7 +152,7 @@ class TestWakeUpAgentic:
 
     def test_wakes_robot_through_the_controller(self):
         """Inverted (5.3, O8): the wake word used to enqueue the raw SDK ``mini.wake_up``, skipping torque-on, the
-        re-centre, the antenna clamp and the motion lock. It must enqueue the controller's ``wake_up``."""
+        re-centre, the antenna clamp and the motion lock. It must enqueue the controller's wake."""
         rt = _TestRuntime()
         rt.mini = MagicMock()
         rt._robot = MagicMock()
@@ -160,7 +160,9 @@ class TestWakeUpAgentic:
         with patch.object(rt, "_start_agentic_runtime"):
             rt.wake_up_agentic()
 
-        rt._robot.wake_up.assert_called_once()
+        # With the stop token taken at the call (#1499): a stop before the worker runs it refuses the wake.
+        rt._robot.wake_up_unless_stopped_since.assert_called_once_with(rt._robot.stop_token.return_value)
+        rt._robot.wake_up.assert_not_called()
         rt.mini.wake_up.assert_not_called()
         assert rt._woke_up is True
         assert rt.sleeping is False

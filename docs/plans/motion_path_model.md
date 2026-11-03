@@ -913,7 +913,12 @@ the Reachy controller returns its abort generation and wakes as if requested at 
 wake when a stop came after the token and cut it when one comes during it. The reconnect reads the token, checks
 `_live_stopped` and the stop event, then wakes; the teardown sets the flag and the event before it latches, so every
 interleaving either fails the check or moves the generation on. No lock: a stop never waits for a wake.
-`_live_stopped` is cleared when the next loop arms its stop event (`_arm_live_stop`), before it wakes.
+`_live_stopped` is cleared when the next loop arms its stop event (`_arm_live_stop`), before it wakes. The
+whole-fence reader then found two more: the connect itself cleared the latch, so a move could start before the
+reconnect re-latched (a single-chunk body turn runs whole); and the wake word's wake read the generation when it ran,
+not when it was asked for. Now `stop_motion` latches as a sleep does (only a successful wake clears it), the reconnect
+does not even start after the stop flag, and `wake_up_agentic` enqueues `wake_up_unless_stopped_since` with the token
+taken at the call. The teardown's order (flag and event, then latch) is pinned by a test.
 
 ### Pre-merge review round and its deltas (2026-11-02)
 
