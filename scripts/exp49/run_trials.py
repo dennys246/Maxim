@@ -298,6 +298,7 @@ def run_spawned_trial(
             REPO_ROOT, maxim_bin, out_path=_GATED_OUT, allow_dirty=_ALLOW_DIRTY
         ),
     }
+    env["MAXIM_SUPERVISOR_KILL_S"] = "28"  # the stop below SIGKILLs at about 28 s: the sim's watchdog fires first
     stdout_log = open(sandbox / "stdout.log", "w")
     proc = subprocess.Popen(cmd, env=env, stdout=stdout_log, stderr=subprocess.STDOUT, cwd=str(sandbox))
     end_reason = "timeout"

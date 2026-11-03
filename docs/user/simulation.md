@@ -41,7 +41,13 @@ The CLI treats process success as **run integrity**, not as a favorable result:
   had to terminate the process.
 - `2` — the operator must act: a typed backend error (its fix hint is printed) or a
   security refusal such as a leader with no usable key (its reason is printed).
-- `130` — interrupted by Ctrl+C.
+- `130` — interrupted by Ctrl+C before any memory session opened, or forced by a second Ctrl+C.
+- `75` — a stop that did not finish in time: the watchdog ended the process (see below).
+
+**SIGINT and SIGTERM (since 1.3.4, [#1344](https://github.com/dennys246/Maxim/issues/1344)).** Once a memory session is
+open, a signal asks the run to stop: it finishes as `yielded`, saves within its budget and exits `4`, a typed abort
+that is never evidence. A SIGTERM before any session also exits `4`, so a harness never reads an interrupted sim as
+usable. A repeated SIGTERM is ignored; a second Ctrl+C forces exit `130`. `/cancel` keeps meaning `cancel`.
 
 (`2` and `130` are the CLI's run-wide codes, since 1.3.4; see
 [cli-reference.md](cli-reference.md). A scenario-file sim runs through the same loop.)

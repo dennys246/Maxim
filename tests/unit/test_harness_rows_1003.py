@@ -219,7 +219,10 @@ def test_exp37_refuses_a_resume_that_did_not_load(exp37, tmp_path: Path) -> None
     home = tmp_path / "home"
     session = home / "sim_reports" / "s1"
     session.mkdir(parents=True)
-    report = {"provenance": {"harness_run_id": "rid", "resume": {"resume_loaded": False, "requested": "p"}}}
+    report = {
+        "finish_reason": "completed",
+        "provenance": {"harness_run_id": "rid", "resume": {"resume_loaded": False, "requested": "p"}},
+    }
     (session / "report.json").write_text(json.dumps(report))
     with pytest.raises(exp37._provenance.SimRunFailed, match="did not load"):
         exp37._own_session(home, "rid", set(), returncode=0, resume_session="p")
@@ -239,7 +242,8 @@ def test_exp44_stage_evidence(exp44, tmp_path: Path) -> None:
     mine = home / "sim_reports" / "mine"
     mine.mkdir()
     run_id = exp44._provenance.harness_run_id()  # the module the campaign imported
-    (mine / "report.json").write_text(json.dumps({"provenance": {"harness_run_id": run_id}}))
+    report = {"finish_reason": "completed", "provenance": {"harness_run_id": run_id}}
+    (mine / "report.json").write_text(json.dumps(report))
     session, fields = exp44._own_session(home, {"prior"}, 0)
     assert session == mine and fields["sims"][0]["session_id"] == "mine"
 
@@ -389,7 +393,8 @@ def test_exp44_capture_fails_when_its_resume_did_not_load(exp44, tmp_path: Path,
         session = home / "sim_reports" / "capture_session"
         session.mkdir(parents=True)
         resume = {"requested": "learn_session", "resume_loaded": loaded}
-        (session / "report.json").write_text(json.dumps({"provenance": {"harness_run_id": run_id, "resume": resume}}))
+        report = {"finish_reason": "completed", "provenance": {"harness_run_id": run_id, "resume": resume}}
+        (session / "report.json").write_text(json.dumps(report))
         return 0
 
     monkeypatch.setattr(exp44, "_resolve_maxim_binary", lambda: "maxim")

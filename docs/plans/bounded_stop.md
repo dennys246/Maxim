@@ -188,7 +188,7 @@ pass and two delta rounds (approach note in the session record) changed the text
 - **`yielded` is a typed abort** (owner decision 2026-10-30), in `SIMULATION_ABORT_FINISH_REASONS`, outranking the
   statuses the stop causes; it moved into 1b because 1b's stop already ends a campaign's AUT loop.
 - **The drain runs on a daemon thread**, never `asyncio.to_thread` (joined for up to 300 s at loop close).
-- **Not built:** `runtime.yield_timeout_s` (no consumer; PR 2 adds what it needs).
+- **Not built:** `runtime.yield_timeout_s` (no consumer; PR 2 chose a constant, see §6 As built).
 - **A per-handle stop bounds the Talk loop's consolidation (#1536; owner decisions 2026-10-31).**
   `MaximHandle.stop(deadline=)` still makes no process request. It hands its deadline to the Talk loop it built, by
   construction:
@@ -374,6 +374,35 @@ Added by the delta review round (2026-10-30):
 - **Reporting:** the yield is reported as `yielded`, not `cancel` (`operator_stop` is the Event that maps to `cancel`).
   `test_tty_stdin.py`'s pin of `_sigterm_handler` changes with the handler's removal. Outer loops check `yield_requested()`. The dead
   thread-side handler in `tty_stdin.py` is removed.
+
+**As built (PR 2, 2026-11-02; approach note v6, six design rounds).** Owner decisions 2026-11-02: the handler installs at
+the top of `cli.main`, so every subcommand is covered; a pre-session SIGTERM in a sim mode exits 4, not 0; human-input
+reads are interruptible and the menu exits after a stop; a robot run's yield exits 0; `maxim serve` after one signal
+exits 0, not 143. What changed from the text above, and why:
+
+- **The handler takes no lock.** `request_stop` takes `_hook_lock`, which the main thread itself may hold, so the handler
+  only records the signal and writes a pipe byte. A stop thread (one per process, never closed) is the watchdog and a
+  helper makes the request.
+- **Every signal makes the request,** a pre-session one too, so a loop claiming a moment later is born stopped.
+- **Main-thread waits a request cannot wake** were not in this plan: the robot's `live` loop (its stop event is now
+  registered), the post-sim prompt, server mode's wait, the CLI loop's `stop_event=None`, and the human-input reads (a
+  new `utils.cancellation.interruptible`).
+- **The budget.** The watchdog fires AFTER the library's deadline, not inside it: Y = 30 s, K = `MAXIM_SUPERVISOR_KILL_S`
+  or Y + 5, the library gets min(Y, K - 3), the kill is 1 s later. Y is a constant, not `runtime.yield_timeout_s`:
+  `MaximConfig`'s root is SHAPE-FROZEN, and K is the supervisor's knob (owner decision 2026-11-02).
+- **Native Windows** keeps the CLI's old Ctrl+C handler, SIGINT only, with no watchdog (owner decision 2026-11-02): the
+  stop thread is POSIX (a pipe in `select`, `pthread_sigmask`).
+- **`spawn_evidence`** accepts exit 0 only for a closed set of outcomes (`_provenance.SPAWN_SUCCESS_FINISH_REASONS`),
+  pinned equal to its sources by test; confirmed negative results stay evidence.
+- **serve's watchdog** is armed by a stop hook on any request (uvicorn's path, the console's drain) and disarmed when
+  that request is cleared; it is a no-op for an embedder. Serve's budget stays `console.stop_budget_s` and does not read
+  K. uvicorn re-raises every captured signal, so a double Ctrl+C on serve exits 130.
+- **A real failure survives a signal.** The plan's "clean yield exits 0" is a rule for clean ends: a non-sim body that
+  returned a failure keeps it.
+
+**Residuals:** daemon threads freeze at interpreter finalization, so a hang in module teardown is not bounded by the
+watchdog; a model download does not poll the stop (a second Ctrl+C forces); a server whose readiness wait was interrupted
+is not yet registered for the kill (PR 3).
 
 ## 7. PR 3: spawned servers
 
