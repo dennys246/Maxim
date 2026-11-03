@@ -851,9 +851,7 @@ class LaneBackendManager:
         profile_override: str | None = None,
     ) -> None:
         self._configs: dict[str, LaneConfig] = dict(lane_configs)
-        # The profile its build was handed (``build_primary_router(profile=)``, #1538). It wins over
-        # MAXIM_LLM_PROFILE for every local lane this manager builds, then or later, as that env var does.
-        self.profile_override = profile_override
+        self._profile_override = profile_override
         self._backends: dict[str, Any] = {}
         self._cloud_lanes: set[str] = set()
         self._peer_owned = peer_owned
@@ -876,6 +874,12 @@ class LaneBackendManager:
         # Pre-create metrics for all configured lanes
         for lane_name in self._configs:
             self._metrics_registry.get(lane_name)
+
+    @property
+    def profile_override(self) -> str | None:
+        """The profile its build was handed (``build_primary_router(profile=)``, #1538), fixed at construction. It
+        wins over MAXIM_LLM_PROFILE for every lane this manager builds, then or later, as that env var does."""
+        return self._profile_override
 
     @property
     def lanes(self) -> tuple[str, ...]:
@@ -954,7 +958,7 @@ class LaneBackendManager:
         try:
             from maxim.models.language.config import load_llm_config
 
-            if load_llm_config().cloud_enabled:
+            if load_llm_config(profile_override=self.profile_override).cloud_enabled:
                 return True
         except Exception:
             return True  # fail closed, same reasoning
@@ -1332,7 +1336,9 @@ class LaneBackendManager:
         if kind is None:
             kind = self._classify(cfg)
         try:
-            base = load_llm_config()
+            # The build's profile (#1538): the lane's prompt format, stop tokens, sampling and fallback window are the
+            # model's it serves, not the session's.
+            base = load_llm_config(profile_override=self.profile_override)
         except Exception as e:
             logger.warning("Failed to load LLM config for remote lane %s: %s", cfg.name, e)
             return None
@@ -1821,6 +1827,8 @@ def _ensure_lane_profiles_available(
     lane_configs: dict[str, Any],
     capabilities: Any | None,
     logger: Any | None,
+    *,
+    profile: str | None = None,
 ) -> dict[str, Any]:
     """Make sure each local lane's GGUF is on disk; auto-download if missing.
 
@@ -1888,6 +1896,7 @@ def _ensure_lane_profiles_available(
             new_tiers = detect_tiers(
                 capabilities,
                 profile_available=lambda p, _excl=excluded: _profile_has_local_file(p) and p not in _excl,
+                profile=profile,  # the build's (#1538)
             )
         except Exception as e:
             if logger is not None:
@@ -2031,11 +2040,10 @@ def _apply_local_llm_override(
 
 
 def _build_profile(profile: str | None) -> str:
-    """The profile a router build serves: the one it was handed (``build_primary_router(profile=)``), else the
-    session's ``MAXIM_LLM_PROFILE``. A caller with its own model passes it here, never through the process env:
-    an env write is every thread's profile while the build runs, and a build that raises before the restore leaves
-    it there (#1538)."""
-    return (profile or "").strip() or os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+    """:func:`maxim.runtime.lane_models.build_profile`, the one resolver of the profile a build serves (#1538)."""
+    from maxim.runtime.lane_models import build_profile
+
+    return build_profile(profile)
 
 
 def _restore_persisted_profile(has_peer_config: bool, logger: Any | None) -> None:
@@ -2092,8 +2100,9 @@ def _append_decision_record(
     _auto_spawn_sources: dict[str, str],
     _has_peer_config: bool,
     logger: Any | None,
+    profile: str | None,
 ) -> None:
-    """``build_primary_router``'s post-mortem record (moved verbatim for rule T, #1538)."""
+    """``build_primary_router``'s post-mortem record (moved for rule T, #1538), which names the build's ``profile``."""
     # P9: persist a post-mortem record of this routing decision so the
     # user can run `maxim doctor --last-decision` later and see exactly
     # which env vars + capabilities + probe outcomes produced this
@@ -2106,11 +2115,28 @@ def _append_decision_record(
             final_lane_configs=lane_configs,
             decision_sources=_derive_decision_sources(lane_configs, _auto_spawn_sources),
             peer_config_loaded=_has_peer_config,
+            build_profile=profile,
         )
         decision_log.append_record(record)
     except Exception as e:
         if logger is not None:
             logger.debug("decision_log append failed (non-fatal): %s", e)
+
+
+def _add_remote_large_placeholder(lane_configs: dict[str, Any]) -> None:
+    """``build_primary_router``'s remote large-tier placeholder (moved verbatim for rule T, #1538)."""
+    # If peer config provides a remote URL for the large tier but local
+    # hardware didn't create one (e.g., Mac with no CUDA GPU), inject a
+    # large tier placeholder so apply_lane_env_overrides() can wire it
+    # to the leader. The remote URL IS the large tier — the leader's GPU.
+    if "large" not in lane_configs:
+        _large_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
+        if _large_url:
+            lane_configs["large"] = LaneConfig(
+                name="large",
+                max_workers=1,
+                requires_gpu=False,  # Remote — no local GPU needed
+            )
 
 
 def _function_router_for(lane_configs: dict[str, Any], _llm_json_func_config: dict) -> Any:
@@ -2182,6 +2208,7 @@ def build_primary_router(
     )
 
     _require_valid_user_profiles()
+    profile = (profile or "").strip() or None  # a blank profile is no profile, wherever it is read (#1538)
 
     # Lane-routing auto-load (C4 of config_unification.md):
     #
@@ -2254,18 +2281,7 @@ def build_primary_router(
 
         lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_TIERS.items()}
 
-    # If peer config provides a remote URL for the large tier but local
-    # hardware didn't create one (e.g., Mac with no CUDA GPU), inject a
-    # large tier placeholder so apply_lane_env_overrides() can wire it
-    # to the leader. The remote URL IS the large tier — the leader's GPU.
-    if "large" not in lane_configs:
-        _large_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
-        if _large_url:
-            lane_configs["large"] = LaneConfig(
-                name="large",
-                max_workers=1,
-                requires_gpu=False,  # Remote — no local GPU needed
-            )
+    _add_remote_large_placeholder(lane_configs)
 
     # Apply tier/function config from llm.json if present
     _llm_json_tier_config: dict = {}
@@ -2273,7 +2289,7 @@ def build_primary_router(
     try:
         from maxim.models.language.config import load_llm_config as _load_cfg
 
-        _raw_cfg = _load_cfg(profile_override=profile)
+        _raw_cfg = _load_cfg()
         _raw = getattr(_raw_cfg, "_raw", {}) or {}
         _llm_json_tier_config = _raw.get("tiers", {})
         _llm_json_func_config = _raw.get("functions", {})
@@ -2304,7 +2320,7 @@ def build_primary_router(
     # downloads the GGUF before auto-spawn tries to load it. On failure,
     # we re-walk the tier table with the missing profile filtered out so
     # the lane lands on the next-smaller model the user already has.
-    lane_configs = _ensure_lane_profiles_available(lane_configs, capabilities, logger)
+    lane_configs = _ensure_lane_profiles_available(lane_configs, capabilities, logger, profile=profile)
 
     # Health-check any user-supplied remote_url before wiring a lane to it.
     # Catches stale env vars pointing at servers that have since shut down —
@@ -2348,7 +2364,7 @@ def build_primary_router(
 
     _print_lane_banner(manager)
 
-    _append_decision_record(capabilities, lane_configs, _auto_spawn_sources, _has_peer_config, logger)
+    _append_decision_record(capabilities, lane_configs, _auto_spawn_sources, _has_peer_config, logger, profile)
 
     _start_heartbeat_if_enabled()
 

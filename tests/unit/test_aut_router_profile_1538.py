@@ -199,3 +199,137 @@ def test_the_local_override_runs_the_builds_profile_here(monkeypatch: pytest.Mon
     lane = dataclasses.replace(DEFAULT_TIERS["small"], name="large", remote_url="http://leader:8100")
     out = LB._apply_local_llm_override({"large": lane}, None, profile="orch-aut")
     assert (out["large"].model_profile, out["large"].remote_url) == ("orch-aut", None)
+
+
+def test_a_remote_lane_takes_the_builds_profile_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The AUT's usual lane is remote (a peer's leader, or the server auto-spawn started). Its config is the build's
+    profile's: the report's ``aut_profile`` reads ``cfg.profile``, and the prompt format, stop tokens and fallback
+    window are that model's (review round, both lenses)."""
+    import dataclasses
+
+    import maxim.runtime.lane_backends as LB
+    from maxim.models.language.config import load_llm_config
+    from maxim.runtime.worker_pool import DEFAULT_TIERS
+
+    monkeypatch.setenv("MAXIM_LLM_PROFILE", "mistral-7b")
+    want = load_llm_config(profile_override="qwen2.5-14b")
+    lane = dataclasses.replace(
+        DEFAULT_TIERS["small"], name="large", model_profile="qwen2.5-14b", remote_url="http://127.0.0.1:8100"
+    )
+    router = LB.LaneBackendManager({"large": lane}, profile_override="qwen2.5-14b")._build_remote_backend(lane)
+    assert router is not None
+    assert (router.cfg.profile, router.cfg.stop, router.cfg.prompt_style) == (
+        want.profile,
+        want.stop,
+        want.prompt_style,
+    )
+    assert router.cfg.profile != load_llm_config().profile  # the env's is a different model (not vacuous)
+
+
+def test_the_build_hands_its_profile_to_the_tier_table_the_rewalk_and_the_pin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """Through ``build_primary_router`` itself, on a GPU box with no session profile, a used data home and no pin
+    marker: the tier table picks the build's profile, the re-walk is handed it, and the pre-upgrade pin does not run
+    (it would write MAXIM_LLM_PROFILE and the marker)."""
+    import maxim.runtime.lane_backends as LB
+    import maxim.utils.paths as paths
+    from maxim.runtime.capabilities import RuntimeCapabilities
+
+    monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+    (tmp_path / "util").mkdir()
+    (tmp_path / "util" / "something").write_text("x")
+    monkeypatch.setattr(paths, "data_home", lambda: tmp_path)
+    monkeypatch.setattr(LB, "_read_persisted_model", lambda: None)
+    monkeypatch.setattr(LB, "_apply_lane_config_to_env_locked", lambda logger_obj: False)
+    monkeypatch.setattr(LB.LaneBackendManager, "get_backend", lambda self, name: None)
+    monkeypatch.setattr(LB, "_print_lane_banner", lambda manager: None)
+    monkeypatch.setattr(LB, "_maybe_auto_spawn_server", lambda caps, lane_configs, logger, **kw: lane_configs)
+    seen: dict[str, Any] = {}
+
+    def _ensure(lane_configs: dict[str, Any], caps: Any, logger: Any, **kw: Any) -> dict[str, Any]:
+        seen.update(large=lane_configs["large"].model_profile, rewalk=kw.get("profile"))
+        return lane_configs
+
+    monkeypatch.setattr(LB, "_ensure_lane_profiles_available", _ensure)
+    caps = RuntimeCapabilities(has_gpu=True, gpu_type="cuda", vram_gb=24.0)
+    LB.build_primary_router(caps, profile="orch-aut", logger=None)
+    assert seen == {"large": "orch-aut", "rewalk": "orch-aut"}
+    assert not (tmp_path / "util" / "tier_pinned_at_upgrade").exists()
+    assert "MAXIM_LLM_PROFILE" not in os.environ
+
+
+# Every writer of MAXIM_LLM_PROFILE in src/maxim, as ``file::function``. The variable is the SESSION's profile: the
+# CLI and config set it, a build records its own projections of config into it, and the three api.py entry points
+# still set it for their run (#1586). A caller with its own model hands it to the build (``build_primary_router(
+# profile=)``) instead. A new writer fails this scan: add it here only if it sets the session's profile.
+PROFILE_ENV_WRITERS = {
+    "maxim/api.py::run",  # #1586
+    "maxim/api.py::imagine",  # #1586
+    "maxim/api.py::campaign",  # #1586
+    "maxim/cli_utils.py::normalize_args",
+    "maxim/cli_utils.py::configure_cloud_solo_auto_detect",
+    "maxim/cli_utils.py::configure_cpu_fallback_model",
+    "maxim/embodied_runtime/agentic_runtime.py::_apply_llm_backend_fallback",
+    "maxim/runtime/lane_backends.py::_maybe_pin_pre_upgrade_profile",  # recorded (#1411)
+    "maxim/runtime/lane_backends.py::_restore_persisted_profile",  # recorded (#1411)
+}
+
+
+def _profile_env_writers() -> set[str]:
+    """Each ``os.environ["MAXIM_LLM_PROFILE"] = / del``, and each call other than a read (``get``/``getenv``) whose
+    first argument or a keyword names the variable (``setdefault``, ``pop``, ``update``, ``_project_env``...)."""
+    import ast
+    from pathlib import Path
+
+    name = "MAXIM_LLM_PROFILE"
+    root = Path(__file__).resolve().parents[2] / "src"
+    found: set[str] = set()
+
+    def visit(node: ast.AST, fn: str, rel: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            fn = node.name
+        targets = (
+            node.targets
+            if isinstance(node, (ast.Assign, ast.Delete))
+            else [node.target]
+            if isinstance(node, ast.AugAssign)
+            else []
+        )
+        hit = any(isinstance(t, ast.Subscript) and getattr(t.slice, "value", None) == name for t in targets)
+        if isinstance(node, ast.Call) and (getattr(node.func, "attr", None) or getattr(node.func, "id", None)) not in (
+            "get",
+            "getenv",
+        ):
+            hit = hit or (bool(node.args) and getattr(node.args[0], "value", None) == name)
+            hit = hit or any(k.arg == name for k in node.keywords)
+        if hit:
+            found.add(f"{rel}::{fn}")
+        for child in ast.iter_child_nodes(node):
+            visit(child, fn, rel)
+
+    for path in sorted((root / "maxim").rglob("*.py")):
+        visit(ast.parse(path.read_text()), "<module>", str(path.relative_to(root)))
+    return found
+
+
+def test_no_new_writer_sets_the_session_profile_around_a_build() -> None:
+    assert _profile_env_writers() == PROFILE_ENV_WRITERS
+
+
+def test_the_decision_record_names_the_profile_the_build_was_handed(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """``maxim doctor --last-decision`` prints the last build, which in a dual-LLM run is the AUT's: it names the
+    profile that build was handed beside the env's, and a record carrying a field this version lacks still reads."""
+    import json
+
+    from maxim.runtime import decision_log
+
+    monkeypatch.setenv("MAXIM_LLM_PROFILE", OPERATOR)
+    monkeypatch.setattr(decision_log, "_decision_log_path", lambda: tmp_path / "lane_decisions.jsonl")
+    record = decision_log.build_record(caps=None, final_lane_configs={}, build_profile="orch-aut")
+    decision_log.append_record(record)
+    text = decision_log.format_record_human(decision_log.read_last_record())
+    assert "Profile handed to the build: orch-aut" in text and f"MAXIM_LLM_PROFILE={OPERATOR}" in text
+    later = {**json.loads(decision_log.record_to_json_line(record)), "a_later_field": 1}
+    (tmp_path / "lane_decisions.jsonl").write_text(json.dumps(later) + "\n")
+    assert decision_log.read_last_record().build_profile == "orch-aut"

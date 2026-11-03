@@ -166,7 +166,7 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "build_primary_router",
-      "lines": 217
+      "lines": 207
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
@@ -394,6 +394,6 @@
     "start_simulation_mode tightened 2032 -> 2007 on 2026-10-30 (#1259, rule T): the narrator's simulation-tool registrations left it for module-level orchestrator.py::_register_narrator_sim_tools, which carries the finish tool's new stop_event.",
     "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail).",
     "api.py::run tightened 276 -> 244 on 2026-10-31 (#1521, rule T): the stale shutdown comment is corrected in the cleanup it describes, which moved verbatim to api._tear_down_run (the names it reads passed as keywords). Merged with #1555 (main's run at 256 after _run_workspace and _build_run_executor moved out): 224.",
-    "build_primary_router tightened 239 -> 217, _maybe_auto_spawn_server 259 -> 248 and start_simulation_mode 1943 -> 1917 on 2026-11-02 (#1538, rule T): the router build takes the profile it serves as a parameter (build_primary_router(profile=)) instead of a MAXIM_LLM_PROFILE write around the call. It pays for the parameter with verbatim moves of its decision-log record, FunctionRouter build and heartbeat start (lane_backends._append_decision_record, _function_router_for, _start_heartbeat_if_enabled); auto-spawn's profile choice moved to lane_backends._auto_spawn_profile; the dual-LLM AUT router build left start_simulation_mode for orchestrator.py::_build_aut_router."
+    "build_primary_router tightened 239 -> 217 (207 at the review fold, which moved its remote large-tier placeholder verbatim to lane_backends._add_remote_large_placeholder), _maybe_auto_spawn_server 259 -> 248 and start_simulation_mode 1943 -> 1917 on 2026-11-02 (#1538, rule T): the router build takes the profile it serves as a parameter (build_primary_router(profile=)) instead of a MAXIM_LLM_PROFILE write around the call. It pays for the parameter with verbatim moves of its decision-log record, FunctionRouter build and heartbeat start (lane_backends._append_decision_record, _function_router_for, _start_heartbeat_if_enabled); auto-spawn's profile choice moved to lane_backends._auto_spawn_profile; the dual-LLM AUT router build left start_simulation_mode for orchestrator.py::_build_aut_router."
   ]
 }

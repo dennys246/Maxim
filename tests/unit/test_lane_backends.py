@@ -491,7 +491,7 @@ class TestBuildPrimaryRouter:
             # is what we're testing here, not the download path.
             patch(
                 "maxim.runtime.lane_backends._ensure_lane_profiles_available",
-                side_effect=lambda lc, _caps, _log: lc,
+                side_effect=lambda lc, _caps, _log, **_kw: lc,
             ),
         ):
             from maxim.models.language.config import LLMConfig
