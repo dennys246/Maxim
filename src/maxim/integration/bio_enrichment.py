@@ -261,8 +261,8 @@ class BioEnrichmentPipeline:
         keywords = self._extract_keywords(text)
 
         # Query bio-systems (each handles None gracefully)
-        memories, memory_paths, goal_path_horizon, goal_path_holes, own_ids = self._query_hippocampus_traced(
-            text, keywords, context=ctx
+        memories, memory_paths, goal_path_horizon, goal_path_holes, own_ids, recall_failed = (
+            self._query_hippocampus_traced(text, keywords, context=ctx)
         )
         predictions = self._query_nac(keywords)
         concepts = self._query_atl(keywords)
@@ -289,6 +289,11 @@ class BioEnrichmentPipeline:
                     "goal_path_horizon": goal_path_horizon,
                     "goal_path_holes": goal_path_holes,
                     "own_ids": own_ids,  # the turn's own records, excluded on every path (#1573)
+                    # Exp 63b's I1: the whole text the cue path queried (never cut: a cut query keys differently), and
+                    # whether the recall itself failed (the outer handler below), so a short result is told apart. A
+                    # failed graph path is not counted (its own handler, inert in production: D6).
+                    "cue_text": text,
+                    "recall_failed": recall_failed,
                     "predictions": len(predictions),
                     "concepts": len(concepts),
                     "affordances": len(affordances),
@@ -675,7 +680,7 @@ class BioEnrichmentPipeline:
         text: str,
         keywords: list[str],
         context: "EnrichmentContext | None" = None,
-    ) -> tuple[list[EpisodicSummary], list[str], int | None, list[list[int]], list[str]]:
+    ) -> tuple[list[EpisodicSummary], list[str], int | None, list[list[int]], list[str], bool]:
         """Search hippocampus for episodes matching the text.
 
         Four retrieval paths, tried in order:
@@ -700,7 +705,7 @@ class BioEnrichmentPipeline:
         path takes no collapse (inert, D6).
         """
         if self._hippocampus is None:
-            return [], [], None, [], []
+            return [], [], None, [], [], False
 
         summaries: list[EpisodicSummary] = []
         paths: list[str] = []  # parallel to ``summaries`` (appended with it): which retrieval path surfaced each
@@ -819,10 +824,10 @@ class BioEnrichmentPipeline:
                 for mem in results[:3]:
                     _add_memory(mem, relevance=0.5, path="substring")
 
-            return summaries[:3], paths[:3], horizon, holes, list(own_ids)
-        except Exception as e:
-            log.debug("Bio-enrichment hippocampus query failed: %s", e)
-            return [], [], horizon, holes, list(own_ids)
+            return summaries[:3], paths[:3], horizon, holes, list(own_ids), False
+        except Exception:  # noqa: BLE001 -- logged; the trace's recall_failed carries it to Exp 63b's C5(L)
+            log_swallowed_exception()
+            return [], [], horizon, holes, list(own_ids), True
 
     def _turn_own_ids(self, hippocampus: Any) -> tuple[str, ...]:
         """The records this turn made, which recall never surfaces. A failed read costs at most one echo of the turn's

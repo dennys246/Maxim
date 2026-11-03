@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""The O19 re-run harness: ONE attempt of an Exp 10 (T1-1), Exp 09 (T3-9) or Exp 63 (T1-16) campaign per invocation.
+"""The O19 re-run harness: ONE attempt of an Exp 10 (T1-1), Exp 09 (T3-9), Exp 63 or Exp 63b (T1-16) campaign per
+invocation.
 
 Pre-registrations (this harness runs them and nothing else; the protocol constants and the campaign table live in
 ``o19_verdict.py`` so the verdict binds what was run as well as how it was judged). ``--exp`` names a CAMPAIGN:
   docs/experiments/protocols/exp10_rerun_2026-10-02_preregistration.md   (--exp 10c2; campaign "10" is closed)
   docs/experiments/protocols/exp09_rerun_2026-09-30_preregistration.md   (--exp 09)
   docs/experiments/exp63_carried_recall_prereg.md                        (--exp 63)
+  docs/experiments/exp63b_carried_recall_prereg.md                       (--exp 63b)
 
     python scripts/o19_rerun.py preflight --exp 10c2    # every refusal below + a dry-run marker push; spawns nothing
     python scripts/o19_rerun.py --exp 10c2 --write-experiment-results     # one attempt (`run` is the default)
     python scripts/o19_rerun.py run --exp 10 --mock     # offline end to end: fabricated sims, a temp rows file
+    python scripts/o19_rerun.py smoke --exp 63b         # Exp 63b's instrument check (M26): real sims, no marker
 
 An attempt, in order:
   1. Refusals, none of which is an attempt: the interpreter's ``maxim`` is not this repo's (3); the tree is dirty
@@ -20,7 +23,7 @@ An attempt, in order:
      earlier attempt leaked a FAILED gate into its committed phases, or left a start marker with no rows (2, #1079:
      ``check_within_campaign``); the model config does not resolve to the prereg's
      (2); something already listens on the sim's port (2); another harness holds the lock (2); a git step fails (2);
-     Exp 63 only: ``memory.strategy`` does not resolve to ``access_based`` in the attempt's fresh data home (2; the
+     Exp 63 and 63b: ``memory.strategy`` does not resolve to ``access_based`` in the attempt's fresh data home (2; the
      value read is stamped as ``memory_strategy`` in every row, C4'); the host identity the attempt would record
      (the row stamp, the heartbeat's network record) is not reduced to a short name and a private address (2, #1166).
   2. The start marker: an annotated tag ``refs/tags/o19/<campaign>/attempt-<k>-<run_id>`` on HEAD, pushed to ``origin``.
@@ -49,6 +52,7 @@ import fcntl
 import gzip
 import ipaddress
 import json
+import logging
 import os
 import re
 import shutil
@@ -636,7 +640,12 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         "provenance": prov,
     }
     (sdir / "report.json").write_text(json.dumps(report))
-    if v.experiment_of(exp) == "63":
+    if v.experiment_of(exp) == "63b":
+        prov.update(_mock_b0_fields(index, cap), executed_git_hash=provenance.get("executed_git_hash"))
+        report.update(record_kind="sim_report", ts=time.time())
+        (sdir / "report.json").write_text(json.dumps(report))
+        lines = mock63b_session(home, session, index, goal, cap, resume)
+    elif v.experiment_of(exp) == "63":
         lines = mock63_session(home, session, index, goal, cap, resume)
     else:
         lines = _mock_stores_and_lines(exp, sdir, home, session, name, goal, cap, resumes, resume)
@@ -790,10 +799,169 @@ def mock63_session(home: Path, session: str, index: int, goal: str, cap: int, re
     return lines
 
 
+# Which Exp 63b mock the harness fabricates (tests set it). Every variant runs the real memory seams (below); only the
+# narrator's lines differ, or one mechanism is deleted. "pass": phase 2 asks about what phase 1 heard; "not_shown": phase 2 asks about
+# nothing phase 1 heard; "repeat": phase 2 repeats its first line every turn (the copies collapse); "no_collapse": that
+# script with the collapse deleted (R3' must FAIL); "no_exclusion":
+# recall ignores the turn's own records (#1573 deleted: R3' must FAIL); "scrambled": the store phase 2 restores is not
+# the bytes phase 1 saved (R2' must FAIL).
+MOCK63B_VARIANT = "pass"
+MOCK63B_PHASE1 = (
+    "The guard sleeps beside the iron door.",
+    "A rusty key hangs on the iron hook.",
+    "The iron door has a rusty lock.",
+    "Straw covers the cold floor.",
+    "Water drips from the ceiling.",
+    "Is the guard snoring loudly?",
+    "A torch flickers on the far wall.",
+    "What else do you notice?",
+)
+MOCK63B_PHASE2 = {
+    "pass": (
+        "Where is the rusty key?",
+        "Does the door have a lock?",
+        "Tell me about the iron door and the lock.",
+        "Is there a door nearby?",
+        "Which door is iron?",
+        "What hangs on the hook?",
+        "Look at the lock again.",
+        "Where does the door lead?",
+    ),
+    "not_shown": (
+        "Do you hear birds outside?",
+        "Is it raining in the courtyard?",
+        "Count the stones in the courtyard.",
+        "Do you hear birds again?",
+        "Is the courtyard empty?",
+        "Is it still raining?",
+        "Count the birds.",
+        "What is the weather?",
+    ),
+}
+_MOCK63B_REPLY = "I listen and keep still."
+
+
+def _mock_b0_fields(index: int, cap: int) -> dict:
+    """The B0 serving fields a sim report stamps (C4''), for one router that served every turn."""
+    return {
+        "provenance_schema": 2,
+        "concurrent_sims": False,
+        "sampling_complete": True,
+        "model_changed_during_run": False,
+        "aut_model_attribution": "not_established",
+        "scenario_sha256": "0" * 64,
+        "session_index": index,
+        "language_router_serial": 1,
+        "aut_router_serial": 1,
+        "llm_calls": {
+            "1": {
+                "counts": {"started": cap, "success": cap, "exhausted": 0, "budget_reject": 0, "raised": 0},
+                "entries": [{"n": cap, "identity_source": "local_file", "identity": "a" * 64, "seed_honoured": False}],
+            }
+        },
+    }
+
+
+class _LineCollector(logging.Handler):
+    """The run log as the sim's JSONL handler writes it (``StructuredFormatter``), read back as dicts in order."""
+
+    def __init__(self, out: list[dict]) -> None:
+        from maxim.utils.structured_logging import StructuredFormatter  # noqa: PLC0415
+
+        super().__init__(logging.DEBUG)
+        self.setFormatter(StructuredFormatter())
+        self._out = out
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._out.append(json.loads(self.format(record)))
+
+
+def mock63b_session(home: Path, session: str, index: int, goal: str, cap: int, resume: str | None) -> list[dict]:
+    """An Exp 63b phase through the real MEMORY seams: the shipped Hippocampus (capture, the turn's own records
+    excluded, the ranker and collapse, ``save`` and ``load`` with I1's digest lines), the enrichment pipeline (its
+    trace and render) and the JSONL formatter. Nothing the judge computes chooses an id, unlike Exp 63's mock. Written
+    by hand, not the sim's: the arrival capture (MemoryAgent's fields, its capture id passed straight in), the
+    ``Bridge.send_and_wait ENTER`` line, the reply record, the resume (``load`` called directly, not through
+    ``orchestrator._restore_aut_from_session``) and the one save per phase (report.py's). The sim's own shape of
+    those (how many save lines, exactly one restore line) is first seen by ``smoke --exp 63b``."""
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext  # noqa: PLC0415
+    from maxim.memory.encoding import EncodingSignals  # noqa: PLC0415
+    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig  # noqa: PLC0415
+    from maxim.memory.types import Action, Context, Outcome, Perception  # noqa: PLC0415
+
+    sdir = home / "sim_reports" / session
+    variant = MOCK63B_VARIANT if index == 1 else "pass"
+    script = MOCK63B_PHASE1 if index == 0 else MOCK63B_PHASE2.get(variant, MOCK63B_PHASE2["pass"])
+    if index == 1 and variant in ("repeat", "no_collapse"):
+        script = (MOCK63B_PHASE2["pass"][0],) * cap
+    lines: list[dict] = []
+    collector = _LineCollector(lines)
+    watched = [
+        logging.getLogger(n) for n in ("maxim.integration.bio_enrichment", "maxim.memory.hippocampus_persistence")
+    ]
+    levels = [lg.level for lg in watched]
+    for lg in watched:
+        lg.addHandler(collector)
+        lg.setLevel(logging.INFO)
+    encoding = EncodingSignals.unmeasured("memory_agent")
+    try:
+        hippocampus = Hippocampus(HippocampusConfig(auto_save_after_sleep=False))
+        if resume is not None:
+            saved = home / "sim_reports" / resume / v.EXP63B_STORE_FILE
+            if variant == "scrambled":  # the restored bytes are not phase 1's: two carried records swap their words
+                store = json.loads(saved.read_text())
+                a, b = store["memories"][0]["perception"], store["memories"][1]["perception"]
+                a["cli_input"], b["cli_input"] = b["cli_input"], a["cli_input"]
+                saved = home / "scrambled" / v.EXP63B_STORE_FILE  # in the attempt's home: removed with it
+                saved.parent.mkdir(exist_ok=True)
+                saved.write_text(json.dumps(store))
+            hippocampus.load(str(saved))
+        if variant == "no_collapse" and index == 1:  # copies each take a place again (#1573's collapse deleted)
+            recall = hippocampus.recall
+            hippocampus.recall = lambda *a, **kw: recall(*a, **{**kw, "collapse_copies": False})  # type: ignore[method-assign]
+        if variant == "no_exclusion" and index == 1:
+            recall, search = hippocampus.recall, hippocampus.search_by_content
+            hippocampus.recall = lambda *a, **kw: recall(*a, **{**kw, "exclude_ids": ()})  # type: ignore[method-assign]
+            hippocampus.search_by_content = lambda *a, **kw: search(*a, **{**kw, "exclude_ids": ()})  # type: ignore[method-assign]
+        pipeline = BioEnrichmentPipeline(hippocampus=hippocampus, trace_agent_id=v.SIM_AUT_AGENT_ID)
+        t0 = 1_790_000_000.0 + 1000.0 * index
+        for turn, text in enumerate(script[:cap], 1):
+            t = t0 + 10.0 * turn
+            lines.append({"t": t, "e": "sim_exec", "agent_id": "sim_orchestrator",
+                          "message": f"Bridge.send_and_wait ENTER turn={turn} text_len={len(text)}"})  # fmt: skip
+            lines.append({"t": t, "e": "sim_deliberation", "message": "deliberation cycle 1/3", "agent_id": "sim_aut"})
+            own = hippocampus.capture(
+                perception=Perception(cli_input=text, observations={"source": "cli"}),
+                context=Context(active_goal=goal, active_mode="observe"),
+                encoding=encoding,
+            )
+            context = EnrichmentContext(active_goal=goal, user_input=text, own_capture_id=own)
+            result = pipeline.enrich(text, context=context, bypass_gate=True)
+            if result is not None:
+                pipeline.format_thought_response(result)  # renders, and so activates what surfaced (C5(c))
+            lines.append({"t": t, "e": "enrichment_trace", "agent_id": "sim_orchestrator", "goal": "",
+                          "memories": 1, "memory_ids": ["narrator-1"], "memory_paths": ["substring"]})  # fmt: skip
+            hippocampus.capture(  # the AUT's reply, an action record that heard nothing (no one's copy)
+                context=Context(active_goal=goal, active_mode="act"),
+                action=Action(tool_name="say"),
+                outcome=Outcome(success=True, result={"output": _MOCK63B_REPLY}),
+                encoding=EncodingSignals.unmeasured("loop"),
+            )
+        hippocampus.save(str(sdir / v.EXP63B_STORE_FILE))
+    finally:
+        for lg, level in zip(watched, levels):
+            lg.removeHandler(collector)
+            lg.setLevel(level)
+    for name in v.RESUME_STORES:
+        if name != "hippocampus":
+            (sdir / f"aut_{name}.json").write_text(json.dumps({}))
+    return lines
+
+
 # ── the attempt ──────────────────────────────────────────────────────────────────────────────────────────
 
 
-def exp63_attempt_problems(exp: str, data_root: Path, sessions: list) -> list[str]:
+def exp63_attempt_problems(exp: str, data_root: Path, sessions: list, *, smoke: bool = False) -> list[str]:
     """Exp 63's C5 and R3a observability, read from the COPIED phases once the last one is in: the harness's own
     reading of completeness then matches the verdict's (an attempt C5 makes incomplete is an aborted attempt, and
     the next one may start)."""
@@ -808,7 +976,10 @@ def exp63_attempt_problems(exp: str, data_root: Path, sessions: list) -> list[st
                     "lines": v.log_lines(v.read_copied(sdir, v.RUN_LOG), strict=True),
                 }
             )
-        return v.exp63_c5_problems(phases, goal=v.PROTOCOL[exp]["phases"][-1][1])
+        goal = v.PROTOCOL[exp]["phases"][-1][1]
+        if v.experiment_of(exp) == "63b":  # the smoke never reads R3a (its view included): build order step 4
+            return v.exp63b_c5_problems(phases, goal=goal, r3a_view=not smoke)
+        return v.exp63_c5_problems(phases, goal=goal)
     except (OSError, ValueError, v.Refusal) as exc:
         return [f"C5 the copied phases could not be read: {type(exc).__name__}: {exc}"]
 
@@ -887,6 +1058,15 @@ def check_within_campaign(exp: str, markers: dict[str, dict]) -> None:
         )
 
 
+def fresh_home() -> Path:
+    """A fresh ``MAXIM_DATA_HOME`` with the operator's models symlinked (no state, so the configured profile decides)."""
+    home = Path(tempfile.mkdtemp(prefix="o19-home-"))
+    models = Path(os.environ.get("MAXIM_DATA_HOME") or Path.home() / ".maxim") / "models"
+    if models.is_dir():
+        (home / "models").symlink_to(models)
+    return home
+
+
 def prepare(args: argparse.Namespace, exp: str, mock: bool):
     """Everything before the marker. Returns ``(rows_file, provenance, run_id, k, home, gguf, read_served,
     lock, stamps)`` (``stamps``: what every row of the attempt carries beyond its phase, Exp 63's
@@ -923,14 +1103,11 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
     k = len(markers) + 1
     if k > v.MAX_ATTEMPTS:
         raise Refused(f"{len(markers)} attempts are already declared: at most {v.MAX_ATTEMPTS}")
-    home = Path(tempfile.mkdtemp(prefix="o19-home-"))
-    models = Path(os.environ.get("MAXIM_DATA_HOME") or Path.home() / ".maxim") / "models"
-    if models.is_dir():
-        (home / "models").symlink_to(models)
+    home = fresh_home()
     gguf, read_served = "", None
     stamps: dict = {}
     try:
-        if v.experiment_of(exp) == "63":  # mock or not: the mock runs the same read in its own fresh home
+        if v.experiment_of(exp) in ("63", "63b"):  # mock or not: the mock runs the same read in its own fresh home
             stamps["memory_strategy"] = check_memory_strategy(home, exp, run_id=run_id)
         if not mock:
             gguf = check_model_config(home, exp, run_id=run_id)["model_path"]
@@ -1008,20 +1185,36 @@ def _interrupted_at_the_marker(args, exp: str, k: int, run_id: str, mock: bool, 
     return 1
 
 
-def run_attempt(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps=None) -> int:
+def run_attempt(
+    args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps=None, *, smoke=False
+) -> int:
     import signal  # noqa: PLC0415
 
     saved = {sig: signal.signal(sig, _raise_signal) for sig in (signal.SIGTERM, signal.SIGHUP)}
     try:
         return _run_phases(
-            args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps or {}
+            args,
+            exp,
+            mock,
+            rows_file,
+            provenance,
+            run_id,
+            k,
+            home,
+            gguf,
+            read_served,
+            marker,
+            stamps or {},
+            smoke=smoke,
         )
     finally:
         for sig, handler in saved.items():
             signal.signal(sig, handler)  # only while this attempt runs (a test process must get its own back)
 
 
-def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps) -> int:
+def _run_phases(
+    args, exp, mock, rows_file, provenance, run_id, k, home, gguf, read_served, marker, stamps, *, smoke=False
+) -> int:
     data_root = rows_file.parent
     print(f"attempt {k} of Exp {exp}: run {run_id}, marker {marker}, rows {rows_file}")
     phase1_session: str | None = None
@@ -1063,8 +1256,8 @@ def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, r
                 elif not error:
                     problems.append("no report")
                 last = index == len(v.PROTOCOL[exp]["phases"]) - 1
-                if not problems and last and v.experiment_of(exp) == "63" and sdir is not None:
-                    problems += exp63_attempt_problems(exp, data_root, [phase1_session, sdir.name])
+                if not problems and last and v.experiment_of(exp) in ("63", "63b") and sdir is not None:
+                    problems += exp63_attempt_problems(exp, data_root, [phase1_session, sdir.name], smoke=smoke)
         except BaseException as exc:
             # The attempt counts once its marker is pushed: an interrupted or crashed phase still writes its row.
             reason = f"harness interrupted: {type(exc).__name__}: {exc}"[:500]
@@ -1083,21 +1276,174 @@ def _run_phases(args, exp, mock, rows_file, provenance, run_id, k, home, gguf, r
         print(f"  phase {index} ({name}): {row['status']}" + (f" — {problems}" if problems else ""))
         if problems:
             return 1
-    if not mock:
+    if not mock and not smoke:
         print(
             "Next: commit the rows file and the copied sessions to main (a merge-committed data PR); keep the rig here."
         )
     return 0
 
 
+# ── the smoke (Exp 63b's build-order step 4, mechanization backlog M26) ──────────────────────────────────────
+
+
+def _copied_phase(data_root: Path, session: str) -> dict:
+    sdir = data_root / session
+    return {
+        "report": json.loads(v.read_copied(sdir, "report.json")),
+        "store": json.loads(v.read_copied(sdir, v.EXP63B_STORE_FILE)),
+        "lines": v.log_lines(v.read_copied(sdir, v.RUN_LOG), strict=True),
+    }
+
+
+def _smoke_sim_reasons(rows: list[dict]) -> list[str]:
+    """The evidence gate's own sim-record checks (``judge_sim_fields``) over each row's sim, at this commit: a
+    candidate commit is not on main yet, so "on main" reads as "this commit's history"."""
+    import _evidence_records as R  # noqa: PLC0415
+
+    head = v._git("rev-parse", "HEAD").strip()
+    ctx = R.Ctx(repo=R.Repo(REPO_ROOT), base=head, ref="HEAD", legacy={}, prereg={}, table={}, retired={})
+    j = R.Judgement(path="smoke")
+    for i, row in enumerate(rows):
+        for s, sim in enumerate(row.get("sims") or []):
+            R.judge_sim_fields(sim, j, ctx, f"row {i} sim {s}", (row.get("provenance") or {}).get("code_tree_sha256"))
+    return j.reasons
+
+
+def _smoke_secret_findings(exp: str, data_root: Path) -> list[str]:
+    """``lint_secrets``' scan, with HEAD's patterns and allowlist, over every output as the data PR would add it."""
+    import lint_secrets as S  # noqa: PLC0415
+
+    patterns = S.patterns_at(REPO_ROOT, None)
+    entries = S.parse_allowlist(S._lint_git.show(REPO_ROOT, "HEAD", S.ALLOWLIST_REL), "HEAD", patterns)
+    scan = S.Scan(patterns, {(e["path"], e["match_sha256"]) for e in entries}, S.DECOMPRESS_CAP)
+    for f in sorted(p for p in data_root.rglob("*") if p.is_file()):
+        scan.blob(f"{v.data_dir(exp)}/{f.relative_to(data_root).as_posix()}", f.read_bytes(), "100644")
+    return [f.line() for f in scan.findings] + list(scan.problems)
+
+
+def smoke_checks(
+    exp: str, data_root: Path, rows: list[dict], arc: object
+) -> tuple[list[tuple[str, bool, str]], list[str]]:
+    """The checks the prereg's build order asks of the smoke before any marker, as ``(label, ok, detail)``: C1-C4'',
+    C5 and R3' as instrument checks, and what the protocol must look like; and the lines it only reports. Never R3a
+    or R3d, R3a's view included (``r3a_view=False``, ``decide=False``)."""
+    checks: list[tuple[str, bool, str]] = []
+    reported: list[str] = []  # what the PR reports, never a STOP: the prereg names no bound for these
+
+    def check(label: str, ok: object, detail: str = "") -> None:
+        checks.append((label, bool(ok), detail[:500]))
+
+    problems = [p for r in rows for p in r.get("complete_problems") or []]
+    complete = len(rows) == len(v.PROTOCOL[exp]["phases"]) and all(r.get("status") == "ok" for r in rows)
+    check("C1-C4'' hold on both phases (complete_problems)", complete, "; ".join(problems))
+    if not complete:
+        return checks, reported
+    base, gate = (_copied_phase(data_root, r["session_id"]) for r in rows)
+    goal = v.PROTOCOL[exp]["phases"][1][1]
+    c5 = v.exp63b_c5_problems([base, gate], goal=goal, r3a_view=False)
+    check("C5 holds (the instrument reads true)", not c5, "; ".join(c5))
+    base_records, records = v.store_records(base["store"]), v.store_records(gate["store"])
+    n1, seq_c = len(base_records), v._seq_c(base_records)
+    first = v._aut_traces(gate["lines"])[:1]
+    tr0 = first[0][1] if first else {}
+    check(
+        "phase 2's first trace reads hippocampus_size N1 + 1 and horizon seq_C + 1",
+        tr0.get("hippocampus_size") == n1 + 1 and tr0.get("goal_path_horizon") == seq_c + 1,
+        f"N1 {n1}, seq_C {seq_c}: size {tr0.get('hippocampus_size')!r}, horizon {tr0.get('goal_path_horizon')!r}",
+    )
+    per_turn = v.turn_traces_63b(gate["lines"])
+    check(
+        "every turn has a trace with I1's fields",
+        all(
+            h is not None and all(k in h[1] for k in ("cue_text", "recall_failed", "own_ids"))
+            for h in per_turn.values()
+        ),
+        f"turns with a trace: {sorted(t for t, h in per_turn.items() if h)}",
+    )
+    carried = set(base_records)
+    conform = {
+        t: h is not None and v.exp63b_turn(h[1], records, carried, goal, decide=False)["conforms"]
+        for t, h in per_turn.items()
+    }
+    check(
+        f"R3' conforms on all {v.EXP63_TURNS} turns",
+        all(conform.values()),
+        f"not: {[t for t, c in conform.items() if not c]}",
+    )
+    per_input = (len(records) - n1) / v.EXP63_TURNS
+    reported.append(f"new records per narrator input: {per_input:.2f} (report it in the PR; far from one is a finding)")
+    check("select_arc_for_goal(goal) is None", arc is None, repr(arc))
+    stores = ((gate["report"].get("provenance") or {}).get("resume") or {}).get("stores") or {}
+    check("phase 2's resume.stores.hippocampus reads loaded", stores.get("hippocampus") == "loaded", repr(stores))
+    reasons = _smoke_sim_reasons(rows)
+    check("every row's sim passes the evidence gate's judge_sim_fields", not reasons, "; ".join(reasons))
+    secrets = _smoke_secret_findings(exp, data_root)
+    check("lint_secrets finds nothing in the outputs", not secrets, "; ".join(secrets))
+    return checks, reported
+
+
+def smoke(args: argparse.Namespace) -> int:
+    """``smoke --exp 63b``: the protocol's argv at 8 turns from a throwaway home, rows and copies in a temp directory,
+    no marker and nothing under ``docs/experiments/data/``: one per candidate commit, never an attempt. Exit 0 only
+    when every check holds; then ``preflight`` at the merged commit."""
+    exp, mock = args.exp, bool(args.mock)
+    if v.experiment_of(exp) != "63b":
+        print("REFUSED: the smoke is Exp 63b's pre-marker instrument check", file=sys.stderr)
+        return 2
+    if args.write_experiment_results:
+        print("REFUSED: a smoke writes no committed evidence", file=sys.stderr)
+        return 2
+    out = Path(tempfile.mkdtemp(prefix="o19-smoke-"))
+    rows_file = out / "rows.jsonl"
+    home = fresh_home()
+    try:
+        try:
+            _provenance.assert_repo_interpreter(REPO_ROOT, sys.executable, exempt=mock)
+            provenance = _provenance.executed_code_provenance(REPO_ROOT, sys.executable, out_path=rows_file)
+            run_id = _provenance.harness_run_id()
+            check_argv_parses(exp)
+            check_host_identity()
+            stamps = {"memory_strategy": check_memory_strategy(home, exp, run_id=run_id)}
+            probe = (
+                "import json\nfrom maxim.simulation.arcs import select_arc_for_goal\n"
+                f"print(json.dumps({{'arc': repr(select_arc_for_goal({v.PROTOCOL[exp]['phases'][1][1]!r}))}}))\n"
+            )
+            arc_repr = run_probe(probe, _probe_environment(exp, home=home, run_id=run_id), "arc").get("arc")
+            arc = None if arc_repr == "None" else arc_repr
+            gguf, read_served = "", None
+            if not mock:
+                gguf = check_model_config(home, exp, run_id=run_id)["model_path"]
+                check_port_free(v.SIM_PORT)
+                read_served = served_reader()
+        except _provenance.ProvenanceError as exc:
+            print(f"[FAIL] {exc}", file=sys.stderr)
+            return 3
+        except (Refused, OSError, ImportError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"REFUSED: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        code = run_attempt(
+            args, exp, mock, rows_file, provenance, run_id, 0, home, gguf, read_served, None, stamps, smoke=True
+        )
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+    checks, reported = smoke_checks(exp, out, read_rows(rows_file), arc)
+    for label, ok, detail in checks:
+        print(f"  [{'ok' if ok else 'STOP'}] {label}" + (f": {detail}" if detail else ""))
+    for line in reported:
+        print(f"  [report] {line}")
+    print(f"smoke outputs (never committed): {out}")
+    return 0 if code == 0 and checks and all(ok for _l, ok, _d in checks) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="run", choices=["run", "preflight"])
+    ap.add_argument("command", nargs="?", default="run", choices=["run", "preflight", "smoke"])
     ap.add_argument("--exp", required=True, choices=sorted(v.PROTOCOL))
     ap.add_argument("--write-experiment-results", action="store_true")
     ap.add_argument("--mock", action="store_true", help="offline end to end: fabricated sims, a temp rows file")
     ap.add_argument("--timeout-s", type=float, default=3 * 3600.0, help="per phase")
-    return run(ap.parse_args(argv))
+    args = ap.parse_args(argv)
+    return smoke(args) if args.command == "smoke" else run(args)
 
 
 if __name__ == "__main__":

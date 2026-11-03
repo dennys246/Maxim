@@ -139,3 +139,46 @@ class TestThirdPartyHttpLoggersQuieted:
             assert _logging.getLogger(name).getEffectiveLevel() >= _logging.WARNING, (
                 f"{name} logger passes INFO — the DoA feed's REST polling will flood the console/JSONL again"
             )
+
+
+def test_quiet_console_handlers_leaves_the_jsonl_run_log_whole() -> None:
+    """#1476: the sim's teardown quiets the terminal, not the JSONL run log (MAXIM_LOG_FILE keeps DEBUG and up), so a
+    record saved after shutdown still logs its store digest."""
+    import logging
+
+    from maxim.utils.logging import quiet_console_handlers
+
+    seen: list[str] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(f"{getattr(self, 'name_', '')}:{record.getMessage()}")
+
+    root = logging.getLogger()
+    jsonl, console = _Collect(logging.DEBUG), _Collect(logging.INFO)
+    jsonl.name_, console.name_ = "jsonl", "console"
+    jsonl._maxim_jsonl = True  # type: ignore[attr-defined]
+    old_level = root.level
+    root.addHandler(jsonl)
+    root.addHandler(console)
+    root.setLevel(logging.DEBUG)
+    try:
+        quiet_console_handlers(logging.WARNING)
+        logging.getLogger("maxim.memory.hippocampus_persistence").info("after shutdown")
+        assert seen == ["jsonl:after shutdown"] and console.level == logging.WARNING and jsonl.level == logging.DEBUG
+    finally:
+        root.removeHandler(jsonl)
+        root.removeHandler(console)
+        root.setLevel(old_level)
+
+
+def test_the_sim_teardown_quiets_handlers_never_a_logger() -> None:
+    import ast
+    import inspect
+
+    from maxim.simulation import sim_teardown
+
+    tree = ast.parse(inspect.getsource(sim_teardown._signal_shutdown).lstrip())
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    assert not any(getattr(c.func, "attr", None) == "setLevel" for c in calls)
+    assert any(getattr(c.func, "id", None) == "quiet_console_handlers" for c in calls)

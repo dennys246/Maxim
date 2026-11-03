@@ -67,7 +67,9 @@ def test_goals_caps_and_scope_are_the_preregs() -> None:
     assert f'*"{v.EXP09_GOAL}"*' in p09
     assert "`--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `--sim-run-full-turns`" in p09
     assert v.PROTOCOL["09"]["phases"][0][4] == ["--embodiment", "bodies/base_humanoid", "--sim-run-full-turns"]
-    for exp in (k for k in v.PROTOCOL if v.experiment_of(k) != "63"):  # Exp 63's prereg: test_exp63_protocol_*
+    for exp in (
+        k for k in v.PROTOCOL if v.experiment_of(k) not in ("63", "63b")
+    ):  # their preregs: test_exp63*_protocol_*
         assert f"**Scope:** `{v.PROTOCOL[exp]['scope']}`" in PREREG[exp]
         assert f"--data {v.rows_path(exp)}" in _squash(PREREG[exp]).replace("\\ ", "")
         assert f"`{v.MODEL_GGUF}`" in PREREG[exp] and f"`llm.profile {v.MODEL_PROFILE}`" in PREREG[exp]
@@ -1044,7 +1046,7 @@ def test_the_campaign_table_refuses() -> None:
         "or is reserved": _table(**{"preflight": c2, "10c2": None}),
         "superseded more than once": _table(**{"10c3": {**c2, "scope": "rerun_exp10_o19c3"}}),
         "2 open campaigns": _table(**{"10c2": {k: x for k, x in c2.items() if k != "supersedes"}}),
-        "is not 10, 09 or 63": _table(**{"09": {**v.PROTOCOL["09"], "experiment": "11"}}),
+        "is not 10, 09, 63 or 63b": _table(**{"09": {**v.PROTOCOL["09"], "experiment": "11"}}),
         "another experiment or kind": _table(**{"10c2": {**c2, "kind": "exp09_verdict"}}),
         "is not 10's own": _table(**{"10c2": {**c2, "supersedes": {**c2["supersedes"], "verdict": "docs/x.json"}}}),
         "owner_decision is missing": _table(
@@ -2906,22 +2908,585 @@ def test_a_row_write_blocks_the_harness_signals(tmp_path, monkeypatch) -> None:
     assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, [])
 
 
-# ── Exp 63b (docs/experiments/exp63b_carried_recall_prereg.md): red gates, flipped by the judge and the real-seam mock ──
+# ── Exp 63b (docs/experiments/exp63b_carried_recall_prereg.md): the mock runs the REAL seams, only the LLM stubbed ──
 
 
-@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's judge and real-seam mock land in the next commit")
-def test_exp63b_the_real_seam_mock_passes_end_to_end(mock_attempt, monkeypatch) -> None:
-    monkeypatch.setattr(h, "MOCK63B_VARIANT", "pass", raising=False)
+def _exp63b(mock_attempt, monkeypatch, variant: str = "pass") -> tuple[Path, dict]:
+    monkeypatch.setattr(h, "MOCK63B_VARIANT", variant)
     rows = mock_attempt("63b")
-    assert _judge("63b", rows)["verdict"] == "PASS"
+    return rows, _judge("63b", rows)
 
 
-@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's judge and real-seam mock land in the next commit")
+GOAL63B = v.PROTOCOL["63b"]["phases"][1][1]
+
+
+def test_exp63b_protocol_is_the_preregs() -> None:
+    text = _squash(PREREG["63b"])
+    assert v.PROTOCOL["63b"]["phases"] == v.PROTOCOL["63"]["phases"] and "supersedes" not in v.PROTOCOL["63b"]
+    assert f"goal `{GOAL63B}`, 8 turns each, `--interactive false`," in text
+    assert "`--sim-max-turns 8` and `--sim-run-full-turns`" in text
+    assert f"`{v.MODEL_GGUF}` (`llm.profile {v.MODEL_PROFILE}`) at `llm.n_ctx {v.N_CTX}`" in text
+    for field in ("key / experiment | `63b`", "`exp63b_verdict`", "`docs/experiments/data/63b_carried_recall/`",
+                  "`refs/tags/o19/63b/`"):  # fmt: skip
+        assert field in text, field
+    assert (
+        v.data_dir("63b") == "docs/experiments/data/63b_carried_recall"
+        and v.PROTOCOL["63b"]["kind"] == "exp63b_verdict"
+    )
+    assert "`P0` for phase 1 and `P0, P1, P2, P3, R1, R2′, R3a, R3′, R3d` for phase 2" in text
+    assert v.LEAK_GATES["63b"] == {1: ("P0",), 2: ("P0", "P1", "P2", "P3", "R1", "R2prime", "R3a", "R3prime", "R3d")}
+    assert "63b" not in v.PRE_1079_KEYS and v.protocol_problems() == []
+    assert "cue top 5, stopping at 3 surfaced; goal top 3" in text and v.EXP63B_CUE_LIMIT == 5 and v.EXP63_TOP == 3
+    assert "a tie product past 10,000 orderings is C5" in text and v.EXP63B_TIE_BOUND == 10_000
+    assert v.required_files("63b") == v.required_files("63")
+
+
+def _exp63b(mock_attempt, monkeypatch, variant: str = "pass") -> tuple[Path, dict]:
+    monkeypatch.setattr(h, "MOCK63B_VARIANT", variant)
+    rows = mock_attempt("63b")
+    return rows, _judge("63b", rows)
+
+
+def test_exp63b_the_real_seam_mock_passes_end_to_end(mock_attempt, monkeypatch, tmp_path) -> None:
+    """The mock runs the shipped Hippocampus, enrichment pipeline, persistence and log formatter (only the LLM is
+    stubbed), so a PASS here is the judge agreeing with the shipped code, not with itself."""
+    rows, out = _exp63b(mock_attempt, monkeypatch)
+    g = out["gates"]
+    assert out["verdict"] == "PASS" and g["not_passed"] == [], g["not_passed"]
+    assert g["R3a"]["status"] == "held" and g["R3a"]["turn"] == 1 and g["R3d"]["decisive_turns"]
+    assert g["R2prime"]["restore_digest"] == g["R2prime"]["phase1_saved_digest"]
+    assert g["P1"]["first_trace_hippocampus_size"] == g["N1"] + 1  # the own capture lands before enrich
+    written = [json.loads(ln) for ln in rows.read_text().splitlines()]
+    assert [r["memory_strategy"] for r in written] == ["access_based"] * 2
+    monkeypatch.setattr(h._provenance, "evidence_out_path", _EVIDENCE_OUT_PATH)
+    verdict = tmp_path / "verdict.json"
+    assert v.main(["--exp", "63b", "--data", str(rows), "--json", str(verdict), "--offline"]) == 0
+    assert json.loads(verdict.read_text())["kind"] == "exp63b_verdict"
+
+
+def test_exp63b_not_shown_raises_nothing(mock_attempt, monkeypatch, tmp_path) -> None:
+    """OD2: complete and conforming, no decisive turn: NOT SHOWN, exit 4 (no status change)."""
+    rows, out = _exp63b(mock_attempt, monkeypatch, "not_shown")
+    assert out["verdict"] == "NOT SHOWN" and out["gates"]["not_passed"] == ["R3d"], out["gates"]["not_passed"]
+    monkeypatch.setattr(h._provenance, "evidence_out_path", _EVIDENCE_OUT_PATH)
+    verdict = tmp_path / "verdict.json"
+    assert v.main(["--exp", "63b", "--data", str(rows), "--json", str(verdict), "--offline"]) == 4
+
+
+def test_exp63b_repeated_lines_take_one_place(mock_attempt, monkeypatch) -> None:
+    """A narrator line repeated every turn: the copies collapse, the log conforms, the attempt is complete."""
+    _rows, out = _exp63b(mock_attempt, monkeypatch, "repeat")
+    assert out["attempts"][0]["complete"] and out["gates"]["R3prime"]["pass"], out["gates"]["R3prime"]
+
+
 @pytest.mark.parametrize(
     "variant,gate",
     [("no_exclusion", "R3prime"), ("no_collapse", "R3prime"), ("scrambled", "R2prime")],
 )
 def test_exp63b_a_deleted_mechanism_fails_its_gate(mock_attempt, monkeypatch, variant, gate) -> None:
-    monkeypatch.setattr(h, "MOCK63B_VARIANT", variant, raising=False)
-    out = _judge("63b", mock_attempt("63b"))
-    assert out["verdict"] == "FAIL" and gate in out["gates"]["not_passed"]
+    """Deletion probes on the shipped path: the own-record exclusion removed, the copy collapse removed, a store
+    restored that is not the bytes phase 1 saved. Each is a complete attempt the verdict FAILs on its gate."""
+    _rows, out = _exp63b(mock_attempt, monkeypatch, variant)
+    assert out["attempts"][0]["complete"], out["attempts"][0]["problems"]
+    assert out["verdict"] == "FAIL" and gate in out["gates"]["not_passed"], out["gates"]["not_passed"]
+
+
+@pytest.fixture
+def exp63b_phases(mock_attempt, monkeypatch) -> list[dict]:
+    rows, _out = _exp63b(mock_attempt, monkeypatch)
+    return [h._copied_phase(rows.parent, json.loads(ln)["session_id"]) for ln in rows.read_text().splitlines()]
+
+
+def _turn_trace(p: list[dict], turn: int) -> dict:
+    return v.turn_traces_63b(p[1]["lines"])[turn][1]
+
+
+def _c5b_no_cue_text(p):
+    _turn_trace(p, 2).pop("cue_text")
+
+
+def _c5b_query_text_not_the_cue(p):
+    _turn_trace(p, 2)["query_text"] = "something else"
+
+
+def _c5b_keywords_not_the_ports(p):
+    _turn_trace(p, 2)["keywords"] = ["door"]
+
+
+def _c5b_no_restore_digest(p):
+    p[1]["lines"] = [r for r in p[1]["lines"] if not (r.get("e") == v.EXP63B_DIGEST_EVENT and r.get("op") == "load")]
+
+
+def _c5b_two_restore_digests(p):
+    p[1]["lines"].insert(
+        0, next(r for r in p[1]["lines"] if r.get("e") == v.EXP63B_DIGEST_EVENT and r.get("op") == "load")
+    )
+
+
+def _c5b_no_save_digest(p):
+    p[0]["lines"] = [r for r in p[0]["lines"] if not (r.get("e") == v.EXP63B_DIGEST_EVENT and r.get("op") == "save")]
+
+
+def _c5b_an_unknown_path(p):
+    _turn_trace(p, 2)["memory_paths"][0] = "dream"
+
+
+def _c5l_recall_failed(p):
+    _turn_trace(p, 3)["recall_failed"] = True
+
+
+def _c5d_saved_text_moved(p):
+    p[1]["store"]["memories"][-1]["outcome"]["result"] = {"output": "a tuple once"}
+
+
+def _c5d_legacy_repr(p):
+    p[0]["store"]["memories"][0]["outcome"]["result"] = "ToolOutput(success=True)"
+
+
+def _c5s_substring_on_a_turn(p):
+    _turn_trace(p, 4)["memory_paths"][-1] = "substring"
+
+
+def _c5i_own_capture_not_the_cue(p):
+    tr = _turn_trace(p, 5)  # turn 3's capture: a new, visible record, but not of the words this cue queried
+    tr["own_ids"] = [_turn_trace(p, 3)["own_ids"][0], *tr["own_ids"][1:]]
+
+
+def _c5i_own_capture_carried(p):
+    tr = _turn_trace(p, 5)
+    tr["own_ids"] = [p[0]["store"]["memories"][0]["id"], *tr["own_ids"][1:]]
+
+
+def _c5i_cue_not_the_bridges(p):
+    for r in p[1]["lines"]:
+        if r.get("e") == "sim_exec" and "turn=6 " in r["message"]:
+            r["message"] = r["message"].replace("text_len=", "text_len=9")
+
+
+def _c5r3a_no_view(p):
+    for t in range(1, 9):
+        _turn_trace(p, t)["goal_path_holes"] = [[0, 0]]
+
+
+C5B_PERTURB = [
+    ("C5(b)", _c5b_no_cue_text),
+    ("C5(b)", _c5b_query_text_not_the_cue),
+    ("C5(b)", _c5b_keywords_not_the_ports),
+    ("C5(b)", _c5b_no_restore_digest),
+    ("C5(b)", _c5b_two_restore_digests),
+    ("C5(b)", _c5b_no_save_digest),
+    ("C5(b)", _c5b_an_unknown_path),
+    ("C5(L)", _c5l_recall_failed),
+    ("C5(d)", _c5d_saved_text_moved),
+    ("C5(d)", _c5d_legacy_repr),
+    ("C5(s)", _c5s_substring_on_a_turn),
+    ("C5(i)", _c5i_own_capture_not_the_cue),
+    ("C5(i)", _c5i_own_capture_carried),
+    ("C5(i)", _c5i_cue_not_the_bridges),
+    ("C5(R3a)", _c5r3a_no_view),
+]
+
+
+def test_exp63b_the_mock_is_c5_clean(exp63b_phases) -> None:
+    assert v.exp63b_c5_problems(exp63b_phases, goal=GOAL63B) == []
+
+
+@pytest.mark.parametrize("label,perturb", C5B_PERTURB, ids=[f.__name__ for _l, f in C5B_PERTURB])
+def test_exp63b_each_c5_check_flips(exp63b_phases, label, perturb) -> None:
+    p = copy.deepcopy(exp63b_phases)
+    perturb(p)
+    problems = v.exp63b_c5_problems(p, goal=GOAL63B)
+    assert any(x.startswith(label) for x in problems), problems
+
+
+def test_exp63b_a_save_digest_mismatch_names_the_record(exp63b_phases) -> None:
+    p = copy.deepcopy(exp63b_phases)
+    rid = p[1]["store"]["memories"][-1]["id"]
+    _c5d_saved_text_moved(p)
+    (problem,) = [x for x in v.exp63b_c5_problems(p, goal=GOAL63B) if x.startswith("C5(d)")]
+    assert repr(rid) in problem, problem
+
+
+def test_exp63b_the_tie_bound_aborts_rather_than_guesses(exp63b_phases) -> None:
+    """Records whose (score, timestamp) are exactly equal are a tie the log cannot order: past the bound, C5."""
+    p = copy.deepcopy(exp63b_phases)
+    memories = p[1]["store"]["memories"]
+    stamp = memories[0]["timestamp"]
+    for m in memories:
+        m["timestamp"] = stamp
+    assert any(x.startswith("C5(t)") for x in v.exp63b_c5_problems(p, goal=GOAL63B))
+
+
+def test_exp63b_the_smoke_never_reads_r3a_or_r3d(exp63b_phases) -> None:
+    p = copy.deepcopy(exp63b_phases)
+    _c5r3a_no_view(p)
+    assert not any(x.startswith("C5(R3a)") for x in v.exp63b_c5_problems(p, goal=GOAL63B, r3a_view=False))
+    tr = _turn_trace(exp63b_phases, 2)
+    carried = set(v.store_records(exp63b_phases[0]["store"]))
+    records = v.store_records(exp63b_phases[1]["store"])
+    assert v.exp63b_turn(tr, records, carried, GOAL63B, decide=False)["decisive"] is None
+
+
+def test_exp63b_c4_double_prime_is_the_gates_b0(mock_attempt, monkeypatch) -> None:
+    """C4'' restates the evidence gate's B0 checks: over the mock's sim and each perturbation of it, ``b0_problems``
+    finds a problem exactly when ``judge_b0_fields`` (with the executed code writing schema 2) fails it."""
+    import _evidence_records as R
+
+    rows, _out = _exp63b(mock_attempt, monkeypatch)
+    sim = json.loads(rows.read_text().splitlines()[1])["sims"][0]
+    repo = type("FakeRepo", (), {"blob": lambda self, c, p: b"PROVENANCE_SCHEMA = 2\n"})()
+    monkeypatch.setattr(R, "provenance_schema_anchor", lambda repo, base: None)
+    ctx = R.Ctx(repo=repo, base="HEAD", ref="HEAD", legacy={}, prereg={}, table={}, retired={})
+
+    def gate_fails(s: dict) -> bool:
+        j = R.Judgement(path="x")
+        R.judge_b0_fields(s, j, ctx, "sim", "e" * 40)
+        return bool(j.reasons)
+
+    router = sim["llm_calls"]["1"]
+    cases = [
+        {},
+        {"provenance_schema": 1},
+        {"concurrent_sims": True},
+        {"sampling_complete": None},
+        {"model_changed_during_run": True},
+        {"aut_model_attribution": "established"},
+        {"scenario_sha256": "nothex"},
+        {"session_index": -1},
+        {"aut_router_serial": 9},
+        {"llm_calls": None},
+        {"llm_calls": {"1": {**router, "counts": {**router["counts"], "started": 99}}}},
+        {"llm_calls": {"1": {**router, "entries": [{**router["entries"][0], "identity_source": "guess"}]}}},
+        {"llm_calls": {"1": {**router, "entries": [{**router["entries"][0], "seed_honoured": None}]}}},
+    ]
+    for case in cases:
+        s = {**sim, **case}
+        assert bool(v.b0_problems(s, "sim")) == gate_fails(s), case
+    assert v.b0_problems(sim, "sim") == []
+    row, rep = _phase(rows, 1)
+    row["sims"] = [{**sim, "concurrent_sims": True}]
+    assert any(p.startswith("C4''") for p in v.complete_problems("63b", 1, row, rep, _p1(rows), set(v.RESUME_STORES)))
+
+
+def test_exp63b_leak_gates_read_its_own_gates(exp63b_phases) -> None:
+    passes = v._gate_passes("63b", exp63b_phases)
+    assert set(passes) == set(v.LEAK_GATES["63b"][2]) and all(passes.values()), passes
+    assert v._gate_passes("63b", exp63b_phases[:1]) == {"P0": True}
+    p = copy.deepcopy(exp63b_phases)
+    _c5r3a_no_view(p)
+    assert v._gate_passes("63b", p)["R3a"] is False  # no view reads not passed (fail-closed)
+
+
+def test_an_experiment_without_gates_is_unjudgeable_never_another_experiments(mock_attempt, monkeypatch) -> None:
+    """The trap the wiring review found: a new experiment id once fell through to Exp 09's or Exp 63's gates."""
+    rows, _out = _exp63b(mock_attempt, monkeypatch)
+    phases = [h._copied_phase(rows.parent, json.loads(ln)["session_id"]) for ln in rows.read_text().splitlines()]
+    monkeypatch.setitem(v.PROTOCOL, "zz", {**v.PROTOCOL["63b"], "experiment": "zz"})
+    with pytest.raises(ValueError, match="no gates"):
+        v._gate_passes("zz", phases)
+    attempt = [json.loads(ln) for ln in rows.read_text().splitlines()]
+    with pytest.raises(v.Refusal, match="no gates"):
+        v.judge("zz", [{"run_id": "x", "k": 1, "rows": attempt}], rows.parent)
+
+
+def test_exp63b_the_smoke_runs_its_checks_and_never_prints_r3a_or_r3d(monkeypatch, capsys) -> None:
+    stable_provenance(monkeypatch)
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    monkeypatch.setattr(h, "MOCK63B_VARIANT", "pass")
+    assert h.main(["smoke", "--exp", "63b", "--mock"]) == 0, capsys.readouterr()
+    out = capsys.readouterr().out
+    assert out.count("[ok]") >= 9 and "[STOP]" not in out and "[report] new records per narrator input" in out, out
+    assert "R3a" not in out and "R3d" not in out and "decisive" not in out
+    assert h.main(["smoke", "--exp", "63", "--mock"]) == 2  # the smoke is Exp 63b's
+
+
+# G2: the port is the shipped keying, over the committed Exp 63 stores (rebuilt to the 1.2 shape), the mock's, frames,
+# metadata keys, depth and fuzz. Once the run lands, this pin moves to a vendored copy of the executed closure.
+
+_FUZZ_WORDS = (
+    "guard's Dungeon, sleeping settings used running status TV Al door. the of keys carried batteries exits "
+    "<<TOOL_OUTPUT id=ab12 tool=x>> body <</TOOL_OUTPUT id=ab12>> <<TOOL_OUTPUT id=cd34 tool=y>> trailing "
+    "<</TOOL_OU <</TOOL_OUTPUT id=ee>> naïve ﬁre Straße İstanbul it’s freed carried placed taking"
+).split(" ")
+
+
+def _fuzz_records(n: int = 600) -> list[dict]:
+    import random
+
+    rng = random.Random(1476)
+    out = []
+    for i in range(n):
+        text = " ".join(rng.choice(_FUZZ_WORDS) for _ in range(rng.randint(0, 14)))
+        value = rng.choice(
+            [
+                text,
+                {"a": text, "bio_response": "secret", "n": {"m": {"k": {"deep": text}}}},
+                [text, [text, [text, [text]]]],
+            ]
+        )
+        rec = {"id": f"f{i}", "timestamp": float(i), "outcome": {"result": value, "success": rng.choice([True, None])},
+               "perception": {"observations": {"text": text, "source": "cli"}, "cli_input": rng.choice([None, "", text])},
+               "context": {"active_goal": rng.choice([None, GOAL63B])}, "action": {"tool_name": rng.choice(["", "say"])}}  # fmt: skip
+        out.append(rec)
+    return out
+
+
+def _port_records() -> list[dict]:
+    from maxim.memory.types import CompressedMemory, EpisodicMemory
+
+    recs = []
+    for session in ("20261003_173039", "20261003_173617"):
+        store = json.loads((DATA_ROOT / "63_carried_recall" / session / "aut_hippocampus.json").read_text())
+        for r in store["memories"]:
+            recs.append(json.loads(json.dumps(EpisodicMemory.from_dict(r).to_dict())))  # one 1.2 round trip
+    recs += _fuzz_records()
+    recs += [CompressedMemory.from_episodic(EpisodicMemory.from_dict(r)).to_dict() for r in recs[:50] + recs[-50:]]
+    return recs
+
+
+def test_exp63b_the_port_is_the_shipped_keying() -> None:
+    from maxim.memory import text as T
+    from maxim.memory.hippocampus_persistence import store_digest
+    from maxim.memory.types import CompressedMemory, EpisodicMemory
+
+    assert v._P_STOP_WORDS == T._STOP_WORDS and v._P_METADATA_KEYS == T._METADATA_KEYS
+    assert v._P_PUNCT_STRIP == T._PUNCT_STRIP
+    for words in [_FUZZ_WORDS, *[[w] for w in _FUZZ_WORDS]]:
+        text = " ".join(words)
+        assert v.p_key_tokens(text) == T.key_tokens(text) and v.p_same_words(text) == T.same_words(text), text
+    records = _port_records()
+    live = {}
+    for rec in records:
+        mem = (CompressedMemory if rec.get("_compressed") else EpisodicMemory).from_dict(rec)
+        live[rec["id"]] = mem
+        assert v.p_record_tokens(rec) == mem.content_tokens(), rec["id"]
+        assert v.p_input_text(rec) == mem.input_text and v.p_copy_key(rec) == mem.copy_key(), rec["id"]
+    by_id = {r["id"]: r for r in records}  # a compressed copy shares its episode's id: the later one stands
+    assert v.p_store_digest(by_id)[0] == store_digest(live[i] for i in by_id)
+
+
+def test_exp63b_the_port_ranks_and_collapses_as_the_shipped_ranker() -> None:
+    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
+    from maxim.memory.types import EpisodicMemory
+
+    base = _fuzz_records(300)
+    copies = [{**copy.deepcopy(r), "id": f"{r['id']}-copy", "timestamp": r["timestamp"] + 1000.0} for r in base[::3]]
+    records = {r["id"]: r for r in base + copies}  # a third of the records stored twice: the collapse must act
+    mems = [EpisodicMemory.from_dict(r) for r in records.values()]
+    collapsed = 0
+    for query in ("the sleeping guard's door", "carried batteries", "exits keys used", "of the"):
+        groups = v.p_ranked_groups(records, list(records), query)
+        assert [m.id for m in _rank_by_relevance(mems, query, 10**6)] == [m for g in groups for m in g]  # no ties here
+        classes = {i: v._copy_class(records[i], i) for i in records}
+        shipped = [m.id for m in _rank_by_relevance(mems, query, 5, collapse_copies=True)]
+        assert v.p_distinct([m for g in groups for m in g], classes, 5) == shipped, query
+        collapsed += shipped != [m.id for m in _rank_by_relevance(mems, query, 5)]
+    assert collapsed, "no query met a copy: the pin would not see a deleted collapse"
+
+
+def test_exp63b_simulate_is_the_shipped_recall() -> None:
+    """G1's pin: random stores in a REAL Hippocampus (repeated lines, exact timestamp ties, action records), each
+    enriched through the shipped pipeline with its own capture; the logged trace must conform to the simulator."""
+    import logging
+    import random
+
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+    from maxim.memory.encoding import EncodingSignals
+    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+    from maxim.memory.types import Action, Context, Outcome, Perception
+
+    lines = ["the iron door is shut", "a rusty key on the hook", "is the guard asleep", "the door and the key",
+             "water drips", "where is the key", "what is behind the door", "the guard sleeps"]  # fmt: skip
+    rng = random.Random(63)
+    traces: list[dict] = []
+    handler = logging.Handler()
+    handler.emit = (
+        lambda record: traces.append(record.data) if getattr(record, "event", "") == "enrichment_trace" else None
+    )  # type: ignore[method-assign]
+    log = logging.getLogger("maxim.integration.bio_enrichment")
+    log.addHandler(handler)
+    level = log.level
+    log.setLevel(logging.INFO)
+    checked = 0
+    try:
+        for trial in range(40):
+            hc = Hippocampus(HippocampusConfig(auto_save_after_sleep=False))
+            enc = EncodingSignals.unmeasured("memory_agent")
+            for _ in range(rng.randint(3, 25)):
+                if rng.random() < 0.3:
+                    hc.capture(action=Action(tool_name="say"), outcome=Outcome(success=True, result={"output": rng.choice(lines)}),
+                               context=Context(active_goal=GOAL63B), encoding=enc)  # fmt: skip
+                else:
+                    hc.capture(
+                        perception=Perception(cli_input=rng.choice(lines)),
+                        context=Context(active_goal=GOAL63B),
+                        encoding=enc,
+                    )
+            for mem in hc._memories.values():
+                mem.timestamp = float(rng.randint(0, 4))  # coarse: exact ties, as one loop pass's captures share one
+            text = rng.choice(lines)
+            own = hc.capture(perception=Perception(cli_input=text), context=Context(active_goal=GOAL63B), encoding=enc)
+            BioEnrichmentPipeline(hippocampus=hc, trace_agent_id="sim_aut").enrich(
+                text,
+                context=EnrichmentContext(active_goal=GOAL63B, user_input=text, own_capture_id=own),
+                bypass_gate=True,
+            )
+            tr = traces[-1]
+            records = v.store_records(json.loads(json.dumps(hc.dump())))
+            turn = v.exp63b_turn(tr, records, set(), GOAL63B, decide=False)
+            assert turn["over_bound"] or turn["conforms"], (trial, tr["memory_ids"], tr["memory_paths"])
+            checked += not turn["over_bound"]
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(level)
+    assert checked >= 20, f"only {checked} of 40 trials were under the tie bound: the pin would go vacuous"
+
+
+# ── Exp 63b, hand-built cases: one per G4 condition of R3d, and G3's R3a outcomes (review round 1) ──────────────
+
+
+def _rec(rid: str, text: str, ts: float, seq: int, *, goal: str | None = None) -> dict:
+    """A saved episode as ``EpisodicMemory.to_dict`` lays it out, holding only what the ranker reads."""
+    return {"id": rid, "timestamp": ts, "capture_seq": seq, "perception": {"cli_input": text, "observations": {}},
+            "context": {"active_goal": goal}, "action": {"tool_name": ""}, "outcome": {}}  # fmt: skip
+
+
+def _trace(ids, paths, cue: str, horizon: int, own=("own",)) -> dict:
+    return {"memory_ids": list(ids), "memory_paths": list(paths), "own_ids": list(own), "cue_text": cue,
+            "goal_path_horizon": horizon, "goal_path_holes": [], "goal": GOAL63B}  # fmt: skip
+
+
+def _decisive(records: list[dict], carried: set[str], ids, cue: str) -> dict:
+    recs = {r["id"]: r for r in records}
+    tr = _trace(ids, ["cue"] * len(ids), cue, max(r["capture_seq"] for r in records))
+    return v.exp63b_turn(tr, recs, carried, GOAL63B)
+
+
+def test_r3d_a_carried_cue_win_that_displaces_a_lower_new_record_is_decisive() -> None:
+    """The base case: two carried records hold both of the cue's words; three newer records hold one. Removing the
+    carried ones lets two new records in, each holding fewer of the cue's words outside the goal."""
+    records = [_rec("C1", "the iron door", 1, 0), _rec("C2", "an iron door gate", 2, 1),
+               _rec("N1", "a wooden door", 10, 2), _rec("N2", "the cellar door", 11, 3), _rec("N3", "a red door", 12, 4)]  # fmt: skip
+    out = _decisive(records, {"C1", "C2"}, ["C2", "C1", "N3"], "where is the iron door")
+    assert out["conforms"] and out["decisive"] is True, out
+
+
+def test_r3d_an_equal_score_is_not_decisive() -> None:
+    """G4.3 is STRICT: a displaced record holding as many of the cue's non-goal words is no loss."""
+    records = [_rec("A", "the iron door", 20, 0), _rec("B", "an iron door gate", 21, 1),
+               _rec("C", "a door", 5, 2), _rec("Y", "the door", 3, 3)]  # fmt: skip
+    out = _decisive(records, {"C"}, ["B", "A", "C"], "where is the iron door")
+    assert out["conforms"] and out["decisive"] is False, out
+
+
+def test_r3d_must_hold_in_every_valid_tie_ordering() -> None:
+    """X and Y tie exactly below the cut: removing C lets in either. Displacing X (no non-goal word) would be
+    decisive, displacing Y (as many as C) is not; one ordering that is not makes the turn not decisive (all, not any)."""
+    records = [_rec("A", "the iron door", 20, 0), _rec("B", "an iron door gate", 21, 1),
+               _rec("C", "a door", 5, 2), _rec("X", "the guard", 3, 3), _rec("Y", "the door", 3, 4)]  # fmt: skip
+    out = _decisive(records, {"C"}, ["B", "A", "C"], "where is the iron door guard")
+    assert out["conforms"] and out["decisive"] is False, out
+    without_y = [r for r in records if r["id"] != "Y"]
+    assert _decisive(without_y, {"C"}, ["B", "A", "C"], "where is the iron door guard")["decisive"] is True
+
+
+def test_r3d_a_win_on_the_goals_words_is_not_decisive() -> None:
+    """G4.3 counts the cue's keys OUTSIDE the goal's: a carried record that wins only on "guard" (a goal word) does
+    not outscore the record it displaced."""
+    records = [_rec("A", "the guard by the door", 20, 0), _rec("B", "a door near the guard", 21, 1),
+               _rec("C", "guard door", 5, 2), _rec("N", "a door", 4, 3)]  # fmt: skip
+    out = _decisive(records, {"C"}, ["B", "A", "C"], "where is the guard door")
+    assert out["conforms"] and out["decisive"] is False, out
+
+
+def test_r3d_a_cue_with_no_word_outside_the_goal_cannot_be_decisive() -> None:
+    records = [
+        _rec("C", "the sleeping guard", 5, 0),
+        _rec("N", "a guard", 4, 1),
+        _rec("M", "guard", 3, 2),
+        _rec("K", "the guard", 2, 3),
+    ]
+    out = _decisive(records, {"C"}, ["C", "N", "M"], "is the guard sleeping")
+    assert out["conforms"] and out["decisive"] is False and out["cue_nongoal_keys"] == [], out
+
+
+def test_r3d_counts_only_turns_after_a_held_r3as(exp63b_phases, monkeypatch) -> None:
+    """A decisive turn at or before R3a's does not count, and with R3a unobservable none does (NOT SHOWN)."""
+    real = v.exp63b_turn
+    monkeypatch.setattr(v, "exp63b_turn", lambda *a, **k: {**real(*a, **k), "decisive": True})
+    g = v.exp63b_gates(exp63b_phases, goal=GOAL63B)
+    assert g["R3a"]["turn"] == 1 and g["R3d"]["decisive_turns"] == list(range(2, 9)), g["R3d"]
+    real_r3a = v.exp63b_r3a
+    monkeypatch.setattr(v, "exp63b_r3a", lambda *a: {**real_r3a(*a), "status": "unobservable", "pass": False})
+    g = v.exp63b_gates(exp63b_phases, goal=GOAL63B)
+    assert g["R3d"]["decisive_turns"] == [] and g["verdict"] == "NOT SHOWN", (g["R3d"], g["verdict"])
+
+
+def test_a_late_goal_path_id_is_in_the_goal_pool_only() -> None:
+    """L landed after the cue path's recall (its capture_seq is above the horizon) and the goal path logged it: the
+    goal path's pool holds it and the cue path's does not (G1), so the log conforms."""
+    records = {
+        r["id"]: r
+        for r in (_rec("N", "the iron key", 1, 1, goal=GOAL63B), _rec("L", "the iron door", 9, 9, goal=GOAL63B))
+    }
+    tr = {**_trace(["N", "L"], ["cue", "goal"], "where is the iron key", 5)}
+    out = v.exp63b_turn(tr, records, set(), GOAL63B)
+    assert out["late"] == ["L"] and out["conforms"], (
+        out
+    )  # with L in the cue's pool the cue shows it; without L, no goal id
+
+
+def _r3a(ids, records, carried, conforms=True) -> str:
+    recs = {r["id"]: r for r in records}
+    tr = _trace(ids, ["cue"] * len(ids), "x", 5, own=["own"])
+    return v.exp63b_r3a({1: (0, tr)}, {1: {"conforms": conforms}}, recs, carried)["status"]
+
+
+def test_r3a_outcomes() -> None:
+    carried = [_rec("C1", "a", 1, 0), _rec("C2", "b", 2, 1)]
+    own = _rec("own", "x", 3, 2)
+    late = _rec("L", "c", 9, 9)  # above the horizon (5): it landed during the query
+    assert _r3a(["C1", "C2"], [*carried, own], {"C1", "C2"}) == "held"
+    assert _r3a([], [*carried, own], {"C1", "C2"}) == "unobservable"
+    assert _r3a(["C1", "L"], [*carried, own, late], {"C1", "C2"}) == "late"  # C5: incomplete
+    assert _r3a(["C1", "own"], [*carried, own], {"C1", "C2"}) == "failed"  # the exclusion failed
+    assert _r3a(["own", "L"], [*carried, own, late], {"C1", "C2"}) == "failed"  # a non-late outsider beside a late one
+    assert _r3a(["C1"], [*carried, own], {"C1", "C2"}, conforms=False) == "failed"
+    assert _r3a(["C1", "L"], [*carried, own, late], {"C1", "C2"}, conforms=False) == "late"  # G3: incomplete
+    new = _rec("N", "d", 4, 3)  # visible, not its own: this trace is not R3a's view
+    recs = {r["id"]: r for r in (*carried, own, new)}
+    tr = _trace(["C1"], ["cue"], "x", 5, own=["own"])
+    assert v.exp63b_r3a({1: (0, tr)}, {1: {"conforms": True}}, recs, {"C1", "C2"})["status"] == "no_view"
+
+
+@pytest.mark.parametrize("index", [0, 1, 2, 3, -3])  # records the turns' traces see (the last one none sees)
+def test_exp63b_a_malformed_record_aborts_and_never_crashes(exp63b_phases, index) -> None:
+    p = copy.deepcopy(exp63b_phases)
+    p[1]["store"]["memories"][index].pop("timestamp")
+    problems = v.exp63b_c5_problems(p, goal=GOAL63B)
+    assert any(x.startswith("C5(d)") for x in problems), problems
+
+
+def test_exp63b_the_smoke_never_calls_r3a(monkeypatch) -> None:
+    stable_provenance(monkeypatch)
+    monkeypatch.setattr(h._provenance, "_RUN_ID", {})
+    calls = []
+    real = v.exp63b_r3a
+    monkeypatch.setattr(v, "exp63b_r3a", lambda *a: calls.append(1) or real(*a))
+    assert h.main(["smoke", "--exp", "63b", "--mock"]) == 0
+    assert calls == []
+
+
+def test_c4_double_prime_restates_the_gate_functions_it_was_pinned_against() -> None:
+    """``b0_problems`` was pinned against these exact gate functions: if the gate gains a B0 check, this fails and
+    C4'' is re-read against it before any run (otherwise a complete attempt the gate refuses could decide)."""
+    import hashlib
+    import inspect
+
+    import _evidence_records as R
+
+    src = inspect.getsource(R.judge_b0_fields) + inspect.getsource(R.judge_b0_router)
+    assert (
+        hashlib.sha256(src.encode()).hexdigest() == "e79dcffcf20affcfcb35f8f4000ffa7076326e02be2431853e294cbf1d03f288"
+    )
+    assert v.B0_OUTCOMES == R.B0_OUTCOMES and v.B0_IDENTITY_SOURCES == R.B0_IDENTITY_SOURCES

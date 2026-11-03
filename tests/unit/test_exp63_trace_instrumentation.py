@@ -12,8 +12,6 @@ import inspect
 import logging
 from types import SimpleNamespace
 
-import pytest
-
 from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
 from maxim.memory.encoding import EncodingSignals
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
@@ -200,7 +198,6 @@ def test_a_failed_horizon_read_loses_only_the_horizon_never_recall(caplog) -> No
 # ── Exp 63b's I1 (docs/experiments/exp63b_carried_recall_prereg.md) ──────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
 def test_the_trace_carries_the_whole_cue_text_and_no_recall_failure(caplog) -> None:
     store = _StubStore(cue=[_mem("c")])
     text = "the guard stirs " + "and the torch gutters " * 12  # past query_text's 120-character cut
@@ -213,7 +210,6 @@ def test_the_trace_carries_the_whole_cue_text_and_no_recall_failure(caplog) -> N
     assert data["recall_failed"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
 def test_a_failed_recall_is_flagged_in_the_trace(caplog) -> None:
     class _Broken(_StubStore):
         def recall(self, **kwargs):
@@ -227,7 +223,6 @@ def _digest_lines(caplog) -> list[dict]:
     return [r.data for r in caplog.records if getattr(r, "event", None) == "hippocampus_store_digest"]
 
 
-@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
 def test_a_save_and_a_load_log_the_digest_of_exactly_their_records(caplog, tmp_path) -> None:
     from maxim.memory.hippocampus_persistence import store_digest
 
@@ -247,7 +242,6 @@ def test_a_save_and_a_load_log_the_digest_of_exactly_their_records(caplog, tmp_p
     assert store_digest(fresh._memories.values()) == live
 
 
-@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
 def test_the_digest_moves_with_what_recall_matches_on() -> None:
     """Deletion probe: the digest reads each record's id, content keys and copy key, so changing any one moves it."""
     from maxim.memory.hippocampus_persistence import store_digest
@@ -270,3 +264,21 @@ def test_an_unkeyable_record_costs_the_digest_line_never_the_save(caplog, tmp_pa
     with caplog.at_level(logging.INFO, logger="maxim.memory.hippocampus_persistence"):
         h.save(str(path))
     assert path.exists() and _digest_lines(caplog) == []
+
+
+def test_without_info_logging_no_digest_is_computed(tmp_path, monkeypatch) -> None:
+    """A runtime that does not log INFO (no ``MAXIM_LOG_FILE``) pays nothing: the digest keys every record under the
+    store's read lock, so it is computed only when its line is written."""
+    import maxim.memory.hippocampus_persistence as hp
+
+    h, _ = _store(3)
+    calls: list[int] = []
+    real = hp.store_digest_rows
+    monkeypatch.setattr(hp, "store_digest_rows", lambda records: calls.append(1) or real(records))
+    logging.getLogger("maxim.memory.hippocampus_persistence").setLevel(logging.WARNING)
+    try:
+        h.save(str(tmp_path / "h.json"))
+        Hippocampus(HippocampusConfig(auto_save_after_sleep=False)).load(str(tmp_path / "h.json"))
+    finally:
+        logging.getLogger("maxim.memory.hippocampus_persistence").setLevel(logging.NOTSET)
+    assert calls == []

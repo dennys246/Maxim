@@ -33,6 +33,7 @@ from maxim.simulation.sim_types import SimulationResult, build_basic_analysis as
 from maxim.simulation.stdin_lines import STOP_JOIN_S, stop_reader
 from maxim.utils.cancellation import StopRequest, current_stop, yield_requested
 from maxim.utils.deadline import Deadline
+from maxim.utils.logging import quiet_console_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -175,9 +176,9 @@ def _signal_shutdown(tail: SimTail) -> None:
             display.set_prompt("> Generating report...")
 
     # ── Suppress noisy log output during shutdown ─────────────────────
-    # LLM responses may still be in-flight from background threads.
-    # Raise log level to WARNING to hide [INFO] LLM tool_response lines.
-    logging.getLogger("maxim").setLevel(logging.WARNING)
+    # LLM responses may still be in-flight from background threads: the console handlers go to WARNING to hide
+    # [INFO] LLM tool_response lines. Never the logger's level, which would cut the JSONL run log too (#1476).
+    quiet_console_handlers(logging.WARNING)
 
     # ── Shutdown everything (safe even after KeyboardInterrupt) ────────
     display_status("Shutting down agent loops...")
