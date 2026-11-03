@@ -44,16 +44,16 @@
       "missing": 139
     },
     "maxim/default_network": {
-      "percent": 47.3,
-      "missing": 1167
+      "percent": 48.4,
+      "missing": 1153
     },
     "maxim/doctor": {
       "percent": 72.2,
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 42.7,
-      "missing": 1757
+      "percent": 46.4,
+      "missing": 1708
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -105,6 +105,10 @@
     },
     "maxim/modes": {
       "percent": 80.6,
+      "missing": 59
+    },
+    "maxim/motion": {
+      "percent": 70.9,
       "missing": 59
     },
     "maxim/peer": {
