@@ -450,8 +450,6 @@ def test_a_robots_yaml_automatic_body_yaw_true_is_refused_not_filtered():
 # it back on mid-session. The controller re-asserts it under the motion lock before each discrete move, not on the
 # look-at tracking stream; a failed call refuses "reference".
 
-_REASSERT = pytest.mark.xfail(strict=True, reason="#1499 PR 3: the re-assert before a discrete move is not built")
-
 
 def _record_lock_on_auto_yaw(ctl, daemon) -> list[bool]:
     held: list[bool] = []
@@ -465,7 +463,6 @@ def _record_lock_on_auto_yaw(ctl, daemon) -> list[bool]:
     return held
 
 
-@_REASSERT
 def test_a_discrete_move_re_asserts_auto_yaw_off_under_the_lock_first(daemon):
     ctl = controller(daemon)
     held = _record_lock_on_auto_yaw(ctl, daemon)
@@ -476,7 +473,6 @@ def test_a_discrete_move_re_asserts_auto_yaw_off_under_the_lock_first(daemon):
     assert held == [True], "asserted while holding the motion lock"
 
 
-@_REASSERT
 def test_a_failed_re_assert_refuses_reference_and_moves_nothing(daemon):
     from maxim.hardware.controller import PixelTarget
 
@@ -501,7 +497,6 @@ def test_the_look_at_tracking_stream_does_not_re_assert_auto_yaw(daemon):
     assert "set_automatic_body_yaw" not in [c["name"] for c in daemon.calls]
 
 
-@_REASSERT
 def test_a_sleep_re_asserts_auto_yaw_off_under_the_lock(daemon):
     ctl = controller(daemon)
     held = _record_lock_on_auto_yaw(ctl, daemon)
