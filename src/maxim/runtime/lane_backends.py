@@ -2588,6 +2588,48 @@ def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool
     return False
 
 
+def _auto_spawn_timeout_s() -> float:
+    """``MAXIM_AUTO_SPAWN_TIMEOUT_S`` (default 120): how long a spawn may load, and how long a busy server on the port
+    is waited for (#1344 PR 3a)."""
+    try:
+        return float(os.environ.get("MAXIM_AUTO_SPAWN_TIMEOUT_S", "120.0"))
+    except ValueError:
+        return 120.0
+
+
+def _existing_server_decision(
+    existing_url: str, port: int, api_key: str, model_path: str, effective_profile: str, logger: Any | None
+) -> str:
+    """``_maybe_auto_spawn_server``'s singleton check: "reuse" a server already serving this model on the port, or
+    "spawn" on a free port. A server that did not answer in time is never killed (#1344 PR 3a): our own is reused, a
+    busy keyed one is waited for, anything else refuses (``llm_server.preflight_spawn``).
+
+    The reuse is the structural fix for the harness-on-leader cascade (CLAUDE.md "Don't run the benchmark harness on
+    the same machine as the leader"): a sub-sim that auto-detects leader role on the leader machine must NOT kill the
+    leader's live server (port collision → dead upstream → 502s → operator kills maxim → cloudflared dies → tunnel
+    down → 530s). Probes via the canonical entry point and fails loud on a wrong-model server."""
+    from maxim.runtime.llm_server import check_existing_llm_server, preflight_spawn
+
+    decision = check_existing_llm_server(
+        url=existing_url,
+        api_key=api_key,
+        expected_model_path=model_path,
+        expected_profile=effective_profile,
+        logger=logger,
+    )
+    if decision == "spawn":  # nothing answered in time: free, busy, or not ours
+        decision = preflight_spawn(
+            url=existing_url,
+            port=port,
+            api_key=api_key,
+            expected_model_path=model_path,
+            expected_profile=effective_profile,
+            budget_s=_auto_spawn_timeout_s(),
+            logger=logger,
+        )
+    return decision
+
+
 def _maybe_auto_spawn_server(
     capabilities: Any,
     lane_configs: dict[str, Any],
@@ -2708,45 +2750,13 @@ def _maybe_auto_spawn_server(
     # Fail closed, OUTSIDE any broad except: a leader without a key raises.
     api_key = _server_key_for_role()
 
-    # Singleton check: if a llama-cpp-server is already serving the right
-    # model on this port, REUSE it instead of kill+respawn. This is the
-    # structural fix for the harness-on-leader cascade (CLAUDE.md "Don't run
-    # the benchmark harness on the same machine as the leader"): a sub-sim
-    # that auto-detects leader role on the leader machine must NOT kill the
-    # leader's live server (port collision → dead upstream → 502s → operator
-    # kills maxim → cloudflared dies → tunnel down → 530s). Probes via the
-    # canonical entry point and fails loud on a wrong-model server.
-    from maxim.runtime.llm_server import check_existing_llm_server
-
+    # Singleton check (moved with its code, the harness-on-leader cascade it fixes: _existing_server_decision).
     existing_url = f"http://127.0.0.1:{port}/v1"
-    decision = check_existing_llm_server(
-        url=existing_url,
-        api_key=api_key,
-        expected_model_path=model_path,
-        expected_profile=effective_profile,
-        logger=logger,
-    )
+    decision = _existing_server_decision(existing_url, port, api_key, model_path, effective_profile, logger)
     if decision == "reuse":
         return _route_to_reused_server(
             lane_configs, _infer_tier, infer_cfg, existing_url, port, api_key, effective_profile, sources_out, logger
         )
-
-    # decision == "spawn": port not responding — may have a stale process
-    # holding VRAM.  Only kill+sleep if something was actually found.
-    try:
-        from maxim.runtime.local_server_spawner import kill_stale_llm_servers
-
-        n_killed = kill_stale_llm_servers(port)
-        if n_killed:
-            if logger is not None:
-                logger.info(
-                    "Killed %d stale llama-cpp-server process(es) on port %d before spawn",
-                    n_killed,
-                    port,
-                )
-            time.sleep(0.5)  # Brief pause for port release
-    except Exception:
-        pass
 
     try:
         from maxim.runtime.local_server_spawner import LocalServerSpawner
@@ -2786,10 +2796,7 @@ def _maybe_auto_spawn_server(
         api_key=api_key,
         kv_quant_mode=infer_cfg.kv_quant_mode,
     )
-    try:
-        timeout_s = float(os.environ.get("MAXIM_AUTO_SPAWN_TIMEOUT_S", "120.0"))
-    except ValueError:
-        timeout_s = 120.0
+    timeout_s = _auto_spawn_timeout_s()
     if logger is not None:
         auth_note = " (auth=on)" if api_key else ""
         logger.info(

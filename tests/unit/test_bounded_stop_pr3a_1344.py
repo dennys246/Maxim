@@ -32,7 +32,6 @@ from maxim.utils import cancellation
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="process groups and killpg are POSIX")
 
 KEY = "k" * 32
-RED = dict(strict=True, raises=AssertionError)
 
 
 def _free_port() -> int:
@@ -201,7 +200,6 @@ _DRIVER = textwrap.dedent(
 
 
 @pytest.mark.parametrize("kind", ["server", "tunnel"])
-@pytest.mark.xfail(**RED)
 def test_g1_a_spawned_child_dies_with_a_forced_stop(kind: str, tmp_path: Path) -> None:
     driver = tmp_path / "driver.py"
     driver.write_text(_DRIVER)
@@ -221,7 +219,6 @@ def test_g1_a_spawned_child_dies_with_a_forced_stop(kind: str, tmp_path: Path) -
 # ── G3: the box-wide killer is gone from both callers, and from the module ───────────────────────────────────────
 
 
-@pytest.mark.xfail(**RED)
 def test_g3_nothing_kills_a_server_it_did_not_start() -> None:
     root = Path(lss.__file__).resolve().parents[1]
     for rel in ("runtime/lane_backends.py", "runtime/leader_proxy.py", "runtime/local_server_spawner.py"):
@@ -233,7 +230,6 @@ def test_g3_nothing_kills_a_server_it_did_not_start() -> None:
 # ── G4/G5: a keyed listener that is busy is waited for; one that never answers is refused, never killed ──────────
 
 
-@pytest.mark.xfail(**RED)
 def test_g4_a_busy_server_is_waited_for_then_reused(auto_spawn_env: SimpleNamespace) -> None:
     server = _FakeLlamaServer(busy_s=4.0, model_id=str(auto_spawn_env.gguf))  # longer than the 0.8 s + 2 s probe
     try:
@@ -245,7 +241,6 @@ def test_g4_a_busy_server_is_waited_for_then_reused(auto_spawn_env: SimpleNamesp
     assert out["large"].remote_url == f"http://127.0.0.1:{server.port}/v1"
 
 
-@pytest.mark.xfail(**RED)
 def test_g5_a_listener_that_never_answers_is_refused_with_its_port(auto_spawn_env: SimpleNamespace) -> None:
     busy = getattr(lss, "LLMServerPortBusy", None)
     assert busy is not None, "no typed refusal for an occupied port"
@@ -272,7 +267,6 @@ class _OwnSpawner:
         self.is_running = True
 
 
-@pytest.mark.xfail(**RED)
 def test_g6_our_own_busy_server_is_reused_only_on_a_model_match(
     auto_spawn_env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -293,7 +287,6 @@ def test_g6_our_own_busy_server_is_reused_only_on_a_model_match(
 # ── G7: a stop pending at the spawn decision starts no model load ─────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(**RED)
 def test_g7_a_pending_stop_starts_no_spawn(auto_spawn_env: SimpleNamespace) -> None:
     from maxim.exceptions import StopStillPending
     from maxim.utils.deadline import Deadline
@@ -314,8 +307,7 @@ def test_g7_a_pending_stop_starts_no_spawn(auto_spawn_env: SimpleNamespace) -> N
 # ── G8: an occupied port is a typed refusal at the CLI: exit 2 with its hint, not a traceback ────────────────────
 
 
-@pytest.mark.xfail(**RED)
-def test_g8_an_occupied_port_exits_2_with_its_hint(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
+def test_g8_an_occupied_port_exits_2_with_its_hint(monkeypatch: pytest.MonkeyPatch, caplog: Any) -> None:
     from maxim import cli
 
     busy = getattr(lss, "LLMServerPortBusy", None)
@@ -325,15 +317,14 @@ def test_g8_an_occupied_port_exits_2_with_its_hint(monkeypatch: pytest.MonkeyPat
         raise busy(4321, "a listener (pid 1234)")
 
     monkeypatch.setattr(cli, "_main_impl", _raise)
-    assert cli._main_guarded([]) == 2
-    err = capsys.readouterr().err
-    assert "4321" in err
+    with caplog.at_level("WARNING"):
+        assert cli._main_guarded([]) == 2
+    assert "4321" in caplog.text and "pid 1234" in caplog.text
 
 
 # ── G9: stop() signals the server's whole group (a grandchild dies too), and never after the reap ───────────────
 
 
-@pytest.mark.xfail(**RED)
 def test_g9_stop_ends_the_whole_group_and_never_signals_after_the_reap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -384,7 +375,6 @@ def test_g9_stop_ends_the_whole_group_and_never_signals_after_the_reap(
 # ── G10/G11: a closed registry launches nothing; a fake proc is never signalled ─────────────────────────────────
 
 
-@pytest.mark.xfail(**RED)
 def test_g10_a_closed_registry_launches_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert hasattr(cancellation, "spawn_registered") and hasattr(cancellation, "close_child_registry")
     launched: list[bool] = []
@@ -397,7 +387,6 @@ def test_g10_a_closed_registry_launches_nothing(tmp_path: Path, monkeypatch: pyt
     assert launched == []
 
 
-@pytest.mark.xfail(**RED)
 def test_g11_a_fake_proc_is_never_signalled(monkeypatch: pytest.MonkeyPatch) -> None:
     from maxim import cli_signals
 
@@ -413,7 +402,6 @@ def test_g11_a_fake_proc_is_never_signalled(monkeypatch: pytest.MonkeyPatch) -> 
 # ── G12: a restart closes the registry and stops our own servers, through each owner's stop ─────────────────────
 
 
-@pytest.mark.xfail(**RED)
 def test_g12_a_restart_stops_only_what_this_process_started() -> None:
     assert hasattr(cancellation, "stop_children")
     stopped: list[str] = []
@@ -427,5 +415,5 @@ def test_g12_a_restart_stops_only_what_this_process_started() -> None:
     from maxim.runtime import leader_proxy
 
     src = inspect.getsource(leader_proxy)
-    restart = src[src.index("def _do_restart") : src.index("os.execv(")]
+    restart = src[src.index("def _do_restart") : src.index("os.execv(sys.executable")]
     assert "close_child_registry()" in restart and 'stop_children("llm_server")' in restart

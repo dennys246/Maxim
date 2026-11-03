@@ -2690,6 +2690,13 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             logging.getLogger(__name__).debug("user profiles invalid", exc_info=True)
             user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event="user_profiles_invalid")
             return 2
+        _spawner_mod = sys.modules.get("maxim.runtime.local_server_spawner")  # raised from there, so loaded
+        if _spawner_mod is not None and isinstance(e, _spawner_mod.LLMServerPortBusy):  # never killed (#1344 PR 3a)
+            from maxim.utils.logging import user_warn
+
+            logging.getLogger(__name__).debug("LLM server port busy", exc_info=True)
+            user_warn(f"{e}\n    → {e.fix_hint}", source="llm-server", event="llm_server_port_busy")
+            return 2
         if isinstance(e, ConfigDirUnreadable):
             # Checked before importing models.language: an unreadable config dir fails that import too (#1403).
             from maxim.utils.logging import user_warn

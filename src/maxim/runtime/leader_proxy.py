@@ -2412,9 +2412,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # is fully flushed before os.execv replaces the process image.
         def _do_restart() -> None:
             time.sleep(delay_s)
-            # Kill LLM server + cloudflared before replacing process image.
-            # os.execv() does NOT fire atexit handlers, so we must clean up
-            # child processes explicitly to prevent ghost servers.
+            # os.execv() does NOT fire atexit handlers, so this process's own LLM servers are stopped here, every one
+            # it spawned (a swap's server mid-readiness included), and none after: the registry is closed first, so a
+            # swap cannot start one past the sweep. Only what this process spawned (#1344 PR 3a): a server it did not
+            # start is never killed. The cloudflared daemon is left running: it survives the execv, and the new image
+            # finds it running and keeps it.
+            from maxim.utils.cancellation import close_child_registry, stop_children
+
+            close_child_registry()
             try:
                 from maxim.runtime.lane_backends import stop_active_spawner
 
@@ -2422,13 +2427,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 logger.info("admin/restart: LLM server stopped")
             except Exception as e:
                 logger.warning("admin/restart: failed to stop LLM server: %s", e)
-            try:
-                from maxim.runtime.local_server_spawner import kill_stale_llm_servers
-
-                kill_stale_llm_servers()
-                logger.info("admin/restart: cleaned stale servers")
-            except Exception:
-                pass
+            stop_children("llm_server")
             logger.info("admin/restart: executing os.execv — goodbye")
             # Re-exec with the original command line
             os.execv(sys.executable, [sys.executable] + sys.argv)

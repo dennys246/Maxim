@@ -59,9 +59,11 @@ from maxim.utils.cancellation import (
     current_stop,
     forget_noted_signal,
     interruptible_depth,
+    kill_child_groups,
     note_signal,
     register_stop_hook,
     request_stop,
+    stop_children,
     yield_requested,
 )
 from maxim.utils.deadline import Deadline
@@ -164,15 +166,9 @@ def _library_deadline(signal_time: float) -> tuple[float, float]:
 
 
 def _kill_spawned_server() -> None:
-    """SIGKILL the spawned LLM server's process group, lock-free (PR 3 covers a server not yet registered)."""
-    server_mod = sys.modules.get("maxim.runtime.llm_server")
-    pid = server_mod.spawned_server_pid() if server_mod is not None else None
-    if pid is None or pid == os.getpgrp():  # spawned with start_new_session, so its group is its pid; never ours
-        return
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except OSError:  # already gone
-        pass
+    """SIGKILL every LLM server and tunnel daemon this process spawned, lock-free: each is registered from its
+    Popen until its owner reaps it, so one still in its readiness wait is reached too (#1344 PR 3a)."""
+    kill_child_groups()
 
 
 def _last_words(reason: str) -> None:
@@ -352,6 +348,7 @@ def _windows_interrupt(pressed: list[bool], signum: int, frame: Any) -> None:
             from maxim.runtime.lane_backends import stop_active_spawner
 
             stop_active_spawner()
+            stop_children()  # every server and tunnel this process spawned, one in its readiness wait included
         except Exception:
             logger.warning("Could not stop the spawned server at a forced Ctrl+C", exc_info=True)
         print("\n  Forced shutdown.", file=sys.stderr)

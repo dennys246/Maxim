@@ -199,8 +199,7 @@ class TestStop:
         s.stop()  # should not raise
         assert s.is_running is False
 
-    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
-    def test_stop_terminates_process(self, mock_kill_tree):
+    def test_stop_terminates_a_process_whose_group_cannot_be_signalled(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # running
@@ -210,8 +209,7 @@ class TestStop:
         mock_proc.terminate.assert_called_once()
         assert s._process is None
 
-    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
-    def test_stop_kills_on_timeout(self, mock_kill_tree):
+    def test_stop_kills_on_timeout(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -222,8 +220,7 @@ class TestStop:
         mock_proc.terminate.assert_called_once()
         mock_proc.kill.assert_called_once()
 
-    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
-    def test_stop_swallows_exceptions(self, mock_kill_tree):
+    def test_stop_swallows_exceptions(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -231,6 +228,24 @@ class TestStop:
         mock_proc.terminate.side_effect = RuntimeError("oops")
         s._process = mock_proc
         s.stop()  # should not raise
+
+    def test_stop_signals_the_group_term_then_kill_while_unreaped(self, monkeypatch):
+        """#1344 PR 3a: a real server's whole group gets SIGTERM, then SIGKILL on a timeout (the leader is still
+        unreaped then); terminate/kill are the fallback only when the group cannot be signalled."""
+        import signal as _signal
+
+        from maxim.runtime import local_server_spawner as lss
+
+        sent: list[int] = []
+        monkeypatch.setattr(lss, "signal_child_group", lambda proc, sig: sent.append(sig) or True)
+        s = LocalServerSpawner(model_path="/tmp/fake.gguf")
+        mock_proc = MagicMock()
+        mock_proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="", timeout=5.0), None]
+        s._process = mock_proc
+        s.stop()
+        assert sent == [_signal.SIGTERM, _signal.SIGKILL]
+        mock_proc.terminate.assert_not_called()
+        mock_proc.kill.assert_not_called()
 
 
 class TestHealthCheck:

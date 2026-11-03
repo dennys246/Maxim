@@ -310,7 +310,8 @@ proposal log back into a dispatch.
   - So Maxim also writes the server's pid to a pidfile under the data home. The supervisor kills that group as well.
   - Today neither cleanup path frees the GPU:
     - `runtime/orphan_reaper.py` matches only `--sim` command lines;
-    - `kill_stale_llm_servers` kills only servers that are not responding, and a responding orphan is reused.
+    - `kill_stale_llm_servers` is gone (#1344 PR 3a): nothing kills a server Maxim did not start, and an occupied port
+      refuses with the listener's pid.
 - **The supervisor contract:** send SIGTERM to Maxim, then wait `yield_timeout_s` plus a margin. Then SIGKILL Maxim's
   process group *and* the server group named in the pidfile.
 - **Why the bound needs a margin:** Python runs a signal handler only after the current C call returns (a llama.cpp
