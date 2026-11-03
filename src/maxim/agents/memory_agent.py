@@ -371,6 +371,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             memory_id = self._capture_to_hippocampus(content, salience, decay_rate, "percept", percept)
         if memory_id:
             entry._hippocampus_id = memory_id  # Cross-reference
+            percept.capture_id = memory_id  # the publisher's answer: which record this arrival became (#1573)
 
         return entry
 

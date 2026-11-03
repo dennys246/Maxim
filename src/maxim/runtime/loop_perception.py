@@ -115,6 +115,7 @@ class UserInput(NamedTuple):
     cli_input: Any
     is_agentic_voice_input: bool
     addressed: str
+    own_capture_id: str = ""  # the record ``addressed`` became at arrival, "" if none: recall excludes it (#1573)
 
 
 # Where the loop puts a reply it makes itself (an auto-approved confirmation, a sim-resolved one, a timeout retry):
@@ -165,6 +166,7 @@ def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
     text = str(addressed).strip() if addressed else ""
     if text.startswith("[ACTION_FOLLOWUP"):
         text = ""
+    own_capture_id = ""
     if text:
         if str(state.data.get("cli_input") or "").strip() == text:
             state.data.pop("cli_input", None)  # the runtime owns the state: §3 must not publish it again
@@ -172,8 +174,22 @@ def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
         # explicit default does nothing) has no memory pipeline to tell. A capability probe, not a swallow.
         publish = getattr(agent, "publish_arrival", None)
         if callable(publish):
-            publish(state, text, source="voice" if is_agentic_voice_input else "cli")
-    return UserInput(transcript, hard_override, cli_input or None, is_agentic_voice_input, text)
+            published = publish(state, text, source="voice" if is_agentic_voice_input else "cli")
+            own_capture_id = published if isinstance(published, str) else ""
+    return UserInput(transcript, hard_override, cli_input or None, is_agentic_voice_input, text, own_capture_id)
+
+
+def percept_enrichment_context(state: Any, imagination_results: Any, user_input: UserInput) -> Any:
+    """§1.2's ``EnrichmentContext``: the goal, the entity refs ImaginationTrigger resolved this tick, the turn's words
+    and the record they became."""
+    from maxim.integration.bio_enrichment import EnrichmentContext
+
+    return EnrichmentContext(
+        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+        resolved_entities=tuple(r.ref for r in imagination_results if r.ref) if imagination_results else (),
+        user_input=user_input.addressed,
+        own_capture_id=user_input.own_capture_id,
+    )
 
 
 def percept_text(observation: Any) -> str:
