@@ -34,7 +34,16 @@ except Exception as e:
 robot_name = os.environ.get("MAXIM_ROBOT_NAME", "reachy_mini")
 
 try:
-    mini = ReachyMini(robot_name=robot_name, connection_mode="network", spawn_daemon=False, use_sim=False, timeout=5.0)
+    # automatic_body_yaw is daemon-wide and the SDK defaults it on: leaving it out turns auto-yaw back on for every
+    # client, Maxim's included (#1499 PR 3).
+    mini = ReachyMini(
+        robot_name=robot_name,
+        connection_mode="network",
+        spawn_daemon=False,
+        use_sim=False,
+        timeout=5.0,
+        automatic_body_yaw=False,
+    )
 except Exception as e:
     msg = f"[basic_move] {'FAIL' if require_robot else 'SKIP'}: could not connect to Reachy Mini '{robot_name}': {e}"
     print(msg)

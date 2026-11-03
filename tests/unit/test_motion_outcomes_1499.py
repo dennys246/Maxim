@@ -2086,7 +2086,6 @@ def _motion_lint(monkeypatch):
     return lint
 
 
-@pytest.mark.xfail(strict=True, reason="#1499 PR 3: the motion lint does not check ReachyMini( for auto-yaw yet")
 def test_the_motion_lint_flags_a_reachy_mini_built_without_auto_yaw_off(tmp_path, monkeypatch):
     """The setting is daemon-wide and the SDK defaults it on: one client built without it turns auto-yaw back on."""
     lint = _motion_lint(monkeypatch)
