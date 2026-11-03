@@ -883,10 +883,22 @@ Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the
    there is nothing to carry. No public keyword was added. `look_at_image` returns that ticket, so a turn that started
    and failed does not read as never started, and an `ik` from a body step reads `error` to the look-at's booking:
    it says nothing about the look-at's pixel, and it would teach that pixel past `run_motion`'s one path. The tools
-   wait on `accepted`, so `_await_motion_start` also reads a `completed` that has already failed: the model hears
-   that the turn failed, where `main` said success.
+   wait on `accepted`, so `_await_motion_start` also reads a `completed` that has already failed: the look-at reports
+   the failure, where `main` said success.
 8. **The inbox is drained every loop, inhibited or not, and once after the loop ends**, on DN's thread. A move already
    issued still publishes while DN is inhibited; `inhibit`'s docstring says so.
 
 **Deferred:** the plan/dispatch race (a body moved between `_plan_turn` and the controller's dispatch) stays as
 recorded in §15; the controller clamps it.
+
+### Pre-merge review round and its deltas (2026-11-02)
+
+| Round, on | Result | Folded |
+|---|---|---|
+| Three lenses, `9dcd417d..dbfb995e` | Wire: one DO-NOT-MERGE; four owner decisions | a raised IK never reached `ik` on the real controller (the controller caught it first); IOR had moved with `record_gaze` while the note claimed no change; completion by id made atomic and clearing a target pain had orphaned; `ticket=` keyword dropped; the classifier out of the robot-agnostic layer; a final drain; the DN action types under test; stale invariant text |
+| Executor + Wire, Architecture, `dbfb995e..99a4139b` | both SHOULD-FIX, the same defect | a started-then-failed turn read `never_started` and paced nothing, and its `ik` taught the look-at's pixel; pacing did not match `main` for a returned refusal, so it moved into `_issue_motion` |
+| One reader, `99a4139b..96bee51e` | SHOULD-FIX, introduced by that fold | a look-at whose turn failed reported success; a plan refusal had no test |
+| One reader, `96bee51e..22f1c631` | STOP: no further round owed | wording only |
+
+Every deletion probe ended red: 27 on the build, then 29, 8 and 4 on the folds (the green ones first got guards).
+
