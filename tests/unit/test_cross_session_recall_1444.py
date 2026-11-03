@@ -133,6 +133,8 @@ def two_sessions(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str
                 "fact": _ask(session_n1, model, _QUESTION),
                 "injection": _ask(session_n1, model, _INJECTION_QUESTION),
             }
+            for _ in range(6):  # #1573: the same question, stored again each time
+                asked["repeated"] = _ask(session_n1, model, _QUESTION)
         finally:
             session_n1.stop()
             disable_sim_logging()
@@ -145,6 +147,18 @@ def _framed_bodies(prompt: str) -> list[str]:
 
 def test_a_fact_stated_in_session_n_reaches_the_prompt_in_session_n_plus_1(two_sessions):
     prompts = two_sessions["fact"]
+    assert any("green" in body.lower() for p in prompts for body in _framed_bodies(p)), prompts[-1]
+
+
+def test_a_question_asked_for_the_first_time_is_not_recalled_as_memory(two_sessions):
+    """The turn's own capture, excluded by identity on the shipped path (#1573): nothing else holds these words yet."""
+    prompts = two_sessions["fact"]
+    assert not [p for p in prompts if any("favorite color" in body.lower() for body in _framed_bodies(p))]
+
+
+def test_a_question_repeated_seven_times_still_reaches_its_answer(two_sessions):
+    """#1573 on the shipped path: stored copies of a question took every place, then were skipped."""
+    prompts = two_sessions["repeated"]
     assert any("green" in body.lower() for p in prompts for body in _framed_bodies(p)), prompts[-1]
 
 

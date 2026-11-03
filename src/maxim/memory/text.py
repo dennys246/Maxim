@@ -332,12 +332,21 @@ def bounded_words(text: str, limit: int = RECALLED_WORDS_MAX_CHARS) -> str:
     return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
 
+def same_words(text: str) -> str:
+    """``text`` as the same words compare: NFKC, case-folded, whitespace collapsed. Not the content keys, which are
+    lossy ("My name is Al" and "My name?" key alike; "yes" keys to nothing)."""
+    import unicodedata
+
+    return " ".join(unicodedata.normalize("NFKC", text).casefold().split())
+
+
 __all__ = [
     "normalize_tokens",
     "key_tokens",
     "settle_key",
     "text_values",
     "content_tokens",
+    "same_words",
     "bounded_words",
     "RECALLED_WORDS_MAX_CHARS",
 ]

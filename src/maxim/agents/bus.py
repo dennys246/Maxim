@@ -284,6 +284,10 @@ class Percept:
     embedding: list[float] | None = None
     substrate_node_id: str | None = None
 
+    # The Hippocampus record this percept became, stamped by MemoryAgent during publish (the bus returns nothing, and
+    # the arrival percept's publisher needs the turn's own capture by identity, #1573). Not persisted.
+    capture_id: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for session persistence. Omits large/internal fields."""
         return {

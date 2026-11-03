@@ -4,7 +4,7 @@
   parsed on load, never evaluated (D2);
 - #1064 / D1 / D3: one tokenizer keys every store; the ranker scores what captures write and returns nothing that
   shares no content word;
-- #1447 / F11: the cue path finds the answer, and a record of the turn's own words is not recalled;
+- #1447 / F11 / #1573: the cue path finds the answer, and the turn's own records are not recalled, by identity;
 - D3: NAc's keyword scan and ATL's token index match on the same tokens (lemmas, possessives, punctuation);
 - D8: the user's input is published to memory ONCE, as it arrives, on every channel -- the robot's too;
 - the bus re-raises a capture-contract break instead of swallowing it.
@@ -145,8 +145,8 @@ def test_the_cue_finds_the_answer_and_never_the_turns_own_words(tmp_path: Path) 
 
     h = _hippocampus(tmp_path)
     fact = _say(h, _FACT)
-    _say(h, _QUESTION)  # this turn's own capture, stored before the query ran
-    ctx = EnrichmentContext(active_goal="converse with the user", user_input=_QUESTION)
+    own = _say(h, _QUESTION)  # this turn's own capture, stored before the query ran
+    ctx = EnrichmentContext(active_goal="converse with the user", user_input=_QUESTION, own_capture_id=own)
     found, paths, *_ = BioEnrichmentPipeline(hippocampus=h)._query_hippocampus_traced(_QUESTION, [], context=ctx)
     assert [s.memory_id for s in found] == [fact] and paths == ["cue"]
     assert "green" in found[0].summary and "<<TOOL_OUTPUT id=" in found[0].summary  # framed, never raw (#1444)
@@ -412,13 +412,349 @@ def test_a_deliberation_cycle_never_recalls_the_turns_own_words(tmp_path: Path) 
     h = _hippocampus(tmp_path)
     fact = _say(h, _FACT)
     turn = "Remember that my lighthouse is painted red."
-    _say(h, turn)
+    own = _say(h, turn)
     pipe = BioEnrichmentPipeline(hippocampus=h)
-    pipe._query_hippocampus_traced(turn, [], context=EnrichmentContext(user_input=turn))
+    pipe._query_hippocampus_traced(turn, [], context=EnrichmentContext(user_input=turn, own_capture_id=own))
     found, *_ = pipe._query_hippocampus_traced(
         "The user says their lighthouse is painted red and Denny likes green.", [], context=EnrichmentContext()
     )
     assert [s.memory_id for s in found] == [fact]
+
+
+# ── #1573: the turn's own records are excluded by identity, and an episode stored many times takes one place ─────
+
+
+def _ask(h: Any, question: str, own: str = "", goal: str = "converse with the user") -> tuple[list[str], list[str]]:
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    ctx = EnrichmentContext(active_goal=goal, user_input=question, own_capture_id=own)
+    found, paths, *_ = BioEnrichmentPipeline(hippocampus=h)._query_hippocampus_traced(question, [], context=ctx)
+    return [s.memory_id for s in found], paths
+
+
+def _did(h: Any, heard: str, tool: str, *, ok: bool, result: dict[str, Any] | None = None) -> str:
+    """An action taken on an observation that holds ``heard``, captured as the loop captures one."""
+    mid = h.capture_from_loop(
+        observation={"cli_input": heard, "salience": 0.9, "novelty": 0.5},
+        state={"source": "loop"},
+        intent={},
+        decision={},
+        action={"tool": tool},
+        result={"success": ok, **(result or {})},
+        encoding=EncodingSignals.unmeasured("memory_agent"),
+        situation=None,
+    )
+    time.sleep(0.002)
+    assert mid is not None
+    return mid
+
+
+def test_an_earlier_identical_ask_is_recalled_and_the_turns_own_capture_is_not(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    earlier = _say(h, _QUESTION)
+    own = _say(h, _QUESTION)
+    ids, paths = _ask(h, _QUESTION, own)
+    assert ids == [earlier] and paths == ["cue"]
+
+
+@pytest.mark.parametrize("repeats", [5, 6, 40])
+def test_a_repeated_question_does_not_lose_its_answer(tmp_path: Path, repeats: int) -> None:
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    asks = [_say(h, _QUESTION) for _ in range(repeats)]
+    ids, _paths = _ask(h, _QUESTION, asks[-1])
+    assert fact in ids
+    assert asks[-1] not in ids and len(set(ids) & set(asks)) == 1
+
+
+def test_a_turn_that_made_no_capture_excludes_nothing(tmp_path: Path) -> None:
+    """A real earlier episode is never taken for the turn's own record because the words match."""
+    h = _hippocampus(tmp_path)
+    earlier = _say(h, _QUESTION)
+    assert _ask(h, _QUESTION)[0] == [earlier]
+
+
+def test_a_later_record_of_the_turn_does_not_echo_its_arrival_on_a_deliberation_cycle(tmp_path: Path) -> None:
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    h = _hippocampus(tmp_path)
+    earlier = _say(h, _QUESTION)
+    own = _say(h, _QUESTION)
+    pipe = BioEnrichmentPipeline(hippocampus=h)
+    pipe._query_hippocampus_traced(_QUESTION, [], context=EnrichmentContext(user_input=_QUESTION, own_capture_id=own))
+    action = _did(h, _QUESTION, "look_around", ok=True)  # the action taken on the tick's observation holds the words
+    found, _paths, _h, _holes, own_ids = pipe._query_hippocampus_traced(_QUESTION, [], context=EnrichmentContext())
+    assert own_ids == [own, action] and [s.memory_id for s in found] == [earlier]
+
+
+def test_the_next_turn_makes_the_last_turns_capture_an_earlier_episode(tmp_path: Path) -> None:
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    h = _hippocampus(tmp_path)
+    first = _say(h, _QUESTION)
+    pipe = BioEnrichmentPipeline(hippocampus=h)
+    pipe._query_hippocampus_traced(_QUESTION, [], context=EnrichmentContext(user_input=_QUESTION, own_capture_id=first))
+    second = _say(h, _QUESTION)
+    found, *_ = pipe._query_hippocampus_traced(
+        _QUESTION, [], context=EnrichmentContext(user_input=_QUESTION, own_capture_id=second)
+    )
+    assert [s.memory_id for s in found] == [first]
+
+
+def test_the_same_line_with_different_outcomes_is_two_episodes(tmp_path: Path) -> None:
+    """One slot per LINE would hide the failure, the record an agent learns from."""
+    h = _hippocampus(tmp_path)
+    burned = _did(h, "touch the stove", "touch", ok=False, result={"error": "burned"})
+    fine = _did(h, "touch the stove", "touch", ok=True)
+    ids, _paths = _ask(h, "is the stove safe")
+    assert {burned, fine} <= set(ids)
+
+
+def test_a_record_holding_the_answer_outranks_collapse_with_its_bare_question(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    answered = _did(h, "what is the door code", "lookup", ok=True, result={"output": "4471"})
+    bare = _say(h, "what is the door code")
+    own = _say(h, "what is the door code")
+    ids, _paths = _ask(h, "what is the door code", own)
+    assert set(ids) == {answered, bare}
+
+
+def test_true_copies_on_the_goal_path_take_one_place_and_the_cap_still_fills(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    others = [_say(h, f"The lighthouse keeper rests near the cape, tale {n}.") for n in range(4)]
+    copies = [_say(h, "The lighthouse keeper walks the cape every morning.") for _ in range(6)]
+    ids, paths = _ask(h, "zzz qqq", goal="lighthouse keeper on the cape")
+    assert len(ids) == 3 and paths == ["goal"] * 3
+    assert len(set(ids) & set(copies)) == 1 and len(set(ids) & set(others)) == 2
+
+
+def test_the_own_records_take_no_place_on_the_goal_path(tmp_path: Path) -> None:
+    """A deliberation cycle's text cues nothing, so the goal path runs with the turn's own capture newest of all."""
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    h = _hippocampus(tmp_path)
+    notes = [_say(h, f"The cape lighthouse note {n}.") for n in range(3)]
+    turn = "The cape lighthouse note nine."
+    own = _say(h, turn)
+    pipe = BioEnrichmentPipeline(hippocampus=h)
+    pipe._turn_input, pipe._turn_capture_id = turn, own
+    ctx = EnrichmentContext(active_goal="cape lighthouse note")
+    found, paths, *_ = pipe._query_hippocampus_traced("zzz qqq", [], context=ctx)
+    assert {s.memory_id for s in found} == set(notes) and paths == ["goal"] * 3
+
+
+@pytest.mark.parametrize("repeats", [2, 5, 8])
+def test_the_substring_path_does_not_lose_the_answer_either(tmp_path: Path, repeats: int) -> None:
+    """A line with no content key never reaches the ranker: the same defect had a second home."""
+    h = _hippocampus(tmp_path)
+    fact = _say(h, "yes the code is 1234")
+    asks = [_say(h, "yes") for _ in range(repeats)]
+    ids, paths = _ask(h, "yes", asks[-1], goal="")
+    assert fact in ids and asks[-1] not in ids and set(paths) == {"substring"}
+    assert len(set(ids) & set(asks)) == (1 if repeats > 1 else 0)
+
+
+def test_a_failed_own_read_loses_at_most_an_echo_never_the_recall(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    own = _say(h, _QUESTION)
+
+    def broken(*_args: Any) -> tuple[str, ...]:
+        raise RuntimeError("store read failed")
+
+    h.turn_records = broken
+    assert _ask(h, _QUESTION, own)[0] == [fact]
+
+
+def test_one_damaged_record_does_not_empty_recall(tmp_path: Path) -> None:
+    from maxim.memory.types import EpisodicMemory, Perception
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    own = _say(h, _QUESTION)
+    h._memories["bad"] = EpisodicMemory(id="bad", timestamp=1.0, perception=Perception(observations=["x"]))
+    assert h._memories["bad"].input_text == "" and _ask(h, _QUESTION, own)[0] == [fact]
+
+
+def test_a_record_with_no_heard_words_is_never_collapsed() -> None:
+    from maxim.memory.hippocampus_retrieval import _rank_by_relevance
+    from maxim.memory.types import Action, EpisodicMemory, Perception
+
+    silent = [
+        EpisodicMemory(id=f"m{i}", timestamp=float(i), perception=Perception(), action=Action(tool_name="brass_key"))
+        for i in range(3)
+    ]
+    assert [m.id for m in _rank_by_relevance(list(silent), "brass key", 5, collapse_copies=True)] == ["m2", "m1", "m0"]
+    assert _rank_by_relevance(list(silent), "brass key", 0, collapse_copies=True) == []
+
+
+def test_recall_and_search_keep_every_copy_unless_asked(tmp_path: Path) -> None:
+    """The store keeps every copy, and only the bounded views that ask collapse them."""
+    h = _hippocampus(tmp_path)
+    ids = [_say(h, _QUESTION) for _ in range(3)]
+    assert {m.id for m in h.recall(query=_QUESTION, limit=5)} == set(ids)
+    assert {m.id for m in h.search_by_content("favorite color", limit=5)} == set(ids)
+
+
+def test_the_models_own_recall_tool_collapses_copies(tmp_path: Path) -> None:
+    from maxim.tools.introspection import MemoryRecallTool
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    for _ in range(6):
+        _say(h, _QUESTION)
+    result = MemoryRecallTool(hippocampus=h).execute(query=_QUESTION, limit=2)
+    assert result.success and fact in str(result.output)
+
+
+def test_arrival_returns_the_record_the_real_memory_agent_made_of_it(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from maxim.agents.bus import AgentBus
+    from maxim.agents.memory_agent import MemoryAgent
+    from maxim.agents.perception_agent import PerceptionAgent
+
+    h = _hippocampus(tmp_path)
+    bus = AgentBus()
+    memory = MemoryAgent(bus)
+    memory.connect_hippocampus(h)
+    memory.on_start()
+    capture_id = PerceptionAgent(bus).publish_arrival(SimpleNamespace(data={}), _QUESTION, source="cli")
+    assert capture_id in h._memories and h._memories[capture_id].input_text == _QUESTION
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"tool": "other_tool"},
+        {"ok": False},
+        {"result": {"output": "4471"}},
+    ],
+    ids=["tool", "success", "outcome_text"],
+)
+def test_a_record_differing_in_one_part_of_the_episode_is_no_copy(tmp_path: Path, other: dict[str, Any]) -> None:
+    h = _hippocampus(tmp_path)
+    base = {"tool": "lookup", "ok": True, "result": None}
+    one = _did(h, "what is the door code", base["tool"], ok=base["ok"])
+    two = _did(h, "what is the door code", **{**base, **other})
+    copy = _did(h, "what is the door code", base["tool"], ok=base["ok"])
+    assert h._memories[one].copy_key() == h._memories[copy].copy_key()
+    assert h._memories[one].copy_key() != h._memories[two].copy_key()
+
+
+def test_a_number_in_an_outcome_keeps_two_episodes_apart(tmp_path: Path) -> None:
+    """A search key drops a number; a comparison cannot: 300 degrees and 30 degrees are different outcomes."""
+    h = _hippocampus(tmp_path)
+    hot = _did(h, "how hot is the stove", "read_sensor", ok=True, result={"output": {"temp_c": 300}})
+    cool = _did(h, "how hot is the stove", "read_sensor", ok=True, result={"output": {"temp_c": 30}})
+    assert {m.id for m in h.recall(query="stove", limit=5, collapse_copies=True)} == {hot, cool}
+
+
+def test_a_record_that_cannot_be_compared_is_kept_and_recall_survives(tmp_path: Path) -> None:
+    from maxim.memory.hippocampus_retrieval import distinct_copies
+
+    class _Broken:
+        def __repr__(self) -> str:
+            raise RuntimeError("no repr")
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    h._memories[fact].outcome.result = {"output": _Broken()}
+    assert distinct_copies([h._memories[fact]]) == [h._memories[fact]]
+
+
+def test_a_damaged_compressed_record_does_not_empty_recall(tmp_path: Path) -> None:
+    """A stored ``heard`` that is not text loads without complaint, and ``copy_key`` reads every ranked record."""
+    from maxim.memory.types import CompressedMemory
+
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    own = _say(h, _QUESTION)
+    h._memories["bad"] = CompressedMemory(id="bad", timestamp=1.0, goal="Denny favorite color", heard=["x"])
+    assert fact in _ask(h, _QUESTION, own)[0]
+
+
+def test_recall_collapses_copies_with_no_query_too(tmp_path: Path) -> None:
+    """The flag must not be silently ignored: ``memory_recall`` passes it with or without a query."""
+    h = _hippocampus(tmp_path)
+    older = _say(h, _FACT)
+    copies = [_say(h, _QUESTION) for _ in range(6)]
+    assert {m.id for m in h.recall(limit=5, collapse_copies=True)} == {older, copies[-1]}
+    assert len(h.recall(limit=5)) == 5
+
+
+def test_a_malformed_tool_name_does_not_empty_recall(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    fact = _say(h, _FACT)
+    h._memories[fact].action.tool_name = ["weird"]
+    own = _say(h, _QUESTION)
+    assert _ask(h, _QUESTION, own)[0] == [fact]
+
+
+def test_the_graph_path_excludes_the_turns_own_records() -> None:
+    from types import SimpleNamespace
+
+    from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
+
+    seen: list[Any] = []
+
+    class _Store:
+        _memories: dict[str, Any] = {}
+
+        def stored_capture_seqs(self) -> tuple[int, list[list[int]]]:
+            return 0, []
+
+        def turn_records(self, capture_id: str, text: str) -> tuple[str, ...]:
+            return (capture_id,)
+
+        def retrieve_on_cue(self, node_id: str, limit: int, multi_hop: bool) -> list[tuple[str, float]]:
+            return [("n1", 0.9)]
+
+        def recall(self, **kw: Any) -> list[Any]:
+            if "object_detected" in kw:
+                seen.append(kw.get("exclude_ids"))
+            return []
+
+        def search_by_content(self, *_a: Any, **_k: Any) -> list[Any]:
+            return []
+
+    pipe = BioEnrichmentPipeline(
+        hippocampus=_Store(),
+        ec=SimpleNamespace(
+            pattern_complete_readonly=lambda *a, **k: SimpleNamespace(is_new=False, similarity=0.9, node_id="n1")
+        ),
+        encoder=SimpleNamespace(embed=lambda t: [1.0], geometry_for=lambda *a: None),
+        atl=SimpleNamespace(get=lambda n: SimpleNamespace(name="kettle")),
+    )
+    pipe._query_hippocampus_traced("q", [], context=EnrichmentContext(user_input="q", own_capture_id="own"))
+    assert seen == [("own",)]
+
+
+def test_a_turn_records_id_not_yet_stored_is_still_the_turns_own(tmp_path: Path) -> None:
+    h = _hippocampus(tmp_path)
+    assert h.turn_records("in-flight", _QUESTION) == ("in-flight",)
+
+
+def test_arrival_returns_the_record_memory_made_of_it(tmp_path: Path) -> None:
+    from maxim.agents.bus import AgentBus, Percept
+    from maxim.runtime.loop_perception import percept_enrichment_context, take_user_input
+
+    class _Agent:
+        def publish_arrival(self, state: Any, text: str, *, source: str) -> str:
+            percept = Percept(timestamp=1.0, source=source, cli_input=text)
+            bus = AgentBus()
+            bus.subscribe(Percept, lambda p: setattr(p, "capture_id", "the-record"))
+            bus.publish(percept)
+            return percept.capture_id or ""
+
+    class _State:
+        data: dict[str, Any] = {"pending_cli_input": _QUESTION, "active_goal": "g"}
+
+    state = _State()
+    got = take_user_input({}, state, _Agent())
+    assert got.addressed == _QUESTION and got.own_capture_id == "the-record"
+    ctx = percept_enrichment_context(state, None, got)
+    assert (ctx.user_input, ctx.own_capture_id, ctx.active_goal) == (_QUESTION, "the-record", "g")
 
 
 def test_a_records_content_tokens_follow_a_replaced_field() -> None:
