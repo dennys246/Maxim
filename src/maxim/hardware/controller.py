@@ -178,7 +178,7 @@ def normalize_method(method: Any) -> str:
 # duration, stretched to the rate cap and split along the path as needed.
 DurationPolicy = Literal["exact", "at_least"]
 
-MotionOutcomeKind = MotionRefusalKind | Literal["superseded", "cancelled", "partial", "error"]
+MotionOutcomeKind = MotionRefusalKind | Literal["superseded", "cancelled", "partial", "error", "ik"]
 
 # ``MotionTarget.extras`` keys for a head translation, body frame, metres: written by
 # ``motion/movement.py::move_head`` when it delegates, read by ``ReachyMiniController`` (#1499 5.4).
@@ -200,10 +200,12 @@ class MotionOutcome:
     ``kind`` is ``None`` when ``ok``. Otherwise it is a refusal kind
     (``MotionRefusalKind``), or ``"cancelled"`` (aborted, or the motor was
     busy), ``"partial"`` (a split stopped after ``chunks_done`` chunks),
-    ``"superseded"`` (replaced before it ran) or ``"error"`` (the controller
-    failed, or a plugin returned ``False``). No non-ok outcome feeds the gaze or
-    workspace-bounds learners (#1499 O4). ``"superseded"`` and a queued
-    ``"cancelled"`` come from ``embodied_runtime/workers.py::MotorQueue``.
+    ``"superseded"`` (replaced before it ran), ``"ik"`` (the target itself
+    could not be reached) or ``"error"`` (the controller failed, or a plugin
+    returned ``False``). Of the non-ok kinds only ``"ik"`` feeds the gaze,
+    spatial or workspace-bounds learners (#1499 O4). ``"superseded"`` and a
+    queued ``"cancelled"`` come from
+    ``embodied_runtime/workers.py::MotorQueue``.
     """
 
     ok: bool
@@ -239,7 +241,7 @@ class MotionTicket:
 
     It lives here, beside ``MotionOutcome``, so ``hardware/`` never imports
     ``embodied_runtime/``. ``on_accept`` is a callable carried on the ticket
-    (the pain bridge's start, PR 2b), so ``hardware/`` never imports
+    (the pain bridge's start, 5.6), so ``hardware/`` never imports
     ``bridges/`` either. ``on_accept`` runs under the controller's motion lock
     and this ticket's lock: it must not block or dispatch motion. Never
     persisted, never sent over a wire.
@@ -249,7 +251,7 @@ class MotionTicket:
         self.accepted: Future[MotionOutcome | None] = Future()
         self.completed: Future[MotionOutcome] = Future()
         self.on_accept = on_accept
-        self.event_id: Any = None  # on_accept's return (PR 2b: the pain event id)
+        self.event_id: Any = None  # on_accept's return (the pain event id); None until the move starts
         self._lock = threading.RLock()  # on_accept runs under it and may read the ticket
         self._claimed = False
         self._cancelled = False
@@ -354,7 +356,7 @@ class MotionTicket:
 # The ticket of the motion command now running on this thread, or None. The
 # motor worker binds it around each callable (set, then reset in ``finally``);
 # the controller marks it accepted once a dispatch passed its checks, just
-# before the first SDK call (§4). A synchronous caller binds nothing.
+# before the first SDK call (§4). A synchronous caller binds one only to carry an ``on_accept`` (the automatic turn).
 current_motion_ticket: ContextVar[MotionTicket | None] = ContextVar("current_motion_ticket", default=None)
 
 
@@ -578,6 +580,28 @@ class RobotController(ABC):
     def disconnect(self) -> None:
         """Disconnect from the robot."""
         ...
+
+    def stop_motion(self) -> None:
+        """Refuse every new move until the next successful wake (#1499): a stop without a sleep.
+
+        A connect must not clear it, or a soft reconnect finishing after the
+        stop would let a move start before it re-latched. The live teardown
+        calls it after stopping the loop and closing the motor queue, while DN
+        and the agentic thread may still issue moves. The default does
+        nothing; a controller with a stop latch overrides it, and then no path
+        (queued or direct) moves the robot after a stop.
+        """
+
+    def stop_token(self) -> object | None:
+        """A token for "no stop since now", for ``wake_up_unless_stopped_since`` (#1499).
+
+        The default has none: a controller with no stop latch cannot say.
+        """
+        return None
+
+    def wake_up_unless_stopped_since(self, token: object | None) -> bool | MotionOutcome:
+        """Wake, unless a stop came after *token*. The default, with no stop latch, just wakes."""
+        return self.wake_up()
 
     def is_connected(self) -> bool:
         """Check if robot is connected."""

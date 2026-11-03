@@ -722,3 +722,15 @@ class TestHippocampusFactory:
 
         hippo2 = Hippocampus.from_config(config, persistence_path=path)
         assert hippo2 is not None
+
+
+def test_hippocampus_class_type_hints_resolve() -> None:
+    """The mixin declares ``_rwlock``/``_memories`` for mypy (#1476); every name its annotations use must resolve at
+    runtime, or ``typing.get_type_hints(Hippocampus)`` raises NameError."""
+    import typing
+
+    from maxim.memory.hippocampus import Hippocampus
+    from maxim.memory.rwlock import RWLock
+
+    hints = typing.get_type_hints(Hippocampus)
+    assert hints["_rwlock"] is RWLock and "_memories" in hints

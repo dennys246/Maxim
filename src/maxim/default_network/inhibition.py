@@ -28,7 +28,10 @@ class InhibitionMixin:
     # ------------------------------------------------------------------
 
     def inhibit(self, duration: float | None = None) -> None:
-        """Suppress all DN output for *duration* seconds.
+        """Suppress all new DN output for *duration* seconds.
+
+        A move that was already issued is still booked and published when it
+        finishes (#1499 5.6).
 
         Args:
             duration: Seconds to inhibit.  ``None`` uses ``auto_release_timeout``.

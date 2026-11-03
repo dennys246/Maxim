@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, ClassVar
-
-if TYPE_CHECKING:
-    pass
+from collections.abc import Iterable
+from typing import Any, Callable, ClassVar
 
 from maxim.memory.experience_clock import ExperienceClock
 from maxim.agents.bus import DependencyGraph, EdgeType
@@ -18,8 +17,10 @@ from maxim.memory.types import (
     CompressedMemory,
     EpisodicMemory,
 )
+from maxim.memory.rwlock import RWLock
 from maxim.memory.store import StoreFileOwnership
 from maxim.utils.atomic_io import atomic_write_json
+from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,55 @@ logger = logging.getLogger(__name__)
 # older build re-saving a 1.2 file drops them (it ignores unknown keys and stamps its own version). The P3.5
 # envelope (``dump`` under ``snapshot.wrap_envelope``) stays at schema 1: its payload reads back the same way.
 HIPPOCAMPUS_FORMAT_VERSION = "1.2"
+
+
+def _rows_sha256(rows: Any) -> str:
+    return hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def store_digest_rows(records: Iterable[EpisodicMemory | CompressedMemory]) -> list[list[Any]]:
+    """What recall matches each record on, one row per record, sorted: ``[id, sorted content keys,
+    repr(copy_key())]`` (Exp 63b's I1)."""
+    return sorted([m.id, sorted(m.content_tokens()), repr(m.copy_key())] for m in records)
+
+
+def store_digest(records: Iterable[EpisodicMemory | CompressedMemory]) -> str:
+    """:func:`store_digest_rows` as one SHA-256 over their compact JSON (Exp 63b's I1). The experiment's judge
+    recomputes it from the saved bytes, so a value the JSON writer changes (a tuple, a set, a numpy scalar) reads as a
+    different digest live and saved, an instrument fault no saved byte shows."""
+    return _rows_sha256(store_digest_rows(records))
+
+
+def _digest_or_none(records: Iterable[EpisodicMemory | CompressedMemory]) -> tuple[str, list[list[str]]] | None:
+    """The store digest and each record's (the first 16 hex of its row's SHA-256, so a judge's mismatch can say which
+    record differs), or None. None when nothing would log the line (INFO is off, as on a runtime without
+    ``MAXIM_LOG_FILE``): keying every record costs about 0.25 s per 5,000 under the store's read lock, so a store pays
+    it only when the line is written. None too when a record cannot be keyed: a digest never costs a save or a load (a
+    missing digest line is what Exp 63b reads)."""
+    if not logger.isEnabledFor(logging.INFO):
+        return None
+    try:
+        rows = store_digest_rows(records)
+        return _rows_sha256(rows), [[row[0], _rows_sha256(row)[:16]] for row in rows]
+    except Exception:  # noqa: BLE001 -- logged; the save or load goes on without its digest line
+        log_swallowed_exception()
+        return None
+
+
+def _log_store_digest(op: str, path: str, records: int, digest: tuple[str, list[list[str]]] | None) -> None:
+    """One ``hippocampus_store_digest`` line: ``op`` is ``load`` (the records a :meth:`load` restored) or ``save``
+    (every record a :meth:`save` or ``_save_locked`` wrote); a snapshot ``dump``/``load_state`` logs none. It grows with
+    the store (one ``[id, 16 hex]`` pair per record). The file is named by its basename only (no host path)."""
+    if digest is None:
+        return
+    data = {
+        "op": op,
+        "file": os.path.basename(path),
+        "records": records,
+        "sha256": digest[0],
+        "record_sha256": digest[1],
+    }
+    logger.info("hippocampus store digest", extra={"event": "hippocampus_store_digest", "data": data})
 
 
 _missing_clock_warned = False
@@ -81,6 +131,10 @@ class PersistenceMixin(StoreFileOwnership):
     """
 
     _store_name = "hippocampus"
+
+    # Set by Hippocampus.__init__; declared here so the mixin's methods type-check (annotations only, no value).
+    _rwlock: RWLock
+    _memories: dict[str, EpisodicMemory | CompressedMemory]
 
     # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
     # Payload-layer legacy version string "3.0" is tombstoned; all future
@@ -331,7 +385,15 @@ class PersistenceMixin(StoreFileOwnership):
         """
         if not (path or self.config.persistence_path):
             raise ValueError("No persistence path specified")
-        self._save_with(self.dump, path, overwrite=overwrite)
+        self._save_with(self._dump_for_save, path, overwrite=overwrite)
+
+    def _dump_for_save(self) -> tuple[dict[str, Any], tuple[str, list[list[str]]] | None]:
+        with self._rwlock.read():
+            return self._dump_for_save_locked()
+
+    def _dump_for_save_locked(self) -> tuple[dict[str, Any], tuple[str, list[list[str]]] | None]:
+        """:meth:`_dump_locked` and the store digest of the same records, in one read section (Exp 63b's I1)."""
+        return self._dump_locked(), _digest_or_none(self._memories.values())
 
     def _save_locked(self, path: str | None = None, *, overwrite: bool = False, backup: bool = False) -> None:
         """:meth:`save` for a caller that already holds the read lock (#1438 PR 1a; see :meth:`_dump_locked`).
@@ -344,18 +406,26 @@ class PersistenceMixin(StoreFileOwnership):
             self._check_store_write(target, overwrite=overwrite)
             self._copy_to_backup(target)
             overwrite = True  # checked above, before the backup was taken
-        self._save_with(self._dump_locked, path, overwrite=overwrite)
+        self._save_with(self._dump_for_save_locked, path, overwrite=overwrite)
 
-    def _save_with(self, dump: Callable[[], dict[str, Any]], path: str | None, *, overwrite: bool) -> None:
+    def _save_with(
+        self,
+        dump: Callable[[], tuple[dict[str, Any], tuple[str, list[list[str]]] | None]],
+        path: str | None,
+        *,
+        overwrite: bool,
+    ) -> None:
         path = self._default_store_path(path)
         self._check_store_write(path, overwrite=overwrite)
 
         from maxim.utils.format_version import with_format_version
 
-        payload = with_format_version(dump(), version=HIPPOCAMPUS_FORMAT_VERSION)
+        state, digest = dump()
+        payload = with_format_version(state, version=HIPPOCAMPUS_FORMAT_VERSION)
         atomic_write_json(path, payload)
         self._claim_store_file(path)
         logger.info("Saved hippocampus to %s (%d memories)", path, len(payload["memories"]))
+        _log_store_digest("save", path, len(payload["memories"]), digest)
 
     def load(self, path: str | None = None, *, missing_ok: bool = False) -> None:
         """Load hippocampus from JSON file.
@@ -380,9 +450,14 @@ class PersistenceMixin(StoreFileOwnership):
         from maxim.utils.format_version import check_format_version
 
         check_format_version(state, "hippocampus", log=logger)
+        loaded_ids = {m.get("id") for m in state.get("memories", []) if isinstance(m, dict)}
         self.load_state(state)
         self._claim_store_file(path)
         self._note_store_file_loaded()
+        with self._rwlock.read():  # exactly the records this load restored, whatever a capture added since
+            restored = [m for mid, m in self._memories.items() if mid in loaded_ids]
+            digest = _digest_or_none(restored)
+        _log_store_digest("load", path, len(restored), digest)
 
         edge_count = sum(
             len(self._graph.get_associated(mid)) for mid in self._memories if self._graph.get_node(mid) is not None
