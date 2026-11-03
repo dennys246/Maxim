@@ -61,7 +61,7 @@
     {
       "file": "src/maxim/embodied_runtime/media_loop.py",
       "qualname": "MediaLoopMixin.live",
-      "lines": 295
+      "lines": 296
     },
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
@@ -395,6 +395,6 @@
     "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail).",
     "api.py::run tightened 276 -> 244 on 2026-10-31 (#1521, rule T): the stale shutdown comment is corrected in the cleanup it describes, which moved verbatim to api._tear_down_run (the names it reads passed as keywords). Merged with #1555 (main's run at 256 after _run_workspace and _build_run_executor moved out): 224.",
     "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_handles, which register the event for the process stop.",
-    "MediaLoopMixin.live tightened 417 -> 295 on 2026-11-03 (#1499 PR 3, rule T): its outer try now starts right after the stop event opens, so the setup moved under it, paid for by moving the per-frame observation step and the transcriber stop out to _observe_frame and _stop_transcription_worker (verbatim) and the last shutdown to _shutdown_after_live."
+    "MediaLoopMixin.live tightened 417 -> 296 on 2026-11-03 (#1499 PR 3, rule T): its outer try now starts right after the stop event opens, so the setup moved under it, paid for by moving the per-frame observation step and the transcriber stop out to _observe_frame and _stop_transcription_worker (verbatim) and the last shutdown to _shutdown_after_live."
   ]
 }

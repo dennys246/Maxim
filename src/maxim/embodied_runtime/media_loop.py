@@ -171,6 +171,7 @@ class MediaLoopMixin:
         threads: list[threading.Thread] = []
         transcribe_process: Optional[mp.process.BaseProcess] = None
         transcribe_shutdown_file: Optional[str] = None
+        entry_exc = sys.exc_info()[1]  # a caller's handled exception, if live runs inside an except
         try:  # from here on a raise still runs the teardown, which fences motion (#1499)
             # Phase 2: Start agentic runtime automatically when not in sleep mode
             # The agentic system handles all decision-making; live() just does I/O
@@ -331,7 +332,7 @@ class MediaLoopMixin:
             self._stop_transcription_worker(transcribe_process, transcribe_shutdown_file)
 
             self._release_live_handles()
-            self._shutdown_after_live()
+            self._shutdown_after_live(entry_exc)
 
     def _observe_frame(self, photo) -> None:
         """The display-only observation step for one frame; movement decisions belong to the agentic runtime."""
@@ -398,10 +399,13 @@ class MediaLoopMixin:
                     e,
                 )
 
-    def _shutdown_after_live(self) -> None:
+    def _shutdown_after_live(self, entry_exc: BaseException | None) -> None:
         """The live teardown's last step. While an exception leaves ``live`` (a setup refusal, a loop error), a shutdown
-        that also fails is logged, so the caller still gets the original: a ``LeaderRefusal`` keeps its exit code."""
-        if sys.exc_info()[0] is None:
+        that also fails is logged, so the caller still gets the original: a ``LeaderRefusal`` keeps its exit code.
+
+        ``entry_exc`` is what ``sys.exc_info`` held when ``live`` started: a caller that runs ``live`` inside an
+        ``except`` block leaves its own exception there, which is not one leaving ``live``."""
+        if sys.exc_info()[1] is entry_exc:
             self.shutdown()
             return
         try:

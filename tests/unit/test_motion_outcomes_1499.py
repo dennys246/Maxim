@@ -936,16 +936,28 @@ def test_a_shutdown_that_fails_after_a_refusal_does_not_hide_the_refusal(daemon,
         selfy._close_live_stop_event()
 
 
-def test_a_shutdown_that_fails_after_a_normal_run_still_raises(daemon):
-    """Only an exception already leaving ``live`` is protected; with none, a shutdown error reaches the caller."""
-    selfy = _selfy(controller(daemon), daemon)
+@pytest.mark.parametrize("inside_except", [False, True], ids=["plain", "inside-a-callers-except"])
+def test_a_shutdown_that_fails_after_a_normal_run_still_raises(daemon, tmp_path, monkeypatch, inside_except):
+    """Only an exception already leaving ``live`` is protected: after a normal run a shutdown error reaches the caller,
+    also when the caller runs ``live`` inside its own ``except`` block (``sys.exc_info`` then holds that exception)."""
+    selfy = _live_setup_host(daemon, tmp_path, monkeypatch)
+    selfy._start_agentic_runtime = lambda: selfy._live_stop_event.set()  # the headless loop ends at once
 
     def _broken_shutdown():
         raise OSError("the speaker would not close")
 
     selfy.shutdown = _broken_shutdown
-    with pytest.raises(OSError, match="would not close"):
-        selfy._shutdown_after_live()
+    try:
+        with pytest.raises(OSError, match="would not close"):
+            if inside_except:
+                try:
+                    raise KeyError("the caller's own error, already handled")
+                except KeyError:
+                    selfy.live(vision=False, run_id="normal-exit")
+            else:
+                selfy.live(vision=False, run_id="normal-exit")
+    finally:
+        selfy._close_live_stop_event()
 
 
 def test_the_teardown_latches_the_controller_so_a_body_turn_after_a_stop_is_refused(daemon):
