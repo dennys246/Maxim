@@ -460,6 +460,19 @@ def test_the_real_pass_table_supports_exp63_earned_from_pass_only() -> None:
     assert {p["kind"] for p in v.PROTOCOL.values()} <= R.O19_KINDS  # every campaign's verdicts are re-judged
 
 
+def test_the_real_pass_table_supports_exp63b_earned_from_pass_only() -> None:
+    """Exp 63b's prereg (OD2, owner decision 2026-11-02): ``exp63b_verdict`` -> {PASS} supports EARNED (narrow) on
+    T1-16 and nothing else: NOT SHOWN does not raise the row, and a root campaign has no REPRODUCED."""
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    assert table["exp63b_verdict"] == {
+        "rows": ["T1-16"],
+        "scopes": ["narrow"],
+        "targets": {"EARNED": ["PASS"]},
+        "require": {"apparatus_checked": True},
+    }
+    assert G.pass_table_problems(table, "HEAD") == [] and "exp63b_verdict" in R.O19_KINDS
+
+
 def test_unknown_digests_never_match() -> None:
     assert R.unknown("unknown") and R.unknown("unknown: OSError") and R.unknown(None) and R.unknown("")
     assert not R.unknown("a" * 64)
@@ -3018,6 +3031,10 @@ def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
         ("exp63_verdict", "T1-16"): (
             "T1-16 is STALE since 2026-10-25 (Session R's recall fix replaced the ranker it measured; owner decision, "
             "the strict option) and exp63 targets only EARNED: a move back up needs a re-run on a rebuilt judge"
+        ),
+        ("exp63b_verdict", "T1-16"): (
+            "T1-16 is STALE until Exp 63b's verdict (#1476), the re-run on the rebuilt judge, and exp63b targets only "
+            "EARNED: NOT SHOWN raises nothing (OD2, owner 2026-11-02)"
         ),
     }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}

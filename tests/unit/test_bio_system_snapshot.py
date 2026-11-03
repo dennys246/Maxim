@@ -382,14 +382,25 @@ class TestLockDisciplinePreserved:
         src = inspect.getsource(NAc.save)
         assert "self.dump()" in src, "NAc.save must delegate to self.dump()"
 
-    def test_hippocampus_save_delegates_to_dump(self, tmp_path):
-        # Behavioural since #1438 PR 1a: save and the lock-held _save_locked share _save_with, each passing its dump.
-        hippo = Hippocampus(HippocampusConfig(persistence_path=str(tmp_path / "h.json")))
-        calls: list[int] = []
-        real_dump = hippo.dump
-        hippo.dump = lambda: calls.append(1) or real_dump()  # type: ignore[method-assign]
+    def test_hippocampus_save_writes_what_dump_returns(self, tmp_path):
+        # Behavioural (#1438 PR 1a, Exp 63b): save writes dump()'s payload. Since Exp 63b's I1 it reads dump's body
+        # (``_dump_locked``) and the store digest in ONE read section (the RWLock is not re-entrant, so save cannot
+        # call dump inside it); the file must still be exactly dump()'s payload under the format version.
+        from maxim.memory.encoding import EncodingSignals
+        from maxim.memory.types import Perception
+        from maxim.utils.format_version import with_format_version
+
+        path = tmp_path / "h.json"
+        hippo = Hippocampus(HippocampusConfig(persistence_path=str(path)))
+        hippo.capture(perception=Perception(cli_input="the iron door"), encoding=EncodingSignals.unmeasured("api"))
         hippo.save()
-        assert calls == [1], "Hippocampus.save must delegate to self.dump()"
+        saved = json.loads(path.read_text())
+        from maxim.memory.hippocampus_persistence import HIPPOCAMPUS_FORMAT_VERSION
+
+        want = with_format_version(hippo.dump(), version=HIPPOCAMPUS_FORMAT_VERSION)
+        assert {k: x for k, x in saved.items() if k != "saved_at"} == {
+            k: x for k, x in json.loads(json.dumps(want)).items() if k != "saved_at"
+        }
 
     def test_scn_save_delegates_to_dump(self):
         src = inspect.getsource(SCN.save)

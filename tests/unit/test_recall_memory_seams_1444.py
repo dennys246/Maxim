@@ -483,7 +483,9 @@ def test_a_later_record_of_the_turn_does_not_echo_its_arrival_on_a_deliberation_
     pipe = BioEnrichmentPipeline(hippocampus=h)
     pipe._query_hippocampus_traced(_QUESTION, [], context=EnrichmentContext(user_input=_QUESTION, own_capture_id=own))
     action = _did(h, _QUESTION, "look_around", ok=True)  # the action taken on the tick's observation holds the words
-    found, _paths, _h, _holes, own_ids = pipe._query_hippocampus_traced(_QUESTION, [], context=EnrichmentContext())
+    found, _paths, _h, _holes, own_ids, _failed = pipe._query_hippocampus_traced(
+        _QUESTION, [], context=EnrichmentContext()
+    )
     assert own_ids == [own, action] and [s.memory_id for s in found] == [earlier]
 
 

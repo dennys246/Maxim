@@ -184,6 +184,21 @@ def configure_logging(
         _ensure_jsonl_file_handler(jsonl_path)
 
 
+def quiet_console_handlers(level: int = logging.WARNING) -> None:
+    """Raise the terminal handlers on the root and ``maxim`` loggers to at least ``level``: for a shutdown that hides
+    in-flight INFO lines from the terminal. A terminal handler is a ``StreamHandler`` that is not a ``FileHandler``
+    (the test ``sim_logger.set_active_display`` uses); the JSONL run log, a plain log file and the leader's remote
+    log buffer keep their levels.
+
+    Raising a LOGGER's level instead would cut the JSONL file too, whose contract is DEBUG and up whatever the
+    console shows: the sim teardown did that, and every run log lost what the run logged after it, Exp 63b's final
+    store digest among it (#1476, #1588)."""
+    for name in ("", "maxim"):
+        for handler in logging.getLogger(name).handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                handler.setLevel(max(handler.level, level))
+
+
 def get_logger(name: str = "maxim") -> logging.Logger:
     return logging.getLogger(name)
 
