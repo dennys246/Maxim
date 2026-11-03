@@ -21,7 +21,7 @@ import numpy as np
 
 from maxim.embodied_runtime.movement import SyncResult
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, current_motion_ticket
+from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, failure_kind, current_motion_ticket
 from maxim.inference.transcribe_audio import create_task_file
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.logging import log_swallowed_exception, warn
@@ -108,7 +108,7 @@ class MotorQueue:
     def submit(
         self, ticket: MotionTicket, fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> MotionTicket:
-        """Queue *fn* under a caller-built *ticket* (PR 2b: one carrying ``on_accept``); returns the ticket."""
+        """Queue *fn* under a caller-built *ticket* (one carrying ``on_accept``); returns the ticket."""
         with self._lock:
             if self._closed:
                 ticket.resolve_unstarted("cancelled", _CLOSED)
@@ -226,7 +226,7 @@ def run_motion(item: QueuedMotion, maxim: Any, state: _IKState | None = None) ->
         outcome = as_outcome(result)
         if ik_handler.ik_failure_detected:
             maxim.log.warning("IK failure detected: %s", ik_handler.failure_message)
-            outcome = MotionOutcome.refused("error", f"IK failure: {ik_handler.failure_message}")
+            outcome = MotionOutcome.refused("ik", f"IK failure: {ik_handler.failure_message}")
             state.failures += 1
             _record_ik_failure(maxim, position_info, commanded_6d)
             _maybe_recover_from_ik_failures(maxim, state)
@@ -241,7 +241,7 @@ def run_motion(item: QueuedMotion, maxim: Any, state: _IKState | None = None) ->
         maxim.sync_head_position()
     except Exception as e:
         # A raised command never feeds a learner (#1499 O4); it counts as a connection failure.
-        outcome = MotionOutcome.refused("error", f"motor command failed: {e}")
+        outcome = MotionOutcome.refused(failure_kind(e), f"motor command failed: {e}")
         warn("Motor command failed: %s", e, logger=maxim.log)
         maxim._note_connection_failure("motor", e)
     finally:

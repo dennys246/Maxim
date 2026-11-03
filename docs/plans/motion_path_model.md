@@ -840,3 +840,33 @@ the mirror is covered (`move`, and `move_relative`, `goto_pose`, `center_vision`
 only on success, after its sync). Two NITs, both fail-closed, not folded: a successful turn leaves a stale
 `_mirror_ticket`, costing one extra re-read; and `move`'s "already at the requested pose" can answer ok against a
 pose a still-queued earlier move targets (the queue-window class, pre-existing; 2b's scope note).
+
+## 16. PR 2b build notes (2026-11-02, for the code review)
+
+Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (last section).
+
+**Choices the build made that v8 did not fix:**
+1. **The dwell stays at dispatch.** `GazeHistory.record_gaze` also starts `should_move`'s dwell, so booking it only at
+   completion would have dropped the 0.5 s pacing during a move and DN (30 Hz) would re-issue every tick. A new
+   `note_move_commanded()` starts the dwell at dispatch, for every issued move as on `main`, and the completion's
+   `record_gaze(restart_dwell=False)` leaves the clock alone, so DN's cadence does not change.
+2. **Queued moves book no pain completion.** §5.6 keys `record_action_complete` by event id, but on `main` the only
+   caller is `_maybe_turn_around`: a look-at's pending event ends when the next one replaces it. Adding a completion
+   to `run_motion` would clear the detector's target (which `_check_movement_failure` reads after its timeout, so the
+   movement-failure pain would stop firing), cut the 5 s attribution window to the move's length, and add a positive
+   NAc link per look-at. None of that was decided, so it stays out. The event id on a look-at's ticket has no reader.
+3. **A turn the controller refuses before its first SDK call now books nothing.** 2a booked a failure for it, since
+   its start came before the dispatch. With the start at accept there is no event to complete. This is the owner's
+   2026-11-01 rule (a refused turn that never moved books nothing) reaching the controller's refusals too.
+4. **`ik` is a new `MotionOutcomeKind`**, the one non-ok kind the spatial learners read. `run_motion` sets it from the
+   log-based detection and from `failure_kind(e)` on a raised command, which closes Wire 7 / Executor 7: the sync
+   path's exception never reached DN's classifier after 2a. A queued IK failure now reaches the spatial map too,
+   which it never did on `main`. `failure_kind` matches `\bik\b`, not `ik` anywhere.
+5. **`look_opposite` keeps its `bool`.** A ticket is never false, so `if dn.look_opposite():` would have gone silent
+   on a change of return type (the D3 class). `True` now means issued. It has no caller in `src/`.
+6. **A host result that is not a ticket** reads through `as_outcome`: a plugin host's `True` is ok, `None` is not.
+7. **The queue-window no-op (the second delta round's NIT) is fixed here**: `move` answering "already there" against
+   a pose still queued returns that move's ticket.
+
+**Deferred:** the plan/dispatch race (a body moved between `_plan_turn` and the controller's dispatch) stays as
+recorded in §15; the controller clamps it.

@@ -17,14 +17,16 @@ default mode network (task-negative introspection), which this is not.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.utils.logging import log_swallowed_exception
 from maxim.default_network.arbiter import ArbiterConfig, PriorityArbiter
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import as_outcome, floor_duration
+from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, failure_kind, floor_duration
 from maxim.attention import AttentionConfig, AttentionNetwork
 from maxim.attention import SalienceMap, SalienceMapConfig
 from maxim.attention import GazeController, GazeControllerConfig, GazeCommand, GazeState
@@ -291,6 +293,11 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         self._latest_detections: list[dict] = []
         self._latest_percept: "Percept | None" = None
         self._detection_lock = threading.Lock()
+
+        # Finished moves' outcomes, posted by the motor thread and applied on DN's tick (#1499 5.6)
+        self._motion_inbox: queue.SimpleQueue[tuple[Callable[[MotionOutcome], None], MotionOutcome]] = (
+            queue.SimpleQueue()
+        )
 
         # Thread management
         self._thread: threading.Thread | None = None
@@ -898,6 +905,9 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             # Check auto-release of inhibition (InhibitionMixin)
             self._check_auto_release()
 
+            # Outcomes first, and even while inhibited: a move that finished is booked either way
+            self._drain_motion_outcomes()
+
             if not self._inhibited:
                 self._process_tick()
 
@@ -1133,19 +1143,60 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         else:
             duration = self._config.movement.base_duration
 
-        executed, movement_failed = self._dispatch_action_to_motor(proposal, duration)
-        self._record_movement_result(proposal, executed, movement_failed)
+        ticket = self._dispatch_action_to_motor(proposal, duration)
+        if self._config.gaze_salience_enabled and proposal.target:
+            self._gaze_history.note_move_commanded()  # paces the next move; the arrival is booked when it completes
+        self._book_on_tick(ticket, lambda outcome: self._apply_action_outcome(proposal, outcome))
 
-        if executed:
+    def _apply_action_outcome(self, proposal: ActionProposal, outcome: MotionOutcome) -> None:
+        """Book what a move did, on DN's tick (#1499 5.6): a move that did not complete taught nothing (O4)."""
+        self._record_movement_result(proposal, outcome)
+
+        if outcome.ok:
             with self._stats_lock:
                 self._stats["actions_executed"] += 1
             track_id = proposal.metadata.get("track_id")
             if track_id is not None and self._novelty_tracker is not None:
                 self._novelty_tracker.focus(track_id)
             if self._config.gaze_salience_enabled and proposal.target:
-                self._gaze_history.record_gaze(proposal.target)
+                self._gaze_history.record_gaze(proposal.target, restart_dwell=False)
 
-        self._publish_action(proposal, executed=executed)
+        self._publish_action(proposal, executed=outcome.ok)
+
+    # ── the motion inbox (#1499 5.6) ───────────────────────────────────────
+
+    def _book_on_tick(self, ticket: MotionTicket, apply: Callable[[MotionOutcome], None]) -> None:
+        """Have *apply* run with the ticket's outcome on DN's tick, once the move finishes.
+
+        The callback runs on the motor thread and only posts: an exception in
+        a ``Future`` callback is swallowed, and the learners are DN's to touch.
+        """
+        ticket.completed.add_done_callback(lambda done: self._motion_inbox.put((apply, done.result())))
+
+    def _drain_motion_outcomes(self) -> None:
+        """Apply every finished move's outcome; a handler that raises is logged and the rest still apply."""
+        while True:
+            try:
+                apply, outcome = self._motion_inbox.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                apply(outcome)
+            except Exception:
+                log_swallowed_exception()
+
+    def _issue_motion(self, command: Callable[..., Any], *args: Any, **kwargs: Any) -> MotionTicket:
+        """Run a motor command; its ticket, or a resolved one when it returned a bool or raised."""
+        try:
+            result = command(*args, **kwargs)
+        except MotionRefused as e:
+            # By type: a refusal is bad input, not an IK failure the spatial map should learn from.
+            logger.warning("DN action refused: %s", e)
+            return MotionTicket.resolved(MotionOutcome.refused(e.kind, e.reason))
+        except Exception as e:
+            logger.warning("Failed to execute DN action: %s", e)
+            return MotionTicket.resolved(MotionOutcome.refused(failure_kind(e), str(e)))
+        return result if isinstance(result, MotionTicket) else MotionTicket.resolved(as_outcome(result))
 
     # ── _execute_action gates ──────────────────────────────────────────────
 
@@ -1237,102 +1288,74 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
 
     # ── _execute_action dispatch ───────────────────────────────────────────
 
-    def _dispatch_action_to_motor(
-        self,
-        proposal: ActionProposal,
-        duration: float,
-    ) -> tuple[bool, bool]:
-        """Dispatch the proposal to the appropriate Maxim motor command.
+    def _dispatch_action_to_motor(self, proposal: ActionProposal, duration: float) -> MotionTicket:
+        """Dispatch the proposal to the appropriate Maxim motor command; its ticket, always.
 
-        Returns ``(executed, movement_failed)`` — ``movement_failed`` is True
-        only for IK/collision errors (so the spatial map can learn from them).
+        DN durations come from config, so they are defaults: floored into
+        [0.1, 10] s, never refused (#1496); only a non-finite one refuses.
         """
-        executed = False
-        movement_failed = False
+        return self._issue_motion(self._route_to_motor, proposal, duration)
 
-        try:
-            # DN durations come from config, so they are defaults: floored into
-            # [0.1, 10] s, never refused (#1496); only a non-finite one refuses.
-            duration = floor_duration(duration)
-            if proposal.action_type == "look_at" and proposal.target:
+    def _route_to_motor(self, proposal: ActionProposal, duration: float) -> MotionTicket:
+        duration = floor_duration(duration)
+        has_look = hasattr(self._maxim, "look_at_image")
+        if proposal.action_type == "look_at" and proposal.target and has_look:
+            u, v = proposal.target
+            return self._issue_motion(self._maxim.look_at_image, u, v, duration=duration)
+        if proposal.action_type == "scan":
+            # Exploration: prefer look_at_image (smooth waypoint motion),
+            # fall back to move_relative for ReturnToCenter etc.
+            if proposal.target and has_look:
                 u, v = proposal.target
-                if hasattr(self._maxim, "look_at_image"):
-                    self._maxim.look_at_image(u, v, duration=duration)
-                    executed = True
-            elif proposal.action_type == "scan":
-                # Exploration: prefer look_at_image (smooth waypoint motion),
-                # fall back to move_relative for ReturnToCenter etc.
-                if proposal.target and hasattr(self._maxim, "look_at_image"):
-                    u, v = proposal.target
-                    explore_duration = floor_duration(max(0.5, duration * 0.8))
-                    self._maxim.look_at_image(u, v, duration=explore_duration)
-                    executed = True
-                elif hasattr(self._maxim, "move_relative"):
-                    delta = proposal.metadata.get("delta", (0, 0))
-                    self._maxim.move_relative(delta)
-                    executed = True
-            elif proposal.action_type == "track" and proposal.target:
-                u, v = proposal.target
-                if hasattr(self._maxim, "look_at_image"):
-                    track_duration = floor_duration(duration * 0.5)  # Half duration for tracking
-                    if proposal.behavior_name == "social":
-                        cur_yaw = float(getattr(self._maxim, "yaw", 0.0) or 0.0)
-                        direction = "RIGHT" if u > 320 else "LEFT" if u < 320 else "CENTER"
-                        logger.debug(
-                            "SocialTrack: target=(%.0f,%.0f) %s, yaw=%.1f, track_id=%s",
-                            u,
-                            v,
-                            direction,
-                            cur_yaw,
-                            proposal.metadata.get("track_id"),
-                        )
-                    self._maxim.look_at_image(u, v, duration=track_duration)
-                    executed = True
-            elif proposal.action_type == "turn_around":
-                turn_angle = proposal.metadata.get("turn_angle", 90.0)
-                turn_duration = floor_duration(proposal.metadata.get("duration", 5.0))
-                if hasattr(self._maxim, "turn_around"):
-                    # The turn is synchronous and returns its MotionOutcome (#1499 5.8): a refused
-                    # turn ('limit' at the body limit) was not executed and feeds no learner (O4).
-                    turned = as_outcome(self._maxim.turn_around(turn_angle, duration=turn_duration))
-                    executed = turned.ok
-                    result = "ok" if turned else f"not done ({turned.kind}): {turned.reason}"
-                    logger.info("turn_around %.0f° over %.1fs: %s", turn_angle, turn_duration, result)
-        except MotionRefused as e:
-            # By type, before the substring check below: a refusal is bad input,
-            # not an IK failure the spatial map should learn from.
-            logger.warning("DN action refused: %s", e)
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "collision" in error_msg or "ik" in error_msg or "not achievable" in error_msg:
-                movement_failed = True
-                logger.debug("Movement to %s failed (IK/collision): %s", proposal.target, e)
-            else:
-                logger.warning("Failed to execute DN action: %s", e)
+                explore_duration = floor_duration(max(0.5, duration * 0.8))
+                return self._issue_motion(self._maxim.look_at_image, u, v, duration=explore_duration)
+            if hasattr(self._maxim, "move_relative"):
+                return self._issue_motion(self._maxim.move_relative, proposal.metadata.get("delta", (0, 0)))
+        if proposal.action_type == "track" and proposal.target and has_look:
+            return self._dispatch_track(proposal, duration)
+        if proposal.action_type == "turn_around" and hasattr(self._maxim, "turn_around"):
+            return self._dispatch_turn(proposal)
+        return MotionTicket.resolved(MotionOutcome.refused("error", "no motor command for this proposal"))
 
-        return executed, movement_failed
+    def _dispatch_track(self, proposal: ActionProposal, duration: float) -> MotionTicket:
+        u, v = proposal.target
+        track_duration = floor_duration(duration * 0.5)  # Half duration for tracking
+        if proposal.behavior_name == "social":
+            cur_yaw = float(getattr(self._maxim, "yaw", 0.0) or 0.0)
+            direction = "RIGHT" if u > 320 else "LEFT" if u < 320 else "CENTER"
+            logger.debug(
+                "SocialTrack: target=(%.0f,%.0f) %s, yaw=%.1f, track_id=%s",
+                u,
+                v,
+                direction,
+                cur_yaw,
+                proposal.metadata.get("track_id"),
+            )
+        return self._issue_motion(self._maxim.look_at_image, u, v, duration=track_duration)
 
-    def _record_movement_result(
-        self,
-        proposal: ActionProposal,
-        executed: bool,
-        movement_failed: bool,
-    ) -> None:
+    def _dispatch_turn(self, proposal: ActionProposal) -> MotionTicket:
+        """The turn is synchronous and returns its MotionOutcome (#1499 5.8)."""
+        turn_angle = proposal.metadata.get("turn_angle", 90.0)
+        turn_duration = floor_duration(proposal.metadata.get("duration", 5.0))
+        ticket = self._issue_motion(self._maxim.turn_around, turn_angle, duration=turn_duration)
+        turned = ticket.completed.result()  # already resolved: the turn ran on this thread
+        result = "ok" if turned else f"not done ({turned.kind}): {turned.reason}"
+        logger.info("turn_around %.0f° over %.1fs: %s", turn_angle, turn_duration, result)
+        return ticket
+
+    def _record_movement_result(self, proposal: ActionProposal, outcome: MotionOutcome) -> None:
         """Update spatial map + attention network with the movement outcome."""
-        if not proposal.target:
+        if proposal.target:
+            self._book_spatial(proposal.target, outcome)
+
+    def _book_spatial(self, target: tuple[float, float], outcome: MotionOutcome) -> None:
+        """A completed move or an IK failure teaches the maps; no other kind does (#1499 O4)."""
+        if not outcome.ok and outcome.kind != "ik":
             return
-
         if self._spatial_map is not None:
-            if executed:
-                self._spatial_map.record_movement(proposal.target, success=True)
-            elif movement_failed:
-                self._spatial_map.record_movement(proposal.target, success=False)
-
+            self._spatial_map.record_movement(target, success=outcome.ok)
         if self._attention_network is not None:
-            if executed:
-                self._attention_network.record_gaze(proposal.target, success=True)
-            elif movement_failed:
-                self._attention_network.record_gaze(proposal.target, success=False)
+            self._attention_network.record_gaze(target, success=outcome.ok)
 
     def _publish_action(self, proposal: ActionProposal, executed: bool) -> None:
         """Publish action to bus and notify callbacks.

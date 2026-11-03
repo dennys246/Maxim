@@ -16,8 +16,7 @@ import time
 from typing import TYPE_CHECKING
 
 from maxim.attention import GazeCommand
-from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import floor_duration
+from maxim.hardware.controller import MotionOutcome, floor_duration
 from maxim.default_network.movement_utils import compute_dynamic_duration, compute_opposite_position
 
 if TYPE_CHECKING:
@@ -50,7 +49,9 @@ class GazeManagerMixin:
             duration: Movement duration in seconds. If None, uses dynamic calculation.
 
         Returns:
-            True if movement was executed, False if blocked or no current position.
+            True if the move was issued, and it may still be running: DN books
+            what it did on a later tick (#1499 5.6). False if it was blocked,
+            there is no current position, or it was refused at once.
         """
         current = self._gaze_history.get_current_position()
         if current is None:
@@ -85,31 +86,24 @@ class GazeManagerMixin:
             )
 
         # Execute movement
-        try:
-            duration = floor_duration(duration)  # derived, so floored, never refused (#1496)
-            if hasattr(self._maxim, "look_at_image"):
-                self._maxim.look_at_image(target[0], target[1], duration=duration)
-                self._gaze_history.record_gaze(target)
+        if not hasattr(self._maxim, "look_at_image"):
+            return False
+        derived = duration  # derived, so floored, never refused (#1496); only a non-finite one refuses
+        ticket = self._issue_motion(
+            lambda: self._maxim.look_at_image(target[0], target[1], duration=floor_duration(derived))
+        )
+        self._gaze_history.note_move_commanded()
+        self._book_on_tick(ticket, lambda outcome: self._book_opposite(target, outcome))
+        return not ticket.never_started
 
-                if self._attention_network is not None:
-                    self._attention_network.record_gaze(target, success=True)
-                if self._spatial_map is not None:
-                    self._spatial_map.record_movement(target, success=True)
-
-                logger.debug("look_opposite: moved to (%.0f, %.0f)", target[0], target[1])
-                return True
-        except MotionRefused as e:
-            logger.warning("look_opposite refused: %s", e)  # by type: not an IK failure to learn from
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "collision" in error_msg or "ik" in error_msg or "not achievable" in error_msg:
-                if self._attention_network is not None:
-                    self._attention_network.record_gaze(target, success=False)
-                if self._spatial_map is not None:
-                    self._spatial_map.record_movement(target, success=False)
-            logger.warning("look_opposite failed: %s", e)
-
-        return False
+    def _book_opposite(self, target: tuple[float, float], outcome: MotionOutcome) -> None:
+        """What a ``look_opposite`` did, on DN's tick: only a completed move or an IK failure teaches (O4)."""
+        if outcome.ok:
+            self._gaze_history.record_gaze(target, restart_dwell=False)
+            logger.debug("look_opposite: moved to (%.0f, %.0f)", target[0], target[1])
+        else:
+            logger.warning("look_opposite did not complete (%s): %s", outcome.kind, outcome.reason)
+        self._book_spatial(target, outcome)
 
     def get_opposite_position(self) -> tuple[float, float] | None:
         """Get the opposite position from current gaze without moving.

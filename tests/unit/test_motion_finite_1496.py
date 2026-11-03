@@ -767,7 +767,7 @@ def test_default_network_floors_durations_and_handles_a_refusal_by_type():
     dn = DefaultNetwork.__new__(DefaultNetwork)
     dn._maxim = _Maxim()
     look = ActionProposal(behavior_name="b", action_type="look_at", target=(320.0, 240.0), priority=1.0, confidence=1.0)
-    assert dn._dispatch_action_to_motor(look, 0.05) == (True, False)
+    dn._dispatch_action_to_motor(look, 0.05)
     assert durations == [0.1]
 
     class _Refusing(_Maxim):
@@ -775,7 +775,7 @@ def test_default_network_floors_durations_and_handles_a_refusal_by_type():
             raise MotionRefused("non_finite", "pink ik target")  # message contains "ik"; type must win
 
     dn._maxim = _Refusing()
-    assert dn._dispatch_action_to_motor(look, 0.5) == (False, False)
+    assert dn._dispatch_action_to_motor(look, 0.5).completed.result(timeout=1.0).kind == "non_finite"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

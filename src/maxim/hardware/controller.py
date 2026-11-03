@@ -27,6 +27,7 @@ canonical reference implementation.
 from __future__ import annotations
 
 import logging
+import re
 import math
 import numbers
 import threading
@@ -68,6 +69,7 @@ __all__ = [
     "PixelTarget",
     "RobotController",
     "as_outcome",
+    "failure_kind",
     "clamp_finite",
     "current_motion_ticket",
     "floor_duration",
@@ -178,7 +180,7 @@ def normalize_method(method: Any) -> str:
 # duration, stretched to the rate cap and split along the path as needed.
 DurationPolicy = Literal["exact", "at_least"]
 
-MotionOutcomeKind = MotionRefusalKind | Literal["superseded", "cancelled", "partial", "error"]
+MotionOutcomeKind = MotionRefusalKind | Literal["superseded", "cancelled", "partial", "error", "ik"]
 
 # ``MotionTarget.extras`` keys for a head translation, body frame, metres: written by
 # ``motion/movement.py::move_head`` when it delegates, read by ``ReachyMiniController`` (#1499 5.4).
@@ -239,7 +241,7 @@ class MotionTicket:
 
     It lives here, beside ``MotionOutcome``, so ``hardware/`` never imports
     ``embodied_runtime/``. ``on_accept`` is a callable carried on the ticket
-    (the pain bridge's start, PR 2b), so ``hardware/`` never imports
+    (the pain bridge's start, 5.6), so ``hardware/`` never imports
     ``bridges/`` either. ``on_accept`` runs under the controller's motion lock
     and this ticket's lock: it must not block or dispatch motion. Never
     persisted, never sent over a wire.
@@ -249,7 +251,7 @@ class MotionTicket:
         self.accepted: Future[MotionOutcome | None] = Future()
         self.completed: Future[MotionOutcome] = Future()
         self.on_accept = on_accept
-        self.event_id: Any = None  # on_accept's return (PR 2b: the pain event id)
+        self.event_id: Any = None  # on_accept's return (the pain event id); None until the move starts
         self._lock = threading.RLock()  # on_accept runs under it and may read the ticket
         self._claimed = False
         self._cancelled = False
@@ -376,6 +378,18 @@ def mark_motion_accepted() -> bool:
 def policy_duration(value: Any, policy: DurationPolicy) -> float:
     """*value* as the duration a target ships with under *policy* (exact: checked; at_least: floored)."""
     return require_duration(value) if policy == "exact" else floor_duration(value)
+
+
+_IK_FAILURE = re.compile(r"\bik\b|collision|not achievable")
+
+
+def failure_kind(error: BaseException) -> MotionOutcomeKind:
+    """``"ik"`` when *error* names an IK or collision failure, else ``"error"``.
+
+    ``"ik"`` is the one non-ok kind the spatial learners read (#1499 O4): the
+    target itself could not be reached. The SDK reports it only as text.
+    """
+    return "ik" if _IK_FAILURE.search(str(error).lower()) else "error"
 
 
 def as_outcome(result: bool | MotionOutcome | None) -> MotionOutcome:

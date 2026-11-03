@@ -15,8 +15,9 @@ This file tracks decisions that affect public behavior, repo structure, and long
    between chunks. A failed, malformed, non-finite, torque-off or impossible read refuses (`reference`). The WS pose
    cache stays for observation only.
 4. **MP4 (O4). No refusal kind feeds the gaze or workspace-bounds learners.** The motor worker books a success only
-   on an ok `MotionOutcome`, and re-syncs Selfy's pose mirror after any other outcome. (PR 2 adds the enqueue ticket
-   that tells the tools the real outcome; a tool failure still reaches the tool-outcome path, as before.)
+   on an ok `MotionOutcome`, and re-syncs Selfy's pose mirror after any other outcome. PR 2 adds the enqueue ticket that
+   tells the tools the real outcome (a tool failure still reaches the tool-outcome path, as before), and DN books a
+   move on its own tick from that outcome. Only a completed move or an `ik` failure teaches the spatial learners.
 5. **MP5 (O5). Lifecycle motion goes through the controller**, and the lint extension to the SDK's lifecycle calls
    lands in PR 3. The no-motion facade for `Selfy.mini` is a follow-up.
 6. **MP6 (O6). `automatic_body_yaw: true` is a typed config error** (`InvalidConfigError`) at construction. The

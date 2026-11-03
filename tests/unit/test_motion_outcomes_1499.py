@@ -531,7 +531,7 @@ def test_look_at_books_a_refused_automatic_turn_as_a_failure(daemon):
 
     selfy.turn_around = lambda *a, **kw: MotionOutcome.refused("limit", "cannot fit")  # type: ignore[method-assign]
     selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=_Pain())
-    assert completes == [False]
+    assert completes == []  # it never started; PR 2b's gates pin the turn that started and failed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -753,9 +753,9 @@ def test_dn_books_a_refused_turn_as_not_executed():
     dn = DefaultNetwork.__new__(DefaultNetwork)
     turn = ActionProposal(behavior_name="b", action_type="turn_around", target=None, priority=1.0, confidence=1.0)
     dn._maxim = _Maxim(MotionOutcome.refused("limit", "cannot fit"))
-    assert dn._dispatch_action_to_motor(turn, 5.0) == (False, False)
+    assert dn._dispatch_action_to_motor(turn, 5.0).completed.result(timeout=1.0).kind == "limit"
     dn._maxim = _Maxim(MotionOutcome(ok=True))
-    assert dn._dispatch_action_to_motor(turn, 5.0) == (True, False)
+    assert dn._dispatch_action_to_motor(turn, 5.0).completed.result(timeout=1.0).ok
 
 
 def test_headless_selfy_queues_nothing():
@@ -844,8 +844,6 @@ def test_a_cancelled_no_op_is_refused_not_reported_done(daemon):
 # PR 2b, gate 13: DN books a move's outcome on its own tick
 # ─────────────────────────────────────────────────────────────────────────────
 
-_RED_2B = pytest.mark.xfail(strict=True, reason="#1499 PR 2b: not built yet")
-
 
 class _SpyMap:
     """Stands in for the spatial map: every target reachable, every booking kept."""
@@ -882,7 +880,6 @@ def _look(target=(100.0, 100.0), **metadata):
     )
 
 
-@_RED_2B
 def test_dn_books_nothing_until_its_tick_after_the_move_finished():
     from maxim.hardware.controller import MotionOutcome, MotionTicket
 
@@ -912,10 +909,9 @@ def test_dn_books_nothing_until_its_tick_after_the_move_finished():
     assert applied_on == [threading.get_ident()] and motor.ident not in applied_on
     assert dn._spatial_map.booked == [((100.0, 100.0), True)] and published == [True]
     assert dn._gaze_history.get_current_position() == (100.0, 100.0)
-    assert dn.get_stats()["actions_executed"] == 1
+    assert dn._stats["actions_executed"] == 1
 
 
-@_RED_2B
 @pytest.mark.parametrize("kind", ["rate", "path", "limit", "superseded", "cancelled", "partial", "error"])
 def test_a_move_that_did_not_complete_feeds_no_dn_learner(kind):
     from maxim.hardware.controller import MotionOutcome, MotionTicket
@@ -928,10 +924,9 @@ def test_a_move_that_did_not_complete_feeds_no_dn_learner(kind):
     assert dn._spatial_map.booked == []
     assert dn._gaze_history.get_current_position() is None
     assert published == [False]
-    assert dn.get_stats()["actions_executed"] == 0
+    assert dn._stats["actions_executed"] == 0
 
 
-@_RED_2B
 def test_an_ik_outcome_teaches_the_spatial_map_a_failure():
     from maxim.hardware.controller import MotionOutcome, MotionTicket
 
@@ -941,7 +936,6 @@ def test_an_ik_outcome_teaches_the_spatial_map_a_failure():
     assert dn._spatial_map.booked == [((100.0, 100.0), False)]
 
 
-@_RED_2B
 def test_a_raising_dn_handler_is_logged_and_the_next_outcome_still_applies(caplog):
     from maxim.hardware.controller import MotionOutcome, MotionTicket
 
@@ -957,6 +951,7 @@ def test_a_raising_dn_handler_is_logged_and_the_next_outcome_still_applies(caplo
 
     dn._record_movement_result = _raises_once  # type: ignore[method-assign]
     dn._execute_action(_look((10.0, 10.0)))
+    dn._gaze_history._last_move_time -= 60.0  # past the dwell, so the second move is issued
     dn._execute_action(_look((20.0, 20.0)))
     with caplog.at_level(logging.WARNING):
         dn._drain_motion_outcomes()
@@ -977,7 +972,6 @@ def test_the_inbox_drains_while_dn_is_inhibited():
     assert dn._spatial_map.booked == [((100.0, 100.0), True)]
 
 
-@_RED_2B
 def test_the_dwell_gate_starts_at_dispatch_as_before():
     """``record_gaze`` also starts the dwell. Booked only at completion, DN would re-issue the move every tick."""
     from maxim.hardware.controller import MotionOutcome, MotionTicket
@@ -995,7 +989,6 @@ def test_the_dwell_gate_starts_at_dispatch_as_before():
     assert dn._gaze_history.should_move((400.0, 300.0))[0]  # booking the arrival did not restart it
 
 
-@_RED_2B
 def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
     from maxim.hardware.controller import MotionOutcome, MotionTicket
 
@@ -1022,7 +1015,6 @@ def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
     assert already.look_opposite(duration=0.5) is False  # it never started
 
 
-@_RED_2B
 def test_an_ik_exception_in_the_motor_callable_reads_as_ik(daemon):
     """Wire 7, Executor 7: run_motion catches the exception, so DN's own classifier no longer sees it."""
     from maxim.embodied_runtime.workers import QueuedMotion, run_motion
@@ -1041,6 +1033,27 @@ def test_an_ik_exception_in_the_motor_callable_reads_as_ik(daemon):
 # ─────────────────────────────────────────────────────────────────────────────
 # PR 2b, gate 14: the pain bridge's start is the move's own, at accept
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_an_identical_move_while_the_first_is_queued_answers_with_the_first(daemon):
+    """The queue window: the mirror holds the queued target, so the retry is a no-op that must not report ok."""
+    from maxim.hardware.controller import MotionOutcome
+
+    selfy = _selfy(controller(daemon), daemon)
+    stop = _start_worker(selfy)
+    release, started = threading.Event(), threading.Event()
+    try:
+        selfy._motor_queue.put(_blocker(release, started))
+        assert started.wait(2.0)
+        first = selfy.move(0.0, 0.0, 0.0, 0.0, 0.0, 10.0, duration=1.0)
+        retry = selfy.move(0.0, 0.0, 0.0, 0.0, 0.0, 10.0, duration=1.0)
+        assert retry is first and not retry.completed.done()
+        selfy._clear_motor_queue()
+        assert isinstance(retry.completed.result(timeout=1.0), MotionOutcome)
+        assert _outcome_kind(retry) == "superseded"
+    finally:
+        release.set()
+        stop.set()
 
 
 def test_a_raising_on_accept_is_logged_and_accepted_still_resolves(caplog):
@@ -1075,7 +1088,6 @@ class _Network:
         self._pain_bridge = bridge
 
 
-@_RED_2B
 def test_a_queued_look_at_records_its_start_only_when_it_is_accepted(daemon):
     """Wire 2: with the start at enqueue, B's start retired A and A's pain was booked against B."""
     bridge, _ = _pain_bridge()
@@ -1098,7 +1110,6 @@ def test_a_queued_look_at_records_its_start_only_when_it_is_accepted(daemon):
         stop.set()
 
 
-@_RED_2B
 def test_a_look_at_replaced_before_it_was_accepted_records_nothing(daemon):
     bridge, _ = _pain_bridge()
     selfy = _selfy(controller(daemon), daemon)
@@ -1117,7 +1128,6 @@ def test_a_look_at_replaced_before_it_was_accepted_records_nothing(daemon):
         stop.set()
 
 
-@_RED_2B
 def test_a_completion_by_id_never_books_the_move_that_replaced_it():
     bridge, nac = _pain_bridge()
     old = bridge.record_action_start("a", target_yaw=1.0)
@@ -1131,7 +1141,6 @@ def test_a_completion_by_id_never_books_the_move_that_replaced_it():
     assert bridge._pending is None and bridge._detector._pending_target is None
 
 
-@_RED_2B
 def test_two_concurrent_starts_retire_each_old_event_once_and_leak_nothing(monkeypatch):
     """Wire scoped S2: forced by holding both starts inside NAc, which the atomic retire serializes."""
     bridge, nac = _pain_bridge()
@@ -1170,7 +1179,6 @@ def _risky_pain(starts: list, completes: list):
     return _Pain()
 
 
-@_RED_2B
 def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemon):
     """Wire scoped S1: a start before the dispatch waits behind A, then books A's pain against the turn."""
     ctl = controller(daemon)
@@ -1193,7 +1201,6 @@ def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemo
     assert len(starts) == 1 and completes == [(True, "turn-event")]
 
 
-@_RED_2B
 def test_a_turn_refused_before_its_first_sdk_call_books_nothing_but_one_that_started_does(daemon):
     from maxim.hardware.controller import MotionOutcome, current_motion_ticket, mark_motion_accepted
 

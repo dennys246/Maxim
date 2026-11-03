@@ -212,35 +212,40 @@ class PainCircuitBridge:
         """
         # A new action replaces the pending one, whose NAc event is retired unbooked (#1209). The new
         # movement is installed only once NAc has accepted its event, so a start that raises leaves nothing
-        # pending rather than the previous movement under the new name.
-        self._retire(self._pending)
-        event_id = self._nac.record_event(
-            event_type="movement",
-            event_signature=action_signature,
-            context=context,
-        )
-        pending = _PendingMovement(action_signature, event_id, time.time(), context or {})
+        # pending rather than the previous movement under the new name. All under one hold, with the
+        # detector's target: the motor thread and a turn's thread both start actions (#1499 5.6), and two
+        # starts each retiring the same old event would overwrite one new event unretired.
         with self._pending_lock:
-            self._pending = pending
-
-        # Set movement target for failure detection (if any targets provided)
-        has_target = any(t is not None for t in (target_yaw, target_pitch, target_x, target_y, target_z, target_roll))
-        if has_target:
-            self._detector.set_movement_target(
-                yaw=target_yaw,
-                pitch=target_pitch,
-                x=target_x,
-                y=target_y,
-                z=target_z,
-                roll=target_roll,
-                action_signature=action_signature,
+            replaced, self._pending = self._pending, None
+            if replaced is not None:
+                self._nac.discard_pending_event(replaced.event_id)
+            event_id = self._nac.record_event(
+                event_type="movement",
+                event_signature=action_signature,
+                context=context,
             )
+            self._pending = _PendingMovement(action_signature, event_id, time.time(), context or {})
+
+            # Set movement target for failure detection (if any targets provided)
+            has_target = any(
+                t is not None for t in (target_yaw, target_pitch, target_x, target_y, target_z, target_roll)
+            )
+            if has_target:
+                self._detector.set_movement_target(
+                    yaw=target_yaw,
+                    pitch=target_pitch,
+                    x=target_x,
+                    y=target_y,
+                    z=target_z,
+                    roll=target_roll,
+                    action_signature=action_signature,
+                )
 
         logger.debug("Action started: %s (event_id=%s)", action_signature, event_id)
 
         return event_id
 
-    def record_action_complete(self, success: bool = True) -> None:
+    def record_action_complete(self, success: bool = True, *, event_id: str | None = None) -> None:
         """Record that an action completed without pain.
 
         Call this when a movement completes successfully without triggering
@@ -248,8 +253,15 @@ class PainCircuitBridge:
 
         Args:
             success: Whether the action was successful.
+            event_id: The id ``record_action_start`` returned. Given, this
+                completes that event only: a later action that replaced it is
+                left alone, target and all (#1499 5.6). None means the pending
+                action, whichever it is.
         """
         pending = self._pending
+        if event_id is not None and (pending is None or pending.event_id != event_id):
+            logger.debug("Action %s already replaced: its completion books nothing", event_id)
+            return
         try:
             # Clear the movement target whether or not we learn: the action has ended either way
             self._detector.clear_movement_target()

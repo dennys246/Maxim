@@ -751,20 +751,20 @@ class MediaLoopMixin:
         self._media_lock = None
         self._live_stop_event = None
 
-    def _enqueue_motor(self, fn, *args, **kwargs) -> MotionTicket:
+    def _enqueue_motor(self, fn, *args, _on_accept=None, **kwargs) -> MotionTicket:
         """Queue a motor command and return its ticket (#1499 5.6); with no queue, run it now.
 
         The synchronous path goes through the worker's own ``run_motion``, so
         the ticket, the learners and the mirror re-read behave the same either
-        way, and the ticket it returns is already resolved.
+        way, and the ticket it returns is already resolved. ``_on_accept`` runs
+        when the move starts (the ticket's ``on_accept``).
         """
+        ticket = MotionTicket(on_accept=_on_accept)
         q = getattr(self, "_motor_queue", None)
         if q is not None:
-            ticket = q.put(fn, *args, **kwargs)
-        else:
-            ticket = MotionTicket()
-            ticket.claim()
-            run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
+            return q.submit(ticket, fn, args, kwargs)
+        ticket.claim()
+        run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
         return ticket
 
     def _clear_motor_queue(self) -> int:
