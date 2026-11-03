@@ -171,7 +171,7 @@ maxim --sim "test basic recall" --interactive false --sim-max-turns 5
 - **Live display switching** — type `/display clean`, `/display bio`, or `/display debug` to change verbosity on the fly.
 - **Scroll the log** — arrow up/down (3 lines), left (page up), right (jump to bottom). Scroll position holds when scrolled up.
 - **Pause/resume** — `/pause` stops the orchestrator from sending probes. You can talk to the agent freely while paused. `/resume` continues.
-- **Post-sim review** — when the simulation finishes, the report appears in the scrollable log. You can scroll through it, then type a new goal to run another simulation or press Enter to finish. The narrator's memory carries over to the next run; in a plain `--sim` run the agent under test starts fresh for now ([#1454](https://github.com/dennys246/Maxim/issues/1454)).
+- **Post-sim review** — when the simulation finishes, the report appears in the scrollable log. You can scroll through it, then type a new goal to run another simulation or press Enter to finish. The narrator's memory carries over to the next run, the agent under test keeps its episodic memory, causal links, EC and ATL, and the run's settings carry too (the sandbox, the models, the turn limits). A campaign's own inputs do not, and `--report-json` describes the last run.
 - **End-of-sim review** — when the simulation finishes, the display waits for you to press Enter before showing the report. Scroll the logs at your own pace.
 
 **Display layout:**

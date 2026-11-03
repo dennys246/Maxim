@@ -7,8 +7,9 @@ unchanged: each phase below is the tail's code verbatim, in the tail's order, re
 ``start_simulation_mode`` for a new goal, and the characterization harness patches its reader through
 ``orchestrator``) and calls the phases around it:
 
-    end_run (shut_down_run -> release_run_resources -> save_run_report -> roundup_and_emit_report)
-    -> (the post-sim prompt in orchestrator.py, or print_run_report) -> build_simulation_result
+    end_run (shut_down_run -> release_run_resources -> save_run_report -> run_roundup)
+    -> (the post-sim prompt in orchestrator.py, when the run is interactive)
+    -> finish_run (emit_requested_report -> print_run_report, without the prompt -> build_simulation_result)
 
 ``_resolve_finish_reason`` and ``_sim_provenance`` moved with the code: the tail was their only caller.
 
@@ -416,7 +417,6 @@ def save_run_report(
         build_report,
         save_report,
         save_action_log,
-        save_aut_state,
     )
 
     duration = time.time() - start_time
@@ -533,15 +533,7 @@ def save_run_report(
             aut_mem = len(aut_hippocampus) if aut_hippocampus else 0
             aut_links = sum(len(v) for v in aut_nac._links.values()) if aut_nac else 0
             display_status(f"Saving AUT state ({aut_mem} memories, {aut_links} causal links)...")
-        save_aut_state(
-            hippocampus=aut_hippocampus,
-            nac=aut_nac,
-            base_dir=report_dir,
-            session_id=report.session_id,
-            ec=aut_memory_hub.ec if aut_memory_hub is not None else None,
-            atl=aut_memory_hub.atl if aut_memory_hub is not None else None,
-            scn=aut_memory_hub.scn if aut_memory_hub is not None else None,
-        )
+        save_session_aut_state(tail, report.session_id, report_dir)
 
     # Copy experiment log to report directory (if any experiments were recorded)
     if experiment_log is not None and len(experiment_log) > 0:
@@ -556,8 +548,24 @@ def save_run_report(
     return report, report_dir, duration, finish_reason
 
 
-def roundup_and_emit_report(tail: SimTail, report: Any, report_dir: str) -> None:
-    """Run the LLM roundup into the saved report, and emit the machine-readable report when one was requested."""
+def save_session_aut_state(tail: SimTail, session_id: str, report_dir: str) -> None:
+    """Snapshot the AUT's stores into the session directory, for ``--resume-sim`` and ``/new`` to read back."""
+    from maxim.simulation.report import save_aut_state
+
+    hub = tail.aut_memory_hub
+    save_aut_state(
+        hippocampus=tail.aut_hippocampus,
+        nac=tail.aut_nac,
+        base_dir=report_dir,
+        session_id=session_id,
+        ec=hub.ec if hub is not None else None,
+        atl=hub.atl if hub is not None else None,
+        scn=hub.scn if hub is not None else None,
+    )
+
+
+def run_roundup(tail: SimTail, report: Any, report_dir: str) -> None:
+    """Run the LLM roundup into the saved report."""
     from maxim.simulation.report import analyze_simulation, save_report
     from maxim.simulation.sim_logger import display_status
 
@@ -582,10 +590,22 @@ def roundup_and_emit_report(tail: SimTail, report: Any, report_dir: str) -> None
     elif llm_router is not None:
         display_status("Skipping LLM roundup (session cost ceiling reached)")
 
-    _emit_report_json(report)
+
+def generative_for_new_goal(goal: str, *, generative: bool, mode: str, arc_yaml: str | None) -> bool:
+    """Whether the ``/new`` run is generative (owner decision 2026-11-02, amending #1453's list for this one setting).
+
+    An operator's choice carries: a named arc, or the ``dm`` mode, where the CLI chose the flag (``--dm <goal>`` asks
+    for a generative campaign whatever the goal says; a YAML DM campaign is not generative). On plain ``--sim`` the
+    flag was derived from the first goal, so the new goal derives its own, as a fresh ``--sim`` would: a carried flag
+    would run the typed goal inside an unrelated arc."""
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    return generative if arc_yaml or mode == "dm" else select_arc_for_goal(goal) is not None
 
 
-def _emit_report_json(report: Any) -> None:
+def emit_requested_report(report: Any) -> None:
+    """The machine-readable report, written by the run the caller gets (#1457, owner decision 2026-11-02): a run that
+    re-enters on ``/new`` never reaches this call, so report and result always match."""
     # Emit machine-readable report when --report-json was requested via
     # MAXIM_REPORT_JSON.  Set by cli.py from args.report_json so the env
     # var is the contract — orchestrator does NOT import argparse.  Pop
@@ -612,7 +632,7 @@ def end_run(tail: SimTail) -> tuple[Any, str, float, str]:
     shut_down_run(tail)
     release_run_resources(tail)
     report, report_dir, duration, finish_reason = save_run_report(tail)
-    roundup_and_emit_report(tail, report, report_dir)
+    run_roundup(tail, report, report_dir)
     return report, report_dir, duration, finish_reason
 
 
@@ -667,7 +687,6 @@ def _end_stopped_run(tail: SimTail, stop: StopRequest) -> tuple[Any, str, float,
         )
     report, report_dir, duration, finish_reason = saved
     logger.warning("LLM roundup skipped: a process stop is requested (%s)", stop.reason)
-    _emit_report_json(report)
     return report, report_dir, duration, finish_reason
 
 
@@ -685,6 +704,16 @@ def print_run_report(tail: SimTail, report: Any, report_dir: str) -> None:
             display.stop()
             set_active_display(None)  # else the report is routed into the stopped panel and never printed
     print_report(report, session_dir=Path(report_dir) / report.session_id)
+
+
+def finish_run(
+    tail: SimTail, report: Any, report_dir: str, duration: float, finish_reason: str, *, show_report: bool
+) -> SimulationResult:
+    """The returned run's last steps. The machine-readable report goes first, so a failed print cannot cost it."""
+    emit_requested_report(report)
+    if show_report:
+        print_run_report(tail, report, report_dir)
+    return build_simulation_result(tail, report, report_dir, duration, finish_reason)
 
 
 def build_simulation_result(

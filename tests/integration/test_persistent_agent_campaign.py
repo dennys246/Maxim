@@ -321,8 +321,7 @@ class TestNonePathUnchanged:
         # deregisters those tools; neither takes a cwd) — pin that too.
         assert 'setdefault("MAXIM_ALLOW_GIT_DIFF"' not in helper_src
         assert 'setdefault("MAXIM_ALLOW_RUN_TESTS"' not in helper_src
-        # /new recursion keeps the injection
-        assert "persistent_agent=persistent_agent" in src
+        # /new keeps the injection: orchestrator.NEW_RUN_CARRIES, pinned by test_new_slice_1453_1454_1457.py
 
     def test_sandbox_helper_builds_own_bus_by_default(self):
         sandbox, _, pain_bus = _setup_sim_sandbox(backend="tmpdir", populate=False)

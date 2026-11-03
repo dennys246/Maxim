@@ -15,8 +15,9 @@ The two functions were nested in ``start_simulation_mode`` (1.3.2 orchestrator d
 slice 0) and moved byte-for-byte apart from the closure-to-parameter rewrite (rule (d)): each
 closure variable the body reads is now a keyword-only parameter of the SAME name, so the body
 text did not change. The one closure rebind, ``_new_goal`` in the post-sim reader, became the
-return value. One later edit (2026-10-26, #1454 interim): the post-sim prompt's text dropped its false
-"memory carries over" promise, as the orchestrator's panel prompt did.
+return value. Two later edits: the ``/new`` slice (#1454), after which the post-sim reader takes its prompt as a parameter, so the
+panel and the reader show the one constant, ``orchestrator.POST_SIM_PROMPT``; and #1344, which removed the dead SIGTERM handler
+and lets a process stop end the post-sim prompt.
 
   - ``stdin_reader_raw``: the ``sim.stdin`` thread's target in interactive mode. It still falls
     back to the caller's ``_stdin_reader_line`` when stdin is not a TTY, termios is missing or
@@ -261,8 +262,9 @@ def stdin_reader_raw(
             display.clear_prompt()
 
 
-def read_post_sim_goal_raw(*, _stdin: Any, display: Any) -> str:
-    """The post-sim prompt's raw read loop: the typed goal, or "" on Enter alone, Ctrl+C or a failure."""
+def read_post_sim_goal_raw(*, _stdin: Any, display: Any, prompt: str) -> str:
+    """The post-sim prompt's raw read loop: the typed goal, or "" on Enter alone or a failure. Ctrl+C arrives as
+    the signal (cbreak keeps ISIG): the caller handles it."""
     _new_goal = ""
     try:
         import os as _os3
@@ -315,7 +317,7 @@ def read_post_sim_goal_raw(*, _stdin: Any, display: Any) -> str:
                 # Update prompt with typed text
                 if display is not None:
                     typed = "".join(_buf3)
-                    display.set_prompt(f"Tell me a new simulation to imagine, or press Enter to finish.\n\n> {typed}")
+                    display.set_prompt(f"{prompt}{typed}")
         finally:
             _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _old3)
     except Exception:

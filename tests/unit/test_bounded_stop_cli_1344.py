@@ -314,7 +314,7 @@ def test_g6_the_post_sim_prompt_returns_when_a_stop_is_requested() -> None:
     stdin = os.fdopen(slave, "r")
     result: dict[str, Any] = {}
     reader = threading.Thread(
-        target=lambda: result.setdefault("goal", read_post_sim_goal_raw(_stdin=stdin, display=None))
+        target=lambda: result.setdefault("goal", read_post_sim_goal_raw(_stdin=stdin, display=None, prompt="> "))
     )
     reader.daemon = True
     reader.start()
