@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import clamp_finite, floor_duration, require_duration, require_finite
+import maxim.hardware.controller as _hc
+from maxim.hardware.controller import (
+    DurationPolicy,
+    MotionOutcome,
+    MotionTicket,
+    as_outcome,
+    clamp_finite,
+    policy_duration,
+    require_finite,
+)
 from maxim.inference.segment_vision import passive_observation
 from maxim.tools.base import Effect, Tool, ToolResult
 from maxim.utils.logging import warn
@@ -38,8 +48,46 @@ def _motion_number(params: dict[str, Any], key: str) -> float | None:
 
 def _motion_duration(params: dict[str, Any], key: str, default: float) -> float:
     """Absent or None takes the tool default; a present duration must lie in [0.1, 10] s (#1496)."""
+    return _motion_duration_policy(params, key, default)[0]
+
+
+def _motion_duration_policy(params: dict[str, Any], key: str, default: float) -> tuple[float, DurationPolicy]:
+    """(duration, policy): a duration the model gave is ``"exact"``, the tool default ``"at_least"`` (#1499 5.5).
+
+    An exact duration is refused when the move cannot be done safely in it; a
+    default one is stretched to the rate cap and split along the path.
+    """
     value = _motion_number(params, key)
-    return floor_duration(default) if value is None else require_duration(value)
+    policy: DurationPolicy = "at_least" if value is None else "exact"
+    return policy_duration(default if value is None else value, policy), policy
+
+
+def _policy_for(params: dict[str, Any], key: str) -> DurationPolicy:
+    """``"exact"`` when the model gave *key*, else ``"at_least"``."""
+    return "exact" if _motion_number(params, key) is not None else "at_least"
+
+
+def _await_motion_start(ticket: Any) -> MotionOutcome | None:
+    """Wait for a queued command's ``accepted`` stage: None once it started, else the refusal (#1499 5.6).
+
+    The tool waits on ``accepted`` only, since that is when the reason is
+    known. Past ``MOTION_ACCEPT_WAIT_S`` the ticket is cancelled, which holds
+    until ``accepted`` (the controller then refuses before its first SDK
+    call), so the move never runs behind a "not started". A cancel that lost
+    the race finds ``accepted`` already resolved, so the result is read at once.
+    """
+    if not isinstance(ticket, MotionTicket):
+        return MotionOutcome.refused("error", f"the runtime returned no motion ticket ({type(ticket).__name__})")
+    try:
+        return ticket.accepted.result(timeout=_hc.MOTION_ACCEPT_WAIT_S)
+    except FuturesTimeout:
+        ticket.cancel("not started: the motor is busy")
+    return ticket.accepted.result(timeout=0)  # resolved: by the cancel, or by the accept that beat it
+
+
+def _motion_error(outcome: MotionOutcome) -> str:
+    """The model-facing text of a motion that did not happen: its kind and the controller's reason."""
+    return f"motion not done ({outcome.kind}): {outcome.reason or 'no reason given'}"
 
 
 def _get_robot_from_registry(
@@ -277,7 +325,7 @@ class TrackTargetTool(Tool):
     input_schema = {
         "target_class": (str, None),  # optional - specific object class to track (e.g., "backpack", "person", "cup")
         "deadzone_px": (int, 40),  # Minimum offset from center to trigger movement
-        "duration_s": (float, 0.3),  # Movement duration
+        "duration_s": (float, None),  # Movement duration; absent = 0.3 s, stretched as needed (#1499 5.5)
         "prefer_people": (bool, True),  # Prioritize people over other objects (ignored if target_class specified)
         "robot_id": (str, None),  # Optional robot ID for multi-robot support
     }
@@ -473,17 +521,23 @@ class TrackTargetTool(Tool):
                     u=int(clamped_u),
                     v=int(clamped_v),
                     duration=duration_s,
+                    duration_policy=_policy_for(kwargs, "duration_s"),
                 )
-                success = robot.look_at_pixel(target)
-                if not success:
-                    return ToolResult(success=False, error="Look-at command failed")
+                outcome = as_outcome(robot.look_at_pixel(target))
+                if not outcome:
+                    return ToolResult(success=False, error=_motion_error(outcome))
             else:
-                maxim.look_at_image(
-                    int(clamped_u),
-                    int(clamped_v),
-                    duration=duration_s,
-                    perform_movement=True,
+                refusal = _await_motion_start(
+                    maxim.look_at_image(
+                        int(clamped_u),
+                        int(clamped_v),
+                        duration=duration_s,
+                        perform_movement=True,
+                        duration_policy=_policy_for(kwargs, "duration_s"),
+                    )
                 )
+                if refusal is not None:
+                    return ToolResult(success=False, error=_motion_error(refusal))
 
             self._current_look_u = clamped_u
             self._current_look_v = clamped_v
@@ -772,7 +826,7 @@ class MoveTool(Tool):
         # in [0.1, 10] s, an absent one takes the 1.0 s default.
         try:
             x, y, z, roll, pitch, yaw = (_motion_number(kwargs, k) for k in ("x", "y", "z", "roll", "pitch", "yaw"))
-            duration = _motion_duration(kwargs, "duration", 1.0)
+            duration, duration_policy = _motion_duration_policy(kwargs, "duration", 1.0)
             target_x, target_y = _motion_number(kwargs, "target_x"), _motion_number(kwargs, "target_y")
         except MotionRefused as e:
             return ToolResult(success=False, error=str(e))
@@ -830,11 +884,12 @@ class MoveTool(Tool):
                     head_pitch=math.radians(pitch) if pitch is not None else None,
                     head_yaw=math.radians(yaw) if yaw is not None else None,
                     duration=duration,
+                    duration_policy=duration_policy,
                 )
 
-                success = robot.goto_target(target)
-                if not success:
-                    return ToolResult(success=False, error="Motion command failed")
+                outcome = as_outcome(robot.goto_target(target))
+                if not outcome:
+                    return ToolResult(success=False, error=_motion_error(outcome))
 
                 # Honesty (2026-08-07 safety fold): echoing the COMMANDED
                 # angles after the controller clamped them is the
@@ -869,15 +924,13 @@ class MoveTool(Tool):
             if move_fn is None or not callable(move_fn):
                 return ToolResult(success=False, error="Maxim instance does not support move()")
 
-            move_fn(
-                x=x,
-                y=y,
-                z=z,
-                roll=roll,
-                pitch=pitch,
-                yaw=yaw,
-                duration=duration,
+            # Selfy queues the move (#1499 5.6): report what became of it, not that it was queued.
+            ticket = move_fn(
+                x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw, duration=duration, duration_policy=duration_policy
             )
+            refusal = _await_motion_start(ticket)
+            if refusal is not None:
+                return ToolResult(success=False, error=_motion_error(refusal))
 
             return ToolResult(
                 success=True,
@@ -943,6 +996,21 @@ def _focus_result_note(
             else "motion not verified (no pose readback)"
         )
     return ambiguous
+
+
+def _pre_motion_yaw(robot: Any) -> float | None:
+    """focus_on_sound's PRE-motion head yaw, body-relative degrees, from the controller; None when unread."""
+    import math as _math
+
+    pre_yaw: float | None = None
+    try:
+        _gp = getattr(robot, "get_current_pose", None)
+        _pre = _gp() if callable(_gp) else None
+        if _pre and "yaw" in _pre and "body_yaw" in _pre:
+            pre_yaw = _math.degrees(float(_pre["yaw"])) - _math.degrees(float(_pre["body_yaw"]))
+    except Exception:
+        __import__("logging").getLogger(__name__).debug("focus_on_sound: pre-motion readback failed", exc_info=True)
+    return pre_yaw
 
 
 class FocusOnSoundTool(Tool):
@@ -1129,20 +1197,14 @@ class FocusOnSoundTool(Tool):
             # angle re-opens the exact bug this tool exists to close, so
             # take the reading from the controller, in the same
             # world-minus-body frame the post-motion readback uses.
-            pre_yaw: float | None = None
-            try:
-                _gp = getattr(robot, "get_current_pose", None)
-                _pre = _gp() if callable(_gp) else None
-                if _pre and "yaw" in _pre and "body_yaw" in _pre:
-                    pre_yaw = _math.degrees(float(_pre["yaw"])) - _math.degrees(float(_pre["body_yaw"]))
-            except Exception:
-                __import__("logging").getLogger(__name__).debug(
-                    "focus_on_sound: pre-motion readback failed", exc_info=True
-                )
+            pre_yaw = _pre_motion_yaw(robot)
 
-            ok = robot.goto_target(MotionTarget(head_yaw=_math.radians(target_yaw), duration=duration_s))
-            if not ok:
-                return ToolResult(success=False, error="Motion command rejected by controller")
+            target = MotionTarget(
+                head_yaw=_math.radians(target_yaw), duration=duration_s, duration_policy=_policy_for(kwargs, "duration")
+            )
+            outcome = as_outcome(robot.goto_target(target))
+            if not outcome:
+                return ToolResult(success=False, error=_motion_error(outcome))
         except Exception as e:
             warn("focus_on_sound failed: %s", e, logger=getattr(maxim, "log", None))
             return ToolResult(success=False, error=str(e))
@@ -1296,9 +1358,90 @@ class MaximCommandTool(Tool):
         "update_interests",
     }
 
+    # The commands that queue motion: each waits for its move to start and reports the outcome (#1499 5.6).
+    _MOTION_COMMANDS: frozenset[str] = frozenset(
+        {"center_vision", "goto_pose", "look_at_image", "move", "move_antenna", "turn_around"}
+    )
+
     def __init__(self, maxim: Any) -> None:
         super().__init__()
         self._maxim = maxim
+
+    def _motion_command(self, maxim: Any, command: str, params: dict[str, Any]) -> ToolResult:
+        """Run one motion command and report what became of it, not that it was queued (#1499 5.6).
+
+        Numeric parameters are converted and checked before any motion (#1496):
+        garbage or NaN is a refusal returned to the model, never a default
+        motion (the old angle parse turned "abc" into 90 deg). A duration the
+        model gave is ``"exact"`` (#1499 5.5).
+        """
+        if command == "turn_around":
+            return self._turn_around(maxim, params)
+        try:
+            ticket, output = self._queue_motion(maxim, command, params)
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+        refusal = _await_motion_start(ticket)
+        if refusal is not None:
+            return ToolResult(success=False, error=_motion_error(refusal))
+        return ToolResult(success=True, output={"command": command, **output})
+
+    @staticmethod
+    def _queue_motion(maxim: Any, command: str, params: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+        """(ticket, output) for a queued motion command; raises on a bad parameter."""
+        policy = _policy_for(params, "duration")
+        duration = _motion_number(params, "duration")
+        if command == "center_vision":
+            return maxim.center_vision(duration=duration, duration_policy=policy), {}
+        if command == "goto_pose":
+            name = str(params.get("name", "centered"))
+            return maxim.goto_pose(name, duration=duration, duration_policy=policy), {"name": name}
+        if command == "look_at_image":
+            try:
+                u = int(params.get("u"))
+                v = int(params.get("v"))
+            except Exception:
+                raise ValueError("Missing u/v for look_at_image.") from None
+            perform_movement = bool(params.get("perform_movement", True))
+            ticket = maxim.look_at_image(
+                u, v, duration=duration, perform_movement=perform_movement, duration_policy=policy
+            )
+            return ticket, {"u": u, "v": v}
+        if command == "move":
+            axes = {axis: _motion_number(params, axis) for axis in ("x", "y", "z", "roll", "pitch", "yaw")}
+            return maxim.move(**axes, duration=duration, duration_policy=policy), {}
+        sides = {key: _motion_number(params, key) for key in ("right", "left", "angle")}
+        ticket = maxim.move_antenna(
+            right=sides["right"],
+            left=sides["left"],
+            angle=sides["angle"],
+            duration=duration,
+            method=params.get("method", "minjerk"),
+            degrees=bool(params.get("degrees", True)),
+            relative=bool(params.get("relative", False)),
+            duration_policy=policy,
+        )
+        return ticket, {}
+
+    @staticmethod
+    def _turn_around(maxim: Any, params: dict[str, Any]) -> ToolResult:
+        """Rotate the body when the head is at its yaw limit; a refused turn is an error with its reason (5.8)."""
+        # A missing angle or duration takes the default; a present one must be valid.
+        try:
+            angle = _motion_number(params, "angle")
+            angle = 90.0 if angle is None else angle
+            duration = _motion_number(params, "duration")
+            duration = 5.0 if duration is None else duration
+            recenter_head = bool(params.get("recenter_head", True))
+            turned = as_outcome(maxim.turn_around(angle, duration=duration, recenter_head=recenter_head))
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+        if not turned:
+            return ToolResult(success=False, error=_motion_error(turned))
+        return ToolResult(
+            success=True,
+            output={"command": "turn_around", "angle": angle, "duration": duration, "recenter_head": recenter_head},
+        )
 
     def execute(self, **kwargs: Any) -> ToolResult:
         maxim = self._maxim
@@ -1355,76 +1498,8 @@ class MaximCommandTool(Tool):
                         "interests": list(getattr(maxim, "interests", []) or []),
                     },
                 )
-            # Numeric parameters are converted and checked OUTSIDE the per-command
-            # handlers (#1496): garbage or NaN is a refusal returned to the model,
-            # never a default motion (the old angle parse turned "abc" into 90 deg).
-            if command == "goto_pose":
-                name = params.get("name", "centered")
-                duration = _motion_number(params, "duration")
-                try:
-                    maxim.goto_pose(str(name), duration=duration)
-                except Exception as e:
-                    return ToolResult(success=False, error=str(e))
-                return ToolResult(success=True, output={"command": command, "name": str(name)})
-            if command == "look_at_image":
-                try:
-                    u = int(params.get("u"))
-                    v = int(params.get("v"))
-                except Exception:
-                    return ToolResult(success=False, error="Missing u/v for look_at_image.")
-                duration = _motion_number(params, "duration")
-                perform_movement = params.get("perform_movement", True)
-                try:
-                    maxim.look_at_image(u, v, duration=duration, perform_movement=bool(perform_movement))
-                except Exception as e:
-                    return ToolResult(success=False, error=str(e))
-                return ToolResult(success=True, output={"command": command, "u": u, "v": v})
-            if command == "move":
-                axes = {axis: _motion_number(params, axis) for axis in ("x", "y", "z", "roll", "pitch", "yaw")}
-                duration = _motion_number(params, "duration")
-                try:
-                    maxim.move(**axes, duration=duration)
-                except Exception as e:
-                    return ToolResult(success=False, error=str(e))
-                return ToolResult(success=True, output={"command": command})
-            if command == "move_antenna":
-                sides = {key: _motion_number(params, key) for key in ("right", "left", "angle", "duration")}
-                try:
-                    maxim.move_antenna(
-                        right=sides["right"],
-                        left=sides["left"],
-                        angle=sides["angle"],
-                        duration=sides["duration"],
-                        method=params.get("method", "minjerk"),
-                        degrees=bool(params.get("degrees", True)),
-                        relative=bool(params.get("relative", False)),
-                    )
-                except Exception as e:
-                    return ToolResult(success=False, error=str(e))
-                return ToolResult(success=True, output={"command": command})
-            if command == "turn_around":
-                # Rotate the body when head is at yaw limits. A missing angle or
-                # duration takes the default; a present one must be valid.
-                angle = _motion_number(params, "angle")
-                angle = 90.0 if angle is None else angle
-                duration = _motion_number(params, "duration")
-                duration = 5.0 if duration is None else duration
-                recenter_head = bool(params.get("recenter_head", True))
-                try:
-                    turned = maxim.turn_around(angle, duration=duration, recenter_head=recenter_head)
-                except Exception as e:
-                    return ToolResult(success=False, error=str(e))
-                if turned is False:  # None (an implementation that reports nothing) keeps the old success
-                    return ToolResult(success=False, error="turn_around did not complete: the motion was rejected")
-                return ToolResult(
-                    success=True,
-                    output={
-                        "command": command,
-                        "angle": angle,
-                        "duration": duration,
-                        "recenter_head": recenter_head,
-                    },
-                )
+            if command in self._MOTION_COMMANDS:
+                return self._motion_command(maxim, command, params)
 
             fn = getattr(maxim, command, None)
             if not callable(fn):
@@ -1637,7 +1712,7 @@ class NoveltyTrackTool(Tool):
         "action": (str, "track"),  # "track", "query", "reset"
         "novelty_threshold": (float, 0.5),  # Min novelty to trigger movement
         "deadzone_px": (int, 40),  # Deadzone for movement
-        "duration_s": (float, 0.3),  # Movement duration
+        "duration_s": (float, None),  # Movement duration; absent = 0.3 s, stretched as needed (#1499 5.5)
         "top_k": (int, 5),  # Number of results for query action
         "class_filter": (list, None),  # Optional class IDs to filter
     }
@@ -1835,12 +1910,17 @@ class NoveltyTrackTool(Tool):
 
         # All gates passed - execute movement
         try:
-            maxim.look_at_image(
-                int(clamped_u),
-                int(clamped_v),
-                duration=duration_s,
-                perform_movement=True,
+            refusal = _await_motion_start(
+                maxim.look_at_image(
+                    int(clamped_u),
+                    int(clamped_v),
+                    duration=duration_s,
+                    perform_movement=True,
+                    duration_policy=_policy_for(kwargs, "duration_s"),
+                )
             )
+            if refusal is not None:
+                return ToolResult(success=False, error=_motion_error(refusal))
 
             # Update position tracking
             self._current_look_u = clamped_u

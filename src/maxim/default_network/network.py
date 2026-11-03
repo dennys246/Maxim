@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.default_network.arbiter import ArbiterConfig, PriorityArbiter
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import floor_duration
+from maxim.hardware.controller import as_outcome, floor_duration
 from maxim.attention import AttentionConfig, AttentionNetwork
 from maxim.attention import SalienceMap, SalienceMapConfig
 from maxim.attention import GazeController, GazeControllerConfig, GazeCommand, GazeState
@@ -1292,9 +1292,12 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 turn_angle = proposal.metadata.get("turn_angle", 90.0)
                 turn_duration = floor_duration(proposal.metadata.get("duration", 5.0))
                 if hasattr(self._maxim, "turn_around"):
-                    self._maxim.turn_around(turn_angle, duration=turn_duration)
-                    executed = True
-                    logger.info("Executing turn_around: %.0f° over %.1fs", turn_angle, turn_duration)
+                    # The turn is synchronous and returns its MotionOutcome (#1499 5.8): a refused
+                    # turn ('limit' at the body limit) was not executed and feeds no learner (O4).
+                    turned = as_outcome(self._maxim.turn_around(turn_angle, duration=turn_duration))
+                    executed = turned.ok
+                    result = "ok" if turned else f"not done ({turned.kind}): {turned.reason}"
+                    logger.info("turn_around %.0f° over %.1fs: %s", turn_angle, turn_duration, result)
         except MotionRefused as e:
             # By type, before the substring check below: a refusal is bad input,
             # not an IK failure the spatial map should learn from.

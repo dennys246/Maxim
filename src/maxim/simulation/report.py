@@ -292,13 +292,18 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
     context loaded from the SAME directory the stores were read from, that directory exists, and every store
     either loaded or was never written by the prior session (``absent``). A store written but not loaded
     (``failed:<Exc>``, ``skipped_persistent_agent``) or not attempted (``not_restored``) makes it false.
-    ``resumed_from_session`` names the resolved directory, and only when the resume loaded."""
+    ``resumed_from_session`` names the resolved directory, and only when the resume loaded. A ``/new`` carry
+    (``via``, #1454) has no resume prompt, so it loads on its stores alone, and at least one must have loaded."""
     stores = dict(resume.get("stores") or {})
     state_dir, context_dir = resume.get("state_dir"), resume.get("context_dir")
+    via = resume.get("via")
+    if via is not None:
+        context_ok = "loaded" in stores.values()
+    else:
+        context_ok = bool(resume.get("context_loaded")) and state_dir == context_dir
     loaded = bool(
-        resume.get("context_loaded")
+        context_ok
         and state_dir is not None
-        and state_dir == context_dir
         and Path(state_dir).is_dir()
         and all(stores.get(name) in _STORE_OK for name in RESUME_STORES)
     )
@@ -310,6 +315,8 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
         "stores": {name: stores.get(name, "not_restored") for name in RESUME_STORES},
         "resume_loaded": loaded,
     }
+    if via is not None:
+        out["via"] = via
     if loaded:
         out["resumed_from_session"] = Path(state_dir).name
     return out

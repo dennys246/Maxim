@@ -26,6 +26,9 @@ this before designing any arm, control or floor that runs through `maxim --sim` 
 - `report.py::resume_stamp` accepts a store that is `absent`, and a failed save is swallowed at debug, so
   `resume_loaded` does not prove the carry. Compare the stores at save and at load.
 - `serving_provenance.py::_session_index` numbers sessions (fresh 0, first resume 1, …): a free structural check.
+- A post-sim `/new` carries through the same restore, with no resume prompt, stamped `via: "/new"`. So `resume_loaded`
+  can be true with `context_loaded` false: under `via` it needs one store `loaded`, and a store this run has that the
+  session lacks is `missing`, not `absent`.
 - A notes store added to `RESUME_STORES` fires T1-16's trigger (an EARNED row).
 
 ## The narrator's resume prompt is not consumed on the cradle path, silently
