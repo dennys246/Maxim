@@ -760,10 +760,13 @@ class MediaLoopMixin:
         dispatch) until the next wake.
         """
         stop_event.set()
-        self._close_motor_queue()
-        robot = getattr(self, "_robot", None)
-        if robot is not None:
-            robot.stop_motion()
+        try:
+            self._close_motor_queue()
+            robot = getattr(self, "_robot", None)
+            if robot is not None:
+                robot.stop_motion()
+        except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)
+            self.log.error("Stopping motion at the live teardown failed: %s", e, exc_info=True)
         self._stop_media_io(media_lock)
 
     def _release_live_handles(self) -> None:

@@ -587,7 +587,8 @@ class RobotController(ABC):
         The live loop calls it first in its teardown, while DN and the agentic
         thread may still issue moves. The default does nothing; a controller
         with a stop latch overrides it, and then no path (queued or direct)
-        moves the robot after a stop.
+        moves the robot after a stop. A soft reconnect that finishes after the
+        stop calls it again, since a connect clears the latch.
         """
 
     def is_connected(self) -> bool:

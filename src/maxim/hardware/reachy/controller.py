@@ -658,8 +658,10 @@ class ReachyMiniController(RobotController):
         A successful wake or a new connect clears it; ``goto_sleep`` still runs
         (it latches anyway). Called first in the live teardown, so a body turn
         or a direct dispatch after a stop is refused too, not only a queued one.
+        Like a disconnect, it reports the robot not awake.
         """
         self._stop(by_sleep=False)
+        self._update_state(is_awake=False)
 
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""

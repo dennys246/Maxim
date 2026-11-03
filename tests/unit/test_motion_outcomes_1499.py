@@ -895,6 +895,69 @@ def test_a_new_connect_clears_the_teardowns_latch_but_not_a_sleeps(daemon):
     assert ctl.goto_target(MotionTarget(head_yaw=D(5), duration=1.0))
 
 
+def test_a_reconnect_that_finishes_after_the_stop_relatches_and_wakes_nothing():
+    """The latch's reader: the connect clears the teardown's latch, and the wake after it would move the robot."""
+    from maxim.embodied_runtime.connection import ConnectionMixin
+
+    calls: list[str] = []
+    stop = threading.Event()
+
+    class _Robot:
+        def reconnect(self, timeout, max_attempts):
+            stop.set()  # the live loop stops while the reconnect blocks
+            calls.append("reconnect")
+            return True
+
+        def stop_motion(self):
+            calls.append("stop_motion")
+
+        def wake_up(self):
+            calls.append("wake_up")
+
+        def start_recording(self):
+            calls.append("start_recording")
+
+    class _Host(ConnectionMixin):
+        def __init__(self):
+            self.log = logging.getLogger("test.motion_outcomes_1499")
+            self._robot = _Robot()
+            self._live_stop_event = stop
+            self._closed = False
+            self._simulation = False
+            self._woke_up = True
+            self.mode = "active"
+            self.mini = None
+            self._reconnect_lock = threading.Lock()
+
+        def _degrade_capabilities(self):
+            calls.append("degrade")
+
+    assert _Host()._soft_reconnect(reason="test") is False
+    assert calls == ["reconnect", "stop_motion"]
+
+
+def test_a_stop_that_raises_does_not_cost_the_rest_of_the_teardown(daemon, caplog):
+    selfy = _selfy(controller(daemon), daemon)
+
+    def _raises():
+        raise RuntimeError("the plugin's stop broke")
+
+    selfy._robot.stop_motion = _raises
+    io: list = []
+    selfy._stop_media_io = lambda lock: io.append(lock)  # type: ignore[method-assign]
+    with caplog.at_level(logging.ERROR):
+        selfy._begin_live_teardown(threading.Event(), "lock")
+    assert io == ["lock"] and "the plugin's stop broke" in caplog.text
+
+
+def test_the_teardowns_latch_reports_the_robot_not_awake(daemon):
+    ctl = controller(daemon)
+    seen: list[dict] = []
+    ctl._update_state = lambda **kw: seen.append(kw)  # type: ignore[method-assign]
+    ctl.stop_motion()
+    assert seen == [{"is_awake": False}]
+
+
 def test_the_sleep_pose_still_runs_after_the_teardown(daemon):
     """Shutdown parks the head after the teardown: the latch must not refuse ``goto_sleep``."""
     ctl = controller(daemon)
@@ -911,9 +974,9 @@ def test_the_live_teardown_fences_motion_first():
     from maxim.embodied_runtime.media_loop import MediaLoopMixin
 
     tree = ast.parse(textwrap.dedent(inspect.getsource(MediaLoopMixin.live)))
-    finals = [n.finalbody for n in ast.walk(tree) if isinstance(n, ast.Try) and n.finalbody]
-    outer = max(finals, key=len)
-    first = outer[0]
+    body = tree.body[0].body  # the method's own statements: its outermost try, not a nested one
+    outer = next(n for n in body if isinstance(n, ast.Try) and n.finalbody)
+    first = outer.finalbody[0]
     assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
     assert ast.unparse(first.value.func) == "self._begin_live_teardown"
 

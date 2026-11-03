@@ -270,6 +270,20 @@ class ConnectionMixin:
         except Exception:
             pass
 
+    def _stopped_during_reconnect(self) -> bool:
+        """True when the live loop stopped while the reconnect blocked: re-latch, and wake nothing (#1499).
+
+        The connect clears the teardown's latch (``stop_motion``), and the
+        wake after it would clear it too, so a robot stopped mid-reconnect
+        would move again until shutdown disconnects it.
+        """
+        stop_event = getattr(self, "_live_stop_event", None)
+        if not (getattr(self, "_closed", False) or (stop_event is not None and stop_event.is_set())):
+            return False
+        self.log.warning("Soft reconnect: the live loop stopped meanwhile; the robot stays stopped")
+        self._robot.stop_motion()
+        return True
+
     def _soft_reconnect(self, *, reason: str, error: object | None = None) -> bool:
         if getattr(self, "_closed", False):
             return False
@@ -361,6 +375,8 @@ class ConnectionMixin:
             if not self._robot.reconnect(timeout=30.0, max_attempts=1):
                 warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
                 self._degrade_capabilities()
+                return False
+            if self._stopped_during_reconnect():
                 return False
 
             try:

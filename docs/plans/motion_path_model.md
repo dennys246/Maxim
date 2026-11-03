@@ -900,7 +900,10 @@ synchronously. The worker also withdraws a command it took as the stop landed. A
 (`turn_around`, from DN's look-at at the yaw bound, DN's turn proposals and the tool) dispatch directly and still ran.
 **Owner (2026-11-03): latch at teardown, in 2b.** The teardown's first step, `_begin_live_teardown`, closes the queue
 and calls `RobotController.stop_motion()`, the Reachy controller's existing disconnect-style latch (cleared by a
-successful wake or a new connect; `goto_sleep` still runs), so one fence covers every path.
+successful wake or a new connect; `goto_sleep` still runs), so one fence covers every path. Its reader found the one
+way round it: a soft reconnect in flight at the stop connects (clearing the latch) and then wakes. It now re-checks the
+stop after the connect, re-latches and wakes nothing. A raising `stop_motion` (a plugin) is logged and the teardown
+goes on; the latch reports `is_awake=False`, as a disconnect does.
 
 ### Pre-merge review round and its deltas (2026-11-02)
 
