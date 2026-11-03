@@ -2941,12 +2941,6 @@ def test_exp63b_protocol_is_the_preregs() -> None:
     assert v.required_files("63b") == v.required_files("63")
 
 
-def _exp63b(mock_attempt, monkeypatch, variant: str = "pass") -> tuple[Path, dict]:
-    monkeypatch.setattr(h, "MOCK63B_VARIANT", variant)
-    rows = mock_attempt("63b")
-    return rows, _judge("63b", rows)
-
-
 def test_exp63b_the_real_seam_mock_passes_end_to_end(mock_attempt, monkeypatch, tmp_path) -> None:
     """The mock runs the shipped Hippocampus, enrichment pipeline, persistence and log formatter (only the LLM is
     stubbed), so a PASS here is the judge agreeing with the shipped code, not with itself."""
@@ -3345,7 +3339,7 @@ def test_exp63b_simulate_is_the_shipped_recall() -> None:
 # ── Exp 63b, hand-built cases: one per G4 condition of R3d, and G3's R3a outcomes (review round 1) ──────────────
 
 
-def _rec(rid: str, text: str, ts: float, seq: int, *, goal: str | None = None) -> dict:
+def _rec63b(rid: str, text: str, ts: float, seq: int, *, goal: str | None = None) -> dict:
     """A saved episode as ``EpisodicMemory.to_dict`` lays it out, holding only what the ranker reads."""
     return {"id": rid, "timestamp": ts, "capture_seq": seq, "perception": {"cli_input": text, "observations": {}},
             "context": {"active_goal": goal}, "action": {"tool_name": ""}, "outcome": {}}  # fmt: skip
@@ -3365,16 +3359,16 @@ def _decisive(records: list[dict], carried: set[str], ids, cue: str) -> dict:
 def test_r3d_a_carried_cue_win_that_displaces_a_lower_new_record_is_decisive() -> None:
     """The base case: two carried records hold both of the cue's words; three newer records hold one. Removing the
     carried ones lets two new records in, each holding fewer of the cue's words outside the goal."""
-    records = [_rec("C1", "the iron door", 1, 0), _rec("C2", "an iron door gate", 2, 1),
-               _rec("N1", "a wooden door", 10, 2), _rec("N2", "the cellar door", 11, 3), _rec("N3", "a red door", 12, 4)]  # fmt: skip
+    records = [_rec63b("C1", "the iron door", 1, 0), _rec63b("C2", "an iron door gate", 2, 1),
+               _rec63b("N1", "a wooden door", 10, 2), _rec63b("N2", "the cellar door", 11, 3), _rec63b("N3", "a red door", 12, 4)]  # fmt: skip
     out = _decisive(records, {"C1", "C2"}, ["C2", "C1", "N3"], "where is the iron door")
     assert out["conforms"] and out["decisive"] is True, out
 
 
 def test_r3d_an_equal_score_is_not_decisive() -> None:
     """G4.3 is STRICT: a displaced record holding as many of the cue's non-goal words is no loss."""
-    records = [_rec("A", "the iron door", 20, 0), _rec("B", "an iron door gate", 21, 1),
-               _rec("C", "a door", 5, 2), _rec("Y", "the door", 3, 3)]  # fmt: skip
+    records = [_rec63b("A", "the iron door", 20, 0), _rec63b("B", "an iron door gate", 21, 1),
+               _rec63b("C", "a door", 5, 2), _rec63b("Y", "the door", 3, 3)]  # fmt: skip
     out = _decisive(records, {"C"}, ["B", "A", "C"], "where is the iron door")
     assert out["conforms"] and out["decisive"] is False, out
 
@@ -3382,8 +3376,8 @@ def test_r3d_an_equal_score_is_not_decisive() -> None:
 def test_r3d_must_hold_in_every_valid_tie_ordering() -> None:
     """X and Y tie exactly below the cut: removing C lets in either. Displacing X (no non-goal word) would be
     decisive, displacing Y (as many as C) is not; one ordering that is not makes the turn not decisive (all, not any)."""
-    records = [_rec("A", "the iron door", 20, 0), _rec("B", "an iron door gate", 21, 1),
-               _rec("C", "a door", 5, 2), _rec("X", "the guard", 3, 3), _rec("Y", "the door", 3, 4)]  # fmt: skip
+    records = [_rec63b("A", "the iron door", 20, 0), _rec63b("B", "an iron door gate", 21, 1),
+               _rec63b("C", "a door", 5, 2), _rec63b("X", "the guard", 3, 3), _rec63b("Y", "the door", 3, 4)]  # fmt: skip
     out = _decisive(records, {"C"}, ["B", "A", "C"], "where is the iron door guard")
     assert out["conforms"] and out["decisive"] is False, out
     without_y = [r for r in records if r["id"] != "Y"]
@@ -3393,18 +3387,18 @@ def test_r3d_must_hold_in_every_valid_tie_ordering() -> None:
 def test_r3d_a_win_on_the_goals_words_is_not_decisive() -> None:
     """G4.3 counts the cue's keys OUTSIDE the goal's: a carried record that wins only on "guard" (a goal word) does
     not outscore the record it displaced."""
-    records = [_rec("A", "the guard by the door", 20, 0), _rec("B", "a door near the guard", 21, 1),
-               _rec("C", "guard door", 5, 2), _rec("N", "a door", 4, 3)]  # fmt: skip
+    records = [_rec63b("A", "the guard by the door", 20, 0), _rec63b("B", "a door near the guard", 21, 1),
+               _rec63b("C", "guard door", 5, 2), _rec63b("N", "a door", 4, 3)]  # fmt: skip
     out = _decisive(records, {"C"}, ["B", "A", "C"], "where is the guard door")
     assert out["conforms"] and out["decisive"] is False, out
 
 
 def test_r3d_a_cue_with_no_word_outside_the_goal_cannot_be_decisive() -> None:
     records = [
-        _rec("C", "the sleeping guard", 5, 0),
-        _rec("N", "a guard", 4, 1),
-        _rec("M", "guard", 3, 2),
-        _rec("K", "the guard", 2, 3),
+        _rec63b("C", "the sleeping guard", 5, 0),
+        _rec63b("N", "a guard", 4, 1),
+        _rec63b("M", "guard", 3, 2),
+        _rec63b("K", "the guard", 2, 3),
     ]
     out = _decisive(records, {"C"}, ["C", "N", "M"], "is the guard sleeping")
     assert out["conforms"] and out["decisive"] is False and out["cue_nongoal_keys"] == [], out
@@ -3427,7 +3421,7 @@ def test_a_late_goal_path_id_is_in_the_goal_pool_only() -> None:
     goal path's pool holds it and the cue path's does not (G1), so the log conforms."""
     records = {
         r["id"]: r
-        for r in (_rec("N", "the iron key", 1, 1, goal=GOAL63B), _rec("L", "the iron door", 9, 9, goal=GOAL63B))
+        for r in (_rec63b("N", "the iron key", 1, 1, goal=GOAL63B), _rec63b("L", "the iron door", 9, 9, goal=GOAL63B))
     }
     tr = {**_trace(["N", "L"], ["cue", "goal"], "where is the iron key", 5)}
     out = v.exp63b_turn(tr, records, set(), GOAL63B)
@@ -3443,9 +3437,9 @@ def _r3a(ids, records, carried, conforms=True) -> str:
 
 
 def test_r3a_outcomes() -> None:
-    carried = [_rec("C1", "a", 1, 0), _rec("C2", "b", 2, 1)]
-    own = _rec("own", "x", 3, 2)
-    late = _rec("L", "c", 9, 9)  # above the horizon (5): it landed during the query
+    carried = [_rec63b("C1", "a", 1, 0), _rec63b("C2", "b", 2, 1)]
+    own = _rec63b("own", "x", 3, 2)
+    late = _rec63b("L", "c", 9, 9)  # above the horizon (5): it landed during the query
     assert _r3a(["C1", "C2"], [*carried, own], {"C1", "C2"}) == "held"
     assert _r3a([], [*carried, own], {"C1", "C2"}) == "unobservable"
     assert _r3a(["C1", "L"], [*carried, own, late], {"C1", "C2"}) == "late"  # C5: incomplete
@@ -3453,7 +3447,7 @@ def test_r3a_outcomes() -> None:
     assert _r3a(["own", "L"], [*carried, own, late], {"C1", "C2"}) == "failed"  # a non-late outsider beside a late one
     assert _r3a(["C1"], [*carried, own], {"C1", "C2"}, conforms=False) == "failed"
     assert _r3a(["C1", "L"], [*carried, own, late], {"C1", "C2"}, conforms=False) == "late"  # G3: incomplete
-    new = _rec("N", "d", 4, 3)  # visible, not its own: this trace is not R3a's view
+    new = _rec63b("N", "d", 4, 3)  # visible, not its own: this trace is not R3a's view
     recs = {r["id"]: r for r in (*carried, own, new)}
     tr = _trace(["C1"], ["cue"], "x", 5, own=["own"])
     assert v.exp63b_r3a({1: (0, tr)}, {1: {"conforms": True}}, recs, {"C1", "C2"})["status"] == "no_view"

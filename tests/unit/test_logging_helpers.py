@@ -141,35 +141,50 @@ class TestThirdPartyHttpLoggersQuieted:
             )
 
 
-def test_quiet_console_handlers_leaves_the_jsonl_run_log_whole() -> None:
+def test_quiet_console_handlers_leaves_the_jsonl_run_log_whole(tmp_path) -> None:
     """#1476: the sim's teardown quiets the terminal, not the JSONL run log (MAXIM_LOG_FILE keeps DEBUG and up), so a
-    record saved after shutdown still logs its store digest."""
+    record saved after shutdown still logs its store digest. Non-terminal handlers (the leader's remote log buffer,
+    a plain handler) keep their levels too: raising the buffer leaked WARNING into later tests."""
+    import io
     import logging
 
     from maxim.utils.logging import quiet_console_handlers
 
-    seen: list[str] = []
+    jsonl_path = tmp_path / "run.jsonl"
+    console_stream = io.StringIO()
+    jsonl = logging.FileHandler(jsonl_path, encoding="utf-8")
+    jsonl.setLevel(logging.DEBUG)
+    console = logging.StreamHandler(console_stream)
+    console.setLevel(logging.INFO)
+    buffered: list[str] = []
 
-    class _Collect(logging.Handler):
+    class _BufferLike(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
-            seen.append(f"{getattr(self, 'name_', '')}:{record.getMessage()}")
+            buffered.append(record.getMessage())
 
-    root = logging.getLogger()
-    jsonl, console = _Collect(logging.DEBUG), _Collect(logging.INFO)
-    jsonl.name_, console.name_ = "jsonl", "console"
-    jsonl._maxim_jsonl = True  # type: ignore[attr-defined]
+    buffer_like = _BufferLike(logging.INFO)
+    root, maxim_logger = logging.getLogger(), logging.getLogger("maxim")
     old_level = root.level
+    old_handler_levels = {hd: hd.level for hd in root.handlers + maxim_logger.handlers}
     root.addHandler(jsonl)
     root.addHandler(console)
+    maxim_logger.addHandler(buffer_like)
     root.setLevel(logging.DEBUG)
     try:
         quiet_console_handlers(logging.WARNING)
         logging.getLogger("maxim.memory.hippocampus_persistence").info("after shutdown")
-        assert seen == ["jsonl:after shutdown"] and console.level == logging.WARNING and jsonl.level == logging.DEBUG
+        jsonl.flush()
+        assert "after shutdown" in jsonl_path.read_text(encoding="utf-8")
+        assert console_stream.getvalue() == "" and buffered == ["after shutdown"]
+        assert (console.level, jsonl.level, buffer_like.level) == (logging.WARNING, logging.DEBUG, logging.INFO)
     finally:
         root.removeHandler(jsonl)
         root.removeHandler(console)
+        maxim_logger.removeHandler(buffer_like)
+        jsonl.close()
         root.setLevel(old_level)
+        for hd, lvl in old_handler_levels.items():
+            hd.setLevel(lvl)
 
 
 def test_the_sim_teardown_quiets_handlers_never_a_logger() -> None:
