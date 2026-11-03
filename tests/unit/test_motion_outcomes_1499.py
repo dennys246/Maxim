@@ -1460,6 +1460,51 @@ def test_a_look_ats_turn_that_started_and_failed_is_truthful_and_teaches_the_pix
     assert completes == [(False, "turn-event")]
 
 
+def test_a_look_at_whose_turn_started_and_failed_reaches_the_model_as_a_failure():
+    """The tools wait on ``accepted``; a known failure must not read as "started"."""
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+    from maxim.tools.reachy import _await_motion_start
+
+    ticket = MotionTicket()
+    assert ticket.mark_accepted()
+    assert _await_motion_start(ticket) is None  # still running
+
+    ticket.finish(MotionOutcome.refused("error", "step 2 stopped"))
+    out = _await_motion_start(ticket)
+    assert out is not None and out.reason == "step 2 stopped"
+
+    done = MotionTicket()
+    done.mark_accepted()
+    done.finish(MotionOutcome(ok=True))
+    assert _await_motion_start(done) is None
+
+
+def test_a_turn_with_no_body_reading_refuses_the_look_at_and_books_nothing(daemon):
+    """A plan refusal other than ``limit`` must not fall through to a clamped look-at."""
+    from maxim.hardware.controller import MotionOutcome
+
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._plan_turn = lambda robot, angle: MotionOutcome.refused("reference", "no body yaw")  # type: ignore[method-assign]
+    starts: list = []
+    completes: list = []
+    pain = _risky_pain(starts, completes)
+    before = len(daemon.gotos())
+    ticket = selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
+    assert ticket.never_started and _outcome_kind(ticket) == "reference"
+    assert starts == [] and completes == [] and len(daemon.gotos()) == before
+
+
+def test_a_turn_that_ends_at_limit_lets_the_look_at_proceed_clamped(daemon):
+    from maxim.hardware.controller import MotionOutcome
+
+    selfy = _selfy(controller(daemon), daemon)
+    selfy.turn_around = lambda *a, **kw: MotionOutcome.refused("limit", "cannot fit")  # type: ignore[method-assign]
+    out = selfy._maybe_turn_around(
+        du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=_risky_pain([], [])
+    )
+    assert out is None
+
+
 def test_a_plugin_turn_that_never_marks_accepted_still_books_when_it_completes(daemon):
     from maxim.hardware.controller import MotionOutcome
 

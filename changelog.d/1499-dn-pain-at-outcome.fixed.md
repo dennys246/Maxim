@@ -13,7 +13,8 @@
     nothing. `record_action_complete(event_id=)` completes that event only, and the bridge's retire-and-install is
     one atomic step.
   - The automatic turn binds its own ticket, so its start is recorded behind any move in flight. A turn the
-    controller refuses before its first SDK call now books nothing.
+    controller refuses before its first SDK call now books nothing, and the look-at that triggered a turn that
+    failed now tells the model so.
   - IK failures have their own outcome kind, `ik`, for the failures the client can see, whether the SDK raised or
     logged them: one path through the failure count, the mirror re-read, the bounds learner and recovery, and never
     a connection failure. It replaces DN's and `look_opposite`'s substring checks with a narrower match, so "like"

@@ -345,7 +345,7 @@ Rules around the loop:
 - The note to pulse (M70) asks that the app framework's handle be built with `automatic_body_yaw=False`, or that pulse accept pymaxim's assertion on adopt.
 
 **5.8 Turning at the body limit (decision 4; Wire 4).**
-- `_maybe_turn_around` reads the body from the fresh readback. It returns False when the turn cannot fit, and look_at proceeds with the head clamped.
+- `_maybe_turn_around` reads the body from the fresh readback. It returns None when the turn cannot fit, and look_at proceeds with the head clamped.
 - An explicit `turn_around` that cannot fit raises `limit`, and the tool returns that reason. **`limit` feeds no learner** (O4): a body limit is not a head-yaw bound.
 
 **5.9 Named callers.**
@@ -849,7 +849,7 @@ Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the
 1. **Pacing stays at dispatch.** `GazeHistory.record_gaze` did three jobs: the dwell, inhibition of return (IOR) and
    the current position. Pacing is not a learner under O4. `note_move_commanded(target)` stamps the dwell and IOR when
    a move is issued, for a move that later fails too, as on `main`; `note_arrival` sets the position on an ok outcome.
-   A command that returned a refusal paces, and only one that raised does not, also as on `main`. (The first build moved IOR to completion and claimed the
+   A command that returned a refusal paces; one that raised, or had nothing to do, does not, also as on `main`. (The first build moved IOR to completion and claimed the
    cadence was unchanged. It was not: a re-issue at 0.51 s instead of 0.72 s, measured by the review.)
 2. **`ik` has one meaning.** A controller that reports `kind="ik"` and an SDK log line go through the same branch of
    `run_motion`: the failure count, the mirror re-read, the bounds and attention learners, recovery. Never a
@@ -882,7 +882,9 @@ Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the
 7. **Only `_maybe_turn_around` binds a ticket.** An explicit `turn_around` records no pain start, as on `main`, so
    there is nothing to carry. No public keyword was added. `look_at_image` returns that ticket, so a turn that started
    and failed does not read as never started, and an `ik` from a body step reads `error` to the look-at's booking:
-   it says nothing about the look-at's pixel, and it would teach that pixel past `run_motion`'s one path.
+   it says nothing about the look-at's pixel, and it would teach that pixel past `run_motion`'s one path. The tools
+   wait on `accepted`, so `_await_motion_start` also reads a `completed` that has already failed: the model hears
+   that the turn failed, where `main` said success.
 8. **The inbox is drained every loop, inhibited or not, and once after the loop ends**, on DN's thread. A move already
    issued still publishes while DN is inhibited; `inhibit`'s docstring says so.
 

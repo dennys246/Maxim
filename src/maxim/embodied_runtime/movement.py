@@ -669,7 +669,7 @@ class MovementMixin:
         """Look at a position in image coordinates; returns the move's ticket (#1499 5.6).
 
         An unreachable pixel returns a ticket already refused ``limit``; an
-        automatic turn returns the turn's outcome as a resolved ticket.
+        automatic turn returns its own ticket, already finished.
 
         Args:
             u: Horizontal pixel coordinate.
