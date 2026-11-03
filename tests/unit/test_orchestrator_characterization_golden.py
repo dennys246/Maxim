@@ -535,7 +535,10 @@ def test_the_golden_is_non_vacuous() -> None:
         # The decayed goal bias is pinned by its bound, and its causes by value (_NAC_DECAY_PINNED). The goal is the
         # run's own (the new_goal arm's result is its re-entered run's).
         goal = t["result"]["goal"]
-        assert t["aut_nac"]["goal_reward_bias"] == {goal: "+ in (0, 0.2], decayed below its last write"}, name
+        bias = {goal: "+ in (0, 0.2], decayed below its last write"}
+        if name == "new_goal":  # the first run's goal is carried in, and this run did not write it (#1454)
+            bias[GOAL] = "+ in (0, 0.2], no write this run"
+        assert t["aut_nac"]["goal_reward_bias"] == bias, name
         goal_credits = [c for c in t["nac_credits"]["aut"] if c["method"] == "credit_goal"]
         # One goal credit per AUT action. The first credit's ``post`` is alpha x reward (0.15 x 1.0), before any decay
         # tick; later ones carry none.
@@ -547,8 +550,8 @@ def test_the_golden_is_non_vacuous() -> None:
         assert len(t["action_log"]) - 1 == t["result"]["total_actions"], name
         runs = 1 + sum(1 for g in t.get("post_sim_reads", []) if g)  # a /new re-entry is a second run
         aut_states = [w for w in t["report_writer_args"] if w["writer"] == "save_aut_state"]
-        # HANDLE branch 3: an adopted agent's state is never snapshotted into the session dir.
-        assert len(aut_states) == (0 if "handle" in t else runs), name
+        # HANDLE branch 3: an adopted agent's state is never snapshotted into the session dir. /new saves again (#1454).
+        assert len(aut_states) == (0 if "handle" in t else 2 * runs - 1), name
         assert all(w["kwargs"]["nac"] == {"type": "NAc"} for w in aut_states), name
         assert t["result"]["summary"] == "golden roundup", name
         assert t["report_writes"].count("save_report") == 2 * runs, name  # before and after each roundup
