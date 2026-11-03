@@ -82,7 +82,9 @@ the pre-existing ``load(path: str | None)`` method that every bio-system
 already exports for filesystem I/O. Renaming those path-based methods
 across 37+ call sites is out of scope for Stage 1. Both methods coexist:
 ``save(path)`` → ``atomic_write_json(path, self.dump())`` and
-``load(path)`` → ``self.load_state(json.load(open(path)))``.
+``load(path)`` → ``self.load_state(json.load(open(path)))``. (The Hippocampus
+writes the same payload through ``_dump_locked``, ``dump``'s body, in the read
+section that also takes Exp 63b's store digest.)
 """
 
 from __future__ import annotations
