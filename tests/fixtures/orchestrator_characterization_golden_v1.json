@@ -3065,11 +3065,37 @@
     "cluster_reward_source": {},
     "event_outcome_welford": {},
     "goal_reward_bias": {
-     "check what the agent remembers": "+ in (0, 0.2], decayed below its last write"
+     "check how the agent answers two short questions": "+ in (0, 0.2], no write this run",
+     "check what the agent says next": "+ in (0, 0.2], decayed below its last write"
     },
     "inherent_bias_keys": [],
     "links": {
      "tool:respond": [
+      {
+       "confidence": 0.45125,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "goal": "direct_answer"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "60665ba2d728dfa1",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "plan:direct_answer:success",
+       "outcome_type": "plan_result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
       {
        "confidence": 0.475,
        "context_factors": {},
@@ -3120,21 +3146,51 @@
         0.5
        ],
        "source": "local"
+      },
+      {
+       "confidence": 0.45125,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "agent_id": "sim_aut",
+        "goal": "direct_answer"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "a9ee8012a42828cd",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
+       "outcome_type": "tool_result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
       }
      ]
     },
     "outcome_index": {
+     "plan:direct_answer:success": [
+      "60665ba2d728dfa1"
+     ],
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "73851f2fc2283f54"
+      "73851f2fc2283f54",
+      "a9ee8012a42828cd"
      ]
     },
     "percept_valences": {},
     "priors": {},
     "reward_bias": {},
-    "total_observations": 2,
+    "total_observations": 4,
     "version": "1.0"
    },
    "bridge_finish_calls": [
@@ -3216,7 +3272,7 @@
     },
     {
      "inject": "narrator#2",
-     "text": "SIMULATION GOAL: check what the agent remembers\n\nYou are a simulation orchestrator testing an AI agent. You MUST use ONLY these tools (no others exist):\n  - send_message: Talk to the agent (your PRIMARY tool)\n  - observe_actions: Review wha",
+     "text": "SIMULATION GOAL: check what the agent says next\n\nYou are a simulation orchestrator testing an AI agent. You MUST use ONLY these tools (no others exist):\n  - send_message: Talk to the agent (your PRIMARY tool)\n  - observe_actions: Review wha",
      "thread": "MainThread"
     },
     {
@@ -3241,7 +3297,7 @@
     "status: Running LLM analysis roundup...",
     "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 2 |   Bio events: \u25b2 Learn: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>",
     "status: SIMULATION MODE \u2014 generative",
-    "status: Goal: check what the agent remembers",
+    "status: Goal: check what the agent says next",
     "status: Max turns: 10",
     "status: Environment: simulated filesystem with pain triggers",
     "status: Commands: /cancel  /new <goal>  /status  /report  /help",
@@ -3251,9 +3307,9 @@
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
     "status: Saving action log (1 records)...",
-    "status: Saving AUT state (<N> memories, 2 causal links)...",
+    "status: Saving AUT state (<N> memories, 4 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check what the agent remembers |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the new goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 2 |   Bio events: \u25b2 Learn: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:scripted respond:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check what the agent says next |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the new goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 4 |   Bio events: \u25b2 Learn: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:scripted respond:success (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.45, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.45, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -3264,7 +3320,7 @@
    "nac_credits": {
     "aut": [
      {
-      "goal_tag": "check what the agent remembers",
+      "goal_tag": "check what the agent says next",
       "method": "credit_goal",
       "post": 0.15,
       "reward": 1.0
@@ -3314,7 +3370,7 @@
       "tool_name": "send_message"
      },
      "kind": "plan",
-     "request": "simulation goal: check what the agent remembers\n\nyou are a simulation orchestrator testing an ai agent. you must use onl"
+     "request": "simulation goal: check what the agent says next\n\nyou are a simulation orchestrator testing an ai agent. you must use onl"
     },
     {
      "answer": {
@@ -3327,7 +3383,7 @@
      },
      "executed": "send_message",
      "kind": "followup",
-     "request": "SIMULATION GOAL: check what the agent remembers\n\nYou are a simulation orchestrator testing an AI agent. You MUST use ONL",
+     "request": "SIMULATION GOAL: check what the agent says next\n\nYou are a simulation orchestrator testing an AI agent. You MUST use ONL",
      "turn": 1
     }
    ],
@@ -3349,12 +3405,12 @@
        "summary"
       ],
       "kind": "direct",
-      "request": "# Simulation Report \u2014 check what the agent remembers\nMode: generative\nModel: orc"
+      "request": "# Simulation Report \u2014 check what the agent says next\nMode: generative\nModel: orc"
      }
     ]
    },
    "post_sim_reads": [
-    "check what the agent remembers",
+    "check what the agent says next",
     ""
    ],
    "report": {
@@ -3363,7 +3419,7 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 2,
+    "aut_causal_links": 4,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
@@ -3379,9 +3435,21 @@
        "event": "tool:respond",
        "observations": 1,
        "outcome": "plan:scripted respond:success"
+      },
+      {
+       "confidence": 0.451,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
+      },
+      {
+       "confidence": 0.451,
+       "event": "tool:respond",
+       "observations": 1,
+       "outcome": "plan:direct_answer:success"
       }
      ],
-     "total_links": 2
+     "total_links": 4
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -3389,7 +3457,7 @@
     "cost_usd": 0.0,
     "fear_blocks_count": 0,
     "finish_reason": "completed",
-    "goal": "check what the agent remembers",
+    "goal": "check what the agent says next",
     "lane_breakdown": {},
     "language_backend_class": "",
     "language_endpoint": "",
@@ -3446,13 +3514,28 @@
      "provenance_schema": 2,
      "python": "<MASKED>",
      "pythonpath": "<MASKED>",
+     "resume": {
+      "context_dir": null,
+      "context_loaded": false,
+      "requested": "<STAMP>",
+      "resume_loaded": true,
+      "resumed_from_session": "<STAMP>",
+      "state_dir": "<WORK>/data/sim_reports/<STAMP>",
+      "stores": {
+       "atl": "loaded",
+       "ec": "loaded",
+       "hippocampus": "loaded",
+       "nac": "loaded"
+      },
+      "via": "/new"
+     },
      "sampling_complete": true,
      "sampling_problems": [],
      "scenario_content_sha256": null,
      "scenario_inputs": [],
-     "scenario_sha256": "f31046b0fcdbdad10a406c1f636b4c648b800a29692911b6791cc73c46d149d4",
+     "scenario_sha256": "a0edabd717f0b8ed947a3a09c382e510d38ad1cb3839d0f5f8df141d251f3817",
      "serving_captured": true,
-     "session_index": 0,
+     "session_index": 1,
      "working_tree_dirty_src_scripts": "<MASKED>"
     },
     "provider_failures": {},
@@ -3557,16 +3640,30 @@
      "writer": "save_report"
     },
     {
-     "args": [
-      {
-       "session_id": "<STAMP>",
-       "type": "SimulationReport"
+     "args": [],
+     "kwargs": {
+      "atl": {
+       "type": "ATL"
       },
-      "<WORK>/report_json.json"
+      "base_dir": "<WORK>/data/sim_reports",
+      "ec": {
+       "type": "EntorhinalCortex"
+      },
+      "hippocampus": {
+       "type": "Hippocampus"
+      },
+      "nac": {
+       "type": "NAc"
+      },
+      "scn": {
+       "type": "SCN"
+      },
+      "session_id": "<STAMP>"
+     },
+     "shared_refs": [
+      "hippocampus._scn -> scn"
      ],
-     "kwargs": {},
-     "shared_refs": [],
-     "writer": "emit_report_json"
+     "writer": "save_aut_state"
     },
     {
      "args": [
@@ -3648,6 +3745,18 @@
      },
      "shared_refs": [],
      "writer": "save_report"
+    },
+    {
+     "args": [
+      {
+       "session_id": "<STAMP>",
+       "type": "SimulationReport"
+      },
+      "<WORK>/report_json.json"
+     ],
+     "kwargs": {},
+     "shared_refs": [],
+     "writer": "emit_report_json"
     }
    ],
    "report_writes": [
@@ -3656,12 +3765,13 @@
     "save_aut_state",
     "analyze_simulation",
     "save_report",
-    "emit_report_json",
+    "save_aut_state",
     "save_report",
     "save_action_log",
     "save_aut_state",
     "analyze_simulation",
-    "save_report"
+    "save_report",
+    "emit_report_json"
    ],
    "result": {
     "actions": [
@@ -3681,8 +3791,22 @@
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 2,
+      "link_count": 4,
       "links": [
+       {
+        "confidence": 0.451,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "valence": ""
+       },
+       {
+        "confidence": 0.451,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "plan:direct_answer:success",
+        "valence": ""
+       },
        {
         "confidence": 0.475,
         "event": "tool:respond",
@@ -3714,7 +3838,7 @@
        },
        {
         "category": "action",
-        "confidence": 0.5,
+        "confidence": 0.571,
         "name": "respond"
        },
        {
@@ -3726,15 +3850,40 @@
         "category": "goal",
         "confidence": 0.5,
         "name": "script"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "direct"
        }
       ],
-      "count": 5
+      "count": 10
      },
      "system_stats": {
-      "atl_concepts": 5,
+      "atl_concepts": 10,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 2
+      "nac_causal_links": 4
      },
      "temporal": {
       "keys": [
@@ -3746,7 +3895,7 @@
      }
     },
     "finish_reason": "completed",
-    "goal": "check what the agent remembers",
+    "goal": "check what the agent says next",
     "mode": "generative",
     "router_stats": {
      "json_compliance_rate": 1.0,
@@ -3759,8 +3908,22 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 2,
+      "link_count": 4,
       "links": [
+       {
+        "confidence": 0.451,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
+        "valence": ""
+       },
+       {
+        "confidence": 0.451,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "plan:direct_answer:success",
+        "valence": ""
+       },
        {
         "confidence": 0.475,
         "event": "tool:respond",
@@ -3792,7 +3955,7 @@
        },
        {
         "category": "action",
-        "confidence": 0.5,
+        "confidence": 0.571,
         "name": "respond"
        },
        {
@@ -3804,25 +3967,50 @@
         "category": "goal",
         "confidence": 0.5,
         "name": "script"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "answer respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct respond"
+       },
+       {
+        "category": "compound_alias",
+        "confidence": 0.5,
+        "name": "direct answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "answer"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.5,
+        "name": "direct"
        }
       ],
-      "count": 5
+      "count": 10
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
       "graph_enabled": true,
       "over_capacity_inserts_this_process": 0,
-      "successful": 1
+      "successful": 2
      },
      "nac_stats": {
       "eligibility_traces": 0,
       "event_signatures": 1,
-      "outcome_signatures": 2,
+      "outcome_signatures": 3,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 2,
-      "total_observations": 2
+      "total_links": 4,
+      "total_observations": 4
      },
      "pain_stats": {
       "available": true,
@@ -3846,10 +4034,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 5,
+      "atl_concepts": 10,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 2
+      "nac_causal_links": 4
      },
      "temporal": {
       "keys": [
@@ -8212,5 +8400,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "a762f1aff734"
+ "generated_at_commit": "e6e6c3bf9a1a"
 }
