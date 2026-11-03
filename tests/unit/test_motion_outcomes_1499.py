@@ -2065,3 +2065,60 @@ def test_a_turn_refused_before_its_first_sdk_call_books_nothing_but_one_that_sta
     selfy._last_turn_around_time = 0.0
     selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
     assert len(starts) == 1 and completes == [(False, "turn-event")]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR 3: every ReachyMini( passes automatic_body_yaw=False (plan §13, owner 2026-11-01)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _motion_lint(monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "lint_motion_safety", Path(__file__).resolve().parents[2] / "scripts" / "lint_motion_safety.py"
+    )
+    lint = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "lint_motion_safety", lint)  # @dataclass resolves its module
+    spec.loader.exec_module(lint)
+    return lint
+
+
+@pytest.mark.xfail(strict=True, reason="#1499 PR 3: the motion lint does not check ReachyMini( for auto-yaw yet")
+def test_the_motion_lint_flags_a_reachy_mini_built_without_auto_yaw_off(tmp_path, monkeypatch):
+    """The setting is daemon-wide and the SDK defaults it on: one client built without it turns auto-yaw back on."""
+    lint = _motion_lint(monkeypatch)
+    py = tmp_path / "scripts" / "planted_yaw.py"
+    py.parent.mkdir(parents=True)
+    py.write_text(
+        "from reachy_mini import ReachyMini\n"  # 1
+        "a = ReachyMini(host='h')\n"  # 2: flagged
+        "b = ReachyMini(\n"  # 3: flagged (split across lines)
+        "    host='h',\n"
+        "    automatic_body_yaw=True,\n"
+        ")\n"
+        "c = ReachyMini(host='h', automatic_body_yaw=False)\n"  # 7: fine
+        "d = reachy_mini.ReachyMini(**kwargs)\n"  # 8: flagged (a splat cannot show the value)
+        "e = ReachyMini(\n"  # 9: fine (split across lines)
+        "    automatic_body_yaw=False,\n"
+        ")\n"
+        '"""ReachyMini(host=...) in a docstring is not a call"""\n'  # 12
+    )
+    sh = tmp_path / "src" / "tests" / "planted_move.sh"
+    sh.parent.mkdir(parents=True)
+    sh.write_text(
+        "#!/usr/bin/env bash\n"  # 1
+        "python - <<'PY'\n"  # 2
+        "mini = ReachyMini(robot_name=name, timeout=5.0)\n"  # 3: flagged
+        "ok = ReachyMini(robot_name=name, automatic_body_yaw=False)\n"  # 4: fine
+        "PY\n"
+    )
+    findings = [f for f in lint.scan(tmp_path) if f.kind == "auto_yaw"]
+    assert sorted((f.path, f.line) for f in findings) == [
+        ("scripts/planted_yaw.py", 2),
+        ("scripts/planted_yaw.py", 3),
+        ("scripts/planted_yaw.py", 8),
+        ("src/tests/planted_move.sh", 3),
+    ], findings
