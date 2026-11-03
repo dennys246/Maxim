@@ -259,10 +259,13 @@ def test_the_build_hands_its_profile_to_the_tier_table_the_rewalk_and_the_pin(
     assert "MAXIM_LLM_PROFILE" not in os.environ
 
 
-# Every writer of MAXIM_LLM_PROFILE in src/maxim, as ``file::function``. The variable is the SESSION's profile: the
+# Every direct writer of MAXIM_LLM_PROFILE in src/maxim, as ``file::function``. The variable is the SESSION's profile: the
 # CLI and config set it, a build records its own projections of config into it, and the three api.py entry points
 # still set it for their run (#1586). A caller with its own model hands it to the build (``build_primary_router(
-# profile=)``) instead. A new writer fails this scan: add it here only if it sets the session's profile.
+# profile=)``) instead. A new writer fails this scan: add it here only if it sets the session's profile. Out of its
+# view: a write through a variable key, and the config projection's tables that name the variable as data
+# (``lane_backends._apply_lane_config_to_env_locked``'s ``_llm_env_map``, ``config_loader``'s env map), which also
+# set the session's profile.
 PROFILE_ENV_WRITERS = {
     "maxim/api.py::run",  # #1586
     "maxim/api.py::imagine",  # #1586
@@ -278,7 +281,8 @@ PROFILE_ENV_WRITERS = {
 
 def _profile_env_writers() -> set[str]:
     """Each ``os.environ["MAXIM_LLM_PROFILE"] = / del``, and each call other than a read (``get``/``getenv``) whose
-    first argument or a keyword names the variable (``setdefault``, ``pop``, ``update``, ``_project_env``...)."""
+    first argument, a keyword or a dict argument's key names the variable (``setdefault``, ``pop``, ``putenv``,
+    ``update({...})``, ``_project_env``...)."""
     import ast
     from pathlib import Path
 
@@ -303,6 +307,9 @@ def _profile_env_writers() -> set[str]:
         ):
             hit = hit or (bool(node.args) and getattr(node.args[0], "value", None) == name)
             hit = hit or any(k.arg == name for k in node.keywords)
+            hit = hit or any(
+                isinstance(a, ast.Dict) and any(getattr(k, "value", None) == name for k in a.keys) for a in node.args
+            )
         if hit:
             found.add(f"{rel}::{fn}")
         for child in ast.iter_child_nodes(node):
@@ -333,3 +340,11 @@ def test_the_decision_record_names_the_profile_the_build_was_handed(monkeypatch:
     later = {**json.loads(decision_log.record_to_json_line(record)), "a_later_field": 1}
     (tmp_path / "lane_decisions.jsonl").write_text(json.dumps(later) + "\n")
     assert decision_log.read_last_record().build_profile == "orch-aut"
+
+
+def test_a_json_line_that_is_not_a_record_reads_as_no_record(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from maxim.runtime import decision_log
+
+    monkeypatch.setattr(decision_log, "_decision_log_path", lambda: tmp_path / "lane_decisions.jsonl")
+    (tmp_path / "lane_decisions.jsonl").write_text("[1, 2]\n")
+    assert decision_log.read_last_record() is None

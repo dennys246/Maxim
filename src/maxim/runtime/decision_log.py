@@ -283,6 +283,8 @@ def read_last_record() -> LaneDecisionRecord | None:
             payload = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(payload, dict):
+            return None  # valid JSON, but not a record
         # A key this version does not know (a later one's field) is dropped, not a reason to show no record.
         known = {f.name for f in dataclasses.fields(LaneDecisionRecord)}
         try:
