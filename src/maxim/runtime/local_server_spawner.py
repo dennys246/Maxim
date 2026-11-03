@@ -33,7 +33,6 @@ from maxim.utils.cancellation import child_groups, spawn_registered, stop_child_
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
 
-
 DEFAULT_PORT = 8100
 DEFAULT_N_CTX = 8192
 # 120s default — llama-cpp-server loads the model BEFORE binding HTTP, so

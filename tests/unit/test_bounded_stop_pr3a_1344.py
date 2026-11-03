@@ -488,5 +488,9 @@ def test_a_server_that_answers_without_a_key_is_refused_with_its_pid(auto_spawn_
     finally:
         server.busy_until = 0.0
         server.close()
-    assert f"pid {os.getpid()}" in str(caught.value)  # the fake listens in this process
+    message = str(caught.value)
+    # The fake listens in this process; lsof may be missing or slower than its 5 s bound on a loaded box, and then the
+    # message says how to find the pid instead of naming it.
+    assert f"pid {os.getpid()}" in message or "pid is unknown" in message, message
+    assert str(server.port) in message
     assert auto_spawn_env.killed == [] and auto_spawn_env.built == []
