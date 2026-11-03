@@ -759,10 +759,10 @@ class MediaLoopMixin:
         way, and the ticket it returns is already resolved. ``_on_accept`` runs
         when the move starts (the ticket's ``on_accept``).
         """
-        ticket = MotionTicket(on_accept=_on_accept)
         q = getattr(self, "_motor_queue", None)
         if q is not None:
-            return q.submit(ticket, fn, args, kwargs)
+            return q.put(fn, *args, _on_accept=_on_accept, **kwargs)
+        ticket = MotionTicket(on_accept=_on_accept)
         ticket.claim()
         run_motion(QueuedMotion(ticket, fn, args, kwargs), self)
         return ticket

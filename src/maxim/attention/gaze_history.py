@@ -78,28 +78,33 @@ class GazeHistory:
         self._last_move_time: float = 0.0
         self._current_position: Tuple[float, float] | None = None
 
-    def record_gaze(self, position: Tuple[float, float], *, restart_dwell: bool = True) -> None:
+    def record_gaze(self, position: Tuple[float, float]) -> None:
         """Record a gaze position.
 
         Call this after executing a movement to the given position.
 
         Args:
             position: (u, v) image coordinates of gaze target.
-            restart_dwell: False when the dwell already started with
-                ``note_move_commanded``.
+        """
+        self.note_move_commanded(position)
+        self.note_arrival(position)
+
+    def note_move_commanded(self, position: Tuple[float, float]) -> None:
+        """Pace from a move just issued: its dwell and inhibition of return start now, whatever it does.
+
+        This is pacing, not learning, so a move that later fails still counts
+        (#1499 5.6). ``note_arrival`` books where the gaze actually ended up.
         """
         u, v = position
         now = time.time()
         with self._lock:
             self._history.append(GazePosition(u=u, v=v, timestamp=now))
-            if restart_dwell:
-                self._last_move_time = now
-            self._current_position = position
+            self._last_move_time = now
 
-    def note_move_commanded(self) -> None:
-        """Start the dwell for a move just issued, whose arrival ``record_gaze`` books when it completes."""
+    def note_arrival(self, position: Tuple[float, float]) -> None:
+        """The gaze is now at *position*: a move completed."""
         with self._lock:
-            self._last_move_time = time.time()
+            self._current_position = position
 
     def get_salience(self, target: Tuple[float, float]) -> float:
         """Compute salience score for a potential target position.

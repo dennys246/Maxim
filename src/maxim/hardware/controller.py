@@ -27,7 +27,6 @@ canonical reference implementation.
 from __future__ import annotations
 
 import logging
-import re
 import math
 import numbers
 import threading
@@ -69,7 +68,6 @@ __all__ = [
     "PixelTarget",
     "RobotController",
     "as_outcome",
-    "failure_kind",
     "clamp_finite",
     "current_motion_ticket",
     "floor_duration",
@@ -202,10 +200,12 @@ class MotionOutcome:
     ``kind`` is ``None`` when ``ok``. Otherwise it is a refusal kind
     (``MotionRefusalKind``), or ``"cancelled"`` (aborted, or the motor was
     busy), ``"partial"`` (a split stopped after ``chunks_done`` chunks),
-    ``"superseded"`` (replaced before it ran) or ``"error"`` (the controller
-    failed, or a plugin returned ``False``). No non-ok outcome feeds the gaze or
-    workspace-bounds learners (#1499 O4). ``"superseded"`` and a queued
-    ``"cancelled"`` come from ``embodied_runtime/workers.py::MotorQueue``.
+    ``"superseded"`` (replaced before it ran), ``"ik"`` (the target itself
+    could not be reached) or ``"error"`` (the controller failed, or a plugin
+    returned ``False``). Of the non-ok kinds only ``"ik"`` feeds the gaze,
+    spatial or workspace-bounds learners (#1499 O4). ``"superseded"`` and a
+    queued ``"cancelled"`` come from
+    ``embodied_runtime/workers.py::MotorQueue``.
     """
 
     ok: bool
@@ -378,18 +378,6 @@ def mark_motion_accepted() -> bool:
 def policy_duration(value: Any, policy: DurationPolicy) -> float:
     """*value* as the duration a target ships with under *policy* (exact: checked; at_least: floored)."""
     return require_duration(value) if policy == "exact" else floor_duration(value)
-
-
-_IK_FAILURE = re.compile(r"\bik\b|collision|not achievable")
-
-
-def failure_kind(error: BaseException) -> MotionOutcomeKind:
-    """``"ik"`` when *error* names an IK or collision failure, else ``"error"``.
-
-    ``"ik"`` is the one non-ok kind the spatial learners read (#1499 O4): the
-    target itself could not be reached. The SDK reports it only as text.
-    """
-    return "ik" if _IK_FAILURE.search(str(error).lower()) else "error"
 
 
 def as_outcome(result: bool | MotionOutcome | None) -> MotionOutcome:

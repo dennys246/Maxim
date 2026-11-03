@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from maxim.utils.logging import log_swallowed_exception
 from maxim.default_network.arbiter import ArbiterConfig, PriorityArbiter
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, failure_kind, floor_duration
+from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, floor_duration
 from maxim.attention import AttentionConfig, AttentionNetwork
 from maxim.attention import SalienceMap, SalienceMapConfig
 from maxim.attention import GazeController, GazeControllerConfig, GazeCommand, GazeState
@@ -920,6 +920,8 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             with self._stats_lock:
                 self._stats["ticks"] += 1
 
+        self._drain_motion_outcomes()  # the last moves' outcomes, still on DN's thread
+
     def _process_tick(self) -> None:
         """Single processing cycle."""
         with self._detection_lock:
@@ -1145,7 +1147,8 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
 
         ticket = self._dispatch_action_to_motor(proposal, duration)
         if self._config.gaze_salience_enabled and proposal.target:
-            self._gaze_history.note_move_commanded()  # paces the next move; the arrival is booked when it completes
+            if not ticket.never_started:
+                self._gaze_history.note_move_commanded(proposal.target)  # pacing, whatever the move then does
         self._book_on_tick(ticket, lambda outcome: self._apply_action_outcome(proposal, outcome))
 
     def _apply_action_outcome(self, proposal: ActionProposal, outcome: MotionOutcome) -> None:
@@ -1159,7 +1162,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             if track_id is not None and self._novelty_tracker is not None:
                 self._novelty_tracker.focus(track_id)
             if self._config.gaze_salience_enabled and proposal.target:
-                self._gaze_history.record_gaze(proposal.target, restart_dwell=False)
+                self._gaze_history.note_arrival(proposal.target)
 
         self._publish_action(proposal, executed=outcome.ok)
 
@@ -1195,7 +1198,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             return MotionTicket.resolved(MotionOutcome.refused(e.kind, e.reason))
         except Exception as e:
             logger.warning("Failed to execute DN action: %s", e)
-            return MotionTicket.resolved(MotionOutcome.refused(failure_kind(e), str(e)))
+            return MotionTicket.resolved(MotionOutcome.refused("error", str(e)))
         return result if isinstance(result, MotionTicket) else MotionTicket.resolved(as_outcome(result))
 
     # ── _execute_action gates ──────────────────────────────────────────────
@@ -1296,28 +1299,27 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         """
         return self._issue_motion(self._route_to_motor, proposal, duration)
 
-    def _route_to_motor(self, proposal: ActionProposal, duration: float) -> MotionTicket:
+    def _route_to_motor(self, proposal: ActionProposal, duration: float) -> Any:
         duration = floor_duration(duration)
         has_look = hasattr(self._maxim, "look_at_image")
         if proposal.action_type == "look_at" and proposal.target and has_look:
             u, v = proposal.target
-            return self._issue_motion(self._maxim.look_at_image, u, v, duration=duration)
+            return self._maxim.look_at_image(u, v, duration=duration)
         if proposal.action_type == "scan":
             # Exploration: prefer look_at_image (smooth waypoint motion),
             # fall back to move_relative for ReturnToCenter etc.
             if proposal.target and has_look:
                 u, v = proposal.target
-                explore_duration = floor_duration(max(0.5, duration * 0.8))
-                return self._issue_motion(self._maxim.look_at_image, u, v, duration=explore_duration)
+                return self._maxim.look_at_image(u, v, duration=floor_duration(max(0.5, duration * 0.8)))
             if hasattr(self._maxim, "move_relative"):
-                return self._issue_motion(self._maxim.move_relative, proposal.metadata.get("delta", (0, 0)))
+                return self._maxim.move_relative(proposal.metadata.get("delta", (0, 0)))
         if proposal.action_type == "track" and proposal.target and has_look:
             return self._dispatch_track(proposal, duration)
         if proposal.action_type == "turn_around" and hasattr(self._maxim, "turn_around"):
             return self._dispatch_turn(proposal)
-        return MotionTicket.resolved(MotionOutcome.refused("error", "no motor command for this proposal"))
+        return MotionOutcome.refused("error", "no motor command for this proposal")
 
-    def _dispatch_track(self, proposal: ActionProposal, duration: float) -> MotionTicket:
+    def _dispatch_track(self, proposal: ActionProposal, duration: float) -> Any:
         u, v = proposal.target
         track_duration = floor_duration(duration * 0.5)  # Half duration for tracking
         if proposal.behavior_name == "social":
@@ -1331,17 +1333,16 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 cur_yaw,
                 proposal.metadata.get("track_id"),
             )
-        return self._issue_motion(self._maxim.look_at_image, u, v, duration=track_duration)
+        return self._maxim.look_at_image(u, v, duration=track_duration)
 
-    def _dispatch_turn(self, proposal: ActionProposal) -> MotionTicket:
+    def _dispatch_turn(self, proposal: ActionProposal) -> MotionOutcome:
         """The turn is synchronous and returns its MotionOutcome (#1499 5.8)."""
         turn_angle = proposal.metadata.get("turn_angle", 90.0)
         turn_duration = floor_duration(proposal.metadata.get("duration", 5.0))
-        ticket = self._issue_motion(self._maxim.turn_around, turn_angle, duration=turn_duration)
-        turned = ticket.completed.result()  # already resolved: the turn ran on this thread
+        turned = as_outcome(self._maxim.turn_around(turn_angle, duration=turn_duration))
         result = "ok" if turned else f"not done ({turned.kind}): {turned.reason}"
         logger.info("turn_around %.0f° over %.1fs: %s", turn_angle, turn_duration, result)
-        return ticket
+        return turned
 
     def _record_movement_result(self, proposal: ActionProposal, outcome: MotionOutcome) -> None:
         """Update spatial map + attention network with the movement outcome."""

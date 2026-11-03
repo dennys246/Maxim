@@ -69,7 +69,9 @@ class AtlasController(RobotController):
     # Inside goto_target / look_at_pixel, call maxim.hardware.controller.mark_motion_accepted() once your checks
     # pass, just before your first actuator command, and refuse (MotionOutcome kind "cancelled") without moving
     # when it returns False: a tool that stopped waiting cancelled the move. Without the call, a queued move is
-    # only reported started when it completes, and a cancel cannot stop it.
+    # only reported started when it completes, and a cancel cannot stop it; its pain start then runs after a
+    # completed move and never after a failed one. Report a target that cannot be reached with kind "ik": it is
+    # the one non-ok kind the spatial and bounds learners read.
 
     # Sleep / wake (same return contract)
     def wake_up(self) -> bool | MotionOutcome: ...

@@ -258,13 +258,14 @@ class PainCircuitBridge:
                 left alone, target and all (#1499 5.6). None means the pending
                 action, whichever it is.
         """
-        pending = self._pending
-        if event_id is not None and (pending is None or pending.event_id != event_id):
-            logger.debug("Action %s already replaced: its completion books nothing", event_id)
-            return
-        try:
+        with self._pending_lock:  # a replacing start cannot land between the check and the clear
+            pending = self._pending
+            if event_id is not None and pending is not None and pending.event_id != event_id:
+                logger.debug("Action %s already replaced: its completion books nothing", event_id)
+                return
             # Clear the movement target whether or not we learn: the action has ended either way
             self._detector.clear_movement_target()
+        try:
             if pending is None or not self.config.enable_learning:
                 return
 

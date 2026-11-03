@@ -801,7 +801,9 @@ class ReachyMiniController(RobotController):
             return self._goto_target_locked(target, gen=gen)
         except Exception as e:
             logger.error("Motion command failed: %s", e)
-            return MotionOutcome.refused("error", f"motion command failed: {e}")
+            return MotionOutcome.refused(
+                "ik" if mp.names_ik_failure(str(e)) else "error", f"motion command failed: {e}"
+            )
         finally:
             self._motion_lock.release()
 
@@ -1300,7 +1302,7 @@ class ReachyMiniController(RobotController):
             return self._goto_target_locked(head_only, gen=gen, start=start)
         except Exception as e:
             logger.error("Look-at command failed: %s", e)
-            return MotionOutcome.refused("error", f"look-at failed: {e}")
+            return MotionOutcome.refused("ik" if mp.names_ik_failure(str(e)) else "error", f"look-at failed: {e}")
         finally:
             self._motion_lock.release()
 

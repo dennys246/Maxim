@@ -322,9 +322,9 @@ Rules around the loop:
 - **The pain bridge (Wire 2; delta D2).**
   - **The start is recorded when the move starts, not when it is queued.** Today Selfy calls `_record_pain_action_start` on DN's thread before the enqueue. So when A is moving and B is queued, B's start retires A, A's pain is booked against B, and the detector judges A's motion against B's target.
   - Now the ticket carries the start's arguments, and the motor thread records the start when `accepted` resolves. That records the start, sets the detector's target, and stores the returned event id on the ticket.
-  - `record_action_complete(..., event_id=None)` keeps its keyword default (18 call sites in `test_pain_circuit_booking_1209.py`). Given an id, it completes that event only, so a superseded or stale completion can never book the move that replaced it.
+  - `record_action_complete(..., event_id=None)` keeps its keyword default (18 call sites in `test_pain_circuit_booking_1209.py`). Given an id, it completes that event only, so a superseded or stale completion can never book the move that replaced it. **Amended (owner, 2026-11-02, §16):** only the automatic turn completes; a queued move books no completion, as on `main`.
   - A ticket resolved `superseded` or `cancelled` before `accepted` never recorded a start, so it completes nothing.
-  - **`turn_around` (synchronous, on DN's or a tool's thread) binds its own ticket** (Wire scoped S1). It sets `current_motion_ticket` around its controller dispatches, with `on_accept` carrying its pain start. So the controller records the start inside `_motion_lock`, at the first chunk's `accepted`, after any in-flight motor-thread move has released the lock. Recording before the dispatch would bring D2 back: the turn waits behind move A and books A's pain against the turn. `_maybe_turn_around` goes the same way.
+  - **`turn_around` (synchronous, on DN's or a tool's thread) binds its own ticket** (Wire scoped S1; built in `_maybe_turn_around`, §16). It sets `current_motion_ticket` around its controller dispatches, with `on_accept` carrying its pain start. So the controller records the start inside `_motion_lock`, at the first chunk's `accepted`, after any in-flight motor-thread move has released the lock. Recording before the dispatch would bring D2 back: the turn waits behind move A and books A's pain against the turn. `_maybe_turn_around` goes the same way.
   - **The bridge has two producer threads now, so retire-then-install is atomic** (Wire scoped S2). `bridges/pain_bridge.py::record_action_start` reads `_pending` for `_retire` outside `_pending_lock` today, so two concurrent starts can both retire the same old event, and the other new one is overwritten unretired (NAc's `discard_pending_event` never runs). The retire and the install move under one `_pending_lock` hold. The other `_pending` readers are unchanged.
 - **The public Selfy methods that queue motion return the ticket.** These are `look_at_image`, `move`, `move_relative`, `goto_pose`, `center_vision`, `move_antenna` and `media_loop.act` (Wire NIT).
   - Their early returns return a resolved ticket: `ok` with zero chunks for a no-op (`move`'s no-change return), or `limit` for "unreachable" (`look_at_image`'s reachability return).
@@ -333,7 +333,7 @@ Rules around the loop:
   - `tools/reachy.py` MaximCommandTool's `if turned is False:` becomes `if not turned:`;
   - `embodied_runtime/movement.py::_maybe_turn_around`'s `success=turned is not False` becomes `success=bool(turned)`.
 
-  The refused or `limit` turn then reports failure to the model and books failure.
+  The refused or `limit` turn then reports failure to the model. **Amended (owner, 2026-11-02, §16):** it books failure only if it started; a turn that never started books nothing.
 
 **5.7 `automatic_body_yaw` (O6).**
 - The controller's `__init__` **keeps the `automatic_body_yaw` parameter** and raises `InvalidConfigError` when it is `True` (delta D4).
@@ -467,7 +467,7 @@ Rules around the loop:
 23. **Torque-on race (delta S3).** The fake reports `disabled` for 300 ms after `enable_motors()`: `wake_up` waits and wakes. For 1.5 s: `wake_up` fails with no motion.
 24. **REST read.** A contract test against the real daemon app at the SDK floor and latest (R2 reachy cell) pins the parser. Shape variants (a nested `body_yaw`, the `head_pose.m` matrix) parse. An unknown shape → `reference`, plus one ERROR at connect naming the SDK version.
 25. **Synchronous lock bound (delta N5).** A tool-thread dispatch behind a 30 s in-flight move returns "motor busy" within 25 s.
-26. **Turn identity (delta D3).** A refused `turn_around` reaches the model as an error and books failure.
+26. **Turn identity (delta D3).** A refused `turn_around` reaches the model as an error. A turn that started and failed books failure; one that never started books nothing (§16).
 
 **Deletion probes after the build.** Remove each of: R1 to R5, the REST read, the sampler, the split pre-check, the auto-yaw error, the `MotorQueue` resolutions, the learner gate, the inbox and the event-id pairing. Each must turn its gate red.
 
@@ -843,30 +843,46 @@ pose a still-queued earlier move targets (the queue-window class, pre-existing; 
 
 ## 16. PR 2b build notes (2026-11-02, for the code review)
 
-Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (last section).
+Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the last sections).
+
+**Owner decisions (2026-11-02, all the recommended option), asked after the review round:**
+1. **Pacing stays at dispatch.** `GazeHistory.record_gaze` did three jobs: the dwell, inhibition of return (IOR) and
+   the current position. Pacing is not a learner under O4. `note_move_commanded(target)` stamps the dwell and IOR when
+   a move is issued, for a move that later fails too, as on `main`; `note_arrival` sets the position on an ok outcome.
+   A move refused at once paces nothing, also as on `main`. (The first build moved IOR to completion and claimed the
+   cadence was unchanged. It was not: a re-issue at 0.51 s instead of 0.72 s, measured by the review.)
+2. **`ik` has one meaning.** A controller that reports `kind="ik"` and an SDK log line go through the same branch of
+   `run_motion`: the failure count, the mirror re-read, the bounds and attention learners, recovery. Never a
+   connection failure.
+3. **A turn that never started books nothing**, including one the controller refuses before its first SDK call. With
+   the start at accept no event exists. This extends the 2026-11-01 rule, and amends §5.6 and gate 26.
+4. **Queued moves book no pain completion, as on `main`.** This amends §5.6: only the automatic turn completes by
+   id. A completion would clear the detector's target (`_check_movement_failure` reads it after its timeout, so the
+   movement-failure pain would stop firing), cut the 5 s attribution window to the move's length, and add a positive
+   NAc link per look-at. A look-at's event ends when the next one replaces it. Its `event_id` is stored by the generic
+   seam and has no reader. A retire-only close is a later issue if one is wanted.
 
 **Choices the build made that v8 did not fix:**
-1. **The dwell stays at dispatch.** `GazeHistory.record_gaze` also starts `should_move`'s dwell, so booking it only at
-   completion would have dropped the 0.5 s pacing during a move and DN (30 Hz) would re-issue every tick. A new
-   `note_move_commanded()` starts the dwell at dispatch, for every issued move as on `main`, and the completion's
-   `record_gaze(restart_dwell=False)` leaves the clock alone, so DN's cadence does not change.
-2. **Queued moves book no pain completion.** §5.6 keys `record_action_complete` by event id, but on `main` the only
-   caller is `_maybe_turn_around`: a look-at's pending event ends when the next one replaces it. Adding a completion
-   to `run_motion` would clear the detector's target (which `_check_movement_failure` reads after its timeout, so the
-   movement-failure pain would stop firing), cut the 5 s attribution window to the move's length, and add a positive
-   NAc link per look-at. None of that was decided, so it stays out. The event id on a look-at's ticket has no reader.
-3. **A turn the controller refuses before its first SDK call now books nothing.** 2a booked a failure for it, since
-   its start came before the dispatch. With the start at accept there is no event to complete. This is the owner's
-   2026-11-01 rule (a refused turn that never moved books nothing) reaching the controller's refusals too.
-4. **`ik` is a new `MotionOutcomeKind`**, the one non-ok kind the spatial learners read. `run_motion` sets it from the
-   log-based detection and from `failure_kind(e)` on a raised command, which closes Wire 7 / Executor 7: the sync
-   path's exception never reached DN's classifier after 2a. A queued IK failure now reaches the spatial map too,
-   which it never did on `main`. `failure_kind` matches `\bik\b`, not `ik` anywhere.
-5. **`look_opposite` keeps its `bool`.** A ticket is never false, so `if dn.look_opposite():` would have gone silent
+1. **The IK wording lives in `hardware/reachy/motion_path.py::names_ik_failure`**, used by the controller's two
+   handlers and the worker's log handler. It is Reachy's text, so it stays out of the robot-agnostic layer, and it is
+   narrower than DN's old substring check: a port collision is not an IK failure. A plugin reports `kind="ik"` itself.
+2. **What `ik` does not reach.** In reachy-mini 1.8.3 the IK text comes from the daemon side, so a WS client may see
+   neither the exception nor the log line (read from the SDK source; not verified on hardware). Then an unreachable
+   pose reads `partial` from the final readback and teaches nothing, where `main` taught success. That is the
+   conservative failure.
+3. **`attention.record_gaze` is booked twice for a DN look-at**: the worker books the outcome and so does
+   `_book_spatial`. Success already was on `main`; now an IK failure is too, so the ratio holds and the counts double.
+   One owner per learner is a follow-up.
+4. **`look_opposite` keeps its `bool`.** A ticket is never false, so `if dn.look_opposite():` would have gone silent
    on a change of return type (the D3 class). `True` now means issued. It has no caller in `src/`.
-6. **A host result that is not a ticket** reads through `as_outcome`: a plugin host's `True` is ok, `None` is not.
-7. **The queue-window no-op (the second delta round's NIT) is fixed here**: `move` answering "already there" against
-   a pose still queued returns that move's ticket.
+5. **A host result that is not a ticket** reads through `as_outcome`: a plugin host's `True` is ok, `None` is not.
+6. **The queue-window no-op (the second delta round's NIT) is fixed here**: `move` answering "already there" against
+   a pose still queued returns that move's ticket. The ticket is shared, so a caller's cancel reaches that move, which
+   had not started.
+7. **Only `_maybe_turn_around` binds a ticket.** An explicit `turn_around` records no pain start, as on `main`, so
+   §5.6's "`turn_around` binds its own ticket" has nothing to carry there. No public keyword was added.
+8. **The inbox is drained every loop, inhibited or not, and once after the loop ends**, on DN's thread. A move already
+   issued still publishes while DN is inhibited; `inhibit`'s docstring says so.
 
 **Deferred:** the plan/dispatch race (a body moved between `_plan_turn` and the controller's dispatch) stays as
 recorded in §15; the controller clamps it.

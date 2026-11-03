@@ -21,7 +21,8 @@ import numpy as np
 
 from maxim.embodied_runtime.movement import SyncResult
 from maxim.exceptions import MotionRefused
-from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, failure_kind, current_motion_ticket
+from maxim.hardware.controller import MotionOutcome, MotionTicket, as_outcome, current_motion_ticket
+from maxim.hardware.reachy.motion_path import names_ik_failure
 from maxim.inference.transcribe_audio import create_task_file
 from maxim.utils.audio import resample_audio, to_int16
 from maxim.utils.logging import log_swallowed_exception, warn
@@ -42,8 +43,7 @@ class IKWarningHandler(logging.Handler):
         self.failure_message = None
 
     def emit(self, record: logging.LogRecord) -> None:
-        msg = record.getMessage().lower()
-        if "ik error" in msg or "pose not achievable" in msg or "collision detected" in msg:
+        if names_ik_failure(record.getMessage()):
             self.ik_failure_detected = True
             self.failure_message = record.getMessage()
 
@@ -101,14 +101,14 @@ class MotorQueue:
     def closed(self) -> bool:
         return self._closed
 
-    def put(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> MotionTicket:
-        """Queue *fn* with a new ticket, replacing any command still waiting (latest wins)."""
-        return self.submit(MotionTicket(), fn, args, kwargs)
-
-    def submit(
-        self, ticket: MotionTicket, fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+    def put(
+        self, fn: Callable[..., Any], *args: Any, _on_accept: Callable[[], Any] | None = None, **kwargs: Any
     ) -> MotionTicket:
-        """Queue *fn* under a caller-built *ticket* (one carrying ``on_accept``); returns the ticket."""
+        """Queue *fn* with a new ticket, replacing any command still waiting (latest wins).
+
+        ``_on_accept`` becomes the ticket's ``on_accept``.
+        """
+        ticket = MotionTicket(on_accept=_on_accept)
         with self._lock:
             if self._closed:
                 ticket.resolve_unstarted("cancelled", _CLOSED)
@@ -225,9 +225,11 @@ def run_motion(item: QueuedMotion, maxim: Any, state: _IKState | None = None) ->
         result = item.fn(*item.args, **kwargs)
         outcome = as_outcome(result)
         if ik_handler.ik_failure_detected:
-            maxim.log.warning("IK failure detected: %s", ik_handler.failure_message)
             outcome = MotionOutcome.refused("ik", f"IK failure: {ik_handler.failure_message}")
+        if outcome.kind == "ik":  # logged by the SDK or reported by the controller: one meaning
+            maxim.log.warning("IK failure detected: %s", outcome.reason)
             state.failures += 1
+            maxim.sync_head_position()  # the mirror holds a target that was not reached
             _record_ik_failure(maxim, position_info, commanded_6d)
             _maybe_recover_from_ik_failures(maxim, state)
         else:
@@ -240,8 +242,8 @@ def run_motion(item: QueuedMotion, maxim: Any, state: _IKState | None = None) ->
         maxim.log.error("Motor command refused: %s", e)
         maxim.sync_head_position()
     except Exception as e:
-        # A raised command never feeds a learner (#1499 O4); it counts as a connection failure.
-        outcome = MotionOutcome.refused(failure_kind(e), f"motor command failed: {e}")
+        # A raised command feeds no learner (#1499 O4); it counts as a connection failure.
+        outcome = MotionOutcome.refused("error", f"motor command failed: {e}")
         warn("Motor command failed: %s", e, logger=maxim.log)
         maxim._note_connection_failure("motor", e)
     finally:
@@ -307,7 +309,6 @@ def _record_ik_failure(maxim: Any, position_info: Any, commanded_6d: Any) -> Non
             maxim.log.debug("Failed to record IK failure: %s", rec_err)
     if commanded_6d is not None and bounds_learner is not None:
         try:
-            maxim.sync_head_position()
             bounds_learner.record_movement_outcome(commanded=commanded_6d, actual=_actual_6d(maxim), ik_failure=True)
             maxim.log.debug("Recorded IK failure bounds at %s", commanded_6d)
         except Exception as bounds_err:

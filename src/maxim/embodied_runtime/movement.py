@@ -900,12 +900,17 @@ class MovementMixin:
                 return None
             return pain_bridge.record_action_start("turn_around", context={"reason": turn_reason, "angle": turn_angle})
 
+        # Bound around the turn, so the controller records the start inside the motion lock at the first SDK
+        # call. A start before the dispatch would wait behind a move in flight and book its pain on the turn.
         ticket = MotionTicket(on_accept=_pain_start)
-        turned = as_outcome(
-            self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True, ticket=ticket)
-        )
+        turned = MotionOutcome.refused("error", "the turn did not finish")
+        token = current_motion_ticket.set(ticket)
+        try:
+            turned = as_outcome(self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True))
+        finally:
+            current_motion_ticket.reset(token)
+            ticket.finish(turned)
 
-        ticket.finish(turned)
         if pain_bridge is not None and ticket.event_id is not None:
             try:
                 pain_bridge.record_action_complete(success=bool(turned), event_id=ticket.event_id)
@@ -1141,7 +1146,8 @@ class MovementMixin:
         """
         Move the head to an absolute pose; returns the move's ticket (#1499 5.6).
 
-        A pose equal to the mirror's returns a ticket already ok with zero
+        A pose equal to the mirror's returns the queued move's ticket if one is
+        on its way there, else a ticket already ok with zero
         chunks. ``duration_policy="exact"`` (a duration the model chose) refuses
         a move too fast for it; ``"at_least"`` stretches it.
 
@@ -1267,8 +1273,8 @@ class MovementMixin:
             and next_pitch == cur_pitch
             and next_yaw == cur_yaw
         ):
-            # The mirror may hold a target still on its way: that move's outcome is this call's answer,
-            # or a retry of a move about to fail reads as done.
+            # The mirror may hold a target still on its way: that move's outcome is this call's answer, or a
+            # retry of a move about to fail reads as done. The ticket is shared: a cancel reaches that move.
             on_its_way = getattr(self, "_mirror_ticket", None)
             if on_its_way is not None and not on_its_way.completed.done():
                 return on_its_way
@@ -1392,7 +1398,6 @@ class MovementMixin:
         *,
         duration: float = 5.0,
         recenter_head: bool = True,
-        ticket: MotionTicket | None = None,
     ) -> MotionOutcome:
         """Rotate the body to bring a new area into view.
 
@@ -1406,8 +1411,6 @@ class MovementMixin:
             duration: Time for the rotation in seconds (default 5.0). The step
                 durations are derived from it, so they are ``"at_least"``.
             recenter_head: If True, return head toward center during rotation.
-            ticket: Bound around the dispatches (#1499 5.6), so its ``on_accept``
-                runs at the turn's first SDK call. None binds a plain one.
 
         Returns:
             The turn's ``MotionOutcome`` (#1499 5.8, D3): ok when both steps
@@ -1453,8 +1456,7 @@ class MovementMixin:
                 self.log.debug("Failed to inhibit DefaultNetwork: %s", inh_e)
 
         try:
-            bound = ticket if ticket is not None else MotionTicket()
-            return self._run_bound_turn(bound, robot, current_body_yaw, target_body_yaw, duration, recenter_head)
+            return self._run_turn(robot, current_body_yaw, target_body_yaw, duration, recenter_head)
         except MotionRefused:
             raise
         except Exception as e:
@@ -1495,30 +1497,6 @@ class MovementMixin:
                 f"past the ±{self._BODY_YAW_LIMIT_DEG:.0f}° body limit; it cannot fit",
             )
         return current, target
-
-    def _run_bound_turn(
-        self,
-        ticket: MotionTicket,
-        robot: Any,
-        current_body_yaw: float,
-        target_body_yaw: float,
-        duration: float,
-        recenter_head: bool,
-    ) -> MotionOutcome:
-        """``_run_turn`` with *ticket* bound, so the controller marks it at the turn's first SDK call (5.6).
-
-        A start recorded before the dispatch waits behind any move in flight and
-        books that move's pain against the turn; this one records inside the
-        motion lock. The ticket always resolves.
-        """
-        outcome = MotionOutcome.refused("error", "the turn did not finish")
-        token = current_motion_ticket.set(ticket)
-        try:
-            outcome = self._run_turn(robot, current_body_yaw, target_body_yaw, duration, recenter_head)
-            return outcome
-        finally:
-            current_motion_ticket.reset(token)
-            ticket.finish(outcome)
 
     def _run_turn(
         self, robot: Any, current_body_yaw: float, target_body_yaw: float, duration: float, recenter_head: bool

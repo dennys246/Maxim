@@ -32,7 +32,8 @@ class GazeManagerMixin:
         _config, _gaze_history, _spatial_map, _attention_network,
         _salience_map_unified, _gaze_controller, _scene_context,
         _last_interesting_time, _next_exploration_time, _maxim,
-        _novelty_tracker, _interests
+        _novelty_tracker, _interests, _issue_motion, _book_on_tick,
+        _book_spatial
     """
 
     # ------------------------------------------------------------------
@@ -92,14 +93,15 @@ class GazeManagerMixin:
         ticket = self._issue_motion(
             lambda: self._maxim.look_at_image(target[0], target[1], duration=floor_duration(derived))
         )
-        self._gaze_history.note_move_commanded()
+        if not ticket.never_started:
+            self._gaze_history.note_move_commanded(target)
         self._book_on_tick(ticket, lambda outcome: self._book_opposite(target, outcome))
         return not ticket.never_started
 
     def _book_opposite(self, target: tuple[float, float], outcome: MotionOutcome) -> None:
         """What a ``look_opposite`` did, on DN's tick: only a completed move or an IK failure teaches (O4)."""
         if outcome.ok:
-            self._gaze_history.record_gaze(target, restart_dwell=False)
+            self._gaze_history.note_arrival(target)
             logger.debug("look_opposite: moved to (%.0f, %.0f)", target[0], target[1])
         else:
             logger.warning("look_opposite did not complete (%s): %s", outcome.kind, outcome.reason)

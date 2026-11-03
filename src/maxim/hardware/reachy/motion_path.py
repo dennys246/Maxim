@@ -16,6 +16,7 @@ the TWIST of ``R_rel`` about the body's z axis, never an Euler difference.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,6 +44,14 @@ NECK_PATH_SAMPLES = 32
 # Body chunks: ⌈|Δbody| / 150°⌉, with the neck held (Executor-measured worst
 # twist about 65° per stage).
 BODY_CHUNK_MAX_DEG = 150.0
+
+# How the Reachy SDK and daemon word a target that cannot be reached: they report it only as text.
+_IK_FAILURE_TEXT = re.compile(r"ik error|ik failure|pose not achievable|collision detected", re.IGNORECASE)
+
+
+def names_ik_failure(text: str) -> bool:
+    """True when an SDK message or exception says the target itself could not be reached (#1499 O4)."""
+    return _IK_FAILURE_TEXT.search(text) is not None
 
 
 def rz(angle: float) -> np.ndarray:

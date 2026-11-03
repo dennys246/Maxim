@@ -951,12 +951,12 @@ def test_a_raising_dn_handler_is_logged_and_the_next_outcome_still_applies(caplo
 
     dn._record_movement_result = _raises_once  # type: ignore[method-assign]
     dn._execute_action(_look((10.0, 10.0)))
-    dn._gaze_history._last_move_time -= 60.0  # past the dwell, so the second move is issued
-    dn._execute_action(_look((20.0, 20.0)))
+    dn._gaze_history._last_move_time -= 60.0  # past the dwell, and far enough off to be salient
+    dn._execute_action(_look((600.0, 400.0)))
     with caplog.at_level(logging.WARNING):
         dn._drain_motion_outcomes()
     assert "a learner broke" in caplog.text
-    assert dn._spatial_map.booked == [((20.0, 20.0), True)]
+    assert dn._spatial_map.booked == [((600.0, 400.0), True)]
 
 
 def test_the_inbox_drains_while_dn_is_inhibited():
@@ -967,26 +967,151 @@ def test_the_inbox_drains_while_dn_is_inhibited():
     dn._execute_action(_look())
     dn._inhibited = True
     dn._running = True
-    dn._check_auto_release = lambda: setattr(dn, "_running", False)  # type: ignore[method-assign]
+    dn._update_interval = 0.0
+    during_the_loop: list[list] = []
+
+    def _second_pass_ends_it():
+        during_the_loop.append(list(dn._spatial_map.booked))
+        dn._running = len(during_the_loop) < 2
+
+    dn._check_auto_release = _second_pass_ends_it  # type: ignore[method-assign]
     dn._run_loop()
-    assert dn._spatial_map.booked == [((100.0, 100.0), True)]
+    assert during_the_loop == [[], [((100.0, 100.0), True)]]  # booked by the loop, not only as it ended
 
 
-def test_the_dwell_gate_starts_at_dispatch_as_before():
-    """``record_gaze`` also starts the dwell. Booked only at completion, DN would re-issue the move every tick."""
+def test_dwell_and_inhibition_of_return_start_at_dispatch_as_on_main():
+    """Owner 2026-11-02: pacing is not a learner. ``record_gaze`` also stamped both, so DN would re-issue every tick."""
     from maxim.hardware.controller import MotionOutcome, MotionTicket
 
     ticket = MotionTicket()
     dn = _dn(lambda u, v, duration: ticket)
     dn._execute_action(_look())
-    should_move, _, reason = dn._gaze_history.should_move((400.0, 300.0))
-    assert not should_move and reason.startswith("dwell_time")
+    gaze = dn._gaze_history
+    assert gaze.should_move((400.0, 300.0))[2].startswith("dwell_time")
 
-    dn._gaze_history._last_move_time -= 60.0  # the dwell has passed by the time the move finishes
+    gaze._last_move_time -= 0.6  # past the 0.5 s dwell, with the move still running
+    stamp = gaze._history[-1]
+    gaze._history[-1] = type(stamp)(u=stamp.u, v=stamp.v, timestamp=stamp.timestamp - 0.6)
+    assert gaze.should_move((100.0, 100.0))[2].startswith("low_salience")  # the same target is not re-issued
+
+    ticket.finish(MotionOutcome.refused("rate", "too fast"))
+    dn._drain_motion_outcomes()
+    assert gaze.get_current_position() is None  # it never arrived
+    assert gaze.history_size == 1  # and it still paces: a refusing target does not retry at the dwell's rate
+
+
+def test_a_completed_move_books_its_arrival_without_restarting_the_pacing():
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    ticket = MotionTicket()
+    dn = _dn(lambda u, v, duration: ticket)
+    dn._execute_action(_look())
+    dn._gaze_history._last_move_time -= 60.0
     ticket.finish(MotionOutcome(ok=True))
     dn._drain_motion_outcomes()
     assert dn._gaze_history.get_current_position() == (100.0, 100.0)
-    assert dn._gaze_history.should_move((400.0, 300.0))[0]  # booking the arrival did not restart it
+    assert dn._gaze_history.history_size == 1
+    assert dn._gaze_history.should_move((400.0, 300.0))[0]
+
+
+def test_a_move_refused_at_once_does_not_pace():
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome.refused("limit", "no")))
+    dn._execute_action(_look())
+    assert dn._gaze_history.history_size == 0 and dn._gaze_history.should_move((100.0, 100.0))[0]
+
+
+def test_outcomes_still_in_the_inbox_when_dn_stops_are_booked_on_its_thread():
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome(ok=True)))
+    dn._execute_action(_look())
+    dn._running = False
+    dn._run_loop()
+    assert dn._spatial_map.booked == [((100.0, 100.0), True)]
+
+
+def _proposal(action_type, *, behavior="b", target=(100.0, 100.0), **metadata):
+    from maxim.default_network.messages import ActionProposal
+
+    return ActionProposal(
+        behavior_name=behavior, action_type=action_type, target=target, priority=1.0, confidence=1.0, metadata=metadata
+    )
+
+
+@pytest.mark.parametrize(
+    ("proposal", "expected"),
+    [
+        (_proposal("look_at"), ("look", 100.0, 100.0, 0.5)),
+        (_proposal("scan"), ("look", 100.0, 100.0, 0.5)),
+        (_proposal("scan", target=None, delta=(5, 6)), ("relative", (5, 6))),
+        (_proposal("track"), ("look", 100.0, 100.0, 0.25)),
+        (_proposal("track", behavior="social", track_id=3), ("look", 100.0, 100.0, 0.25)),
+        (_proposal("turn_around", target=None, turn_angle=30.0, duration=5.0), ("turn", 30.0, 5.0)),
+    ],
+)
+def test_each_dn_action_type_reaches_its_motor_command_and_is_booked(proposal, expected):
+    from maxim.default_network.network import DefaultNetwork, DefaultNetworkConfig
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    calls: list[tuple] = []
+    ok = MotionTicket.resolved(MotionOutcome(ok=True))
+
+    class _Host:
+        yaw = 0.0
+
+        def look_at_image(self, u, v, *, duration):
+            calls.append(("look", u, v, duration))
+            return ok
+
+        def move_relative(self, delta):
+            calls.append(("relative", delta))
+            return ok
+
+        def turn_around(self, angle, *, duration):
+            calls.append(("turn", angle, duration))
+            return MotionOutcome(ok=True)
+
+    dn = DefaultNetwork(_Host(), config=DefaultNetworkConfig(fear_gate_enabled=False))
+    ticket = dn._dispatch_action_to_motor(proposal, 0.5)
+    assert calls == [expected] and ticket.completed.result(timeout=1.0).ok
+
+
+def test_a_proposal_with_no_motor_command_is_not_executed():
+    dn = _dn(lambda u, v, duration: None)
+    ticket = dn._dispatch_action_to_motor(_proposal("unknown"), 0.5)
+    assert ticket.completed.result(timeout=1.0).kind == "error"
+
+
+def test_a_dn_command_that_raises_teaches_nothing():
+    def _raises(u, v, duration):
+        raise RuntimeError("IK error: a host that raises is not the controller's classified failure")
+
+    dn = _dn(_raises)
+    dn._execute_action(_look())
+    dn._drain_motion_outcomes()
+    assert dn._spatial_map.booked == [] and dn._stats["actions_executed"] == 0
+
+
+def test_the_attention_network_is_booked_with_the_spatial_map():
+    from maxim.attention import AttentionConfig, AttentionNetwork
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome(ok=True)))
+    booked: list[tuple] = []
+
+    class _Attention(AttentionNetwork):
+        def record_gaze(self, position, success=True):
+            booked.append((position, success))
+
+        def get_reachability(self, target):
+            return 1.0
+
+    dn._attention_network = _Attention(AttentionConfig())
+    dn._execute_action(_look())
+    dn._drain_motion_outcomes()
+    assert booked == [((100.0, 100.0), True)]
 
 
 def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
@@ -1017,19 +1142,40 @@ def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
     assert already.look_opposite(duration=0.5) is False  # it never started
 
 
-def test_an_ik_exception_in_the_motor_callable_reads_as_ik(daemon):
-    """Wire 7, Executor 7: run_motion catches the exception, so DN's own classifier no longer sees it."""
-    from maxim.embodied_runtime.workers import QueuedMotion, run_motion
-    from maxim.hardware.controller import MotionTicket
+@pytest.mark.parametrize(
+    ("message", "kind"),
+    [("IK error: no solution", "ik"), ("pose not achievable", "ik"), ("port collision on 8000", "error")],
+)
+def test_an_ik_failure_the_sdk_raises_reads_as_ik_through_the_real_controller(daemon, monkeypatch, message, kind):
+    """Wire F1: the controller catches the exception, so the classifying has to happen there."""
+    from maxim.hardware.controller import MotionTarget, PixelTarget
+
+    ctl = controller(daemon)
+
+    def _raises(*a, **kw):
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(ctl.mini, "goto_target", _raises)
+    assert ctl.goto_target(MotionTarget(head_yaw=D(10), duration=1.0)).kind == kind
+    assert ctl.look_at_pixel(PixelTarget(u=400, v=240, duration=1.0)).kind == kind
+
+
+def test_a_reported_ik_failure_is_booked_like_a_logged_one(daemon):
+    """Owner 2026-11-02: ``ik`` has one meaning: the failure count and the mirror, never a connection failure."""
+    from maxim.embodied_runtime.workers import QueuedMotion, _IKState, run_motion
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
 
     selfy = _selfy(controller(daemon), daemon)
-
-    def _raises():
-        raise RuntimeError("IK solver: pose not achievable")
-
+    connection: list = []
+    syncs: list = []
+    selfy._note_connection_failure = lambda *a: connection.append(a)  # type: ignore[method-assign]
+    selfy.sync_head_position = lambda: syncs.append(1)  # type: ignore[method-assign]
+    state = _IKState()
     ticket = MotionTicket()
     ticket.claim()
-    assert run_motion(QueuedMotion(ticket, _raises, (), {}), selfy).kind == "ik"
+    item = QueuedMotion(ticket, lambda: MotionOutcome.refused("ik", "IK error"), (), {})
+    assert run_motion(item, selfy, state).kind == "ik"
+    assert state.failures == 1 and connection == [] and syncs
 
 
 def test_the_sdks_logged_ik_warning_reads_as_ik(daemon):
@@ -1127,6 +1273,15 @@ def test_a_queued_look_at_records_its_start_only_when_it_is_accepted(daemon):
         stop.set()
 
 
+def test_a_look_at_with_no_queue_records_its_start_too(daemon):
+    bridge, _ = _pain_bridge()
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._default_network = _Network(bridge)
+    ticket = selfy.look_at_image(320, 240, duration=1.0)
+    assert ticket.completed.result(timeout=5.0).ok
+    assert bridge._pending is not None and ticket.event_id == bridge._pending.event_id
+
+
 def test_a_look_at_replaced_before_it_was_accepted_records_nothing(daemon):
     bridge, _ = _pain_bridge()
     selfy = _selfy(controller(daemon), daemon)
@@ -1156,6 +1311,27 @@ def test_a_completion_by_id_never_books_the_move_that_replaced_it():
 
     bridge.record_action_complete(success=False, event_id=new)
     assert bridge._pending is None and bridge._detector._pending_target is None
+
+
+def test_a_completion_by_id_clears_the_target_under_the_lock_and_after_pain_took_its_event():
+    bridge, _ = _pain_bridge()
+    held: list[bool] = []
+    real = bridge._detector.clear_movement_target
+
+    def _spy():
+        held.append(bridge._pending_lock.locked())
+        real()
+
+    bridge._detector.clear_movement_target = _spy
+    event = bridge.record_action_start("a", target_yaw=1.0)
+    bridge.record_action_complete(success=True, event_id=event)
+    assert held == [True]  # a replacing start cannot land between the id check and the clear
+
+    event = bridge.record_action_start("b", target_yaw=2.0)
+    with bridge._pending_lock:
+        bridge._pending = None  # pain retired it
+    bridge.record_action_complete(success=True, event_id=event)
+    assert bridge._detector._pending_target is None
 
 
 def test_two_concurrent_starts_retire_each_old_event_once_and_leak_nothing(monkeypatch):
@@ -1228,41 +1404,33 @@ def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemo
     assert gotos_at_start == [before]  # at the first SDK call, not after the turn
 
 
-def test_turn_around_resolves_the_ticket_it_was_given(daemon):
-    from maxim.hardware.controller import MotionTicket
+def test_a_plugin_turn_that_never_marks_accepted_still_books_when_it_completes(daemon):
+    from maxim.hardware.controller import MotionOutcome
 
     selfy = _selfy(controller(daemon), daemon)
-    ticket = MotionTicket()
-    turned = selfy.turn_around(30.0, duration=5.0, ticket=ticket)
-    assert ticket.completed.result(timeout=1.0) == turned
+    starts: list = []
+    completes: list = []
+    selfy.turn_around = lambda *a, **kw: MotionOutcome(ok=True)  # type: ignore[method-assign]
+    pain = _risky_pain(starts, completes)
+    selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
+    assert len(starts) == 1 and completes == [(True, "turn-event")]
 
 
 def test_a_turn_refused_before_its_first_sdk_call_books_nothing_but_one_that_started_does(daemon):
-    from maxim.hardware.controller import MotionOutcome, current_motion_ticket, mark_motion_accepted
+    from maxim.hardware.controller import MotionOutcome, mark_motion_accepted
 
     selfy = _selfy(controller(daemon), daemon)
     starts: list = []
     completes: list = []
 
-    def _turn(angle, *, ticket, **kw):
-        token = current_motion_ticket.set(ticket)
-        try:
-            return MotionOutcome.refused("rate", "too fast")
-        finally:
-            current_motion_ticket.reset(token)
-
-    selfy.turn_around = _turn  # type: ignore[method-assign]
+    selfy.turn_around = lambda *a, **kw: MotionOutcome.refused("rate", "too fast")  # type: ignore[method-assign]
     pain = _risky_pain(starts, completes)
     selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
     assert starts == [] and completes == []
 
-    def _turn_started_then_failed(angle, *, ticket, **kw):
-        token = current_motion_ticket.set(ticket)
-        try:
-            assert mark_motion_accepted()
-            return MotionOutcome(ok=False, kind="partial", reason="step 2 stopped")
-        finally:
-            current_motion_ticket.reset(token)
+    def _turn_started_then_failed(*a, **kw):
+        assert mark_motion_accepted()
+        return MotionOutcome(ok=False, kind="partial", reason="step 2 stopped")
 
     selfy.turn_around = _turn_started_then_failed  # type: ignore[method-assign]
     selfy._last_turn_around_time = 0.0
