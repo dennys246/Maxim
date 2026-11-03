@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Callable, ClassVar
 
 if TYPE_CHECKING:
-    pass
+    from maxim.memory.rwlock import RWLock
 
 from maxim.memory.experience_clock import ExperienceClock
 from maxim.agents.bus import DependencyGraph, EdgeType
@@ -133,6 +133,10 @@ class PersistenceMixin(StoreFileOwnership):
     """
 
     _store_name = "hippocampus"
+
+    # Set by Hippocampus.__init__; declared here so the mixin's methods type-check (annotations only, no value).
+    _rwlock: RWLock
+    _memories: dict[str, EpisodicMemory | CompressedMemory]
 
     # P3.5 Stage 1 — BioSystemSnapshot Protocol envelope version.
     # Payload-layer legacy version string "3.0" is tombstoned; all future
