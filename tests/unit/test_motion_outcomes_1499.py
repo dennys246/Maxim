@@ -1102,8 +1102,11 @@ def test_a_new_live_loop_clears_the_last_stop(daemon):
     """Cleared when the loop arms its stop event, before ``awaken`` and the runtime start, not later."""
     selfy = _selfy(controller(daemon), daemon)
     selfy._live_stopped = True
-    stop = selfy._arm_live_stop()
-    assert selfy._live_stopped is False and selfy._live_stop_event is stop and not stop.is_set()
+    stop = selfy._open_live_stop_event()
+    try:
+        assert selfy._live_stopped is False and selfy._live_stop_event is stop and not stop.is_set()
+    finally:
+        selfy._close_live_stop_event()  # the event is registered for the process stop request (#1344)
 
 
 def test_the_teardown_stops_the_loop_before_it_latches():

@@ -45,6 +45,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/salience/` | Novelty tracking, interest matching |
 | `src/maxim/interactive/` | Interactive runtime: universal prompt protocol, rich terminal display, DM extensions |
 | `src/maxim/cli_utils.py` | CLI helper utilities (extracted from main CLI module) |
+| `src/maxim/cli_signals.py` | The CLI's SIGINT/SIGTERM handling: the lock-free handler, the stop thread and watchdog, exit codes (#1344) |
 | `src/maxim/runtime/tool_dispatch.py` | Tool execution dispatch (extracted from executor) |
 | `src/maxim/runtime/bio_integration.py` | Bio-system wiring for the agent loop |
 | `src/maxim/runtime/llm_server.py` | Local llama-cpp server lifecycle management |

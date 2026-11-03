@@ -89,7 +89,7 @@ def test_the_module_holds_only_the_tty_loops() -> None:
         )
         assert all(isinstance(t, ast.Name) for t in targets), f"line {stmt.lineno}: {ast.unparse(stmt)[:80]}"
     defs = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
-    assert defs == {"_restore_terminal", "_sigterm_handler", "stdin_reader_raw", "read_post_sim_goal_raw"}
+    assert defs == {"_restore_terminal", "stdin_reader_raw", "read_post_sim_goal_raw"}
     assigned = {
         t.id
         for n in tree.body
