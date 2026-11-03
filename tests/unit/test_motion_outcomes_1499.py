@@ -74,7 +74,6 @@ def _selfy(ctl, daemon):
             self.mode = "active"
             self.sleeping = False
             self.verbosity = 0
-            self._stop_fence_lock = threading.Lock()
             self._live_stopped = False
 
         def sync_head_position(self):
@@ -931,7 +930,6 @@ def test_a_reconnect_that_finishes_after_the_stop_relatches_and_wakes_nothing():
             self.mode = "active"
             self.mini = None
             self._reconnect_lock = threading.Lock()
-            self._stop_fence_lock = threading.Lock()
             self._live_stopped = False
 
         def _degrade_capabilities(self):
@@ -941,24 +939,9 @@ def test_a_reconnect_that_finishes_after_the_stop_relatches_and_wakes_nothing():
     assert calls == ["reconnect", "stop_motion"]
 
 
-def test_a_stop_during_the_reconnects_wake_lands_after_it_and_holds(daemon):
-    """The next reader: a stop between the re-check and the wake woke the robot. The fence serializes them."""
+def _reconnect_host(ctl, stop):
     from maxim.embodied_runtime.connection import ConnectionMixin
     from maxim.embodied_runtime.media_loop import MediaLoopMixin
-
-    ctl = controller(daemon)
-    stop = threading.Event()
-    in_wake, release = threading.Event(), threading.Event()
-    real_wake = ctl.wake_up
-
-    def _slow_wake():
-        in_wake.set()
-        release.wait(5.0)
-        return real_wake()
-
-    ctl.wake_up = _slow_wake
-    ctl.reconnect = lambda timeout, max_attempts: True
-    ctl.start_recording = lambda: None
 
     class _Host(ConnectionMixin, MediaLoopMixin):
         def __init__(self):
@@ -972,10 +955,8 @@ def test_a_stop_during_the_reconnects_wake_lands_after_it_and_holds(daemon):
             self.mode = "active"
             self.mini = None
             self._reconnect_lock = threading.Lock()
-            self._stop_fence_lock = threading.Lock()
             self._live_stopped = False
             self._capabilities = type("Caps", (), {"has_audio": False})()
-            self.resumed = False
 
         def _degrade_capabilities(self):
             pass
@@ -984,23 +965,82 @@ def test_a_stop_during_the_reconnects_wake_lands_after_it_and_holds(daemon):
             pass
 
         def _restore_capabilities(self):
-            self.resumed = True
+            pass
 
-    host = _Host()
+        def _stop_media_io(self, lock):
+            pass
+
+    return _Host()
+
+
+def test_a_stop_after_the_token_refuses_the_wake(daemon):
+    """The last reader: the token is read before the check, so a stop after it moves the generation on."""
+    ctl = controller(daemon)
+    token = ctl.stop_token()
+    ctl.stop_motion()
+    before = len(daemon.gotos())
+    out = ctl.wake_up_unless_stopped_since(token)
+    assert not out and out.kind == "cancelled"
+    assert len(daemon.gotos()) == before and ctl._stop_latched
+
+
+def test_a_stop_during_the_reconnects_wake_cuts_it_and_holds(daemon, monkeypatch):
+    """A stop must cut a running wake, not wait for it: the previous fold's lock made it wait seconds."""
+    ctl = controller(daemon)
+    stop = threading.Event()
+    in_goto, release = threading.Event(), threading.Event()
+    real_goto = daemon.goto_target
+
+    def _slow_goto(*a, **kw):
+        in_goto.set()
+        release.wait(5.0)
+        return real_goto(*a, **kw)
+
+    monkeypatch.setattr(daemon, "goto_target", _slow_goto)
+    ctl.reconnect = lambda timeout, max_attempts: True
+    ctl.start_recording = lambda: None
+    host = _reconnect_host(ctl, stop)
     reconnecting = threading.Thread(target=host._soft_reconnect, kwargs={"reason": "test"}, daemon=True)
     reconnecting.start()
-    assert in_wake.wait(5.0)
-
-    host._stop_media_io = lambda lock: None  # type: ignore[method-assign]
-    tearing = threading.Thread(target=host._begin_live_teardown, args=(stop, None), daemon=True)
-    tearing.start()
-    time.sleep(0.1)
-    assert not stop.is_set()  # the stop waits for the wake
+    assert in_goto.wait(5.0)  # the wake's first step is in flight
+    host._begin_live_teardown(stop, None)
+    assert stop.is_set() and ctl._stop_latched  # the stop did not wait for the wake
     release.set()
     reconnecting.join(10.0)
-    tearing.join(5.0)
-    assert host.resumed  # the reconnect ran to its end, not into an error
-    assert ctl._stop_latched  # it landed after the wake, so the robot stays stopped
+    assert ctl._stop_latched and len(daemon.gotos()) == 1  # the wake ended at its next step
+
+
+def test_a_stop_just_after_the_reconnects_check_still_wakes_nothing(daemon):
+    """The check-then-act window itself: the real teardown lands right after the check passed."""
+    ctl = controller(daemon)
+    stop = threading.Event()
+    ctl.reconnect = lambda timeout, max_attempts: True
+    ctl.start_recording = lambda: None
+    host = _reconnect_host(ctl, stop)
+    real_check = host._stopped_during_reconnect
+    checks: list[bool] = []
+
+    def _check_then_stop():
+        stopped = real_check()
+        checks.append(stopped)
+        if len(checks) == 2:  # the check just before the wake
+            host._begin_live_teardown(stop, None)
+        return stopped
+
+    host._stopped_during_reconnect = _check_then_stop
+    host._soft_reconnect(reason="test")
+    assert checks == [False, False]
+    assert daemon.gotos() == [] and ctl._stop_latched
+
+
+def test_a_stop_during_the_reconnects_recording_restart_wakes_nothing(daemon):
+    ctl = controller(daemon)
+    stop = threading.Event()
+    ctl.reconnect = lambda timeout, max_attempts: True
+    host = _reconnect_host(ctl, stop)
+    ctl.start_recording = lambda: host._begin_live_teardown(stop, None)
+    assert host._soft_reconnect(reason="test") is False
+    assert daemon.gotos() == [] and ctl._stop_latched
 
 
 def test_a_reconnect_after_the_stop_event_is_dropped_still_sees_the_stop():
@@ -1023,10 +1063,11 @@ def test_a_reconnect_after_the_stop_event_is_dropped_still_sees_the_stop():
 
 
 def test_a_new_live_loop_clears_the_last_stop(daemon):
+    """Cleared when the loop arms its stop event, before ``awaken`` and the runtime start, not later."""
     selfy = _selfy(controller(daemon), daemon)
     selfy._live_stopped = True
-    selfy._open_motor_queue(active=True)
-    assert selfy._live_stopped is False
+    stop = selfy._arm_live_stop()
+    assert selfy._live_stopped is False and selfy._live_stop_event is stop and not stop.is_set()
 
 
 def test_a_stop_that_raises_does_not_cost_the_rest_of_the_teardown(daemon, caplog):

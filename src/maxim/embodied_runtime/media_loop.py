@@ -165,8 +165,7 @@ class MediaLoopMixin:
         # Create media lock BEFORE starting agentic runtime (CaptureManager needs it)
         media_lock = threading.Lock()
         self._media_lock = media_lock
-        stop_event = threading.Event()
-        self._live_stop_event = stop_event
+        stop_event = self._arm_live_stop()
 
         # Phase 2: Start agentic runtime automatically when not in sleep mode
         # The agentic system handles all decision-making; live() just does I/O
@@ -735,7 +734,6 @@ class MediaLoopMixin:
         """
         motor_queue = MotorQueue(maxsize=4)
         self._motor_queue = motor_queue if active and self._robot is not None else None
-        self._live_stopped = False  # a new loop: the last one's stop no longer holds a reconnect back
         return motor_queue
 
     def _close_motor_queue(self) -> None:
@@ -752,6 +750,13 @@ class MediaLoopMixin:
         q.close()
         self._motor_queue = q
 
+    def _arm_live_stop(self) -> threading.Event:
+        """A new loop's stop event; the last loop's stop no longer holds a soft reconnect back (#1499)."""
+        stop_event = threading.Event()
+        self._live_stopped = False
+        self._live_stop_event = stop_event
+        return stop_event
+
     def _begin_live_teardown(self, stop_event: threading.Event, media_lock: Any) -> None:
         """The teardown's first step: stop the loop and fence motion before anything is joined (#1499).
 
@@ -760,16 +765,17 @@ class MediaLoopMixin:
         controller's latch refuses the rest (a body turn, a tool's direct
         dispatch) until the next wake.
         """
-        with self._stop_fence_lock:  # a soft reconnect's wake lands whole before this, or sees the stop
-            self._live_stopped = True
-            stop_event.set()
-            try:
-                self._close_motor_queue()
-                robot = getattr(self, "_robot", None)
-                if robot is not None:
-                    robot.stop_motion()
-            except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)
-                self.log.error("Stopping motion at the live teardown failed: %s", e, exc_info=True)
+        # In this order: a soft reconnect reads the stop token, then checks the flag and the event, so a stop
+        # either shows in that check or moves the token on (connection.py::_resume_after_reconnect).
+        self._live_stopped = True
+        stop_event.set()
+        try:
+            self._close_motor_queue()
+            robot = getattr(self, "_robot", None)
+            if robot is not None:
+                robot.stop_motion()
+        except Exception as e:  # a plugin's stop must not cost the rest of the teardown (the shutdown, the sleep)
+            self.log.error("Stopping motion at the live teardown failed: %s", e, exc_info=True)
         self._stop_media_io(media_lock)
 
     def _release_live_handles(self) -> None:

@@ -905,10 +905,15 @@ way round it: a soft reconnect in flight at the stop connects (clearing the latc
 stop after the connect, re-latches and wakes nothing. A raising `stop_motion` (a plugin) is logged and the teardown
 goes on; the latch reports `is_awake=False`, as a disconnect does. The next reader found the re-check was
 check-then-act: a stop between it and the wake still woke the robot, because a wake requested after a stop clears it
-by design. Selfy's `_stop_fence_lock` now covers the teardown's stop and the reconnect's check, recording restart and
-wake, so the two never interleave; `_live_stopped` (set at the stop, cleared when the next loop opens its queue)
-closes the gap where the teardown has dropped the stop event and `shutdown` has not yet set `_closed`. No controller
-API changed.
+by design. A Selfy lock around both closed it but made a stop wait behind a running wake for seconds (the next
+reader's DO-NOT-MERGE), the third fold in a row to open a new race, so the line stopped for an audit: the question
+"has a stop come since?" belongs to the controller, which owns the generation. **Owner (2026-11-03): a controller stop
+token.** `RobotController.stop_token()` and `wake_up_unless_stopped_since(token)` (defaults: no token, a plain wake);
+the Reachy controller returns its abort generation and wakes as if requested at it, so its existing checks refuse the
+wake when a stop came after the token and cut it when one comes during it. The reconnect reads the token, checks
+`_live_stopped` and the stop event, then wakes; the teardown sets the flag and the event before it latches, so every
+interleaving either fails the check or moves the generation on. No lock: a stop never waits for a wake.
+`_live_stopped` is cleared when the next loop arms its stop event (`_arm_live_stop`), before it wakes.
 
 ### Pre-merge review round and its deltas (2026-11-02)
 

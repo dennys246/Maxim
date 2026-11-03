@@ -270,8 +270,14 @@ class ConnectionMixin:
         except Exception:
             pass
 
-    def _resume_after_reconnect(self) -> None:
-        """Restart the recording and, unless asleep, wake the robot; under the stop fence (see the caller)."""
+    def _resume_after_reconnect(self) -> bool:
+        """Restart the recording and, unless asleep, wake the robot; False when the loop stopped first (#1499).
+
+        The wake is tied to the stop generation read before the last check:
+        the teardown stops the loop before it latches, so a stop either shows
+        in that check or moves the generation on and the controller refuses
+        the wake. A stop during the wake still cuts it, as any stop does.
+        """
         try:
             self._robot.start_recording()
         except Exception as e:
@@ -280,19 +286,21 @@ class ConnectionMixin:
         if getattr(self, "_woke_up", False):
             mode = str(getattr(self, "mode", "") or "").strip().lower()
             if mode != "sleep":
+                token = self._robot.stop_token()
+                if self._stopped_during_reconnect():
+                    return False
                 try:
-                    self._robot.wake_up()
+                    self._robot.wake_up_unless_stopped_since(token)
                 except Exception as e:
                     warn("Failed to wake Reachy after reconnect: %s", e, logger=self.log)
+        return True
 
     def _stopped_during_reconnect(self) -> bool:
         """True when the live loop stopped while the reconnect blocked: re-latch, and wake nothing (#1499).
 
         The connect clears the teardown's latch (``stop_motion``), and the
         wake after it would clear it too, so a robot stopped mid-reconnect
-        would move again until shutdown disconnects it. The caller holds the
-        stop fence, so a stop cannot land between this check and the wake.
-        ``_live_stopped`` outlives the stop event, which the teardown drops
+        would move again until shutdown disconnects it. ``_live_stopped`` outlives the stop event, which the teardown drops
         before ``shutdown`` sets ``_closed``.
         """
         stop_event = getattr(self, "_live_stop_event", None)
@@ -395,10 +403,10 @@ class ConnectionMixin:
                 warn("Soft reconnect failed (controller reconnect failed)", logger=self.log)
                 self._degrade_capabilities()
                 return False
-            with self._stop_fence_lock:  # the teardown's stop lands before this check or after the wake, never between
-                if self._stopped_during_reconnect():
-                    return False
-                self._resume_after_reconnect()
+            if self._stopped_during_reconnect():
+                return False
+            if not self._resume_after_reconnect():
+                return False
 
             motor_queue = getattr(self, "_motor_queue", None)
             if motor_queue is not None:

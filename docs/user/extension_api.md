@@ -68,6 +68,8 @@ class AtlasController(RobotController):
     #   a fresher source than your pose cache.
     # - stop_motion() -> None: refuse every new move until your next successful wake or connect. The live loop calls
     #   it first in its teardown; the default does nothing.
+    # - stop_token() -> object | None and wake_up_unless_stopped_since(token): a wake that refuses when a stop came
+    #   after the token (the soft reconnect's). Defaults: no token, and a plain wake_up().
     # Inside goto_target / look_at_pixel, call maxim.hardware.controller.mark_motion_accepted() once your checks
     # pass, just before your first actuator command, and refuse (MotionOutcome kind "cancelled") without moving
     # when it returns False: a tool that stopped waiting cancelled the move. Without the call, a queued move is

@@ -1542,9 +1542,30 @@ class ReachyMiniController(RobotController):
         Returns:
             A ``MotionOutcome``, truthy iff the robot is awake.
         """
+        return self._wake(self._abort_gen)
+
+    def stop_token(self) -> int:
+        """The stop generation now: a later ``stop_motion``, sleep or disconnect moves it on (#1499)."""
+        with self._abort_lock:
+            return self._abort_gen
+
+    def wake_up_unless_stopped_since(self, token: object) -> MotionOutcome:
+        """Wake, unless a stop came after *token* (from ``stop_token``); a stop during the wake still ends it.
+
+        The soft reconnect's wake: read the token, then check that the live
+        loop has not stopped, then call this. The teardown stops the loop
+        before it latches, so a stop either shows in that check or moves the
+        generation on, and this refuses ``cancelled``. No lock is held across
+        the wake, so a stop still cuts it at its next step.
+        """
+        if not isinstance(token, int):
+            return self.wake_up()
+        return self._wake(token)
+
+    def _wake(self, requested_gen: int) -> MotionOutcome:
+        """``wake_up``'s body, for a wake requested at stop generation *requested_gen*."""
         if self._mini is None or not self.is_connected():
             return MotionOutcome.refused("error", "the robot is not connected")
-        requested_gen = self._abort_gen
         with self._motion_lock:  # the lifecycle waits without the tool bound (5.1)
             gen = requested_gen  # one read: a stop at any point after the request ends this wake
             if self._abort_gen != gen:

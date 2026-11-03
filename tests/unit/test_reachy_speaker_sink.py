@@ -383,7 +383,6 @@ def test_a_soft_reconnect_starts_the_new_handles_player():
             self._robot = _Robot()
             self._simulation = False
             self._reconnect_lock = threading.Lock()
-            self._stop_fence_lock = threading.Lock()
             self._live_stopped = False
             self._capabilities = SimpleNamespace(has_audio=True)
             self._connection_failures = {}
@@ -747,7 +746,6 @@ def test_a_reconnect_without_audio_output_does_not_start_a_player():
             self._robot = _Robot()
             self._simulation = False
             self._reconnect_lock = threading.Lock()
-            self._stop_fence_lock = threading.Lock()
             self._live_stopped = False
             self._capabilities = SimpleNamespace(has_audio=False)
             self._connection_failures = {}

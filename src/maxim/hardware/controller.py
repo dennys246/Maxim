@@ -591,6 +591,17 @@ class RobotController(ABC):
         stop calls it again, since a connect clears the latch.
         """
 
+    def stop_token(self) -> object | None:
+        """A token for "no stop since now", for ``wake_up_unless_stopped_since`` (#1499).
+
+        The default has none: a controller with no stop latch cannot say.
+        """
+        return None
+
+    def wake_up_unless_stopped_since(self, token: object | None) -> bool | MotionOutcome:
+        """Wake, unless a stop came after *token*. The default, with no stop latch, just wakes."""
+        return self.wake_up()
+
     def is_connected(self) -> bool:
         """Check if robot is connected."""
         return self._state.is_connected
