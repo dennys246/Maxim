@@ -21,5 +21,8 @@
     or a port collision no longer counts. Plugins report `kind="ik"` themselves.
   - `move` answering "already at the requested pose" while that pose is still queued now returns the queued move's
     ticket, so a retry of a move about to fail no longer reads as done.
+  - A move issued after the live loop stopped is now cancelled. The teardown used to drop the queue, which made the
+    next move run synchronously, unlatched, while DN was still issuing them. A command the motor worker takes as it
+    stops does not run either.
   Queued moves still book no pain completion, as before: the completion clears the detector's target, which would
   end its movement-failure check, and it would add a positive NAc link per look-at.

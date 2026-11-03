@@ -891,6 +891,13 @@ Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the
 **Deferred:** the plan/dispatch race (a body moved between `_plan_turn` and the controller's dispatch) stays as
 recorded in §15; the controller clamps it.
 
+**Found by H's review of #1583 (2026-11-03): a move after a stop ran.** `_close_motor_queue` set `_motor_queue` to
+None, which `_enqueue_motor` reads as the synchronous path, so `close`'s "every later put" was never reached and DN's
+next look-at executed, before the controller's latch at disconnect. A `parallel=False` loop had the same exposure.
+Now None means only that no queue was ever opened (or this loop has none): a stop always leaves a closed queue, until
+the next `live` opens one. `sleep` is unaffected, since its `live(motor=False)` opens no queue and the wake runs
+synchronously. The worker also withdraws a command it took as the stop landed.
+
 ### Pre-merge review round and its deltas (2026-11-02)
 
 | Round, on | Result | Folded |

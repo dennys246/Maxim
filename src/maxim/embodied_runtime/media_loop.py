@@ -739,11 +739,18 @@ class MediaLoopMixin:
         return motor_queue
 
     def _close_motor_queue(self) -> None:
-        """A stop or the live teardown: every queued command resolves ``cancelled`` and none runs after it."""
+        """A stop or the live teardown: every queued command resolves ``cancelled`` and none runs after it.
+
+        The closed queue stays until the next ``live`` opens one, so a later
+        command is cancelled too. ``_motor_queue`` being None runs a command
+        synchronously, and DN keeps issuing until shutdown stops it. A loop
+        with no queue (not parallel) gets a closed one for the same reason.
+        """
         q = getattr(self, "_motor_queue", None)
-        if q is not None:
-            q.close()
-        self._motor_queue = None
+        if q is None:
+            q = MotorQueue(maxsize=4)
+        q.close()
+        self._motor_queue = q
 
     def _release_live_handles(self) -> None:
         """The live teardown: close the motor queue (its commands resolve ``cancelled``), drop the loop's handles."""
@@ -754,6 +761,7 @@ class MediaLoopMixin:
     def _enqueue_motor(self, fn, *args, _on_accept=None, **kwargs) -> MotionTicket:
         """Queue a motor command and return its ticket (#1499 5.6); with no queue, run it now.
 
+        After a stop the queue is a closed one, so the command is cancelled.
         The synchronous path goes through the worker's own ``run_motion``, so
         the ticket, the learners and the mirror re-read behave the same either
         way, and the ticket it returns is already resolved. ``_on_accept`` runs

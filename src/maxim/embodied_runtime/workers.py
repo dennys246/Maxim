@@ -186,6 +186,9 @@ def motor_worker(
             item = motor_queue.get(timeout=0.1)
         except queue.Empty:
             continue
+        if stop_event.is_set():  # it stopped during the wait, before ``close`` reached this command
+            item.ticket.withdraw("cancelled", _CLOSED)
+            return
         run_motion(item, maxim, state)
 
 

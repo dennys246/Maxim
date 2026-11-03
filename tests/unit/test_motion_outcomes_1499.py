@@ -842,6 +842,64 @@ def test_a_cancelled_no_op_is_refused_not_reported_done(daemon):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Gate 16's teardown half: nothing runs after the live loop stopped (H's review of #1583)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("queued", [True, False], ids=["parallel", "no-queue"])
+def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queued):
+    """DN keeps running until shutdown stops it, and the controller's latch lands only at disconnect."""
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._media_lock = selfy._live_stop_event = None
+    selfy._open_motor_queue(active=queued)
+    selfy._release_live_handles()
+    before = len(daemon.gotos())
+    ticket = selfy.move(0.0, 0.0, 0.0, 0.0, 0.0, 10.0, duration=1.0)
+    assert _outcome_kind(ticket) == "cancelled"
+    assert len(daemon.gotos()) == before
+
+
+def test_a_new_live_loop_opens_a_fresh_queue_after_a_teardown(daemon):
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._media_lock = selfy._live_stop_event = None
+    selfy._open_motor_queue(active=True)
+    selfy._release_live_handles()
+    opened = selfy._open_motor_queue(active=True)
+    assert selfy._motor_queue is opened and not opened.closed
+
+
+def test_a_sleep_loop_stays_synchronous_so_a_wake_still_runs(daemon):
+    """``sleep`` closes the queue, then ``live(motor=False)`` opens no queue: ``wake_up_agentic`` must not be cancelled."""
+    selfy = _selfy(controller(daemon), daemon)
+    selfy._open_motor_queue(active=True)
+    selfy._close_motor_queue()
+    selfy._open_motor_queue(active=False)
+    assert selfy._motor_queue is None
+
+
+def test_the_motor_worker_runs_nothing_it_took_after_the_stop(daemon, monkeypatch):
+    """The worker checks the stop before a get that waits up to 0.1 s: a command taken in that wait must not run."""
+    from maxim.embodied_runtime.workers import MotorQueue, motor_worker
+    from maxim.hardware.controller import MotionOutcome
+
+    selfy = _selfy(controller(daemon), daemon)
+    q = MotorQueue(maxsize=4)
+    stop = threading.Event()
+    ran: list[int] = []
+    real_get = q.get
+
+    def _stop_during_the_wait(timeout):
+        item = real_get(timeout)
+        stop.set()
+        return item
+
+    monkeypatch.setattr(q, "get", _stop_during_the_wait)
+    ticket = q.put(lambda: ran.append(1) or MotionOutcome(ok=True))
+    motor_worker(q, stop, selfy)
+    assert ran == [] and _outcome_kind(ticket) == "cancelled"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PR 2b, gate 13: DN books a move's outcome on its own tick
 # ─────────────────────────────────────────────────────────────────────────────
 
