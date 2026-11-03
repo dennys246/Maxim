@@ -9,10 +9,7 @@ import os
 import time
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Callable, ClassVar
-
-if TYPE_CHECKING:
-    from maxim.memory.rwlock import RWLock
+from typing import Any, Callable, ClassVar
 
 from maxim.memory.experience_clock import ExperienceClock
 from maxim.agents.bus import DependencyGraph, EdgeType
@@ -20,6 +17,7 @@ from maxim.memory.types import (
     CompressedMemory,
     EpisodicMemory,
 )
+from maxim.memory.rwlock import RWLock
 from maxim.memory.store import StoreFileOwnership
 from maxim.utils.atomic_io import atomic_write_json
 from maxim.utils.logging import log_swallowed_exception
