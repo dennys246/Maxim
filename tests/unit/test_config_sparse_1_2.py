@@ -189,12 +189,18 @@ def test_doctor_sees_a_pinned_default_equal_value(tmp_path) -> None:
 def test_the_report_stamps_provenance_before_the_router_is_built() -> None:
     """``_apply_lane_config_to_env`` (inside ``build_primary_router``) copies config values into env, after which
     ``resolve_setting`` reads ``env``: the start stamp must come first or ``configured_n_ctx_source`` is wrong."""
-    import inspect
+    import ast
 
-    from maxim.simulation import orchestrator
+    from tests.unit._orchestrator_source import start_simulation_mode_def
 
-    source = inspect.getsource(orchestrator)
-    assert source.index("capture_start_provenance(") < source.index("build_primary_router(")
+    # Every router build the run makes: the shared one, and the dual-LLM AUT's (``_build_aut_router``, #1538).
+    fn = start_simulation_mode_def()
+    calls = {
+        name: [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == name]
+        for name in ("capture_start_provenance", "build_primary_router", "_build_aut_router")
+    }
+    assert len(calls["capture_start_provenance"]) == 1 and calls["build_primary_router"] and calls["_build_aut_router"]
+    assert calls["capture_start_provenance"][0] < min(calls["build_primary_router"] + calls["_build_aut_router"])
 
 
 def test_null_returns_the_field_to_its_default_value(tmp_path) -> None:

@@ -632,6 +632,36 @@ def _read_new_goal(report: Any, report_dir: str) -> str:
     return "" if _new_goal.lower() in ("/cancel", "quit", "exit") else _new_goal
 
 
+def _build_aut_router(aut_model: str | None, llm_router: Any) -> Any:
+    """The AUT's own router for a dual-LLM run (``aut_model``), else the shared ``llm_router``, which a failed
+    build also falls back to. The build is handed ``aut_model`` (``build_primary_router(profile=)``) and the
+    process's ``MAXIM_LLM_PROFILE`` stays the operator's: written around the build, it named the AUT's model for
+    every other thread while the build ran, and stayed after a build that raised (#1538)."""
+    from maxim.models.language.router import LLMRouter, load_llm_config
+    from maxim.runtime.lane_backends import build_primary_router
+
+    aut_router = llm_router  # default: shared
+    if aut_model is not None and llm_router is not None:
+        try:
+            aut_router, _ = build_primary_router(logger=logger, profile=aut_model)
+
+            if aut_router is None:
+                aut_config = load_llm_config(profile_override=aut_model)
+                if aut_config.enabled:
+                    aut_router = LLMRouter(aut_config)
+
+            if aut_router is not None:
+                aut_router.warmup()
+                aut_router.wait_ready(timeout=120.0)
+                logger.info("AUT router initialized (model=%s)", aut_model)
+            else:
+                aut_router = llm_router
+        except Exception as e:
+            logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
+            aut_router = llm_router
+    return aut_router
+
+
 def _save_for_new(tail: Any, report: Any, report_dir: str) -> str | None:
     """Make this run's AUT state ready for the ``/new`` run; returns the session to carry it from (#1454).
 
@@ -1504,36 +1534,10 @@ def start_simulation_mode(
     # can isolate memory recall from LLM context window effects.
     #
     # The AUT router uses the same infrastructure as the primary router
-    # (peer config, lane backends, etc.) but with a different model profile
-    # set via env var override. This ensures the AUT uses the leader's GPU
+    # (peer config, lane backends, etc.) but with a different model profile,
+    # handed to the build (#1538). This ensures the AUT uses the leader's GPU
     # (via peer config) rather than trying to load locally.
-    aut_router = llm_router  # default: shared
-    if aut_model is not None and llm_router is not None:
-        try:
-            # Override the infer lane model for this second router build
-            old_profile = os.environ.get("MAXIM_LLM_PROFILE")
-            os.environ["MAXIM_LLM_PROFILE"] = aut_model
-            aut_router, _ = build_primary_router(logger=logger)
-            # Restore original profile
-            if old_profile is not None:
-                os.environ["MAXIM_LLM_PROFILE"] = old_profile
-            else:
-                os.environ.pop("MAXIM_LLM_PROFILE", None)
-
-            if aut_router is None:
-                aut_config = load_llm_config(profile_override=aut_model)
-                if aut_config.enabled:
-                    aut_router = LLMRouter(aut_config)
-
-            if aut_router is not None:
-                aut_router.warmup()
-                aut_router.wait_ready(timeout=120.0)
-                logger.info("AUT router initialized (model=%s)", aut_model)
-            else:
-                aut_router = llm_router
-        except Exception as e:
-            logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
-            aut_router = llm_router
+    aut_router = _build_aut_router(aut_model, llm_router)
 
     aut_llm_worker: LLMWorker | None = None
     if aut_router is not None:

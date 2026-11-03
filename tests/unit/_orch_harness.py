@@ -81,8 +81,9 @@ ROUTER BUILDS. Every ``build_primary_router`` call returns a ``_RouterView``: th
 ``call_accounting.register_router()`` exactly as a real ``LLMRouter`` registers its own. Build 1 is the
 language router; build 2, made only when ``aut_model`` is passed, is the AUT's. The report's provenance
 names each role's router by that serial, so a run that hands the AUT's worker to the narrator's slot
-shows. Each view also carries ``cfg.profile``: the ``MAXIM_LLM_PROFILE`` in force at its build, which the
-run sets to ``aut_model`` around the AUT's build, so the provenance's ``aut_profile`` pins that override.
+shows. Each view also carries ``cfg.profile``: the profile its build serves, the ``profile=`` it was handed (the
+AUT's build is handed ``aut_model``, #1538) or else the ``MAXIM_LLM_PROFILE`` in force, so the provenance's
+``aut_profile`` pins the AUT's.
 CALL ACCOUNTING IS NOT PINNED: ``FakeRouter`` never books a call, so ``provenance.llm_calls`` holds only
 the builds' zero counts. The serial NUMBER depends on how many routers the process built before (the full suite builds
 real ones), so the trace records each as its build label, ``<build-1>``/``<build-2>``
@@ -599,8 +600,8 @@ class _RouterView:
     def __init__(self, router: FakeRouter, serial: int, profile: str | None) -> None:
         self._router = router
         self.call_serial = serial
-        # What a real build reads: the profile in force when it is built (``MAXIM_LLM_PROFILE``, which the run
-        # sets to ``aut_model`` around the AUT's build). ``report.run_provenance`` reads ``router.cfg.profile``.
+        # What a real build serves: its ``profile=`` (the AUT's build is handed ``aut_model``, #1538), else the
+        # ``MAXIM_LLM_PROFILE`` in force. ``report.run_provenance`` reads ``router.cfg.profile``.
         self.cfg = SimpleNamespace(profile=profile)
 
     def __getattr__(self, name: str) -> Any:

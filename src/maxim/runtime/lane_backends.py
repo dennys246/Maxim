@@ -332,13 +332,13 @@ def _apply_lane_config_to_env(logger_obj: Any | None, *, restore_persisted: bool
         return has_remote
 
 
-def _project_lane_env_for_build(logger_obj: Any | None) -> tuple[bool, int | None]:
-    """The projection a router build runs (persisted-profile restore included), and the config generation it ran
-    at, read in the same lock hold. The build hands that generation to its later env writers
-    (``_project_env_if_current(derived_at=...)``), so a slow build never writes a value derived from an older config
-    into a newer config's state (#1411 delta review)."""
+def _project_lane_env_for_build(logger_obj: Any | None, *, restore_persisted: bool = True) -> tuple[bool, int | None]:
+    """The projection a router build runs (persisted-profile restore included, unless the build was handed its
+    profile, #1538), and the config generation it ran at, read in the same lock hold. The build hands that
+    generation to its later env writers (``_project_env_if_current(derived_at=...)``), so a slow build never writes
+    a value derived from an older config into a newer config's state (#1411 delta review)."""
     with _lane_env_lock:
-        return _apply_lane_config_to_env(logger_obj, restore_persisted=True), _lane_env_generation
+        return _apply_lane_config_to_env(logger_obj, restore_persisted=restore_persisted), _lane_env_generation
 
 
 def _apply_lane_config_to_env_locked(logger_obj: Any | None) -> bool:
@@ -524,7 +524,7 @@ def _apply_lane_config_to_env_locked(logger_obj: Any | None) -> bool:
 
 
 def _maybe_pin_pre_upgrade_profile(
-    capabilities: Any | None, logger_obj: Any | None, *, derived_at: int | None = None
+    capabilities: Any | None, logger_obj: Any | None, *, derived_at: int | None = None, profile: str | None = None
 ) -> None:
     """Pin the leader to its pre-upgrade profile on first post-upgrade run.
 
@@ -533,7 +533,7 @@ def _maybe_pin_pre_upgrade_profile(
     these are true:
 
     1. The user has NOT set MAXIM_LLM_PROFILE (no explicit current-session
-       override).
+       override), and the build was not handed a ``profile`` (#1538).
     2. The persisted-model file is absent (nothing has pinned it yet).
     3. The pin marker file is absent (this migration has not run before).
     4. The data_home has at least one non-hidden child (indicates this
@@ -554,8 +554,8 @@ def _maybe_pin_pre_upgrade_profile(
         if marker.exists():
             return
 
-        # (1) Skip if the user set an explicit profile via env
-        if os.environ.get("MAXIM_LLM_PROFILE", "").strip():
+        # (1) Skip if the build was handed a profile, or the user set an explicit one via env
+        if _build_profile(profile):
             return
 
         # (2) Skip if a persisted model already exists (existing pin)
@@ -848,8 +848,12 @@ class LaneBackendManager:
         max_cloud_lanes: int | None = None,
         peer_owned: bool = False,
         function_router: Any | None = None,
+        profile_override: str | None = None,
     ) -> None:
         self._configs: dict[str, LaneConfig] = dict(lane_configs)
+        # The profile its build was handed (``build_primary_router(profile=)``, #1538). It wins over
+        # MAXIM_LLM_PROFILE for every local lane this manager builds, then or later, as that env var does.
+        self.profile_override = profile_override
         self._backends: dict[str, Any] = {}
         self._cloud_lanes: set[str] = set()
         self._peer_owned = peer_owned
@@ -1150,8 +1154,7 @@ class LaneBackendManager:
 
         if primary is None:
             primary = primary_placement(cfg, peer_owned=self._peer_owned)
-        env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-        profile = env_profile or (primary.model if primary else cfg.model_profile)
+        profile = _build_profile(self.profile_override) or (primary.model if primary else cfg.model_profile)
         try:
             llm_config = load_llm_config(profile_override=profile)
         except Exception as e:
@@ -1916,6 +1919,8 @@ def _ensure_lane_profiles_available(
 def _apply_local_llm_override(
     lane_configs: dict[str, Any],
     logger: Any | None,
+    *,
+    profile: str | None = None,
 ) -> dict[str, Any]:
     """Clear the large lane's remote_url when --llm names a local profile.
 
@@ -1936,7 +1941,8 @@ def _apply_local_llm_override(
     - Local profiles named via ``--llm`` reach this function and
       clear the large lane's remote fields, forcing the auto-spawn
       path (or the local backend) to serve the requested model.
-    - If ``MAXIM_LLM_PROFILE`` is unset, this function is a no-op —
+    - If ``MAXIM_LLM_PROFILE`` is unset and the build was handed no
+      ``profile`` (#1538), this function is a no-op —
       peer config's remote_url stays intact and routing is unchanged.
 
     Precedence (all three scenarios now resolve correctly):
@@ -1958,7 +1964,7 @@ def _apply_local_llm_override(
     across machines, that routing will need its own override path
     (via the ``MAXIM_LANE_{NAME}_REMOTE_URL`` env var family).
     """
-    profile_name = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+    profile_name = _build_profile(profile)
     if not profile_name:
         return lane_configs
 
@@ -2024,6 +2030,14 @@ def _apply_local_llm_override(
     return out
 
 
+def _build_profile(profile: str | None) -> str:
+    """The profile a router build serves: the one it was handed (``build_primary_router(profile=)``), else the
+    session's ``MAXIM_LLM_PROFILE``. A caller with its own model passes it here, never through the process env:
+    an env write is every thread's profile while the build runs, and a build that raises before the restore leaves
+    it there (#1538)."""
+    return (profile or "").strip() or os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+
+
 def _restore_persisted_profile(has_peer_config: bool, logger: Any | None) -> None:
     """Restore persisted model preference (from --llm or maxim.run(model=...))
     when no explicit MAXIM_LLM_PROFILE is set for this session.
@@ -2072,10 +2086,65 @@ def _capabilities_or_detected(capabilities: Any | None) -> Any:
     return capabilities
 
 
+def _append_decision_record(
+    capabilities: Any,
+    lane_configs: dict[str, Any],
+    _auto_spawn_sources: dict[str, str],
+    _has_peer_config: bool,
+    logger: Any | None,
+) -> None:
+    """``build_primary_router``'s post-mortem record (moved verbatim for rule T, #1538)."""
+    # P9: persist a post-mortem record of this routing decision so the
+    # user can run `maxim doctor --last-decision` later and see exactly
+    # which env vars + capabilities + probe outcomes produced this
+    # configuration. Best-effort — never fails the build.
+    try:
+        from maxim.runtime import decision_log
+
+        record = decision_log.build_record(
+            caps=capabilities,
+            final_lane_configs=lane_configs,
+            decision_sources=_derive_decision_sources(lane_configs, _auto_spawn_sources),
+            peer_config_loaded=_has_peer_config,
+        )
+        decision_log.append_record(record)
+    except Exception as e:
+        if logger is not None:
+            logger.debug("decision_log append failed (non-fatal): %s", e)
+
+
+def _function_router_for(lane_configs: dict[str, Any], _llm_json_func_config: dict) -> Any:
+    """``build_primary_router``'s FunctionRouter (moved verbatim for rule T, #1538)."""
+    from maxim.runtime.lane_models import load_function_overrides
+
+    # Build FunctionRouter with available tiers derived from lane_configs
+    from maxim.runtime.function_router import DEFAULT_FUNCTIONS, FunctionRouter
+
+    available_tiers = set(lane_configs.keys())
+    functions = dict(DEFAULT_FUNCTIONS)
+    if _llm_json_func_config:
+        functions.update(load_function_overrides(_llm_json_func_config))
+    fn_router = FunctionRouter(functions=functions, available_tiers=available_tiers)
+    return fn_router
+
+
+def _start_heartbeat_if_enabled() -> None:
+    """``build_primary_router``'s heartbeat start (moved verbatim for rule T, #1538)."""
+    # Start heartbeat monitor if enabled via env flags (peer or solo mode)
+    try:
+        from maxim.runtime.heartbeat import get_heartbeat_monitor, should_enable_heartbeat
+
+        if should_enable_heartbeat():
+            get_heartbeat_monitor().start()
+    except Exception:
+        pass
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
     logger: Any | None = None,
+    profile: str | None = None,
 ) -> tuple[Any | None, "LaneBackendManager"]:
     """Build the infer-lane LLMRouter + its owning LaneBackendManager.
 
@@ -2092,6 +2161,10 @@ def build_primary_router(
       4. Construct LaneBackendManager with the gates (Phase 3 + 4 safety).
       5. Return (manager.get_backend("large"), manager).
 
+    ``profile`` is the model this build serves, for a caller with its own (the dual-LLM AUT, ``maxim.create``). It
+    wins over ``MAXIM_LLM_PROFILE`` everywhere that variable steers the build, and the manager keeps it for the lanes
+    it builds later. Pass it here, never by writing the env var around the call (#1538).
+
     Returns (None, manager) if the large tier resolves to nothing — e.g. the
     tier has no profile AND no remote URL, the backend build fails, or the
     LLMConfig ends up disabled. Callers should fall back to their own default
@@ -2106,7 +2179,6 @@ def build_primary_router(
         apply_lane_env_overrides,
         apply_tier_config_overrides,
         detect_tiers,
-        load_function_overrides,
     )
 
     _require_valid_user_profiles()
@@ -2140,7 +2212,7 @@ def build_primary_router(
     # restoring a stale local profile would cause
     # _apply_local_llm_override to clear the remote_url and silently
     # route everything locally.
-    _has_peer_config, _derived_at = _project_lane_env_for_build(logger)
+    _has_peer_config, _derived_at = _project_lane_env_for_build(logger, restore_persisted=not profile)
 
     # ── Migration safety: pin existing leaders to pre-upgrade profile ──
     # Before the tier table expands (planned P4a), any leader that was
@@ -2155,7 +2227,7 @@ def build_primary_router(
     #   3. Has NO explicit MAXIM_LLM_PROFILE in env (user didn't override)
     #   4. Has NOT already run the pin (marker file absent)
     # The marker file prevents repeat execution across future restarts.
-    _maybe_pin_pre_upgrade_profile(capabilities, logger, derived_at=_derived_at)
+    _maybe_pin_pre_upgrade_profile(capabilities, logger, derived_at=_derived_at, profile=profile)
 
     # Note: the old "reconcile --language-model with peer remote config"
     # block used to live here. It rewrote `--llm <local>` into
@@ -2173,6 +2245,7 @@ def build_primary_router(
         lane_configs = detect_tiers(
             capabilities,
             profile_available=_profile_has_local_file,
+            profile=profile,
         )
     except Exception as e:
         if logger is not None:
@@ -2200,7 +2273,7 @@ def build_primary_router(
     try:
         from maxim.models.language.config import load_llm_config as _load_cfg
 
-        _raw_cfg = _load_cfg()
+        _raw_cfg = _load_cfg(profile_override=profile)
         _raw = getattr(_raw_cfg, "_raw", {}) or {}
         _llm_json_tier_config = _raw.get("tiers", {})
         _llm_json_func_config = _raw.get("functions", {})
@@ -2221,7 +2294,7 @@ def build_primary_router(
     # lane it targets while local wins for anything else. See P1 in
     # docs/plans/archive/peer_leader_flexibility_plan.md for the full precedence
     # table and the rationale for clearing remote_url here.
-    lane_configs = _apply_local_llm_override(lane_configs, logger)
+    lane_configs = _apply_local_llm_override(lane_configs, logger, profile=profile)
 
     # P5: ensure each local-lane profile has an on-disk GGUF. If the user
     # is offline + non-tty + has not opted in to auto-download, this is a
@@ -2249,7 +2322,9 @@ def build_primary_router(
     # log so the Exp 37 harness preflight can distinguish a safe leader-local
     # reuse from the harness-on-leader cascade.
     _auto_spawn_sources: dict[str, str] = {}
-    lane_configs = _maybe_auto_spawn_server(capabilities, lane_configs, logger, sources_out=_auto_spawn_sources)
+    lane_configs = _maybe_auto_spawn_server(
+        capabilities, lane_configs, logger, sources_out=_auto_spawn_sources, profile=profile
+    )
 
     # --cloud-fallback: append a CLOUD fallback AFTER the primary is finalized.
     # Runs post-auto-spawn (review fold) so it materializes the FINAL primary —
@@ -2259,19 +2334,13 @@ def build_primary_router(
     # CLOUD]; the tail-injection then builds the fallback once.
     lane_configs = _apply_cloud_fallback_override(lane_configs, logger, _has_peer_config)
 
-    # Build FunctionRouter with available tiers derived from lane_configs
-    from maxim.runtime.function_router import DEFAULT_FUNCTIONS, FunctionRouter
-
-    available_tiers = set(lane_configs.keys())
-    functions = dict(DEFAULT_FUNCTIONS)
-    if _llm_json_func_config:
-        functions.update(load_function_overrides(_llm_json_func_config))
-    fn_router = FunctionRouter(functions=functions, available_tiers=available_tiers)
+    fn_router = _function_router_for(lane_configs, _llm_json_func_config)
 
     manager = LaneBackendManager(
         lane_configs,
         peer_owned=_has_peer_config,
         function_router=fn_router,
+        profile_override=profile,
     )
 
     if logger is not None:
@@ -2279,32 +2348,9 @@ def build_primary_router(
 
     _print_lane_banner(manager)
 
-    # P9: persist a post-mortem record of this routing decision so the
-    # user can run `maxim doctor --last-decision` later and see exactly
-    # which env vars + capabilities + probe outcomes produced this
-    # configuration. Best-effort — never fails the build.
-    try:
-        from maxim.runtime import decision_log
+    _append_decision_record(capabilities, lane_configs, _auto_spawn_sources, _has_peer_config, logger)
 
-        record = decision_log.build_record(
-            caps=capabilities,
-            final_lane_configs=lane_configs,
-            decision_sources=_derive_decision_sources(lane_configs, _auto_spawn_sources),
-            peer_config_loaded=_has_peer_config,
-        )
-        decision_log.append_record(record)
-    except Exception as e:
-        if logger is not None:
-            logger.debug("decision_log append failed (non-fatal): %s", e)
-
-    # Start heartbeat monitor if enabled via env flags (peer or solo mode)
-    try:
-        from maxim.runtime.heartbeat import get_heartbeat_monitor, should_enable_heartbeat
-
-        if should_enable_heartbeat():
-            get_heartbeat_monitor().start()
-    except Exception:
-        pass
+    _start_heartbeat_if_enabled()
 
     # Primary inference backend: "large" tier.
     router = manager.get_backend("large")
@@ -2588,12 +2634,32 @@ def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool
     return False
 
 
+def _auto_spawn_profile(infer_cfg: Any, profile: str | None, logger: Any | None) -> str:
+    """The profile auto-spawn serves: the build's profile (:func:`_build_profile`), else a persisted model from a
+    previous `maxim peer llm` swap, else the lane's own."""
+    # Check for a persisted model from a previous `maxim peer llm` swap.
+    # This survives os.execv restarts so the leader comes back with the
+    # same model the user selected, not the default profile.
+    # Explicit --language-model / MAXIM_LLM_PROFILE takes priority over
+    # persisted model — the user's CLI flag is the strongest signal.
+    cli_profile = _build_profile(profile)
+    persisted = _read_persisted_model()
+    if cli_profile:
+        effective_profile = cli_profile
+    else:
+        effective_profile = persisted or infer_cfg.model_profile
+    if persisted and not cli_profile and logger is not None:
+        logger.info("Auto-spawn: using persisted model '%s' from previous swap", persisted)
+    return effective_profile
+
+
 def _maybe_auto_spawn_server(
     capabilities: Any,
     lane_configs: dict[str, Any],
     logger: Any | None,
     *,
     sources_out: dict[str, str] | None = None,
+    profile: str | None = None,
 ) -> dict[str, Any]:
     """Auto-spawn a llama-cpp-server subprocess and rewrite the infer lane.
 
@@ -2652,19 +2718,7 @@ def _maybe_auto_spawn_server(
             )
         return lane_configs
 
-    # Check for a persisted model from a previous `maxim peer llm` swap.
-    # This survives os.execv restarts so the leader comes back with the
-    # same model the user selected, not the default profile.
-    # Explicit --language-model / MAXIM_LLM_PROFILE takes priority over
-    # persisted model — the user's CLI flag is the strongest signal.
-    cli_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-    persisted = _read_persisted_model()
-    if cli_profile:
-        effective_profile = cli_profile
-    else:
-        effective_profile = persisted or infer_cfg.model_profile
-    if persisted and not cli_profile and logger is not None:
-        logger.info("Auto-spawn: using persisted model '%s' from previous swap", persisted)
+    effective_profile = _auto_spawn_profile(infer_cfg, profile, logger)
 
     # Resolve the profile's GGUF path
     try:

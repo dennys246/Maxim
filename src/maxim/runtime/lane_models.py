@@ -405,6 +405,7 @@ def detect_tiers(
     caps: RuntimeCapabilities | None = None,
     *,
     profile_available: ProfileAvailabilityCheck | None = None,
+    profile: str | None = None,
 ) -> dict[str, LaneConfig]:
     """Auto-detect available tiers based on hardware.
 
@@ -439,7 +440,8 @@ def detect_tiers(
     )
 
     # GPU with enough VRAM → large tier (profile selected by VRAM).
-    # Respect --language-model / MAXIM_LLM_PROFILE if set by the user.
+    # Respect --language-model / MAXIM_LLM_PROFILE if set by the user, or the
+    # ``profile`` a router build was handed (build_primary_router(profile=), #1538).
     #
     # MPS systems are now accepted into the large tier as long as they
     # report a non-zero vram_gb (which they do via `_mps_effective_vram_gb`
@@ -448,7 +450,7 @@ def detect_tiers(
     # memory, which capped a 24GB Mac at mistral-7b. The fallback path
     # below still creates a medium tier for Macs without enough effective
     # VRAM (<4GB) or Intel Macs where MPS reports vram_gb=0.
-    env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+    env_profile = (profile or "").strip() or os.environ.get("MAXIM_LLM_PROFILE", "").strip()
     # gpu_type=None is the "detected a GPU but couldn't identify it" edge
     # case (e.g., torch exception mid-detection). Treat that as
     # unconfigured and fall through to the medium/CPU path rather than
