@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
 import time
 from collections.abc import Sequence
@@ -231,7 +232,8 @@ def _bare_maxim_menu() -> int:
     """
     from pathlib import Path
 
-    from maxim import get_version_info
+    from maxim import cli_signals, get_version_info
+    from maxim.utils.cancellation import interruptible, stop_noted
 
     version = get_version_info().get("version", "dev")
 
@@ -315,12 +317,13 @@ def _bare_maxim_menu() -> int:
             _render_plain_menu(version, options, campaigns)
 
         try:
-            if _rich:
-                raw_choice = console.input(
-                    f"  [bold dark_goldenrod]Choose [1-{len(options)}]:[/bold dark_goldenrod] "
-                ).strip()
-            else:
-                raw_choice = input(f"  Choose [1-{len(options)}]: ").strip()
+            with interruptible():  # a stop signal after a session wakes the read (#1344)
+                if _rich:
+                    raw_choice = console.input(
+                        f"  [bold dark_goldenrod]Choose [1-{len(options)}]:[/bold dark_goldenrod] "
+                    ).strip()
+                else:
+                    raw_choice = input(f"  Choose [1-{len(options)}]: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -361,9 +364,9 @@ def _bare_maxim_menu() -> int:
             _run_menu_sim(action)
         except KeyboardInterrupt:
             print("\n")
-            continue
-
-    return 0
+        if stop_noted():  # a process stop ends the menu: a later sim would refuse (owner decision 2026-11-02)
+            return 0
+        cli_signals.left_sim_mode()
 
 
 def _render_rich_menu(console, version, options, campaigns) -> None:
@@ -484,12 +487,17 @@ def _run_menu_sim(action: str) -> None:
     """Run a sim from the menu. Raises KeyboardInterrupt to return to menu."""
     from pathlib import Path
 
+    from maxim import cli_signals
+    from maxim.utils.cancellation import interruptible
+
+    cli_signals.entered_sim_mode()  # a stop from here on exits 4 (#1344)
     # For generative sims, get the goal BEFORE starting the display
     # (Rich Live + input() conflict).
     goal = None
     if action == "generative":
         try:
-            goal = input("  Enter simulation goal: ").strip()
+            with interruptible():
+                goal = input("  Enter simulation goal: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return
@@ -752,6 +760,11 @@ def _after_run_mode_request(args: Any, maxim: Any, mode: str) -> str | None:
     requested = getattr(maxim, "requested_mode", None) if maxim is not None else None
     if not requested:
         return None
+    from maxim.utils.cancellation import stop_noted
+
+    if stop_noted():  # a run that yielded to a stop signal never re-execs into a new one (#1344)
+        log.info("Mode request %r ignored: the process is stopping.", requested)
+        return None
     requested = str(requested).strip().lower()
     if requested == "shutdown":
         log.info("Shutdown requested.")
@@ -992,7 +1005,12 @@ def _run_server_mode(logger: logging.Logger) -> int:
         try:
             import threading
 
-            threading.Event().wait()
+            from maxim.utils.cancellation import stop_event_registered
+
+            stopped = threading.Event()  # set by a process stop request, so a stop signal ends the wait (#1344)
+            with stop_event_registered(stopped):
+                stopped.wait()
+            print("\n  Shutting down.")
         except KeyboardInterrupt:
             print("\n  Shutting down.")
     finally:
@@ -1184,6 +1202,48 @@ def _cli_agent_config(*, mem_dir: str | None, is_sim_mode: bool, embodiment_ref:
     )
 
 
+# The positional subcommands that run no simulation. `roy run` runs sims in-process, and a subcommand not listed here
+# stays unknown, so a stop exits 4: a new one is strict until someone declares it (#1344).
+_NON_SIM_SUBCOMMANDS = frozenset(
+    {"serve", "tunnel", "doctor", "bench", "model", "config", "peer", "oasis", "hive", "substrate"}
+)
+
+
+def _declare_subcommand_mode(raw_argv: Sequence[str]) -> None:
+    """Tell the CLI's signal handling (#1344) what a positional subcommand is, before it dispatches."""
+    from maxim import cli_signals
+
+    if not raw_argv:
+        return
+    if list(raw_argv[:2]) == ["roy", "run"]:
+        cli_signals.entered_sim_mode()
+    elif raw_argv[0] in _NON_SIM_SUBCOMMANDS or raw_argv[0] == "roy":
+        cli_signals.entered_non_sim_mode()
+
+
+def _declare_run_mode(args: Any) -> None:
+    """Tell the CLI's signal handling (#1344) whether this run is a simulation, once the flags are parsed.
+
+    A sim (``--sim`` in any shape: goal, scenario, curriculum, interactive; ``--dm``; ``--research``; ``--benchmark``;
+    ``--foundry``) exits 4 on a stop, a typed abort. Every other flag run is a non-sim mode: a NEW sim flag must be
+    added here, or its stop exits 0. The bare menu is non-sim until ``_run_menu_sim`` starts a sim. Before this runs
+    the mode is unknown, and a SIGTERM then exits 4 (the strict default).
+    """
+    from maxim import cli_signals
+
+    sim = (
+        getattr(args, "sim", None) is not None
+        or bool(getattr(args, "dm", None))
+        or bool(getattr(args, "research", False))
+        or bool(getattr(args, "foundry", None))  # its gauntlet's AUTs run active: the strict reading (#1344 delta)
+        or getattr(args, "benchmark", None) is not None
+    )
+    if sim:
+        cli_signals.entered_sim_mode()
+    else:
+        cli_signals.entered_non_sim_mode()
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -1254,6 +1314,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     print_startup_warning_if_enabled()
 
     # Subcommand dispatch — intercepts positional subcommands before argparse.
+    _declare_subcommand_mode(raw_argv)
     if raw_argv and raw_argv[0] == "serve":
         from maxim.console import run_serve_subcommand
 
@@ -1372,44 +1433,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
         seed_all(args.seed)
 
-    # ── Force-kill on double Ctrl+C ──────────────────────────────────
-    # First Ctrl+C signals the LLM cancellation primitive and raises
-    # KeyboardInterrupt in the main thread for graceful shutdown. If the
-    # user hits Ctrl+C again while shutdown is in progress, force-kill the
-    # LLM server subprocess and exit immediately. Prevents ghost processes
-    # and prevents in-flight retry loops from burning cloud credits after
-    # the user has asked to stop.
-    _shutting_down = [False]
-
-    def _force_exit_handler(signum, frame):
-        # Always signal LLM cancellation first — this wakes up any backend
-        # retry loop that's mid-backoff and lets it abandon the request
-        # before Python gets a chance to unwind via KeyboardInterrupt.
-        # Must be best-effort: if the import fails (unlikely), we still
-        # want the rest of the handler to run.
-        try:
-            from maxim.models.language.cancellation import request_shutdown
-
-            request_shutdown()
-        except Exception:
-            pass
-
-        if _shutting_down[0]:
-            # Second interrupt — force kill everything and exit
-            try:
-                from maxim.runtime.lane_backends import stop_active_spawner
-
-                stop_active_spawner()
-            except Exception:
-                pass
-            print("\n  Forced shutdown.", file=sys.stderr)
-            os._exit(1)
-        _shutting_down[0] = True
-        raise KeyboardInterrupt
-
-    import signal as _sig
-
-    _sig.signal(_sig.SIGINT, _force_exit_handler)
+    _declare_run_mode(args)  # the signal handling's exit codes (#1344); the handler itself is cli.main's
 
     # ── Early leader proxy bootstrap (before _normalize_args; see _early_leader_boot) ──
     _boot_rc = _early_leader_boot()
@@ -2512,6 +2536,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         pain_bus=getattr(args, "_sim_pain_bus", None) or _cli_pain_bus,
                         bio_enrichment_pipeline=_cli_bio_enrichment,
                         thought_gate=_cli_thought_gate,
+                        stop_event=threading.Event(),  # registered for the run: its proposal wait sees a stop (#1344)
                     )
                 finally:
                     if llm_worker:
@@ -2599,6 +2624,35 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """The ``maxim`` entry point: the CLI's own SIGINT/SIGTERM handling around :func:`_main_guarded` (#1344).
+
+    ``cli_signals.installed()`` covers every subcommand (owner decision 2026-11-02) and restores the caller's handlers
+    after. A signal ends the process. The exit code is mapped inside it (``cli_signals.exit_code``): a sim exits 4 on a
+    stop, whatever the body returned, raised as a ``sys.exit`` or refused with ``StopStillPending`` (it refused to start
+    under this process's own stop); a non-sim mode keeps a real failure and otherwise exits 0.
+    """
+    from maxim import cli_signals
+    from maxim.exceptions import StopStillPending
+    from maxim.utils.cancellation import stop_noted
+
+    try:
+        with cli_signals.installed():
+            try:
+                code = _main_guarded(argv)
+            except StopStillPending:
+                if not stop_noted():
+                    raise
+                code = 0  # refused only because this process is stopping: a yield, not a failure of its own
+            except SystemExit as stop:
+                if not stop_noted():
+                    raise
+                code = stop.code if isinstance(stop.code, int) else (0 if stop.code is None else 1)
+            return cli_signals.exit_code(code)
+    except KeyboardInterrupt:  # landed outside the guarded body: while installing or uninstalling
+        return cli_signals.EXIT_INTERRUPTED
+
+
+def _main_guarded(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint with top-level :class:`BackendError` surfacing.
 
     The router's typed exception hierarchy (``BackendOverloaded``,
