@@ -204,6 +204,80 @@ def test_the_known_rest_shape_variants_parse(daemon, mode):
     assert daemon.rest_calls >= 1
 
 
+# #1563 (owner, 2026-11-03: option A): the daemon's IK composes the head against its body TARGET, and on the first
+# control tick of a goto it can still hold the old one (it sets the head target before the body target, and IK runs
+# on its own thread). So a read before a dispatch refuses when the target and the present body differ by over 2°.
+
+_GAP = pytest.mark.xfail(strict=True, reason="#1563: the target-body gap check is not built")
+
+
+@_GAP
+@pytest.mark.parametrize("gap_deg", [4.0, -4.0])
+def test_a_target_body_away_from_the_present_body_refuses_reference(daemon, gap_deg):
+    _place(daemon, body_deg=20)
+    daemon.target_gap = D(gap_deg)
+    ctl = controller(daemon)
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "reference"
+    assert "target" in as_outcome_reason(out)
+    assert daemon.gotos() == []
+
+
+def test_a_target_body_within_2_degrees_of_the_present_body_moves(daemon):
+    _place(daemon, body_deg=20)
+    daemon.target_gap = D(1.5)
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+
+
+@_GAP
+def test_the_look_at_stream_refuses_on_a_target_body_gap(daemon):
+    from maxim.hardware.controller import PixelTarget
+
+    daemon.target_gap = D(4)
+    ctl = controller(daemon)
+    out = ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=1.0))
+    assert not out and _kind(out) == "reference"
+    assert daemon.gotos() == []
+
+
+@_GAP
+def test_a_daemon_with_no_target_yet_is_read_as_body_0_the_way_its_ik_reads_it(daemon):
+    daemon.rest_mode = "none_target"
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(head_yaw=D(10), duration=1.0)), "body at 0: no gap"
+    _place(daemon, body_deg=20)
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "reference"
+
+
+@_GAP
+def test_a_readback_without_the_target_body_refuses_reference(daemon):
+    daemon.rest_mode = "missing_target"
+    ctl = controller(daemon)
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "reference"
+    assert daemon.gotos() == []
+
+
+@_GAP
+def test_a_gap_left_by_a_chunk_stops_the_split_before_the_next(daemon):
+    _place(daemon, body_deg=160)
+    daemon.target_gap_after_goto = D(4)
+    ctl = controller(daemon)
+    out = ctl.goto_target(_target(body_yaw=D(-160), duration=1.0))
+    assert not out and _kind(out) == "partial"
+    assert len(daemon.gotos()) == 1
+
+
+def test_the_final_readback_does_not_check_the_gap(daemon):
+    """No goto follows the final read, so a gap there is not the first-tick race: the move that arrived is ok."""
+    daemon.target_gap_after_goto = D(4)
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert len(daemon.gotos()) == 1
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Gate 4 and 5: divergence and a missing reference (R1, R2)
 # ─────────────────────────────────────────────────────────────────────────────
