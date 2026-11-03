@@ -86,11 +86,24 @@ class GazeHistory:
         Args:
             position: (u, v) image coordinates of gaze target.
         """
+        self.note_move_commanded(position)
+        self.note_arrival(position)
+
+    def note_move_commanded(self, position: Tuple[float, float]) -> None:
+        """Pace from a move just issued: its dwell and inhibition of return start now, whatever it does.
+
+        This is pacing, not learning, so a move that later fails still counts
+        (#1499 5.6). ``note_arrival`` books where the gaze actually ended up.
+        """
         u, v = position
         now = time.time()
         with self._lock:
             self._history.append(GazePosition(u=u, v=v, timestamp=now))
             self._last_move_time = now
+
+    def note_arrival(self, position: Tuple[float, float]) -> None:
+        """The gaze is now at *position*: a move completed."""
+        with self._lock:
             self._current_position = position
 
     def get_salience(self, target: Tuple[float, float]) -> float:

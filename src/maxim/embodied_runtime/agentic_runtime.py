@@ -1409,7 +1409,8 @@ class AgenticRuntimeMixin:
         try:
             robot = getattr(self, "_robot", None)
             if robot is not None:
-                self._enqueue_motor(robot.wake_up)
+                # The token is taken now, before the queue is read: a stop that lands after it refuses the wake (#1499)
+                self._enqueue_motor(robot.wake_up_unless_stopped_since, robot.stop_token())
                 self._woke_up = True
                 self.sleeping = False  # Mark as no longer sleeping
         except Exception as e:

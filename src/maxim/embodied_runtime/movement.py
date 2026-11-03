@@ -10,7 +10,9 @@ import logging
 import math
 import time
 import uuid
+from dataclasses import replace
 from enum import Enum
+from collections.abc import Callable
 from typing import Any, Optional
 
 from maxim.exceptions import MotionRefused
@@ -20,6 +22,7 @@ from maxim.hardware.controller import (
     MotionTicket,
     PixelTarget,
     as_outcome,
+    current_motion_ticket,
     policy_duration,
     clamp_finite,
     floor_duration,
@@ -666,7 +669,7 @@ class MovementMixin:
         """Look at a position in image coordinates; returns the move's ticket (#1499 5.6).
 
         An unreachable pixel returns a ticket already refused ``limit``; an
-        automatic turn returns the turn's outcome as a resolved ticket.
+        automatic turn returns its own ticket, already finished.
 
         Args:
             u: Horizontal pixel coordinate.
@@ -728,7 +731,7 @@ class MovementMixin:
             pain_bridge=pain_bridge,
         )
         if turned is not None:
-            return MotionTicket.resolved(turned)  # turn_around handled the movement
+            return turned  # turn_around handled the movement
 
         # Restrict du/dv based on pain risk or workspace usage near limits
         du = self._restrict_horizontal(du, looking_left, looking_right, h_usage, pain_bridge)
@@ -739,7 +742,6 @@ class MovementMixin:
         self._log_look_at_debug(u, v, du, dv, cur_yaw, cur_pitch, final_u, final_v)
 
         commanded_6d = self._build_commanded_6d(du, dv, cur_yaw, cur_pitch, cur_y, cur_z)
-        self._record_pain_action_start(commanded_6d, position)
 
         return self._enqueue_sdk_look_at(
             final_u,
@@ -748,6 +750,7 @@ class MovementMixin:
             duration,
             commanded_6d=commanded_6d,
             duration_policy=duration_policy,
+            on_accept=lambda: self._record_pain_action_start(commanded_6d, position),
         )
 
     # ── look_at_image helpers ──────────────────────────────────────────────
@@ -835,16 +838,19 @@ class MovementMixin:
         looking_right: bool,
         h_usage: float,
         pain_bridge: Any,
-    ) -> MotionOutcome | None:
+    ) -> MotionTicket | None:
         """If movement would push past a limit, rotate the body instead.
 
-        Returns the turn's outcome when a turn was tried (the caller returns it),
-        or None when look_at should proceed: no turn was due, or the turn cannot
+        Returns the turn's ticket when a turn was tried (the caller returns it,
+        and it says truthfully whether the turn started), or None when look_at
+        should proceed: no turn was due, or the turn cannot
         fit inside the body limit, so the head moves clamped instead (#1499 5.8).
-        A turn refused at planning books nothing with the pain bridge (owner,
-        2026-11-01); one dispatched and then refused or failed books a failure
-        (D3). A turn refused at planning still uses up the cooldown, so look_at
-        does not re-plan it every frame.
+        A turn that never started books nothing with the pain bridge (owner,
+        2026-11-01; 5.6): the start is the ticket's ``on_accept``, so it records
+        behind any move in flight, at the turn's first SDK call. One that
+        started and then failed books a failure, by its own event id (D3). A
+        turn refused at planning still uses up the cooldown, so look_at does
+        not re-plan it every frame.
         """
         import time as time_module
 
@@ -882,38 +888,43 @@ class MovementMixin:
         )
         self._last_turn_around_time = now
 
-        # A turn refused before it could move books nothing (§5.8, owner 2026-11-01): plan it first, and
-        # record the pain start only for a turn that will be dispatched. A turn that cannot fit returns
-        # None, so look_at proceeds with the head clamped.
+        # A turn that cannot fit returns None, so look_at proceeds with the head clamped (§5.8).
         robot = getattr(self, "_robot", None)
         planned = self._plan_turn(robot, turn_angle) if robot is not None else None
         if isinstance(planned, MotionOutcome):
             if planned.kind == "limit":
                 self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", planned.reason)
                 return None
-            return planned
+            return MotionTicket.resolved(planned)
 
-        if pain_bridge is not None:
+        def _pain_start() -> Any:
+            if pain_bridge is None:
+                return None
+            return pain_bridge.record_action_start("turn_around", context={"reason": turn_reason, "angle": turn_angle})
+
+        # Bound around the turn, so the controller records the start inside the motion lock at the first SDK
+        # call. A start before the dispatch would wait behind a move in flight and book its pain on the turn.
+        ticket = MotionTicket(on_accept=_pain_start)
+        turned = MotionOutcome.refused("error", "the turn did not finish")
+        token = current_motion_ticket.set(ticket)
+        try:
+            turned = as_outcome(self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True))
+            if turned.kind == "ik":  # a body step failed: that says nothing about the look-at's pixel
+                turned = replace(turned, kind="error")
+        finally:
+            current_motion_ticket.reset(token)
+            ticket.finish(turned)
+
+        if pain_bridge is not None and ticket.event_id is not None:
             try:
-                pain_bridge.record_action_start(
-                    "turn_around",
-                    context={"reason": turn_reason, "angle": turn_angle},
-                )
-            except Exception as e:
-                self.log.debug("Pain bridge record_action_start failed: %s", e)
-
-        turned = as_outcome(self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True))
-
-        if pain_bridge is not None:
-            try:
-                pain_bridge.record_action_complete(success=bool(turned))
+                pain_bridge.record_action_complete(success=bool(turned), event_id=ticket.event_id)
             except Exception as e:
                 self.log.debug("Pain bridge record_action_complete failed: %s", e)
 
         if turned.kind == "limit":
             self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", turned.reason)
             return None
-        return turned
+        return ticket
 
     def _resync_mirror_if_unstarted(self) -> None:
         """Re-read the pose when the last queued move resolved without starting (#1499, owner 2026-11-01).
@@ -1047,16 +1058,21 @@ class MovementMixin:
             "x": float(getattr(self, "x", 0.0) or 0.0) + delta[0],
         }
 
-    def _record_pain_action_start(self, commanded_6d: dict[str, float], position: tuple[int, int]) -> None:
-        """Record action start with the pain bridge before issuing the move."""
+    def _record_pain_action_start(self, commanded_6d: dict[str, float], position: tuple[int, int]) -> str | None:
+        """Record a look-at's start with the pain bridge; its event id, or None.
+
+        The ticket's ``on_accept``: it runs when the move starts, under the
+        motion lock (#1499 5.6). At enqueue, a queued move's start retired the
+        one still running, whose pain was then booked against the queued one.
+        """
         pain_bridge = getattr(getattr(self, "_default_network", None), "_pain_bridge", None)
         if pain_bridge is None:
-            return
+            return None
         try:
             dyaw = abs(commanded_6d["yaw"])
             dpitch = abs(commanded_6d["pitch"])
             action_sig = f"look_at:dy={dyaw:.0f}:dp={dpitch:.0f}"
-            pain_bridge.record_action_start(
+            return pain_bridge.record_action_start(
                 action_sig,
                 context={"position": position, "commanded_6d": commanded_6d},
                 target_yaw=commanded_6d.get("yaw"),
@@ -1066,6 +1082,7 @@ class MovementMixin:
             )
         except Exception as e:
             self.log.debug("Pain action start recording failed: %s", e)
+            return None
 
     def _enqueue_sdk_look_at(
         self,
@@ -1076,6 +1093,7 @@ class MovementMixin:
         *,
         commanded_6d: dict[str, float] | None = None,
         duration_policy: DurationPolicy = "at_least",
+        on_accept: Callable[[], Any] | None = None,
     ) -> MotionTicket:
         """Scale internal pixel coords to the SDK resolution and enqueue the look-at; returns its ticket."""
         sdk_scale_x = self._SDK_IMAGE_WIDTH / self._IMAGE_WIDTH
@@ -1116,7 +1134,7 @@ class MovementMixin:
                 PixelTarget(u=u_, v=v_, duration=target_duration, duration_policy=duration_policy)
             )
 
-        return self._enqueue_motor(_controller_look_at, sdk_u, sdk_v, **kwargs)
+        return self._enqueue_motor(_controller_look_at, sdk_u, sdk_v, _on_accept=on_accept, **kwargs)
 
     def move(
         self,
@@ -1132,7 +1150,8 @@ class MovementMixin:
         """
         Move the head to an absolute pose; returns the move's ticket (#1499 5.6).
 
-        A pose equal to the mirror's returns a ticket already ok with zero
+        A pose equal to the mirror's returns the queued move's ticket if one is
+        on its way there, else a ticket already ok with zero
         chunks. ``duration_policy="exact"`` (a duration the model chose) refuses
         a move too fast for it; ``"at_least"`` stretches it.
 
@@ -1258,6 +1277,11 @@ class MovementMixin:
             and next_pitch == cur_pitch
             and next_yaw == cur_yaw
         ):
+            # The mirror may hold a target still on its way: that move's outcome is this call's answer, or a
+            # retry of a move about to fail reads as done. The ticket is shared: a cancel reaches that move.
+            on_its_way = getattr(self, "_mirror_ticket", None)
+            if on_its_way is not None and not on_its_way.completed.done():
+                return on_its_way
             return MotionTicket.resolved(MotionOutcome(ok=True, reason="already at the requested pose"))
 
         self.x = float(next_x)
