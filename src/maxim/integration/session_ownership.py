@@ -49,6 +49,15 @@ ENDING_WAIT_CAP_S = 60.0
 
 State = Literal["CLOSED", "OPEN", "ENDING"]
 
+# Process-wide: has ANY ledger ever opened a session in this process? The CLI's signal gate reads it lock-free (a plain
+# bool): before the first open a signal unwinds at once (nothing to save); after it, the process yields (#1344).
+_ever_claimed = False
+
+
+def session_ever_claimed() -> bool:
+    """Whether any memory session was ever opened in this process (monotonic; the conftest guard resets it)."""
+    return _ever_claimed
+
 
 @dataclass(eq=False)
 class SessionTicket:
@@ -136,6 +145,8 @@ class SessionOwnership:
                 )
 
     def _open(self, owner: Any, live: bool, *, fresh: bool) -> SessionTicket:
+        global _ever_claimed
+        _ever_claimed = True
         self._generation += 1
         self._ticket = SessionTicket(generation=self._generation, owner=owner, fresh=fresh)
         self._state = "OPEN"
