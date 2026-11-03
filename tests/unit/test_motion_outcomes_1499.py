@@ -860,6 +860,45 @@ def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queu
     assert len(daemon.gotos()) == before
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="#1499 PR 3 (owner decision 2026-11-03): a raise between live()'s stop event and its outer try skips the "
+    "teardown, so the queue stays open and the controller never latches",
+)
+def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, monkeypatch):
+    """The setup window: the stop event is open and the agentic runtime has started, then the setup raises."""
+    import maxim.embodied_runtime.media_loop as media_loop
+
+    monkeypatch.setattr(media_loop, "configure_logging", lambda *a, **k: None)
+    monkeypatch.setattr(media_loop, "TrainingSampleLogger", lambda *_a: type("_L", (), {"start": lambda s: None})())
+    ctl = controller(daemon)
+    selfy = _selfy(ctl, daemon)
+    selfy.home_dir, selfy.epochs, selfy.interactive, selfy.verbose = str(tmp_path), None, False, False
+    selfy.awaken = lambda **_k: None
+    selfy._build_speech_output = lambda: None
+    selfy._start_media_audio = lambda: (None, None)
+    selfy._start_agentic_runtime = lambda: None  # DN would keep issuing moves from here on
+    selfy._stop_media_io = lambda _lock: None
+    selfy.shutdown = lambda: None
+
+    def _broken(**_k):
+        raise RuntimeError("the transcriber start broke")
+
+    selfy._start_transcription_worker = _broken
+    try:
+        with pytest.raises(RuntimeError, match="transcriber start broke"):
+            selfy.live(vision=False, run_id="setup-window")
+        assert selfy._motor_queue is not None and selfy._motor_queue.closed
+        before = len(daemon.gotos())
+        assert _outcome_kind(selfy.move(0.0, 0.0, 0.0, 0.0, 0.0, 10.0, duration=1.0)) == "cancelled"
+        turned = selfy.turn_around(30.0, duration=5.0)
+        assert not turned and turned.kind == "cancelled"
+        assert len(daemon.gotos()) == before
+        assert selfy._live_stop_event is None  # released, so the process stop registry no longer holds it
+    finally:
+        selfy._close_live_stop_event()
+
+
 def test_the_teardown_latches_the_controller_so_a_body_turn_after_a_stop_is_refused(daemon):
     """The second reader of the stop fold: ``turn_around`` dispatches directly, so the queue alone did not cover it."""
     ctl = controller(daemon)
