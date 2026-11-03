@@ -3484,3 +3484,17 @@ def test_c4_double_prime_restates_the_gate_functions_it_was_pinned_against() -> 
         hashlib.sha256(src.encode()).hexdigest() == "e79dcffcf20affcfcb35f8f4000ffa7076326e02be2431853e294cbf1d03f288"
     )
     assert v.B0_OUTCOMES == R.B0_OUTCOMES and v.B0_IDENTITY_SOURCES == R.B0_IDENTITY_SOURCES
+
+
+def test_smoke_reports_where_a_leak_is_never_its_text(tmp_path) -> None:
+    """CodeQL alert #108: the smoke prints its checks, so a secret in the outputs is reported by location and pattern
+    only, never by any character of the match or its hash."""
+    import hashlib
+
+    key = "sk-" + "ant-" + "Q7" * 15
+    (tmp_path / "phase1").mkdir()
+    (tmp_path / "phase1" / "sim.jsonl").write_text(f'{{"msg": "{key}"}}\n', encoding="utf-8")
+    found = h._smoke_leak_locations("63b", tmp_path)
+    assert len(found) == 1 and "phase1/sim.jsonl" in found[0] and "[anthropic]" in found[0], found
+    assert key[:4] not in found[0] and "Q7" not in found[0]
+    assert hashlib.sha256(key.encode()).hexdigest() not in found[0]

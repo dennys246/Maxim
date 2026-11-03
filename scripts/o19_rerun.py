@@ -1309,8 +1309,10 @@ def _smoke_sim_reasons(rows: list[dict]) -> list[str]:
     return j.reasons
 
 
-def _smoke_secret_findings(exp: str, data_root: Path) -> list[str]:
-    """``lint_secrets``' scan, with HEAD's patterns and allowlist, over every output as the data PR would add it."""
+def _smoke_leak_locations(exp: str, data_root: Path) -> list[str]:
+    """``lint_secrets``' scan, with HEAD's patterns and allowlist, over every output as the data PR would add it: each
+    finding's location and pattern name only. The smoke prints these, so never the match's preview or hash (CodeQL
+    py/clear-text-logging-sensitive-data, alert #108); ``lint_secrets`` over the outputs shows the rest."""
     import lint_secrets as S  # noqa: PLC0415
 
     patterns = S.patterns_at(REPO_ROOT, None)
@@ -1318,7 +1320,7 @@ def _smoke_secret_findings(exp: str, data_root: Path) -> list[str]:
     scan = S.Scan(patterns, {(e["path"], e["match_sha256"]) for e in entries}, S.DECOMPRESS_CAP)
     for f in sorted(p for p in data_root.rglob("*") if p.is_file()):
         scan.blob(f"{v.data_dir(exp)}/{f.relative_to(data_root).as_posix()}", f.read_bytes(), "100644")
-    return [f.line() for f in scan.findings] + list(scan.problems)
+    return [f"{f.where}  [{f.pattern}]" for f in scan.findings] + list(scan.problems)
 
 
 def smoke_checks(
@@ -1377,8 +1379,8 @@ def smoke_checks(
     check("phase 2's resume.stores.hippocampus reads loaded", stores.get("hippocampus") == "loaded", repr(stores))
     reasons = _smoke_sim_reasons(rows)
     check("every row's sim passes the evidence gate's judge_sim_fields", not reasons, "; ".join(reasons))
-    secrets = _smoke_secret_findings(exp, data_root)
-    check("lint_secrets finds nothing in the outputs", not secrets, "; ".join(secrets))
+    leaks = _smoke_leak_locations(exp, data_root)
+    check("lint_secrets finds nothing in the outputs", not leaks, "; ".join(leaks))
     return checks, reported
 
 
