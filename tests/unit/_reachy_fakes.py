@@ -112,9 +112,6 @@ class FakeDaemon:
         self._torque_at: float | None = None
         # ok (the 1.8.3 shape) | status500 | timeout | missing_body | nan_body | nested | head_m | unknown
         self.rest_mode = "ok"
-        # #1563: the daemon's target_body_yaw minus its present body (the IK composes the head against the target).
-        self.target_gap = 0.0
-        self.target_gap_after_goto: float | None = None  # the gap a goto leaves behind (servo lag, another client)
         self.rest_calls = 0
         self.rest_delay_s = 0.0  # each REST read takes this long (the controller's deadline check)
         self.fail_rest_calls: set[int] = set()  # 1-based REST call numbers that time out (the retry)
@@ -158,7 +155,6 @@ class FakeDaemon:
             self.head = np.array(head, dtype=float)
         if antennas is not None:
             self.antennas = list(antennas)
-        self.target_gap = 0.0 if self.target_gap_after_goto is None else self.target_gap_after_goto
 
     def set_target(self, **kw):
         self._record("set_target", **kw)
@@ -229,7 +225,6 @@ class FakeDaemon:
             # The daemon's Matrix4x4Pose serialises as {"m": [16 floats]}, row-major (daemon/app/models.py).
             "head_pose": {"m": self.head.ravel().tolist()},
             "body_yaw": body,
-            "target_body_yaw": self.body + self.target_gap,
             "antennas_position": list(self.antennas),
             "timestamp": "2026-10-29T00:00:00+00:00",
         }
@@ -241,10 +236,6 @@ class FakeDaemon:
             state["head_pose"] = {"m": self.head.tolist()}  # a nested 4×4 under "m"
         elif self.rest_mode == "unknown":
             state = {"pose": "?"}
-        elif self.rest_mode == "none_target":
-            state["target_body_yaw"] = None  # the daemon has no target yet; its IK then uses 0.0
-        elif self.rest_mode == "missing_target":
-            state.pop("target_body_yaw")
         return state
 
     def fetch_url(self, url: str, **_kw):
@@ -348,7 +339,6 @@ def serve_state_from_ws_fake(monkeypatch) -> None:
             "control_mode": getattr(mini, "control_mode", "enabled"),
             "head_pose": {"m": np.asarray(head, dtype=object).ravel().tolist()},
             "body_yaw": joints[0],
-            "target_body_yaw": joints[0],
         }
         if antennas is not None and len(antennas) == 2:
             state["antennas_position"] = list(antennas)

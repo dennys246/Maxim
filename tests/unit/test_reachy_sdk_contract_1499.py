@@ -89,3 +89,54 @@ def test_the_full_state_query_names_real_route_parameters():
         name, _, value = part.partition("=")
         assert name in declared, name
         assert value == "true"
+
+
+class _StubBackend:
+    """Just enough of the daemon backend for ``get_full_state``; it HAS a body target, which the route builds."""
+
+    target_body_yaw = 0.3
+
+    def get_motor_control_mode(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(value="enabled")
+
+    def get_present_head_pose(self):
+        return np.eye(4)
+
+    def get_present_body_yaw(self):
+        return 0.1
+
+    def get_present_antenna_joint_positions(self):
+        return [0.0, 0.0]
+
+
+def _served_keys(**flags) -> set[str]:
+    """The keys the real route's response carries for *flags*, after its response model (what reaches the wire)."""
+    import asyncio
+
+    from reachy_mini.daemon.app.routers.state import get_full_state
+
+    state = asyncio.run(get_full_state(backend=_StubBackend(), **flags))
+    return {k for k, v in json.loads(state.model_dump_json()).items() if v is not None}
+
+
+def test_the_fakes_serve_only_what_the_real_route_serves():
+    """A fake that serves a field the daemon drops hides a refusal on the robot (#1563: target_body_yaw, PR 3 review)."""
+    from tests.unit._reachy_fakes import FakeDaemon
+
+    from maxim.hardware.reachy.controller import _STATE_FULL_QUERY
+
+    flags = {name: value == "true" for name, _, value in (p.partition("=") for p in _STATE_FULL_QUERY.split("&"))}
+    served = _served_keys(**flags)
+    faked = {k for k, v in FakeDaemon().state_full().items() if v is not None}
+    assert faked <= served, f"the fake serves keys the daemon does not: {sorted(faked - served)}"
+
+
+def test_the_daemon_does_not_serve_its_body_target():
+    """SDK 1.8.3: the route builds target_body_yaw, then FullState drops it, and no other route serves it (#1563).
+
+    When an SDK upgrade starts serving it, this fails: then #1563's check (refuse when the target and the present
+    body disagree) becomes buildable, gated on that daemon version.
+    """
+    assert "target_body_yaw" not in _served_keys(with_body_yaw=True, with_target_body_yaw=True)

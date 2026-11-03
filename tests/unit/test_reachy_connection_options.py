@@ -43,7 +43,6 @@ def _state_from_the_mock(self):
         state["body_yaw"] = float(kwargs["body_yaw"])
     if kwargs.get("antennas") is not None:
         state["antennas_position"] = list(kwargs["antennas"])
-    state["target_body_yaw"] = state["body_yaw"]  # the daemon's goto ramps its target with the body (#1563)
     return state
 
 
