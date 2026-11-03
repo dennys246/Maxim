@@ -8,7 +8,7 @@
     move finishes, and DN's current gaze position is where a move arrived, not where one is headed. Only a completed
     move or an IK failure teaches; `look_opposite` books the same way, and its `True` now means the move was issued.
   - DN's pacing does not change: the dwell and inhibition of return still start when a move is issued, for a move that
-    later fails too (`GazeHistory.note_move_commanded`). A move refused at once paces nothing, also as before.
+    later fails too (`GazeHistory.note_move_commanded`). A command that raised paces nothing, also as before.
   - A look-at's pain start is recorded when the move starts, inside the motion lock. A move replaced first records
     nothing. `record_action_complete(event_id=)` completes that event only, and the bridge's retire-and-install is
     one atomic step.

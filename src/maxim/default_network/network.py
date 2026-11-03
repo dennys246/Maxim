@@ -1146,9 +1146,6 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             duration = self._config.movement.base_duration
 
         ticket = self._dispatch_action_to_motor(proposal, duration)
-        if self._config.gaze_salience_enabled and proposal.target:
-            if not ticket.never_started:
-                self._gaze_history.note_move_commanded(proposal.target)  # pacing, whatever the move then does
         self._book_on_tick(ticket, lambda outcome: self._apply_action_outcome(proposal, outcome))
 
     def _apply_action_outcome(self, proposal: ActionProposal, outcome: MotionOutcome) -> None:
@@ -1188,8 +1185,15 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             except Exception:
                 log_swallowed_exception()
 
-    def _issue_motion(self, command: Callable[..., Any], *args: Any, **kwargs: Any) -> MotionTicket:
-        """Run a motor command; its ticket, or a resolved one when it returned a bool or raised."""
+    def _issue_motion(
+        self, command: Callable[..., Any], *args: Any, paces: tuple[float, float] | None = None, **kwargs: Any
+    ) -> MotionTicket:
+        """Run a motor command; its ticket, or a resolved one when it returned a bool or raised.
+
+        ``paces``: a command that ran starts the dwell and inhibition of return
+        for that target, whatever it then does; pacing is not a learner (5.6). A
+        command that raised, or had nothing to do, paces nothing.
+        """
         try:
             result = command(*args, **kwargs)
         except MotionRefused as e:
@@ -1199,6 +1203,10 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         except Exception as e:
             logger.warning("Failed to execute DN action: %s", e)
             return MotionTicket.resolved(MotionOutcome.refused("error", str(e)))
+        if result is None:
+            return MotionTicket.resolved(MotionOutcome.refused("error", "no motor command for this proposal"))
+        if paces is not None:
+            self._gaze_history.note_move_commanded(paces)
         return result if isinstance(result, MotionTicket) else MotionTicket.resolved(as_outcome(result))
 
     # ── _execute_action gates ──────────────────────────────────────────────
@@ -1297,7 +1305,8 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         DN durations come from config, so they are defaults: floored into
         [0.1, 10] s, never refused (#1496); only a non-finite one refuses.
         """
-        return self._issue_motion(self._route_to_motor, proposal, duration)
+        pacing = self._config.gaze_salience_enabled and proposal.target
+        return self._issue_motion(self._route_to_motor, proposal, duration, paces=proposal.target if pacing else None)
 
     def _route_to_motor(self, proposal: ActionProposal, duration: float) -> Any:
         duration = floor_duration(duration)
@@ -1317,7 +1326,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             return self._dispatch_track(proposal, duration)
         if proposal.action_type == "turn_around" and hasattr(self._maxim, "turn_around"):
             return self._dispatch_turn(proposal)
-        return MotionOutcome.refused("error", "no motor command for this proposal")
+        return None
 
     def _dispatch_track(self, proposal: ActionProposal, duration: float) -> Any:
         u, v = proposal.target

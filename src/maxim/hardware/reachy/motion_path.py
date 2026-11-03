@@ -46,7 +46,7 @@ NECK_PATH_SAMPLES = 32
 BODY_CHUNK_MAX_DEG = 150.0
 
 # How the Reachy SDK and daemon word a target that cannot be reached: they report it only as text.
-_IK_FAILURE_TEXT = re.compile(r"ik error|ik failure|pose not achievable|collision detected", re.IGNORECASE)
+_IK_FAILURE_TEXT = re.compile(r"ik error|ik failure|ik solver|pose not achievable|collision detected", re.IGNORECASE)
 
 
 def names_ik_failure(text: str) -> bool:

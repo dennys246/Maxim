@@ -91,10 +91,8 @@ class GazeManagerMixin:
             return False
         derived = duration  # derived, so floored, never refused (#1496); only a non-finite one refuses
         ticket = self._issue_motion(
-            lambda: self._maxim.look_at_image(target[0], target[1], duration=floor_duration(derived))
+            lambda: self._maxim.look_at_image(target[0], target[1], duration=floor_duration(derived)), paces=target
         )
-        if not ticket.never_started:
-            self._gaze_history.note_move_commanded(target)
         self._book_on_tick(ticket, lambda outcome: self._book_opposite(target, outcome))
         return not ticket.never_started
 

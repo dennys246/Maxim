@@ -254,9 +254,9 @@ class PainCircuitBridge:
         Args:
             success: Whether the action was successful.
             event_id: The id ``record_action_start`` returned. Given, this
-                completes that event only: a later action that replaced it is
-                left alone, target and all (#1499 5.6). None means the pending
-                action, whichever it is.
+                completes that event only: a later action now pending is left
+                alone, target and all (#1499 5.6). None means the pending action,
+                whichever it is.
         """
         with self._pending_lock:  # a replacing start cannot land between the check and the clear
             pending = self._pending

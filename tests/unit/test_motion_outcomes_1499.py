@@ -738,7 +738,7 @@ def test_an_automatic_turn_that_cannot_fit_books_nothing_and_looks_clamped(daemo
 def test_dn_books_a_refused_turn_as_not_executed():
     """Architecture S4 (owner: fold into 2a): DN's own turn reads the outcome, so a 'limit' refusal feeds no learner."""
     from maxim.default_network.messages import ActionProposal
-    from maxim.default_network.network import DefaultNetwork
+    from maxim.default_network.network import DefaultNetwork, DefaultNetworkConfig
     from maxim.hardware.controller import MotionOutcome
 
     class _Maxim:
@@ -751,6 +751,7 @@ def test_dn_books_a_refused_turn_as_not_executed():
             return self.outcome
 
     dn = DefaultNetwork.__new__(DefaultNetwork)
+    dn._config = DefaultNetworkConfig()
     turn = ActionProposal(behavior_name="b", action_type="turn_around", target=None, priority=1.0, confidence=1.0)
     dn._maxim = _Maxim(MotionOutcome.refused("limit", "cannot fit"))
     assert dn._dispatch_action_to_motor(turn, 5.0).completed.result(timeout=1.0).kind == "limit"
@@ -1014,12 +1015,41 @@ def test_a_completed_move_books_its_arrival_without_restarting_the_pacing():
     assert dn._gaze_history.should_move((400.0, 300.0))[0]
 
 
-def test_a_move_refused_at_once_does_not_pace():
+def test_a_returned_refusal_paces_and_a_raised_command_does_not_as_on_main():
     from maxim.hardware.controller import MotionOutcome, MotionTicket
 
     dn = _dn(lambda u, v, duration: MotionTicket.resolved(MotionOutcome.refused("limit", "no")))
     dn._execute_action(_look())
-    assert dn._gaze_history.history_size == 0 and dn._gaze_history.should_move((100.0, 100.0))[0]
+    assert dn._gaze_history.history_size == 1  # a target that always refuses does not retry at the tick rate
+
+    def _raises(u, v, duration):
+        raise RuntimeError("the host broke")
+
+    dn = _dn(_raises)
+    dn._execute_action(_look())
+    assert dn._gaze_history.history_size == 0
+
+
+def test_a_proposal_with_no_motor_command_paces_nothing():
+    dn = _dn(lambda u, v, duration: None)
+    dn._dispatch_action_to_motor(_proposal("unknown"), 0.5)
+    assert dn._gaze_history.history_size == 0
+
+
+def test_dn_pacing_can_be_turned_off():
+    from maxim.default_network.network import DefaultNetwork, DefaultNetworkConfig
+    from maxim.hardware.controller import MotionOutcome, MotionTicket
+
+    class _Host:
+        yaw = 0.0
+
+        def look_at_image(self, u, v, *, duration):
+            return MotionTicket.resolved(MotionOutcome(ok=True))
+
+    config = DefaultNetworkConfig(fear_gate_enabled=False, gaze_salience_enabled=False)
+    dn = DefaultNetwork(_Host(), config=config)
+    dn._dispatch_action_to_motor(_proposal("look_at"), 0.5)
+    assert dn._gaze_history.history_size == 0
 
 
 def test_outcomes_still_in_the_inbox_when_dn_stops_are_booked_on_its_thread():
@@ -1127,6 +1157,7 @@ def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
     ticket.finish(MotionOutcome(ok=True))
     dn._drain_motion_outcomes()
     assert len(dn._spatial_map.booked) == 1 and dn._spatial_map.booked[0][1] is True
+    assert dn._gaze_history.get_current_position() != (100.0, 100.0)  # it arrived
 
     refused = MotionTicket()
     dn = _dn(lambda u, v, duration: refused)
@@ -1144,7 +1175,12 @@ def test_look_opposite_books_on_the_tick_and_a_refusal_books_nothing():
 
 @pytest.mark.parametrize(
     ("message", "kind"),
-    [("IK error: no solution", "ik"), ("pose not achievable", "ik"), ("port collision on 8000", "error")],
+    [
+        ("IK error: no solution", "ik"),
+        ("IK solver failed: singular", "ik"),
+        ("pose not achievable", "ik"),
+        ("port collision on 8000", "error"),
+    ],
 )
 def test_an_ik_failure_the_sdk_raises_reads_as_ik_through_the_real_controller(daemon, monkeypatch, message, kind):
     """Wire F1: the controller catches the exception, so the classifying has to happen there."""
@@ -1402,6 +1438,26 @@ def test_a_turn_issued_while_a_move_runs_records_its_start_after_that_move(daemo
     assert done.wait(10.0)
     assert len(starts) == 1 and completes == [(True, "turn-event")]
     assert gotos_at_start == [before]  # at the first SDK call, not after the turn
+
+
+def test_a_look_ats_turn_that_started_and_failed_is_truthful_and_teaches_the_pixel_nothing(daemon):
+    """Both delta readers: a resolved ticket read ``never_started`` for a turn that moved, and an ``ik`` taught the map."""
+    from maxim.hardware.controller import MotionOutcome, mark_motion_accepted
+
+    selfy = _selfy(controller(daemon), daemon)
+    starts: list = []
+    completes: list = []
+
+    def _body_step_failed(*a, **kw):
+        assert mark_motion_accepted()
+        return MotionOutcome.refused("ik", "IK error in the body step")
+
+    selfy.turn_around = _body_step_failed  # type: ignore[method-assign]
+    pain = _risky_pain(starts, completes)
+    ticket = selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
+    assert not ticket.never_started
+    assert ticket.completed.result(timeout=1.0).kind == "error"
+    assert completes == [(False, "turn-event")]
 
 
 def test_a_plugin_turn_that_never_marks_accepted_still_books_when_it_completes(daemon):

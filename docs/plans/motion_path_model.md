@@ -324,7 +324,7 @@ Rules around the loop:
   - Now the ticket carries the start's arguments, and the motor thread records the start when `accepted` resolves. That records the start, sets the detector's target, and stores the returned event id on the ticket.
   - `record_action_complete(..., event_id=None)` keeps its keyword default (18 call sites in `test_pain_circuit_booking_1209.py`). Given an id, it completes that event only, so a superseded or stale completion can never book the move that replaced it. **Amended (owner, 2026-11-02, §16):** only the automatic turn completes; a queued move books no completion, as on `main`.
   - A ticket resolved `superseded` or `cancelled` before `accepted` never recorded a start, so it completes nothing.
-  - **`turn_around` (synchronous, on DN's or a tool's thread) binds its own ticket** (Wire scoped S1; built in `_maybe_turn_around`, §16). It sets `current_motion_ticket` around its controller dispatches, with `on_accept` carrying its pain start. So the controller records the start inside `_motion_lock`, at the first chunk's `accepted`, after any in-flight motor-thread move has released the lock. Recording before the dispatch would bring D2 back: the turn waits behind move A and books A's pain against the turn. `_maybe_turn_around` goes the same way.
+  - **`_maybe_turn_around` (synchronous, on DN's or a tool's thread) binds a ticket around the turn** (Wire scoped S1). It sets `current_motion_ticket` around `turn_around`, with `on_accept` carrying its pain start. So the controller records the start inside `_motion_lock`, at the first chunk's `accepted`, after any in-flight motor-thread move has released the lock. Recording before the dispatch would bring D2 back: the turn waits behind move A and books A's pain against the turn. **Amended (2026-11-02, §16):** an explicit `turn_around` records no pain start, so it binds nothing.
   - **The bridge has two producer threads now, so retire-then-install is atomic** (Wire scoped S2). `bridges/pain_bridge.py::record_action_start` reads `_pending` for `_retire` outside `_pending_lock` today, so two concurrent starts can both retire the same old event, and the other new one is overwritten unretired (NAc's `discard_pending_event` never runs). The retire and the install move under one `_pending_lock` hold. The other `_pending` readers are unchanged.
 - **The public Selfy methods that queue motion return the ticket.** These are `look_at_image`, `move`, `move_relative`, `goto_pose`, `center_vision`, `move_antenna` and `media_loop.act` (Wire NIT).
   - Their early returns return a resolved ticket: `ok` with zero chunks for a no-op (`move`'s no-change return), or `limit` for "unreachable" (`look_at_image`'s reachability return).
@@ -849,7 +849,7 @@ Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the
 1. **Pacing stays at dispatch.** `GazeHistory.record_gaze` did three jobs: the dwell, inhibition of return (IOR) and
    the current position. Pacing is not a learner under O4. `note_move_commanded(target)` stamps the dwell and IOR when
    a move is issued, for a move that later fails too, as on `main`; `note_arrival` sets the position on an ok outcome.
-   A move refused at once paces nothing, also as on `main`. (The first build moved IOR to completion and claimed the
+   A command that returned a refusal paces, and only one that raised does not, also as on `main`. (The first build moved IOR to completion and claimed the
    cadence was unchanged. It was not: a re-issue at 0.51 s instead of 0.72 s, measured by the review.)
 2. **`ik` has one meaning.** A controller that reports `kind="ik"` and an SDK log line go through the same branch of
    `run_motion`: the failure count, the mirror re-read, the bounds and attention learners, recovery. Never a
@@ -880,7 +880,9 @@ Gates 13, 14 and 12's PR 2 half, in tests/unit/test_motion_outcomes_1499.py (the
    a pose still queued returns that move's ticket. The ticket is shared, so a caller's cancel reaches that move, which
    had not started.
 7. **Only `_maybe_turn_around` binds a ticket.** An explicit `turn_around` records no pain start, as on `main`, so
-   §5.6's "`turn_around` binds its own ticket" has nothing to carry there. No public keyword was added.
+   there is nothing to carry. No public keyword was added. `look_at_image` returns that ticket, so a turn that started
+   and failed does not read as never started, and an `ik` from a body step reads `error` to the look-at's booking:
+   it says nothing about the look-at's pixel, and it would teach that pixel past `run_motion`'s one path.
 8. **The inbox is drained every loop, inhibited or not, and once after the loop ends**, on DN's thread. A move already
    issued still publishes while DN is inhibited; `inhibit`'s docstring says so.
 

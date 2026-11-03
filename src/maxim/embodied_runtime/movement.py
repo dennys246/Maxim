@@ -10,6 +10,7 @@ import logging
 import math
 import time
 import uuid
+from dataclasses import replace
 from enum import Enum
 from collections.abc import Callable
 from typing import Any, Optional
@@ -730,7 +731,7 @@ class MovementMixin:
             pain_bridge=pain_bridge,
         )
         if turned is not None:
-            return MotionTicket.resolved(turned)  # turn_around handled the movement
+            return turned  # turn_around handled the movement
 
         # Restrict du/dv based on pain risk or workspace usage near limits
         du = self._restrict_horizontal(du, looking_left, looking_right, h_usage, pain_bridge)
@@ -837,11 +838,12 @@ class MovementMixin:
         looking_right: bool,
         h_usage: float,
         pain_bridge: Any,
-    ) -> MotionOutcome | None:
+    ) -> MotionTicket | None:
         """If movement would push past a limit, rotate the body instead.
 
-        Returns the turn's outcome when a turn was tried (the caller returns it),
-        or None when look_at should proceed: no turn was due, or the turn cannot
+        Returns the turn's ticket when a turn was tried (the caller returns it,
+        and it says truthfully whether the turn started), or None when look_at
+        should proceed: no turn was due, or the turn cannot
         fit inside the body limit, so the head moves clamped instead (#1499 5.8).
         A turn that never started books nothing with the pain bridge (owner,
         2026-11-01; 5.6): the start is the ticket's ``on_accept``, so it records
@@ -893,7 +895,7 @@ class MovementMixin:
             if planned.kind == "limit":
                 self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", planned.reason)
                 return None
-            return planned
+            return MotionTicket.resolved(planned)
 
         def _pain_start() -> Any:
             if pain_bridge is None:
@@ -907,6 +909,8 @@ class MovementMixin:
         token = current_motion_ticket.set(ticket)
         try:
             turned = as_outcome(self.turn_around(turn_angle, duration=self._TURN_AROUND_DURATION, recenter_head=True))
+            if turned.kind == "ik":  # a body step failed: that says nothing about the look-at's pixel
+                turned = replace(turned, kind="error")
         finally:
             current_motion_ticket.reset(token)
             ticket.finish(turned)
@@ -920,7 +924,7 @@ class MovementMixin:
         if turned.kind == "limit":
             self.log.info("look_at_image: the turn cannot fit (%s); looking with the head clamped", turned.reason)
             return None
-        return turned
+        return ticket
 
     def _resync_mirror_if_unstarted(self) -> None:
         """Re-read the pose when the last queued move resolved without starting (#1499, owner 2026-11-01).

@@ -356,7 +356,7 @@ class MotionTicket:
 # The ticket of the motion command now running on this thread, or None. The
 # motor worker binds it around each callable (set, then reset in ``finally``);
 # the controller marks it accepted once a dispatch passed its checks, just
-# before the first SDK call (§4). A synchronous caller binds nothing.
+# before the first SDK call (§4). A synchronous caller binds one only to carry an ``on_accept`` (the automatic turn).
 current_motion_ticket: ContextVar[MotionTicket | None] = ContextVar("current_motion_ticket", default=None)
 
 
