@@ -405,12 +405,12 @@ class MediaLoopMixin:
 
         ``entry_exc`` is what ``sys.exc_info`` held when ``live`` started: a caller that runs ``live`` inside an
         ``except`` block leaves its own exception there, which is not one leaving ``live``."""
-        if sys.exc_info()[1] is entry_exc:
-            self.shutdown()
-            return
+        failing = sys.exc_info()[1] is not entry_exc  # read before the handler below replaces it
         try:
             self.shutdown()
         except Exception as e:
+            if not failing:
+                raise
             self.log.error("Shutdown after the failed live run also failed: %s", e, exc_info=True)
 
     def _open_live_stop_event(self) -> threading.Event:
