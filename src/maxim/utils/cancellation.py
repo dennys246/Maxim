@@ -43,6 +43,9 @@ signalling breaks silently:
    Without this wrapper, ``current_cancel_event()`` returns ``None`` in
    the child thread and cancellation is a no-op.
 
+The module also holds the stop module's kill list (the section "The stop module's kill list" below, #1344 PR 3a):
+the LLM servers and tunnel daemons this process spawned, which a forced stop must take with it.
+
 Both rules are enforced by regression tests in
 ``tests/unit/test_cancellation.py``. If a future refactor breaks either,
 those tests fail loudly.
@@ -79,6 +82,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import subprocess
 import threading
 import weakref
 from collections.abc import Callable, Iterator
@@ -86,7 +90,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from subprocess import Popen as _REAL_POPEN
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple, get_args
 
 from maxim.utils.deadline import Deadline
 
@@ -352,12 +356,22 @@ def reset_unless_stopped(reset: Callable[[], None]) -> bool:
 # signals a process this process did not spawn: only a real ``subprocess.Popen`` whose leader is not yet reaped.
 
 
+ChildKind = Literal["llm_server", "tunnel"]
+_CHILD_KINDS: frozenset[str] = frozenset(get_args(ChildKind))
+
+
 class ChildGroup(NamedTuple):
     """A spawned child that leads its own process group (``start_new_session``), its kind, and its owner's stop."""
 
     proc: Any
-    kind: str  # "llm_server" | "tunnel"
+    kind: ChildKind
     stop: Callable[[], None]
+
+
+def _check_kind(kind: str | None) -> None:
+    """A misspelled kind would make a sweep stop nothing, silently: refused instead."""
+    if kind is not None and kind not in _CHILD_KINDS:
+        raise ValueError(f"unknown child kind {kind!r} (one of {sorted(_CHILD_KINDS)})")
 
 
 _children_lock = threading.Lock()
@@ -365,11 +379,12 @@ _children: tuple[ChildGroup, ...] = ()
 _children_closed = False
 
 
-def spawn_registered(launch: Callable[[], Any], *, kind: str, stop: Callable[[], None]) -> Any | None:
+def spawn_registered(launch: Callable[[], Any], *, kind: ChildKind, stop: Callable[[], None]) -> Any | None:
     """Run ``launch`` (a spawner's ``subprocess.Popen(...)``) and register what it returns, as one step under the
     registry lock; None, without launching, once the registry is closed (a restart is about to re-exec). So no child
     can be started after ``close_child_registry`` and miss its sweep. ``launch``'s own exception propagates."""
     global _children
+    _check_kind(kind)
     with _children_lock:
         if _children_closed:
             return None
@@ -385,7 +400,7 @@ def unregister_child(proc: Any) -> None:
         _children = tuple(child for child in _children if child.proc is not proc)
 
 
-def child_groups(kind: str | None = None) -> tuple[ChildGroup, ...]:
+def child_groups(kind: ChildKind | None = None) -> tuple[ChildGroup, ...]:
     """The registered children (of ``kind``), read lock-free: the tuple is rebound, never mutated."""
     children = _children
     return children if kind is None else tuple(child for child in children if child.kind == kind)
@@ -399,10 +414,11 @@ def close_child_registry() -> None:
         _children_closed = True
 
 
-def stop_children(kind: str | None = None) -> None:
+def stop_children(kind: ChildKind | None = None) -> None:
     """Stop every registered child (of ``kind``) through its owner's ``stop``. The entries are copied under the lock
     and stopped after it is released: a ``stop`` unregisters (taking the lock), and a ``start`` holding its spawner's
     lock may be waiting on this one. A failed stop is logged; the next child is still stopped."""
+    _check_kind(kind)
     with _children_lock:
         children = [child for child in _children if kind is None or child.kind == kind]
     for child in children:
@@ -432,6 +448,25 @@ def signal_child_group(proc: Any, sig: int) -> bool:
     return True
 
 
+def stop_child_group(proc: Any) -> None:
+    """SIGTERM ``proc``'s group, wait, then SIGKILL it while ``proc`` is unreaped, and reap it: an owner's ``stop``
+    (the one claimer of ``proc``). Nothing is signalled after the reap. ``terminate``/``kill`` where the group cannot be
+    signalled (Windows, or anything not a real Popen)."""
+    if not signal_child_group(proc, signal.SIGTERM):
+        proc.terminate()
+    try:
+        proc.wait(timeout=5.0)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    if not signal_child_group(proc, getattr(signal, "SIGKILL", signal.SIGTERM)):
+        proc.kill()
+    try:
+        proc.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        logger.warning("Spawned child pid %s did not exit after SIGKILL", proc.pid)
+
+
 def kill_child_groups() -> None:
     """SIGKILL every registered child's group, lock-free: the forced stop's last act before ``os._exit``. POSIX."""
     if not hasattr(signal, "SIGKILL"):
@@ -440,7 +475,9 @@ def kill_child_groups() -> None:
         signal_child_group(child.proc, signal.SIGKILL)
 
 
-def _reset_children_for_tests() -> None:
+def _reset_children() -> None:
+    """Empty the registry with a fresh lock and reopen it: a forked child's start (it spawned none of these, and a lock
+    held by another thread at the fork would never be released in it), and the conftest reset between tests."""
     global _children, _children_lock, _children_closed
     _children_lock = threading.Lock()
     _children = ()
@@ -448,6 +485,4 @@ def _reset_children_for_tests() -> None:
 
 
 if hasattr(os, "register_at_fork"):
-    # A forked child (a multiprocessing or DataLoader worker) spawned none of these; a fresh lock, as one held by
-    # another thread at the fork would never be released in the child.
-    os.register_at_fork(after_in_child=_reset_children_for_tests)
+    os.register_at_fork(after_in_child=_reset_children)

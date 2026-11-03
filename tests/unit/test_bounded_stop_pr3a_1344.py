@@ -71,9 +71,10 @@ def _kill_group_quietly(pid: int) -> None:
 
 
 class _FakeLlamaServer:
-    def __init__(self, *, busy_s: float, model_id: str) -> None:
+    def __init__(self, *, busy_s: float, model_id: str, keyed: bool = True) -> None:
         self.busy_until = time.monotonic() + busy_s
         self.model_id = model_id
+        self.keyed = keyed
         self.keyed_requests = 0
         outer = self
 
@@ -82,14 +83,16 @@ class _FakeLlamaServer:
                 pass
 
             def do_GET(self) -> None:  # noqa: N802
-                if self.headers.get("Authorization") != f"Bearer {KEY}":
+                keyless = self.headers.get("Authorization") != f"Bearer {KEY}"
+                if keyless and outer.keyed:
                     self.send_response(401)
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                     return
-                outer.keyed_requests += 1
-                while time.monotonic() < outer.busy_until:
-                    time.sleep(0.05)
+                if not keyless:
+                    outer.keyed_requests += 1
+                    while time.monotonic() < outer.busy_until:  # a keyless request (keyed=False) skips the lock
+                        time.sleep(0.05)
                 body = json.dumps({"object": "list", "data": [{"id": outer.model_id}]}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -220,11 +223,12 @@ def test_g1_a_spawned_child_dies_with_a_forced_stop(kind: str, tmp_path: Path) -
 
 
 def test_g3_nothing_kills_a_server_it_did_not_start() -> None:
-    root = Path(lss.__file__).resolve().parents[1]
-    for rel in ("runtime/lane_backends.py", "runtime/leader_proxy.py", "runtime/local_server_spawner.py"):
-        text = (root / rel).read_text()
-        assert "kill_stale_llm_servers" not in text and "find_stale_llm_servers" not in text, rel
-        assert "_kill_process_tree" not in text, rel
+    """The box-wide killer and its helpers are gone everywhere, not only from their two former callers."""
+    repo = Path(lss.__file__).resolve().parents[3]
+    gone = ("kill_stale_llm_servers", "find_stale_llm_servers", "_kill_process_tree", "spawned_server_pid")
+    for path in [*(repo / "src" / "maxim").rglob("*.py"), *(repo / "scripts").rglob("*.py")]:
+        text = path.read_text(errors="replace")
+        assert not any(name in text for name in gone), path
 
 
 # ── G4/G5: a keyed listener that is busy is waited for; one that never answers is refused, never killed ──────────
@@ -314,7 +318,7 @@ def test_g8_an_occupied_port_exits_2_with_its_hint(monkeypatch: pytest.MonkeyPat
     assert busy is not None, "no typed refusal for an occupied port"
 
     def _raise(argv: Any = None) -> int:
-        raise busy(4321, "a listener (pid 1234)")
+        raise busy(4321, "a listener, pid 1234", "answers without a key")
 
     monkeypatch.setattr(cli, "_main_impl", _raise)
     with caplog.at_level("WARNING"):
@@ -395,25 +399,94 @@ def test_g11_a_fake_proc_is_never_signalled(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(os, "killpg", lambda pid, sig: sent.append(pid))
     fake = SimpleNamespace(pid=99999, returncode=None, poll=lambda: None)
     cancellation.spawn_registered(lambda: fake, kind="llm_server", stop=lambda: None)
-    cli_signals._kill_spawned_server()
+    cli_signals._kill_spawned_children()
     assert sent == []
 
 
 # ── G12: a restart closes the registry and stops our own servers, through each owner's stop ─────────────────────
 
 
-def test_g12_a_restart_stops_only_what_this_process_started() -> None:
+def test_g12_a_restart_stops_only_what_this_process_started(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The restart's stop closes the registry BEFORE its sweep, then stops our LLM servers through their owners, and
+    leaves the tunnel (it survives the execv)."""
     assert hasattr(cancellation, "stop_children")
-    stopped: list[str] = []
-    cancellation.spawn_registered(lambda: SimpleNamespace(pid=1), kind="llm_server", stop=lambda: stopped.append("s"))
-    cancellation.spawn_registered(lambda: SimpleNamespace(pid=2), kind="tunnel", stop=lambda: stopped.append("t"))
-    cancellation.close_child_registry()
-    cancellation.stop_children("llm_server")
-    assert stopped == ["s"]
-    import inspect
-
     from maxim.runtime import leader_proxy
+
+    stop_fn = getattr(leader_proxy, "_stop_own_servers_for_restart", None)
+    assert stop_fn is not None
+    monkeypatch.setattr(lane_backends, "stop_active_spawner", lambda: None)
+    stopped: list[str] = []
+
+    def _llm_stop() -> None:
+        closed = cancellation.spawn_registered(lambda: SimpleNamespace(pid=3), kind="llm_server", stop=lambda: None)
+        stopped.append("closed" if closed is None else "open")
+
+    cancellation.spawn_registered(lambda: SimpleNamespace(pid=1), kind="llm_server", stop=_llm_stop)
+    cancellation.spawn_registered(lambda: SimpleNamespace(pid=2), kind="tunnel", stop=lambda: stopped.append("tunnel"))
+    stop_fn()
+    assert stopped == ["closed"]
+    import inspect
 
     src = inspect.getsource(leader_proxy)
     restart = src[src.index("def _do_restart") : src.index("os.execv(sys.executable")]
-    assert "close_child_registry()" in restart and 'stop_children("llm_server")' in restart
+    assert "_stop_own_servers_for_restart()" in restart
+
+
+def test_a_misspelled_kind_is_refused_not_silently_unswept() -> None:
+    with pytest.raises(ValueError, match="unknown child kind"):
+        cancellation.spawn_registered(lambda: SimpleNamespace(pid=1), kind="llm-server", stop=lambda: None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="unknown child kind"):
+        cancellation.stop_children("llm-server")  # type: ignore[arg-type]
+
+
+# ── The busy wait's other exits (Executor lens): a stop during it, an error from its check, a keyless answer ──
+
+
+def test_a_stop_during_the_busy_wait_ends_it_promptly(auto_spawn_env: SimpleNamespace) -> None:
+    from maxim.exceptions import StopStillPending
+    from maxim.utils.deadline import Deadline
+
+    server = _FakeLlamaServer(busy_s=60.0, model_id=str(auto_spawn_env.gguf))
+    holder: dict[str, Any] = {}
+
+    def _stop_soon() -> None:
+        time.sleep(4.0)  # past the 0.8 s + 2 s singleton probe: inside the busy wait
+        holder["request"] = cancellation.request_stop("test", Deadline.after(5))
+
+    stopper = threading.Thread(target=_stop_soon, daemon=True)
+    stopper.start()
+    begun = time.monotonic()
+    try:
+        with pytest.raises(StopStillPending):
+            auto_spawn_env.run(server.port)
+        assert time.monotonic() - begun < 8.0, "the busy wait outlasted the stop"
+    finally:
+        stopper.join(10)
+        cancellation.clear_stop_request(holder.get("request"))
+        server.busy_until = 0.0
+        server.close()
+    assert auto_spawn_env.killed == [] and auto_spawn_env.built == []
+
+
+def test_the_busy_checks_own_refusal_reaches_the_caller(auto_spawn_env: SimpleNamespace) -> None:
+    server = _FakeLlamaServer(busy_s=4.0, model_id="/models/another.gguf")  # answers late, with another model
+    try:
+        with pytest.raises(RuntimeError, match="serving model"):
+            auto_spawn_env.run(server.port)
+    finally:
+        server.close()
+    assert auto_spawn_env.killed == [] and auto_spawn_env.built == []
+
+
+def test_a_server_that_answers_without_a_key_is_refused_with_its_pid(auto_spawn_env: SimpleNamespace) -> None:
+    from maxim.exceptions import LLMServerPortBusy
+
+    server = _FakeLlamaServer(busy_s=60.0, model_id="/models/another.gguf", keyed=False)  # keyed requests hang
+    try:
+        with pytest.raises(LLMServerPortBusy, match="answers without a key") as caught:
+            auto_spawn_env.run(server.port)
+    finally:
+        server.busy_until = 0.0
+        server.close()
+    assert f"pid {os.getpid()}" in str(caught.value)  # the fake listens in this process
+    assert auto_spawn_env.killed == [] and auto_spawn_env.built == []

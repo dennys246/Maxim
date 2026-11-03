@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 from maxim.tunnel.cloudflared import find_cloudflared
-from maxim.utils.cancellation import spawn_registered, unregister_child
+from maxim.utils.cancellation import spawn_registered, stop_child_group, unregister_child
 from maxim.tunnel.config import CONFIG_PATH as USER_CONFIG_PATH
 
 logger = logging.getLogger(__name__)
@@ -152,15 +152,7 @@ class TunnelDaemonSpawner:
         if proc is None:
             return
         try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                try:
-                    proc.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    pass
+            stop_child_group(proc)  # its whole group, as a forced stop's kill (#1344 PR 3a)
         except Exception:
             pass
         finally:

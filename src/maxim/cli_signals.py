@@ -56,6 +56,7 @@ from typing import Any, Literal
 
 from maxim.integration.session_ownership import session_ever_claimed
 from maxim.utils.cancellation import (
+    child_groups,
     current_stop,
     forget_noted_signal,
     interruptible_depth,
@@ -63,7 +64,6 @@ from maxim.utils.cancellation import (
     note_signal,
     register_stop_hook,
     request_stop,
-    stop_children,
     yield_requested,
 )
 from maxim.utils.deadline import Deadline
@@ -165,7 +165,7 @@ def _library_deadline(signal_time: float) -> tuple[float, float]:
 # ── The stop thread ───────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def _kill_spawned_server() -> None:
+def _kill_spawned_children() -> None:
     """SIGKILL every LLM server and tunnel daemon this process spawned, lock-free: each is registered from its
     Popen until its owner reaps it, so one still in its readiness wait is reached too (#1344 PR 3a)."""
     kill_child_groups()
@@ -181,7 +181,7 @@ def _die(code: int, reason: str) -> None:
     """End the process. No step may stop the exit: on a helper, the steps that can block."""
     try:
         try:
-            _kill_spawned_server()
+            _kill_spawned_children()
         finally:
             helper = threading.Thread(target=_last_words, args=(reason,), name="maxim.last-words", daemon=True)
             helper.start()
@@ -344,11 +344,15 @@ def _windows_interrupt(pressed: list[bool], signum: int, frame: Any) -> None:
     except Exception:
         logger.warning("Could not signal the LLM cancellation at Ctrl+C", exc_info=True)
     if pressed[0]:
+        for child in child_groups():  # first, lock-free: this handler may interrupt a launch holding the registry lock
+            try:
+                child.proc.kill()
+            except OSError:  # already gone
+                pass
         try:
             from maxim.runtime.lane_backends import stop_active_spawner
 
             stop_active_spawner()
-            stop_children()  # every server and tunnel this process spawned, one in its readiness wait included
         except Exception:
             logger.warning("Could not stop the spawned server at a forced Ctrl+C", exc_info=True)
         print("\n  Forced shutdown.", file=sys.stderr)

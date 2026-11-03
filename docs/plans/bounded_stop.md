@@ -412,7 +412,7 @@ its generation lock, so a busy server reads as dead). The owner split PR 3, took
 (3b; it replaces the "owner dead AND create_time matches" predicate above), removed `kill_stale_llm_servers` from both
 callers, and put cloudflared in the registry, killed by `_die` only.
 
-### 7a. PR 3a (#1344): stop killing; register every child (shipped)
+### 7a. PR 3a (#1344): stop killing; register every child (this PR)
 
 Promise: **no maxim code kills a process it did not start; every LLM server and tunnel daemon it spawns dies on a
 forced stop.** (The Reachy ssh tunnel, sandbox scripts and docker are not covered.) Approach note and its four design
@@ -426,15 +426,29 @@ rounds: the PR body.
 - **`kill_stale_llm_servers` is deleted.** After the singleton check says "spawn", `llm_server.preflight_spawn`
   decides without killing: a pending stop refuses the spawn; our own server is reused on a model match; a keyless
   `/v1/models` tells a free port (spawn) from a keyed server (401, costs no lock), which gets ONE keyed check with the
-  spawn budget; anything else raises `LLMServerPortBusy` naming the listener's pid (CLI exit 2; NOT READY in server
-  mode).
+  spawn budget; anything else raises `LLMServerPortBusy` naming the listener's pid. What each caller of
+  `build_primary_router` does with it (and with `StopStillPending(refused="the LLM server spawn")`), every row better
+  than main, which killed the other server:
+
+  | Caller | Outcome |
+  |---|---|
+  | the CLI (`cli._main_guarded`: a sim, chat, any run mode) | exit 2 with `fix_hint` (a stop: the stop's exit code) |
+  | server mode (`cli._start_server_llm`) | NOT READY, stays up behind its proxy; exit 1 without one |
+  | the robot / live runtime (`agentic_runtime`) | WARNING, runs without the LLM (its existing degrade) |
+  | research (`research_orchestrator`) | WARNING, Writer/Reviewer fall back to heuristics |
+  | the sim's AUT rebuild (`orchestrator`, `aut_model`) | WARNING, the AUT shares the primary router |
+  | the menu's campaign load | "Failed to load campaign: ..." |
+  | `api.py`, `create.py`, `console/handle.py` | propagates to the caller |
 - **A restart** (`leader_proxy._do_restart`) closes the registry, then stops every LLM server this process spawned
   through its owner; cloudflared survives the execv as before.
 - **Residuals, stated:** an orphan from a crash or an older maxim needs one manual kill (the refusal names it); a
   `peer restart` onto a 401 orphan exits 2 (keeping the proxy up would forward the mesh key to it); an orphan still
   loading is invisible to the keyless probe; no Linux pdeathsig yet; a cold-boot leader whose spawn does not succeed
   starts no tunnel (pre-existing, issue drafted); keyed probes can truncate a streaming generation (pre-existing,
-  `interrupt_requests`, issue drafted).
+  `interrupt_requests`, issue drafted); while a hot swap is loading, `_active_spawner` is None, so a same-process
+  rebuild in that window sees a free port and spawns beside it (on main the old sweep killed the swap's server); an
+  `os.execv` that raises leaves the process with its registry closed (every later spawn refused; the swap path
+  already refuses, `_active_spawner` being cleared).
 
 ### 7b. PR 3b: the lock-based reaper (own clock)
 

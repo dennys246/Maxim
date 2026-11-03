@@ -234,10 +234,10 @@ class TestStop:
         unreaped then); terminate/kill are the fallback only when the group cannot be signalled."""
         import signal as _signal
 
-        from maxim.runtime import local_server_spawner as lss
+        from maxim.utils import cancellation
 
         sent: list[int] = []
-        monkeypatch.setattr(lss, "signal_child_group", lambda proc, sig: sent.append(sig) or True)
+        monkeypatch.setattr(cancellation, "signal_child_group", lambda proc, sig: sent.append(sig) or True)
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="", timeout=5.0), None]

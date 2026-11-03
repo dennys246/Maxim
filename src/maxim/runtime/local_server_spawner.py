@@ -23,18 +23,16 @@ import socket
 import subprocess
 import sys
 import threading
-from typing import Any
 import time
 
 logger = logging.getLogger(__name__)
 from pathlib import Path
 
-from maxim.exceptions import LeaderRefusal, MaximError
-from maxim.utils.cancellation import child_groups, signal_child_group, spawn_registered, unregister_child
+from maxim.exceptions import LeaderRefusal, LLMServerPortBusy
+from maxim.utils.cancellation import child_groups, spawn_registered, stop_child_group, unregister_child
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
 
-import signal
 
 DEFAULT_PORT = 8100
 DEFAULT_N_CTX = 8192
@@ -70,31 +68,32 @@ class LLMServerKeyRejected(LLMServerExposureError):
         )
 
 
-class LLMServerPortBusy(MaximError, RuntimeError):
-    """The port this process would spawn its llama-cpp-server on is held by a listener it cannot reuse: a keyed
-    server that stayed busy for the whole spawn budget, a server that answers without a key, or something that is not
-    a llama-cpp-server (#1344 PR 3a). Nothing is killed: a server maxim did not start is the operator's to stop.
+def probe_keyless(port: int, *, connect_s: float = 0.5, read_s: float = 2.0) -> str:
+    """A keyless ``GET /v1/models`` on 127.0.0.1:<port>, classified (#1344 PR 3a; one place for this contract):
+    ``"keyed"`` (401: a llama-cpp-server holding a key; llama_cpp authenticates before its generation lock, so this
+    costs a busy server nothing), ``"absent"`` (connection refused), or what else the listener did, as a phrase
+    ("answers without a key", "answers 403", "did not answer /v1/models (HTTPTimeout)")."""
+    from maxim.utils import http as _http
 
-    Not a :class:`LeaderRefusal`: server mode reports it NOT READY and stays up behind its proxy (``peer restart``
-    still reaches it); the CLI exits 2 with ``fix_hint``.
-    """
-
-    fix_hint = (
-        "Wait for that server to finish (a leader's server is busy while it generates), reuse it with the same model, "
-        "or stop the process named above; then start maxim again."
-    )
-
-    def __init__(self, port: int, listener: str) -> None:
-        super().__init__(
-            f"port {port} is held by {listener}, which this process cannot reuse; refusing to spawn a second "
-            "llama-cpp-server beside it (it would load the model again and fail to bind)"
+    try:
+        _http.fetch_url(
+            f"http://127.0.0.1:{port}/v1/models",
+            method="GET",
+            timeout=_http.TimeoutPolicy(connect_s=connect_s, read_s=read_s, total_s=connect_s + read_s),
         )
-        self.port = port
+    except _http.HTTPAuthError as e:
+        status = getattr(e, "status", 401)
+        return "keyed" if status == 401 else f"answers {status}"
+    except _http.HTTPConnectionError:
+        return "absent"
+    except _http.HTTPError as e:
+        return f"did not answer /v1/models ({type(e).__name__})"
+    return "answers without a key"
 
 
 def describe_port_listener(port: int) -> str:
-    """Who listens on 127.0.0.1:<port>, for a message: its pid and parent pid when ``lsof``/``ps`` can tell (POSIX,
-    bounded; never gates anything), naming a server this process spawned as such."""
+    """Who listens on 127.0.0.1:<port>, as a phrase for a message: its pid and parent pid when ``lsof``/``ps`` can tell
+    (POSIX; each bounded at 5 s; never gates anything), naming a server this process spawned as such."""
     pids: list[int] = []
     if sys.platform != "win32":
         try:
@@ -108,7 +107,7 @@ def describe_port_listener(port: int) -> str:
         except (OSError, subprocess.SubprocessError) as e:
             logger.debug("lsof could not name the listener on port %d: %s", port, e)
     if not pids:
-        return f"a listener on port {port} (pid unknown: `lsof -nP -iTCP:{port} -sTCP:LISTEN` names it)"
+        return f"a listener whose pid is unknown (`lsof -nP -iTCP:{port} -sTCP:LISTEN` names it)"
     ours = {child.proc.pid for child in child_groups("llm_server")}
     parts = []
     for pid in pids:
@@ -124,7 +123,7 @@ def describe_port_listener(port: int) -> str:
             logger.debug("ps could not name pid %d's parent: %s", pid, e)
         orphan = " (an orphan: its parent is gone)" if ppid == "1" else ""
         parts.append(f"pid {pid}" + (f", parent {ppid}{orphan}" if ppid else ""))
-    return f"a listener on port {port}: " + "; ".join(parts)
+    return "a listener, " + "; ".join(parts)
 
 
 def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> None:
@@ -141,21 +140,10 @@ def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> N
     (not every interface or a VPN bridge). The real controls are the loopback
     ``--host`` and the scrubbed ``HOST``/``CONFIG_FILE`` env.
     """
-    from maxim.utils import http as _http
     from maxim.utils.net import primary_ipv4_address
 
-    try:
-        _http.fetch_url(
-            f"http://127.0.0.1:{port}/v1/models",
-            method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0),
-        )
-        unauth = "open"
-    except _http.HTTPAuthError:
-        unauth = "refused"
-    except _http.HTTPError as e:
-        unauth = f"unknown ({type(e).__name__})"
-    if unauth != "refused":
+    unauth = probe_keyless(port, connect_s=1.0, read_s=3.0)
+    if unauth not in ("keyed", "answers 403"):  # a 401 or 403 refuses the keyless request
         raise LLMServerExposureError(
             f"the llama-cpp-server on port {port} answered an unauthenticated request ({unauth}): it holds no key "
             "(one an older maxim started?) or ignored the key it was given. Refusing to serve inference without "
@@ -182,24 +170,6 @@ def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> N
         port,
         lan,
     )
-
-
-def _stop_process_group(proc: Any) -> None:
-    """SIGTERM ``proc``'s group, wait, then SIGKILL it while ``proc`` is unreaped; ``terminate``/``kill`` where groups
-    cannot be signalled (Windows, or anything not a real Popen)."""
-    if not signal_child_group(proc, signal.SIGTERM):
-        proc.terminate()
-    try:
-        proc.wait(timeout=5.0)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    if not signal_child_group(proc, getattr(signal, "SIGKILL", signal.SIGTERM)):
-        proc.kill()
-    try:
-        proc.wait(timeout=2.0)
-    except subprocess.TimeoutExpired:
-        logger.warning("llama-cpp-server pid %s did not exit after SIGKILL", proc.pid)
 
 
 class LocalServerSpawner:
@@ -367,7 +337,7 @@ class LocalServerSpawner:
         if proc is None:
             return
         try:
-            _stop_process_group(proc)
+            stop_child_group(proc)
         except Exception:
             pass
         finally:

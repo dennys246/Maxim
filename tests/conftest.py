@@ -323,15 +323,15 @@ def _clear_stop_request():
     """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield.
 
     Also the CLI's signal state (#1344): the noted-signal and ever-claimed flags reset, the spawned-child registry is
-    emptied and reopened, a signal-armed watchdog is forgotten (`cli_signals._reset_for_tests`), and a test that left a SIGINT handler installed fails here instead of
-    making a later Ctrl+C yield."""
+    emptied and reopened, a signal-armed watchdog is forgotten (`cli_signals._reset_for_tests`), and a test that left a
+    SIGINT handler installed fails here instead of making a later Ctrl+C yield."""
     from maxim.integration import session_ownership
     from maxim.utils import cancellation
 
     def _reset() -> None:
         cancellation.clear_stop_request()
         cancellation._signal_noted = False
-        cancellation._reset_children_for_tests()  # the spawned-child registry and its closed flag (#1344 PR 3a)
+        cancellation._reset_children()  # the spawned-child registry and its closed flag (#1344 PR 3a)
         session_ownership._ever_claimed = False
         cli_signals = sys.modules.get("maxim.cli_signals")
         if cli_signals is not None:

@@ -279,7 +279,7 @@ class TestCheckExistingLlmServer:
         # configured profile so operator can copy/paste
         assert f"maxim --llm {self._PROFILE}" in msg, f"resolution (b) missing or stale: {msg!r}"
         # (c) stop THAT server, named by its listener (never a box-wide pkill: #1344 PR 3a)
-        assert "Stop that server (a listener on port" in msg, f"resolution (c) missing: {msg!r}"
+        assert "Stop that server (a listener" in msg, f"resolution (c) missing: {msg!r}"
         assert "pkill" not in msg, f"a box-wide kill is advised: {msg!r}"
         # Pointer to the new CLAUDE.md lesson by name
         assert "config.json" in msg.lower() or "active_llm_model" in msg.lower(), (

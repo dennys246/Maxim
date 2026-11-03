@@ -351,7 +351,7 @@ def test_die_runs_its_steps_on_a_helper_and_always_exits(monkeypatch: pytest.Mon
     release = threading.Event()
     monkeypatch.setattr(cli_signals.os, "_exit", exits.append)
     monkeypatch.setattr(cli_signals, "LAST_WORDS_S", 0.05)
-    monkeypatch.setattr(cli_signals, "_kill_spawned_server", lambda: 1 / 0)
+    monkeypatch.setattr(cli_signals, "_kill_spawned_children", lambda: 1 / 0)
     started = threading.Event()
 
     def _blocks(_reason: str) -> None:
@@ -392,13 +392,13 @@ def test_the_kill_targets_registered_groups_never_our_own_nor_a_fake(monkeypatch
         cancellation.spawn_registered(
             lambda: SimpleNamespace(pid=4242, returncode=None), kind="tunnel", stop=lambda: None
         )
-        cli_signals._kill_spawned_server()
+        cli_signals._kill_spawned_children()
         assert killed == [child.pid]
         killed.clear()
         real_pid = child.pid
         child.pid = os.getpgrp()
         try:
-            cli_signals._kill_spawned_server()
+            cli_signals._kill_spawned_children()
         finally:
             child.pid = real_pid
         assert killed == []
@@ -415,7 +415,7 @@ def test_the_kill_tolerates_a_server_already_gone(monkeypatch: pytest.MonkeyPatc
     child = _sleeper()
     try:
         cancellation.spawn_registered(lambda: child, kind="llm_server", stop=lambda: None)
-        cli_signals._kill_spawned_server()
+        cli_signals._kill_spawned_children()
     finally:
         child.kill()
         child.wait(5)

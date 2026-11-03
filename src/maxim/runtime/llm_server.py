@@ -317,7 +317,8 @@ def _served_model_matches(
 def _wrong_model_error(url: str, served: str | None, configured: str) -> RuntimeError:
     """The singleton check's refusal of a server on ``url`` serving another model, with the fix commands. It names
     that server's pid rather than advising a box-wide ``pkill`` (#1344 PR 3a: nothing kills a server maxim did not
-    start, and an operator's kill should not either)."""
+    start, and an operator's kill should not either). Naming it runs ``lsof`` and ``ps`` (up to 5 s each): a cost on
+    this refusal path only."""
     from urllib.parse import urlsplit
 
     from maxim.runtime.local_server_spawner import describe_port_listener
@@ -443,6 +444,9 @@ def check_existing_llm_server(
 
 # ─── Before a spawn: is the port free, or held by a server we must not kill? (#1344 PR 3a) ──────────────────────
 BUSY_POLL_S = 0.25
+# What the one keyed check may spend past the budget: its retry, the served-model read (4 s) and, on a wrong model,
+# naming the listener (lsof + ps, 5 s each). A server answering at the end of the budget is then still read.
+BUSY_CHECK_PAD_S = 2 * BUSY_POLL_S + 15.0
 
 
 def preflight_spawn(
@@ -456,17 +460,17 @@ def preflight_spawn(
     logger: Any | None = None,
 ) -> Literal["reuse", "spawn"]:
     """After :func:`check_existing_llm_server` answered "spawn": decide without killing anything (#1344 PR 3a, owner
-    decisions 2026-11-03; ``kill_stale_llm_servers`` is gone).
+    decisions 2026-11-03: the box-wide stale-server kill is gone).
 
     - A process stop is pending: :class:`~maxim.exceptions.StopStillPending`, no model load starts.
     - Our own running server is on ``url``: reuse it on a model match (busy, it failed the short probe), else the
       wrong-model refusal ``check_existing_llm_server`` gives an idle one.
-    - A KEYLESS ``/v1/models``: refused connection = the port is free, spawn. A 401 = a keyed llama-cpp-server, alive
-      and busy (auth runs before llama_cpp's generation lock, so this costs the server nothing): wait for it, see
-      :func:`_await_busy_server`. An answer without a key, or anything else: :class:`LLMServerPortBusy` naming the pid.
+    - A KEYLESS ``/v1/models`` (``local_server_spawner.probe_keyless``): refused connection = the port is free, spawn.
+      A 401 = a keyed llama-cpp-server, alive and busy: wait for it, see :func:`_await_busy_server`. Anything else
+      (an answer without a key, a 403, a timeout): :class:`~maxim.exceptions.LLMServerPortBusy` naming the pid.
     """
-    from maxim.exceptions import StopStillPending
-    from maxim.runtime.local_server_spawner import LLMServerPortBusy, describe_port_listener
+    from maxim.exceptions import LLMServerPortBusy, StopStillPending
+    from maxim.runtime.local_server_spawner import describe_port_listener, probe_keyless
     from maxim.utils.cancellation import current_stop
 
     stop = current_stop()
@@ -479,11 +483,11 @@ def preflight_spawn(
         if logger is not None:
             logger.info("Singleton check: the server at %s is this process's own (busy): reusing it", url)
         return REUSE_EXISTING
-    state = _keyless_probe(port)
+    state = probe_keyless(port)
     if state == "absent":
         return SPAWN_NEW
     if state != "keyed":
-        raise LLMServerPortBusy(port, f"{describe_port_listener(port)}, which {state}")
+        raise LLMServerPortBusy(port, describe_port_listener(port), state)
     return _await_busy_server(
         url=url,
         port=port,
@@ -493,26 +497,6 @@ def preflight_spawn(
         budget_s=budget_s,
         logger=logger,
     )
-
-
-def _keyless_probe(port: int) -> str:
-    """``"absent"`` (nothing listens), ``"keyed"`` (a 401: a llama-cpp-server holding a key), or what else the
-    listener did, as a phrase for the refusal."""
-    from maxim.utils import http as _http
-
-    try:
-        _http.fetch_url(
-            f"http://127.0.0.1:{port}/v1/models",
-            method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=0.5, read_s=2.0, total_s=2.5),
-        )
-    except _http.HTTPAuthError:
-        return "keyed"
-    except _http.HTTPConnectionError:
-        return "absent"
-    except _http.HTTPError as e:
-        return f"did not answer /v1/models ({type(e).__name__})"
-    return "answers without a key"
 
 
 def _await_busy_server(
@@ -531,8 +515,8 @@ def _await_busy_server(
     spawn beside a live listener. Its own refusals (wrong model, a 401 to our key) propagate."""
     import time as _time
 
-    from maxim.exceptions import StopStillPending
-    from maxim.runtime.local_server_spawner import LLMServerPortBusy, describe_port_listener
+    from maxim.exceptions import LLMServerPortBusy, StopStillPending
+    from maxim.runtime.local_server_spawner import describe_port_listener
     from maxim.utils.cancellation import current_stop
 
     box: list[tuple[str, Any]] = []
@@ -560,7 +544,7 @@ def _await_busy_server(
         logger.info("The server on port %d is busy: waiting up to %ds for it to answer", port, int(budget_s))
     worker = threading.Thread(target=_check, name="maxim.busy-server-check", daemon=True)
     worker.start()
-    end = _time.monotonic() + budget_s + 2 * BUSY_POLL_S + 1.0
+    end = _time.monotonic() + budget_s + BUSY_CHECK_PAD_S
     while worker.is_alive() and _time.monotonic() < end:
         stop = current_stop()
         if stop is not None:
@@ -570,7 +554,7 @@ def _await_busy_server(
         raise box[0][1]
     if box and box[0][1] == REUSE_EXISTING:
         return REUSE_EXISTING
-    raise LLMServerPortBusy(port, f"{describe_port_listener(port)}, which stayed busy for {int(budget_s)}s")
+    raise LLMServerPortBusy(port, describe_port_listener(port), f"stayed busy for {int(budget_s)}s")
 
 
 def profile_has_local_file(profile_name: str) -> bool:

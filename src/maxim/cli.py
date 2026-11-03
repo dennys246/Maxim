@@ -2682,7 +2682,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
-        from maxim.exceptions import ConfigDirUnreadable, UserProfilesInvalid
+        from maxim.exceptions import ConfigDirUnreadable, LLMServerPortBusy, UserProfilesInvalid
 
         if isinstance(e, UserProfilesInvalid):  # a malformed profiles.yml, refused at run start (#1315 step 0a)
             from maxim.utils.logging import user_warn
@@ -2690,8 +2690,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             logging.getLogger(__name__).debug("user profiles invalid", exc_info=True)
             user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event="user_profiles_invalid")
             return 2
-        _spawner_mod = sys.modules.get("maxim.runtime.local_server_spawner")  # raised from there, so loaded
-        if _spawner_mod is not None and isinstance(e, _spawner_mod.LLMServerPortBusy):  # never killed (#1344 PR 3a)
+        if isinstance(e, LLMServerPortBusy):  # a port held by a server this process must not kill (#1344 PR 3a)
             from maxim.utils.logging import user_warn
 
             logging.getLogger(__name__).debug("LLM server port busy", exc_info=True)
