@@ -300,7 +300,7 @@ def resume_stamp(resume: dict[str, Any]) -> dict[str, Any]:
     if via is not None:
         context_ok = "loaded" in stores.values()
     else:
-        context_ok = resume.get("context_loaded") and state_dir == context_dir
+        context_ok = bool(resume.get("context_loaded")) and state_dir == context_dir
     loaded = bool(
         context_ok
         and state_dir is not None
