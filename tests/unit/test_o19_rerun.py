@@ -2904,3 +2904,24 @@ def test_a_row_write_blocks_the_harness_signals(tmp_path, monkeypatch) -> None:
     h.append_row(tmp_path / "rows.jsonl", {"a": 1})
     assert signal.SIGTERM in seen[0] and signal.SIGHUP in seen[0]
     assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, [])
+
+
+# ── Exp 63b (docs/experiments/exp63b_carried_recall_prereg.md): red gates, flipped by the judge and the real-seam mock ──
+
+
+@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's judge and real-seam mock land in the next commit")
+def test_exp63b_the_real_seam_mock_passes_end_to_end(mock_attempt, monkeypatch) -> None:
+    monkeypatch.setattr(h, "MOCK63B_VARIANT", "pass", raising=False)
+    rows = mock_attempt("63b")
+    assert _judge("63b", rows)["verdict"] == "PASS"
+
+
+@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's judge and real-seam mock land in the next commit")
+@pytest.mark.parametrize(
+    "variant,gate",
+    [("no_exclusion", "R3prime"), ("no_collapse", "R3prime"), ("scrambled", "R2prime")],
+)
+def test_exp63b_a_deleted_mechanism_fails_its_gate(mock_attempt, monkeypatch, variant, gate) -> None:
+    monkeypatch.setattr(h, "MOCK63B_VARIANT", variant, raising=False)
+    out = _judge("63b", mock_attempt("63b"))
+    assert out["verdict"] == "FAIL" and gate in out["gates"]["not_passed"]

@@ -12,6 +12,8 @@ import inspect
 import logging
 from types import SimpleNamespace
 
+import pytest
+
 from maxim.integration.bio_enrichment import BioEnrichmentPipeline, EnrichmentContext
 from maxim.memory.encoding import EncodingSignals
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
@@ -193,3 +195,78 @@ def test_a_failed_horizon_read_loses_only_the_horizon_never_recall(caplog) -> No
     data = _trace(caplog, BioEnrichmentPipeline(hippocampus=store))
     assert data["memory_ids"] == ["x", "y"] and data["memory_paths"] == ["goal", "goal"]
     assert data["goal_path_horizon"] is None and data["goal_path_holes"] == []
+
+
+# ── Exp 63b's I1 (docs/experiments/exp63b_carried_recall_prereg.md) ──────────────────────────────────────────────────
+
+
+@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
+def test_the_trace_carries_the_whole_cue_text_and_no_recall_failure(caplog) -> None:
+    store = _StubStore(cue=[_mem("c")])
+    text = "the guard stirs " + "and the torch gutters " * 12  # past query_text's 120-character cut
+    with caplog.at_level(logging.INFO, logger="maxim.integration.bio_enrichment"):
+        BioEnrichmentPipeline(hippocampus=store).enrich(
+            text, context=EnrichmentContext(active_goal=GOAL), bypass_gate=True
+        )
+    (data,) = [r.data for r in caplog.records if getattr(r, "event", None) == "enrichment_trace"]
+    assert data["cue_text"] == text and len(text) > 120 and data["query_text"] == text[:120]
+    assert data["recall_failed"] is False
+
+
+@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
+def test_a_failed_recall_is_flagged_in_the_trace(caplog) -> None:
+    class _Broken(_StubStore):
+        def recall(self, **kwargs):
+            raise RuntimeError("store unreadable")
+
+    data = _trace(caplog, BioEnrichmentPipeline(hippocampus=_Broken()))
+    assert data["recall_failed"] is True and data["memory_ids"] == [] and data["memories"] == 0
+
+
+def _digest_lines(caplog) -> list[dict]:
+    return [r.data for r in caplog.records if getattr(r, "event", None) == "hippocampus_store_digest"]
+
+
+@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
+def test_a_save_and_a_load_log_the_digest_of_exactly_their_records(caplog, tmp_path) -> None:
+    from maxim.memory.hippocampus_persistence import store_digest
+
+    h, _ = _store(4)
+    path = tmp_path / "aut_hippocampus.json"
+    with caplog.at_level(logging.INFO, logger="maxim.memory.hippocampus_persistence"):
+        h.save(str(path))
+        fresh = Hippocampus(HippocampusConfig(auto_save_after_sleep=False))
+        fresh.load(str(path))
+    save, load = _digest_lines(caplog)
+    live = store_digest(h._memories.values())
+    per_record = save.pop("record_sha256")
+    assert save == {"op": "save", "file": "aut_hippocampus.json", "records": 4, "sha256": live}
+    assert [i for i, _h in per_record] == sorted(h._memories) and all(len(x) == 16 for _i, x in per_record)
+    assert load.pop("record_sha256") == per_record
+    assert load == {"op": "load", "file": "aut_hippocampus.json", "records": 4, "sha256": live}
+    assert store_digest(fresh._memories.values()) == live
+
+
+@pytest.mark.xfail(strict=True, reason="red gate (#1476): Exp 63b's I1 lands in the next commit")
+def test_the_digest_moves_with_what_recall_matches_on() -> None:
+    """Deletion probe: the digest reads each record's id, content keys and copy key, so changing any one moves it."""
+    from maxim.memory.hippocampus_persistence import store_digest
+
+    h, ids = _store(2)
+    before = store_digest(h._memories.values())
+    rec = h._memories[ids[0]]
+    rec.perception = Perception(salience=0.5, observations={"text": "memory 0 of the cellar"})  # content keys move
+    assert store_digest(h._memories.values()) != before
+    rec.perception = Perception(salience=0.5, observations={"text": "memory 0 of the dungeon"})
+    assert store_digest(h._memories.values()) == before
+    rec.outcome = Outcome(success=False)  # the copy key moves (same words, another outcome)
+    assert store_digest(h._memories.values()) != before
+
+
+def test_an_unkeyable_record_costs_the_digest_line_never_the_save(caplog, tmp_path) -> None:
+    h, ids = _store(2)
+    h._memories[ids[0]].copy_key = lambda: (_ for _ in ()).throw(RuntimeError("bad record"))  # type: ignore[method-assign]
+    path = tmp_path / "h.json"
+    with caplog.at_level(logging.INFO, logger="maxim.memory.hippocampus_persistence"):
+        h.save(str(path))
+    assert path.exists() and _digest_lines(caplog) == []
