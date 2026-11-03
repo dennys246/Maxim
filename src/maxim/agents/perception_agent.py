@@ -274,7 +274,7 @@ class PerceptionAgent(Agent):
 
         return percept
 
-    def publish_arrival(self, state: Any, text: str, *, source: str) -> None:
+    def publish_arrival(self, state: Any, text: str, *, source: str) -> str | None:
         """Publish a person's input as a ``Percept`` ONCE, when it arrives (Session R; the experience stream's first
         producer, docs/plans/experience_stream.md). The runtime decides what arrived and clears its slot
         (``loop_perception.take_user_input``); this reads the state and never changes it.
@@ -283,7 +283,8 @@ class PerceptionAgent(Agent):
         pending -- in Talk, every turn -- from the one ``state.data["cli_input"]`` slot the next input overwrites:
         0 of 4 utterances reached memory in a measured Talk session. Also on the robot, whose CaptureManager makes
         ``propose_intent`` return early. Built by the same ``process_observation`` §3 used, over the state plus this
-        input, with ``source`` the channel it came by.
+        input, with ``source`` the channel it came by. Returns the id of the record memory made of it, None if it made
+        none: recall needs the turn's own capture by identity, not by its words (#1573).
         """
         data = getattr(state, "data", None)
         obs = dict(data) if isinstance(data, dict) else {}
@@ -291,6 +292,7 @@ class PerceptionAgent(Agent):
         percept = self.process_observation(obs)
         percept.source = source
         self._bus.publish(percept)
+        return percept.capture_id
 
     def propose_intent(self, state: Any, memory: Any, **kwargs: Any) -> dict[str, Any] | None:
         """Process observation and publish percept.
