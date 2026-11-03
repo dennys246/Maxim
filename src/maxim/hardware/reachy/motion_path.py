@@ -296,14 +296,27 @@ def _head_matrix(raw: Any) -> np.ndarray:
     return arr
 
 
-def _find_body_yaw(data: dict[str, Any]) -> Any:
-    """``body_yaw`` at the top level or one level down (the shape varies by version, F12)."""
-    if "body_yaw" in data:
-        return data["body_yaw"]
+def _find_body_yaw(data: dict[str, Any], key: str = "body_yaw") -> Any:
+    """``body_yaw`` (or *key*) at the top level or one level down (the shape varies by version, F12)."""
+    if key in data:
+        return data[key]
     for value in data.values():
-        if isinstance(value, dict) and "body_yaw" in value:
-            return value["body_yaw"]
-    raise MotionRefused("reference", "fresh readback has no body_yaw")
+        if isinstance(value, dict) and key in value:
+            return value[key]
+    raise MotionRefused("reference", f"fresh readback has no {key}")
+
+
+def parse_target_body(data: Any) -> float:
+    """The daemon's ``target_body_yaw`` from a ``GET /api/state/full`` body, or ``MotionRefused("reference")`` (#1563).
+
+    The daemon's IK composes the head against this target, not the present
+    body. ``None`` (the daemon has set no target yet) reads as 0.0, the value
+    its IK then uses.
+    """
+    if not isinstance(data, dict):
+        raise MotionRefused("reference", f"fresh readback is not an object: {type(data).__name__}")
+    raw = _find_body_yaw(data, "target_body_yaw")
+    return 0.0 if raw is None else _finite_or_refuse("target_body_yaw", raw)
 
 
 def parse_full_state(data: Any) -> tuple[Pose, str]:

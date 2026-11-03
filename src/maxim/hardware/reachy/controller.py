@@ -72,8 +72,13 @@ MOTION_LOCK_WAIT_S = 25.0
 FRESH_READ_DEADLINE_S = 0.1
 FRESH_READ_DEADLINE_TUNNEL_S = 0.3
 _STATE_FULL_QUERY = (
-    "use_pose_matrix=true&with_head_pose=true&with_body_yaw=true&with_antenna_positions=true&with_control_mode=true"
+    "use_pose_matrix=true&with_head_pose=true&with_body_yaw=true&with_target_body_yaw=true"
+    "&with_antenna_positions=true&with_control_mode=true"
 )
+# #1563 (owner, 2026-11-03): the daemon's IK composes the head against its body TARGET, and the first control tick
+# of a goto can still see the old one (the head target is set before the body target; IK runs on its own thread).
+# A read before a dispatch refuses when the target is this far from the present body: the settle tolerance.
+_TARGET_BODY_GAP_RAD = math.radians(2.0)
 # A retained axis whose readback is this far from the last command is refused
 # and forgotten (decision 3), and the per-chunk re-check and the final-target
 # check use the same tolerance. Provisional 5°: end-of-move lag plus a margin.
@@ -905,13 +910,15 @@ class ReachyMiniController(RobotController):
         except ValueError as e:
             raise MotionRefused("reference", f"fresh readback is not JSON: {e}") from e
 
-    def _fresh_readback(self, *, retry: bool = False) -> mp.Pose:
+    def _fresh_readback(self, *, retry: bool = False, before_dispatch: bool = True) -> mp.Pose:
         """The pose every check starts from (R1, R2), or ``MotionRefused("reference")``.
 
         ``retry``: one more read when ``_get_state_full`` fails (the transport, the
         deadline, a non-200 status, a body that is not JSON, a missing host) on
         the reads between chunks and after the last chunk. A read that parses but
         says torque-off or impossible, or has the wrong shape, is never retried.
+        ``before_dispatch``: a goto follows this read, so the daemon's body target
+        must agree with the present body (#1563); False for reads no goto follows.
         """
         if self._automatic_body_yaw or not self._auto_yaw_asserted:
             # O6: with the daemon moving the body behind us, no readback-based check describes what the motors do.
@@ -926,11 +933,20 @@ class ReachyMiniController(RobotController):
             logger.debug("fresh readback failed (%s); retrying once", first.reason)
             data = self._get_state_full()
         pose, control_mode = mp.parse_full_state(data)
-        return self._checked_pose(pose, control_mode)
+        checked = self._checked_pose(pose, control_mode)
+        if before_dispatch:
+            gap = _wrap(mp.parse_target_body(data) - checked.body)
+            if abs(gap) > _TARGET_BODY_GAP_RAD:
+                raise MotionRefused(
+                    "reference",
+                    f"the daemon's body target is {math.degrees(gap):+.1f}° from the present body, "
+                    "so its IK would not compose the head against the body this move was checked against",
+                )
+        return checked
 
     def read_body_yaw(self) -> float:
         """The body yaw from the fresh daemon readback (R1), never the WS mirror (#1499 5.8)."""
-        return self._fresh_readback(retry=True).body
+        return self._fresh_readback(retry=True, before_dispatch=False).body
 
     def _checked_pose(self, pose: mp.Pose, control_mode: str) -> mp.Pose:
         """A parsed readback that moves may start from: torque on and nothing impossible (R1, R2)."""
@@ -1213,7 +1229,7 @@ class ReachyMiniController(RobotController):
             total += checked
             previous = chunk
         try:
-            final = self._fresh_readback(retry=True)
+            final = self._fresh_readback(retry=True, before_dispatch=False)
         except MotionRefused as e:
             return self._partial(f"the final readback failed: {e.reason}", total, n, done)
         if self._pose_distance(final, previous) > _STASH_DIVERGENCE_REFUSE_RAD:
@@ -1398,7 +1414,9 @@ class ReachyMiniController(RobotController):
     def _probe_state_shape(self) -> None:
         """One readback at connect: an unknown ``/api/state/full`` shape is one ERROR now, not a refusal later."""
         try:
-            mp.parse_full_state(self._get_state_full())
+            data = self._get_state_full()
+            mp.parse_full_state(data)
+            mp.parse_target_body(data)
         except MotionRefused as e:
             logger.error(
                 "The daemon's GET /api/state/full could not be read or did not parse (%s; reachy-mini SDK %s): "
@@ -1486,7 +1504,7 @@ class ReachyMiniController(RobotController):
             if self._abort_gen != gen:
                 return MotionOutcome.refused("cancelled", "a stop was requested while waiting for the robot to settle")
             try:
-                self._require_settled(self._fresh_readback())
+                self._require_settled(self._fresh_readback(before_dispatch=False))
                 return None
             except MotionRefused:
                 if time.monotonic() >= deadline:

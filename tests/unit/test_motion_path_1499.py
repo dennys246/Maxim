@@ -208,10 +208,7 @@ def test_the_known_rest_shape_variants_parse(daemon, mode):
 # control tick of a goto it can still hold the old one (it sets the head target before the body target, and IK runs
 # on its own thread). So a read before a dispatch refuses when the target and the present body differ by over 2°.
 
-_GAP = pytest.mark.xfail(strict=True, reason="#1563: the target-body gap check is not built")
 
-
-@_GAP
 @pytest.mark.parametrize("gap_deg", [4.0, -4.0])
 def test_a_target_body_away_from_the_present_body_refuses_reference(daemon, gap_deg):
     _place(daemon, body_deg=20)
@@ -230,7 +227,6 @@ def test_a_target_body_within_2_degrees_of_the_present_body_moves(daemon):
     assert ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
 
 
-@_GAP
 def test_the_look_at_stream_refuses_on_a_target_body_gap(daemon):
     from maxim.hardware.controller import PixelTarget
 
@@ -241,7 +237,6 @@ def test_the_look_at_stream_refuses_on_a_target_body_gap(daemon):
     assert daemon.gotos() == []
 
 
-@_GAP
 def test_a_daemon_with_no_target_yet_is_read_as_body_0_the_way_its_ik_reads_it(daemon):
     daemon.rest_mode = "none_target"
     ctl = controller(daemon)
@@ -251,7 +246,6 @@ def test_a_daemon_with_no_target_yet_is_read_as_body_0_the_way_its_ik_reads_it(d
     assert not out and _kind(out) == "reference"
 
 
-@_GAP
 def test_a_readback_without_the_target_body_refuses_reference(daemon):
     daemon.rest_mode = "missing_target"
     ctl = controller(daemon)
@@ -260,7 +254,22 @@ def test_a_readback_without_the_target_body_refuses_reference(daemon):
     assert daemon.gotos() == []
 
 
-@_GAP
+@pytest.mark.parametrize("mode", ["missing_target", "unknown"])
+def test_the_connect_probe_reports_a_readback_motion_would_refuse(daemon, mode, caplog):
+    daemon.rest_mode = mode
+    ctl = controller(daemon)
+    with caplog.at_level(logging.ERROR, logger="maxim.hardware.reachy.controller"):
+        ctl._probe_state_shape()
+    assert any("every motion will be refused" in r.getMessage() for r in caplog.records)
+
+
+def test_the_connect_probe_is_quiet_on_the_real_shape(daemon, caplog):
+    ctl = controller(daemon)
+    with caplog.at_level(logging.ERROR, logger="maxim.hardware.reachy.controller"):
+        ctl._probe_state_shape()
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
 def test_a_gap_left_by_a_chunk_stops_the_split_before_the_next(daemon):
     _place(daemon, body_deg=160)
     daemon.target_gap_after_goto = D(4)
