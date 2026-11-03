@@ -658,9 +658,10 @@ class ReachyMiniController(RobotController):
         Kept as a sleep's latch is: only a successful wake clears it, never a
         connect. A soft reconnect that connects after the stop would otherwise
         clear it, and a move could start before the reconnect re-latched.
-        ``goto_sleep`` still runs (it latches anyway). Called first in the live
-        teardown, so a body turn or a direct dispatch after a stop is refused
-        too, not only a queued one. It reports the robot not awake.
+        ``goto_sleep`` still runs (it latches anyway). The live teardown calls
+        it after stopping the loop and closing the motor queue, so a body turn
+        or a direct dispatch after a stop is refused too, not only a queued
+        one. It reports the robot not awake.
         """
         self._stop(by_sleep=True)
 
@@ -1553,8 +1554,9 @@ class ReachyMiniController(RobotController):
     def wake_up_unless_stopped_since(self, token: object) -> MotionOutcome:
         """Wake, unless a stop came after *token* (from ``stop_token``); a stop during the wake still ends it.
 
-        The soft reconnect's wake: read the token, then check that the live
-        loop has not stopped, then call this. The teardown stops the loop
+        The soft reconnect's and the wake word's wake: read the token, then
+        check that the live loop has not stopped (or read the queue), then
+        call this. A token that is not this controller's refuses ``cancelled``. The teardown stops the loop
         before it latches, so a stop either shows in that check or moves the
         generation on, and this refuses ``cancelled``. No lock is held across
         the wake, so a stop still cuts it at its next step.
