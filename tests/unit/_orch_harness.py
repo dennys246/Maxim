@@ -48,10 +48,10 @@ Then the arms the 1.4.0 gate requires before the slices that move their code (``
      stdin that claims a TTY over a pipe, which ``tcgetattr`` refuses, so the raw reader falls back to the line reader. The
      post-sim raw-mode goal reader (a TTY loop, left uncharacterized) is faked (``_post_sim_goals``): a goal
      once, so the run re-enters ``start_simulation_mode``, then Enter. Each run's narrator probes once and
-     finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry resolves
-     ``sandbox_backend="auto"`` (it does not forward the caller's), so ``check_docker_available`` is patched to
-     False for every arm: never a container, whatever the box has installed. Two findings pinned as-is: the
-     re-entry drops the caller's other arguments (#1453), and the AUT's learning does not carry over (#1454).
+     finishes, which ends that run (#1259; the harness's finish watchdog never fires). The re-entry carries the
+     run's settings (#1453), and ``sandbox_backend`` defaults to ``"auto"``, so ``check_docker_available`` is
+     patched to False for every arm: never a container, whatever the box has installed. The second AUT starts
+     from the first run's saved state (#1454).
   7. ``persistent_agent``: HANDLE seam (a). A real console ``MaximHandle()`` (the shipped producer of the
      INSTANCE; owner decision 2026-10-24) is built after the run's env is set, so its home is the run's data home
      (``agents/console_agent``), and its instance is adopted as the AUT. The CALL is not the handle's: its entry
@@ -292,7 +292,8 @@ _LANTERN: dict[str, Any] = {
     },
 }
 # The new_goal arm: the goal the faked post-sim reader returns once (the ``/new`` re-entry), then "" (finish).
-NEW_GOAL = "check what the agent remembers"
+# It matches no arc: the /new run decides ``generative`` from its own goal, and this arm pins the narrator's re-entry.
+NEW_GOAL = "check what the agent says next"
 # The stall arm's narrator probes, by the turn whose follow-up sends the next one (turn 3's percept is the one the
 # fake AUT holds until the diversity checkpoint lands: ``_hold_for_stall_arm``).
 _STALL_PROBES = {1: "What is your favourite colour?", 2: "Name one tool you can use."}
@@ -1084,9 +1085,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     cancelled_bridges: list[Any] = []  # the new_goal arm: the bridges whose finish already fed a /cancel
     post_sim_reads: list[str] = []  # the new_goal arm: what each post-sim "new goal" read returned
 
-    def _post_sim_goals(*, _stdin: Any, display: Any) -> str:
+    def _post_sim_goals(*, _stdin: Any, display: Any, prompt: str) -> str:
         """The post-sim raw-mode reader (``tty_stdin.read_post_sim_goal_raw``, a TTY loop left uncharacterized):
         a goal once, so the run re-enters ``start_simulation_mode``, then Enter (finish)."""
+        assert prompt == orch.POST_SIM_PROMPT  # one constant, the raw reader's and the panel's (#1454)
         goal = "" if post_sim_reads else NEW_GOAL
         post_sim_reads.append(goal)
         return goal

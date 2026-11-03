@@ -201,13 +201,16 @@ def plan_chunks(start: Pose, target: Pose, *, translation_body_frame: Any = None
         return compose_head(roll, pitch, rel, body, moved)
 
     chunks: list[Pose] = []
+    # Antennas hold at their start until the final chunk; carried only when the move commands them, so the
+    # final chunk's antenna delta is measured (and rate-capped) from a known pose (#1499 PR 2a review).
+    held = start.antennas if target.antennas is not None else None
     d_body = target.body - start.body
     n_body = math.ceil(abs(math.degrees(d_body)) / BODY_CHUNK_MAX_DEG - 1e-9) if abs(d_body) > 1e-9 else 0
     for i in range(1, n_body + 1):
         body = start.body + d_body * i / n_body
-        chunks.append(Pose(at(roll0, pitch0, rel0, body), body))  # antennas held until the final chunk
+        chunks.append(Pose(at(roll0, pitch0, rel0, body), body, held))
     if abs(math.atan2(math.sin(rel1 - rel0), math.cos(rel1 - rel0))) > 1e-9:
-        chunks.append(Pose(at(roll0, pitch0, rel1, target.body), target.body))
+        chunks.append(Pose(at(roll0, pitch0, rel1, target.body), target.body, held))
     final = Pose(np.asarray(target.head, dtype=float), target.body, target.antennas)
     if not chunks or not _same_pose(chunks[-1], final):
         chunks.append(final)

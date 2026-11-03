@@ -49,8 +49,9 @@ from maxim.hardware.controller import as_outcome, clamp_finite, require_duration
 
 logger = logging.getLogger(__name__)
 
-# Daemon-side body yaw clamp (matches embodied_runtime/movement.py's
-# turn_around clamp; the daemon's inverse_kinematics_safe uses ±160°).
+# Daemon-side body yaw clamp (the daemon's inverse_kinematics_safe uses ±160°).
+# Selfy.turn_around now REFUSES past it (#1499 5.8) where this orient turn still
+# clamps, and plans from get_current_pose rather than read_body_yaw: #1560.
 _MAX_BODY_YAW_RAD = math.radians(160.0)
 # Post-motion readback tolerance: |achieved − target| within this counts
 # as reached (minjerk settling + pose-estimate noise).
