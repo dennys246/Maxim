@@ -81,7 +81,7 @@ class MemoryRecallTool(Tool):
             filters["mode"] = kwargs["mode"]
 
         try:
-            memories = self._hippocampus.recall(limit=limit, **filters)
+            memories = self._hippocampus.recall(limit=limit, collapse_copies=True, **filters)
         except Exception as e:
             return ToolResult(success=False, error=f"Memory recall failed: {e}")
 
