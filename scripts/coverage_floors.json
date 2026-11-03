@@ -3,13 +3,17 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 72.1,
-    "missing": 27205
+    "percent": 73.2,
+    "missing": 27008
   },
   "packages": {
     "maxim/<root>": {
       "percent": 65.0,
       "missing": 1233
+    },
+    "maxim/advisor": {
+      "percent": 98.9,
+      "missing": 8
     },
     "maxim/agents": {
       "percent": 70.3,
@@ -100,8 +104,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 60.8,
-      "missing": 2290
+      "percent": 62.7,
+      "missing": 2285
     },
     "maxim/modes": {
       "percent": 80.6,
