@@ -11,7 +11,7 @@
     {
       "file": "src/maxim/api.py",
       "qualname": "run",
-      "lines": 224
+      "lines": 209
     },
     {
       "file": "src/maxim/cli.py",
@@ -161,7 +161,7 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 259
+      "lines": 255
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
@@ -394,6 +394,7 @@
     "start_simulation_mode tightened 2032 -> 2007 on 2026-10-30 (#1259, rule T): the narrator's simulation-tool registrations left it for module-level orchestrator.py::_register_narrator_sim_tools, which carries the finish tool's new stop_event.",
     "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail).",
     "api.py::run tightened 276 -> 244 on 2026-10-31 (#1521, rule T): the stale shutdown comment is corrected in the cleanup it describes, which moved verbatim to api._tear_down_run (the names it reads passed as keywords). Merged with #1555 (main's run at 256 after _run_workspace and _build_run_executor moved out): 224.",
-    "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_run_handles, which register the event for the process stop."
+    "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_run_handles, which register the event for the process stop.",
+    "api.py::run tightened 224 -> 209 and _maybe_auto_spawn_server 259 -> 255 on 2026-11-03 (#1315 item 10a, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the new offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out."
   ]
 }

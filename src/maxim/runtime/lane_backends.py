@@ -2588,6 +2588,19 @@ def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool
     return False
 
 
+def _auto_spawn_ruled_out(capabilities: Any) -> bool:
+    """The auto-spawn guards that need no lane: offline (before the :8100 probe, the lsof fallback and any spawn;
+    #1315 item 10, V8), an explicit ``MAXIM_AUTO_SPAWN_LLM_SERVER`` opt-out, or no GPU."""
+    from maxim import _offline
+
+    if _offline.is_offline():
+        return True
+    auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()
+    if auto_raw in ("0", "false", "f", "no", "n", "off"):
+        return True
+    return capabilities is None or not getattr(capabilities, "has_gpu", False)
+
+
 def _maybe_auto_spawn_server(
     capabilities: Any,
     lane_configs: dict[str, Any],
@@ -2607,11 +2620,7 @@ def _maybe_auto_spawn_server(
     """
     # Mutable globals live in _server_mod (llm_server.py) — single source of truth
 
-    auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()
-    if auto_raw in ("0", "false", "f", "no", "n", "off"):
-        return lane_configs
-
-    if capabilities is None or not getattr(capabilities, "has_gpu", False):
+    if _auto_spawn_ruled_out(capabilities):
         return lane_configs
 
     # Tier-based: primary inference tier is "large"; fall back to "infer"

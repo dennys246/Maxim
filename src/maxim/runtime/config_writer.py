@@ -457,6 +457,12 @@ def downgrade_config(path: Path | None = None) -> DowngradeResult:
         sidecar,
         ", ".join(safe_display(n, 60) for n in sorted(entries)),
     )
+    if entries.get("llm.offline") is True:
+        # The stated fail-open of #1315 §1A.6: a build that does not know llm.offline never engages the latch.
+        logger.warning(
+            "config_writer: llm.offline: true was set aside — this build does not know it and runs ONLINE; "
+            "an offline deployment pins its Maxim version (restore with `maxim config restore` after upgrading)"
+        )
     return DowngradeResult(config=target, sidecar=sidecar, preserved=tuple(sorted(entries)))
 
 

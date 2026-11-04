@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # Schema constants (FROZEN at 1.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FORMAT_VERSION: str = "1.4"
+CONFIG_FORMAT_VERSION: str = "1.5"
 """The config.json format version. Bumped per CC1 on shape changes AND on changes
 to what a key means: minor for additive fields or meanings (an older build reading
 a future minor tolerates the keys it does not know, with a warning), major (2.0)
@@ -74,7 +74,8 @@ A file stamped below 1.2 is a full dump whose intent is unknowable, so it is
 read by "value != default" until it is rewritten (see
 :func:`explicit_paths_of`); 1.3 (2026-10-14) adds ``proxy.allow_remote_update``
 (remote update stopped being on by default for leaders); 1.4 (2026-10-30) adds ``console.stop_budget_s`` (the
-console's bounded stop, #1438). Every field path is pinned per version in
+console's bounded stop, #1438); 1.5 (2026-11-03) adds ``llm.offline`` (the atonia gate's offline latch, #1315
+item 10). Every field path is pinned per version in
 ``tests/fixtures/config_schema_by_version.json``, and how each version
 resolves in ``tests/fixtures/config_resolution_by_version.json``; a change
 of either without a bump fails ``tests/unit/test_config_format_version_856.py``."""
@@ -137,6 +138,10 @@ class LLMConfigSection:
     # change).
     max_response_tokens: int | None = None
     deliberation_max_cycles: int | None = None
+    # Offline (#1315 item 10, config 1.5): the CLI and every api build engage ``maxim._offline`` first, and the router
+    # then runs in-process lanes only. No env alias (``MAXIM_OFFLINE`` is the latch's own, read by ``maxim``), and it
+    # is a security field: ``maxim config downgrade`` warns when it drops it, because the older build runs online.
+    offline: bool = False
 
 
 _LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
@@ -625,6 +630,29 @@ def config_path() -> Path:
     return base / "maxim" / "config.json"
 
 
+def engage_offline_if_configured() -> bool:
+    """Engage ``maxim._offline`` when config.json sets ``llm.offline: true`` (#1315 item 10, §6 "Startup order").
+
+    ``cli.py::main`` and every ``api`` build call this first, before any subprocess or socket, so it reads only the
+    file: no spawn, no socket, no validation. A file that would fail validation still engages on the raw key
+    (fail-closed). A missing file engages nothing; an unreadable one is reported here and refused loudly by the
+    load that follows. Returns whether the latch is up."""
+    from maxim import _offline
+
+    path = config_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _offline.is_offline()
+    except (OSError, ValueError) as e:
+        logger.warning("config_loader: could not read %s to check llm.offline: %s", path, e)
+        return _offline.is_offline()
+    llm = data.get("llm") if isinstance(data, dict) else None
+    if isinstance(llm, dict) and llm.get("offline") is True:
+        _offline.engage("llm.offline")
+    return _offline.is_offline()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Env-var presence test (C-1 fold)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -809,6 +837,7 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
     if field_path in {
         "llm.enabled",
         "llm.auto_download",
+        "llm.offline",
         "cloud.enabled",
         "auto_spawn.llm_server",
         "auto_spawn.tunnel",

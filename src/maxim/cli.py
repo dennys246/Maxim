@@ -2631,6 +2631,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     stop, whatever the body returned, raised as a ``sys.exit`` or refused with ``StopStillPending`` (it refused to start
     under this process's own stop); a non-sim mode keeps a real failure and otherwise exits 0.
     """
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    engage_offline_if_configured()  # first: before any subprocess or socket (#1315 item 10, §6 "Startup order")
     from maxim import cli_signals
     from maxim.exceptions import StopStillPending
     from maxim.utils.cancellation import stop_noted
