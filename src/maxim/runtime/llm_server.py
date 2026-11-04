@@ -14,7 +14,7 @@ import threading
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -250,9 +250,9 @@ class ProbeResult:
 # and takes the tunnel down).
 
 
-# Decision values returned by :func:`check_existing_llm_server`.
-REUSE_EXISTING = "reuse"
-SPAWN_NEW = "spawn"
+# Decision values returned by :func:`check_existing_llm_server` (Final, so each types as its literal).
+REUSE_EXISTING: Final = "reuse"
+SPAWN_NEW: Final = "spawn"
 
 
 def _read_served_model_id(url: str, api_key: str | None) -> str | None:
