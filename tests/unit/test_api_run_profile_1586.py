@@ -180,3 +180,33 @@ def test_the_run_profile_drives_the_real_sim_build(tmp_path: Path) -> None:
     assert trace["router_builds"] == [{"profile": "orch-run-model", "env": operator}]
     assert trace["maxim_env_after"].get("MAXIM_LLM_PROFILE") == operator
     assert trace["report"]["provenance"]["language_profile"] == "orch-run-model"
+
+
+@pytest.mark.xfail(strict=True, reason="#1586 red gate: research() hands its model to no router build")
+def test_research_hands_its_model_to_its_router_and_its_sim(
+    operator_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``maxim.research(model=)`` reported ``orchestrator_model=<model>`` while its Writer, Reviewer and narrator ran on
+    the operator's profile (review fold, owner decision 2026-11-03)."""
+    from maxim.api import research
+
+    builds: list[Any] = []
+    seen: list[dict[str, Any]] = []
+
+    def _build(*_a: Any, **kwargs: Any) -> Any:
+        builds.append(kwargs.get("profile"))
+        return None, None
+
+    def _config(*_a: Any, **kwargs: Any) -> Any:
+        from types import SimpleNamespace
+
+        builds.append(("config", kwargs.get("profile_override")))
+        return SimpleNamespace(enabled=False)
+
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", _build)
+    monkeypatch.setattr("maxim.models.language.router.load_llm_config", _config)
+    monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", _recording_sim(seen))
+    with pytest.raises(_Stop):
+        research("q", model=RUN_MODEL)
+    assert builds == [RUN_MODEL, ("config", RUN_MODEL)]
+    assert seen == [{"llm_profile": RUN_MODEL, "env": {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}}]
