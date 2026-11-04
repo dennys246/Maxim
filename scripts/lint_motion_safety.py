@@ -10,6 +10,11 @@
    ``reachy_mini.``) to a motion entry point, including an alias (``fn = self.mini.set_target``) and
    ``getattr(<handle>, "<name>")``, outside the sanctioned dispatch points. Replaces the inline CI
    grep (2026-08-07 orient workspace-safety fold), widened to ``scripts/`` and to more entry points.
+3. **Auto-yaw left on** (#1499 PR 3, owner 2026-11-01). Every ``ReachyMini(`` call in ``src/`` and ``scripts/``,
+   Python or shell, passes ``automatic_body_yaw=False``: the setting is daemon-wide and the SDK defaults it on, so
+   one client built without it turns auto-yaw back on for every client. Python files are read as an AST (a call
+   split across lines counts; a ``**kwargs`` splat cannot show the value, so it is flagged); shell files, which
+   embed Python, by the call's bracketed text.
 
 Stated residuals (a line-based lint):
 - a clamp or a handle split across lines;
@@ -18,6 +23,8 @@ Stated residuals (a line-based lint):
 - any SDK handle bound to a name not ending in ``mini`` (``sdk = self.mini``, ``with ReachyMini() as
   robot``), or reached through a call, a subscript or parentheses (``self.mini()``, ``minis[0]``,
   ``ReachyMini().goto_target``, ``getattr(self, "mini")``), and ``getattr(handle, name)`` with a dynamic name;
+- a ``ReachyMini`` reached under another name (``cls = ReachyMini; cls(...)``, ``from reachy_mini import
+  ReachyMini as RM``) or built through ``functools.partial``;
 - the canned or boolean SDK entry points ``wake_up``, ``goto_sleep``, ``enable/disable_motors``,
   ``enable/disable_wobbling``, ``set_automatic_body_yaw``, gravity compensation and ``cancel_move``
   (none takes a motion value; #1499's wider grep).
@@ -31,6 +38,7 @@ Approach note: docs/plans/motion_finite_1496.md section 5. Exit 0 clean, 1 on an
 
 from __future__ import annotations
 
+import ast
 import io
 import re
 import sys
@@ -76,12 +84,17 @@ RAW_ALLOW_FILES = {
 # Selfy's look-at dispatches through ReachyMiniController.look_at_pixel since #1499 (5.2).
 RAW_ALLOW_LINES: dict[str, set[str]] = {}
 
+AUTO_YAW_SCOPE = ("src/", "scripts/")
+AUTO_YAW_SUFFIXES = (".py", ".sh")
+_AUTO_YAW_OFF = re.compile(r"\bautomatic_body_yaw\s*=\s*False\b")
+_REACHY_MINI_CALL = re.compile(r"\bReachyMini\(")
+
 
 @dataclass(frozen=True)
 class Finding:
     """One lint finding. Not persisted (CC3 does not apply)."""
 
-    kind: str  # "clamp" or "raw_sdk"
+    kind: str  # "clamp", "raw_sdk" or "auto_yaw"
     path: str
     line: int
     text: str
@@ -138,6 +151,52 @@ def _candidates(root: Path) -> list[Path]:
     return sorted(paths)
 
 
+def _auto_yaw_off(call: ast.Call) -> bool:
+    return any(
+        kw.arg == "automatic_body_yaw" and isinstance(kw.value, ast.Constant) and kw.value.value is False
+        for kw in call.keywords
+    )
+
+
+def _auto_yaw_findings(rel: str, source: str) -> list[Finding]:
+    """Each ``ReachyMini(`` call in *source* that does not pass ``automatic_body_yaw=False``."""
+    lines = source.splitlines()
+    if rel.endswith(".py"):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            tree = None
+        if tree is not None:
+            return [
+                Finding("auto_yaw", rel, node.lineno, lines[node.lineno - 1].strip())
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and (getattr(node.func, "id", None) == "ReachyMini" or getattr(node.func, "attr", None) == "ReachyMini")
+                and not _auto_yaw_off(node)
+            ]
+    findings = []  # a shell file (or Python that does not parse): the call's text, up to its closing bracket
+    for match in _REACHY_MINI_CALL.finditer(source):
+        depth, end = 0, len(source)
+        for i in range(match.end() - 1, len(source)):
+            depth += {"(": 1, ")": -1}.get(source[i], 0)
+            if depth == 0:
+                end = i + 1
+                break
+        if not _AUTO_YAW_OFF.search(source[match.start() : end]):
+            number = source.count("\n", 0, match.start()) + 1
+            findings.append(Finding("auto_yaw", rel, number, lines[number - 1].strip()))
+    return findings
+
+
+def _auto_yaw_candidates(root: Path) -> list[Path]:
+    paths: set[Path] = set()
+    for scope in AUTO_YAW_SCOPE:
+        target = root / scope
+        if target.is_dir():
+            paths.update(p for p in target.rglob("*") if p.suffix in AUTO_YAW_SUFFIXES and p.is_file())
+    return sorted(paths)
+
+
 def scan(root: Path) -> list[Finding]:
     """Scan ``root`` (a repo root) and return every finding."""
     findings: list[Finding] = []
@@ -157,6 +216,10 @@ def scan(root: Path) -> list[Finding]:
             if check_raw and code.strip() not in allowed_lines:
                 if any(p.search(code) for p in RAW_PATTERNS):
                     findings.append(Finding("raw_sdk", rel, number, line.strip()))
+    for path in _auto_yaw_candidates(root):
+        rel = path.relative_to(root).as_posix()
+        if rel != "scripts/lint_motion_safety.py":  # its own pattern literals
+            findings.extend(_auto_yaw_findings(rel, path.read_text(encoding="utf-8")))
     return findings
 
 
@@ -166,11 +229,13 @@ def main() -> int:
     for f in findings:
         if f.kind == "clamp":
             hint = "use maxim.hardware.controller.clamp_finite (refuses NaN), or mark a measurement clamp"
+        elif f.kind == "auto_yaw":
+            hint = "pass automatic_body_yaw=False: the setting is daemon-wide and the SDK defaults it on (#1499)"
         else:
             hint = "route through ReachyMiniController.goto_target or Selfy's validated entry points"
         print(f"{f.path}:{f.line}: [{f.kind}] {f.text}\n    -> {hint}")
     if findings:
-        print(f"lint_motion_safety: {len(findings)} finding(s) (#1496, docs/plans/motion_finite_1496.md)")
+        print(f"lint_motion_safety: {len(findings)} finding(s) (#1496, #1499; docs/plans/motion_finite_1496.md)")
         return 1
     print("lint_motion_safety: clean")
     return 0
