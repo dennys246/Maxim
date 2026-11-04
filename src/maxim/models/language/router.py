@@ -1901,43 +1901,56 @@ class LLMRouter:
         import time
 
         def _warmup_thread():
-            start_time = time.time()
-            log_agentic(
-                "llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]}
-            )
-            backend = self._get_backend()
+            from maxim.exceptions import SECURITY_REFUSALS
+
             success = False
-            if backend is not None and hasattr(backend, "warmup"):
-                info("Warming up LLM backend...")
-                if backend.warmup():
-                    elapsed = time.time() - start_time
-                    info("LLM model loaded and ready")
-                    log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
-                    success = True
-                else:
-                    warn("LLM warmup failed")
-                    log_agentic(
-                        "llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING"
-                    )
-            elif backend is not None:
-                # Backend doesn't have warmup, try a minimal completion to load
-                info("Warming up LLM backend (no warmup method, using test prompt)...")
-                try:
-                    backend.complete(
-                        prompt="Hello",
-                        max_tokens=1,
-                        temperature=0.0,
-                        stop=(),
-                    )
-                    elapsed = time.time() - start_time
-                    info("LLM model loaded and ready")
-                    log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
-                    success = True
-                except Exception as e:
-                    warn("LLM warmup failed: %s", e)
-                    log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
-            self._warmup_failed = not success
-            self._ready_event.set()
+            try:
+                start_time = time.time()
+                log_agentic(
+                    "llm_router",
+                    "startup",
+                    {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]},
+                )
+                backend = self._get_backend()
+                if backend is not None and hasattr(backend, "warmup"):
+                    info("Warming up LLM backend...")
+                    if backend.warmup():
+                        elapsed = time.time() - start_time
+                        info("LLM model loaded and ready")
+                        log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                        success = True
+                    else:
+                        warn("LLM warmup failed")
+                        log_agentic(
+                            "llm_router",
+                            "error",
+                            {"context": "warmup", "error": "warmup returned false"},
+                            level="WARNING",
+                        )
+                elif backend is not None:
+                    # Backend doesn't have warmup, try a minimal completion to load
+                    info("Warming up LLM backend (no warmup method, using test prompt)...")
+                    try:
+                        backend.complete(
+                            prompt="Hello",
+                            max_tokens=1,
+                            temperature=0.0,
+                            stop=(),
+                        )
+                        elapsed = time.time() - start_time
+                        info("LLM model loaded and ready")
+                        log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                        success = True
+                    except Exception as e:
+                        warn("LLM warmup failed: %s", e)
+                        log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+            except SECURITY_REFUSALS as refusal:
+                # A remembered offline refusal (a model it may not fetch, #1315 item 10b): booked once, said here;
+                # the next dispatch re-raises it typed. Never a dead thread that leaves wait_ready blocking.
+                warn("LLM warmup refused: %s", refusal)
+            finally:
+                self._warmup_failed = not success
+                self._ready_event.set()
 
         thread = threading.Thread(target=_warmup_thread, daemon=True, name="LLMWarmup")
         thread.start()

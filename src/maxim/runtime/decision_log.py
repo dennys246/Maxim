@@ -73,8 +73,8 @@ class LaneDecisionRecord:
     probe_results: dict[str, str] = field(default_factory=dict)
     auto_download_triggered: list[str] = field(default_factory=list)
     # The offline latch (#1315 item 10b, owner decision V27): whether it was up for this build, and the degraded
-    # fallbacks so far ("site: reason", once each). An older reader returns None on a record carrying them, as it
-    # already does on any newer record (read_last_record's TypeError).
+    # fallbacks so far ("site: reason", once each). Written only when offline (record_to_json_line), so an online
+    # record keeps its old shape; an older reader returns None on an offline one, as on any newer record.
     offline: bool = False
     offline_degraded: list[str] = field(default_factory=list)
 
@@ -227,6 +227,9 @@ def _offline_fields() -> dict[str, Any]:
 def record_to_json_line(record: LaneDecisionRecord) -> str:
     """Serialize a record to a single-line JSON string (newline included)."""
     payload = dataclasses.asdict(record)
+    if not record.offline:  # online records keep the old shape, so an older reader still reads them (#1315 10b)
+        payload.pop("offline", None)
+        payload.pop("offline_degraded", None)
     return json.dumps(payload, separators=(",", ":"), default=str) + "\n"
 
 

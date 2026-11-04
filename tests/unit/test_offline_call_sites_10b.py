@@ -241,7 +241,7 @@ def test_doctor_keeps_a_self_caught_checks_own_rows() -> None:
     assert rows[2].message.startswith("refused (offline): socket.connect")
 
 
-def test_doctor_marks_a_single_row_check_and_wraps_the_per_robot_probe() -> None:
+def test_doctor_marks_a_single_row_check_and_names_each_robot() -> None:
     from maxim.doctor import checks
 
     def check_server() -> checks.CheckResult:
@@ -254,7 +254,11 @@ def test_doctor_marks_a_single_row_check_and_wraps_the_per_robot_probe() -> None
     _offline.engage("test")
     row = checks._refused_offline_row(check_server)()
     assert (row.name, row.status) == ("server", "info") and "nothing responding" in row.message
-    assert hasattr(checks._check_one_robot, "__wrapped__")
+    robot = types.SimpleNamespace(robot_id="reachy-1", config={})
+    before = len(_offline.ledger())
+    one = checks._check_one_robot(MagicMock(os="macos"), robot)  # says so by name, before any probe
+    assert (one.name, one.status, one.retry_id) == ("robot:reachy-1", "info", "robot")
+    assert len(_offline.ledger()) == before
 
 
 def test_doctor_ignores_another_threads_refusal() -> None:
@@ -440,11 +444,12 @@ def test_a_profile_set_in_config_is_pinned(tmp_path: Path, monkeypatch: pytest.M
 
     monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert not lane_backends._profile_is_pinned("phi-2")
+    assert not lane_backends._profile_is_pinned("phi-2", "medium")
     (tmp_path / "maxim").mkdir()
     (tmp_path / "maxim" / "config.json").write_text(json.dumps({"_format_version": "1.5", "llm": {"profile": "phi-2"}}))
     config_loader.invalidate_config_cache()
-    assert lane_backends._profile_is_pinned("phi-2") and not lane_backends._profile_is_pinned("mistral-7b")
+    assert lane_backends._profile_is_pinned("phi-2", "medium")
+    assert not lane_backends._profile_is_pinned("mistral-7b", "medium")
 
 
 def test_the_sandbox_offline(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -488,3 +493,109 @@ def test_an_offline_report_says_what_it_could_not_do() -> None:
         timestamp=0.0, pid=1, maxim_version="x", caps={}, env={}, peer_config_loaded=False, tier_decisions={}, **fields
     )
     assert "degraded: similarity.encoder" in decision_log.format_record_human(record)
+
+
+def test_an_llm_json_tier_profile_is_pinned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner decision V28: a per-tier profile the operator wrote in llm.json counts as pinned. Inert today: a real
+    ``LLMConfig`` has no ``_raw`` (frozen, slots), so llm.json ``tiers`` never reach build_primary_router either; this
+    stands in a config that carries them, pinning the rule for when the tiers read is fixed (follow-up issue)."""
+    from maxim.models.language import config as llm_config
+    from maxim.runtime import lane_backends
+
+    monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+    raw = {"tiers": {"medium": {"model_profile": "phi-2"}}}
+    monkeypatch.setattr(llm_config, "load_llm_config", lambda *a, **k: types.SimpleNamespace(_raw=raw))
+    assert lane_backends._profile_is_pinned("phi-2", "medium")
+    assert not lane_backends._profile_is_pinned("phi-2", "large")  # another tier's override pins nothing here
+
+
+def test_the_cpu_fallback_default_is_not_a_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Owner decision V28: the GPU-less default Maxim exports itself falls back offline like any auto tier."""
+    monkeypatch.delenv("MAXIM_LLM_N_GPU_LAYERS", raising=False)  # configure_cpu_fallback_model sets it
+    import logging
+
+    from maxim import cli_utils
+    from maxim.runtime import lane_backends
+
+    monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+    monkeypatch.setattr(lane_backends, "_MAXIMS_OWN_PROFILES", set())
+    cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(tmp_path))
+    assert not lane_backends._profile_is_pinned("smollm-1.7b-instruct", "medium")
+    monkeypatch.setattr(lane_backends, "_MAXIMS_OWN_PROFILES", set())  # the operator's own MAXIM_LLM_PROFILE
+    assert lane_backends._profile_is_pinned("smollm-1.7b-instruct", "medium")
+
+
+def test_an_operator_profile_survives_the_cpu_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("MAXIM_LLM_N_GPU_LAYERS", raising=False)  # configure_cpu_fallback_model sets it
+    import logging
+
+    from maxim import cli_utils
+    from maxim.runtime import lane_backends
+
+    monkeypatch.setenv("MAXIM_LLM_PROFILE", "phi-2")
+    monkeypatch.setattr(lane_backends, "_MAXIMS_OWN_PROFILES", set())
+    cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(tmp_path))
+    assert lane_backends._MAXIMS_OWN_PROFILES == set() and lane_backends._profile_is_pinned("phi-2", "medium")
+
+
+def test_warmup_never_leaves_wait_ready_blocking_on_a_refusal() -> None:
+    """Delta round 1: a remembered refusal raised inside the warmup thread still sets the ready event."""
+    from maxim.models.language.router import LLMRouter
+
+    router = object.__new__(LLMRouter)
+    router.cfg = types.SimpleNamespace(model_path="m.gguf")
+    router._ready_event = threading.Event()
+    router._warmup_failed = False
+    router._providers = {}
+    backend = MagicMock()
+    backend.warmup.side_effect = _offline.OfflineRefusal("remembered")
+    router._get_backend = lambda: backend
+    router.enabled = lambda: True
+    _offline.engage("test")
+    assert router.warmup() is True
+    assert router._ready_event.wait(5.0) and router._warmup_failed
+
+
+def test_benchmark_exit_code_and_api_scores_leave_a_refused_model_out() -> None:
+    from maxim.simulation import benchmark as bm
+
+    refused = bm.ModelResult(model="claude", refused="refused: offline")
+    passed = bm.ModelResult(model="phi-2", passed=True, score=0.7)
+    report = bm.BenchmarkReport(timestamp="t", suite="s", models=["claude", "phi-2"], runs_per_model=1)
+    report.results = {"phi-2": passed}
+    assert report.exit_code() == 0
+    report.results = {"phi-2": passed, "claude": refused}
+    assert report.exit_code() == 2
+    report.results = {"phi-2": bm.ModelResult(model="phi-2")}
+    assert report.exit_code() == 1
+
+
+def test_an_online_decision_record_keeps_its_old_shape() -> None:
+    import json
+
+    from maxim.runtime import decision_log
+
+    record = decision_log.LaneDecisionRecord(
+        timestamp=0.0, pid=1, maxim_version="x", caps={}, env={}, peer_config_loaded=False, tier_decisions={}
+    )
+    assert "offline" not in json.loads(decision_log.record_to_json_line(record))
+    record.offline = True
+    assert json.loads(decision_log.record_to_json_line(record))["offline"] is True
+
+
+def test_api_benchmark_does_not_score_a_refused_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from maxim import api
+    from maxim.simulation import benchmark as bm
+
+    report = bm.BenchmarkReport(timestamp="t", suite="s", models=["claude", "phi-2"], runs_per_model=1)
+    report.results = {
+        "claude": bm.ModelResult(model="claude", refused="refused: offline"),
+        "phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7),
+    }
+    runner = MagicMock()
+    runner.return_value.run.return_value = report
+    monkeypatch.setattr(bm, "BenchmarkRunner", runner)
+    suite = tmp_path / "suite.yaml"
+    suite.write_text("scenarios: []\n")
+    result = api.benchmark(["claude", "phi-2"], suite=str(suite))
+    assert set(result.scores) == {"phi-2"}

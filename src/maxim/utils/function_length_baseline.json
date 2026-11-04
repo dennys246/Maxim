@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1377
+      "lines": 1375
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -397,6 +397,7 @@
     "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_run_handles, which register the event for the process stop.",
     "api.py::run tightened 224 -> 209 and _maybe_auto_spawn_server 259 -> 255 on 2026-11-03 (#1315 item 10a, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the new offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out.",
     "build_primary_router tightened 239 -> 228 on 2026-11-03 (#1315 item 10a review fold, rule T): its first step became lane_backends._router_build_preflight (the offline engage from llm.offline, then _require_valid_user_profiles), and the remote large-tier placeholder moved verbatim to lane_backends._add_remote_large_tier.",
-    "check_resolved_config tightened 249 -> 227 on 2026-11-03 (#1315 item 10a review fold, rule T): it walks config_loader.SETTABLE_FIELDS (so the config-only llm.offline gets a row), and its role row moved to doctor/checks.py::_role_row (returning the row instead of appending it)."
+    "check_resolved_config tightened 249 -> 227 on 2026-11-03 (#1315 item 10a review fold, rule T): it walks config_loader.SETTABLE_FIELDS (so the config-only llm.offline gets a row), and its role row moved to doctor/checks.py::_role_row (returning the row instead of appending it).",
+    "_main_impl tightened 1377 -> 1375 on 2026-11-03 (#1315 item 10b review fold, rule T): both benchmark exits are one call to simulation/benchmark.py::BenchmarkReport.exit_code (2 when a model was refused, owner decision V26)."
   ]
 }

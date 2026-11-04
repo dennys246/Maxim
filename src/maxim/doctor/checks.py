@@ -3534,7 +3534,11 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
     """
     import socket
 
+    from maxim import _offline
+
     name = f"robot:{robot.robot_id}"
+    if _offline.is_offline():  # every probe below dials or resolves: say so per robot, before any of them
+        return CheckResult(name, "info", "refused (offline): the robot probe needs the network", retry_id="robot")
 
     # 1. Resolve — config host: verbatim; else IPv4-only gethostbyname of
     # <robot_name>.local (sidesteps the getaddrinfo/IPv6-first flake).
@@ -3911,8 +3915,8 @@ def _refused_offline_row(fn: Any) -> Any:
         # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered. A
         # single-row check's row keeps its name and message, marked as refused rather than failed. A list check
         # cannot say which of its rows the latch answered (one robot's probe, another's real failure), so its rows
-        # stand and one "refused (offline)" row is added; its per-item probes (``_check_one_robot``) are wrapped
-        # too and mark themselves.
+        # stand and one "refused (offline)" row is added; a per-item probe that knows (``_check_one_robot``) says
+        # so itself, by name.
         mine = [r for r in _offline.ledger()[booked:] if r.thread == threading.get_ident()]
         if not mine:
             return result
@@ -3931,8 +3935,7 @@ def _wrap_checks_for_offline() -> None:
     for attr, value in list(module.items()):
         if not (inspect.isfunction(value) and value.__module__ == __name__):
             continue
-        # Every check_*, and the per-item probes a list check composes (one robot each), so each item marks itself.
-        if attr.startswith("check_") or attr == "_check_one_robot":
+        if attr.startswith("check_"):
             module[attr] = _refused_offline_row(value)
 
 

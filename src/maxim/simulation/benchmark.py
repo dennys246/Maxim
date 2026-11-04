@@ -109,6 +109,13 @@ class BenchmarkReport:
     duration_s: float = 0.0
     baseline_comparison: dict[str, dict[str, dict[str, float]]] | None = None
 
+    def exit_code(self) -> int:
+        """The benchmark's process exit code: 2 when any model was refused (the operator must act: offline, a leader
+        refusal; owner decision V26), else 0 when every model passed, else 1."""
+        if any(mr.refused for mr in self.results.values()):
+            return 2
+        return 0 if all(mr.passed for mr in self.results.values()) else 1
+
     def summary_table(self) -> str:
         """Generate a human-readable summary table with tiered metrics."""
         w = max(60, 20 + 16 * len(self.models))

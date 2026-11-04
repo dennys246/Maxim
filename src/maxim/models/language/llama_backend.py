@@ -65,7 +65,7 @@ class _LlamaCppBackend:
         stays typed without booking a new ledger entry per ``complete()``.
         """
         if self._security_refusal is not None:
-            raise self._security_refusal
+            raise self._security_refusal.with_traceback(None)  # the same refusal, not a traceback growing per call
         if self._download_refused:
             return False
         profile = str(self.cfg.profile or self.cfg.model_base or "").strip()

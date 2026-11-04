@@ -6,13 +6,13 @@
   downloads (before any consent prompt), RTM vision weights, and a faster-whisper model that is not cached. Hugging
   Face loads (sentence-transformers, faster-whisper) pass `local_files_only` where the library takes it, and
   transformers loads local-only and never runs remote code offline.
-- **A missing model offline** (owner decision V25): a profile you chose (`--llm`, `llm.profile`) is refused by name
-  and never swapped; an auto-detected tier falls back to a model already on disk, and the run records that as
-  degraded.
+- **A missing model offline** (owner decisions V25, V28): a profile you chose (`--llm`, `llm.profile`, or a tier's
+  `model_profile` in llm.json) is refused by name and never swapped; an auto-detected tier, or the CPU-fallback
+  default Maxim picks without a GPU, falls back to a model already on disk, and the run records that as degraded.
 - **An offline run says what it could not do** (owner decision V27): the sim's `report.json` provenance gains an
   `offline` block (the refusals, the exact count, and each degraded fallback), and `lane_decisions.jsonl` records
   `offline` and `offline_degraded`. A missing encoder or semantic model still falls back to hashing, now said once.
 - **Refusals stay refusals**: a robot run or an NPC line stopped by an offline refusal reports it as a refusal (exit
   2), not a crash. A benchmark records a refused model (offline, or a leader refusal) as refused, not failed: it is
-  not scored or ranked, and the other models still run (owner decision V26). `maxim doctor` keeps a check's own rows
-  and adds a "refused (offline)" row.
+  not scored or ranked, the other models still run, and the run exits 2 (owner decision V26). `maxim doctor` keeps a
+  check's own rows and adds a "refused (offline)" row; each robot says so by name.

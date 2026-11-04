@@ -1877,7 +1877,7 @@ def _ensure_lane_profiles_available(
             )
         # Offline (owner decision V25): a profile the operator pinned refuses by name inside ensure_available; an
         # auto-detected one skips a download that cannot happen and re-walks to a model on disk, said as degraded.
-        auto_offline = _offline.is_offline() and not _profile_is_pinned(profile)
+        auto_offline = _offline.is_offline() and not _profile_is_pinned(profile, lane_name)
         ok = False if auto_offline else ensure_available(profile, logger=logger)
         if ok:
             continue
@@ -1938,12 +1938,35 @@ def _ensure_lane_profiles_available(
     return out
 
 
-def _profile_is_pinned(profile: str) -> bool:
-    """Whether the operator chose ``profile`` (``--llm`` / ``MAXIM_LLM_PROFILE``, or ``llm.profile`` set in
-    config.json), not tier detection: offline a pinned profile is never swapped (owner decision V25).
-    ``resolve_setting`` reads both: ``MAXIM_LLM_PROFILE`` is ``llm.profile``'s env layer."""
+# Profiles Maxim chose itself and exported as MAXIM_LLM_PROFILE (the GPU-less CPU fallback, cli_utils), which read as
+# the env layer of llm.profile but are not the operator's pin (owner decision V28). Process-local: a child process
+# that inherits the variable reads it as pinned, which refuses rather than swaps (fail-closed).
+_MAXIMS_OWN_PROFILES: set[str] = set()
+
+
+def mark_profile_maxims_own(profile: str) -> None:
+    """Record that Maxim, not the operator, set ``MAXIM_LLM_PROFILE`` to ``profile``."""
+    _MAXIMS_OWN_PROFILES.add(profile)
+
+
+def _profile_is_pinned(profile: str, lane_name: str) -> bool:
+    """Whether the operator chose ``profile`` for ``lane_name``, not tier detection: offline a pinned profile is never
+    swapped (owner decisions V25, V28). Pinned: ``--llm`` / ``MAXIM_LLM_PROFILE`` or ``llm.profile`` in config.json
+    (``resolve_setting`` reads both), or the lane's own ``model_profile`` in llm.json ``tiers``. Not pinned: a
+    profile Maxim exported itself (:func:`mark_profile_maxims_own`)."""
+    from maxim.models.language.config import load_llm_config
     from maxim.runtime.config_loader import resolve_setting
 
+    try:
+        tiers = getattr(load_llm_config(), "_raw", {}).get("tiers", {}) or {}
+    except Exception as e:  # an unreadable llm.json pins nothing; the router build reports it on its own path
+        logger.debug("llm.json tiers unresolved while checking a pin: %s", e)
+        tiers = {}
+    override = tiers.get(lane_name) if isinstance(tiers, dict) else None
+    if isinstance(override, dict) and override.get("model_profile") == profile:
+        return True
+    if profile in _MAXIMS_OWN_PROFILES and os.environ.get("MAXIM_LLM_PROFILE", "").strip() == profile:
+        return False
     try:
         value, source = resolve_setting("llm.profile")
     except Exception as e:  # an unreadable config pins nothing here; the router build reports it on its own path

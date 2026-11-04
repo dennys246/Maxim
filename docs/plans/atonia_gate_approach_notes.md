@@ -1277,6 +1277,18 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > the doctor marks a single-row check and adds a refused row to a list check (and wraps `_check_one_robot`);
 > `--sandbox auto` falls back to tmpdir and `docker` refuses; `_setup_sim_sandbox` re-raises (#1596 is the online
 > case); a missing pose weight only turns pose off; `_fetch_missing_model` remembers its refusal.
+> Delta round 1 (NOT STOP) folded with **V28** (2026-11-03, as recommended): "pinned" is `--llm` / `llm.profile`
+> AND a lane's own `model_profile` in llm.json `tiers`; the GPU-less CPU-fallback default
+> (`cli_utils.configure_cpu_fallback_model`) is marked as Maxim's own and falls back like an auto tier (a child process
+> that inherits it reads it as pinned: fail-closed). Also: the warmup thread always sets its ready event on a refusal;
+> benchmark exits 2 when a model was refused and `api.benchmark` leaves refused models out of `scores`; a robot row
+> says "refused (offline)" by name before any probe; an online decision record keeps its old shape. For 10c (NITs):
+> `_probe_mesh_node_to_check` under `--retry`, a model with mixed refused/errored runs, `write_paper` reading refused
+> models, unbounded `degraded()`/ledger growth, transformers' silent remote-code flip, the download CLI's exit 1.
+> Delta round 2: **STOP** ([report](reviews/item10b/delta2.md)). Follow-ups: **#1601** llm.json `tiers`/`functions`
+> have never applied (`LLMConfig` has no `_raw`), so V28's tier-pin half is inert until it is fixed (an owner
+> decision: turning tiers on changes routing); **#1602** `agentic_runtime._apply_llm_backend_fallback` duplicates
+> the CPU-fallback default without V28's marker (fails closed). Also for 10c: `write_paper` reads refused models.
 >
 > Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`

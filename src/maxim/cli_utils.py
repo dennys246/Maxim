@@ -511,7 +511,11 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
         "  or install GPU support: pip install 'pymaxim[llm-torch]'",
         file=sys.stderr,
     )
-    os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
+    if "MAXIM_LLM_PROFILE" not in os.environ:
+        from maxim.runtime.lane_backends import mark_profile_maxims_own
+
+        os.environ["MAXIM_LLM_PROFILE"] = "smollm-1.7b-instruct"
+        mark_profile_maxims_own("smollm-1.7b-instruct")  # Maxim's default, not the operator's pin (V28)
     os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
 
 

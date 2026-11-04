@@ -1555,8 +1555,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             else:
                 print("  Paper generation failed (LLM unavailable)\n")
 
-        all_passed = all(mr.passed for mr in report.results.values())
-        sys.exit(0 if all_passed else 1)
+        sys.exit(report.exit_code())  # 2 refused (V26), 0 all passed, 1 otherwise
 
     # Validate simulation-only flags aren't used without --sim agent/research
     sim_path = getattr(args, "sim", None)
@@ -1953,8 +1952,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     print("  Paper generation failed (LLM unavailable)\n")
 
             # Exit with 0 if all models passed, 1 if any failed
-            all_passed = all(mr.passed for mr in report.results.values())
-            sys.exit(0 if all_passed else 1)
+            sys.exit(report.exit_code())
 
         # Check for research mode (legacy alias — deprecated, use --research flag)
         _sim_research = _is_legacy_research

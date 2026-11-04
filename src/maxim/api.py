@@ -1701,6 +1701,8 @@ def benchmark(
     # Build per-model scores dict from report
     scores: dict[str, dict[str, float]] = {}
     for model_name, model_result in report.results.items():
+        if model_result.refused:  # a refused model is reported, never scored (owner decision V26)
+            continue
         scores[model_name] = {
             "overall": model_result.score,
             **model_result.metrics,
