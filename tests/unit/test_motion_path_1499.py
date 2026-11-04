@@ -269,10 +269,6 @@ def test_a_goto_that_timed_out_still_leaves_its_body_target(daemon):
     assert ctl._daemon_body_target == pytest.approx(D(20))
 
 
-_STALE = pytest.mark.xfail(strict=True, reason="#1563 delta folds: the stale-target cases are not built")
-
-
-@_STALE
 def test_a_head_already_past_the_clamp_from_its_own_body_may_still_move(daemon):
     """Tick 1 against a target equal to the present body reproduces the pose the robot is in: no added risk."""
     ctl = controller(daemon)
@@ -282,7 +278,6 @@ def test_a_head_already_past_the_clamp_from_its_own_body_may_still_move(daemon):
     assert ctl.goto_target(_target(head_yaw=0.0, head_pitch=0.0, head_roll=0.0, duration=2.0)), "centring is allowed"
 
 
-@_STALE
 def test_a_wake_after_torque_off_forgets_the_tracked_target(daemon):
     """SDK 1.8.3's enable_motors pins the daemon's body target to the present body on torque off → on."""
     ctl = controller(daemon)
@@ -304,7 +299,6 @@ def test_a_wake_with_torque_on_keeps_the_tracked_target(daemon, monkeypatch):
     assert seen == [pytest.approx(D(10))], "torque was on: enable_motors left the target alone"
 
 
-@_STALE
 def test_a_body_another_client_turned_refuses_once_then_moves(daemon):
     ctl = controller(daemon)
     assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))  # tracked target 0°, stash body 0°
@@ -315,7 +309,6 @@ def test_a_body_another_client_turned_refuses_once_then_moves(daemon):
     assert ctl.goto_target(_target(head_yaw=D(60), head_pitch=0.0, head_roll=0.0, duration=1.0))
 
 
-@_STALE
 def test_a_sleep_after_another_client_turned_the_body_is_not_stuck(daemon):
     """The lifecycle skips R1's stash check, so the old-target check forgets a target 5°+ from the body itself."""
     ctl = controller(daemon)
@@ -1508,3 +1501,11 @@ def test_a_disconnect_during_a_split_stops_it_at_the_next_chunk(daemon):
     assert not out and _kind(out) == "cancelled"
     assert len(daemon.gotos()) == 1
     assert ctl._stop_latched and not ctl._stop_by_sleep
+
+
+def test_an_external_head_motion_forgets_the_tracked_target(daemon):
+    """A raw goto set a body target this controller did not see (#1563)."""
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
+    ctl.note_external_head_motion()
+    assert ctl._daemon_body_target is None

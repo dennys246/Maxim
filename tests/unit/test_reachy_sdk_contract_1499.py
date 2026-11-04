@@ -129,8 +129,36 @@ def test_the_fakes_serve_only_what_the_real_route_serves():
 
     flags = {name: value == "true" for name, _, value in (p.partition("=") for p in _STATE_FULL_QUERY.split("&"))}
     served = _served_keys(**flags)
-    faked = {k for k, v in FakeDaemon().state_full().items() if v is not None}
-    assert faked <= served, f"the fake serves keys the daemon does not: {sorted(faked - served)}"
+    fakes = {"FakeDaemon": FakeDaemon().state_full(), **_other_state_fakes()}
+    for name, state in fakes.items():
+        faked = {k for k, v in state.items() if v is not None}
+        assert faked <= served, f"{name} serves keys the daemon does not: {sorted(faked - served)}"
+
+
+def _other_state_fakes() -> dict:
+    """The two other ``_get_state_full`` stubs, each run once against a minimal SDK handle."""
+    import types
+
+    import pytest as _pytest
+
+    from tests.unit import _reachy_fakes
+    from tests.unit import test_reachy_connection_options as conn
+
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    mini = types.SimpleNamespace(
+        get_current_head_pose=lambda: np.eye(4),
+        get_current_joint_positions=lambda: ([0.0] * 7, [0.0, 0.0]),
+        control_mode="enabled",
+    )
+    host = types.SimpleNamespace(_mini=mini)
+    mp = _pytest.MonkeyPatch()
+    try:
+        _reachy_fakes.serve_state_from_ws_fake(mp)
+        ws = ReachyMiniController._get_state_full(host)
+    finally:
+        mp.undo()
+    return {"serve_state_from_ws_fake": ws, "_state_from_the_mock": conn._state_from_the_mock(host)}
 
 
 def test_the_daemon_does_not_serve_its_body_target():

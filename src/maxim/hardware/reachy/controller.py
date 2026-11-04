@@ -344,8 +344,10 @@ class ReachyMiniController(RobotController):
         # True once set_automatic_body_yaw(False) has been asserted on this handle (O6).
         self._auto_yaw_asserted = False
         # The body target the daemon's IK holds after Maxim's last goto (#1563): the chunk's body when commanded,
-        # else the body that chunk started from (GotoMove sets the target to it). None until Maxim's first goto on
-        # this connection, and the check is then skipped (§13's residual).
+        # else the body that chunk started from (GotoMove sets the target to it). None, and the check skipped
+        # (§13's residuals), until Maxim's first goto on this connection, after a wake from torque off (the
+        # daemon's enable_motors re-pins the target to the present body), and once the body is found 5°+ from it
+        # (something else moved it, so the model is known wrong).
         self._daemon_body_target: float | None = None
         # The stop latch (owner, 2026-10-29): set by goto_sleep and disconnect.
         # While set, goto_target and look_at_pixel refuse, so a head or body
@@ -1008,6 +1010,8 @@ class ReachyMiniController(RobotController):
         ]
         if diverged:
             self._forget_commanded(*(d.split(" ", 1)[0] for d in diverged))
+            if any(d.startswith("body_yaw ") for d in diverged):
+                self._daemon_body_target = None  # something else moved the body: its target is unknown (#1563)
             raise MotionRefused(
                 "reference",
                 f"the readback diverges from the last command ({', '.join(diverged)}); "
@@ -1213,6 +1217,8 @@ class ReachyMiniController(RobotController):
                 self._daemon_body_target = left_target  # the daemon took the goto; only its reply timed out
                 return self._partial(f"chunk {k}/{n} timed out ({e}); waiting for the robot to settle", total, n, done)
             except Exception as e:
+                # The daemon may have taken the goto before this raised; the tracked target then lags the real one,
+                # which the next check refuses on (fail-closed) until the 5° rule forgets it (#1563).
                 if k == 1:
                     raise
                 return self._partial(f"chunk {k}/{n} failed: {e}", total, n, done)
@@ -1253,15 +1259,28 @@ class ReachyMiniController(RobotController):
         return read
 
     def _require_neck_ok_for_old_target(self, here: mp.Pose) -> None:
-        """Refuse when the present head is past the clamp from the daemon's old body target (#1563).
+        """Refuse when the old body target makes a goto's first tick worse than the present pose (#1563).
 
         A goto's first control tick composes the present head against the body target the last goto left, not the
-        present body, so the readback's own neck check does not cover it.
+        present body, so the readback's own neck check does not cover it. The tick adds risk only when that twist
+        is past the clamp and past the twist the robot already holds: a target equal to the present body
+        reproduces the present pose, and a move that reduces the twist stays allowed. A body 5°+ from the target
+        means something else moved it (R1's rule): refused once, and the target is forgotten.
         """
-        if self._daemon_body_target is None:
+        target = self._daemon_body_target
+        if target is None:
+            logger.debug("old-target neck check skipped: no body target tracked on this connection (#1563)")
             return
-        twist = mp.neck_twist(here.head, self._daemon_body_target)
-        if abs(twist) > self._MAX_HEAD_REL_YAW_RAD + _OLD_TARGET_MARGIN_RAD:
+        if abs(_wrap(here.body - target)) > _STASH_DIVERGENCE_REFUSE_RAD:
+            self._daemon_body_target = None
+            raise MotionRefused(
+                "reference",
+                f"the body is {math.degrees(_wrap(here.body - target)):+.0f}° from the body target Maxim's last move "
+                "left, so something else moved it; that target is forgotten and the next move reads the robot afresh",
+            )
+        twist = mp.neck_twist(here.head, target)
+        held = abs(mp.neck_twist(here.head, here.body))
+        if abs(twist) > max(self._MAX_HEAD_REL_YAW_RAD, held) + _OLD_TARGET_MARGIN_RAD:
             raise MotionRefused(
                 "reference",
                 f"the head is {math.degrees(twist):+.0f}° from the daemon's body target "
@@ -1315,6 +1334,7 @@ class ReachyMiniController(RobotController):
         pose. (The body is never composed from the stash, R1.)
         """
         self._forget_commanded("head_roll", "head_pitch", "head_rel_yaw")
+        self._daemon_body_target = None  # a raw goto set a target this controller did not see (#1563)
 
     def look_at_pixel(self, target: PixelTarget) -> MotionOutcome:
         """Turn the head to look at a pixel, head only: the body never moves (#1499 5.2, F1).
@@ -1445,6 +1465,15 @@ class ReachyMiniController(RobotController):
                 e.reason,
                 ".".join(str(x) for x in (self._installed_sdk_version() or ("?",))),
             )
+
+    def _torque_off_now(self) -> bool:
+        """Whether motor torque is off now, an unreadable state counting as off (its body target is then unknown)."""
+        try:
+            _, control_mode = mp.parse_full_state(self._get_state_full())
+        except MotionRefused as e:
+            logger.debug("torque read before the wake: %s", e.reason)
+            return True
+        return control_mode != "enabled"
 
     def _wait_torque_on(self) -> bool:
         """Poll the REST ``control_mode`` until ``enabled`` (``enable_motors`` is fire-and-forget; delta S3)."""
@@ -1616,6 +1645,7 @@ class ReachyMiniController(RobotController):
             gen = requested_gen  # one read: a stop at any point after the request ends this wake
             if self._abort_gen != gen:
                 return MotionOutcome.refused("cancelled", "a stop was requested while the wake waited")
+            torque_was_off = self._torque_off_now()
             try:
                 self._mini.enable_motors()
             except Exception as e:  # noqa: BLE001 - hardware boundary must fail closed
@@ -1627,6 +1657,8 @@ class ReachyMiniController(RobotController):
                     logger.error("disable_motors() after the failed enable also failed: %s", off_error)
                 self._update_state(is_awake=False)
                 return MotionOutcome.refused("error", f"enable_motors failed: {e}")
+            if torque_was_off:
+                self._daemon_body_target = None  # enable_motors re-pins the daemon's target to the present body (#1563)
             if not self._assert_auto_yaw_off():
                 self._update_state(is_awake=False)
                 return MotionOutcome.refused("reference", "automatic_body_yaw could not be asserted off")

@@ -19,11 +19,11 @@ when the watcher's whole-run gap peaks at the script's peak (within ~2°) and re
 flat while the body turned is blind, and the control FAILS. The watcher's own verdict line reads INCONCLUSIVE in
 this run by design: the head rides along with the body, far below 55° relative.
 
-    ~/Scripts/Maxim/.venv/bin/python scripts/orient_backbone/body_yaw_sweep.py --host <ip> --turn-check
+    ~/Scripts/Maxim/.venv/bin/python scripts/orient_backbone/body_yaw_sweep.py --host <ip> --turn-check --media-backend no_media
     ~/Scripts/Maxim/.venv/bin/python scripts/orient_backbone/body_yaw_sweep.py --host <ip> [--hold-s 5]
     python scripts/orient_backbone/body_yaw_sweep.py --dry-run [--turn-check]   # offline, the shared test fake
 
-It refuses to start unless motor torque is on and the body is within 5° of 0. Ctrl+C stops the motion at the
+It refuses to start unless motor torque is on and the body is within 1° of 0. Ctrl+C stops the motion at the
 current chunk and leaves the robot where it is (the head always inside the clamp).
 
 Exit 0: the sweep reached ≥ 55° relative on both sides and the body held (turn check: the body reached the turn
@@ -51,7 +51,7 @@ HOLD_S = 5.0  # edge look-ats at the clamp (--hold-s)
 WALK_CAP_S = 20.0  # a walk to one side ends here even if the yaw is still rising
 PLATEAU_STEPS = 3  # a walk ends after this many steps without 0.5° more yaw
 REACHED_DEG = 55.0  # pulse's bar: a run below this is INCONCLUSIVE
-BODY_START_DEG = 5.0  # the body must start this close to 0
+BODY_START_DEG = 1.0  # the body must start this close to 0: on 1.8.3 the watcher's gap is |body|, passing at ≤ 2°
 BODY_HELD_DEG = 2.0  # a head-only sweep that moves the body further than this is the auto-yaw symptom
 TURN_DEG = 30.0  # the turn check's body turn, over TURN_S, then back
 TURN_S = 3.0
@@ -168,10 +168,17 @@ class _Sweep:
             self.body_max = max(self.body_max, abs(body))
             print(
                 f"  {time.monotonic() - self.t0:6.1f}s  {phase:<11}  u={u:<4}  "
-                f"rel={rel:+6.1f}°  body={body:+5.1f}°  {verdict}"
+                f"rel={rel:+6.1f}°  body={body:+5.1f}°  {self._from_target(rel, body)}  {verdict}"
             )
         _sleep(max(0.0, TRACK_PERIOD_S - (time.monotonic() - started)))
         return None if read is None else read[0]
+
+    def _from_target(self, rel: float, body: float) -> str:
+        """The head's yaw from the body target the controller tracks (#1563 refuses past 66°), from the same read."""
+        target = getattr(self.ctl, "_daemon_body_target", None)
+        if target is None:
+            return "from-target=none"
+        return f"from-target={rel + body - math.degrees(target):+6.1f}°"
 
     def walk(self, phase: str, u: int, sign: int) -> None:
         """Look at column *u* until the yaw (in direction *sign*) stops rising, or the cap."""
@@ -217,11 +224,11 @@ def _turn_and_sample(ctl: Any, phase: str, to_deg: float, t0: float) -> tuple[bo
             if body is not None:
                 bodies.append(body)
             _sleep(SAMPLE_S)
+        mover.join()
     except KeyboardInterrupt:
         ctl.request_abort()  # before the join: the move ends at its next chunk instead of running its 3 s
         mover.join()
         raise
-    mover.join()
     outcome = result[0] if result else None
     if outcome is None or not outcome.ok:
         _report_refusal(phase, outcome)

@@ -614,12 +614,26 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    geometry: the first tick's head pose is the *present* head (interpolation time ≈ 0), so the danger is the
    present head being past the clamp from the old target. The controller tracks the target its own last goto left
    (`_daemon_body_target`): the chunk's body when commanded, else the body that chunk started from, which is what
-   `GotoMove` sets. It is kept through a timed-out goto, which the daemon took, and forgotten on disconnect. Before
-   every chunk (`_run_move`'s first, `_recheck_before_chunk`'s later ones), a present head more than 65° + 1° from
-   it refuses `reference`. The 1° is provisional, for servo noise at the clamp, where a hold leaves the head at
-   exactly 65° from the target; the sweep's hold measures it. Two residuals remain, stated here. A target set by
-   another client is §8's single-client assumption. The first move after a connect has no tracked target, so the
-   check is skipped. #1563 closes on PR 3. The upstream ask (pulse, then Pollen) is for `FullState` to serve the
+   `GotoMove` sets. It is kept through a timed-out goto, which the daemon took. Before every chunk (`_run_move`'s
+   first, `_recheck_before_chunk`'s later ones), the controller refuses `reference` when the old target would make
+   tick 1 worse than the pose the robot already holds. That means a head more than max(65°, its present twist from
+   the body) + 1° from the target. A target equal to the present body reproduces the present pose, and a move that
+   reduces the twist stays allowed (delta round, 2026-11-03). The 1° is provisional, for servo noise at the clamp,
+   where a hold leaves the head at exactly 65° from the target. The sweep prints the head's yaw from the tracked
+   target on every look-at (`from-target=`), so its hold measures that noise. The tracked target is forgotten, and
+   the check skipped, whenever the model is known wrong:
+   - on disconnect;
+   - after a wake from torque off, because the daemon's `enable_motors` re-pins its target to the present body (the
+     wake reads torque first, and an unreadable state counts as off);
+   - on `note_external_head_motion`;
+   - when the body is found more than 5° from the target: R1's divergence check on a discrete move, or the check
+     itself on the lifecycle path, which refuses once. Something else moved the body, so the refusal never sticks
+     (owner, 2026-11-03).
+
+   Two residuals remain, stated here. A target set by another client is §8's single-client assumption: it is caught
+   only once it puts the body 5° or more from the tracked target. The first move after any forget has no tracked
+   target, so its check is skipped. The commonest case is the soft reconnect (`embodied_runtime/connection.py`:
+   disconnect, connect, then a wake). #1563 closes on PR 3. The upstream ask (pulse, then Pollen) is for `FullState` to serve the
    target, and the contract test goes red when an SDK does.
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).

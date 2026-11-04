@@ -51,8 +51,10 @@ def test_torque_off_refuses_to_start(sweep, daemon):
     assert daemon.gotos() == []
 
 
-def test_a_turned_body_refuses_to_start(sweep, daemon):
-    daemon.body = math.radians(10)
+@pytest.mark.parametrize("body_deg", [10.0, 3.0])
+def test_a_turned_body_refuses_to_start(sweep, daemon, body_deg):
+    """3° too: on 1.8.3 the watcher's gap is |body|, and it passes only at ≤ 2°."""
+    daemon.body = math.radians(body_deg)
     daemon.head = head_pose(yaw=daemon.body)
     assert sweep._run(controller(daemon), (640, 480)) == 2
     assert daemon.gotos() == []
