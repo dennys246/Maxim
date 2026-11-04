@@ -17,7 +17,11 @@ fits; nothing running is ever stopped. ``--critical`` marks work the next releas
   run to the critical check's wait, and a prepr takes minutes);
 - a check that has waited ``DRAIN_AFTER_S`` (10 min) also drains the box, so prepr is never starved by steady suite
   traffic. A non-critical draining check holds back non-critical suites only; a critical suite still goes.
-Among the rest, whichever fits goes, in (critical first, then queue order).
+Both rulings and "critical first" are ONE rank, so they can never block each other (two separate rules once hung
+an empty box: an older suite waited for a draining check that waited for the older suite): critical checks, then
+critical suites, then non-critical draining checks, then the rest, each in queue order. A waiter waits for every
+higher-ranked waiter that fits, and a suite also for every higher-ranked draining check; the top-ranked waiter
+therefore starts the moment it fits, and no slot is idled except to drain. Among the rest, whichever fits goes.
 
 Why a script of its own: the state is shared by every session and worktree on the box, and today's callers launch
 ``suite_at_commit.sh`` and ``prepr.sh`` directly, so neither script can see the other sessions' waiters. Backlog M85
@@ -34,10 +38,14 @@ Inputs and how each could lie:
   ``prepr.py``.
 - One run, many processes: a suite is ``suite_at_commit.sh`` plus its pytest child, and prepr runs mypy. A classified
   process with a classified (or claimed) ancestor is counted once, under the top-most.
-- What a full suite is: pytest whose positional arguments include a path whose last part is ``tests``, or none at all
-  (``testpaths``). Values of pytest's value-taking flags (``-k tests``) are not positional. A narrow
-  ``pytest tests/unit/x.py`` is not counted, and neither is a standalone mypy (an editor's), unless it is
-  ``run_mypy_public.sh`` or runs under a counted run.
+- What a full suite is: pytest whose positional arguments include a path whose last part is ``tests`` (or ``.``), or
+  none at all (``testpaths``). Values of pytest's value-taking flags (``-k tests``) are not positional, and since
+  ``ps`` drops quoting, a bare word (``slow`` from ``-m "not slow"``) is not a path either; a path must contain ``/``
+  or ``::``, end in ``.py``, or be ``tests`` or ``.``. (``pytest src`` therefore counts as a suite: it errs toward
+  waiting.) A narrow
+  ``pytest tests/unit/x.py`` is not counted, and neither is a standalone mypy (an editor's), unless it carries
+  ``run_mypy_public.sh``'s flags (that script execs mypy, so its own name never stays in ``ps``) or runs under a
+  counted run.
 - Two waiters deciding at once: the decision and the launch happen under an exclusive ``flock`` (the kernel drops it
   when its holder dies, so there is no stale-lock takeover to race), and the launched child is written as a CLAIM
   before the lock is released, so the next waiter counts it before ``ps`` shows its argv.
@@ -76,6 +84,8 @@ DEFAULT_STATE = Path.home() / ".cache" / "maxim-box-quiet"
 SELF = "box_quiet.py"
 _INTERPRETER = re.compile(r"^(python[0-9.]*|bash|sh|zsh|dash)$")
 _PY_FLAGS_WITH_VALUE = {"-X", "-W", "-Q"}
+_SHELL_FLAGS_WITH_VALUE = {"-o", "-O"}
+_ENV_FLAGS_WITH_VALUE = {"-u", "-C"}
 _PYTEST_FLAGS_WITH_VALUE = {
     "-k", "-m", "-p", "-c", "-o", "-W", "-n", "--rootdir", "--confcutdir", "--basetemp", "--ignore", "--ignore-glob",
     "--deselect", "--junitxml", "--cov", "--cov-report", "--cov-config", "--maxfail", "--durations", "--timeout",
@@ -93,26 +103,33 @@ class Proc:
     argv: tuple[str, ...]
 
 
+# The flags scripts/run_mypy_public.sh's ``exec mypy`` passes (test_box_quiet reads them from the script).
+_MYPY_PUBLIC_SIGNATURE = frozenset({"--follow-imports=silent", "--warn-unused-ignores"})
+
+
 def _program(argv: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
     """The program a process runs and its own arguments: past ``env NAME=value`` and one interpreter with its flags."""
     rest = list(argv)
     if rest and os.path.basename(rest[0]) == "env":
         rest = rest[1:]
         while rest and ("=" in rest[0] or rest[0].startswith("-")):
-            rest = rest[1:]
+            flag = rest.pop(0)
+            if flag in _ENV_FLAGS_WITH_VALUE and rest:
+                rest.pop(0)
     if not rest:
         return "", ()
     head = os.path.basename(rest[0])
     if not _INTERPRETER.match(head.lower()):
         return head, tuple(rest[1:])
     rest = rest[1:]
+    with_value = _PY_FLAGS_WITH_VALUE if head.lower().startswith("python") else _SHELL_FLAGS_WITH_VALUE
     while rest and rest[0].startswith("-"):
         flag = rest.pop(0)
         if flag == "-m" and rest:
             return rest[0], tuple(rest[1:])
         if flag == "-c":
             return "", ()  # inline code: nothing we classify
-        if flag in _PY_FLAGS_WITH_VALUE and rest:
+        if flag in with_value and rest:
             rest.pop(0)
     if rest:
         return os.path.basename(rest[0]), tuple(rest[1:])
@@ -131,18 +148,25 @@ def _pytest_positionals(args: tuple[str, ...]) -> list[str]:
     return out
 
 
+def _looks_like_path(word: str) -> bool:
+    """``ps`` drops quoting, so ``-m "not slow"`` arrives as ``-m not slow``: a bare word is an expression's, not a path."""
+    return "/" in word or "::" in word or word.endswith(".py") or word in ("tests", ".")
+
+
 def classify(argv: tuple[str, ...]) -> str | None:
     """SUITE, CHECK or None for one process, from its own program only (never a later word of a waiter's argv)."""
     prog, args = _program(argv)
     if prog == "suite_at_commit.sh":
         return SUITE
     if prog in ("pytest", "py.test"):
-        pos = _pytest_positionals(args)
-        if not pos or any(os.path.basename(os.path.normpath(a)) == "tests" for a in pos):
+        pos = [a for a in _pytest_positionals(args) if _looks_like_path(a)]
+        if not pos or any(os.path.basename(os.path.normpath(a)) in ("tests", ".") for a in pos):
             return SUITE
         return None
     if prog in ("prepr.py", "prepr.sh", "run_mypy_public.sh"):
         return CHECK
+    if prog == "mypy" and _MYPY_PUBLIC_SIGNATURE <= set(args):
+        return CHECK  # run_mypy_public.sh execs mypy, so the wrapper's own name is gone within milliseconds
     return None
 
 
@@ -228,19 +252,26 @@ def _draining(t: Ticket, now_ns: int) -> bool:
     return t.kind == CHECK and (t.critical or now_ns - t.queued_ns >= DRAIN_AFTER_S * 1e9)
 
 
+def _rank(t: Ticket, now_ns: int) -> tuple[int, int, int]:
+    """The single precedence order (module docstring): critical checks, critical suites, draining checks, the rest."""
+    draining = _draining(t, now_ns)
+    return (0 if t.critical and draining else 1 if t.critical else 2 if draining else 3, t.queued_ns, t.pid)
+
+
 def may_start(me: Ticket, queue: list[Ticket], now: dict[str, list[int]], now_ns: int | None = None) -> bool:
     """Whether ``me`` starts now: it fits, no waiter ordered ahead of it fits and has precedence, and starting would
     not keep a draining check waiting (the owner's two rulings in the module docstring)."""
     if not fits(me.kind, now):
         return False
     now_ns = time.time_ns() if now_ns is None else now_ns
+    mine = _rank(me, now_ns)
     for t in queue:
-        if t.pid == me.pid or t is me:
+        if t.pid == me.pid or t is me or _rank(t, now_ns) >= mine:
             continue
-        if t.order < me.order and (t.critical or not me.critical) and fits(t.kind, now):
+        if fits(t.kind, now):
             return False  # it goes first; we re-check after it has claimed its slot
-        if me.kind == SUITE and _draining(t, now_ns) and (t.critical or not me.critical):
-            return False
+        if me.kind == SUITE and _draining(t, now_ns):
+            return False  # the box drains for it
     return True
 
 
@@ -406,9 +437,10 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--kind", choices=(SUITE, CHECK), help="default: inferred from the command")
     w.add_argument("--poll-s", type=float, default=20.0)
     w.add_argument("cmd", nargs=argparse.REMAINDER)
-    for p in (ap,):
-        p.add_argument("--only-matching", default=None, help=argparse.SUPPRESS)  # tests: count only their processes
+    ap.add_argument("--only-matching", default=None, help=argparse.SUPPRESS)  # tests: count only their processes
     args = ap.parse_args(argv)
+    if args.only_matching is not None and args.state_dir == DEFAULT_STATE:
+        ap.error("--only-matching blinds the waiter to the box; it is for tests with their own --state-dir")
     if args.verb == "status":
         return cmd_status(args.state_dir, args.only_matching)
     cmd = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd

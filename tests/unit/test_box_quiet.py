@@ -38,6 +38,12 @@ def P(pid: int, ppid: int, cmd: str, started: str = "t0") -> B.Proc:
         ("python -X dev -W error -m pytest tests/", B.SUITE),
         ("env PYTHONPATH=/x/src python -m pytest tests/", B.SUITE),
         ("pytest -q", B.SUITE),  # testpaths = tests
+        # ps drops quoting: -m "not slow" arrives as three words, and "slow" is not a path.
+        ("python -m pytest -q -m not slow", B.SUITE),
+        ("python -m pytest -k not slow and not integration tests/", B.SUITE),
+        ("python -m pytest .", B.SUITE),
+        ("bash -o pipefail scripts/suite_at_commit.sh abc", B.SUITE),
+        ("env -u MAXIM_LOG_FILE PYTHONPATH=/x/src python -m pytest tests/", B.SUITE),
         (f"{FRAMEWORK_PY} -m pytest tests/", B.SUITE),
         ("python3 /Users/x/Maxim/scripts/prepr.py --no-pr", B.CHECK),
         (f"{FRAMEWORK_PY} /Users/x/Maxim/scripts/prepr.py", B.CHECK),
@@ -45,8 +51,11 @@ def P(pid: int, ppid: int, cmd: str, started: str = "t0") -> B.Proc:
         ("bash scripts/run_mypy_public.sh", B.CHECK),
         # Not a full suite: a narrow pytest (even with -k tests), an editor's mypy, inline code, unrelated programs.
         ("python -m pytest tests/unit/test_box_quiet.py -q", None),
+        ("python -m pytest -m not slow tests/unit/test_x.py", None),
+        ("python -m pytest tests/unit/test_x.py::test_y", None),
         ("python -m pytest -k tests tests/unit/test_x.py", None),
         ("/x/.venv/bin/mypy src/maxim/foo.py", None),
+        ("/x/.venv/bin/mypy src/maxim/foo.py --warn-unused-ignores", None),
         ("python3 -c import pytest", None),
         ("grep suite_at_commit.sh log.txt", None),
         ("shellcheck scripts/prepr.sh", None),
@@ -130,6 +139,45 @@ def test_a_waiting_critical_check_drains_the_box_of_every_new_suite():
     crit_check = T(True, 1, 2, B.CHECK)
     for me in (T(False, 900, 1, B.SUITE), T(True, 900, 3, B.SUITE)):
         assert not B.may_start(me, [me, crit_check], _now(suites=1), NOW)
+
+
+def test_an_older_suite_and_a_draining_check_never_hold_each_other_on_an_empty_box():
+    """The hang the delta review found: an older suite waited for a draining check, which waited for the older suite."""
+    cases = [
+        (T(False, 1200, 1, B.SUITE), T(False, 660, 2, B.CHECK)),  # the check has waited 10 min, the suite longer
+        (T(True, 60, 1, B.SUITE), T(True, 30, 2, B.CHECK)),  # a critical suite queued before a critical check
+    ]
+    for suite, check in cases:
+        queue = [suite, check]
+        assert B.may_start(check, queue, _now(), NOW), "the draining check is ranked first and starts"
+        assert not B.may_start(suite, queue, _now(), NOW), "the suite waits for it"
+
+
+def test_some_waiter_always_starts_on_an_empty_box():
+    """Liveness over every mix of two or three waiters: the box is never idle while something waits."""
+    import itertools
+
+    kinds = [(c, w, k) for c in (False, True) for w in (5, 700) for k in (B.SUITE, B.CHECK)]
+    for n in (1, 2, 3):
+        for combo in itertools.permutations(kinds, n):
+            queue = [T(c, w + i, 10 + i, k) for i, (c, w, k) in enumerate(combo)]
+            assert any(B.may_start(t, queue, _now(), NOW) for t in queue), combo
+
+
+def test_ctrl_c_to_the_waiter_keeps_waiting_for_its_child():
+    class Child:
+        calls = 0
+
+        def wait(self):
+            Child.calls += 1
+            if Child.calls == 1:
+                raise KeyboardInterrupt  # the terminal sent Ctrl-C to the process group: the child gets it too
+            return 3
+
+        def send_signal(self, _signum):
+            pass
+
+    assert B._run_child(Child()) == 3 and Child.calls == 2
 
 
 def test_an_earlier_waiter_that_fits_goes_first_and_an_unfit_one_never_holds_a_slot():
@@ -275,3 +323,16 @@ def test_cli_status_runs(tmp_path):
     out = subprocess.run([sys.executable, str(SCRIPT), "--state-dir", str(tmp_path), "status"],
                          capture_output=True, text=True, timeout=30)  # fmt: skip
     assert out.returncode == 0 and "a suite fits now" in out.stdout
+
+
+def test_run_mypy_public_is_counted_after_it_execs_mypy():
+    # The wrapper execs mypy, so ps shows only mypy's argv: classify the exact line the script runs.
+    script = (Path(__file__).resolve().parents[2] / "scripts" / "run_mypy_public.sh").read_text()
+    line = next(x for x in script.splitlines() if x.startswith("exec mypy "))
+    argv = ("/x/.venv/bin/python3", "/x/.venv/bin/mypy", "src/maxim/api.py", *line.split()[3:])
+    assert B.classify(argv) == B.CHECK
+
+
+def test_only_matching_is_refused_on_the_shared_state_dir():
+    with pytest.raises(SystemExit):
+        B.main(["--only-matching", "x", "status"])
