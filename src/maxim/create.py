@@ -439,15 +439,14 @@ def router(model: str = "mistral-7b") -> Any:
         llm = maxim.create.router(model="claude-sonnet")
         response = llm.generate("What should I do next?", max_tokens=100)
     """
-    # Set env vars in a scoped way — save originals, restore after build
+    # The model goes to the build as its profile, never through MAXIM_LLM_PROFILE (#1538). MAXIM_LLM_ENABLED is
+    # still set in a scoped way — save the original, restore after build.
     _saved_enabled = os.environ.get("MAXIM_LLM_ENABLED")
-    _saved_profile = os.environ.get("MAXIM_LLM_PROFILE")
     try:
         os.environ["MAXIM_LLM_ENABLED"] = "1"
-        os.environ["MAXIM_LLM_PROFILE"] = model
         from maxim.runtime.lane_backends import build_primary_router
 
-        router_instance, _ = build_primary_router()
+        router_instance, _ = build_primary_router(profile=model)
         if router_instance is None:
             from maxim.exceptions import ConfigurationError
 
@@ -459,7 +458,3 @@ def router(model: str = "mistral-7b") -> Any:
             os.environ.pop("MAXIM_LLM_ENABLED", None)
         else:
             os.environ["MAXIM_LLM_ENABLED"] = _saved_enabled
-        if _saved_profile is None:
-            os.environ.pop("MAXIM_LLM_PROFILE", None)
-        else:
-            os.environ["MAXIM_LLM_PROFILE"] = _saved_profile
