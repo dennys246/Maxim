@@ -76,8 +76,7 @@ def _search_with_ddg_package(
     Returns None if package is not available, otherwise returns results list. Refused offline before the import:
     ddgs dials through a native client (primp) the offline latch cannot see (#1315 item 10b, §6 "The boundary").
     """
-    if _offline.is_offline():
-        _offline.refuse("tools.internet_search[ddgs]", "a native network client the latch cannot see")
+    _offline.refuse_if_offline("tools.internet_search[ddgs]", "a native network client the latch cannot see")
     try:
         from ddgs import DDGS
     except ImportError:

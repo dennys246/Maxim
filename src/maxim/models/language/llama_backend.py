@@ -51,6 +51,7 @@ class _LlamaCppBackend:
         self.requires_prompt_formatting = True
         # A missing model this backend may not download (#1343): asked once, then every later call fails fast.
         self._download_refused = False
+        self._security_refusal: BaseException | None = None  # a remembered SECURITY_REFUSALS refusal (#1315 item 10b)
 
     def _fetch_missing_model(self, model_path: str) -> bool:
         """Put the profile's GGUF on disk through the consent gate, or refuse (#1343).
@@ -59,8 +60,12 @@ class _LlamaCppBackend:
         could take a line the user typed to the agent. Only a standing grant downloads (``--auto-download``,
         ``llm.auto_download``, ``MAXIM_AUTO_DOWNLOAD_MODELS``); the startup sites ask. A refusal is remembered, so
         later calls fail fast instead of asking the gate again, for this backend's life (a file that appears later, from
-        another process, still loads: the path check runs first). An exception is reported and not remembered.
+        another process, still loads: the path check runs first). An exception is reported and not remembered. A
+        security refusal (the offline latch, #1315 item 10b) is remembered AND re-raised, the same one each call, so it
+        stays typed without booking a new ledger entry per ``complete()``.
         """
+        if self._security_refusal is not None:
+            raise self._security_refusal
         if self._download_refused:
             return False
         profile = str(self.cfg.profile or self.cfg.model_base or "").strip()
@@ -69,8 +74,13 @@ class _LlamaCppBackend:
             return False
         from maxim.models.download import ensure_available
 
+        from maxim.exceptions import SECURITY_REFUSALS
+
         try:
             available = ensure_available(profile, interactive=False, logger=logger)
+        except SECURITY_REFUSALS as refusal:
+            self._security_refusal = refusal
+            raise
         except Exception as e:
             warn("Model download for %s failed: %s", profile, e)
             return False

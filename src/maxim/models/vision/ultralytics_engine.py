@@ -178,13 +178,23 @@ class UltralyticsEngine(VisionEngine):
                 "yolo8m-pose.pt",
             ]
         )
-        self._pose_model_path = _ensure_weight_file(
-            pose_local,
-            pose_name,
-            alternates=[pose_alt] if pose_alt else [],
-        )
+        if _offline.is_offline():
+            # Pose is optional: offline it resolves from disk only, and a missing weight turns pose off (a degraded
+            # run, said once) instead of refusing the engine. Asking for pose (load_pose=True) still refuses below.
+            self._pose_model_path = _first_existing([pose_local, *([pose_alt] if pose_alt else [])]) or pose_local
+            if not os.path.isfile(self._pose_model_path):
+                self._pose_load_error = "offline: no local pose weight"
+                _offline.mark_degraded("ultralytics.pose", f"{pose_name} is not on disk")
+        else:
+            self._pose_model_path = _ensure_weight_file(
+                pose_local,
+                pose_name,
+                alternates=[pose_alt] if pose_alt else [],
+            )
 
         if load_pose:
+            if self._pose_load_error is not None:
+                _offline.refuse("ultralytics.YOLO", f"{pose_name}: load_pose=True, but no local pose weight")
             self._try_load_pose()
 
     def _try_load_pose(self) -> bool:

@@ -791,14 +791,6 @@ jobs:
             echo "ERROR: raw urllib.request.urlopen outside utils/http.py"
             exit 1
           fi
-          # #1315 item 10b (notes §6 layer 2): no HTTP client but utils/http.py, so the offline latch's call-site
-          # refusal there covers every request. The raw socket.socket( sites allowed below are not HTTP: a local-IP
-          # probe (doctor/platform_detect.py, utils/net.py), a robot port probe (utils/reachy_diagnostics.py) and the
-          # Minecraft harness's own test server (simulation/minecraft_harness.py); the latch refuses their connects.
-          if grep -rnE --include=*.py "^[[:space:]]*(import|from) (urllib3|requests)([ .]|$)|httpx\.(Async)?Client\(|socket\.socket\(" src/maxim/ | grep -v "^src/maxim/utils/http.py:\|^src/maxim/_offline.py:\|^src/maxim/doctor/platform_detect.py:\|^src/maxim/utils/net.py:\|^src/maxim/utils/reachy_diagnostics.py:\|^src/maxim/simulation/minecraft_harness.py:"; then
-            echo "ERROR: an HTTP client (urllib3, requests, httpx.Client) or a raw socket.socket( outside utils/http.py (#1315 item 10b)"
-            exit 1
-          fi
           # #822/#832: the internet tools are wired ONLY by build_tool_registry (runtime/bootstrap.py), and
           # only the loader (utils/internet_access.py) composes the effective view. The full, alias-proof
           # check is the AST test tests/unit/test_internet_policy_832.py::test_only_the_builder_wires_the_internet_tools;

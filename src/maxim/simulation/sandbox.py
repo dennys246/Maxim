@@ -941,10 +941,16 @@ def create_sandbox(
     if backend == "tmpdir":
         sandbox = TmpdirSandbox()
     else:
-        # "docker" or "auto" — check availability
+        # "docker" or "auto" — check availability. Offline (#1315 item 10b) docker is refused (every docker call is
+        # a spawn): "docker" refuses here, and "auto" takes the tmpdir fallback below, said as degraded.
+        from maxim import _offline
         from maxim.simulation.container_runner import check_docker_available
 
+        if backend == "docker":
+            _offline.refuse_if_offline("sandbox[docker]", "backend=docker: every docker call is a refused spawn")
         docker_ok = check_docker_available()
+        if backend == "auto" and _offline.is_offline():
+            _offline.mark_degraded("sandbox", "docker is refused offline: the sim runs in a TmpdirSandbox")
         if backend == "docker" and not docker_ok:
             raise RuntimeError(
                 "backend=docker requested but Docker daemon is not reachable. Install Docker or use backend=tmpdir."

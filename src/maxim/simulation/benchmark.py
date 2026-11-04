@@ -65,6 +65,9 @@ class RunResult:
     duration_s: float = 0.0
     turns: int = 0
     error: str | None = None
+    #: The run was refused (``SECURITY_REFUSALS``: the offline latch, a leader refusal), not failed: ``error`` says
+    #: why, and the run is never scored (#1315 item 10b, owner decision V26).
+    refused: bool = False
 
 
 @dataclass
@@ -87,6 +90,9 @@ class ModelResult:
     #: Whether the applied thresholds held, on their own. ``passed`` is the verdict: thresholds held, at least one
     #: applied, every expectation met, no run errored (owner decision 2026-10-17). None = a report saved before it.
     thresholds_passed: bool | None = None
+    #: Why every run of this model was refused (offline, a leader refusal), or None: a refused model is reported, not
+    #: scored or ranked (#1315 item 10b, owner decision V26).
+    refused: str | None = None
 
 
 @dataclass
@@ -197,6 +203,9 @@ class BenchmarkReport:
                 mr = self.results[m]
                 errored = bool(mr.runs) and all(r.error is not None for r in mr.runs)
                 legacy = mr.thresholds_passed is None and not errored
+                if mr.refused:
+                    lines.append(f"    {m}: REFUSED — {mr.refused} (not scored)")
+                    continue
                 if errored:
                     status = "n/a (every run errored)"
                 elif mr.thresholds_checked == 0:
@@ -468,8 +477,19 @@ class BenchmarkRunner:
                         total = run_result.expectations_total
                         display_status(f"  OK {duration:.1f}s — {turns} turns — {passed}/{total} expectations")
 
-                    except SECURITY_REFUSALS:
-                        raise  # a refused model (offline, a leader refusal) is not a failed scenario (#1315 item 10b)
+                    except SECURITY_REFUSALS as refusal:
+                        # A refused model is not a failed scenario: recorded as refused, never scored, and the other
+                        # models still run (#1315 item 10b, owner decision V26).
+                        model_runs.append(
+                            RunResult(
+                                scenario=scenario_name,
+                                model=model,
+                                run_index=run_idx,
+                                error=f"refused: {refusal}",
+                                refused=True,
+                            )
+                        )
+                        display_status(f"  REFUSED: {refusal}")
                     except Exception as e:
                         logger.warning("Scenario %s failed on %s: %s", scenario_name, model, e)
                         error_msg = str(e)
@@ -486,7 +506,13 @@ class BenchmarkRunner:
             # Aggregate across runs
             model_result = self._aggregate_runs(model, model_runs)
             all_model_results[model] = model_result
-            display_summary([f"Score: {model_result.score:.3f}"])
+            display_summary(
+                [
+                    f"REFUSED (not scored): {model_result.refused}"
+                    if model_result.refused
+                    else f"Score: {model_result.score:.3f}"
+                ]
+            )
 
         total_duration = time.time() - start
         display_summary([f"Benchmark complete: {total_duration:.1f}s across {total_models} model(s)"])
@@ -502,12 +528,14 @@ class BenchmarkRunner:
         )
 
         # Rank models
+        # A refused model is reported, not ranked (owner decision V26).
+        scored = {m: r for m, r in all_model_results.items() if not r.refused}
         report.overall_ranking = sorted(
-            self.models,
+            (m for m in self.models if m not in all_model_results or not all_model_results[m].refused),
             key=lambda m: all_model_results.get(m, ModelResult(model=m)).score,
             reverse=True,
         )
-        report.rankings = self._compute_rankings(all_model_results)
+        report.rankings = self._compute_rankings(scored)
 
         # Baseline comparison (if a baseline path was provided)
         if self.baseline_path:
@@ -609,7 +637,8 @@ class BenchmarkRunner:
         """Aggregate metrics across multiple runs of the same model."""
         successful = [r for r in runs if r.error is None]
         if not successful:
-            return ModelResult(model=model, runs=runs, passed=False)
+            refused = runs[0].error if runs and all(r.refused for r in runs) else None
+            return ModelResult(model=model, runs=runs, passed=False, refused=refused)
 
         # Collect all metric keys
         all_keys: set[str] = set()
@@ -907,6 +936,7 @@ class BenchmarkRunner:
                     "thresholds_checked": mr.thresholds_checked,
                     "thresholds_passed": mr.thresholds_passed,
                     "per_scenario": mr.per_scenario,
+                    "refused": mr.refused,
                 }
                 for model, mr in report.results.items()
             },

@@ -1832,6 +1832,10 @@ def _ensure_lane_profiles_available(
     out so we land on the next-smaller model the user already has, rather
     than failing startup with a cryptic load error.
 
+    Offline (#1315 item 10b, owner decision V25): a profile the operator pinned (:func:`_profile_is_pinned`) is refused
+    by name (``ensure_available`` raises ``OfflineRefusal``); an auto-detected one is never downloaded and re-walks
+    straight away, recorded as degraded with the model the lane runs instead.
+
     No-op for cloud lanes, remote lanes, and lanes with no profile.
     """
     try:
@@ -1871,7 +1875,10 @@ def _ensure_lane_profiles_available(
                 lane_name,
                 profile,
             )
-        ok = ensure_available(profile, logger=logger)
+        # Offline (owner decision V25): a profile the operator pinned refuses by name inside ensure_available; an
+        # auto-detected one skips a download that cannot happen and re-walks to a model on disk, said as degraded.
+        auto_offline = _offline.is_offline() and not _profile_is_pinned(profile)
+        ok = False if auto_offline else ensure_available(profile, logger=logger)
         if ok:
             continue
 
@@ -1885,6 +1892,10 @@ def _ensure_lane_profiles_available(
             # just clear the broken profile so downstream lane assembly
             # falls back to its own defaults.
             out[lane_name] = dataclasses.replace(cfg, model_profile=None)
+            if auto_offline:
+                _offline.mark_degraded(
+                    "lanes.model_profile", f"{profile} is not on disk; lane {lane_name} has no model"
+                )
             continue
         try:
             new_tiers = detect_tiers(
@@ -1895,6 +1906,10 @@ def _ensure_lane_profiles_available(
             if logger is not None:
                 logger.warning("Tier re-walk after failed download failed: %s", e)
             out[lane_name] = dataclasses.replace(cfg, model_profile=None)
+            if auto_offline:
+                _offline.mark_degraded(
+                    "lanes.model_profile", f"{profile} is not on disk; lane {lane_name} has no model"
+                )
             continue
         re_walked = True
         # Replace lanes with their re-walked counterparts. We deliberately
@@ -1914,8 +1929,27 @@ def _ensure_lane_profiles_available(
                 kv_quant_mode=new_cfg.kv_quant_mode,
                 requires_gpu=new_cfg.requires_gpu,
             )
+        if auto_offline:
+            substitute = getattr(out.get(lane_name), "model_profile", None)
+            _offline.mark_degraded(
+                "lanes.model_profile", f"{profile} is not on disk; lane {lane_name} runs {substitute}"
+            )
 
     return out
+
+
+def _profile_is_pinned(profile: str) -> bool:
+    """Whether the operator chose ``profile`` (``--llm`` / ``MAXIM_LLM_PROFILE``, or ``llm.profile`` set in
+    config.json), not tier detection: offline a pinned profile is never swapped (owner decision V25).
+    ``resolve_setting`` reads both: ``MAXIM_LLM_PROFILE`` is ``llm.profile``'s env layer."""
+    from maxim.runtime.config_loader import resolve_setting
+
+    try:
+        value, source = resolve_setting("llm.profile")
+    except Exception as e:  # an unreadable config pins nothing here; the router build reports it on its own path
+        logger.debug("llm.profile unresolved while checking a pin: %s", e)
+        return False
+    return source != "default" and value == profile
 
 
 def _apply_local_llm_override(

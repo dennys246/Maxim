@@ -261,6 +261,7 @@ def run_provenance(
         "end_code_tree_sha256": end["code_tree_sha256"],
         **({"resume": resume_record} if resume_record is not None else {}),
         "provenance_schema": PROVENANCE_SCHEMA,
+        **_offline_stamp(),
         **serving_provenance(
             serving_token,
             llm_worker=llm_worker,
@@ -270,6 +271,29 @@ def run_provenance(
             goal=goal,
             deadline=deadline,
         ),
+    }
+
+
+# How many refusals an offline report lists (the count is always exact): a run refused per call stays bounded.
+_OFFLINE_REFUSALS_LISTED = 50
+
+
+def _offline_stamp() -> dict[str, Any]:
+    """An offline run's report says what it could not do (#1315 item 10b, owner decision V27): the latch's refusals
+    (the first :data:`_OFFLINE_REFUSALS_LISTED`, and the exact count) and every degraded fallback, once per site and
+    reason. Empty online, so an online report is unchanged."""
+    from maxim import _offline
+
+    if not _offline.is_offline():
+        return {}
+    refusals = _offline.ledger()
+    degraded = list(dict.fromkeys((d.site, d.reason) for d in _offline.degraded()))
+    return {
+        "offline": {
+            "refusal_count": len(refusals),
+            "refusals": [{"event": r.event, "detail": r.detail} for r in refusals[:_OFFLINE_REFUSALS_LISTED]],
+            "degraded": [{"site": site, "reason": reason} for site, reason in degraded],
+        }
     }
 
 

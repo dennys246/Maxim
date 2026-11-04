@@ -88,7 +88,7 @@ def _load_model(model_name: str) -> Any:
         ) from e
 
     logger.info("VisionEncoder loading model: %s", model_name)
-    model = SentenceTransformer(model_name, **_offline.local_files_only_kwargs())
+    model = SentenceTransformer(model_name, **_offline.local_files_only_kwargs(SentenceTransformer))
     _cached_models[model_name] = model
     logger.info("VisionEncoder loaded model: %s", model_name)
     return model

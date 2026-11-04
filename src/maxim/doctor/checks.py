@@ -3908,14 +3908,17 @@ def _refused_offline_row(fn: Any) -> Any:
         except _offline.OfflineRefusal as e:
             return refused(e)
         # A check that caught the refusal itself reports it as its own verdict ("nothing responding", "probe
-        # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered, so its
-        # non-ok rows keep their name and message, marked as refused rather than failed.
+        # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered. A
+        # single-row check's row keeps its name and message, marked as refused rather than failed. A list check
+        # cannot say which of its rows the latch answered (one robot's probe, another's real failure), so its rows
+        # stand and one "refused (offline)" row is added; its per-item probes (``_check_one_robot``) are wrapped
+        # too and mark themselves.
         mine = [r for r in _offline.ledger()[booked:] if r.thread == threading.get_ident()]
         if not mine:
             return result
         detail = f"{mine[-1].event}: {mine[-1].detail}"
         if isinstance(result, list):
-            return [mark(r, detail) if isinstance(r, CheckResult) else r for r in result]
+            return [*result, CheckResult(name=name, status="info", message=f"refused (offline): {detail}")]
         return mark(result, detail) if isinstance(result, CheckResult) else result
 
     return wrapper
@@ -3926,7 +3929,10 @@ def _wrap_checks_for_offline() -> None:
 
     module = globals()
     for attr, value in list(module.items()):
-        if attr.startswith("check_") and inspect.isfunction(value) and value.__module__ == __name__:
+        if not (inspect.isfunction(value) and value.__module__ == __name__):
+            continue
+        # Every check_*, and the per-item probes a list check composes (one robot each), so each item marks itself.
+        if attr.startswith("check_") or attr == "_check_one_robot":
             module[attr] = _refused_offline_row(value)
 
 

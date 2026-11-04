@@ -202,9 +202,10 @@ class WhisperTranscriber:
                 **_offline.local_files_only_kwargs(),
             )
         except Exception as e:
-            if not _offline.is_offline():
-                raise
+            if not (_offline.is_offline() and _offline.is_hub_local_miss(e)):
+                raise  # online, or a real load failure (CUDA, compute type, a corrupt model): unchanged
             # A transcriber without its model has no fallback: offline, a model it may not fetch is a typed refusal.
+            # Refused after the library call, which is safe: local_files_only and HF_HUB_OFFLINE kept it local.
             try:
                 _offline.refuse("faster_whisper.WhisperModel", f"{self.model_size_or_path} is not cached locally")
             except _offline.OfflineRefusal as refusal:

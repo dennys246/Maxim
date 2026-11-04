@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from maxim import _offline
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -536,15 +538,6 @@ def _soft_budget_gb() -> float | None:
         return None
 
 
-def _refuse_download_offline(site: str, detail: str) -> None:
-    """Offline, a model that is not on disk is refused here: before the storage preflight and BEFORE consent is read
-    (``auto``, the env flag, a tty prompt), so no prompt offers a download that cannot happen (#1315 item 10b)."""
-    from maxim import _offline
-
-    if _offline.is_offline():
-        _offline.refuse(site, detail)
-
-
 def ensure_available(
     profile_name: str,
     *,
@@ -583,7 +576,7 @@ def ensure_available(
 
     if profile_has_local_file(profile_name):
         return True
-    _refuse_download_offline("models.download.ensure_available", f"{profile_name} is not on disk")
+    _offline.refuse_if_offline("models.download.ensure_available", f"{profile_name} is not on disk")  # before consent
 
     if profile_name not in llm_models():
         msg = (
@@ -860,7 +853,9 @@ def ensure_tts_voice(
 
     if verified():
         return True
-    _refuse_download_offline("models.download.ensure_tts_voice", f"{model_name} is not on disk")
+    _offline.refuse_if_offline(
+        "models.download.ensure_tts_voice", f"{model_name} is not verified on disk"
+    )  # before consent
     ok, reason = can_download(float(info.get("size_mb", 0)) / 1024.0, headroom_gb=0.5, soft_budget_gb=_soft_budget_gb())
     if not ok:
         logger.warning("Cannot download TTS voice %s: %s", model_name, reason)

@@ -423,8 +423,7 @@ def _resolve_model_path(filename: str, model_dir: str) -> str:
     # Attempt auto-download. Offline it is refused first, typed, not swallowed by the warning below (#1315 item 10b).
     from maxim import _offline
 
-    if _offline.is_offline():
-        _offline.refuse("models.vision.rtm_engine.download_vision", f"{filename} is not on disk")
+    _offline.refuse_if_offline("models.vision.rtm_engine.download_vision", f"{filename} is not on disk")
     try:
         from maxim.models.download import download_vision
 

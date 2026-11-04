@@ -205,11 +205,51 @@ def mark_degraded(site: str, reason: str) -> None:
         logging.getLogger("maxim.offline").warning("offline: %s degraded: %s", site, reason)
 
 
-def local_files_only_kwargs() -> dict[str, bool]:
-    """``{"local_files_only": True}`` while the latch is up, else ``{}``: the kwarg every Hugging Face load site
-    passes (sentence-transformers, transformers, faster-whisper; §6 layer 2), so a missing model fails locally
-    instead of reaching for the hub. Empty online, so an online load is unchanged."""
-    return {"local_files_only": True} if is_offline() else {}
+def local_files_only_kwargs(loader: Callable[..., Any] | None = None) -> dict[str, bool]:
+    """``{"local_files_only": True}`` while the latch is up, else ``{}``: the kwarg the Hugging Face load sites pass
+    (sentence-transformers, faster-whisper; §6 layer 2), so a missing model fails locally instead of reaching for the
+    hub. Empty online, so an online load is unchanged. Given ``loader``, empty too when it takes no such parameter
+    (sentence-transformers before 2.3); engage()'s ``HF_HUB_OFFLINE`` still keeps that load local."""
+    if not is_offline():
+        return {}
+    if loader is not None and not _accepts_kwarg(loader, "local_files_only"):
+        return {}
+    return {"local_files_only": True}
+
+
+def _accepts_kwarg(fn: Callable[..., Any], name: str) -> bool:
+    import inspect
+
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):  # no introspectable signature: pass it, as the library documents
+        return True
+    return name in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+# Hugging Face's own "not in the local cache, and I may not fetch it" errors (huggingface_hub), matched by name along
+# the exception chain so this leaf never imports the library.
+_HUB_LOCAL_MISS = frozenset({"LocalEntryNotFoundError", "OfflineModeIsEnabled"})
+
+
+def is_hub_local_miss(exc: BaseException) -> bool:
+    """Whether ``exc`` (or anything in its cause/context chain) is a Hugging Face local-cache miss: the one failure a
+    load site may report as "not cached locally". A CUDA error, a bad compute type or a corrupt model is not."""
+    seen: set[int] = set()
+    node: BaseException | None = exc
+    while node is not None and id(node) not in seen:
+        seen.add(id(node))
+        if any(cls.__name__ in _HUB_LOCAL_MISS for cls in type(node).__mro__):
+            return True
+        node = node.__cause__ or node.__context__
+    return False
+
+
+def load_failure_reason(model: str, exc: BaseException) -> str:
+    """The degraded reason for a model load that failed offline: "not cached locally" only for a real cache miss."""
+    if is_hub_local_miss(exc):
+        return f"{model} is not cached locally"
+    return f"{model} failed to load ({type(exc).__name__})"
 
 
 def degraded() -> tuple[Degraded, ...]:
@@ -228,6 +268,13 @@ def refuse(site: str, detail: str = "") -> NoReturn:
     before reaching a socket (§6 layer 2), so their refusal is typed, early and on record."""
     _book(site, detail)
     raise OfflineRefusal(f"offline ({_reason or 'engaged'}): {site} refused{': ' + detail if detail else ''}")
+
+
+def refuse_if_offline(site: str, detail: str = "") -> None:
+    """:func:`refuse` while the latch is up, else nothing: the one-line guard each call site puts before its side
+    effect (a spawn, a socket, a consent prompt, a record-as-sent), so its refusal is typed, early and booked."""
+    if is_offline():
+        refuse(site, detail)
 
 
 def _book(event: str, detail: str) -> None:

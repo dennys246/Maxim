@@ -1264,8 +1264,19 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > `degraded()` (one WARNING per site), the ledger records each refusal's thread; refusals at docker
 > (`container_runner._run_docker`), ddgs, ultralytics (`_ensure_weight_file`, `_yolo_weight_path`), twilio, model and
 > TTS downloads (before consent), rtm, faster-whisper (typed when the model is not cached); transformers forces
-> `local_files_only` and no remote code offline; the CI grep widened. 10c also owns `cli.py::_early_leader_boot`'s
-> warning (the swallow census).
+> `local_files_only` and no remote code offline. The CI grep is NOT widened: `scripts/lint_http_surface.py` (rule A:
+> no HTTP client library outside `utils/http.py`; rule B: raw dials pinned per file) already enforces it, and 10c's
+> site census extends its registers rather than a third list. 10c also owns `cli.py::_early_leader_boot`'s warning
+> and the remaining swallows around refused sites (the swallow census: the internet-search tool's catch-all,
+> `YOLO8.ensure_pose_model`, `segment_vision`'s pose call, rtm `_load_pose`, `VoiceProvisioner`, the whisper workers).
+> Review round 1 (three lenses, [reports](reviews/item10b/)) folded with owner decisions, 2026-11-03, all as
+> recommended: **V25** offline, a pinned profile (`--llm`/`llm.profile`) refuses by name and an auto-detected tier
+> re-walks to a model on disk, recorded as degraded; **V26** a benchmark records a refused model as refused (not
+> scored or ranked) and continues; **V27** `report.json` (an `offline` block) and `decision_log` (`offline`,
+> `offline_degraded`) record refusals and degraded fallbacks. Also folded: whisper refuses only on a hub local miss;
+> the doctor marks a single-row check and adds a refused row to a list check (and wraps `_check_one_robot`);
+> `--sandbox auto` falls back to tmpdir and `docker` refuses; `_setup_sim_sandbox` re-raises (#1596 is the online
+> case); a missing pose weight only turns pose off; `_fetch_missing_model` remembers its refusal.
 >
 > Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`

@@ -72,6 +72,11 @@ class LaneDecisionRecord:
     tier_decisions: dict[str, dict[str, Any]]
     probe_results: dict[str, str] = field(default_factory=dict)
     auto_download_triggered: list[str] = field(default_factory=list)
+    # The offline latch (#1315 item 10b, owner decision V27): whether it was up for this build, and the degraded
+    # fallbacks so far ("site: reason", once each). An older reader returns None on a record carrying them, as it
+    # already does on any newer record (read_last_record's TypeError).
+    offline: bool = False
+    offline_degraded: list[str] = field(default_factory=list)
 
 
 def _decision_log_path() -> Path:
@@ -204,7 +209,19 @@ def build_record(
         tier_decisions=tier_decisions,
         probe_results=dict(probe_results or {}),
         auto_download_triggered=list(auto_download_triggered or []),
+        **_offline_fields(),
     )
+
+
+def _offline_fields() -> dict[str, Any]:
+    from maxim import _offline
+
+    if not _offline.is_offline():
+        return {}
+    return {
+        "offline": True,
+        "offline_degraded": list(dict.fromkeys(f"{d.site}: {d.reason}" for d in _offline.degraded())),
+    }
 
 
 def record_to_json_line(record: LaneDecisionRecord) -> str:
@@ -318,6 +335,10 @@ def format_record_human(record: LaneDecisionRecord) -> str:
             lines.append(f"    {host}: {outcome}")
     if record.auto_download_triggered:
         lines.append(f"  Auto-downloaded: {', '.join(record.auto_download_triggered)}")
+    if record.offline:
+        lines.append("  Offline: the latch was up (in-process lanes only)")
+        for entry in record.offline_degraded:
+            lines.append(f"    degraded: {entry}")
     return "\n".join(lines)
 
 
