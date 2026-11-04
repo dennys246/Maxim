@@ -206,7 +206,7 @@ def test_a_live_talk_loop_is_rebuilt_after_a_config_write(monkeypatch, tmp_path)
     h._workspace = tmp_path / "ws"
     stopped: list[bool] = []
     monkeypatch.setattr(h, "_stop_talk_loop", lambda **_k: stopped.append(True), raising=False)
-    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda: (None, None))
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda **_kw: (None, None))
     assert h._ensure_talk_loop() is h._talk_bridge  # unchanged config: the live loop is reused
     assert stopped == []
     invalidate_config_cache()

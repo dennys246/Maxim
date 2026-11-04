@@ -267,9 +267,6 @@ def test_the_build_hands_its_profile_to_the_tier_table_the_rewalk_and_the_pin(
 # (``lane_backends._apply_lane_config_to_env_locked``'s ``_llm_env_map``, ``config_loader``'s env map), which also
 # set the session's profile.
 PROFILE_ENV_WRITERS = {
-    "maxim/api.py::run",  # #1586
-    "maxim/api.py::imagine",  # #1586
-    "maxim/api.py::campaign",  # #1586
     "maxim/cli_utils.py::normalize_args",
     "maxim/cli_utils.py::configure_cloud_solo_auto_detect",
     "maxim/cli_utils.py::configure_cpu_fallback_model",

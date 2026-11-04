@@ -30,9 +30,9 @@ FUNCTION-SPECIFIC PINS. These read an ordering inside the one function (``lineno
 end updates them consciously:
 
   - ``test_report_provenance_m1.py``, ``_start_simulation_mode`` (the start stamp's ``lineno`` before
-    every ``build_primary_router`` call; §0-§1).
+    the ``_build_shared_router`` and ``_build_aut_router`` calls; §0-§1).
   - ``test_config_sparse_1_2.py::test_the_report_stamps_provenance_before_the_router_is_built`` (the start stamp's
-    ``lineno`` before the shared build and the AUT's ``_build_aut_router`` call, #1538).
+    ``lineno`` before the shared ``_build_shared_router`` and the AUT's ``_build_aut_router`` call, #1538, #1586).
   - ``test_finish_reason_1002.py``, ``_start_simulation_mode``. The operator-stop pin separates the
     run's own top-level ``KeyboardInterrupt`` handler (§12) from the nested readers' (§10) with
     ``n is not fn``. Its other pins (the ``_resolve_finish_reason`` arguments in §14, each runner's
@@ -85,6 +85,8 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("sim_teardown.py", "finish_run"),
     # #1538 (rule T): the dual-LLM AUT router build, handed its profile (build_primary_router(profile=))
     ("orchestrator.py", "_build_aut_router"),
+    # #1586 (rule T): the shared router build, handed the run's model (start_simulation_mode(llm_profile=))
+    ("orchestrator.py", "_build_shared_router"),
     # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
     # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
     # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it

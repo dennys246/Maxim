@@ -68,7 +68,6 @@ def _recording_sim(seen: list[dict[str, Any]]) -> Any:
     return _sim
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: imagine() writes MAXIM_LLM_PROFILE for the run")
 def test_imagine_hands_its_model_to_the_run_and_the_env_keeps_the_operators(
     operator_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -82,7 +81,6 @@ def test_imagine_hands_its_model_to_the_run_and_the_env_keeps_the_operators(
     assert _env() == {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: campaign() writes MAXIM_LLM_PROFILE for the run")
 def test_campaign_hands_its_model_to_the_run_and_the_env_keeps_the_operators(
     operator_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -96,7 +94,6 @@ def test_campaign_hands_its_model_to_the_run_and_the_env_keeps_the_operators(
     assert _env() == {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: imagine() writes the env before its try")
 def test_a_scenario_that_fails_to_load_leaves_the_env_as_it_was(
     operator_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -111,7 +108,6 @@ def test_a_scenario_that_fails_to_load_leaves_the_env_as_it_was(
     assert _env() == {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: campaign() writes the env before its try")
 def test_a_campaign_that_fails_to_load_leaves_the_env_as_it_was(
     operator_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -126,7 +122,6 @@ def test_a_campaign_that_fails_to_load_leaves_the_env_as_it_was(
     assert _env() == {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: run() writes MAXIM_LLM_PROFILE around its router build")
 def test_run_hands_its_model_to_the_router_build_and_the_env_keeps_the_operators(
     operator_env: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -145,7 +140,6 @@ def test_run_hands_its_model_to_the_router_build_and_the_env_keeps_the_operators
     assert _env() == {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: start_simulation_mode takes no llm_profile")
 def test_the_run_profile_reaches_the_shared_build_and_the_config_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """``start_simulation_mode(llm_profile=)`` hands it to the shared router build and, when that build gives no
     router, to the fallback ``load_llm_config``; the ``/new`` run carries it."""
@@ -170,14 +164,12 @@ def test_the_run_profile_reaches_the_shared_build_and_the_config_fallback(monkey
     assert "llm_profile" in orchestrator.NEW_RUN_CARRIES
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: the api writers are still pinned")
 def test_the_api_entry_points_no_longer_write_the_session_profile() -> None:
     from tests.unit.test_aut_router_profile_1538 import _profile_env_writers
 
     assert not {w for w in _profile_env_writers() if w.startswith("maxim/api.py::")}
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: start_simulation_mode takes no llm_profile")
 def test_the_run_profile_drives_the_real_sim_build(tmp_path: Path) -> None:
     """Through the real ``start_simulation_mode`` (the harness's ``run_profile`` arm)."""
     from tests.unit._orch_harness import OPERATOR_PROFILE_ENV, assert_this_checkout, run_arm

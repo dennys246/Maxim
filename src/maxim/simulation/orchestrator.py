@@ -662,6 +662,24 @@ def _build_aut_router(aut_model: str | None, llm_router: Any) -> Any:
     return aut_router
 
 
+def _build_shared_router(llm_profile: str | None) -> Any:
+    """The run's shared router (narrator, AUT, fear gate), built on ``llm_profile`` when the caller has its own model
+    (#1586; None: the session's ``MAXIM_LLM_PROFILE``), or None when no LLM is available."""
+    from maxim.models.language.router import LLMRouter, load_llm_config
+    from maxim.runtime.lane_backends import build_primary_router
+
+    llm_router, _lane_manager = build_primary_router(logger=logger, profile=llm_profile)
+    if llm_router is None:
+        # Factory returned nothing → fall back to the default global config path.
+        llm_config = load_llm_config(profile_override=llm_profile)
+        if llm_config.enabled:
+            llm_router = LLMRouter(llm_config)
+    if llm_router is not None:
+        llm_router.warmup()
+        logger.info("Shared LLM router initialized")
+    return llm_router
+
+
 def _save_for_new(tail: Any, report: Any, report_dir: str) -> str | None:
     """Make this run's AUT state ready for the ``/new`` run; returns the session to carry it from (#1454).
 
@@ -711,6 +729,7 @@ NEW_RUN_CARRIES = frozenset(
         "sandbox_network",
         "aut_model",
         "aut_mode",
+        "llm_profile",
         "research_telemetry",
         "arc_yaml",
         "entity_ref",
@@ -858,6 +877,7 @@ def start_simulation_mode(
     sandbox_network: str = "none",
     aut_model: str | None = None,
     aut_mode: str = "llm-primary",
+    llm_profile: str | None = None,
     research_telemetry: bool = False,
     pre_campaign_turns: list[dict[str, Any]] | None = None,
     dm_campaign: Any = None,
@@ -914,6 +934,8 @@ def start_simulation_mode(
         prompt_handler: The handler the AUT's ``request_interaction`` tool asks (D40) -- a caller's
             own UI. None picks one from the interactive mode, as before. Cannot be combined with
             ``persistent_agent``, whose registry already holds its handler.
+        llm_profile: The run's model (``maxim.imagine``/``maxim.campaign`` hand theirs), served by the shared router
+            over the session's ``MAXIM_LLM_PROFILE``, which stays as it was (#1586). None: the session's.
         carry_aut_from: The session whose saved AUT state this run starts from. Set by ``/new`` only (#1454); unlike
             ``resume_session`` it adds no resume prompt, because the new goal is a new simulation.
 
@@ -933,8 +955,6 @@ def start_simulation_mode(
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.maxim_agent import MaximAgent
-    from maxim.models.language.router import LLMRouter, load_llm_config
-    from maxim.runtime.lane_backends import build_primary_router
     from maxim.runtime.agent_loop import run_agentic_loop
     from maxim.runtime.bootstrap import (
         build_decision_engine,
@@ -991,15 +1011,7 @@ def start_simulation_mode(
     # ── Shared LLM router (single model, alternating inference) ──────────
     # Routed through the multi-LLM factory so sim respects per-lane assignments
     # (capability-driven profiles, env overrides, remote URLs, safety gates).
-    llm_router, _lane_manager = build_primary_router(logger=logger)
-    if llm_router is None:
-        # Factory returned nothing → fall back to the default global config path.
-        llm_config = load_llm_config()
-        if llm_config.enabled:
-            llm_router = LLMRouter(llm_config)
-    if llm_router is not None:
-        llm_router.warmup()
-        logger.info("Shared LLM router initialized")
+    llm_router = _build_shared_router(llm_profile)
 
     # ── Simulation bridge ────────────────────────────────────────────────
     # Substrate-primary per-turn action budget (apparatus standard S6; the
