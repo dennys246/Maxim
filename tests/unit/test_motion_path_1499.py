@@ -446,6 +446,64 @@ def test_a_robots_yaml_automatic_body_yaw_true_is_refused_not_filtered():
     assert registry.get_robot("r1") is None
 
 
+# PR 3 (owner, 2026-11-01, pulse's rule): the setting is daemon-wide with no getter, so a second SDK client can turn
+# it back on mid-session. The controller re-asserts it under the motion lock before each discrete move, not on the
+# look-at tracking stream; a failed call refuses "reference".
+
+
+def _record_lock_on_auto_yaw(ctl, daemon) -> list[bool]:
+    held: list[bool] = []
+    inner = daemon.set_automatic_body_yaw
+
+    def _set(enabled):
+        held.append(ctl._motion_lock._is_owned())
+        inner(enabled)
+
+    daemon.set_automatic_body_yaw = _set
+    return held
+
+
+def test_a_discrete_move_re_asserts_auto_yaw_off_under_the_lock_first(daemon):
+    ctl = controller(daemon)
+    held = _record_lock_on_auto_yaw(ctl, daemon)
+    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
+    names = [c["name"] for c in daemon.calls]
+    assert names.index("set_automatic_body_yaw") < names.index("goto_target")
+    assert [c["enabled"] for c in daemon.calls if c["name"] == "set_automatic_body_yaw"] == [False]
+    assert held == [True], "asserted while holding the motion lock"
+
+
+def test_a_failed_re_assert_refuses_reference_and_moves_nothing(daemon):
+    from maxim.hardware.controller import PixelTarget
+
+    ctl = controller(daemon)
+    daemon.auto_yaw_raises = True
+    out = ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "reference"
+    assert daemon.motion_calls() == []
+    # The failure stands until an assertion succeeds: the tracking stream, which does not re-assert, refuses too.
+    look = ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=1.0))
+    assert not look and _kind(look) == "reference"
+    daemon.auto_yaw_raises = False
+    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
+
+
+def test_the_look_at_tracking_stream_does_not_re_assert_auto_yaw(daemon):
+    """About 10 SDK calls/s on the CM4 at the 10 Hz tracking cadence: the stream relies on the last assertion."""
+    from maxim.hardware.controller import PixelTarget
+
+    ctl = controller(daemon)
+    assert ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=1.0))
+    assert "set_automatic_body_yaw" not in [c["name"] for c in daemon.calls]
+
+
+def test_a_sleep_re_asserts_auto_yaw_off_under_the_lock(daemon):
+    ctl = controller(daemon)
+    held = _record_lock_on_auto_yaw(ctl, daemon)
+    assert ctl.goto_sleep()
+    assert held == [True]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Gate 12 (PR-1 half): a move that did not succeed never feeds the learners
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1262,6 +1320,7 @@ def test_a_sleep_refuses_when_auto_yaw_is_not_asserted(daemon):
     """Delta-2 NIT 1: goto_sleep's own auto-yaw check (it reads the state itself, so it repeats the readback's)."""
     ctl = controller(daemon)
     ctl._auto_yaw_asserted = False
+    daemon.auto_yaw_raises = True  # and the sleep's own re-assert (PR 3) fails too
     out = ctl.goto_sleep()
     assert not out and _kind(out) == "reference"
     assert daemon.motion_calls() == []
