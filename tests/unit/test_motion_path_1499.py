@@ -35,9 +35,13 @@ from tests.unit._reachy_fakes import (
     worst_path_twist_deg,
 )
 
-from maxim.exceptions import MotionRefused  # noqa: E402
-
 D = math.radians
+
+
+def mp_geodesic(a, b) -> float:
+    from maxim.hardware.reachy import motion_path as mp
+
+    return mp.geodesic(a, b)
 
 
 @pytest.fixture
@@ -206,49 +210,126 @@ def test_the_known_rest_shape_variants_parse(daemon, mode):
     assert daemon.rest_calls >= 1
 
 
-# #1563 (owner, 2026-11-03): on a goto's first control tick the daemon's IK pairs the PRESENT head with its OLD body
-# target (1.8.3 serves no target to read). The controller tracks the target its own last goto left, and refuses a
-# dispatch whose present head sits more than 65° + 1° (provisional) from it.
+# #1563 (owner, 2026-11-03: re-pin): on a goto's first control tick the daemon's IK pairs the PRESENT head with its
+# OLD body target, which 1.8.3 never serves. Before each chunk's goto the controller re-pins both of the daemon's
+# targets to the pose the fresh readback found (``set_target(head=..., body_yaw=...)``), so tick 1 reproduces the
+# pose the robot already holds. It tracks the target its own commands left only to skip the frame when that
+# already equals the present body within 1° (the common tracking look-at).
+
+_REPIN = pytest.mark.xfail(strict=True, reason="#1563: the re-pin before a goto is not built")
 
 
-def test_a_present_head_past_the_clamp_from_the_old_body_target_refuses(daemon):
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))  # the daemon's body target is now 10°
-    _place(daemon, body_deg=13, rel_deg=64)  # the body drifted 3° (inside R1's 5°); the head is 67° from 10°
-    ctl._last_commanded.clear()  # isolate this check from R1's stash divergence (its own gates cover it)
-    daemon.calls.clear()
-    out = ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
-    assert not out and _kind(out) == "reference"
-    assert "body target" in as_outcome_reason(out)
-    assert daemon.gotos() == []
+def _repins(daemon) -> list[dict]:
+    return [c for c in daemon.calls if c["name"] == "set_target"]
 
 
-def test_a_present_head_within_the_margin_moves(daemon):
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
-    _place(daemon, body_deg=10.5, rel_deg=65)  # 65.5° from the old target: inside 66°
-    ctl._last_commanded.clear()
+@_REPIN
+def test_a_goto_after_an_unknown_target_re_pins_to_the_present_pose_first(daemon):
+    _place(daemon, body_deg=20, rel_deg=30)
+    ctl = controller(daemon)  # no command of Maxim's has set the target yet
     assert ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
+    names = [c["name"] for c in daemon.calls if c["name"] in {"set_target", "goto_target"}]
+    assert names[:2] == ["set_target", "goto_target"]
+    (pin,) = _repins(daemon)
+    assert pin["body_yaw"] == pytest.approx(D(20))
+    assert mp_geodesic(np.asarray(pin["head"]), head_pose(yaw=D(50))) < 1e-6
+    assert pin.get("antennas") is None, "the re-pin leaves the antennas alone"
 
 
-def test_the_controller_tracks_the_body_target_its_goto_left(daemon):
+@_REPIN
+def test_the_old_lockout_pose_now_re_pins_and_moves(daemon):
+    """Delta round 2's lockout: body 3° from the target, head 66.5° from it. The re-pin removes the old target."""
     ctl = controller(daemon)
-    assert ctl._daemon_body_target is None, "unknown until Maxim's first goto on this connection"
+    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))
+    _place(daemon, body_deg=3, rel_deg=63.5)
+    ctl._last_commanded.clear()
+    daemon.calls.clear()
+    assert ctl.goto_target(_target(head_yaw=0.0, head_pitch=0.0, head_roll=0.0, duration=2.0))
+    assert len(_repins(daemon)) == 1
+    assert ctl.goto_sleep()
+
+
+@_REPIN
+def test_a_stalled_body_is_re_pinned_not_forgotten(daemon):
+    """Delta round 2's fail-open: Maxim's own target 30°, the body stalled at 20°. The re-pin makes tick 1 safe."""
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=D(30), duration=1.0))
+    _place(daemon, body_deg=20, rel_deg=-60)
+    daemon.calls.clear()
+    assert ctl.goto_sleep()
+    assert _repins(daemon) and _repins(daemon)[0]["body_yaw"] == pytest.approx(D(20))
+
+
+def test_a_target_within_1_degree_of_the_body_is_not_re_pinned(daemon):
+    """The tracking look-at at 10 Hz: its previous goto left the target at the body, so no frame is sent."""
+    from maxim.hardware.controller import PixelTarget
+
+    ctl = controller(daemon)
+    assert ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=1.0))  # the first one pins (target unknown)
+    daemon.calls.clear()
+    daemon.body = D(0.5)
+    daemon.head = head_pose(yaw=daemon.body)
+    assert ctl.look_at_pixel(PixelTarget(u=320, v=240, duration=1.0))
+    assert _repins(daemon) == []
+
+
+@_REPIN
+def test_every_chunk_of_a_split_re_pins_when_the_body_lags(daemon):
+    _place(daemon, body_deg=160)
+    real = daemon.goto_target
+
+    def _lagging(**kw):
+        real(**kw)
+        if kw.get("body_yaw") is not None:
+            daemon.body -= D(2)  # the body arrives 2° short of each chunk's target
+            daemon.head = head_pose(yaw=daemon.body)
+
+    daemon.goto_target = _lagging  # type: ignore[method-assign]
+    ctl = controller(daemon)
+    ctl._pose_distance = lambda a, b: 0.0  # the 2° lag is inside the arrival check; isolate the re-pin
+    assert ctl.goto_target(_target(body_yaw=D(-160), duration=1.0))
+    assert len(_repins(daemon)) == len(daemon.gotos()) > 1
+
+
+def test_the_tracked_target_follows_each_command(daemon):
+    ctl = controller(daemon)
+    assert ctl._daemon_body_target is None
     assert ctl.goto_target(_target(body_yaw=D(20), duration=1.0))
     assert ctl._daemon_body_target == pytest.approx(D(20)), "a body move leaves its commanded body"
-    daemon.body = D(21)  # the body sits 1° off; a head-only goto sets the target to the body where it starts
+    daemon.body = D(23)
     daemon.head = head_pose(yaw=daemon.body)
+    ctl._last_commanded.clear()
     assert ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
-    assert ctl._daemon_body_target == pytest.approx(D(21))
+    assert ctl._daemon_body_target == pytest.approx(D(23)), "a re-pin, then a head-only goto, leave the present body"
 
 
-def test_a_chunk_re_check_refuses_on_the_old_target_too(daemon):
+def test_a_goto_that_timed_out_still_leaves_its_body_target(daemon):
+    """The daemon took the goto; only its reply timed out, so the target is the commanded body."""
+    daemon.timeout_on_goto = 0
     ctl = controller(daemon)
-    read = ctl._fresh_readback()
-    ctl._daemon_body_target = D(-67)  # the head (world 0) is 67° from it
-    with pytest.raises(MotionRefused) as e:
-        ctl._recheck_before_chunk(read, read)
-    assert e.value.kind == "reference"
+    assert not ctl.goto_target(_target(body_yaw=D(20), duration=1.0))
+    assert ctl._daemon_body_target == pytest.approx(D(20))
+
+
+@_REPIN
+def test_a_failed_re_pin_moves_nothing(daemon, monkeypatch):
+    ctl = controller(daemon)
+
+    def _dead(**kw):
+        raise ConnectionError("Lost connection with the server.")
+
+    monkeypatch.setattr(daemon, "set_target", _dead)
+    out = ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
+    assert not out and _kind(out) == "error"
+    assert daemon.gotos() == []
+    assert ctl._daemon_body_target is None, "a re-pin that did not go out leaves the target unknown"
+
+
+def test_a_refused_move_sends_no_re_pin(daemon):
+    daemon.rest_mode = "status500"
+    ctl = controller(daemon)
+    assert not ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
+    assert _repins(daemon) == []
 
 
 def test_a_disconnect_forgets_the_body_target(daemon):
@@ -258,72 +339,6 @@ def test_a_disconnect_forgets_the_body_target(daemon):
     ctl._video_stream = ctl._audio_stream = None
     ctl.disconnect()
     assert ctl._daemon_body_target is None
-
-
-def test_a_goto_that_timed_out_still_leaves_its_body_target(daemon):
-    """The daemon took the goto; only its reply timed out, so the target is the commanded body."""
-    daemon.timeout_on_goto = 0
-    ctl = controller(daemon)
-    out = ctl.goto_target(_target(body_yaw=D(20), duration=1.0))
-    assert not out
-    assert ctl._daemon_body_target == pytest.approx(D(20))
-
-
-def test_a_head_already_past_the_clamp_from_its_own_body_may_still_move(daemon):
-    """Tick 1 against a target equal to the present body reproduces the pose the robot is in: no added risk."""
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(head_yaw=0.0, duration=1.0))  # the target is the present body, 0°
-    _place(daemon, body_deg=0, rel_deg=66.5)  # inside R2's +5°, past 66° from the target
-    ctl._last_commanded.clear()
-    assert ctl.goto_target(_target(head_yaw=0.0, head_pitch=0.0, head_roll=0.0, duration=2.0)), "centring is allowed"
-
-
-def test_a_wake_after_torque_off_forgets_the_tracked_target(daemon):
-    """SDK 1.8.3's enable_motors pins the daemon's body target to the present body on torque off → on."""
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))  # tracked target 0°
-    daemon.control_mode = "disabled"
-    _place(daemon, body_deg=80)  # the base turned by hand with torque off; the head rode along
-    assert ctl.wake_up()
-
-
-def test_a_wake_with_torque_on_keeps_the_tracked_target(daemon, monkeypatch):
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
-    seen: list = []
-    real = ctl._run_lifecycle
-    monkeypatch.setattr(
-        ctl, "_run_lifecycle", lambda *a, **kw: (seen.append(ctl._daemon_body_target), real(*a, **kw))[1]
-    )
-    assert ctl.wake_up()
-    assert seen == [pytest.approx(D(10))], "torque was on: enable_motors left the target alone"
-
-
-def test_a_body_another_client_turned_refuses_once_then_moves(daemon):
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))  # tracked target 0°, stash body 0°
-    _place(daemon, body_deg=20, rel_deg=60)  # another client turned the body; the head is 80° from the old target
-    first = ctl.goto_target(_target(head_yaw=D(60), head_pitch=0.0, head_roll=0.0, duration=1.0))
-    assert not first and _kind(first) == "reference"
-    assert ctl._daemon_body_target is None, "the model is known wrong: forgotten, not sticky"
-    assert ctl.goto_target(_target(head_yaw=D(60), head_pitch=0.0, head_roll=0.0, duration=1.0))
-
-
-def test_a_sleep_after_another_client_turned_the_body_is_not_stuck(daemon):
-    """The lifecycle skips R1's stash check, so the old-target check forgets a target 5°+ from the body itself."""
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))
-    _place(daemon, body_deg=90)  # another client turned the body (and the riding head) to 90°
-    first = ctl.goto_sleep()
-    assert not first and _kind(first) == "reference"
-    assert ctl.goto_sleep()
-
-
-def test_an_unknown_body_target_does_not_refuse(daemon):
-    """The first move after connect: no goto of Maxim's has set the target yet (the stated residual, §13)."""
-    _place(daemon, body_deg=0, rel_deg=65)
-    ctl = controller(daemon)
-    assert ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
