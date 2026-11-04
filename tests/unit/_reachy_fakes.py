@@ -107,6 +107,7 @@ class FakeDaemon:
         self.drop_next = 0  # F3: drop this many upcoming goto_target moves, reporting them complete
         self.timeout_on_goto: int | None = None  # raise TimeoutError on this goto_target index (0-based)
         self.enable_raises = False
+        self.auto_yaw_raises = False  # set_automatic_body_yaw raises (a dropped transport, an SDK without it)
         self.torque_delay_s = 0.0  # enable_motors takes effect this long after the call (fire-and-forget)
         self._torque_at: float | None = None
         # ok (the 1.8.3 shape) | status500 | timeout | missing_body | nan_body | nested | head_m | unknown
@@ -195,6 +196,8 @@ class FakeDaemon:
 
     def set_automatic_body_yaw(self, enabled):
         self._record("set_automatic_body_yaw", enabled=bool(enabled))
+        if self.auto_yaw_raises:
+            raise ConnectionError("Lost connection with the server.")
 
     # ── WS cache reads (observation; R2: no longer a dispatch reference) ─
     def get_current_head_pose(self):
