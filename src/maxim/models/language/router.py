@@ -7,6 +7,7 @@ from dataclasses import replace
 from collections.abc import Callable
 from typing import Any
 
+from maxim import _offline
 from maxim.utils.logging import info, log_swallowed_exception, warn
 from maxim.utils.optional_deps import OptionalDependencyError
 
@@ -146,6 +147,12 @@ def _neutralize_stray_frame_markers(text: str) -> str:
     return text
 
 
+# The in-process provider types: the only lanes that run under the offline latch (``_refuse_offline_lanes``).
+_LLAMA_TYPES = ("llama", "llama_cpp", "llamacpp")
+_TORCH_TYPES = ("pytorch", "torch", "transformers", "huggingface", "hf")
+_IN_PROCESS_TYPES = frozenset(_LLAMA_TYPES + _TORCH_TYPES)
+
+
 class LLMRouter:
     """
     Small, swappable transcript → action router.
@@ -179,6 +186,7 @@ class LLMRouter:
         self._auto_drain_callback = auto_drain_callback
         self._pending_auto_drains: list[tuple[str, str]] = []
         self._providers = self._normalize_providers(self.cfg)
+        self._refuse_offline_lanes("router[build]")
         self._provider_states: dict[str, ProviderState] = {key: ProviderState() for key in self._providers.keys()}
         self._routing_policy = self._load_routing_policy(self.cfg.routing)
         self._cost_tracker = CostTracker(
@@ -363,6 +371,19 @@ class LLMRouter:
         provider_type = self._provider_type(provider_cfg)
         return provider_type in ("anthropic", "claude", "openai", "openai_compatible", "openai_compat")
 
+    def _provider_in_process(self, provider_cfg: dict[str, Any]) -> bool:
+        return self._provider_type(provider_cfg) in _IN_PROCESS_TYPES
+
+    def _refuse_offline_lanes(self, site: str) -> None:
+        """Under the offline latch only in-process lanes run (#1315 item 10, §6 layer 3; V8): a router with any lane
+        that has an endpoint, loopback or peer included, or a cloud SDK refuses. Checked at build and at every dispatch,
+        because a router built before ``engage()`` keeps its live backends."""
+        if not _offline.is_offline():
+            return
+        not_local = sorted(k for k, cfg in self._providers.items() if not self._provider_in_process(cfg))
+        if not_local:
+            _offline.refuse(site, "lanes that are not in-process: " + ", ".join(not_local))
+
     def _provider_n_ctx(self, provider_cfg: dict[str, Any]) -> int:
         try:
             return int(provider_cfg.get("n_ctx", self.cfg.n_ctx))
@@ -402,12 +423,14 @@ class LLMRouter:
 
         provider_cfg = self._providers.get(provider_key, {})
         provider_type = self._provider_type(provider_cfg)
+        if _offline.is_offline() and not self._provider_in_process(provider_cfg):
+            _offline.refuse("router[backend]", f"{provider_key} ({provider_type}) is not in-process")
 
         # Local backends
-        if provider_type in ("llama", "llama_cpp", "llamacpp"):
+        if provider_type in _LLAMA_TYPES:
             cfg = self._build_provider_config(provider_cfg)
             backend = _LlamaCppBackend(cfg)
-        elif provider_type in ("pytorch", "torch", "transformers", "huggingface", "hf"):
+        elif provider_type in _TORCH_TYPES:
             from maxim.models.language.transformers_backend import _PyTorchTransformersBackend
 
             cfg = self._build_provider_config(provider_cfg)
@@ -967,6 +990,7 @@ class LLMRouter:
         if yield_requested():
             logger.info("LLM call refused: a process stop is requested")
             return "", None
+        self._refuse_offline_lanes("router[dispatch]")
         if abandons_on_stop():
             return self._complete_text_dispatch(system, user, **kwargs)
         return self._complete_text_abandonable(system, user, kwargs)
@@ -1866,8 +1890,10 @@ class LLMRouter:
         Call this after other initialization is complete. The model loading
         happens in a background thread so it doesn't block startup.
 
-        Returns True if warmup was initiated, False if LLM is disabled.
+        Returns True if warmup was initiated, False if LLM is disabled. Under the offline latch a router with a lane
+        that is not in-process refuses here, in the caller's thread, not in the warmup thread (#1315 item 10a).
         """
+        self._refuse_offline_lanes("router[warmup]")
         if not self.enabled():
             return False
 
@@ -2040,7 +2066,8 @@ Return JSON exactly like:
 
         Raises:
             ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
-                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
+                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` and ``OfflineRefusal``
+                propagate as themselves.
             LLMCallStopped: (a ``ModelInferenceError``) no text while a process stop is requested: the call was
                 refused or abandoned at the stop (#1438 PR 1c). A real failure that coincides with a stop reads as
                 one too; the process is stopping either way.
@@ -2058,7 +2085,7 @@ Return JSON exactly like:
                 max_tokens=int(max_tokens),
                 request_context=request_context,
             )
-        except LeaderRefusal:
+        except (LeaderRefusal, _offline.OfflineRefusal):
             raise
         except Exception as e:
             raise ModelInferenceError(f"LLM inference failed: {e}", model_name=self.model_name) from e

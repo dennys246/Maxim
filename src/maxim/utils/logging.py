@@ -239,11 +239,13 @@ def warn_unless_refusal(message: str, exc: BaseException, *, logger: Optional[lo
     For a broad ``except Exception`` around starting the LLM (``build_primary_router``,
     the agentic runtime): degrading to "run without the LLM" is right for an outage and
     wrong for a :class:`maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
-    llama-cpp-server), where carrying on leaves the proxy forwarding to what was refused.
+    llama-cpp-server), where carrying on leaves the proxy forwarding to what was refused, or for an
+    ``OfflineRefusal`` (a lane the offline latch refused), where carrying on runs without the LLM the operator
+    configured: both are :data:`maxim.exceptions.SECURITY_REFUSALS`.
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
-    if isinstance(exc, LeaderRefusal):
+    if isinstance(exc, SECURITY_REFUSALS):
         raise exc
     warn(message, exc, logger=logger)
 

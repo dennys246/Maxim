@@ -351,6 +351,9 @@ are **removed** in the same change. The factories take `AgentPermissions` as the
 
 ### 1A.6 Config version: the gate takes 1.5
 
+> **As built (10a, 2026-11-03):** 1.4 went to `console.stop_budget_s` (#1438, bounded stop PR 1b), so `llm.offline`
+> takes 1.5 and #1431 takes the next free number.
+
 #1431 (`console.talk_tools`, Session S) ships in 1.3.4 and takes `CONFIG_FORMAT_VERSION` "1.4". The gate ships later,
 so **`llm.offline` takes "1.5"**, with its own fixture entries and downgrade transition. If #1431 slips past the gate,
 the gate takes 1.4 instead, and whichever lands second rebases. Two claims on one version are never both shipped.
@@ -1232,6 +1235,38 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 
 ## 6. Item 10: offline, enforced at the socket and refused at the call site
 
+> **Status: 10a BUILT 2026-11-03** (branch `feat/1315-item10a-offline-router`): `llm.offline` (config 1.5), the
+> engage first in `cli.py::main`, `build_primary_router` (`_router_build_preflight`) and every `api` verb that builds
+> a run, the router predicate (§6 layer 3) at build, backend construction, every dispatch and warmup, and auto-spawn
+> ruled out. 10b is the census call sites (layer 2). Owner decisions, 2026-11-03, all as recommended:
+> - **V20:** a `config.json` that exists but cannot be read or parsed refuses startup (`ConfigurationError`): whether
+>   it means offline is unknowable.
+> - **V21:** under offline, `maxim doctor` and `maxim.diagnose()` show each check the latch refuses as its own
+>   "refused (offline)" row and run the rest.
+> - **V22:** 10a's PR opens for CI and review now but merges only together with 10b, so `main` never carries a
+>   half-done offline mode.
+> - **V23:** a lane that would have auto-spawned a server loads in-process offline (not "refused by name").
+>
+> As built, where it differs from the text below: the lane builders in `lane_backends` re-raise `OfflineRefusal`
+> (they log-and-return-None for every other failure), and `_validate_remote_urls` probes nothing offline, so a peer or
+> cloud lane is refused by name, never dropped to a fallback router. `maxim.exceptions.SECURITY_REFUSALS`
+> (`LeaderRefusal`, `OfflineRefusal`) is re-raised by `utils/logging.py::warn_unless_refusal` (the robot runtime's LLM
+> and agentic starts), the research LLM build, and the CLI's server-mode and top-level handlers. **Open:** the
+> orchestrator's AUT router fallback re-raises it once #1538 (Session A's `_build_aut_router` extraction) lands; until
+> then an offline sim whose AUT model is not in-process falls back to the shared router (egress stays refused). The
+> strict red gate `tests/unit/test_offline_startup_10a.py::test_the_aut_router_build_does_not_fall_back_on_an_offline_refusal`
+> holds it open.
+>
+> Review: three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
+> with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`
+> and `agent_pool._generate_llm_response` re-raise `SECURITY_REFUSALS`; the doctor wrapper keeps a self-caught check's
+> own name, message and rows (marking only what the latch refused) and filters the ledger by thread; benchmark scores a
+> refused scenario as refused, not failed; `cli.py::_early_leader_boot`'s warning in 10b's swallow census; a test for
+> `_run_server_mode`'s "Refusing to serve"; `python -m maxim.models.download` and `selfy` in 10b's call-site list.
+> `llm.offline` has no env alias, so `config_loader.SETTABLE_FIELDS` (`_FIELD_TO_ENV` plus config-only fields) is what
+> `maxim config` accepts. A bare `LLMRouter(...)` does not read the key (only `MAXIM_OFFLINE` reaches it); the
+> library entry points (`maxim.create`, `maxim.api`) build through `build_primary_router`, which does.
+
 **The defect.**
 - Maxim's HTTP has no single chokepoint in `utils/http.py`.
 - Libraries fetch on their own:
@@ -1289,8 +1324,8 @@ v1 rested on URL checks plus a census. **A list of sites cannot be the enforceme
      included. So offline needs an in-process LLM:
      - the CLI refuses `llm.offline` at startup unless every lane resolves to an in-process backend;
      - `lane_backends.py::_maybe_auto_spawn_server` returns early on `is_offline()`, before its `:8100` probe, its
-       `lsof` fallback or a spawn. The startup predicate checks the **built** lanes, so a lane the build would have
-       auto-spawned is refused by name;
+       `lsof` fallback or a spawn. The startup predicate checks the **built** lanes. A lane the build would have
+       auto-spawned a server for loads its GGUF in-process instead, which V8 allows (owner decision V23, 2026-11-03);
      - an `ssh -L` forward, a reused server and a re-bound port therefore have nothing to impersonate.
    - **The boundary, stated in the docs.** The latch sees the Python `socket`, `subprocess` and `os` modules
      **only**. It is blind to:

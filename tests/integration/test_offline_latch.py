@@ -911,9 +911,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§6 layer 3", "the router predicate refuses at build")
-)
 def test_router_refuses_cloud_and_remote_lanes_at_build(tmp_path: Path) -> None:
     """Latched, building a router with a cloud lane or a remote (endpoint) lane raises ``OfflineRefusal`` at build
     (V8: only in-process ``llama_cpp``/``transformers`` lanes run offline). Fails today: no ``maxim._offline``."""
@@ -954,9 +951,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason=_reason("§6 layer 3", "the router predicate is checked at dispatch")
-)
 def test_router_refuses_a_pre_engage_lane_at_dispatch(tmp_path: Path) -> None:
     """A lane built BEFORE ``engage()`` refuses at dispatch: ``generate_json`` raises (or records) ``OfflineRefusal``
     and the live backend is never dispatched to. Fails today: no ``maxim._offline``."""
@@ -1219,7 +1213,6 @@ def _vkey(v: str) -> tuple[int, int]:
     return major, minor
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.6", "LLMConfigSection gains offline"))
 def test_llm_offline_is_a_config_key() -> None:
     """``llm.offline`` is a field of the SHAPE-FROZEN ``LLMConfigSection`` (no env alias). Fails today: no field."""
     from maxim.runtime.config_loader import LLMConfigSection
@@ -1227,7 +1220,6 @@ def test_llm_offline_is_a_config_key() -> None:
     assert "offline" in {f.name for f in dataclasses.fields(LLMConfigSection)}, "llm.offline is not a config key"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_reason("§1A.6", "the format version that owns it"))
 def test_config_version_owns_llm_offline() -> None:
     """``CONFIG_FORMAT_VERSION`` was bumped to a version that OWNS ``llm.offline``: its first appearance in the
     append-only ``config_schema_by_version.json`` is a version after 1.3 and at most the current one. Fails today:

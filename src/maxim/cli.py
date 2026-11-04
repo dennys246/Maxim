@@ -937,7 +937,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
 
     A ``LeaderRefusal`` propagates: a security refusal is not "run without the LLM".
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     try:
         from maxim.runtime.lane_backends import build_primary_router
@@ -948,7 +948,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
         _srv_router.warmup()
         if not _srv_router.wait_ready(timeout=180.0):
             return "the LLM did not become ready within 180s"
-    except LeaderRefusal:
+    except SECURITY_REFUSALS:
         raise
     except Exception as _srv_err:
         logger.error("LLM server init failed: %s", _srv_err)
@@ -978,13 +978,13 @@ def _report_server_not_ready(logger: logging.Logger, reason: str) -> int | None:
 def _run_server_mode(logger: logging.Logger) -> int:
     """``--mode server``: the LLM server + proxy, no agent loop, until Ctrl+C. An LLM that never becomes ready is
     reported NOT READY: the process stays up behind a LeaderProxy, and exits 1 without one (#1338)."""
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     print("Maxim — server mode")
     try:
         try:
             _not_ready = _start_server_llm(logger)
-        except LeaderRefusal as _refusal:
+        except SECURITY_REFUSALS as _refusal:
             # A server mode that kept going would leave the proxy forwarding to what it refused.
             print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
             logger.error("server mode refused: %s", _refusal)
@@ -2631,6 +2631,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     stop, whatever the body returned, raised as a ``sys.exit`` or refused with ``StopStillPending`` (it refused to start
     under this process's own stop); a non-sim mode keeps a real failure and otherwise exits 0.
     """
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first: before any subprocess or socket (#1315 item 10, §6 "Startup order")
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}\n  Fix or remove the file, then retry.", file=sys.stderr)
+        return 2
     from maxim import cli_signals
     from maxim.exceptions import StopStillPending
     from maxim.utils.cancellation import stop_noted
@@ -2668,14 +2676,14 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     try:
         return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
-    except LeaderRefusal as refusal:
-        # A security refusal is the operator's to act on: say why and exit 2, as server mode and the early leader
+    except SECURITY_REFUSALS as refusal:
+        # A security refusal (or an offline one, #1315 item 10a) is the operator's to act on: say why and exit 2, as server mode and the early leader
         # boot do (#1468 review, owner decision 2026-10-26).
         _fix = getattr(refusal, "fix_hint", None)
         print(f"\n  ✗ Refusing to run: {refusal}\n" + (f"    → {_fix}\n" if _fix else ""), file=sys.stderr)

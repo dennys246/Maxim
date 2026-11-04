@@ -313,6 +313,32 @@ def check_llm_model_active() -> CheckResult:
 # ─── environment variable config ───────────────────────────────────────────
 
 
+def _role_row(cfg: Any, env_name: str) -> CheckResult:
+    """``check_resolved_config``'s ``role`` row (moved out for rule T, #1315 item 10a).
+
+    The role's real source, not the CLI's own startup export of it (which read as source=env in `maxim doctor` and
+    as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1)."""
+    import os as _os
+
+    from maxim.runtime.role import resolved_role
+
+    role_value, role_source = resolved_role()
+    cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
+    if cfg_role is not None and cfg_role != role_value:
+        # An exported role overriding config.json warns, like every other env-shadowed row.
+        return CheckResult(
+            name="role",
+            status="warn",
+            message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
+            fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
+        )
+    return CheckResult(
+        name="role",
+        status="info" if role_source == "default" else "ok",  # as every row: a default is info
+        message=f"{role_value}  [source={role_source}]",
+    )
+
+
 def check_resolved_config() -> list["CheckResult"]:
     """C5 of config_unification.md: "Resolved Config" doctor section.
 
@@ -341,6 +367,7 @@ def check_resolved_config() -> list["CheckResult"]:
     """
     from maxim.runtime.config_loader import (
         _FIELD_TO_ENV,
+        SETTABLE_FIELDS,
         _env_is_set,
         config_path,
         load_config,
@@ -384,34 +411,11 @@ def check_resolved_config() -> list["CheckResult"]:
     # Walk every absorbed field
     import os as _os
 
-    for field_path in sorted(_FIELD_TO_ENV.keys()):
-        env_name = _FIELD_TO_ENV[field_path]
-        env_present = _env_is_set(env_name)
+    for field_path in sorted(SETTABLE_FIELDS):
+        env_name = _FIELD_TO_ENV.get(field_path, "")  # "" for a config-only field (llm.offline): no env layer
+        env_present = bool(env_name) and _env_is_set(env_name)
         if field_path == "role":
-            # The role's real source, not the CLI's own startup export of it (which read as source=env in
-            # `maxim doctor` and as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1).
-            from maxim.runtime.role import resolved_role
-
-            role_value, role_source = resolved_role()
-            cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
-            if cfg_role is not None and cfg_role != role_value:
-                # An exported role overriding config.json warns, like every other env-shadowed row.
-                results.append(
-                    CheckResult(
-                        name="role",
-                        status="warn",
-                        message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
-                        fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
-                    )
-                )
-            else:
-                results.append(
-                    CheckResult(
-                        name="role",
-                        status="info" if role_source == "default" else "ok",  # as every row: a default is info
-                        message=f"{role_value}  [source={role_source}]",
-                    )
-                )
+            results.append(_role_row(cfg, env_name))
             continue
 
         try:
@@ -3869,3 +3873,50 @@ __all__ = [
     "check_mesh_nodes",
     "run_all_checks",
 ]
+
+
+# ─── offline (#1315 item 10a, owner decision V21) ──────────────────────────
+# Under the offline latch a check that reaches for a socket or a subprocess raises ``OfflineRefusal``. Every check
+# here is wrapped once, so that refusal becomes that check's own "refused (offline)" row and the rest of doctor
+# runs: the operator sees what offline blocks, instead of a traceback at the first network check.
+
+
+def _refused_offline_row(fn: Any) -> Any:
+    import functools
+
+    from maxim import _offline
+
+    returns_list = str(getattr(fn, "__annotations__", {}).get("return", "")).startswith("list")
+    name = fn.__name__.removeprefix("check_").replace("_", " ")
+
+    def refused(detail: object) -> Any:
+        row = CheckResult(name=name, status="info", message=f"refused (offline): {detail}")
+        return [row] if returns_list else row
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        booked = len(_offline.ledger())
+        try:
+            result = fn(*args, **kwargs)
+        except _offline.OfflineRefusal as e:
+            return refused(e)
+        # A check that caught the refusal itself would report it as its own verdict ("nothing responding",
+        # "probe failed"), which offline is not: the ledger says the latch answered, so its row says so.
+        new = _offline.ledger()[booked:]
+        if new:
+            return refused(f"{new[-1].event}: {new[-1].detail}")
+        return result
+
+    return wrapper
+
+
+def _wrap_checks_for_offline() -> None:
+    import inspect
+
+    module = globals()
+    for attr, value in list(module.items()):
+        if attr.startswith("check_") and inspect.isfunction(value) and value.__module__ == __name__:
+            module[attr] = _refused_offline_row(value)
+
+
+_wrap_checks_for_offline()

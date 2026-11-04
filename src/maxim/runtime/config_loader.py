@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # Schema constants (FROZEN at 1.0)
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FORMAT_VERSION: str = "1.4"
+CONFIG_FORMAT_VERSION: str = "1.5"
 """The config.json format version. Bumped per CC1 on shape changes AND on changes
 to what a key means: minor for additive fields or meanings (an older build reading
 a future minor tolerates the keys it does not know, with a warning), major (2.0)
@@ -74,7 +74,8 @@ A file stamped below 1.2 is a full dump whose intent is unknowable, so it is
 read by "value != default" until it is rewritten (see
 :func:`explicit_paths_of`); 1.3 (2026-10-14) adds ``proxy.allow_remote_update``
 (remote update stopped being on by default for leaders); 1.4 (2026-10-30) adds ``console.stop_budget_s`` (the
-console's bounded stop, #1438). Every field path is pinned per version in
+console's bounded stop, #1438); 1.5 (2026-11-03) adds ``llm.offline`` (the atonia gate's offline latch, #1315
+item 10). Every field path is pinned per version in
 ``tests/fixtures/config_schema_by_version.json``, and how each version
 resolves in ``tests/fixtures/config_resolution_by_version.json``; a change
 of either without a bump fails ``tests/unit/test_config_format_version_856.py``."""
@@ -137,6 +138,10 @@ class LLMConfigSection:
     # change).
     max_response_tokens: int | None = None
     deliberation_max_cycles: int | None = None
+    # Offline (#1315 item 10, config 1.5): the CLI and every api build engage ``maxim._offline`` first, and the router
+    # then runs in-process lanes only. No env alias (``MAXIM_OFFLINE`` is the latch's own, read by ``maxim``), and it
+    # is a security field: ``maxim config downgrade`` warns when it drops it, because the older build runs online.
+    offline: bool = False
 
 
 _LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
@@ -587,6 +592,13 @@ _FIELD_TO_ENV: dict[str, str] = {
     "tools.deny": "MAXIM_TOOLS_DENY",
 }
 
+_CONFIG_ONLY_FIELDS: frozenset[str] = frozenset({"llm.offline"})
+"""Scalar fields settable only in config.json, with no env alias: ``llm.offline`` (#1315 item 10a), whose env
+counterpart is the latch's own ``MAXIM_OFFLINE``."""
+
+SETTABLE_FIELDS: frozenset[str] = frozenset(_FIELD_TO_ENV) | _CONFIG_ONLY_FIELDS
+"""Every scalar field path ``maxim config get/set/unset/list`` and :func:`resolve_setting` accept."""
+
 
 _ABSORBED_ENV_VARS: frozenset[str] = frozenset(_FIELD_TO_ENV.values())
 """Module-level frozenset of every env var the schema absorbs. Used by
@@ -623,6 +635,25 @@ def config_path() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path.home() / ".config"
     return base / "maxim" / "config.json"
+
+
+def engage_offline_if_configured() -> bool:
+    """Engage ``maxim._offline`` when config.json sets ``llm.offline: true`` (#1315 item 10, §6 "Startup order").
+
+    ``cli.py::main``, ``build_primary_router`` and every ``api`` build call this first, before any subprocess or
+    socket, so it reads only the file (:func:`_read_config_json`, the read :func:`load_config` makes): no spawn, no
+    socket, no validation. A file that would fail validation still engages on the raw key (fail-closed). A missing
+    or empty file engages nothing. A file that cannot be read or parsed raises :class:`ConfigurationError`, because
+    whether it means offline is unknowable (owner decision V20, 2026-11-03). Returns whether the latch is up."""
+    from maxim import _offline
+
+    data = _read_config_json(config_path())
+    if data is not None and not isinstance(data, dict):  # load_config's own refusal, made here before anything runs
+        raise ConfigurationError(f"config.json: root must be a JSON object, got {type(data).__name__}")
+    llm = data.get("llm") if data is not None else None
+    if isinstance(llm, dict) and llm.get("offline") is True:
+        _offline.engage("llm.offline")
+    return _offline.is_offline()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -809,6 +840,7 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
     if field_path in {
         "llm.enabled",
         "llm.auto_download",
+        "llm.offline",
         "cloud.enabled",
         "auto_spawn.llm_server",
         "auto_spawn.tunnel",
@@ -1087,10 +1119,8 @@ def resolve_setting(
       suggesting migration, fired exactly once per env var per startup
       via the module-level :data:`_warned_envs` set (I-4 fold).
     """
-    if field_path not in _FIELD_TO_ENV:
-        raise ConfigurationError(
-            f"config: unknown field path {field_path!r}. Valid paths: {sorted(_FIELD_TO_ENV.keys())}"
-        )
+    if field_path not in SETTABLE_FIELDS:
+        raise ConfigurationError(f"config: unknown field path {field_path!r}. Valid paths: {sorted(SETTABLE_FIELDS)}")
 
     if cli_value is not None:
         return cli_value, "cli"
@@ -1118,10 +1148,10 @@ def resolve_setting(
             # ``check_resolved_config`` path surfaces config.json load failures
             # via its own ``fail`` row.
             config = None
-    env_name = _FIELD_TO_ENV[field_path]
+    env_name = _FIELD_TO_ENV.get(field_path)  # None: a config-only field has no env layer
     config_value = _read_from_config(config, field_path)
 
-    if _env_is_set(env_name) and not _env_is_blank_list(env_name, field_path):
+    if env_name is not None and _env_is_set(env_name) and not _env_is_blank_list(env_name, field_path):
         env_raw = os.environ[env_name]
         env_value = _coerce_for_field(env_raw, field_path)
 
@@ -2014,6 +2044,32 @@ def _peer_api_key_ref_for_migration(api_key: str) -> str | None:
         return None
 
 
+def _read_config_json(path: Path) -> Any | None:
+    """config.json's parsed JSON, or None when the file is absent or empty: the one read :func:`load_config` and
+    :func:`engage_offline_if_configured` share. Raises :class:`ConfigurationError` on an unreadable file or invalid
+    JSON."""
+    from maxim.utils.paths import config_file_present
+
+    if not config_file_present(path):
+        return None
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:  # not UTF-8 is unreadable too: typed, not a raw traceback
+        raise ConfigurationError(f"config.json: failed to read {path}: {e}") from e
+
+    stripped = raw.strip()
+    if not stripped:
+        return None
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as e:
+        raise ConfigurationError(
+            f"config.json: invalid JSON at {path} (line {e.lineno}, col {e.colno}): {e.msg}"
+        ) from e
+
+
 def load_config(path: Path | None = None) -> MaximConfig:
     """Read ``config.json`` from disk, validate, return :class:`MaximConfig`.
 
@@ -2037,26 +2093,9 @@ def load_config(path: Path | None = None) -> MaximConfig:
     # subsequent calls.
     _maybe_migrate_from_peer_yml(effective_path)
 
-    from maxim.utils.paths import config_file_present
-
-    if not config_file_present(effective_path):
+    data = _read_config_json(effective_path)
+    if data is None:
         return _with_explicit(MaximConfig(), frozenset())
-
-    try:
-        raw = effective_path.read_text(encoding="utf-8")
-    except OSError as e:
-        raise ConfigurationError(f"config.json: failed to read {effective_path}: {e}") from e
-
-    stripped = raw.strip()
-    if not stripped:
-        return _with_explicit(MaximConfig(), frozenset())
-
-    try:
-        data = json.loads(stripped)
-    except json.JSONDecodeError as e:
-        raise ConfigurationError(
-            f"config.json: invalid JSON at {effective_path} (line {e.lineno}, col {e.colno}): {e.msg}"
-        ) from e
 
     config = _parse_config_dict(data)
     return _with_explicit(config, explicit_paths_of(data, config))

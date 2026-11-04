@@ -499,7 +499,19 @@ def test_security_refusals_are_not_degraded_to_running_without_the_llm(monkeypat
         ro._build_research_llm()
     cli_src = (REPO / "src/maxim/cli.py").read_text()
     server_mode = cli_src[cli_src.index("def _start_server_llm(") :]  # server mode's LLM start (#1338 moved it)
-    assert server_mode.index("except LeaderRefusal") < server_mode.index("except Exception as _srv_err")
+    assert server_mode.index("except SECURITY_REFUSALS") < server_mode.index("except Exception as _srv_err")
+
+
+def test_an_offline_refusal_is_a_security_refusal_too() -> None:
+    """#1315 item 10a: the offline latch's refusal is not an outage either, so every "re-raise before degrading"
+    handler re-raises it (``maxim.exceptions.SECURITY_REFUSALS``)."""
+    from maxim import _offline
+    from maxim.exceptions import SECURITY_REFUSALS, LeaderRefusal
+    from maxim.utils.logging import warn_unless_refusal
+
+    assert set(SECURITY_REFUSALS) == {LeaderRefusal, _offline.OfflineRefusal}
+    with pytest.raises(_offline.OfflineRefusal):
+        warn_unless_refusal("x %s", _offline.OfflineRefusal("lane refused"))
 
 
 def test_oasis_serve_reads_an_existing_key_strictly(tmp_path, capsys, monkeypatch) -> None:
