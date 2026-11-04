@@ -139,7 +139,7 @@ class TestBenchmarkIntegration:
         from maxim.api import benchmark, BenchmarkResult
 
         mock_report = MagicMock()
-        mock_report.results = {"test-model": MagicMock(score=0.85, metrics={"recall": 0.8})}
+        mock_report.results = {"test-model": MagicMock(score=0.85, metrics={"recall": 0.8}, refused=None)}
         mock_report.summary_table.return_value = "Summary"
         mock_runner = MagicMock()
         mock_runner.run.return_value = mock_report
