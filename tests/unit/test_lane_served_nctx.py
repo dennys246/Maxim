@@ -62,6 +62,7 @@ def _build_remote(cfg: LaneConfig):
     mgr = lb.LaneBackendManager.__new__(lb.LaneBackendManager)
     mgr._peer_owned = False
     mgr._logger = None
+    mgr._profile_override = None  # the session's profile (#1538)
     with mock.patch.object(lb, "LLMRouter", _FakeRouter, create=True):
         with mock.patch("maxim.models.language.router.LLMRouter", _FakeRouter):
             mgr._build_remote_backend(cfg)

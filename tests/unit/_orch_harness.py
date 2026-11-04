@@ -81,8 +81,9 @@ ROUTER BUILDS. Every ``build_primary_router`` call returns a ``_RouterView``: th
 ``call_accounting.register_router()`` exactly as a real ``LLMRouter`` registers its own. Build 1 is the
 language router; build 2, made only when ``aut_model`` is passed, is the AUT's. The report's provenance
 names each role's router by that serial, so a run that hands the AUT's worker to the narrator's slot
-shows. Each view also carries ``cfg.profile``: the ``MAXIM_LLM_PROFILE`` in force at its build, which the
-run sets to ``aut_model`` around the AUT's build, so the provenance's ``aut_profile`` pins that override.
+shows. Each view also carries ``cfg.profile``: the profile its build serves, the ``profile=`` it was handed (the
+AUT's build is handed ``aut_model``, #1538) or else the ``MAXIM_LLM_PROFILE`` in force, so the provenance's
+``aut_profile`` pins the AUT's.
 CALL ACCOUNTING IS NOT PINNED: ``FakeRouter`` never books a call, so ``provenance.llm_calls`` holds only
 the builds' zero counts. The serial NUMBER depends on how many routers the process built before (the full suite builds
 real ones), so the trace records each as its build label, ``<build-1>``/``<build-2>``
@@ -262,6 +263,9 @@ ARMS: dict[str, dict[str, Any]] = {
         "shipped_inputs": ("components/bodies/base_humanoid.yaml", "reflexes/humanoid.yaml"),  # its body + reflexes
     },
 }
+# The aut_router arms' operator profile, and the AUT model whose build the fake build refuses (``_build_router``).
+OPERATOR_PROFILE_ENV = {"MAXIM_LLM_PROFILE": "orch-operator"}
+AUT_BUILD_FAILS = "orch-unknown-aut"
 # PROBE ARMS: driven by ``run_arm`` exactly like ``ARMS``, but not golden-pinned (the golden parametrizes over
 # ``ARMS`` only). They are behaviour tests' fixtures: each answers one question about the composed run.
 PROBE_ARMS: dict[str, dict[str, Any]] = {
@@ -275,6 +279,16 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
     # Two lines land behind the first finish: the re-plan shows the narrator both (the first is its request, the
     # second rides as a held input, ``loop_controller.take_replan_inputs``).
     "held_finish_two_lines": {"max_turns": 10, "events": True},
+    # #1538: the AUT's own router build (``aut_model``), recorded per build (``router_builds``): the ``profile=`` it was
+    # handed and the ``MAXIM_LLM_PROFILE`` it saw. The operator's profile is in the env, as ``maxim config`` puts it.
+    "aut_router": {"max_turns": 10, "aut_model": "orch-golden-aut", "record_builds": True, "env": OPERATOR_PROFILE_ENV},
+    # ... and the AUT's build raises (an unknown profile, say): the run falls back to the shared router.
+    "aut_build_fails": {
+        "max_turns": 10,
+        "aut_model": AUT_BUILD_FAILS,
+        "record_builds": True,
+        "env": OPERATOR_PROFILE_ENV,
+    },
 }
 # The operator lines the held_finish arms feed, in order (``_hold_for_held_finish``).
 HELD_GUIDANCE = ("please also ask which tools it has", "and ask what it remembers")
@@ -586,8 +600,8 @@ class _RouterView:
     def __init__(self, router: FakeRouter, serial: int, profile: str | None) -> None:
         self._router = router
         self.call_serial = serial
-        # What a real build reads: the profile in force when it is built (``MAXIM_LLM_PROFILE``, which the run
-        # sets to ``aut_model`` around the AUT's build). ``report.run_provenance`` reads ``router.cfg.profile``.
+        # What a real build serves: its ``profile=`` (the AUT's build is handed ``aut_model``, #1538), else the
+        # ``MAXIM_LLM_PROFILE`` in force. ``report.run_provenance`` reads ``router.cfg.profile``.
         self.cfg = SimpleNamespace(profile=profile)
 
     def __getattr__(self, name: str) -> Any:
@@ -910,6 +924,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     report_writes: list[str] = []
     writer_args: list[dict[str, Any]] = []
     builds: list[int] = []  # the call_serial of each build_primary_router call, in order
+    build_profiles: list[dict[str, Any]] = []  # each build's ``profile=`` and the MAXIM_LLM_PROFILE it saw (#1538)
     nac_credits: list[tuple[Any, dict[str, Any]]] = []  # (the NAc instance, the call), in call order
     credited_keys: set[tuple[int, str, Any]] = set()  # (NAc id, map, key) already written once (``post``)
     last_post: dict[tuple[int, str, Any], Any] = {}  # (NAc id, map, key) -> value after its LAST write (not traced)
@@ -920,9 +935,14 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     def _build_router(*_a: Any, **_k: Any) -> tuple[_RouterView, None]:
         from maxim.models.language import call_accounting
 
+        env_profile = os.environ.get("MAXIM_LLM_PROFILE")
+        profile = _k.get("profile") or env_profile
+        build_profiles.append({"profile": _k.get("profile"), "env": env_profile})
+        if profile == AUT_BUILD_FAILS:
+            raise RuntimeError(f"unknown profile {profile!r}")  # the aut_build_fails arm's AUT build
         serial = call_accounting.register_router()
         builds.append(serial)
-        return _RouterView(router, serial, os.environ.get("MAXIM_LLM_PROFILE")), None
+        return _RouterView(router, serial, profile), None
 
     stdin_feed: list[dict[str, Any]] = []
     stdin = (
@@ -1337,6 +1357,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         }
         if spec.get("events"):
             trace["events"] = events
+        if spec.get("record_builds"):
+            trace["router_builds"] = build_profiles
         if arm == "new_goal":
             trace["post_sim_reads"] = post_sim_reads
         if arm == "imagination":
