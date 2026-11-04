@@ -1763,6 +1763,7 @@ def research(
         print(result.paper_draft[:200])
         print(f"Review verdict: {result.review}")
     """
+    model = _resolve_model(model)
     configure(verbosity=verbosity)
 
     from maxim.simulation.research_orchestrator import start_research_mode

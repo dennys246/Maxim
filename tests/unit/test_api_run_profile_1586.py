@@ -182,7 +182,6 @@ def test_the_run_profile_drives_the_real_sim_build(tmp_path: Path) -> None:
     assert trace["report"]["provenance"]["language_profile"] == "orch-run-model"
 
 
-@pytest.mark.xfail(strict=True, reason="#1586 red gate: research() hands its model to no router build")
 def test_research_hands_its_model_to_its_router_and_its_sim(
     operator_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
