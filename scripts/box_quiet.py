@@ -5,48 +5,64 @@
     python3 scripts/box_quiet.py wait [--critical] [--kind suite|check] -- <command...>
 
 The box rule (docs/agents/ci-testing.md §4, owner 2026-10-27): at most TWO full suites at once, and no prepr or mypy
-beside a suite (or beside each other). So a SUITE fits when fewer than two suites and no check are running, and a
-CHECK (prepr, mypy) fits only when nothing else is. ``wait`` blocks until its command fits, starts it, and exits with
-its status.
+beside any other counted suite or check. So a SUITE fits when fewer than two suites and no check are running, and a
+CHECK (prepr, mypy) fits only when nothing counted is running. ``wait`` blocks until its command fits, starts it, and
+exits with its status (128+N if a signal N killed it). The box is the only machine counted; the rig's own cap is
+not.
 
-Release priority (owner 2026-11-03): the point is to use the box EFFICIENTLY for the next release, not to reserve it.
-A waiter starts the moment its command fits; nothing runs is ever stopped and no slot is held idle. ``--critical``
-(work the next release waits on) only breaks ties: a non-critical waiter does not start when doing so would delay a
-critical waiter that is already queued. Concretely that is one case, a non-critical suite while a critical check
-waits for the suites to drain; every other fitting start cannot delay a critical waiter and goes ahead.
+Priority (owner 2026-11-03): use the box EFFICIENTLY for the next release. A waiter starts the moment its command
+fits; nothing running is ever stopped. ``--critical`` marks work the next release waits on. Two owner rulings bound
+"never idle a slot":
+- while a critical CHECK waits, no new suite starts: the box drains for it (a new suite would add a whole ~40 min
+  run to the critical check's wait, and a prepr takes minutes);
+- a check that has waited ``DRAIN_AFTER_S`` (10 min) also drains the box, so prepr is never starved by steady suite
+  traffic. A non-critical draining check holds back non-critical suites only; a critical suite still goes.
+Among the rest, whichever fits goes, in (critical first, then queue order).
 
-Why this exists: four sessions hand-wrote ``pgrep -f`` waiters whose pattern matched their own command line or other
-sessions' waiters (2026-11-02 and -03: a 4 h mutual deadlock), and three "wait for an idle box" waiters could all see
-idle in the same poll and start together.
+Why a script of its own: the state is shared by every session and worktree on the box, and today's callers launch
+``suite_at_commit.sh`` and ``prepr.sh`` directly, so neither script can see the other sessions' waiters. Backlog M85
+moves the call inside them. Four hand-written ``pgrep -f`` waiters matched their own command line or each other's
+(2026-11-02/03, one mutual deadlock of about 4 h), and several "wait for an idle box" waiters could see idle in the
+same poll and all start.
 
 Inputs and how each could lie:
 
 - ``ps`` argv: a waiter's own argv CONTAINS the command it will run (``... wait -- bash scripts/suite_at_commit.sh``).
-  Only a process's own program (argv[0], or argv[1] after an interpreter) classifies it, never a later word.
-  ``prepr.sh`` execs ``python3 .../prepr.py``, so the running prepr is matched by ``prepr.py``; a pattern on
-  ``bash scripts/prepr.sh`` never saw a running prepr at all.
+  Only a process's own program classifies it (argv[0], or the script/module after one interpreter, ``env NAME=value``
+  words and interpreter flags), never a later word. Interpreter names are case-folded: macOS framework Pythons show
+  as ``.../MacOS/Python``. ``prepr.sh`` execs ``python3 .../prepr.py``, so a running prepr is matched by
+  ``prepr.py``.
 - One run, many processes: a suite is ``suite_at_commit.sh`` plus its pytest child, and prepr runs mypy. A classified
   process with a classified (or claimed) ancestor is counted once, under the top-most.
-- A narrow ``pytest tests/unit/test_x.py`` is not a full suite and is not counted; a full suite is pytest with ``tests``
-  or ``tests/`` as a positional argument. A standalone mypy (an editor's) is not counted unless it is
+- What a full suite is: pytest whose positional arguments include a path whose last part is ``tests``, or none at all
+  (``testpaths``). Values of pytest's value-taking flags (``-k tests``) are not positional. A narrow
+  ``pytest tests/unit/x.py`` is not counted, and neither is a standalone mypy (an editor's), unless it is
   ``run_mypy_public.sh`` or runs under a counted run.
-- Two waiters deciding at once: the decision and the launch happen under one lock (an ``mkdir`` directory, stale when
-  its holder pid is dead), and the launched child is written as a CLAIM before the lock is released, so the next
-  waiter counts it even before ``ps`` shows its argv.
-- Dead waiters and finished runs: queue tickets and claims carry a pid and are dropped once that pid is gone (a claim
-  also when the pid now runs a different program).
+- Two waiters deciding at once: the decision and the launch happen under an exclusive ``flock`` (the kernel drops it
+  when its holder dies, so there is no stale-lock takeover to race), and the launched child is written as a CLAIM
+  before the lock is released, so the next waiter counts it before ``ps`` shows its argv.
+- Pid reuse: tickets and claims record their process's START TIME from ``ps``; one whose pid is gone, or now has a
+  different start time, is dropped. An exec in the child (``prepr.sh`` -> ``prepr.py``) keeps the pid and start time,
+  so the claim survives it.
+- Half-written state: files are written to a ``.tmp`` name and ``os.replace``d, and readers see only ``*.json``.
+  Tickets are written and stale files removed under the lock; ``status`` takes the lock and never removes anything.
+- Signals: SIGTERM/SIGHUP to the waiter are forwarded to its child, and the waiter waits for the child before it
+  removes the claim, so a stopped waiter neither orphans a running suite nor uncounts one still shutting down.
 - Waiters that do not use this script are still counted while running (by argv); they just do not queue.
 
 State lives in ``~/.cache/maxim-box-quiet`` (shared by every worktree and session of this user), or ``--state-dir``.
+These files are not persisted data (throwaway coordination state; CC3 and ``_format_version`` do not apply).
 Standard library only.
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
-import shutil
+import re
+import signal
 import subprocess
 import sys
 import time
@@ -54,37 +70,65 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MAX_SUITES = 2
+DRAIN_AFTER_S = 600.0
 SUITE, CHECK = "suite", "check"
 DEFAULT_STATE = Path.home() / ".cache" / "maxim-box-quiet"
-LOCK_STALE_S = 120.0
-INTERPRETERS = ("python", "bash", "sh", "zsh", "env")
+SELF = "box_quiet.py"
+_INTERPRETER = re.compile(r"^(python[0-9.]*|bash|sh|zsh|dash)$")
+_PY_FLAGS_WITH_VALUE = {"-X", "-W", "-Q"}
+_PYTEST_FLAGS_WITH_VALUE = {
+    "-k", "-m", "-p", "-c", "-o", "-W", "-n", "--rootdir", "--confcutdir", "--basetemp", "--ignore", "--ignore-glob",
+    "--deselect", "--junitxml", "--cov", "--cov-report", "--cov-config", "--maxfail", "--durations", "--timeout",
+    "--log-level", "--log-file", "--tb", "-r", "--capture", "--import-mode", "--override-ini",
+}  # fmt: skip
 
 
 @dataclass(frozen=True)
 class Proc:
-    """One ``ps`` row. SHAPE-FROZEN at 1.0 (CC3): never persisted or sent; a script-local view of ps."""
+    """One ``ps`` row; not persisted (CC3 n/a)."""
 
     pid: int
     ppid: int
+    started: str
     argv: tuple[str, ...]
 
 
 def _program(argv: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
-    """The program a process runs and its own arguments, skipping one interpreter (``python3 -m pytest``, ``bash x.sh``)."""
-    if not argv:
-        return "", ()
-    head = os.path.basename(argv[0])
-    rest = argv[1:]
-    if head.startswith(INTERPRETERS):
-        # Skip interpreter flags (-u, -I, -c is not a program we classify).
-        while rest and rest[0].startswith("-") and rest[0] != "-m":
+    """The program a process runs and its own arguments: past ``env NAME=value`` and one interpreter with its flags."""
+    rest = list(argv)
+    if rest and os.path.basename(rest[0]) == "env":
+        rest = rest[1:]
+        while rest and ("=" in rest[0] or rest[0].startswith("-")):
             rest = rest[1:]
-        if rest[:1] == ("-m",) and len(rest) >= 2:
-            return rest[1], rest[2:]
-        if rest:
-            return os.path.basename(rest[0]), rest[1:]
-        return head, ()
-    return head, rest
+    if not rest:
+        return "", ()
+    head = os.path.basename(rest[0])
+    if not _INTERPRETER.match(head.lower()):
+        return head, tuple(rest[1:])
+    rest = rest[1:]
+    while rest and rest[0].startswith("-"):
+        flag = rest.pop(0)
+        if flag == "-m" and rest:
+            return rest[0], tuple(rest[1:])
+        if flag == "-c":
+            return "", ()  # inline code: nothing we classify
+        if flag in _PY_FLAGS_WITH_VALUE and rest:
+            rest.pop(0)
+    if rest:
+        return os.path.basename(rest[0]), tuple(rest[1:])
+    return head, ()
+
+
+def _pytest_positionals(args: tuple[str, ...]) -> list[str]:
+    out, skip = [], False
+    for a in args:
+        if skip:
+            skip = False
+        elif a.startswith("-"):
+            skip = a in _PYTEST_FLAGS_WITH_VALUE
+        else:
+            out.append(a)
+    return out
 
 
 def classify(argv: tuple[str, ...]) -> str | None:
@@ -93,22 +137,39 @@ def classify(argv: tuple[str, ...]) -> str | None:
     if prog == "suite_at_commit.sh":
         return SUITE
     if prog in ("pytest", "py.test"):
-        positional = [a for a in args if not a.startswith("-")]
-        return SUITE if any(a.rstrip("/") == "tests" for a in positional) else None
+        pos = _pytest_positionals(args)
+        if not pos or any(os.path.basename(os.path.normpath(a)) == "tests" for a in pos):
+            return SUITE
+        return None
     if prog in ("prepr.py", "prepr.sh", "run_mypy_public.sh"):
         return CHECK
     return None
 
 
 def read_ps() -> list[Proc]:
-    out = subprocess.run(["ps", "-axo", "pid=,ppid=,args="], capture_output=True, text=True, check=True).stdout
+    """Every process with its start time. ``lstart`` is five words (``Mon Nov  3 16:00:00 2026``)."""
+    out = subprocess.run(
+        ["ps", "-axo", "pid=,ppid=,lstart=,args="],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "LC_ALL": "C"},
+    ).stdout
     procs = []
     for line in out.splitlines():
-        parts = line.split(None, 2)
-        if len(parts) < 3:
+        parts = line.split(None, 7)
+        if len(parts) < 8:
             continue
-        procs.append(Proc(int(parts[0]), int(parts[1]), tuple(parts[2].split())))
+        procs.append(Proc(int(parts[0]), int(parts[1]), " ".join(parts[2:7]), tuple(parts[7].split())))
     return procs
+
+
+def scoped(procs: list[Proc], only: str | None) -> list[Proc]:
+    """Tests run inside a full suite on a shared box: ``--only-matching`` counts only their own processes."""
+    if only is None:
+        return procs
+    me = os.getpid()
+    return [p for p in procs if p.pid == me or only in " ".join(p.argv)]
 
 
 def running(procs: list[Proc], claims: dict[int, str]) -> dict[str, list[int]]:
@@ -146,108 +207,106 @@ def fits(kind: str, now: dict[str, list[int]]) -> bool:
 
 @dataclass(frozen=True)
 class Ticket:
-    """A queued waiter. SHAPE-FROZEN at 1.0 (CC3): a script-local file in the state dir, read only by this script."""
+    """A queued waiter; a throwaway coordination file, not persisted data (CC3 n/a)."""
 
     critical: bool
     queued_ns: int
     pid: int
     kind: str
+    started: str = ""
+
+    @property
+    def order(self) -> tuple[int, int, int]:
+        return (0 if self.critical else 1, self.queued_ns, self.pid)
 
     @property
     def name(self) -> str:
-        return f"{0 if self.critical else 1}-{self.queued_ns:020d}-{self.pid}.json"
+        return f"{self.order[0]}-{self.queued_ns:020d}-{self.pid}.json"
 
 
-def may_start(me: Ticket, queue: list[Ticket], now: dict[str, list[int]]) -> bool:
-    """Whether ``me`` starts now: it fits, and starting cannot delay a critical waiter queued ahead of it.
+def _draining(t: Ticket, now_ns: int) -> bool:
+    return t.kind == CHECK and (t.critical or now_ns - t.queued_ns >= DRAIN_AFTER_S * 1e9)
 
-    Efficiency first (owner 2026-11-03): any fitting start goes, except a non-critical SUITE while a critical CHECK
-    waits (another suite would push the check's zero-suites point further out). A non-critical CHECK that fits means
-    the box is empty, so a waiting critical suite would also fit and is ordered first.
-    """
+
+def may_start(me: Ticket, queue: list[Ticket], now: dict[str, list[int]], now_ns: int | None = None) -> bool:
+    """Whether ``me`` starts now: it fits, no waiter ordered ahead of it fits and has precedence, and starting would
+    not keep a draining check waiting (the owner's two rulings in the module docstring)."""
     if not fits(me.kind, now):
         return False
-    ahead = [t for t in sorted(queue, key=lambda t: t.name) if t.name < me.name and t.critical]
-    for t in ahead:
-        if fits(t.kind, now):
+    now_ns = time.time_ns() if now_ns is None else now_ns
+    for t in queue:
+        if t.pid == me.pid or t is me:
+            continue
+        if t.order < me.order and (t.critical or not me.critical) and fits(t.kind, now):
             return False  # it goes first; we re-check after it has claimed its slot
-        if not me.critical and me.kind == SUITE and t.kind == CHECK:
+        if me.kind == SUITE and _draining(t, now_ns) and (t.critical or not me.critical):
             return False
     return True
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 class Lock:
-    """``mkdir`` lock with the holder's pid inside; taken over when the holder is dead or the lock is stale."""
+    """An exclusive ``flock`` on ``<state>/lock``: held for one decide-and-launch step; the kernel frees it on death."""
 
     def __init__(self, state: Path):
-        self.dir = state / "lock"
+        self.path = state / "lock"
+        self.fd = -1
 
     def __enter__(self):
-        while True:
-            try:
-                self.dir.mkdir()
-                (self.dir / "pid").write_text(str(os.getpid()))
-                return self
-            except FileExistsError:
-                try:
-                    holder = int((self.dir / "pid").read_text())
-                    age = time.time() - self.dir.stat().st_mtime
-                except (OSError, ValueError):
-                    holder, age = -1, LOCK_STALE_S + 1  # half-written lock: stale once old
-                    try:
-                        age = time.time() - self.dir.stat().st_mtime
-                    except OSError:
-                        continue
-                if (holder > 0 and not _alive(holder)) or age > LOCK_STALE_S:
-                    shutil.rmtree(self.dir, ignore_errors=True)
-                    continue
-                time.sleep(0.2)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+        return self
 
     def __exit__(self, *exc):
-        shutil.rmtree(self.dir, ignore_errors=True)
+        fcntl.flock(self.fd, fcntl.LOCK_UN)
+        os.close(self.fd)
 
 
-def _load_queue(state: Path) -> list[Ticket]:
+def _write_atomic(path: Path, payload: dict) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(payload))
+    os.replace(tmp, path)
+
+
+def _started(procs: list[Proc]) -> dict[int, str]:
+    return {p.pid: p.started for p in procs}
+
+
+def _load_queue(state: Path, procs: list[Proc], prune: bool) -> list[Ticket]:
+    """Live tickets: the pid still runs with the recorded start time. ``prune`` (under the lock) removes the rest."""
+    started = _started(procs)
     out = []
     for f in sorted((state / "queue").glob("*.json")):
         try:
             d = json.loads(f.read_text())
-            t = Ticket(bool(d["critical"]), int(d["queued_ns"]), int(d["pid"]), str(d["kind"]))
+            t = Ticket(bool(d["critical"]), int(d["queued_ns"]), int(d["pid"]), str(d["kind"]), str(d["started"]))
         except (OSError, ValueError, KeyError) as e:
-            print(f"box_quiet: dropping unreadable ticket {f.name}: {e}", file=sys.stderr)
-            f.unlink(missing_ok=True)
+            print(f"box_quiet: unreadable ticket {f.name}: {e}", file=sys.stderr)
+            if prune:
+                f.unlink(missing_ok=True)
             continue
-        if _alive(t.pid):
+        if started.get(t.pid) == t.started:
             out.append(t)
-        else:
+        elif prune:
             f.unlink(missing_ok=True)
     return out
 
 
-def _load_claims(state: Path, procs: list[Proc]) -> dict[int, str]:
-    progs = {p.pid: _program(p.argv)[0] for p in procs}
+def _load_claims(state: Path, procs: list[Proc], prune: bool) -> dict[int, str]:
+    started = _started(procs)
     out = {}
     for f in (state / "claims").glob("*.json"):
         try:
             d = json.loads(f.read_text())
-            pid, kind, prog = int(d["pid"]), str(d["kind"]), str(d["program"])
+            pid, kind, when = int(d["pid"]), str(d["kind"]), str(d["started"])
         except (OSError, ValueError, KeyError) as e:
-            print(f"box_quiet: dropping unreadable claim {f.name}: {e}", file=sys.stderr)
-            f.unlink(missing_ok=True)
+            print(f"box_quiet: unreadable claim {f.name}: {e}", file=sys.stderr)
+            if prune:
+                f.unlink(missing_ok=True)
             continue
-        if pid in progs and progs[pid] == prog:
+        if started.get(pid) == when:
             out[pid] = kind
-        else:
+        elif prune:
             f.unlink(missing_ok=True)
     return out
 
@@ -256,51 +315,83 @@ def infer_kind(cmd: list[str]) -> str | None:
     return classify(tuple(cmd))
 
 
-def cmd_status(state: Path) -> int:
-    procs = read_ps()
-    now = running(procs, _load_claims(state, procs))
-    queue = _load_queue(state)
+def cmd_status(state: Path, only: str | None = None) -> int:
+    for sub in ("queue", "claims"):
+        (state / sub).mkdir(parents=True, exist_ok=True)
+    with Lock(state):
+        procs = scoped(read_ps(), only)
+        now = running(procs, _load_claims(state, procs, prune=False))
+        queue = _load_queue(state, procs, prune=False)
     print(
         f"suites running: {len(now[SUITE])}/{MAX_SUITES} {now[SUITE]}   checks running: {len(now[CHECK])} {now[CHECK]}"
     )
-    for t in sorted(queue, key=lambda t: t.name):
-        print(f"  queued: {t.kind:5} pid {t.pid}{'  CRITICAL' if t.critical else ''}")
+    now_ns = time.time_ns()
+    for t in sorted(queue, key=lambda t: t.order):
+        waited = (now_ns - t.queued_ns) / 1e9
+        flags = ("  CRITICAL" if t.critical else "") + ("  DRAINING" if _draining(t, now_ns) else "")
+        print(f"  queued: {t.kind:5} pid {t.pid}  waited {waited:.0f}s{flags}")
     print(f"a suite fits now: {fits(SUITE, now)}   a check fits now: {fits(CHECK, now)}")
     return 0
 
 
-def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: float) -> int:
-    for sub in ("queue", "claims"):
-        (state / sub).mkdir(parents=True, exist_ok=True)
-    me = Ticket(critical, time.time_ns(), os.getpid(), kind)
-    ticket = state / "queue" / me.name
-    ticket.write_text(json.dumps({"critical": critical, "queued_ns": me.queued_ns, "pid": me.pid, "kind": kind}))
-    announced = False
+def _run_child(child: subprocess.Popen) -> int:
+    """Wait for the child, forwarding SIGTERM/SIGHUP to it; a Ctrl-C (which the child also gets) keeps waiting."""
+
+    def forward(signum, _frame):
+        child.send_signal(signum)
+
+    old = {s: signal.signal(s, forward) for s in (signal.SIGTERM, signal.SIGHUP)}
     try:
         while True:
+            try:
+                rc = child.wait()
+                break
+            except KeyboardInterrupt:
+                continue
+    finally:
+        for s, h in old.items():
+            signal.signal(s, h)
+    return 128 - rc if rc < 0 else rc
+
+
+def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: float, only: str | None = None) -> int:
+    for sub in ("queue", "claims"):
+        (state / sub).mkdir(parents=True, exist_ok=True)
+    child = None
+    with Lock(state):
+        procs = read_ps()
+        me = Ticket(critical, time.time_ns(), os.getpid(), kind, _started(procs).get(os.getpid(), ""))
+        ticket = state / "queue" / me.name
+        _write_atomic(ticket, {"critical": critical, "queued_ns": me.queued_ns, "pid": me.pid, "kind": kind,
+                               "started": me.started})  # fmt: skip
+    announced = False
+    try:
+        while child is None:
             with Lock(state):
-                procs = read_ps()
-                now = running(procs, _load_claims(state, procs))
-                if may_start(me, _load_queue(state), now):
+                procs = scoped(read_ps(), only)
+                now = running(procs, _load_claims(state, procs, prune=True))
+                if may_start(me, _load_queue(state, procs, prune=True), now):
                     child = subprocess.Popen(cmd)
+                    when = ""
+                    for _ in range(50):  # ps lists the new pid within milliseconds; bounded, never a hang
+                        when = _started(read_ps()).get(child.pid, "")
+                        if when:
+                            break
+                        time.sleep(0.02)
                     claim = state / "claims" / f"{child.pid}.json"
-                    program = _program(tuple(cmd))[0]
-                    claim.write_text(json.dumps({"pid": child.pid, "kind": kind, "program": program}))
+                    _write_atomic(claim, {"pid": child.pid, "kind": kind, "started": when})
                     ticket.unlink(missing_ok=True)
                     break
             if not announced:
-                print(
-                    f"box_quiet: waiting to start a {kind}{' (critical)' if critical else ''}: {' '.join(cmd)}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                print(f"box_quiet: waiting to start a {kind}{' (critical)' if critical else ''}: {' '.join(cmd)}",
+                      file=sys.stderr, flush=True)  # fmt: skip
                 announced = True
             time.sleep(poll_s)
     finally:
         ticket.unlink(missing_ok=True)
     print(f"box_quiet: started {kind} pid {child.pid}", file=sys.stderr, flush=True)
     try:
-        return child.wait()
+        return _run_child(child)
     finally:
         claim.unlink(missing_ok=True)
 
@@ -311,20 +402,22 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="verb", required=True)
     sub.add_parser("status", help="what is running and queued, and what fits now")
     w = sub.add_parser("wait", help="start <command> when it fits; exit with its status")
-    w.add_argument("--critical", action="store_true", help="work the next release waits on (breaks ties only)")
+    w.add_argument("--critical", action="store_true", help="work the next release waits on")
     w.add_argument("--kind", choices=(SUITE, CHECK), help="default: inferred from the command")
     w.add_argument("--poll-s", type=float, default=20.0)
     w.add_argument("cmd", nargs=argparse.REMAINDER)
+    for p in (ap,):
+        p.add_argument("--only-matching", default=None, help=argparse.SUPPRESS)  # tests: count only their processes
     args = ap.parse_args(argv)
     if args.verb == "status":
-        return cmd_status(args.state_dir)
+        return cmd_status(args.state_dir, args.only_matching)
     cmd = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd
     if not cmd:
         ap.error("wait needs a command after --")
     kind = args.kind or infer_kind(cmd)
     if kind is None:
         ap.error(f"cannot tell whether {cmd[0]!r} is a suite or a check: pass --kind")
-    return cmd_wait(args.state_dir, kind, args.critical, cmd, args.poll_s)
+    return cmd_wait(args.state_dir, kind, args.critical, cmd, args.poll_s, args.only_matching)
 
 
 if __name__ == "__main__":

@@ -1,25 +1,29 @@
-"""scripts/box_quiet.py: the shared box-slot waiter (two suites at most, no prepr/mypy beside anything).
+"""scripts/box_quiet.py: the shared box-slot waiter (two suites at most, no prepr/mypy beside any other run).
 
 Each "how could this input lie" line in the module docstring has a test here: a waiter never counts itself, one run
-is counted once, a narrow pytest is not a suite, the release-priority rule only breaks ties (it never idles a slot),
-and the lock/claim pair stops two waiters starting into one slot.
+is counted once, a narrow pytest is not a suite, the owner's priority rulings (critical tie-break, drain for a
+critical or long-waiting check), pid reuse, and the lock/claim pair that stops two waiters starting into one slot.
 """
 
 from __future__ import annotations
 
 import json
-import os
+import subprocess
 import sys
 import threading
-import time
+from pathlib import Path
 
 import pytest
 
 from scripts import box_quiet as B
 
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts" / "box_quiet.py"
+FRAMEWORK_PY = "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python"
 
-def P(pid: int, ppid: int, cmd: str) -> B.Proc:
-    return B.Proc(pid, ppid, tuple(cmd.split()))
+
+def P(pid: int, ppid: int, cmd: str, started: str = "t0") -> B.Proc:
+    return B.Proc(pid, ppid, started, tuple(cmd.split()))
 
 
 @pytest.mark.parametrize(
@@ -29,13 +33,23 @@ def P(pid: int, ppid: int, cmd: str) -> B.Proc:
         ("/bin/bash /Users/x/Maxim/scripts/suite_at_commit.sh --no-cov abc", B.SUITE),
         ("python -m pytest tests/ -q -m not slow --ignore=tests/integration/test_memory_hub.py", B.SUITE),
         ("/usr/bin/python3.12 -m pytest tests -q", B.SUITE),
+        ("python -m pytest /Users/x/Maxim/.worktrees/a/tests/ -q", B.SUITE),
+        ("python -m pytest ./tests", B.SUITE),
+        ("python -X dev -W error -m pytest tests/", B.SUITE),
+        ("env PYTHONPATH=/x/src python -m pytest tests/", B.SUITE),
+        ("pytest -q", B.SUITE),  # testpaths = tests
+        (f"{FRAMEWORK_PY} -m pytest tests/", B.SUITE),
         ("python3 /Users/x/Maxim/scripts/prepr.py --no-pr", B.CHECK),
+        (f"{FRAMEWORK_PY} /Users/x/Maxim/scripts/prepr.py", B.CHECK),
         ("bash scripts/prepr.sh", B.CHECK),
         ("bash scripts/run_mypy_public.sh", B.CHECK),
-        # Not a full suite: a narrow pytest, an editor's mypy, unrelated programs.
+        # Not a full suite: a narrow pytest (even with -k tests), an editor's mypy, inline code, unrelated programs.
         ("python -m pytest tests/unit/test_box_quiet.py -q", None),
+        ("python -m pytest -k tests tests/unit/test_x.py", None),
         ("/x/.venv/bin/mypy src/maxim/foo.py", None),
+        ("python3 -c import pytest", None),
         ("grep suite_at_commit.sh log.txt", None),
+        ("shellcheck scripts/prepr.sh", None),
         ("", None),
     ],
 )
@@ -48,6 +62,7 @@ def test_a_process_is_classified_by_its_own_program(cmd, kind):
     [
         # The self-matching waiter bug class (2026-11-02/03): the command it WILL run is in its argv.
         "python3 scripts/box_quiet.py wait --critical -- bash scripts/suite_at_commit.sh abc",
+        f"{FRAMEWORK_PY} scripts/box_quiet.py wait -- python -m pytest tests/",
         "bash -c while pgrep -f ^(python[0-9.]* -m pytest |bash scripts/suite_at_commit\\.sh ) ; do sleep 60; done",
         "zsh -c sleep 60; bash scripts/prepr.sh",
     ],
@@ -86,135 +101,138 @@ def test_the_box_rule(suites, checks, suite_fits, check_fits):
     assert B.fits(B.CHECK, now) is check_fits
 
 
-def T(critical: bool, at: int, pid: int, kind: str) -> B.Ticket:
-    return B.Ticket(critical, at, pid, kind)
+NOW = 10_000 * 10**9
+
+
+def T(critical: bool, waited_s: float, pid: int, kind: str) -> B.Ticket:
+    return B.Ticket(critical, NOW - int(waited_s * 1e9), pid, kind, "t0")
 
 
 def _now(suites=0, checks=0):
     return {B.SUITE: list(range(suites)), B.CHECK: list(range(checks))}
 
 
-def test_a_fitting_start_goes_when_nothing_critical_waits():
-    me = T(False, 5, 1, B.SUITE)
-    assert B.may_start(
-        me, [me, T(False, 1, 2, B.CHECK)], _now(suites=1)
-    )  # efficiency: an earlier blocked check does not idle the slot
+def test_a_fitting_suite_goes_past_a_young_check_that_cannot_fit():
+    # Efficiency: a non-critical check that has waited under 10 min does not idle the free suite slot.
+    me, young = T(False, 1, 1, B.SUITE), T(False, 60, 2, B.CHECK)
+    assert B.may_start(me, [me, young], _now(suites=1), NOW)
 
 
-def test_a_non_critical_suite_yields_to_a_waiting_critical_check():
-    me = T(False, 5, 1, B.SUITE)
-    assert not B.may_start(me, [me, T(True, 9, 2, B.CHECK)], _now(suites=1))
+def test_a_check_waiting_ten_minutes_drains_the_box_of_new_non_critical_suites():
+    me, old = T(False, 1, 1, B.SUITE), T(False, 601, 2, B.CHECK)
+    assert not B.may_start(me, [me, old], _now(suites=1), NOW)
+    # ... but a critical suite still goes past a non-critical draining check.
+    crit = T(True, 1, 3, B.SUITE)
+    assert B.may_start(crit, [crit, old], _now(suites=1), NOW)
 
 
-def test_a_non_critical_check_never_idles_the_box_for_a_critical_suite_that_cannot_fit():
-    # Box empty means the critical suite fits too and goes first; with a check running neither fits.
-    me = T(False, 1, 1, B.CHECK)
-    crit = T(True, 9, 2, B.SUITE)
-    assert not B.may_start(me, [me, crit], _now())
-    assert B.may_start(crit, [me, crit], _now())
+def test_a_waiting_critical_check_drains_the_box_of_every_new_suite():
+    crit_check = T(True, 1, 2, B.CHECK)
+    for me in (T(False, 900, 1, B.SUITE), T(True, 900, 3, B.SUITE)):
+        assert not B.may_start(me, [me, crit_check], _now(suites=1), NOW)
 
 
-def test_a_critical_waiter_that_fits_goes_first_and_a_later_one_is_not_blocked_by_an_unfit_critical():
-    crit_check = T(True, 1, 1, B.CHECK)
-    crit_suite = T(True, 2, 2, B.SUITE)
-    q = [crit_check, crit_suite]
-    # One suite running: the critical check cannot fit; the critical suite can and goes.
-    assert not B.may_start(crit_check, q, _now(suites=1))
-    assert B.may_start(crit_suite, q, _now(suites=1))
+def test_an_earlier_waiter_that_fits_goes_first_and_an_unfit_one_never_holds_a_slot():
+    first, second = T(False, 50, 1, B.SUITE), T(False, 10, 2, B.SUITE)
+    assert not B.may_start(second, [first, second], _now(), NOW)
+    assert B.may_start(first, [first, second], _now(), NOW)
+    crit_suite, normal_check = T(True, 1, 3, B.SUITE), T(False, 50, 4, B.CHECK)
+    assert not B.may_start(normal_check, [normal_check, crit_suite], _now(), NOW)  # critical first on an empty box
+    assert B.may_start(crit_suite, [normal_check, crit_suite], _now(), NOW)
 
 
 def test_nothing_starts_past_the_cap():
     me = T(True, 1, 1, B.SUITE)
-    assert not B.may_start(me, [me], _now(suites=2))
+    assert not B.may_start(me, [me], _now(suites=2), NOW)
 
 
-def test_stale_tickets_and_claims_are_dropped(tmp_path):
-    (tmp_path / "queue").mkdir()
-    (tmp_path / "claims").mkdir()
-    dead = 2**22 + 12345  # beyond any real pid on the CI and dev boxes
-    t = T(False, 1, dead, B.SUITE)
-    (tmp_path / "queue" / t.name).write_text(
-        json.dumps({"critical": False, "queued_ns": 1, "pid": dead, "kind": "suite"})
-    )
-    (tmp_path / "claims" / f"{dead}.json").write_text(json.dumps({"pid": dead, "kind": "suite", "program": "bash"}))
-    # A claim whose pid is alive but now runs a different program is pid reuse: dropped too.
-    me = os.getpid()
-    (tmp_path / "claims" / f"{me}.json").write_text(json.dumps({"pid": me, "kind": "suite", "program": "not-this"}))
-    procs = [P(me, 1, f"{sys.executable} -m pytest")]
-    assert B._load_queue(tmp_path) == []
-    assert B._load_claims(tmp_path, procs) == {}
-    assert list((tmp_path / "queue").iterdir()) == [] and list((tmp_path / "claims").iterdir()) == []
+def _state(tmp_path: Path) -> Path:
+    for sub in ("queue", "claims"):
+        (tmp_path / sub).mkdir(parents=True, exist_ok=True)
+    return tmp_path
 
 
-def test_a_lock_held_by_a_dead_pid_is_taken_over(tmp_path):
-    lock = tmp_path / "lock"
-    lock.mkdir()
-    (lock / "pid").write_text(str(2**22 + 54321))
-    with B.Lock(tmp_path):
-        assert (lock / "pid").read_text() == str(os.getpid())
-    assert not lock.exists()
+def test_a_ticket_or_claim_whose_pid_was_reused_is_dropped(tmp_path):
+    s = _state(tmp_path)
+    t = B.Ticket(False, 1, 4242, B.SUITE, "Mon Nov  3 10:00:00 2026")
+    (s / "queue" / t.name).write_text(json.dumps({"critical": False, "queued_ns": 1, "pid": 4242, "kind": "suite",
+                                                  "started": t.started}))  # fmt: skip
+    (s / "claims" / "4242.json").write_text(json.dumps({"pid": 4242, "kind": "suite", "started": t.started}))
+    reused = [P(4242, 1, "python3 scripts/box_quiet.py wait -- x", started="Mon Nov  3 17:00:00 2026")]
+    # Reading without pruning (status) removes nothing; the pruning read (under the waiter's lock) does.
+    assert B._load_queue(s, reused, prune=False) == [] and B._load_claims(s, reused, prune=False) == {}
+    assert len(list((s / "queue").iterdir())) == 1 and len(list((s / "claims").iterdir())) == 1
+    assert B._load_queue(s, reused, prune=True) == [] and B._load_claims(s, reused, prune=True) == {}
+    assert list((s / "queue").iterdir()) == [] and list((s / "claims").iterdir()) == []
 
 
-def test_wait_runs_the_command_and_returns_its_status(tmp_path, monkeypatch):
-    monkeypatch.setattr(B, "read_ps", lambda: [])
-    rc = B.main(
-        ["--state-dir", str(tmp_path), "wait", "--kind", "check", "--", sys.executable, "-c", "raise SystemExit(7)"]
-    )
+def test_a_live_claim_survives_an_exec_in_its_child(tmp_path):
+    s = _state(tmp_path)
+    (s / "claims" / "77.json").write_text(json.dumps({"pid": 77, "kind": "check", "started": "t0"}))
+    after_exec = [P(77, 1, "python3 scripts/prepr.py")]  # was `bash scripts/prepr.sh`; same pid, same start
+    assert B._load_claims(s, after_exec, prune=True) == {77: B.CHECK}
+
+
+def test_a_half_written_file_is_never_read(tmp_path):
+    s = _state(tmp_path)
+    (s / "queue" / "1-00000000000000000001-9.json.tmp").write_text('{"crit')
+    assert B._load_queue(s, [], prune=True) == []
+    assert (s / "queue" / "1-00000000000000000001-9.json.tmp").exists()
+
+
+def test_the_lock_is_exclusive_and_freed_when_its_holder_dies(tmp_path):
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl,os,sys,time;fd=os.open(sys.argv[1],os.O_RDWR|os.O_CREAT);fcntl.flock(fd,fcntl.LOCK_EX);"
+         "print('held',flush=True);time.sleep(30)", str(tmp_path / "lock")],
+        stdout=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        got = threading.Event()
+
+        def take():
+            with B.Lock(tmp_path):
+                got.set()
+
+        th = threading.Thread(target=take, daemon=True)
+        th.start()
+        assert not got.wait(0.5)  # blocked while the holder lives
+        holder.kill()
+        assert got.wait(5)  # the kernel freed it: no stale-lock takeover to race
+    finally:
+        holder.kill()
+        holder.wait()
+
+
+def test_wait_runs_the_command_and_returns_its_status(tmp_path):
+    rc = B.main(["--state-dir", str(tmp_path), "--only-matching", "SystemExit(7)", "wait", "--kind", "check", "--",
+                 sys.executable, "-c", "raise SystemExit(7)"])  # fmt: skip
     assert rc == 7
-    assert list((tmp_path / "queue").iterdir()) == [] and list((tmp_path / "claims").iterdir()) == []
+    assert list((tmp_path / "queue").glob("*.json")) == [] and list((tmp_path / "claims").glob("*.json")) == []
 
 
-def test_two_waiters_for_one_slot_never_start_together(tmp_path, monkeypatch):
-    """The race the hand-written idle waiters had: both see a free slot in the same poll. The lock + claim serialise it."""
-    monkeypatch.setattr(B, "read_ps", lambda: [])  # no foreign runs; only the waiters' own claims count
+def test_a_child_killed_by_a_signal_returns_128_plus_the_signal(tmp_path):
+    rc = B.main(["--state-dir", str(tmp_path), "--only-matching", "signal.SIGTERM", "wait", "--kind", "check", "--",
+                 sys.executable, "-c", "import os,signal; os.kill(os.getpid(), signal.SIGTERM)"])  # fmt: skip
+    assert rc == 128 + 15
+
+
+def test_two_waiters_for_one_slot_never_start_together(tmp_path):
+    """The race the hand-written idle waiters had: both see a free slot in the same poll. The lock + claim serialise it.
+
+    Two real waiter processes; each child marks itself present FIRST, then looks for another mark, so two children
+    running at once always see each other (a deletion probe of the claim write fails this every time)."""
     marks = tmp_path / "marks"
     marks.mkdir()
     prog = (
-        "import os,sys,time,pathlib;d=pathlib.Path(sys.argv[1]);"
-        "n=len(list(d.iterdir()));(d/str(os.getpid())).write_text(str(n));time.sleep(0.6);(d/str(os.getpid())).unlink()"
+        "import os,sys,time,pathlib;d=pathlib.Path(sys.argv[1]);(d/str(os.getpid())).write_text('x');time.sleep(0.8);"
+        "n=len(list(d.iterdir()))-1;(d/str(os.getpid())).unlink();sys.exit(n)"
     )
-    seen: list[int] = []
-
-    def run():
-        seen.append(
-            B.main(
-                [
-                    "--state-dir",
-                    str(tmp_path / "s"),
-                    "wait",
-                    "--kind",
-                    "check",
-                    "--poll-s",
-                    "0.05",
-                    "--",
-                    sys.executable,
-                    "-c",
-                    prog + ";sys.exit(int(n))",
-                    str(marks),
-                ]
-            )
-        )
-
-    # _load_claims drops a claim unless ps shows its pid running the claimed program: let ps report the claims' own
-    # children as alive so the second waiter sees the first's slot as taken.
-    real_load = B._load_claims
-    monkeypatch.setattr(
-        B,
-        "_load_claims",
-        lambda state, procs: {
-            int(f.stem): json.loads(f.read_text())["kind"]
-            for f in (state / "claims").glob("*.json")
-            if B._alive(int(f.stem))
-        }
-        if (state / "claims").exists()
-        else real_load(state, procs),
-    )
-    threads = [threading.Thread(target=run) for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=20)
-    assert seen == [0, 0]  # each child saw no other child running beside it
+    cmd = [sys.executable, str(SCRIPT), "--state-dir", str(tmp_path / "s"), "--only-matching", str(marks), "wait",
+           "--kind", "check", "--poll-s", "0.05", "--", sys.executable, "-c", prog, str(marks)]  # fmt: skip
+    waiters = [subprocess.Popen(cmd, stderr=subprocess.DEVNULL) for _ in range(2)]
+    assert [w.wait(timeout=30) for w in waiters] == [0, 0]  # neither child ever saw the other running beside it
 
 
 def test_wait_refuses_a_command_it_cannot_classify(tmp_path):
@@ -223,27 +241,37 @@ def test_wait_refuses_a_command_it_cannot_classify(tmp_path):
     assert e.value.code == 2
 
 
-def test_the_waiter_does_not_count_itself_in_a_real_ps(tmp_path):
-    """End to end on the real ps: a box_quiet waiter process, its argv naming a suite, adds nothing to the count."""
-    import subprocess
-
-    holder = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import time; time.sleep(5)",
-            "box_quiet.py",
-            "wait",
-            "--",
-            "bash",
-            "scripts/suite_at_commit.sh",
-        ]
-    )
+def test_a_real_waiter_process_is_not_counted_but_its_child_is(tmp_path):
+    """End to end on the real ps: the waiter's argv names a check, yet only its claimed child counts."""
+    waiter = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "--state-dir", str(tmp_path), "--only-matching", "box-quiet-e2e", "wait", "--kind",
+         "check", "--", sys.executable, "-c", "import time; time.sleep(4)", "box-quiet-e2e"],
+        stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
     try:
-        time.sleep(0.2)
+        line = waiter.stderr.readline()
+        assert "started check pid" in line, line
+        child_pid = int(line.rsplit(" ", 1)[1])
         procs = B.read_ps()
-        assert holder.pid in {p.pid for p in procs}
-        assert B.classify(next(p for p in procs if p.pid == holder.pid).argv) is None
+        rows = {p.pid: p for p in procs}
+        assert B.classify(rows[waiter.pid].argv) is None
+        claims = B._load_claims(tmp_path, procs, prune=False)
+        assert claims == {child_pid: B.CHECK}
     finally:
-        holder.kill()
-        holder.wait()
+        waiter.terminate()  # forwarded to the child; the waiter then exits with its status
+        assert waiter.wait(timeout=10) == 128 + 15
+    assert list((tmp_path / "claims").glob("*.json")) == []
+
+
+def test_status_prints_and_removes_nothing(tmp_path, capsys):
+    s = _state(tmp_path)
+    (s / "claims" / "1.json").write_text("{not json")
+    assert B.main(["--state-dir", str(s), "--only-matching", "nothing-here", "status"]) == 0
+    assert "suites running" in capsys.readouterr().out
+    assert (s / "claims" / "1.json").exists()
+
+
+def test_cli_status_runs(tmp_path):
+    out = subprocess.run([sys.executable, str(SCRIPT), "--state-dir", str(tmp_path), "status"],
+                         capture_output=True, text=True, timeout=30)  # fmt: skip
+    assert out.returncode == 0 and "a suite fits now" in out.stdout
