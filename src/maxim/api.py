@@ -233,7 +233,7 @@ def _build_run_router(model: str) -> Any:
     if router is None:
         from maxim.exceptions import ConfigurationError
 
-        raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
+        raise ConfigurationError(f"No LLM backend available for model={model!r}: check its profile and backend.")
     return router
 
 
