@@ -24,6 +24,7 @@ import math
 import logging
 from dataclasses import dataclass
 from typing import Any
+from maxim import _offline
 from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def _get_encoder(model_name: str = "all-mpnet-base-v2") -> Any | None:
     try:
         from sentence_transformers import SentenceTransformer
 
-        _encoder_model = SentenceTransformer(model_name)
+        _encoder_model = SentenceTransformer(model_name, **_offline.local_files_only_kwargs())
         _encoder_model_name = model_name
         logger.info("LinguisticEncoder loaded model: %s", model_name)
         return _encoder_model
@@ -62,6 +63,8 @@ def _get_encoder(model_name: str = "all-mpnet-base-v2") -> Any | None:
         )
         return None
     except Exception as e:
+        if _offline.is_offline():  # a model it may not fetch: the hash fallback runs, and the run says degraded
+            _offline.mark_degraded("similarity.encoder", f"{model_name} is not cached locally ({type(e).__name__})")
         logger.warning("Failed to load encoder model %s: %s", model_name, e)
         return None
 

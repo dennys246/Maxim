@@ -536,6 +536,15 @@ def _soft_budget_gb() -> float | None:
         return None
 
 
+def _refuse_download_offline(site: str, detail: str) -> None:
+    """Offline, a model that is not on disk is refused here: before the storage preflight and BEFORE consent is read
+    (``auto``, the env flag, a tty prompt), so no prompt offers a download that cannot happen (#1315 item 10b)."""
+    from maxim import _offline
+
+    if _offline.is_offline():
+        _offline.refuse(site, detail)
+
+
 def ensure_available(
     profile_name: str,
     *,
@@ -574,6 +583,7 @@ def ensure_available(
 
     if profile_has_local_file(profile_name):
         return True
+    _refuse_download_offline("models.download.ensure_available", f"{profile_name} is not on disk")
 
     if profile_name not in llm_models():
         msg = (
@@ -850,6 +860,7 @@ def ensure_tts_voice(
 
     if verified():
         return True
+    _refuse_download_offline("models.download.ensure_tts_voice", f"{model_name} is not on disk")
     ok, reason = can_download(float(info.get("size_mb", 0)) / 1024.0, headroom_gb=0.5, soft_budget_gb=_soft_budget_gb())
     if not ok:
         logger.warning("Cannot download TTS voice %s: %s", model_name, reason)
@@ -1128,6 +1139,14 @@ def enable_llm_config(
 
 def main() -> int:
     """CLI entry point."""
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first, before any subprocess or socket (#1315 item 10b)
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(
         description="Download models for Maxim (LLM, TTS, and Vision)",
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -937,4 +937,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
 
 
 if __name__ == "__main__":
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    engage_offline_if_configured()  # first, before any subprocess or socket (#1315 item 10b)
     conscience = Maxim()

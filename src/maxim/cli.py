@@ -718,13 +718,13 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     A typed backend error, a leader refusal or a spoken-response refusal (``--tts`` that cannot play, #1437)
     is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
     supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
-    (``exceptions.LeaderRefusal``). Anything else is logged as before and is a crash: 1. The loop's
-    ``finally`` (``_end_robot_run``) runs either way."""
-    from maxim.exceptions import LeaderRefusal
+    (``exceptions.SECURITY_REFUSALS``: a leader or an offline refusal). Anything else is logged as before and is a
+    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.language.types import BackendError
     from maxim.utils.response_output import SpeechOutputUnavailable
 
-    if isinstance(error, (BackendError, LeaderRefusal, SpeechOutputUnavailable)):
+    if isinstance(error, (BackendError, *SECURITY_REFUSALS, SpeechOutputUnavailable)):
         raise error
     log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
     return 1

@@ -53,6 +53,8 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from maxim import _offline
+
 if TYPE_CHECKING:
     import numpy as np
     from PIL.Image import Image
@@ -86,7 +88,7 @@ def _load_model(model_name: str) -> Any:
         ) from e
 
     logger.info("VisionEncoder loading model: %s", model_name)
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, **_offline.local_files_only_kwargs())
     _cached_models[model_name] = model
     logger.info("VisionEncoder loaded model: %s", model_name)
     return model

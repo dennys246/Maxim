@@ -31,6 +31,7 @@ def _import_cv2():
         ) from None
 
 
+from maxim import _offline
 from maxim.models.vision.engine import (
     COCO_KEYPOINTS,
     COCO_NAMES,
@@ -70,6 +71,8 @@ def _ensure_weight_file(
             except Exception:
                 return alt
 
+    if _offline.is_offline():  # before ultralytics' own downloader (urllib or a curl subprocess): §6 layer 2
+        _offline.refuse("ultralytics.attempt_download_asset", f"{asset_name}: no local weight at {local_path}")
     try:
         from ultralytics.utils.downloads import attempt_download_asset  # type: ignore
 
@@ -84,6 +87,14 @@ def _ensure_weight_file(
         logger.warning("Failed to download YOLO weights '%s': %s", asset_name, e)
 
     return asset_name
+
+
+def _yolo_weight_path(path: str) -> str:
+    """The last call before ``YOLO(...)``: offline it takes only an existing file, because ``YOLO(name)`` downloads a
+    missing weight through ultralytics' own downloader (#1315 item 10b, §6 layer 2)."""
+    if _offline.is_offline() and not os.path.isfile(path):
+        _offline.refuse("ultralytics.YOLO", f"{path} is not a local weight file")
+    return path
 
 
 def _scalar(value: Any) -> Any:
@@ -144,7 +155,7 @@ class UltralyticsEngine(VisionEngine):
             seg_name,
             alternates=[seg_alt] if seg_alt else [],
         )
-        self._model = YOLO(seg_path)
+        self._model = YOLO(_yolo_weight_path(seg_path))
 
         # Thresholds
         self._conf = 0.5
@@ -181,10 +192,11 @@ class UltralyticsEngine(VisionEngine):
             return True
         if self._pose_load_error is not None:
             return False
+        pose_path = _yolo_weight_path(self._pose_model_path)  # refused before the try: a typed refusal, not "no pose"
         try:
             from ultralytics import YOLO
 
-            self._pose_model = YOLO(self._pose_model_path)
+            self._pose_model = YOLO(pose_path)
             return True
         except Exception as e:
             self._pose_load_error = str(e)

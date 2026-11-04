@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.simulation.sim_types import is_simulation_run_failure
 
 # The one list of metrics where lower is better: the composite inverts them, rankings sort them ascending,
@@ -467,6 +468,8 @@ class BenchmarkRunner:
                         total = run_result.expectations_total
                         display_status(f"  OK {duration:.1f}s — {turns} turns — {passed}/{total} expectations")
 
+                    except SECURITY_REFUSALS:
+                        raise  # a refused model (offline, a leader refusal) is not a failed scenario (#1315 item 10b)
                     except Exception as e:
                         logger.warning("Scenario %s failed on %s: %s", scenario_name, model, e)
                         error_msg = str(e)

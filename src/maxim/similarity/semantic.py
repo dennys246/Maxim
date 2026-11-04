@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from maxim import _offline
 from maxim.utils.seeding import stable_hash_64_signed
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,9 @@ def _get_or_load_model(model_name: str) -> Any:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info("Loading semantic model %s on %s", model_name, device)
 
-            _sentence_transformer_model = SentenceTransformer(model_name, device=device)
+            _sentence_transformer_model = SentenceTransformer(
+                model_name, device=device, **_offline.local_files_only_kwargs()
+            )
             logger.info("Semantic model loaded successfully")
             return _sentence_transformer_model
 
@@ -98,6 +101,10 @@ def _get_or_load_model(model_name: str) -> Any:
             )
             return None
         except Exception as e:
+            if _offline.is_offline():  # §6: a semantic weight it may not fetch is a degraded run, said once
+                _offline.mark_degraded(
+                    "similarity.semantic", f"{model_name} is not cached locally ({type(e).__name__})"
+                )
             logger.error("Failed to load semantic model: %s", e)
             return None
 

@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 import numpy as np
 
+from maxim import _offline
 from maxim.utils.logging import configure_logging, warn
 
 
@@ -193,7 +194,21 @@ class WhisperTranscriber:
             f"Initializing WhisperModel: model={self.model_size_or_path}, device={self.device}, compute_type={self.compute_type}"
         )
         log.debug(f"Environment: CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<not set>')}")
-        self._model = WhisperModel(self.model_size_or_path, device=self.device, compute_type=self.compute_type)
+        try:
+            self._model = WhisperModel(
+                self.model_size_or_path,
+                device=self.device,
+                compute_type=self.compute_type,
+                **_offline.local_files_only_kwargs(),
+            )
+        except Exception as e:
+            if not _offline.is_offline():
+                raise
+            # A transcriber without its model has no fallback: offline, a model it may not fetch is a typed refusal.
+            try:
+                _offline.refuse("faster_whisper.WhisperModel", f"{self.model_size_or_path} is not cached locally")
+            except _offline.OfflineRefusal as refusal:
+                raise refusal from e
         log.debug("WhisperModel created successfully")
 
     def transcribe(

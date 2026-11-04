@@ -1257,7 +1257,17 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > strict red gate `tests/unit/test_offline_startup_10a.py::test_the_aut_router_build_does_not_fall_back_on_an_offline_refusal`
 > holds it open.
 >
-> Review: three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
+> **10b BUILT 2026-11-03** (branch `feat/1315-item10b-offline-call-sites`, stacked on 10a): the census red gate
+> flipped. Owner decision **V24** (2026-11-03): the two census lints (the site census and the swallow census, below)
+> are **10c**, on their own clock; 10a+10b merge together once every call site refuses (the gate enforces, the
+> lints explain). As built: `_offline.local_files_only_kwargs()` (every HF load), `_offline.mark_degraded()` /
+> `degraded()` (one WARNING per site), the ledger records each refusal's thread; refusals at docker
+> (`container_runner._run_docker`), ddgs, ultralytics (`_ensure_weight_file`, `_yolo_weight_path`), twilio, model and
+> TTS downloads (before consent), rtm, faster-whisper (typed when the model is not cached); transformers forces
+> `local_files_only` and no remote code offline; the CI grep widened. 10c also owns `cli.py::_early_leader_boot`'s
+> warning (the swallow census).
+>
+> Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`
 > and `agent_pool._generate_llm_response` re-raise `SECURITY_REFUSALS`; the doctor wrapper keeps a self-caught check's
 > own name, message and rows (marking only what the latch refused) and filters the ledger by thread; benchmark scores a

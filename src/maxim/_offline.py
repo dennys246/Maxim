@@ -72,10 +72,19 @@ class OfflineRefusal(RuntimeError):
 
 
 class Refusal(NamedTuple):
-    """One refusal ledger entry: the audit event (or call site) refused, a short detail, and the engage reason."""
+    """One refusal ledger entry: the audit event (or call site) refused, a short detail, the engage reason, and the
+    ident of the thread it was refused in (so a reader can tell its own refusals from another thread's)."""
 
     event: str
     detail: str
+    reason: str
+    thread: int = 0
+
+
+class Degraded(NamedTuple):
+    """One degraded record: a fallback a site took because the latch is up (§6 "The fallbacks become loud")."""
+
+    site: str
     reason: str
 
 
@@ -84,6 +93,8 @@ _engaged = False
 _reason = ""
 _hook_added = False
 _ledger: list[Refusal] = []
+_degraded: list[Degraded] = []
+_degraded_warned: set[str] = set()
 _callbacks: list[Callable[[], Any]] = []
 _saved_flags: list[tuple[Any, str, Any]] = []  # (module, attribute, value before engage) for the reset
 
@@ -181,6 +192,32 @@ def ledger() -> tuple[Refusal, ...]:
         return tuple(_ledger)
 
 
+def mark_degraded(site: str, reason: str) -> None:
+    """Record that ``site`` fell back because the latch is up (a missing encoder or semantic weight it may not
+    fetch), and log ONE WARNING naming "degraded" per site per process, so a degraded run says so (§6)."""
+    import logging
+
+    with _lock:
+        _degraded.append(Degraded(site, reason))
+        first = site not in _degraded_warned
+        _degraded_warned.add(site)
+    if first:
+        logging.getLogger("maxim.offline").warning("offline: %s degraded: %s", site, reason)
+
+
+def local_files_only_kwargs() -> dict[str, bool]:
+    """``{"local_files_only": True}`` while the latch is up, else ``{}``: the kwarg every Hugging Face load site
+    passes (sentence-transformers, transformers, faster-whisper; §6 layer 2), so a missing model fails locally
+    instead of reaching for the hub. Empty online, so an online load is unchanged."""
+    return {"local_files_only": True} if is_offline() else {}
+
+
+def degraded() -> tuple[Degraded, ...]:
+    """Every degraded record so far, oldest first (a fresh tuple per call)."""
+    with _lock:
+        return tuple(_degraded)
+
+
 def hook_installed() -> bool:
     """Whether THIS process ever added the audit hook (it cannot be removed; it is inert while disengaged)."""
     return _hook_added
@@ -195,7 +232,7 @@ def refuse(site: str, detail: str = "") -> NoReturn:
 
 def _book(event: str, detail: str) -> None:
     with _lock:
-        _ledger.append(Refusal(event, detail, _reason))
+        _ledger.append(Refusal(event, detail, _reason, threading.get_ident()))
 
 
 def _refused_detail(event: str, args: tuple[Any, ...]) -> str | None:
@@ -242,6 +279,8 @@ def _reset_for_tests() -> None:
         _engaged = False
         _reason = ""
         _ledger.clear()
+        _degraded.clear()
+        _degraded_warned.clear()
     for module, attr, value in flags:
         setattr(module, attr, value)
     for key, _value in ENGAGE_ENV:

@@ -848,11 +848,6 @@ emit()
 """
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=_reason("census gate", "each CENSUS_SITES call site refuses before any socket/spawn event"),
-)
 def test_no_effect_subprocess(tmp_path: Path) -> None:
     """With the conftest-forced ``HF_HUB_OFFLINE``/``TRANSFORMERS_OFFLINE`` deleted from the child's env, every
     site in ``CENSUS_SITES`` raises or records ``OfflineRefusal`` before any socket event, and the spy hook saw no

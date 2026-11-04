@@ -3882,7 +3882,9 @@ __all__ = [
 
 
 def _refused_offline_row(fn: Any) -> Any:
+    import dataclasses
     import functools
+    import threading
 
     from maxim import _offline
 
@@ -3893,6 +3895,11 @@ def _refused_offline_row(fn: Any) -> Any:
         row = CheckResult(name=name, status="info", message=f"refused (offline): {detail}")
         return [row] if returns_list else row
 
+    def mark(row: CheckResult, detail: str) -> CheckResult:
+        if row.status == "ok":
+            return row
+        return dataclasses.replace(row, status="info", message=f"refused (offline): {detail} — {row.message}")
+
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         booked = len(_offline.ledger())
@@ -3900,12 +3907,16 @@ def _refused_offline_row(fn: Any) -> Any:
             result = fn(*args, **kwargs)
         except _offline.OfflineRefusal as e:
             return refused(e)
-        # A check that caught the refusal itself would report it as its own verdict ("nothing responding",
-        # "probe failed"), which offline is not: the ledger says the latch answered, so its row says so.
-        new = _offline.ledger()[booked:]
-        if new:
-            return refused(f"{new[-1].event}: {new[-1].detail}")
-        return result
+        # A check that caught the refusal itself reports it as its own verdict ("nothing responding", "probe
+        # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered, so its
+        # non-ok rows keep their name and message, marked as refused rather than failed.
+        mine = [r for r in _offline.ledger()[booked:] if r.thread == threading.get_ident()]
+        if not mine:
+            return result
+        detail = f"{mine[-1].event}: {mine[-1].detail}"
+        if isinstance(result, list):
+            return [mark(r, detail) if isinstance(r, CheckResult) else r for r in result]
+        return mark(result, detail) if isinstance(result, CheckResult) else result
 
     return wrapper
 

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import urllib.parse
 from urllib.parse import quote_plus, urlparse
 
+from maxim import _offline
 from maxim.tools.base import Effect, Tool, ToolResult
 
 if TYPE_CHECKING:
@@ -72,8 +73,11 @@ def _search_with_ddg_package(
 ) -> list[dict[str, str]] | None:
     """Try using the ddgs/duckduckgo_search package for proper web search.
 
-    Returns None if package is not available, otherwise returns results list.
+    Returns None if package is not available, otherwise returns results list. Refused offline before the import:
+    ddgs dials through a native client (primp) the offline latch cannot see (#1315 item 10b, §6 "The boundary").
     """
+    if _offline.is_offline():
+        _offline.refuse("tools.internet_search[ddgs]", "a native network client the latch cannot see")
     try:
         from ddgs import DDGS
     except ImportError:
