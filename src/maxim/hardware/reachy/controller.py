@@ -81,10 +81,10 @@ _STASH_DIVERGENCE_REFUSE_RAD = math.radians(5.0)
 # A readback body or neck beyond its limit by more than this is impossible (R2).
 _IMPOSSIBLE_MARGIN_RAD = math.radians(5.0)
 # #1563 (owner, 2026-11-03): on a goto's first control tick the daemon's IK pairs the PRESENT head with its OLD body
-# target, which 1.8.3 never serves (FullState drops it). The controller tracks the target its own last goto left and
-# refuses a dispatch whose present head is further than the clamp plus this from it. Provisional 1°: servo noise at
-# the clamp (the sweep's hold measures it). A target another client set is the stated single-client residual (§8).
-_OLD_TARGET_MARGIN_RAD = math.radians(1.0)
+# target, which 1.8.3 never serves (FullState drops it). Before each chunk's goto the controller re-pins both of the
+# daemon's targets to the pose the fresh readback found, unless the target its own commands left is already this
+# close to the present body (the 10 Hz look-at stream then sends no extra frame).
+_REPIN_SKIP_RAD = math.radians(1.0)
 # After an SDK timeout: settled when within 2° of the timed-out chunk, or when
 # stable within 0.5° for a full second (the move ended somewhere else).
 _SETTLED_NEAR_RAD = math.radians(2.0)
@@ -343,11 +343,10 @@ class ReachyMiniController(RobotController):
         self._unsettled: tuple[mp.Pose, mp.Pose | None, float | None] | None = None
         # True once set_automatic_body_yaw(False) has been asserted on this handle (O6).
         self._auto_yaw_asserted = False
-        # The body target the daemon's IK holds after Maxim's last goto (#1563): the chunk's body when commanded,
-        # else the body that chunk started from (GotoMove sets the target to it). None, and the check skipped
-        # (§13's residuals), until Maxim's first goto on this connection, after a wake from torque off (the
-        # daemon's enable_motors re-pins the target to the present body), and once the body is found 5°+ from it
-        # (something else moved it, so the model is known wrong).
+        # The body target Maxim's own last command left in the daemon (#1563): a re-pin's present body, then the
+        # chunk's body when commanded, else the body that chunk started from (GotoMove sets the target to it).
+        # It only decides whether the next goto re-pins first, so a stale value costs one extra frame, never a
+        # refusal. None (re-pin) until Maxim's first command on this connection.
         self._daemon_body_target: float | None = None
         # The stop latch (owner, 2026-10-29): set by goto_sleep and disconnect.
         # While set, goto_target and look_at_pixel refuse, so a head or body
@@ -1010,8 +1009,6 @@ class ReachyMiniController(RobotController):
         ]
         if diverged:
             self._forget_commanded(*(d.split(" ", 1)[0] for d in diverged))
-            if any(d.startswith("body_yaw ") for d in diverged):
-                self._daemon_body_target = None  # something else moved the body: its target is unknown (#1563)
             raise MotionRefused(
                 "reference",
                 f"the readback diverges from the last command ({', '.join(diverged)}); "
@@ -1174,11 +1171,7 @@ class ReachyMiniController(RobotController):
                     chunks_done=done,
                 )
             try:
-                if k > 1:
-                    here = self._recheck_before_chunk(previous, chunk)
-                else:
-                    here = start
-                    self._require_neck_ok_for_old_target(start)
+                here = self._recheck_before_chunk(previous, chunk) if k > 1 else start
                 left_target = chunk.body if body_commanded else here.body
                 body_yaw = chunk.body if body_commanded else None
                 checked, sdk_m = check_sdk_command(
@@ -1204,6 +1197,7 @@ class ReachyMiniController(RobotController):
                     # command's ticket is accepted here, under the lock (#1499 5.6, §4),
                     # unless its tool cancelled it while it waited; then nothing moves.
                     return MotionOutcome.refused("cancelled", "cancelled before the move started")
+                self._repin_daemon_target(here)
                 self._mini.goto_target(**kwargs)
                 self._daemon_body_target = left_target
             except MotionRefused as e:
@@ -1217,8 +1211,8 @@ class ReachyMiniController(RobotController):
                 self._daemon_body_target = left_target  # the daemon took the goto; only its reply timed out
                 return self._partial(f"chunk {k}/{n} timed out ({e}); waiting for the robot to settle", total, n, done)
             except Exception as e:
-                # The daemon may have taken the goto before this raised; the tracked target then lags the real one,
-                # which the next check refuses on (fail-closed) until the 5° rule forgets it (#1563).
+                # The daemon may have taken the goto before this raised: the tracked target is then stale, which
+                # costs the next goto one re-pin (#1563).
                 if k == 1:
                     raise
                 return self._partial(f"chunk {k}/{n} failed: {e}", total, n, done)
@@ -1255,37 +1249,24 @@ class ReachyMiniController(RobotController):
         ok, worst = mp.neck_path_ok(read, chunk)
         if not ok:
             raise MotionRefused("path", f"from the re-read pose the next chunk would sweep the neck to {worst:.0f}°")
-        self._require_neck_ok_for_old_target(read)
         return read
 
-    def _require_neck_ok_for_old_target(self, here: mp.Pose) -> None:
-        """Refuse when the old body target makes a goto's first tick worse than the present pose (#1563).
+    def _repin_daemon_target(self, here: mp.Pose) -> None:
+        """Re-pin the daemon's head and body targets to *here*, the fresh readback, before a goto (#1563).
 
-        A goto's first control tick composes the present head against the body target the last goto left, not the
-        present body, so the readback's own neck check does not cover it. The tick adds risk only when that twist
-        is past the clamp and past the twist the robot already holds: a target equal to the present body
-        reproduces the present pose, and a move that reduces the twist stays allowed. A body 5°+ from the target
-        means something else moved it (R1's rule): refused once, and the target is forgotten.
+        A goto's first control tick composes the present head against the body target the last command left, not
+        the present body, and 1.8.3 serves no target to check. ``set_target`` with the present pose makes tick 1
+        reproduce the pose the robot already holds (the readback's own neck check covers that pose). Skipped when
+        the target Maxim's last command left is already within ``_REPIN_SKIP_RAD`` of the present body. The
+        daemon ignores ``set_target`` while one of its moves runs (a move another client started), and the frame is
+        not acknowledged: that is §8's single-client residual. A raise propagates, so nothing moves.
         """
         target = self._daemon_body_target
-        if target is None:
-            logger.debug("old-target neck check skipped: no body target tracked on this connection (#1563)")
+        if target is not None and abs(_wrap(here.body - target)) <= _REPIN_SKIP_RAD:
             return
-        if abs(_wrap(here.body - target)) > _STASH_DIVERGENCE_REFUSE_RAD:
-            self._daemon_body_target = None
-            raise MotionRefused(
-                "reference",
-                f"the body is {math.degrees(_wrap(here.body - target)):+.0f}° from the body target Maxim's last move "
-                "left, so something else moved it; that target is forgotten and the next move reads the robot afresh",
-            )
-        twist = mp.neck_twist(here.head, target)
-        held = abs(mp.neck_twist(here.head, here.body))
-        if abs(twist) > max(self._MAX_HEAD_REL_YAW_RAD, held) + _OLD_TARGET_MARGIN_RAD:
-            raise MotionRefused(
-                "reference",
-                f"the head is {math.degrees(twist):+.0f}° from the daemon's body target "
-                f"({math.degrees(self._daemon_body_target):+.0f}°), past the neck clamp for the move's first tick",
-            )
+        self._daemon_body_target = None  # until the frame is out: a raise leaves the target unknown
+        self._mini.set_target(head=np.asarray(here.head, dtype=float), body_yaw=float(here.body))
+        self._daemon_body_target = float(here.body)
 
     @staticmethod
     def _partial(reason: str, total: float, planned: int, done: int) -> MotionOutcome:
@@ -1466,15 +1447,6 @@ class ReachyMiniController(RobotController):
                 ".".join(str(x) for x in (self._installed_sdk_version() or ("?",))),
             )
 
-    def _torque_off_now(self) -> bool:
-        """Whether motor torque is off now, an unreadable state counting as off (its body target is then unknown)."""
-        try:
-            _, control_mode = mp.parse_full_state(self._get_state_full())
-        except MotionRefused as e:
-            logger.debug("torque read before the wake: %s", e.reason)
-            return True
-        return control_mode != "enabled"
-
     def _wait_torque_on(self) -> bool:
         """Poll the REST ``control_mode`` until ``enabled`` (``enable_motors`` is fire-and-forget; delta S3)."""
         deadline = time.monotonic() + _TORQUE_ON_WAIT_S
@@ -1645,7 +1617,6 @@ class ReachyMiniController(RobotController):
             gen = requested_gen  # one read: a stop at any point after the request ends this wake
             if self._abort_gen != gen:
                 return MotionOutcome.refused("cancelled", "a stop was requested while the wake waited")
-            torque_was_off = self._torque_off_now()
             try:
                 self._mini.enable_motors()
             except Exception as e:  # noqa: BLE001 - hardware boundary must fail closed
@@ -1657,8 +1628,6 @@ class ReachyMiniController(RobotController):
                     logger.error("disable_motors() after the failed enable also failed: %s", off_error)
                 self._update_state(is_awake=False)
                 return MotionOutcome.refused("error", f"enable_motors failed: {e}")
-            if torque_was_off:
-                self._daemon_body_target = None  # enable_motors re-pins the daemon's target to the present body (#1563)
             if not self._assert_auto_yaw_off():
                 self._update_state(is_awake=False)
                 return MotionOutcome.refused("reference", "automatic_body_yaw could not be asserted off")

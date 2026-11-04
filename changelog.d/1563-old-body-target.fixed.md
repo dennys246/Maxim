@@ -1,8 +1,7 @@
-- **A Reachy move is refused when the head sits past the neck clamp from the daemon's previous body target**
-  (#1563). On the first control tick of a move, the daemon composes the present head against the body target its
-  last move left. The ±65° clamp is checked against the present body instead. SDK 1.8.3 never serves that target
-  (`GET /api/state/full` drops `target_body_yaw`), so the controller tracks the target its own last move left.
-  Before each chunk it refuses (`reference`) a head more than 1° (provisional, for servo noise) past both the
-  clamp and the twist the robot already holds. The tracked target is forgotten after a disconnect, after a wake
-  from torque off, and when the body is found 5° or more from it, which refuses once. So the refusal never locks
-  the robot out. Neither a target set by another client nor the first move after a forget is covered.
+- **A Reachy move no longer starts against a stale body target** (#1563). On the first control tick of a move, the
+  daemon composes the present head against the body target its last move left. The ±65° clamp is checked against
+  the present body instead. SDK 1.8.3 never serves that target (`GET /api/state/full` drops `target_body_yaw`), so
+  it cannot be checked. Instead, before each chunk the controller re-pins the daemon's head and body targets to
+  the pose it just read, so the first tick holds the pose the robot is already in. The frame is skipped when the
+  target the controller's last command left is already within 1° of the present body, so tracking adds almost no
+  traffic. The daemon ignores the re-pin while a move another client started is running.

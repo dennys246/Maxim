@@ -113,6 +113,9 @@ class _FakeMini:
     def set_automatic_body_yaw(self, enabled):  # the controller re-asserts it before each move (#1499 PR 3)
         pass
 
+    def set_target(self, **kw):  # the controller re-pins the daemon's targets before a goto (#1563)
+        pass
+
     def goto_target(self, **kwargs):
         self.calls.append(kwargs)
         if kwargs.get("head") is not None:

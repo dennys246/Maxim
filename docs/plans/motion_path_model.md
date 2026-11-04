@@ -610,31 +610,29 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    it, its `FullState` response model drops it, and no other REST or WebSocket route carries it. Built that way,
    the check refused every move on the robot, wake and sleep included, while every fake served the field. So the
    check was dropped (owner, 2026-11-03). `tests/unit/test_reachy_sdk_contract_1499.py` now pins the route's real
-   keys, and the fakes are checked against them. Its replacement (owner, the same day) follows from tick 1's
-   geometry: the first tick's head pose is the *present* head (interpolation time ≈ 0), so the danger is the
-   present head being past the clamp from the old target. The controller tracks the target its own last goto left
-   (`_daemon_body_target`): the chunk's body when commanded, else the body that chunk started from, which is what
-   `GotoMove` sets. It is kept through a timed-out goto, which the daemon took. Before every chunk (`_run_move`'s
-   first, `_recheck_before_chunk`'s later ones), the controller refuses `reference` when the old target would make
-   tick 1 worse than the pose the robot already holds. That means a head more than max(65°, its present twist from
-   the body) + 1° from the target. A target equal to the present body reproduces the present pose, and a move that
-   reduces the twist stays allowed (delta round, 2026-11-03). The 1° is provisional, for servo noise at the clamp,
-   where a hold leaves the head at exactly 65° from the target. The sweep prints the head's yaw from the tracked
-   target on every look-at (`from-target=`), so its hold measures that noise. The tracked target is forgotten, and
-   the check skipped, whenever the model is known wrong:
-   - on disconnect;
-   - after a wake from torque off, because the daemon's `enable_motors` re-pins its target to the present body (the
-     wake reads torque first, and an unreadable state counts as off);
-   - on `note_external_head_motion`;
-   - when the body is found more than 5° from the target: R1's divergence check on a discrete move, or the check
-     itself on the lifecycle path, which refuses once. Something else moved the body, so the refusal never sticks
-     (owner, 2026-11-03).
+   keys, and the fakes are checked against them. A replacement that tracked the target Maxim's own gotos left, and
+   refused a present head past the clamp from it, went through two delta rounds. Each round found a new way to
+   lock the robot out (sleep included) or to fail open, because a target we cannot read can only be guessed.
+   **The fix removes the race instead (owner, 2026-11-03).** Before each chunk's goto, after every check has
+   passed and under the motion lock, the controller re-pins both of the daemon's targets to the pose the fresh
+   readback found: `set_target(head=present head, body_yaw=present body)`
+   (`ReachyMiniController._repin_daemon_target`). The SDK's `set_target` writes the targets without
+   interpolating, and the IK of the present pose is the present pose. So a goto's first tick pairs the present
+   head with the present body: the pose the robot already holds, which the readback's own neck check (R2) has
+   passed. Nothing is refused, so nothing can lock out.
 
-   Two residuals remain, stated here. A target set by another client is §8's single-client assumption: it is caught
-   only once it puts the body 5° or more from the tracked target. The first move after any forget has no tracked
-   target, so its check is skipped. The commonest case is the soft reconnect (`embodied_runtime/connection.py`:
-   disconnect, connect, then a wake). #1563 closes on PR 3. The upstream ask (pulse, then Pollen) is for `FullState` to serve the
-   target, and the contract test goes red when an SDK does.
+   The controller still tracks the body target its own last command left (`_daemon_body_target`): a re-pin's body,
+   then the chunk's body when commanded, else the body that chunk started from. It uses that only to skip the
+   frame when the target is already within 1° of the present body, which is the common tracking look-at, so the
+   10 Hz stream sends almost no extra frames. A stale tracked value costs one extra frame and nothing else. It is
+   unknown, and the next goto re-pins, after a connect, a disconnect, `note_external_head_motion`, or a re-pin that
+   raised. A raising re-pin moves nothing.
+
+   One residual remains, stated here. The daemon ignores `set_target` while one of its own moves is running, and
+   the frame is not acknowledged. Maxim's gotos block until they finish, and a timed-out move is refused until it
+   settles, so this happens only while a move another client started is running: §8's single-client assumption.
+   #1563 closes on PR 3. The upstream ask (pulse, then Pollen) is for `FullState` to serve `target_body_yaw`; the
+   contract test goes red when an SDK does.
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
 

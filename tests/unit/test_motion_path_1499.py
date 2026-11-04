@@ -216,14 +216,11 @@ def test_the_known_rest_shape_variants_parse(daemon, mode):
 # pose the robot already holds. It tracks the target its own commands left only to skip the frame when that
 # already equals the present body within 1° (the common tracking look-at).
 
-_REPIN = pytest.mark.xfail(strict=True, reason="#1563: the re-pin before a goto is not built")
-
 
 def _repins(daemon) -> list[dict]:
     return [c for c in daemon.calls if c["name"] == "set_target"]
 
 
-@_REPIN
 def test_a_goto_after_an_unknown_target_re_pins_to_the_present_pose_first(daemon):
     _place(daemon, body_deg=20, rel_deg=30)
     ctl = controller(daemon)  # no command of Maxim's has set the target yet
@@ -236,7 +233,6 @@ def test_a_goto_after_an_unknown_target_re_pins_to_the_present_pose_first(daemon
     assert pin.get("antennas") is None, "the re-pin leaves the antennas alone"
 
 
-@_REPIN
 def test_the_old_lockout_pose_now_re_pins_and_moves(daemon):
     """Delta round 2's lockout: body 3° from the target, head 66.5° from it. The re-pin removes the old target."""
     ctl = controller(daemon)
@@ -249,7 +245,6 @@ def test_the_old_lockout_pose_now_re_pins_and_moves(daemon):
     assert ctl.goto_sleep()
 
 
-@_REPIN
 def test_a_stalled_body_is_re_pinned_not_forgotten(daemon):
     """Delta round 2's fail-open: Maxim's own target 30°, the body stalled at 20°. The re-pin makes tick 1 safe."""
     ctl = controller(daemon)
@@ -273,7 +268,6 @@ def test_a_target_within_1_degree_of_the_body_is_not_re_pinned(daemon):
     assert _repins(daemon) == []
 
 
-@_REPIN
 def test_every_chunk_of_a_split_re_pins_when_the_body_lags(daemon):
     _place(daemon, body_deg=160)
     real = daemon.goto_target
@@ -311,7 +305,6 @@ def test_a_goto_that_timed_out_still_leaves_its_body_target(daemon):
     assert ctl._daemon_body_target == pytest.approx(D(20))
 
 
-@_REPIN
 def test_a_failed_re_pin_moves_nothing(daemon, monkeypatch):
     ctl = controller(daemon)
 
@@ -323,6 +316,32 @@ def test_a_failed_re_pin_moves_nothing(daemon, monkeypatch):
     assert not out and _kind(out) == "error"
     assert daemon.gotos() == []
     assert ctl._daemon_body_target is None, "a re-pin that did not go out leaves the target unknown"
+
+
+def test_a_failed_re_pin_forgets_a_known_target(daemon, monkeypatch):
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=D(20), duration=1.0))  # target known: 20°
+    _place(daemon, body_deg=30)  # the body is elsewhere, so the next goto re-pins
+
+    def _dead(**kw):
+        raise ConnectionError("Lost connection with the server.")
+
+    monkeypatch.setattr(daemon, "set_target", _dead)
+    ctl._last_commanded.clear()
+    assert not ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
+    assert ctl._daemon_body_target is None, "the daemon may hold either target now"
+
+
+def test_a_goto_that_raises_after_its_re_pin_leaves_the_pinned_target(daemon, monkeypatch):
+    _place(daemon, body_deg=15)
+    ctl = controller(daemon)
+
+    def _boom(**kw):
+        raise RuntimeError("the SDK raised before sending the goto")
+
+    monkeypatch.setattr(daemon, "goto_target", _boom)
+    assert not ctl.goto_target(_target(head_pitch=0.1, duration=1.0))
+    assert ctl._daemon_body_target == pytest.approx(D(15)), "the re-pin went out; the goto did not"
 
 
 def test_a_refused_move_sends_no_re_pin(daemon):

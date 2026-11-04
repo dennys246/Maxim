@@ -168,17 +168,10 @@ class _Sweep:
             self.body_max = max(self.body_max, abs(body))
             print(
                 f"  {time.monotonic() - self.t0:6.1f}s  {phase:<11}  u={u:<4}  "
-                f"rel={rel:+6.1f}°  body={body:+5.1f}°  {self._from_target(rel, body)}  {verdict}"
+                f"rel={rel:+6.1f}°  body={body:+5.1f}°  {verdict}"
             )
         _sleep(max(0.0, TRACK_PERIOD_S - (time.monotonic() - started)))
         return None if read is None else read[0]
-
-    def _from_target(self, rel: float, body: float) -> str:
-        """The head's yaw from the body target the controller tracks (#1563 refuses past 66°), from the same read."""
-        target = getattr(self.ctl, "_daemon_body_target", None)
-        if target is None:
-            return "from-target=none"
-        return f"from-target={rel + body - math.degrees(target):+6.1f}°"
 
     def walk(self, phase: str, u: int, sign: int) -> None:
         """Look at column *u* until the yaw (in direction *sign*) stops rising, or the cap."""
