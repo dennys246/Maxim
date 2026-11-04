@@ -269,6 +269,63 @@ def test_a_goto_that_timed_out_still_leaves_its_body_target(daemon):
     assert ctl._daemon_body_target == pytest.approx(D(20))
 
 
+_STALE = pytest.mark.xfail(strict=True, reason="#1563 delta folds: the stale-target cases are not built")
+
+
+@_STALE
+def test_a_head_already_past_the_clamp_from_its_own_body_may_still_move(daemon):
+    """Tick 1 against a target equal to the present body reproduces the pose the robot is in: no added risk."""
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(head_yaw=0.0, duration=1.0))  # the target is the present body, 0°
+    _place(daemon, body_deg=0, rel_deg=66.5)  # inside R2's +5°, past 66° from the target
+    ctl._last_commanded.clear()
+    assert ctl.goto_target(_target(head_yaw=0.0, head_pitch=0.0, head_roll=0.0, duration=2.0)), "centring is allowed"
+
+
+@_STALE
+def test_a_wake_after_torque_off_forgets_the_tracked_target(daemon):
+    """SDK 1.8.3's enable_motors pins the daemon's body target to the present body on torque off → on."""
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))  # tracked target 0°
+    daemon.control_mode = "disabled"
+    _place(daemon, body_deg=80)  # the base turned by hand with torque off; the head rode along
+    assert ctl.wake_up()
+
+
+def test_a_wake_with_torque_on_keeps_the_tracked_target(daemon, monkeypatch):
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=D(10), duration=1.0))
+    seen: list = []
+    real = ctl._run_lifecycle
+    monkeypatch.setattr(
+        ctl, "_run_lifecycle", lambda *a, **kw: (seen.append(ctl._daemon_body_target), real(*a, **kw))[1]
+    )
+    assert ctl.wake_up()
+    assert seen == [pytest.approx(D(10))], "torque was on: enable_motors left the target alone"
+
+
+@_STALE
+def test_a_body_another_client_turned_refuses_once_then_moves(daemon):
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))  # tracked target 0°, stash body 0°
+    _place(daemon, body_deg=20, rel_deg=60)  # another client turned the body; the head is 80° from the old target
+    first = ctl.goto_target(_target(head_yaw=D(60), head_pitch=0.0, head_roll=0.0, duration=1.0))
+    assert not first and _kind(first) == "reference"
+    assert ctl._daemon_body_target is None, "the model is known wrong: forgotten, not sticky"
+    assert ctl.goto_target(_target(head_yaw=D(60), head_pitch=0.0, head_roll=0.0, duration=1.0))
+
+
+@_STALE
+def test_a_sleep_after_another_client_turned_the_body_is_not_stuck(daemon):
+    """The lifecycle skips R1's stash check, so the old-target check forgets a target 5°+ from the body itself."""
+    ctl = controller(daemon)
+    assert ctl.goto_target(_target(body_yaw=0.0, duration=1.0))
+    _place(daemon, body_deg=90)  # another client turned the body (and the riding head) to 90°
+    first = ctl.goto_sleep()
+    assert not first and _kind(first) == "reference"
+    assert ctl.goto_sleep()
+
+
 def test_an_unknown_body_target_does_not_refuse(daemon):
     """The first move after connect: no goto of Maxim's has set the target yet (the stated residual, §13)."""
     _place(daemon, body_deg=0, rel_deg=65)
