@@ -1,0 +1,2 @@
+- **The offline latch no longer reads the environment variables it sets** (#1315 item 1): `maxim._offline.engage()` writes `MAXIM_OFFLINE`, `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY` and `YOLO_OFFLINE` without reading their previous values. That keeps the observer's environment read set pinned. Nothing outside Maxim's own test harness relied on the old read.
+- **`_LlamaCppBackend` builds its `Llama` arguments through the new shared `llama_backend.llama_kwargs()`**, which the observer's backend also uses; the arguments it passes are unchanged.
