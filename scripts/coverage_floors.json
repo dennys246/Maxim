@@ -56,8 +56,8 @@
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 50.5,
-      "missing": 1612
+      "percent": 56.8,
+      "missing": 1416
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -172,8 +172,8 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 65.6,
-      "missing": 2095
+      "percent": 67.1,
+      "missing": 2065
     }
   },
   "files": {
