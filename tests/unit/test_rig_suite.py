@@ -1,9 +1,10 @@
 """scripts/rig_suite.sh end to end, over a fake ``ssh`` that runs each remote command locally.
 
 The rig's SSH server (Tailscale SSH, 2026-11-03) reports exit status 0 for every remote command while stdout arrives
-intact, so rig_suite.sh must not read any decision from ssh's own exit status. The fake ssh models three transports:
-``tailscale`` (always exits 0), ``openssh`` (passes the command's status through) and ``drop`` (loses the last line
-of output, then exits 0). The remote side runs zsh where it is installed (the rig's login shell), else bash.
+intact, so rig_suite.sh must not read any decision from ssh's own exit status. The fake ssh models four transports:
+``tailscale`` (always exits 0), ``openssh`` (passes the command's status through), ``drop`` (loses the last line of
+output, then exits 0) and ``once`` (``tailscale`` that loses one whole reply). The remote side runs zsh where it is
+installed (the rig's login shell), else bash; the test ids name which.
 
 Each test builds an upstream repo whose ``scripts/suite_at_commit.sh`` is a stub, a worktree cloned from it, and the
 rig's clone at ``$HOME/maxim-suites/repo`` under a temporary HOME; ``git push ssh://…`` reaches that clone through
@@ -26,18 +27,6 @@ SCRIPT = REPO / "scripts" / "rig_suite.sh"
 REMOTE_SHELL = shutil.which("zsh") or shutil.which("bash") or "/bin/bash"
 TRANSPORTS = ("tailscale", "openssh")
 
-# Red on main (rig_suite.sh trusts ssh's exit status and polls a fixed 60 s): (test, transport) pairs. Emptied by the
-# fix; each must fail on main for its own reason.
-RED_ON_MAIN = {
-    ("g1", "tailscale"),
-    ("g1", "openssh"),
-    ("g2", "tailscale"),
-    ("g2", "openssh"),
-    ("g3", "openssh"),
-    ("g4", "tailscale"),
-    ("g6", "tailscale"),
-    ("g6", "openssh"),
-}
 
 _FAKE_SSH = textwrap.dedent(
     """\
@@ -57,6 +46,12 @@ _FAKE_SSH = textwrap.dedent(
         tailscale) "$FAKE_REMOTE_SHELL" -c "$*"; exit 0 ;;
         openssh) "$FAKE_REMOTE_SHELL" -c "$*"; exit $? ;;
         drop) out="$("$FAKE_REMOTE_SHELL" -c "$*")"; printf '%s\\n' "$out" | sed '$d'; exit 0 ;;
+        once) # tailscale, but the FIRST command containing $FAKE_SSH_DROP_MATCH loses its whole reply
+            case "$*" in
+                *"$FAKE_SSH_DROP_MATCH"*)
+                    if [ ! -e "$HOME/.fake_ssh_dropped" ]; then : > "$HOME/.fake_ssh_dropped"; "$FAKE_REMOTE_SHELL" -c "$*" > /dev/null; exit 0; fi ;;
+            esac
+            "$FAKE_REMOTE_SHELL" -c "$*"; exit 0 ;;
     esac
     """
 )
@@ -67,6 +62,10 @@ _STUB_SUITE = textwrap.dedent(
     echo "suite at $1"
     for s in fast-suite release-gates memory-hub ratchet; do echo "suite stage $s: exit=0"; done
     sleep "${STUB_SLEEP:-0}"
+    # STUB_CLOBBER=<label>: another launch of that label truncated the log mid-run (its own nonce, its own PASS)
+    if [ -n "${STUB_CLOBBER:-}" ]; then
+        printf 'rig-suite-run=someone-else\nsuite-exit=0\n' > "$HOME/maxim-suites/logs/$STUB_CLOBBER.log"
+    fi
     exit "${STUB_EXIT:-0}"
     """
 )
@@ -78,7 +77,6 @@ def _git(cwd: Path, *args: str) -> str:
 
 class _Rig:
     def __init__(self, tmp: Path, transport: str) -> None:
-        self.transport = transport
         self.home = tmp / "home"
         self.logs = self.home / "maxim-suites" / "logs"
         bindir = tmp / "bin"
@@ -129,15 +127,8 @@ class _Rig:
             raise AssertionError(f"rig_suite.sh {' '.join(args)} did not finish in {timeout} s") from exc
 
 
-@pytest.fixture(params=TRANSPORTS)
+@pytest.fixture(params=TRANSPORTS, ids=lambda t: f"{t}-{Path(REMOTE_SHELL).name}")
 def rig(request: pytest.FixtureRequest, tmp_path: Path) -> _Rig:
-    gate = request.node.originalname.split("_")[1]
-    if (gate, request.param) in RED_ON_MAIN:
-        request.node.add_marker(
-            pytest.mark.xfail(
-                strict=True, raises=AssertionError, reason="red gate: rig_suite.sh trusts ssh's exit status"
-            )
-        )
     return _Rig(tmp_path, request.param)
 
 
@@ -153,6 +144,7 @@ def test_g2_a_failing_suite_fails_with_its_own_exit(rig: _Rig) -> None:
     assert r.returncode == 1, r.stdout + r.stderr
 
 
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes through a read-only file")
 def test_g3_a_stale_log_from_a_launch_that_never_wrote_is_never_read_as_this_runs_pass(rig: _Rig) -> None:
     log = rig.logs / "stale.log"
     log.write_text("suite at 0000000\nsuite stage fast-suite: exit=0\nsuite-exit=0\n")
@@ -177,7 +169,9 @@ def test_g4_an_attach_to_a_run_that_died_without_finishing_exits_2(rig: _Rig) ->
 
 def test_g5_a_label_still_running_refuses_a_second_launch(rig: _Rig) -> None:
     nonce = "cafe00000000-1-1-1"
-    live = subprocess.Popen(["bash", "-c", "sleep 60", f"rig-suite-{nonce}"], start_new_session=True)
+    # Two commands, as the real launch runs (the suite, then `echo suite-exit`): a single one would make bash exec it
+    # and drop the nonce from the argv.
+    live = subprocess.Popen(["bash", "-c", "sleep 60; :", f"rig-suite-{nonce}"], start_new_session=True)
     try:
         (rig.logs / "busy.log").write_text(f"rig-suite-run={nonce}\nsuite at x\n")
         (rig.logs / "busy.pid").write_text(f"{live.pid}\n")
@@ -206,3 +200,29 @@ def test_g7_a_transport_that_loses_output_never_launches_or_passes(tmp_path: Pat
     r = rig.run(str(rig.wt), "lossy")
     assert r.returncode == 2, r.stdout + r.stderr
     assert not (rig.logs / "lossy.log").exists()
+
+
+def test_g8_a_log_that_another_launch_took_over_is_never_this_runs_verdict(rig: _Rig) -> None:
+    r = rig.run(str(rig.wt), "taken", STUB_CLOBBER="taken", STUB_EXIT="1")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "rig suite: PASS" not in r.stdout
+
+
+def test_g9_one_lost_poll_reply_is_retried_not_read_as_a_foreign_log(tmp_path: Path) -> None:
+    rig = _Rig(tmp_path, "once")
+    r = rig.run(str(rig.wt), "blip", FAKE_SSH_DROP_MATCH="%s\\n%s\\n%s", STUB_SLEEP="2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "rig suite: PASS" in r.stdout
+
+
+def test_g10_a_run_from_an_older_runner_still_going_is_never_launched_over(rig: _Rig) -> None:
+    (rig.logs / "old.log").write_text("suite at x\nsuite stage fast-suite: exit=0\n")  # no nonce, no pid file
+    r = rig.run(str(rig.wt), "old")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "older runner's unfinished log" in r.stderr
+
+
+def test_g11_a_finished_run_from_an_older_runner_is_launched_over(rig: _Rig) -> None:
+    (rig.logs / "done.log").write_text("suite at x\nsuite-exit=1\n")
+    r = rig.run(str(rig.wt), "done")
+    assert r.returncode == 0, r.stdout + r.stderr
