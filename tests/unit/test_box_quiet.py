@@ -17,6 +17,8 @@ import pytest
 
 from scripts import box_quiet as B
 
+pytestmark = pytest.mark.timeout(60)  # a waiter that never fits hangs: fail it, never let it eat the CI job
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "box_quiet.py"
 FRAMEWORK_PY = "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python"
@@ -88,14 +90,39 @@ def test_one_run_is_counted_once_under_its_top_most_process():
         P(201, 200, "bash scripts/run_mypy_public.sh"),
         P(300, 1, "python -m pytest tests/ -q"),  # a bare full suite, no wrapper
     ]
-    now = B.running(procs, claims={})
+    now = B.running(procs, claims={}, own_pid=0)
     assert sorted(now[B.SUITE]) == [100, 300]
     assert now[B.CHECK] == [200]
 
 
+def test_a_waiter_never_counts_itself_or_the_run_it_was_started_inside():
+    """CI hang (PR #1595, 2026-11-04): the in-process tests ran inside ``pytest tests/``, counted it, waited forever."""
+    procs = [
+        P(100, 1, "python -m pytest tests/ -x -q"),  # the suite the waiter runs inside
+        P(101, 100, "python -m pytest tests/ -x -q"),  # the waiter itself (an in-process B.main)
+        P(102, 101, "python -c import time"),  # its claimed child
+        P(300, 1, "python -m pytest tests/ -q"),  # somebody else's suite still counts
+    ]
+    now = B.running(procs, claims={102: B.CHECK}, own_pid=101)
+    assert now[B.SUITE] == [300] and now[B.CHECK] == [102]
+
+
+def test_ps_is_asked_for_untruncated_args(monkeypatch):
+    """Linux procps cuts args to a width without -ww, which hid a claimed child and let two checks start together."""
+    seen = []
+
+    def fake_run(argv, **kw):
+        seen.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(B.subprocess, "run", fake_run)
+    B.read_ps()
+    assert "-ww" in seen[0]
+
+
 def test_a_claimed_child_counts_before_ps_shows_it_and_its_descendants_are_not_recounted():
     procs = [P(500, 1, "bash"), P(501, 500, "python -m pytest tests/ -q")]
-    now = B.running(procs, claims={500: B.SUITE, 777: B.CHECK})
+    now = B.running(procs, claims={500: B.SUITE, 777: B.CHECK}, own_pid=0)
     assert now[B.SUITE] == [500]
     assert now[B.CHECK] == [777]
 

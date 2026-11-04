@@ -57,6 +57,10 @@ Inputs and how each could lie:
 - Signals: SIGTERM/SIGHUP to the waiter are forwarded to its child, and the waiter waits for the child before it
   removes the claim, so a stopped waiter neither orphans a running suite nor uncounts one still shutting down.
 - Waiters that do not use this script are still counted while running (by argv); they just do not queue.
+- Truncated argv: Linux procps cuts ``args`` to a terminal width when it finds one (a waiter's inherited stderr), which
+  hid a claimed child's argv and let two checks start together on Linux; ``ps -ww`` (procps and BSD) never truncates.
+- The waiter's own process tree: it and its ancestors are never counted (``running(own_pid=)``), or a waiter run
+  from inside a full suite (its tests in CI) counts that suite and waits for itself forever.
 
 State lives in ``~/.cache/maxim-box-quiet`` (shared by every worktree and session of this user), or ``--state-dir``.
 These files are not persisted data (throwaway coordination state; CC3 and ``_format_version`` do not apply).
@@ -173,7 +177,7 @@ def classify(argv: tuple[str, ...]) -> str | None:
 def read_ps() -> list[Proc]:
     """Every process with its start time. ``lstart`` is five words (``Mon Nov  3 16:00:00 2026``)."""
     out = subprocess.run(
-        ["ps", "-axo", "pid=,ppid=,lstart=,args="],
+        ["ps", "-ww", "-axo", "pid=,ppid=,lstart=,args="],  # -ww: Linux procps cuts args to a width otherwise
         capture_output=True,
         text=True,
         check=True,
@@ -196,8 +200,11 @@ def scoped(procs: list[Proc], only: str | None) -> list[Proc]:
     return [p for p in procs if p.pid == me or only in " ".join(p.argv)]
 
 
-def running(procs: list[Proc], claims: dict[int, str]) -> dict[str, list[int]]:
-    """The runs in progress by kind, each counted once: claims first, then argv-classified top-most processes."""
+def running(procs: list[Proc], claims: dict[int, str], *, own_pid: int) -> dict[str, list[int]]:
+    """The runs in progress by kind, each counted once: claims first, then argv-classified top-most processes.
+
+    ``own_pid`` (the caller, required so no call site can forget it) and its ancestors are never counted: a waiter
+    started inside a run (a test of this script inside a full suite) cannot wait for that run to end."""
     by_pid = {p.pid: p for p in procs}
 
     def ancestors(pid: int):
@@ -209,6 +216,8 @@ def running(procs: list[Proc], claims: dict[int, str]) -> dict[str, list[int]]:
             cur = by_pid.get(cur.ppid)
 
     kinds = {p.pid: classify(p.argv) for p in procs}
+    for pid in (own_pid, *ancestors(own_pid)):
+        kinds[pid] = None
     out: dict[str, list[int]] = {SUITE: [], CHECK: []}
     for pid, kind in claims.items():
         out[kind].append(pid)
@@ -351,7 +360,7 @@ def cmd_status(state: Path, only: str | None = None) -> int:
         (state / sub).mkdir(parents=True, exist_ok=True)
     with Lock(state):
         procs = scoped(read_ps(), only)
-        now = running(procs, _load_claims(state, procs, prune=False))
+        now = running(procs, _load_claims(state, procs, prune=False), own_pid=os.getpid())
         queue = _load_queue(state, procs, prune=False)
     print(
         f"suites running: {len(now[SUITE])}/{MAX_SUITES} {now[SUITE]}   checks running: {len(now[CHECK])} {now[CHECK]}"
@@ -400,7 +409,7 @@ def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: flo
         while child is None:
             with Lock(state):
                 procs = scoped(read_ps(), only)
-                now = running(procs, _load_claims(state, procs, prune=True))
+                now = running(procs, _load_claims(state, procs, prune=True), own_pid=os.getpid())
                 if may_start(me, _load_queue(state, procs, prune=True), now):
                     child = subprocess.Popen(cmd)
                     when = ""
