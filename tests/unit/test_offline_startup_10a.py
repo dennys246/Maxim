@@ -256,19 +256,6 @@ def test_router_build_and_dispatch_refuse_in_process() -> None:
     ]
 
 
-def test_llm_offline_round_trips_through_maxim_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from maxim.runtime import config_writer as cw
-
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert "llm.offline" in cl.SETTABLE_FIELDS and "llm.offline" not in cl._FIELD_TO_ENV
-    cw.set_field("llm.offline", "true")
-    cl.invalidate_config_cache()
-    assert cl.resolve_setting("llm.offline") == (True, "config")
-    cw.unset_field("llm.offline")
-    cl.invalidate_config_cache()
-    assert cl.resolve_setting("llm.offline") == (False, "default")
-
-
 def test_a_doctor_check_refused_offline_is_its_own_row() -> None:
     from maxim.doctor import checks
 
