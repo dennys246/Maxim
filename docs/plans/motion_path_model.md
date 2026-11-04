@@ -404,7 +404,7 @@ Rules around the loop:
 - **Single client.** Moves, the drop rule (F3) and `automatic_body_yaw` are daemon-global. Another client can bypass or undo everything here: a LAN script on `0.0.0.0:8000`, a second Maxim, or pulse's app handle before pymaxim's assertion on adopt. That belongs to the embodied-device plan (one owner per device).
 - **x, y and z translation rates** are not checked, except that lifecycle re-centres hold the readback's translation.
 - **Raw harness motion stays allow-listed and bypasses rate and path** (stated, Wire 10): `scripts/orient_backbone/live_common.py::goto_body_yaw`, used by `doa_sweep`, `doa_settle`, `live_2_reactive` and `yaw_verify` at 0.5 to 0.6 s for any angle.
-- **The `Selfy.mini` facade** is a follow-up issue, filed with PR 1 (O5).
+- **The `Selfy.mini` facade** is a follow-up issue (O5), filed with PR 3 as #1591.
 - **The daemon's IK NaN behaviour** is not counted.
 
 ## 9. Red gates (strict xfail, written first; each drives the real path against the shared fake)
@@ -587,7 +587,7 @@ These were not put to the owner as separate questions. Each is the fail-closed o
 
    PR 1 alone removes the live sweep and cannot poison the learners.
 2. **PR 2, outcomes:** `MotorQueue`, the two-stage ticket, the tools, the DN inbox, the pain-bridge event ids and `media_loop.act`. Until it lands, a queued refusal is logged and ignored by the learners, but the model still hears "queued" as success, which is the state on `main` today.
-3. **PR 3, the lint extension**, plus the facade follow-up issue. Pulse's robot report (2026-11-01) adds to it:
+3. **PR 3, the lint extension**, plus the facade follow-up issue (#1591). Pulse's robot report (2026-11-01) adds to it:
    `src/tests/basic_move.sh` builds `ReachyMini(...)` without `automatic_body_yaw=False`, and since the setting is
    daemon-wide, running it turns auto-yaw back on for every client. It gets `False`, and the lint checks that
    every `ReachyMini(` in `src/` and `scripts/` passes `automatic_body_yaw=False`. **Owner, 2026-11-01 (pulse's
@@ -599,17 +599,46 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    Auto-yaw acts past 65° of head-to-body yaw and our clamp is exactly ±65°, so tracking can reach that threshold:
    the hardware body-yaw test covers it. This amends O6 and lands in PR 3.
 
+   **#1563: moved out of 1.3.4 as an upstream residual (owner, 2026-11-03).** The daemon's IK composes the head
+   against its body *target*, while the controller's clamp is checked against the *present* body. The SDK 1.8.3
+   source (the robot's version) narrows the issue. A head-only goto with `body_yaw=None` does not keep the old
+   target: `GotoMove` replaces `None` with the daemon's present body and sets the target to it on every tick (F2).
+   What remains is inside the daemon. Each 100 Hz move tick, and each `set_target` frame, stores the head target
+   and then the body target in two separate, unlocked assignments on the daemon's asyncio thread. The IK runs on
+   its own 50 Hz control thread (`robot/backend.py::_update`), so a thread switch that lands between the two
+   stores solves the IK once for the new head against the previous body target. The motors hold that solution
+   until the next control tick, at most 20 ms.
+
+   During any body move this already pairs the head with a body target up to about 3.4° stale (the 340°/s peak
+   rate cap ÷ 100 Hz). A goto's first tick is the same window, offset by the previous move's arrival error: at
+   most 5° (the final readback's tolerance), and typically about 1°. Three client-side mechanisms were built and
+   reviewed on 2026-11-03, and each failed one layer down:
+   1. Refusing when the served `target_body_yaw` disagreed with the body. 1.8.3's `FullState` response model drops
+      that field, so the check refused every move.
+   2. Tracking the target Maxim's own gotos left and refusing a head past the clamp from it. It locked the robot
+      out, sleep included, or failed open.
+   3. Re-pinning both targets to the present pose with `set_target`. The daemon applies that frame with the same
+      two stores, so it moved the window instead of closing it.
+
+   No client write can close a window inside the daemon's own assignment order, so the controller carries no
+   #1563 code. `tests/unit/test_reachy_sdk_contract_1499.py` pins the route's real keys and checks the fakes
+   against them; it goes red when an SDK starts serving `target_body_yaw`. The upstream ask goes to Pollen via
+   pulse: store the head and body targets atomically (one assignment, or a lock the control loop also takes), and
+   serve `target_body_yaw` in `FullState`. #1563 stays open, labelled upstream, out of the 1.3.4 cut.
+
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
 
 **The hardware check names its first head-motion run as the body-yaw test** (pulse, 2026-11-01). Pulse's robot
-install (app 0.4.6, pymaxim 1.3.3) verified the SDK opens with `automatic_body_yaw=False`, but nothing has moved the
-head through pymaxim on the robot yet: `MaximHandle` gets the body only, and the robot reaches pymaxim only through
-the speaker sink. So the first head-motion run after the controller and robot handoff ship is where a body that
-turns on its own (auto-yaw re-enabled by another client) would show. Pulse's watcher reads
-`GET :8000/api/state/full?with_head_pose=true&with_body_yaw=true&with_target_body_yaw=true` (not an SDK client, so
-it cannot flip the setting), samples at 5 Hz and reports the largest head-to-body yaw reached. **Pass:** the present
-body yaw tracks the target body yaw (gap ≤ ~2°) in a run that reached ≥ 55° relative; a run that never reached 55°
-is INCONCLUSIVE.
+install (app 0.4.6, pymaxim 1.3.3) verified that the SDK opens with `automatic_body_yaw=False`. But nothing has moved
+the head through pymaxim on the robot yet: `MaximHandle` gets the body only, and the robot reaches pymaxim only
+through the speaker sink. So the first head-motion run after the controller and robot handoff ship is where a body
+that turns on its own (auto-yaw re-enabled by another client) would show. Pulse's watcher reads
+`GET :8000/api/state/full` (it is not an SDK client, so it cannot flip the setting), samples at 5 Hz and reports the
+largest head-to-body yaw reached. The watcher asks for `target_body_yaw`, but 1.8.3 never serves it (#1563 above).
+So its "told" column reads 0, and its gap is the body's yaw itself. In a head-only run that starts at body 0, that
+is exactly the auto-yaw symptom. **Pass:** the hold gap is ≤ ~2° in a run that reached ≥ 55° relative. A run that
+never reached 55° is INCONCLUSIVE. In the app run, a body turn the app makes on purpose during a hold would read as
+a gap too, so a FAIL there needs the trace read before it counts.
 
 **The sweep that reaches the clamp (PR 3).** A conversational "look far left" may stop short of 65°, and no rig
 script drives the tracking path today (none calls `look_at_pixel`). PR 3 adds one, reviewed like any `scripts/`
@@ -617,7 +646,43 @@ change and dry-run offline against the shared fake first. It drives `ReachyMiniC
 image's left edge at the tracking cadence (0.3 s, `at_least`), so the head walks to the ±65° clamp the way DN
 tracking does. It holds there for about 5 s of edge look-ats, then sweeps right and back to centre. It prints the
 relative yaw it reached and refuses to start unless torque is on and the body is near 0. The owner runs it with
-pulse's watcher.
+pulse's watcher. It is `scripts/orient_backbone/body_yaw_sweep.py` (`--hold-s`, default 5; `--dry-run` runs it
+against the shared fake), tested in `tests/unit/test_body_yaw_sweep.py`.
+
+**The watcher's control is a turn check** (owner, 2026-11-01, revised twice on 2026-11-03). The flip variant, which
+turns auto-yaw on past 65° through the raw SDK, is ruled out for the robot: if the flip did not take, it fails into
+the motors-2-and-3 hazard. It survives only in the path tests on the fake. The lag check that replaced it, which
+read the target-to-present gap, cannot run on 1.8.3, which serves no target. The control now proves that the
+watcher sees a body that moves. `--turn-check` turns the body 30° over 3 s through the controller and back, and
+prints its own body-yaw trace at 10 Hz. **The control PASSES** when the watcher's whole-run gap (the body's yaw, on
+1.8.3) peaks at the script's peak within ~2° and returns to ~0. A watcher that stays flat while the body turned is
+blind, and the control FAILS. The watcher's own verdict line reads INCONCLUSIVE in this run by design: the head
+rides along with the body, far below 55° relative. The script exits 1 when the body does not end within 2° of where
+it was sent; it then makes no return move.
+
+**The three runs, in order (owner).** Pulse's watcher runs in every one. Run them from a checkout at or after
+PR 3's merge, with the Maxim app stopped for runs 1 and 2 (no other SDK client):
+
+```bash
+# Terminal 1, all three runs: the watcher (REST only; Ctrl-C prints its verdict)
+python3 ~/maxim-robot-test/watch_body_yaw.py --host <robot-ip>
+
+# Run 1, the control: the turn check. The watcher's whole-run gap must peak at ~30° and return to ~0.
+~/Scripts/Maxim/.venv/bin/python scripts/orient_backbone/body_yaw_sweep.py --host <robot-ip> --turn-check --media-backend no_media
+
+# Run 2, (b) the sweep through the controller's tracking path. Pass: the watcher says PASS (hold gap ≤ 2°) in
+# a run that reached ≥ 55° relative; the script's summary prints the yaw reached and whether the body moved.
+~/Scripts/Maxim/.venv/bin/python scripts/orient_backbone/body_yaw_sweep.py --host <robot-ip> --hold-s 5
+```
+
+Run 3, (a) the app run: start the Maxim app from the dashboard, run no script, and let the app's own tracking go
+to the limit with the watcher on. The pass rule is the same as run 2's.
+
+The sweep needs the SDK's media backend with the camera (`look_at_image` needs its intrinsics), but the turn check
+does not. On the Mac, GStreamer failed for `measure_antennas.py` (2026-11-01). If the sweep's connect fails or
+reports no camera there, run it from a box where the SDK's media works. The controller's fresh read has a 100 ms
+deadline, and the watcher's 5 Hz reads (plus the turn check's 10 Hz) compete for the daemon. A refusal that names
+the deadline is contention, not a motion fault: re-run it.
 
 ## 14. PR 1 build notes (2026-10-29, for the code review)
 
