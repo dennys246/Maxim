@@ -34,6 +34,7 @@ Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architec
 - [Substrate & Hivemind](substrate-sharing.md) — Exporting and sharing learned substrate state between Maxim instances
 - [Cross-Session Learning](cross-session-learning.md) — How affordance and causal knowledge accumulate across sessions
 - [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
+- [The observer](advisor.md) — `maxim.advisor`: Maxim judges events and proposes, and cannot act (Experimental, #1315)
 - [Component Library](component-library.md) — 73 SEM components across 7 genre-gated categories
 - [API Quickstart](api-quickstart.md) — Quick examples for the Python API
 

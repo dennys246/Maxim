@@ -35,7 +35,7 @@ SEAMS THESE GATES PIN (the notes leave them open; chosen here, change them only 
   * ``maxim._offline``: ``engage(reason: str) -> None``; ``is_offline() -> bool``; ``OfflineRefusal(RuntimeError)``;
     ``truthy(value: str | None) -> bool``; ``ledger() -> Sequence`` (one entry per refusal, appended BEFORE the
     raise, a fresh sequence per call); ``hook_installed() -> bool`` (whether THIS process ever added the audit hook);
-    ``_reset_for_tests()`` (in ``src/`` per v6.4; it disengages and restores the five env keys, its callers are
+    ``_reset_for_tests()`` (in ``src/`` per v6.4; it disengages and removes the five env keys, which the conftest fixture restores; its callers are
     linted to ``tests/``, and the conftest autouse fixture calls it); ``on_engage(fn)`` and ``engage_callbacks()``
     (the read seam chosen here, a sequence of the registered callbacks).
   * "No hook without the variable" is checked by the installed flag AND behaviourally (a synthetic

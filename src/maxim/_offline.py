@@ -85,7 +85,6 @@ _reason = ""
 _hook_added = False
 _ledger: list[Refusal] = []
 _callbacks: list[Callable[[], Any]] = []
-_saved_env: dict[str, str | None] | None = None
 _saved_flags: list[tuple[Any, str, Any]] = []  # (module, attribute, value before engage) for the reset
 
 
@@ -111,11 +110,13 @@ def engage(reason: str) -> None:
     through ``sys.modules``, never imported here), (3) run the :func:`on_engage` callbacks. A second call is a
     no-op. A callback that raises does not stop the others; the first failure is re-raised after all have run,
     with the latch already up."""
-    global _engaged, _reason, _hook_added, _saved_env
+    global _engaged, _reason, _hook_added
     with _lock:
         if _engaged:
             return
-        _saved_env = {key: os.environ.get(key) for key, _ in ENGAGE_ENV}
+        # The five keys are written, never read first: the observer's env read set is pinned (#1315 item 1,
+        # test_advisor_gate.py::test_env_read_set), so the pre-engage values a test needs back are the test
+        # harness's to keep (tests/conftest.py::_reset_offline_latch snapshots and restores them).
         _engaged = True
         _reason = reason
         if not _hook_added:
@@ -228,23 +229,20 @@ def _hook(event: str, args: tuple[Any, ...]) -> None:
 
 def _reset_for_tests() -> None:
     # Tests only: a lint (tests/integration/test_offline_latch.py::test_no_caller_of_reset_for_tests_outside_tests)
-    # forbids any caller outside tests/. Disengages, restores the five env keys and the library flags engage() set
-    # to their pre-engage values and clears the ledger; the on_engage callbacks stay registered and the (inert) hook
-    # stays installed.
-    global _engaged, _reason, _saved_env
+    # forbids any caller outside tests/. Disengages, restores the library flags engage() set to their pre-engage
+    # values and clears the ledger; the on_engage callbacks stay registered and the (inert) hook stays installed.
+    # The five env keys engage() wrote are REMOVED, not restored: engage() never reads them (the observer's pinned
+    # env read set), so their pre-engage values are the caller's to keep (tests/conftest.py::_reset_offline_latch
+    # puts them back around every test). Removing them stops a MAXIM_OFFLINE left by engage() from re-raising the
+    # latch at the next is_offline().
+    global _engaged, _reason
     with _lock:
-        saved = _saved_env
         flags = list(reversed(_saved_flags))
         _saved_flags.clear()
         _engaged = False
         _reason = ""
-        _saved_env = None
         _ledger.clear()
     for module, attr, value in flags:
         setattr(module, attr, value)
-    if saved is not None:
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+    for key, _value in ENGAGE_ENV:
+        os.environ.pop(key, None)
