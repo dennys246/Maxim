@@ -116,6 +116,15 @@ def _model_state_file() -> Path:
     return resolve_user_state(f"util/active_llm_model.{role}.txt")
 
 
+def spawned_server_pid() -> int | None:
+    """The live spawned server's pid, or None: lock-free, for the stop watchdog's kill (``maxim.cli_signals``). The
+    spawner starts it with ``start_new_session``, so this pid is also its process group."""
+    process = getattr(_active_spawner, "_process", None)
+    if process is None or process.returncode is not None:
+        return None
+    return process.pid
+
+
 def stop_active_spawner() -> None:
     """Stop the global auto-spawned server, releasing VRAM.
 

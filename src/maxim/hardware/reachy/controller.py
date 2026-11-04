@@ -652,6 +652,19 @@ class ReachyMiniController(RobotController):
             )
             return False
 
+    def stop_motion(self) -> None:
+        """Latch and end any move at its next chunk, without disconnecting (#1499).
+
+        Kept as a sleep's latch is: only a successful wake clears it, never a
+        connect. A soft reconnect that connects after the stop would otherwise
+        clear it, and a move could start before the reconnect re-latched.
+        ``goto_sleep`` still runs (it latches anyway). The live teardown calls
+        it after stopping the loop and closing the motor queue, so a body turn
+        or a direct dispatch after a stop is refused too, not only a queued
+        one. It reports the robot not awake.
+        """
+        self._stop(by_sleep=True)
+
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
         # Latch (nothing new starts; connect clears it unless a sleep set it) and the stop
@@ -801,7 +814,9 @@ class ReachyMiniController(RobotController):
             return self._goto_target_locked(target, gen=gen)
         except Exception as e:
             logger.error("Motion command failed: %s", e)
-            return MotionOutcome.refused("error", f"motion command failed: {e}")
+            return MotionOutcome.refused(
+                "ik" if mp.names_ik_failure(str(e)) else "error", f"motion command failed: {e}"
+            )
         finally:
             self._motion_lock.release()
 
@@ -1300,7 +1315,7 @@ class ReachyMiniController(RobotController):
             return self._goto_target_locked(head_only, gen=gen, start=start)
         except Exception as e:
             logger.error("Look-at command failed: %s", e)
-            return MotionOutcome.refused("error", f"look-at failed: {e}")
+            return MotionOutcome.refused("ik" if mp.names_ik_failure(str(e)) else "error", f"look-at failed: {e}")
         finally:
             self._motion_lock.release()
 
@@ -1529,9 +1544,31 @@ class ReachyMiniController(RobotController):
         Returns:
             A ``MotionOutcome``, truthy iff the robot is awake.
         """
+        return self._wake(self._abort_gen)
+
+    def stop_token(self) -> int:
+        """The stop generation now: a later ``stop_motion``, sleep or disconnect moves it on (#1499)."""
+        with self._abort_lock:
+            return self._abort_gen
+
+    def wake_up_unless_stopped_since(self, token: object) -> MotionOutcome:
+        """Wake, unless a stop came after *token* (from ``stop_token``); a stop during the wake still ends it.
+
+        The soft reconnect's and the wake word's wake: read the token, then
+        check that the live loop has not stopped (or read the queue), then
+        call this. A token that is not this controller's refuses ``cancelled``. The teardown stops the loop
+        before it latches, so a stop either shows in that check or moves the
+        generation on, and this refuses ``cancelled``. No lock is held across
+        the wake, so a stop still cuts it at its next step.
+        """
+        if not isinstance(token, int):  # not one of ours: no proof that no stop came, so no wake
+            return MotionOutcome.refused("cancelled", "the wake's stop token is not this controller's")
+        return self._wake(token)
+
+    def _wake(self, requested_gen: int) -> MotionOutcome:
+        """``wake_up``'s body, for a wake requested at stop generation *requested_gen*."""
         if self._mini is None or not self.is_connected():
             return MotionOutcome.refused("error", "the robot is not connected")
-        requested_gen = self._abort_gen
         with self._motion_lock:  # the lifecycle waits without the tool bound (5.1)
             gen = requested_gen  # one read: a stop at any point after the request ends this wake
             if self._abort_gen != gen:

@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+from maxim.utils.cancellation import interruptible
+
 log = logging.getLogger(__name__)
 
 
@@ -128,16 +130,19 @@ class PlainPromptHandler(PromptHandler):
         try:
             import select
 
-            ready, _, _ = select.select([sys.stdin], [], [], request.timeout_sec)
-            if ready:
-                response = sys.stdin.readline().strip()
-            else:
+            with interruptible():  # a stop signal wakes the read (#1344); the loop then yields at its next tick
+                ready, _, _ = select.select([sys.stdin], [], [], request.timeout_sec)
+                response = sys.stdin.readline().strip() if ready else None
+            if not ready:
                 timed_out = True
                 print("(timed out)")
+        except KeyboardInterrupt:
+            timed_out = True
         except (ImportError, OSError):
             try:
-                response = input()
-            except EOFError:
+                with interruptible():
+                    response = input()
+            except (EOFError, KeyboardInterrupt):
                 timed_out = True
 
         elapsed = time.time() - start
@@ -205,7 +210,8 @@ class RichPromptHandler(PromptHandler):
 
         try:
             default_bool = request.default and request.default.lower() in ("y", "yes", "true")
-            result = Confirm.ask(f"  {request.question}", default=default_bool)
+            with interruptible():  # a stop signal wakes the read (#1344); the loop then yields at its next tick
+                result = Confirm.ask(f"  {request.question}", default=default_bool)
             elapsed = time.time() - start
             return PromptResponse(
                 value="yes" if result else "no",
@@ -238,10 +244,11 @@ class RichPromptHandler(PromptHandler):
         try:
             from rich.prompt import Prompt
 
-            choice_str = Prompt.ask(
-                "  Choose",
-                default=request.default or (request.options[0] if request.options else ""),
-            )
+            with interruptible():
+                choice_str = Prompt.ask(
+                    "  Choose",
+                    default=request.default or (request.options[0] if request.options else ""),
+                )
         except (EOFError, KeyboardInterrupt):
             choice_str = request.default or ""
 
@@ -263,7 +270,8 @@ class RichPromptHandler(PromptHandler):
         from rich.prompt import Prompt
 
         try:
-            result = Prompt.ask(f"  {request.question}", default=request.default or "")
+            with interruptible():
+                result = Prompt.ask(f"  {request.question}", default=request.default or "")
         except (EOFError, KeyboardInterrupt):
             result = request.default or ""
 

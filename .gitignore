@@ -276,3 +276,10 @@ src/maxim/console/ui_dist/
 
 # Measurement harness output (scripts/measure_respond_fixation.py)
 respond_fixation.jsonl
+
+# #1315 item 1 (owner decision V17): the large advisor vocab fixtures are fetched, never committed
+# (scripts/fetch_advisor_fixtures.py pins each by URL, size and sha256).
+tests/fixtures/advisor/vocab/ggml-vocab-command-r.gguf
+tests/fixtures/advisor/vocab/ggml-vocab-qwen2.gguf
+tests/fixtures/advisor/vocab/ggml-vocab-llama-bpe.gguf
+tests/fixtures/advisor/vocab/*.part

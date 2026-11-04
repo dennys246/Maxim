@@ -3,13 +3,17 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 72.1,
-    "missing": 27205
+    "percent": 73.6,
+    "missing": 26713
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 65.0,
-      "missing": 1233
+      "percent": 69.5,
+      "missing": 1184
+    },
+    "maxim/advisor": {
+      "percent": 98.9,
+      "missing": 8
     },
     "maxim/agents": {
       "percent": 70.3,
@@ -20,8 +24,8 @@
       "missing": 81
     },
     "maxim/attention": {
-      "percent": 37.1,
-      "missing": 549
+      "percent": 39.7,
+      "missing": 534
     },
     "maxim/bridges": {
       "percent": 54.4,
@@ -44,16 +48,16 @@
       "missing": 139
     },
     "maxim/default_network": {
-      "percent": 48.4,
-      "missing": 1153
+      "percent": 52.4,
+      "missing": 1068
     },
     "maxim/doctor": {
       "percent": 72.2,
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 46.4,
-      "missing": 1708
+      "percent": 50.5,
+      "missing": 1612
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -88,8 +92,8 @@
       "missing": 404
     },
     "maxim/interactive": {
-      "percent": 34.9,
-      "missing": 471
+      "percent": 39.7,
+      "missing": 446
     },
     "maxim/math": {
       "percent": 45.1,
@@ -100,8 +104,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 60.8,
-      "missing": 2290
+      "percent": 62.7,
+      "missing": 2285
     },
     "maxim/modes": {
       "percent": 80.6,
@@ -124,8 +128,8 @@
       "missing": 36
     },
     "maxim/proprioception": {
-      "percent": 77.2,
-      "missing": 233
+      "percent": 78.2,
+      "missing": 228
     },
     "maxim/provenance": {
       "percent": 88.1,

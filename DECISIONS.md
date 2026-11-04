@@ -2,6 +2,31 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-11-02 — The bounded stop: the library never exits, sessions have one owner, and the CLI owns signals (#1438, #1344)
+
+### Decision (owner, 2026-10-25/26, 2026-10-30 and 2026-11-02; design in [docs/plans/bounded_stop.md](docs/plans/bounded_stop.md))
+
+1. **The library never exits the process.** It saves within the deadline it is given and RETURNS. Only a process Maxim
+   owns handles signals and exits.
+2. **Session ownership is its own layer.** A hub session is `CLOSED → OPEN(gen, owner) → ENDING(gen) → CLOSED`, and `owner=`
+   is required: the object that opens a session is the object that closes it.
+3. **The CLI's handling (2026-11-02).** One handler covers every `maxim` command. Once a memory session opened, a signal is
+   cooperative. A sim exits 4 on a stop (a typed abort, never evidence), also before a session, and a mode not yet known
+   counts as a sim. A non-sim mode exits 0 unless it really failed. A robot run's yield exits 0, `maxim serve` after one
+   signal exits 0 instead of 143, and the menu exits after a stop. A watchdog ends a stop that does not finish, exit 75.
+
+### Reason
+
+Thirteen design passes kept finding new failure classes from two sources: the library owning process exit, and keeping
+consolidation alive under a budget. Narrowing the library to "save and return" ended them. The CLI's handler takes no
+lock because it runs on a main thread that may already hold the stop module's locks.
+
+### Tradeoffs
+
+- Ctrl+C during a menu sim ends the program; `/cancel` is how to end a sim and stay.
+- After a SIGTERM a run can live up to 32 s, so `pkill` followed at once by another run can collide with it.
+- A hang in module teardown, after daemon threads freeze, is not bounded by the watchdog.
+
 ## 2026-10-29 — Reachy motion path: no too-fast, wrongly-referenced or mid-path-unsafe command reaches a motor (MP1–MP12, #1499)
 
 ### Decision (owner, 2026-10-26 and 2026-10-29; design in [docs/plans/motion_path_model.md](docs/plans/motion_path_model.md))
@@ -15,8 +40,9 @@ This file tracks decisions that affect public behavior, repo structure, and long
    between chunks. A failed, malformed, non-finite, torque-off or impossible read refuses (`reference`). The WS pose
    cache stays for observation only.
 4. **MP4 (O4). No refusal kind feeds the gaze or workspace-bounds learners.** The motor worker books a success only
-   on an ok `MotionOutcome`, and re-syncs Selfy's pose mirror after any other outcome. (PR 2 adds the enqueue ticket
-   that tells the tools the real outcome; a tool failure still reaches the tool-outcome path, as before.)
+   on an ok `MotionOutcome`, and re-syncs Selfy's pose mirror after any other outcome. PR 2 adds the enqueue ticket that
+   tells the tools the real outcome (a tool failure still reaches the tool-outcome path, as before), and DN books a
+   move on its own tick from that outcome. Only a completed move or an `ik` failure teaches the spatial learners.
 5. **MP5 (O5). Lifecycle motion goes through the controller**, and the lint extension to the SDK's lifecycle calls
    lands in PR 3. The no-motion facade for `Selfy.mini` is a follow-up.
 6. **MP6 (O6). `automatic_body_yaw: true` is a typed config error** (`InvalidConfigError`) at construction. The

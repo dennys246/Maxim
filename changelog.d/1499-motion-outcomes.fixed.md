@@ -24,5 +24,3 @@
   - Controller plugins: `RobotController.read_body_yaw()` (optional override; the default needs `body_yaw` in
     `get_current_pose()`) and `mark_motion_accepted()` (call it before the first actuator command) are documented
     in docs/user/extension_api.md.
-  Not yet covered (#1499 PR 2b): the Default Network still books its own gaze moves at enqueue, and the pain bridge
-  records a move's start when it is queued rather than when it starts.

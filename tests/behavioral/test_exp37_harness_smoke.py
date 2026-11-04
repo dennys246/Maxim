@@ -958,7 +958,9 @@ def test_own_session_matches_the_inherited_session_exactly(harness, tmp_path):
         sd = tmp_path / "sim_reports" / sid
         sd.mkdir(parents=True)
         (sd / "report.json").write_text(
-            '{"session_id": "' + sid + '", "turns": 1, "provenance": {"harness_run_id": "rid"}}'
+            '{"session_id": "'
+            + sid
+            + '", "turns": 1, "finish_reason": "completed", "provenance": {"harness_run_id": "rid"}}'
         )
     result = harness._own_session(tmp_path, "rid", {"20260530_120000"}, returncode=0, resume_session=None)
     assert result.session_id == "20260530_120000_continued"

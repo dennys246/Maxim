@@ -316,7 +316,8 @@ proposal log back into a dispatch.
 - **Why the bound needs a margin:** Python runs a signal handler only after the current C call returns (a llama.cpp
   call, a blocking read), and the loop checks `stop_event` between iterations. So the bound covers cooperative
   cancellation plus a reserved flush margin.
-- **SIGTERM during startup or model load** exits 0 with no report, and prints a status line saying so.
+- **SIGTERM during startup or model load** exits 0 with no report, and prints a status line saying so. (A sim mode exits
+  4 instead, owner decision 2026-11-02: 0 would read as usable evidence. [bounded_stop.md](bounded_stop.md) §6.)
 
 **The report half, with items 4 and 12.**
 - A turn that cannot finish inside the bound is abandoned. Its report is written atomically with

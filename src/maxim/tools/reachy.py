@@ -75,14 +75,21 @@ def _await_motion_start(ticket: Any) -> MotionOutcome | None:
     until ``accepted`` (the controller then refuses before its first SDK
     call), so the move never runs behind a "not started". A cancel that lost
     the race finds ``accepted`` already resolved, so the result is read at once.
+    A move that started and has already failed (an automatic turn runs before
+    this returns) reports that failure: the outcome is known, so it is not
+    "started".
     """
     if not isinstance(ticket, MotionTicket):
         return MotionOutcome.refused("error", f"the runtime returned no motion ticket ({type(ticket).__name__})")
     try:
-        return ticket.accepted.result(timeout=_hc.MOTION_ACCEPT_WAIT_S)
+        refusal = ticket.accepted.result(timeout=_hc.MOTION_ACCEPT_WAIT_S)
     except FuturesTimeout:
         ticket.cancel("not started: the motor is busy")
-    return ticket.accepted.result(timeout=0)  # resolved: by the cancel, or by the accept that beat it
+        refusal = ticket.accepted.result(timeout=0)  # resolved: by the cancel, or by the accept that beat it
+    if refusal is None and ticket.completed.done():
+        outcome = ticket.completed.result(timeout=0)
+        return None if outcome.ok else outcome
+    return refusal
 
 
 def _motion_error(outcome: MotionOutcome) -> str:

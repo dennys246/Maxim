@@ -9,6 +9,7 @@ from collections.abc import Sequence
 
 from maxim.doctor.checks import CheckResult, check_robot_reachable, run_all_checks
 from maxim.doctor.platform_detect import PlatformInfo, detect_platform
+from maxim.utils.cancellation import interruptible
 
 
 DOCTOR_USAGE = """\
@@ -377,7 +378,8 @@ def _retry_loop(
                 for line in result.fix.splitlines():
                     print(f"    → {line}" if line else "    →")
             try:
-                input("  [press Enter to re-test, or Ctrl+C to exit] ")
+                with interruptible():  # a stop signal wakes the read (#1344), also from the menu after a sim
+                    input("  [press Enter to re-test, or Ctrl+C to exit] ")
             except KeyboardInterrupt:
                 print("\n  Exiting retry loop.")
                 return 1

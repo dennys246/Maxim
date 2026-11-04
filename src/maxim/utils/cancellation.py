@@ -264,6 +264,53 @@ def yield_requested() -> bool:
     return _stop_request is not None
 
 
+# ── Human-input reads a signal may interrupt (#1344; bounded_stop.md §6) ─────────────────────────────────────────
+# A blocked ``input()`` or Rich prompt on the main thread wakes only by a raise (PEP 475 retries the read after a
+# handler returns), so a library marks such a read ``interruptible()`` and the CLI's handler (``maxim.cli_signals``,
+# the only handler) raises KeyboardInterrupt there. Plain globals, read lock-free by that handler. A region wraps the
+# blocking read ONLY, never a save; after catching the interrupt the caller checks ``stop_noted()``.
+_interruptible_depth = 0
+_signal_noted = False
+
+
+def note_signal() -> None:
+    """The CLI's handler saw a stop signal (lock-free; the request itself lands a moment later, on its stop thread)."""
+    global _signal_noted
+    _signal_noted = True
+
+
+def forget_noted_signal() -> None:
+    """A new install of the CLI's handling starts with no signal noted."""
+    global _signal_noted
+    _signal_noted = False
+
+
+def stop_noted() -> bool:
+    """A stop signal arrived or a stop was requested: what a caller checks right after catching an interrupt."""
+    return _signal_noted or _stop_request is not None
+
+
+def interruptible_depth() -> int:
+    return _interruptible_depth
+
+
+@contextmanager
+def interruptible() -> Iterator[None]:
+    """Mark the enclosed blocking human-input read as one a stop signal may interrupt. On the main thread only (a
+    handler runs there); elsewhere a no-op. Entered after a stop was noted, it raises at once."""
+    global _interruptible_depth
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    _interruptible_depth += 1  # first: a signal landing after the check below finds the region open, and raises
+    try:
+        if stop_noted():
+            raise KeyboardInterrupt()
+        yield
+    finally:
+        _interruptible_depth -= 1
+
+
 def clear_stop_request(expected: StopRequest | None = None) -> bool:
     """Forget the stop request; True if one was cleared. With ``expected``, a compare-and-clear: only that request is
     cleared (another owner's later one stays). Without it, unconditional (the conftest scrub). A clear runs every

@@ -3,7 +3,9 @@
 WHAT MAY LIVE HERE: ONLY the termios/TTY read loops of
 ``orchestrator.py::start_simulation_mode`` and the module state that exists only for them
 (the escape-sequence keymap ``_KEYMAP`` and the terminal-restore record ``_termios_restore``
-with its atexit/SIGTERM restore hook, moved with the loop per decomposition rule (a)). Any other
+with its atexit restore hook, moved with the loop per decomposition rule (a); the CLI's stop watchdog,
+``maxim.cli_signals``, calls the same restore. The SIGTERM handler that used to live here was removed in #1344: it was
+installed from the ``sim.stdin`` thread, where ``signal.signal`` raises, so it never ran). Any other
 code belongs in ``orchestrator.py`` or another measured module. This file is on the coverage
 exclusion list (``scripts/coverage_exclusions.json``), with a ``excluded_statements`` ledger entry
 pinning its AST statement count, because every line below needs a real TTY on stdin. The test
@@ -13,8 +15,9 @@ The two functions were nested in ``start_simulation_mode`` (1.3.2 orchestrator d
 slice 0) and moved byte-for-byte apart from the closure-to-parameter rewrite (rule (d)): each
 closure variable the body reads is now a keyword-only parameter of the SAME name, so the body
 text did not change. The one closure rebind, ``_new_goal`` in the post-sim reader, became the
-return value. One later edit (the ``/new`` slice, #1454): the post-sim reader takes its prompt as a parameter, so the panel and
-the reader show the one constant, ``orchestrator.POST_SIM_PROMPT``.
+return value. Two later edits: the ``/new`` slice (#1454), after which the post-sim reader takes its prompt as a parameter, so the
+panel and the reader show the one constant, ``orchestrator.POST_SIM_PROMPT``; and #1344, which removed the dead SIGTERM handler
+and lets a process stop end the post-sim prompt.
 
   - ``stdin_reader_raw``: the ``sim.stdin`` thread's target in interactive mode. It still falls
     back to the caller's ``_stdin_reader_line`` when stdin is not a TTY, termios is missing or
@@ -26,12 +29,13 @@ the reader show the one constant, ``orchestrator.POST_SIM_PROMPT``.
 from __future__ import annotations
 
 import atexit
-import signal
 import threading
 from typing import Any, Callable
 
+from maxim.utils.cancellation import yield_requested
+
 # Module-level storage for terminal restore on ungraceful exit.
-# Set by stdin_reader_raw; read by the atexit/SIGTERM handler.
+# Set by stdin_reader_raw; read by the atexit hook and the CLI's stop watchdog.
 _termios_restore: tuple[int, list] | None = None
 
 # Declarative keymap: escape sequence suffix -> MaximDisplay method name.
@@ -55,7 +59,7 @@ _KEYMAP: dict[str, str] = {
 
 
 def _restore_terminal() -> None:
-    """Restore terminal settings if raw mode was enabled. atexit + SIGTERM safe."""
+    """Restore terminal settings if raw mode was enabled. Run by atexit and the CLI's stop watchdog."""
     global _termios_restore
     if _termios_restore is not None:
         fd, old_settings = _termios_restore
@@ -66,12 +70,6 @@ def _restore_terminal() -> None:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         except Exception:
             pass
-
-
-def _sigterm_handler(signum: int, frame: Any) -> None:
-    """Restore terminal on SIGTERM, then exit."""
-    _restore_terminal()
-    raise SystemExit(128 + signum)
 
 
 atexit.register(_restore_terminal)
@@ -117,14 +115,9 @@ def stdin_reader_raw(
         _stdin_reader_line()
         return
 
-    # Store for atexit/SIGTERM restoration in case of ungraceful exit.
+    # Store for the atexit restore and the CLI's stop watchdog (``maxim.cli_signals``), in case of an ungraceful exit.
     global _termios_restore
     _termios_restore = (fd, old_settings)
-    # Install SIGTERM handler (SIGINT is handled by Ctrl+C in raw mode).
-    try:
-        signal.signal(signal.SIGTERM, _sigterm_handler)
-    except (OSError, ValueError):
-        pass  # Not main thread or unsupported platform
 
     buf: list[str] = []
 
@@ -289,6 +282,8 @@ def read_post_sim_goal_raw(*, _stdin: Any, display: Any, prompt: str) -> str:
             _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _new3)
 
             while True:
+                if yield_requested():  # a process stop ends the prompt: no new goal (#1344)
+                    break
                 ready, _, _ = _sel3.select([_stdin], [], [], 0.1)
                 if not ready:
                     continue

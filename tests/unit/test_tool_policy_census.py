@@ -25,6 +25,8 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[2] / "src" / "maxim"
 
 PERMISSIVE_CALLERS: dict[tuple[str, str, str], str] = {
+    ("advisor/_session.py", "_build_dispatch_stack", "unrestricted"): "test-only per-layer sweeps (the pin layer "
+    "removed); open() always pins, test_open_builds_all_three_layers",
     ("api.py", "_build_run_executor", "unrestricted"): "maxim.run: the stable verb keeps ceiling ALL (V10)",
     (
         "embodied_runtime/agentic_runtime.py",
@@ -40,6 +42,8 @@ PERMISSIVE_CALLERS: dict[tuple[str, str, str], str] = {
 }
 
 REGISTRIES_OUTSIDE_THE_BUILDER: dict[tuple[str, str, str], str] = {
+    ("advisor/_session.py", "_build_dispatch_stack", "ToolRegistry"): "test-only per-layer sweeps (the sealed "
+    "layer removed); open() builds SealedToolRegistry",
     ("embodiment/tool_bridge.py", "derive_capability_map", "ToolRegistry"): "a throwaway map; nothing dispatches it",
     ("runtime/agent_factory.py", "AgentFactory._create_tool_registry", "ToolRegistry"): "empty until the runtime "
     "registers tools; dispatched only through create_full_agent's executor",
