@@ -182,8 +182,8 @@
       "missing": 319
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 74.5,
-      "missing": 253
+      "percent": 75.8,
+      "missing": 249
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
