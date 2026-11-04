@@ -209,3 +209,26 @@ def test_research_hands_its_model_to_its_router_and_its_sim(
         research("q", model=RUN_MODEL)
     assert builds == [RUN_MODEL, ("config", RUN_MODEL)]
     assert seen == [{"llm_profile": RUN_MODEL, "env": {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}}]
+
+
+@pytest.mark.parametrize("persisted", [None, "persisted-1586"])
+def test_research_with_no_model_resolves_it_like_the_other_verbs(
+    monkeypatch: pytest.MonkeyPatch, persisted: str | None
+) -> None:
+    """No ``model=``: the last chosen one, else ``mistral-7b``; the session's ``llm.profile`` does not decide (owner
+    decision 2026-11-03: research matches run/imagine/campaign)."""
+    from maxim import api
+
+    monkeypatch.setenv("MAXIM_LLM_PROFILE", OPERATOR)
+    monkeypatch.setattr("maxim.runtime.lane_backends._read_persisted_model", lambda: persisted)
+    builds: list[Any] = []
+
+    def _build(*_a: Any, **kwargs: Any) -> Any:
+        builds.append(kwargs.get("profile"))
+        raise _Stop
+
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", _build)
+    monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", _recording_sim([]))
+    with pytest.raises(_Stop):
+        api.research("q")
+    assert builds == [persisted or api._API_DEFAULT_MODEL]
