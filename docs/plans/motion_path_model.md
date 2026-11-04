@@ -599,40 +599,32 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    Auto-yaw acts past 65° of head-to-body yaw and our clamp is exactly ±65°, so tracking can reach that threshold:
    the hardware body-yaw test covers it. This amends O6 and lands in PR 3.
 
-   **#1563 (owner, 2026-11-03).** The daemon's IK composes the head against its body *target*, while
-   the controller's clamp is checked against the *present* body. The SDK 1.8.3 source (the robot's version) narrows
-   the issue. A head-only goto with `body_yaw=None` does not keep the old target: `GotoMove` replaces `None` with
-   the daemon's present body and sets the target to it on every tick (F2). Two windows remain. First, each tick
-   sets the head target before the body target, and the IK runs on the 100 Hz control thread, so the first control
-   tick of a goto can compose the new head against the old target. Second, the old target may have been set by
-   another client. The owner first chose to refuse a dispatch when `target_body_yaw` is more than 2° from the
-   present body (option A). The PR 3 review then found that 1.8.3 never serves that field: `get_full_state` builds
-   it, its `FullState` response model drops it, and no other REST or WebSocket route carries it. Built that way,
-   the check refused every move on the robot, wake and sleep included, while every fake served the field. So the
-   check was dropped (owner, 2026-11-03). `tests/unit/test_reachy_sdk_contract_1499.py` now pins the route's real
-   keys, and the fakes are checked against them. A replacement that tracked the target Maxim's own gotos left, and
-   refused a present head past the clamp from it, went through two delta rounds. Each round found a new way to
-   lock the robot out (sleep included) or to fail open, because a target we cannot read can only be guessed.
-   **The fix removes the race instead (owner, 2026-11-03).** Before each chunk's goto, after every check has
-   passed and under the motion lock, the controller re-pins both of the daemon's targets to the pose the fresh
-   readback found: `set_target(head=present head, body_yaw=present body)`
-   (`ReachyMiniController._repin_daemon_target`). The SDK's `set_target` writes the targets without
-   interpolating, and the IK of the present pose is the present pose. So a goto's first tick pairs the present
-   head with the present body: the pose the robot already holds, which the readback's own neck check (R2) has
-   passed. Nothing is refused, so nothing can lock out.
+   **#1563: moved out of 1.3.4 as an upstream residual (owner, 2026-11-03).** The daemon's IK composes the head
+   against its body *target*, while the controller's clamp is checked against the *present* body. The SDK 1.8.3
+   source (the robot's version) narrows the issue. A head-only goto with `body_yaw=None` does not keep the old
+   target: `GotoMove` replaces `None` with the daemon's present body and sets the target to it on every tick (F2).
+   What remains is inside the daemon. Each 100 Hz move tick, and each `set_target` frame, stores the head target
+   and then the body target in two separate, unlocked assignments on the daemon's asyncio thread. The IK runs on
+   its own 50 Hz control thread (`robot/backend.py::_update`), so a thread switch that lands between the two
+   stores solves the IK once for the new head against the previous body target. The motors hold that solution
+   until the next control tick, at most 20 ms.
 
-   The controller still tracks the body target its own last command left (`_daemon_body_target`): a re-pin's body,
-   then the chunk's body when commanded, else the body that chunk started from. It uses that only to skip the
-   frame when the target is already within 1° of the present body, which is the common tracking look-at, so the
-   10 Hz stream sends almost no extra frames. A stale tracked value costs one extra frame and nothing else. It is
-   unknown, and the next goto re-pins, after a connect, a disconnect, `note_external_head_motion`, or a re-pin that
-   raised. A raising re-pin moves nothing.
+   During any body move this already pairs the head with a body target up to about 3.4° stale (the 340°/s peak
+   rate cap ÷ 100 Hz). A goto's first tick is the same window, offset by the previous move's arrival error: at
+   most 5° (the final readback's tolerance), and typically about 1°. Three client-side mechanisms were built and
+   reviewed on 2026-11-03, and each failed one layer down:
+   1. Refusing when the served `target_body_yaw` disagreed with the body. 1.8.3's `FullState` response model drops
+      that field, so the check refused every move.
+   2. Tracking the target Maxim's own gotos left and refusing a head past the clamp from it. It locked the robot
+      out, sleep included, or failed open.
+   3. Re-pinning both targets to the present pose with `set_target`. The daemon applies that frame with the same
+      two stores, so it moved the window instead of closing it.
 
-   One residual remains, stated here. The daemon ignores `set_target` while one of its own moves is running, and
-   the frame is not acknowledged. Maxim's gotos block until they finish, and a timed-out move is refused until it
-   settles, so this happens only while a move another client started is running: §8's single-client assumption.
-   #1563 closes on PR 3. The upstream ask (pulse, then Pollen) is for `FullState` to serve `target_body_yaw`; the
-   contract test goes red when an SDK does.
+   No client write can close a window inside the daemon's own assignment order, so the controller carries no
+   #1563 code. `tests/unit/test_reachy_sdk_contract_1499.py` pins the route's real keys and checks the fakes
+   against them; it goes red when an SDK starts serving `target_body_yaw`. The upstream ask goes to Pollen via
+   pulse: store the head and body targets atomically (one assignment, or a lock the control loop also takes), and
+   serve `target_body_yaw` in `FullState`. #1563 stays open, labelled upstream, out of the 1.3.4 cut.
 
 #1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
 
