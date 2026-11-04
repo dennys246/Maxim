@@ -592,6 +592,13 @@ _FIELD_TO_ENV: dict[str, str] = {
     "tools.deny": "MAXIM_TOOLS_DENY",
 }
 
+_CONFIG_ONLY_FIELDS: frozenset[str] = frozenset({"llm.offline"})
+"""Scalar fields settable only in config.json, with no env alias: ``llm.offline`` (#1315 item 10a), whose env
+counterpart is the latch's own ``MAXIM_OFFLINE``."""
+
+SETTABLE_FIELDS: frozenset[str] = frozenset(_FIELD_TO_ENV) | _CONFIG_ONLY_FIELDS
+"""Every scalar field path ``maxim config get/set/unset/list`` and :func:`resolve_setting` accept."""
+
 
 _ABSORBED_ENV_VARS: frozenset[str] = frozenset(_FIELD_TO_ENV.values())
 """Module-level frozenset of every env var the schema absorbs. Used by
@@ -633,21 +640,17 @@ def config_path() -> Path:
 def engage_offline_if_configured() -> bool:
     """Engage ``maxim._offline`` when config.json sets ``llm.offline: true`` (#1315 item 10, §6 "Startup order").
 
-    ``cli.py::main`` and every ``api`` build call this first, before any subprocess or socket, so it reads only the
-    file: no spawn, no socket, no validation. A file that would fail validation still engages on the raw key
-    (fail-closed). A missing file engages nothing; an unreadable one is reported here and refused loudly by the
-    load that follows. Returns whether the latch is up."""
+    ``cli.py::main``, ``build_primary_router`` and every ``api`` build call this first, before any subprocess or
+    socket, so it reads only the file (:func:`_read_config_json`, the read :func:`load_config` makes): no spawn, no
+    socket, no validation. A file that would fail validation still engages on the raw key (fail-closed). A missing
+    or empty file engages nothing. A file that cannot be read or parsed raises :class:`ConfigurationError`, because
+    whether it means offline is unknowable (owner decision V20, 2026-11-03). Returns whether the latch is up."""
     from maxim import _offline
 
-    path = config_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return _offline.is_offline()
-    except (OSError, ValueError) as e:
-        logger.warning("config_loader: could not read %s to check llm.offline: %s", path, e)
-        return _offline.is_offline()
-    llm = data.get("llm") if isinstance(data, dict) else None
+    data = _read_config_json(config_path())
+    if data is not None and not isinstance(data, dict):  # load_config's own refusal, made here before anything runs
+        raise ConfigurationError(f"config.json: root must be a JSON object, got {type(data).__name__}")
+    llm = data.get("llm") if data is not None else None
     if isinstance(llm, dict) and llm.get("offline") is True:
         _offline.engage("llm.offline")
     return _offline.is_offline()
@@ -1116,10 +1119,8 @@ def resolve_setting(
       suggesting migration, fired exactly once per env var per startup
       via the module-level :data:`_warned_envs` set (I-4 fold).
     """
-    if field_path not in _FIELD_TO_ENV:
-        raise ConfigurationError(
-            f"config: unknown field path {field_path!r}. Valid paths: {sorted(_FIELD_TO_ENV.keys())}"
-        )
+    if field_path not in SETTABLE_FIELDS:
+        raise ConfigurationError(f"config: unknown field path {field_path!r}. Valid paths: {sorted(SETTABLE_FIELDS)}")
 
     if cli_value is not None:
         return cli_value, "cli"
@@ -1147,10 +1148,10 @@ def resolve_setting(
             # ``check_resolved_config`` path surfaces config.json load failures
             # via its own ``fail`` row.
             config = None
-    env_name = _FIELD_TO_ENV[field_path]
+    env_name = _FIELD_TO_ENV.get(field_path)  # None: a config-only field has no env layer
     config_value = _read_from_config(config, field_path)
 
-    if _env_is_set(env_name) and not _env_is_blank_list(env_name, field_path):
+    if env_name is not None and _env_is_set(env_name) and not _env_is_blank_list(env_name, field_path):
         env_raw = os.environ[env_name]
         env_value = _coerce_for_field(env_raw, field_path)
 
@@ -2043,6 +2044,32 @@ def _peer_api_key_ref_for_migration(api_key: str) -> str | None:
         return None
 
 
+def _read_config_json(path: Path) -> Any | None:
+    """config.json's parsed JSON, or None when the file is absent or empty: the one read :func:`load_config` and
+    :func:`engage_offline_if_configured` share. Raises :class:`ConfigurationError` on an unreadable file or invalid
+    JSON."""
+    from maxim.utils.paths import config_file_present
+
+    if not config_file_present(path):
+        return None
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:  # not UTF-8 is unreadable too: typed, not a raw traceback
+        raise ConfigurationError(f"config.json: failed to read {path}: {e}") from e
+
+    stripped = raw.strip()
+    if not stripped:
+        return None
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as e:
+        raise ConfigurationError(
+            f"config.json: invalid JSON at {path} (line {e.lineno}, col {e.colno}): {e.msg}"
+        ) from e
+
+
 def load_config(path: Path | None = None) -> MaximConfig:
     """Read ``config.json`` from disk, validate, return :class:`MaximConfig`.
 
@@ -2066,26 +2093,9 @@ def load_config(path: Path | None = None) -> MaximConfig:
     # subsequent calls.
     _maybe_migrate_from_peer_yml(effective_path)
 
-    from maxim.utils.paths import config_file_present
-
-    if not config_file_present(effective_path):
+    data = _read_config_json(effective_path)
+    if data is None:
         return _with_explicit(MaximConfig(), frozenset())
-
-    try:
-        raw = effective_path.read_text(encoding="utf-8")
-    except OSError as e:
-        raise ConfigurationError(f"config.json: failed to read {effective_path}: {e}") from e
-
-    stripped = raw.strip()
-    if not stripped:
-        return _with_explicit(MaximConfig(), frozenset())
-
-    try:
-        data = json.loads(stripped)
-    except json.JSONDecodeError as e:
-        raise ConfigurationError(
-            f"config.json: invalid JSON at {effective_path} (line {e.lineno}, col {e.colno}): {e.msg}"
-        ) from e
 
     config = _parse_config_dict(data)
     return _with_explicit(config, explicit_paths_of(data, config))

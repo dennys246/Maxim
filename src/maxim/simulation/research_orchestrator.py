@@ -17,7 +17,7 @@ from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from maxim.exceptions import LeaderRefusal
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.mesh.bus import LocalMessageBus
 
 logger = logging.getLogger(__name__)
@@ -90,9 +90,9 @@ def _persist_research_result(
 def _build_research_llm() -> Any:
     """The LLM router for the Writer + Reviewer, or None (they fall back to heuristics).
 
-    A :class:`~maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
-    llama-cpp-server) propagates: a security refusal is not an availability
-    fallback.
+    A :data:`~maxim.exceptions.SECURITY_REFUSALS` refusal (a leader with no key, an exposed
+    llama-cpp-server, a lane the offline latch refused) propagates: a security refusal is not an
+    availability fallback.
     """
     research_llm = None
     try:
@@ -107,7 +107,7 @@ def _build_research_llm() -> Any:
         if research_llm is not None:
             research_llm.warmup()
             research_llm.wait_ready(timeout=120.0)
-    except LeaderRefusal:
+    except SECURITY_REFUSALS:
         raise
     except Exception as e:
         logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)

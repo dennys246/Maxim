@@ -30,6 +30,7 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+from maxim import _offline
 from maxim.runtime.worker_pool import LaneConfig, Origin, ProviderPlacement
 
 # ─── Plan 3 R2.5: backend-class dispatch table ─────────────────────────
@@ -1230,6 +1231,8 @@ class LaneBackendManager:
                 drain_constraint=drain_constraint,
                 auto_drain_callback=auto_drain_callback,
             )
+        except _offline.OfflineRefusal:
+            raise  # a lane refused offline is refused by name, never dropped to a fallback (#1315 item 10a)
         except Exception as e:
             logger.warning("Failed to create LLM router: %s", e)
             return None
@@ -1437,6 +1440,8 @@ class LaneBackendManager:
 
         try:
             return LLMRouter(remote_cfg)
+        except _offline.OfflineRefusal:
+            raise  # as in _build_local_backend: refused by name, never dropped
         except Exception as e:
             logger.warning("Failed to create remote LLM router for %s: %s", cfg.name, e)
             return None
@@ -2057,6 +2062,32 @@ def _require_valid_user_profiles() -> None:
     require_valid_user_profiles()
 
 
+def _router_build_preflight() -> None:
+    """``build_primary_router``'s first step: engage the offline latch from ``llm.offline`` (#1315 item 10a; before
+    capability detection, a URL probe or auto-spawn can spawn or dial, and for a library caller such as
+    ``maxim.create.router()`` that never ran ``cli.main``), then :func:`_require_valid_user_profiles`."""
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    engage_offline_if_configured()
+    _require_valid_user_profiles()
+
+
+def _add_remote_large_tier(lane_configs: dict[str, Any]) -> None:
+    """Moved verbatim out of ``build_primary_router`` for rule T (#1315 item 10a)."""
+    # If peer config provides a remote URL for the large tier but local
+    # hardware didn't create one (e.g., Mac with no CUDA GPU), inject a
+    # large tier placeholder so apply_lane_env_overrides() can wire it
+    # to the leader. The remote URL IS the large tier — the leader's GPU.
+    if "large" not in lane_configs:
+        _large_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
+        if _large_url:
+            lane_configs["large"] = LaneConfig(
+                name="large",
+                max_workers=1,
+                requires_gpu=False,  # Remote — no local GPU needed
+            )
+
+
 def _capabilities_or_detected(capabilities: Any | None) -> Any:
     """``capabilities``, or this machine's, detected (moved verbatim out of ``build_primary_router`` for rule T)."""
     from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
@@ -2109,7 +2140,7 @@ def build_primary_router(
         load_function_overrides,
     )
 
-    _require_valid_user_profiles()
+    _router_build_preflight()
 
     # Lane-routing auto-load (C4 of config_unification.md):
     #
@@ -2181,18 +2212,7 @@ def build_primary_router(
 
         lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_TIERS.items()}
 
-    # If peer config provides a remote URL for the large tier but local
-    # hardware didn't create one (e.g., Mac with no CUDA GPU), inject a
-    # large tier placeholder so apply_lane_env_overrides() can wire it
-    # to the leader. The remote URL IS the large tier — the leader's GPU.
-    if "large" not in lane_configs:
-        _large_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
-        if _large_url:
-            lane_configs["large"] = LaneConfig(
-                name="large",
-                max_workers=1,
-                requires_gpu=False,  # Remote — no local GPU needed
-            )
+    _add_remote_large_tier(lane_configs)
 
     # Apply tier/function config from llm.json if present
     _llm_json_tier_config: dict = {}
@@ -2375,7 +2395,12 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
         leader is still alive so we don't fall back locally.
       * Anything else → log a structured warning + drop ``remote_url`` so
         auto-spawn or local fallback takes over.
+
+    Offline (#1315 item 10a) nothing is probed and nothing is dropped or cached: a remote lane stays wired, so the
+    router build refuses it by name instead of a silent local fallback.
     """
+    if _offline.is_offline():
+        return dict(lane_configs)
     if os.environ.get("MAXIM_SKIP_REMOTE_PROBE", "").strip().lower() in (
         "1",
         "true",
@@ -2591,8 +2616,6 @@ def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool
 def _auto_spawn_ruled_out(capabilities: Any) -> bool:
     """The auto-spawn guards that need no lane: offline (before the :8100 probe, the lsof fallback and any spawn;
     #1315 item 10, V8), an explicit ``MAXIM_AUTO_SPAWN_LLM_SERVER`` opt-out, or no GPU."""
-    from maxim import _offline
-
     if _offline.is_offline():
         return True
     auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()

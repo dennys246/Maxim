@@ -10,6 +10,7 @@ absence was the assertion that failed.
 from __future__ import annotations
 
 import inspect
+import json
 import signal
 import threading
 import time
@@ -225,7 +226,11 @@ def test_g5_the_lifespan_refuses_to_start_while_a_stop_request_is_set() -> None:
 def test_g7_config_1_4_carries_the_console_stop_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     from maxim.runtime import config_loader
 
-    assert config_loader.CONFIG_FORMAT_VERSION == "1.4"
+    # The version that FIRST carries the field is 1.4 (later bumps keep it: #1315 item 10a took 1.5).
+    pinned = json.loads(
+        (Path(__file__).resolve().parents[1] / "fixtures" / "config_schema_by_version.json").read_text()
+    )
+    assert "console.stop_budget_s" in pinned["1.4"] and "console.stop_budget_s" not in pinned["1.3"]
     section = config_loader.ConsoleConfigSection()
     assert getattr(section, "stop_budget_s", None) == 15.0
 

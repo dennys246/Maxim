@@ -671,11 +671,11 @@ def set_field(
     Raises :class:`ConfigurationError` on unknown field path, type
     mismatch, range violation, enum miss, or invalid api_key_ref.
     """
-    from maxim.runtime.config_loader import _coerce_for_field, _FIELD_TO_ENV
+    from maxim.runtime.config_loader import SETTABLE_FIELDS, _coerce_for_field
 
-    if field_path not in _FIELD_TO_ENV:
+    if field_path not in SETTABLE_FIELDS:
         raise ConfigurationError(
-            f"config_writer: unknown field path {field_path!r}. Valid paths: {sorted(_FIELD_TO_ENV.keys())}"
+            f"config_writer: unknown field path {field_path!r}. Valid paths: {sorted(SETTABLE_FIELDS)}"
         )
 
     # Coerce string-input values via the same dispatch the env-var
@@ -697,11 +697,11 @@ def set_field(
 
 def unset_field(field_path: str, path: Path | None = None) -> tuple[MaximConfig, Path]:
     """Return a field to its schema default and drop it from config.json (``maxim config unset``)."""
-    from maxim.runtime.config_loader import _FIELD_TO_ENV
+    from maxim.runtime.config_loader import SETTABLE_FIELDS
 
-    if field_path not in _FIELD_TO_ENV:
+    if field_path not in SETTABLE_FIELDS:
         raise ConfigurationError(
-            f"config_writer: unknown field path {field_path!r}. Valid paths: {sorted(_FIELD_TO_ENV.keys())}"
+            f"config_writer: unknown field path {field_path!r}. Valid paths: {sorted(SETTABLE_FIELDS)}"
         )
     default = _walk_dot_path(MaximConfig(), field_path)
 

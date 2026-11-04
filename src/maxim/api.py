@@ -509,6 +509,7 @@ def download_model(name: str) -> bool:
 
         maxim.download_model("qwen2.5-14b-instruct")
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     from maxim.models.language.config import normalize_llm_profile
 
     canonical = normalize_llm_profile(name) or name

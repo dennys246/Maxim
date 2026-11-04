@@ -1890,8 +1890,10 @@ class LLMRouter:
         Call this after other initialization is complete. The model loading
         happens in a background thread so it doesn't block startup.
 
-        Returns True if warmup was initiated, False if LLM is disabled.
+        Returns True if warmup was initiated, False if LLM is disabled. Under the offline latch a router with a lane
+        that is not in-process refuses here, in the caller's thread, not in the warmup thread (#1315 item 10a).
         """
+        self._refuse_offline_lanes("router[warmup]")
         if not self.enabled():
             return False
 
@@ -2064,7 +2066,8 @@ Return JSON exactly like:
 
         Raises:
             ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
-                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
+                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` and ``OfflineRefusal``
+                propagate as themselves.
             LLMCallStopped: (a ``ModelInferenceError``) no text while a process stop is requested: the call was
                 refused or abandoned at the stop (#1438 PR 1c). A real failure that coincides with a stop reads as
                 one too; the process is stopping either way.
@@ -2082,7 +2085,7 @@ Return JSON exactly like:
                 max_tokens=int(max_tokens),
                 request_context=request_context,
             )
-        except LeaderRefusal:
+        except (LeaderRefusal, _offline.OfflineRefusal):
             raise
         except Exception as e:
             raise ModelInferenceError(f"LLM inference failed: {e}", model_name=self.model_name) from e

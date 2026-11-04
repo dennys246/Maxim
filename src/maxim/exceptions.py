@@ -97,6 +97,18 @@ class LeaderRefusal(MaximError, RuntimeError):
     """
 
 
+def _security_refusals() -> tuple[type[BaseException], ...]:
+    from maxim._offline import OfflineRefusal  # a stdlib-only leaf: no cycle
+
+    return (LeaderRefusal, OfflineRefusal)
+
+
+SECURITY_REFUSALS: tuple[type[BaseException], ...] = _security_refusals()
+"""What a broad ``except Exception`` around starting or building the LLM must re-raise before it degrades:
+:class:`LeaderRefusal`, and ``maxim._offline.OfflineRefusal`` (the offline latch refused a lane, #1315 item 10a).
+Neither is an outage, so neither may fall back to "run without the LLM" or to another router."""
+
+
 class AdvisorError(MaximError):
     """Base of the observer's errors (``maxim.advisor``, #1315 items 1 and 5), so an embedder catches them in one."""
 
