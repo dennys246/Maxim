@@ -107,6 +107,20 @@ def test_a_waiter_never_counts_itself_or_the_run_it_was_started_inside():
     assert now[B.SUITE] == [300] and now[B.CHECK] == [102]
 
 
+def test_a_waiter_nested_in_a_claimed_run_does_not_wait_for_its_parent():
+    """M85 moves the call inside prepr.sh: a waiter in a claimed prepr must not count that claim and wait forever."""
+    procs = [
+        P(10, 1, "bash"),
+        P(11, 10, "python3 scripts/box_quiet.py wait -- bash scripts/prepr.sh"),
+        P(12, 11, "bash scripts/prepr.sh"),  # the outer waiter's claimed child
+        P(13, 12, "python3 scripts/box_quiet.py wait -- bash scripts/run_mypy_public.sh"),
+        P(20, 1, "python3 scripts/prepr.py"),  # another session's check still counts
+    ]
+    now = B.running(procs, claims={12: B.CHECK}, own_pid=13)
+    assert now[B.CHECK] == [20]
+    assert B.running(procs, claims={12: B.CHECK}, own_pid=99)[B.CHECK] == [12, 20]  # everyone else counts the claim
+
+
 def test_ps_is_asked_for_untruncated_args(monkeypatch):
     """Linux procps cuts args to a width without -ww, which hid a claimed child and let two checks start together."""
     seen = []

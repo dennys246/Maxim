@@ -215,9 +215,9 @@ def running(procs: list[Proc], claims: dict[int, str], *, own_pid: int) -> dict[
             yield cur.ppid
             cur = by_pid.get(cur.ppid)
 
-    kinds = {p.pid: classify(p.argv) for p in procs}
-    for pid in (own_pid, *ancestors(own_pid)):
-        kinds[pid] = None
+    mine = {own_pid, *ancestors(own_pid)}
+    kinds = {p.pid: (None if p.pid in mine else classify(p.argv)) for p in procs}
+    claims = {pid: kind for pid, kind in claims.items() if pid not in mine}  # a waiter nested in a claimed run
     out: dict[str, list[int]] = {SUITE: [], CHECK: []}
     for pid, kind in claims.items():
         out[kind].append(pid)
