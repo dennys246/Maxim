@@ -114,6 +114,9 @@ class _BiasedFakeMini:
     def get_current_joint_positions(self):
         return [self.body_yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], list(self.antennas)
 
+    def set_automatic_body_yaw(self, enabled):  # the controller re-asserts it before each move (#1499 PR 3)
+        pass
+
     def goto_target(self, **kwargs):
         self.calls.append(kwargs)
         rb, pb, yb, bb = self._bias

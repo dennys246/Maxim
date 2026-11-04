@@ -811,6 +811,10 @@ class ReachyMiniController(RobotController):
         if not self._motion_lock.acquire(timeout=MOTION_LOCK_WAIT_S):
             return MotionOutcome.refused("cancelled", "motor busy")
         try:
+            # Owner, 2026-11-01 (PR 3): re-assert before each discrete move, since a second SDK client can turn the
+            # daemon-wide setting back on; look_at_pixel's tracking stream relies on the last assertion instead.
+            if not self._assert_auto_yaw_off():
+                return MotionOutcome.refused("reference", "automatic_body_yaw could not be asserted off")
             return self._goto_target_locked(target, gen=gen)
         except Exception as e:
             logger.error("Motion command failed: %s", e)
@@ -1379,6 +1383,11 @@ class ReachyMiniController(RobotController):
 
         The setting is daemon-global and has no getter, so another client (or an
         SDK default of True on a handle Maxim did not build) can turn it on.
+        The SDK sends it as one WebSocket frame and nothing acknowledges it, so
+        "failed" means the call raised (a dead link, an SDK without the setter),
+        never that the daemon ignored it. A failure stands until an assertion
+        succeeds: ``look_at_pixel`` does not re-assert, so tracking stays refused
+        until the next discrete move, wake or connect asserts it again.
         """
         try:
             self._mini.set_automatic_body_yaw(False)
@@ -1640,7 +1649,7 @@ class ReachyMiniController(RobotController):
             self._latch_for_sleep()
             gen = self._abort_gen
             try:
-                if self._automatic_body_yaw or not self._auto_yaw_asserted:
+                if self._automatic_body_yaw or not self._assert_auto_yaw_off():  # a discrete move re-asserts (PR 3)
                     raise MotionRefused("reference", "automatic_body_yaw is not asserted off")
                 pose, control_mode = mp.parse_full_state(self._get_state_full())  # one read for both questions
                 if control_mode == "disabled":

@@ -110,6 +110,9 @@ class _FakeMini:
         # [body_yaw, *stewart_legs] — the SDK's own fk() reads index 0 as body_yaw.
         return [self._body_yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0]
 
+    def set_automatic_body_yaw(self, enabled):  # the controller re-asserts it before each move (#1499 PR 3)
+        pass
+
     def goto_target(self, **kwargs):
         self.calls.append(kwargs)
         if kwargs.get("head") is not None:
