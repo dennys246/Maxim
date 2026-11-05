@@ -860,6 +860,106 @@ def test_a_move_after_the_live_teardown_is_cancelled_and_never_runs(daemon, queu
     assert len(daemon.gotos()) == before
 
 
+def _live_setup_host(daemon, tmp_path, monkeypatch):
+    """A Selfy whose ``live`` runs its real setup and teardown, with the I/O around them stubbed."""
+    import maxim.embodied_runtime.media_loop as media_loop
+
+    monkeypatch.setattr(media_loop, "configure_logging", lambda *a, **k: None)
+    monkeypatch.setattr(media_loop, "TrainingSampleLogger", lambda *_a: type("_L", (), {"start": lambda s: None})())
+    selfy = _selfy(controller(daemon), daemon)
+    selfy.home_dir, selfy.epochs, selfy.interactive, selfy.verbose = str(tmp_path), None, False, False
+    selfy.awaken = lambda **_k: None
+    selfy._build_speech_output = lambda: None
+    selfy._start_media_audio = lambda: (None, None)
+    selfy._start_agentic_runtime = lambda: None  # DN would keep issuing moves from here on
+    selfy._start_transcription_worker = lambda **_k: (None, None)
+    selfy._stop_media_io = lambda _lock: None
+    selfy.shutdown = lambda: None
+    selfy._start_cli_listener = selfy._start_key_listener = selfy._start_transcript_listener = lambda _stop: None
+    return selfy
+
+
+def _refuse():
+    from maxim.exceptions import LeaderRefusal
+
+    raise LeaderRefusal("the setup broke")
+
+
+@pytest.mark.parametrize("raise_at", ["refusal", "worker-start"])
+def test_a_raise_in_the_live_setup_window_still_fences_motion(daemon, tmp_path, monkeypatch, raise_at):
+    """The setup window: the stop event is open, then the setup raises (a leader refusal, which
+    ``warn_unless_refusal`` re-raises out of the agentic runtime's start, or a worker thread that will not start).
+
+    Before PR 3 the outer try began after the setup, so the teardown never ran (owner decision 2026-11-03)."""
+    selfy = _live_setup_host(daemon, tmp_path, monkeypatch)
+    if raise_at == "refusal":
+        selfy._start_agentic_runtime = _refuse
+    else:  # the motor worker's start raises, so the threads list holds an unstarted thread for the teardown's join
+        real_start = threading.Thread.start
+
+        def _start(thread):
+            if thread.name == "maxim.motor":
+                raise RuntimeError("the setup broke")
+            real_start(thread)
+
+        monkeypatch.setattr(threading.Thread, "start", _start)
+    try:
+        with pytest.raises(RuntimeError, match="the setup broke"):
+            selfy.live(vision=False, run_id="setup-window")
+        assert selfy._motor_queue is not None and selfy._motor_queue.closed
+        before = len(daemon.gotos())
+        assert _outcome_kind(selfy.move(0.0, 0.0, 0.0, 0.0, 0.0, 10.0, duration=1.0)) == "cancelled"
+        turned = selfy.turn_around(30.0, duration=5.0)
+        assert not turned and turned.kind == "cancelled"
+        assert len(daemon.gotos()) == before
+        assert selfy._live_stop_event is None  # released, so the process stop registry no longer holds it
+    finally:
+        selfy._close_live_stop_event()
+
+
+def test_a_shutdown_that_fails_after_a_refusal_does_not_hide_the_refusal(daemon, tmp_path, monkeypatch, caplog):
+    """The CLI exits 2 with the fix hint on a refusal; a crash in the shutdown behind it must not turn that into 1."""
+    from maxim.exceptions import LeaderRefusal
+
+    selfy = _live_setup_host(daemon, tmp_path, monkeypatch)
+    selfy._start_agentic_runtime = _refuse
+
+    def _broken_shutdown():
+        raise OSError("the speaker would not close")
+
+    selfy.shutdown = _broken_shutdown
+    try:
+        with caplog.at_level(logging.ERROR), pytest.raises(LeaderRefusal):
+            selfy.live(vision=False, run_id="refusal-shutdown")
+        assert "the speaker would not close" in caplog.text
+    finally:
+        selfy._close_live_stop_event()
+
+
+@pytest.mark.parametrize("inside_except", [False, True], ids=["plain", "inside-a-callers-except"])
+def test_a_shutdown_that_fails_after_a_normal_run_still_raises(daemon, tmp_path, monkeypatch, inside_except):
+    """Only an exception already leaving ``live`` is protected: after a normal run a shutdown error reaches the caller,
+    also when the caller runs ``live`` inside its own ``except`` block (``sys.exc_info`` then holds that exception)."""
+    selfy = _live_setup_host(daemon, tmp_path, monkeypatch)
+    selfy._start_agentic_runtime = lambda: selfy._live_stop_event.set()  # the headless loop ends at once
+
+    def _broken_shutdown():
+        raise OSError("the speaker would not close")
+
+    selfy.shutdown = _broken_shutdown
+    try:
+        with pytest.raises(OSError, match="would not close"):
+            if inside_except:
+                try:
+                    raise KeyError("the caller's own error, already handled")
+                except KeyError:
+                    selfy.live(vision=False, run_id="normal-exit")
+            else:
+                selfy.live(vision=False, run_id="normal-exit")
+    finally:
+        selfy._close_live_stop_event()
+
+
 def test_the_teardown_latches_the_controller_so_a_body_turn_after_a_stop_is_refused(daemon):
     """The second reader of the stop fold: ``turn_around`` dispatches directly, so the queue alone did not cover it."""
     ctl = controller(daemon)
@@ -1965,3 +2065,59 @@ def test_a_turn_refused_before_its_first_sdk_call_books_nothing_but_one_that_sta
     selfy._last_turn_around_time = 0.0
     selfy._maybe_turn_around(du=-400.0, looking_left=True, looking_right=False, h_usage=0.99, pain_bridge=pain)
     assert len(starts) == 1 and completes == [(False, "turn-event")]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR 3: every ReachyMini( passes automatic_body_yaw=False (plan §13, owner 2026-11-01)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _motion_lint(monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "lint_motion_safety", Path(__file__).resolve().parents[2] / "scripts" / "lint_motion_safety.py"
+    )
+    lint = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "lint_motion_safety", lint)  # @dataclass resolves its module
+    spec.loader.exec_module(lint)
+    return lint
+
+
+def test_the_motion_lint_flags_a_reachy_mini_built_without_auto_yaw_off(tmp_path, monkeypatch):
+    """The setting is daemon-wide and the SDK defaults it on: one client built without it turns auto-yaw back on."""
+    lint = _motion_lint(monkeypatch)
+    py = tmp_path / "scripts" / "planted_yaw.py"
+    py.parent.mkdir(parents=True)
+    py.write_text(
+        "from reachy_mini import ReachyMini\n"  # 1
+        "a = ReachyMini(host='h')\n"  # 2: flagged
+        "b = ReachyMini(\n"  # 3: flagged (split across lines)
+        "    host='h',\n"
+        "    automatic_body_yaw=True,\n"
+        ")\n"
+        "c = ReachyMini(host='h', automatic_body_yaw=False)\n"  # 7: fine
+        "d = reachy_mini.ReachyMini(**kwargs)\n"  # 8: flagged (a splat cannot show the value)
+        "e = ReachyMini(\n"  # 9: fine (split across lines)
+        "    automatic_body_yaw=False,\n"
+        ")\n"
+        '"""ReachyMini(host=...) in a docstring is not a call"""\n'  # 12
+    )
+    sh = tmp_path / "src" / "tests" / "planted_move.sh"
+    sh.parent.mkdir(parents=True)
+    sh.write_text(
+        "#!/usr/bin/env bash\n"  # 1
+        "python - <<'PY'\n"  # 2
+        "mini = ReachyMini(robot_name=name, timeout=5.0)\n"  # 3: flagged
+        "ok = ReachyMini(robot_name=name, automatic_body_yaw=False)\n"  # 4: fine
+        "PY\n"
+    )
+    findings = [f for f in lint.scan(tmp_path) if f.kind == "auto_yaw"]
+    assert sorted((f.path, f.line) for f in findings) == [
+        ("scripts/planted_yaw.py", 2),
+        ("scripts/planted_yaw.py", 3),
+        ("scripts/planted_yaw.py", 8),
+        ("src/tests/planted_move.sh", 3),
+    ], findings

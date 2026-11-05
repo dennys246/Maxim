@@ -56,9 +56,11 @@ from typing import Any, Literal
 
 from maxim.integration.session_ownership import session_ever_claimed
 from maxim.utils.cancellation import (
+    child_groups,
     current_stop,
     forget_noted_signal,
     interruptible_depth,
+    kill_child_groups,
     note_signal,
     register_stop_hook,
     request_stop,
@@ -163,16 +165,10 @@ def _library_deadline(signal_time: float) -> tuple[float, float]:
 # ── The stop thread ───────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def _kill_spawned_server() -> None:
-    """SIGKILL the spawned LLM server's process group, lock-free (PR 3 covers a server not yet registered)."""
-    server_mod = sys.modules.get("maxim.runtime.llm_server")
-    pid = server_mod.spawned_server_pid() if server_mod is not None else None
-    if pid is None or pid == os.getpgrp():  # spawned with start_new_session, so its group is its pid; never ours
-        return
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except OSError:  # already gone
-        pass
+def _kill_spawned_children() -> None:
+    """SIGKILL every LLM server and tunnel daemon this process spawned, lock-free: each is registered from its
+    Popen until its owner reaps it, so one still in its readiness wait is reached too (#1344 PR 3a)."""
+    kill_child_groups()
 
 
 def _last_words(reason: str) -> None:
@@ -185,7 +181,7 @@ def _die(code: int, reason: str) -> None:
     """End the process. No step may stop the exit: on a helper, the steps that can block."""
     try:
         try:
-            _kill_spawned_server()
+            _kill_spawned_children()
         finally:
             helper = threading.Thread(target=_last_words, args=(reason,), name="maxim.last-words", daemon=True)
             helper.start()
@@ -348,6 +344,11 @@ def _windows_interrupt(pressed: list[bool], signum: int, frame: Any) -> None:
     except Exception:
         logger.warning("Could not signal the LLM cancellation at Ctrl+C", exc_info=True)
     if pressed[0]:
+        for child in child_groups():  # first, lock-free: this handler may interrupt a launch holding the registry lock
+            try:
+                child.proc.kill()
+            except OSError:  # already gone
+                pass
         try:
             from maxim.runtime.lane_backends import stop_active_spawner
 

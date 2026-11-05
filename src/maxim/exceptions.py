@@ -84,6 +84,28 @@ class StopStillPending(MaximError, RuntimeError):
         super().__init__(message)
 
 
+class LLMServerPortBusy(MaximError, RuntimeError):
+    """The port this process would spawn its llama-cpp-server on is held by a listener it cannot reuse: a keyed
+    server that stayed busy for the whole spawn budget, a server that answers without a key, or something that is not
+    a llama-cpp-server (#1344 PR 3a). Nothing is killed: a server maxim did not start is the operator's to stop.
+
+    Not a :class:`LeaderRefusal`: server mode reports it NOT READY and stays up behind its proxy (``peer restart``
+    still reaches it), and the CLI exits 2 with ``fix_hint``. Raised by ``runtime/llm_server.py::preflight_spawn``.
+    """
+
+    fix_hint = (
+        "Wait for that server to finish (a leader's server is busy while it generates), reuse it with the same model, "
+        "or stop the process named above; then start maxim again."
+    )
+
+    def __init__(self, port: int, listener: str, why: str) -> None:
+        super().__init__(
+            f"port {port} is held by {listener}, which {why}: this process cannot reuse it, and will not spawn a "
+            "second llama-cpp-server beside it (it would load the model again and fail to bind)"
+        )
+        self.port = port
+
+
 class LeaderRefusal(MaximError, RuntimeError):
     """A process refused to serve because doing so would be unauthenticated or over-exposed.
 
@@ -618,6 +640,7 @@ __all__ = [
     "MaximError",
     "KeyFileUnusable",
     "StopStillPending",
+    "LLMServerPortBusy",
     "LeaderRefusal",
     "AdvisorError",
     "AdvisorCompositionError",

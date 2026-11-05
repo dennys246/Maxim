@@ -124,12 +124,13 @@ def _body(scenario: str) -> int:
     if scenario == "kills_the_spawned_server":  # a real server-shaped child, in its own session, as the spawner makes
         import subprocess
 
-        from maxim.runtime import llm_server
-
         _mode("non_sim")
         _claim_session()
-        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True)
-        llm_server._active_spawner = type("Spawner", (), {"_process": child})()
+        child = cancellation.spawn_registered(  # as LocalServerSpawner.start registers it (#1344 PR 3a)
+            lambda: subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True),
+            kind="llm_server",
+            stop=lambda: None,
+        )
         print(f"SERVER_PID {child.pid}", flush=True)
         _ready()
         while True:

@@ -14,7 +14,7 @@ import threading
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +114,6 @@ def _model_state_file() -> Path:
         except Exception as e:
             logger.warning("lazy persisted-model migration failed: %s", e)
     return resolve_user_state(f"util/active_llm_model.{role}.txt")
-
-
-def spawned_server_pid() -> int | None:
-    """The live spawned server's pid, or None: lock-free, for the stop watchdog's kill (``maxim.cli_signals``). The
-    spawner starts it with ``start_new_session``, so this pid is also its process group."""
-    process = getattr(_active_spawner, "_process", None)
-    if process is None or process.returncode is not None:
-        return None
-    return process.pid
 
 
 def stop_active_spawner() -> None:
@@ -259,9 +250,9 @@ class ProbeResult:
 # and takes the tunnel down).
 
 
-# Decision values returned by :func:`check_existing_llm_server`.
-REUSE_EXISTING = "reuse"
-SPAWN_NEW = "spawn"
+# Decision values returned by :func:`check_existing_llm_server` (Final, so each types as its literal).
+REUSE_EXISTING: Final = "reuse"
+SPAWN_NEW: Final = "spawn"
 
 
 def _read_served_model_id(url: str, api_key: str | None) -> str | None:
@@ -321,6 +312,47 @@ def _served_model_matches(
     if expected_model_path or expected_profile:
         return False
     return None
+
+
+def _wrong_model_error(url: str, served: str | None, configured: str) -> RuntimeError:
+    """The singleton check's refusal of a server on ``url`` serving another model, with the fix commands. It names
+    that server's pid rather than advising a box-wide ``pkill`` (#1344 PR 3a: nothing kills a server maxim did not
+    start, and an operator's kill should not either). Naming it runs ``lsof`` and ``ps`` (up to 5 s each): a cost on
+    this refusal path only."""
+    from urllib.parse import urlsplit
+
+    from maxim.runtime.local_server_spawner import describe_port_listener
+
+    listener = describe_port_listener(urlsplit(url).port or 8100)
+    # Most common cause when configured and served diverge: the operator
+    # ran ``maxim --llm <new>`` to swap the runtime server but did not
+    # also update ``config.json::llm.profile``. The two state files are
+    # intentionally separate (declarative vs runtime, per
+    # config_unification.md C2) but the divergence surfaces here when a
+    # sub-sim consults the declarative config. Surface concrete fix
+    # commands so the operator does not have to read CLAUDE.md to
+    # disambiguate.
+    return RuntimeError(
+        f"Singleton check: an LLM server is already running on {url} but it is "
+        f"serving model {served!r}, not the configured {configured!r}. Refusing "
+        f"to silently use the wrong model.\n"
+        f"\n"
+        f"Most likely cause: ``maxim --llm <model>`` swaps the running server "
+        f"but does NOT update ``~/.config/maxim/config.json::llm.profile`` "
+        f"(declarative config, intentionally separate per config_unification.md "
+        f"C2). The two state files have drifted.\n"
+        f"\n"
+        f"Resolutions (pick one):\n"
+        f"  (a) Adopt the served model as the configured one:\n"
+        f"        maxim --list-models   # find the profile name matching the served GGUF\n"
+        f"        maxim config set llm.profile <profile-name>\n"
+        f"  (b) Stop that server ({listener}), then restart with the configured model:\n"
+        f"        maxim --llm {configured}\n"
+        f"  (c) Stop that server ({listener}) and let this run spawn fresh.\n"
+        f"\n"
+        f"See the CLAUDE.md lesson 'Config.json vs active_llm_model.txt drift "
+        f"after maxim --llm <model>'."
+    )
 
 
 def check_existing_llm_server(
@@ -389,37 +421,7 @@ def check_existing_llm_server(
     match = _served_model_matches(served, expected_model_path, expected_profile)
 
     if match is False:
-        configured = expected_profile or expected_model_path or "<unknown>"
-        # Most common cause when configured and served diverge: the operator
-        # ran ``maxim --llm <new>`` to swap the runtime server but did not
-        # also update ``config.json::llm.profile``. The two state files are
-        # intentionally separate (declarative vs runtime, per
-        # config_unification.md C2) but the divergence surfaces here when a
-        # sub-sim consults the declarative config. Surface concrete fix
-        # commands so the operator does not have to read CLAUDE.md to
-        # disambiguate.
-        raise RuntimeError(
-            f"Singleton check: an LLM server is already running on {url} but it is "
-            f"serving model {served!r}, not the configured {configured!r}. Refusing "
-            f"to silently use the wrong model.\n"
-            f"\n"
-            f"Most likely cause: ``maxim --llm <model>`` swaps the running server "
-            f"but does NOT update ``~/.config/maxim/config.json::llm.profile`` "
-            f"(declarative config, intentionally separate per config_unification.md "
-            f"C2). The two state files have drifted.\n"
-            f"\n"
-            f"Resolutions (pick one):\n"
-            f"  (a) Adopt the served model as the configured one:\n"
-            f"        maxim --list-models   # find the profile name matching the served GGUF\n"
-            f"        maxim config set llm.profile <profile-name>\n"
-            f"  (b) Restart the server with the configured model:\n"
-            f"        pkill -f llama_cpp.server && maxim --llm {configured}\n"
-            f"  (c) Stop the existing server entirely and let this run spawn fresh:\n"
-            f"        pkill -f llama_cpp.server\n"
-            f"\n"
-            f"See the CLAUDE.md lesson 'Config.json vs active_llm_model.txt drift "
-            f"after maxim --llm <model>'."
-        )
+        raise _wrong_model_error(url, served, expected_profile or expected_model_path or "<unknown>")
 
     if logger is not None:
         if match is True:
@@ -438,6 +440,121 @@ def check_existing_llm_server(
                 served,
             )
     return REUSE_EXISTING
+
+
+# ─── Before a spawn: is the port free, or held by a server we must not kill? (#1344 PR 3a) ──────────────────────
+BUSY_POLL_S = 0.25
+# What the one keyed check may spend past the budget: its retry, the served-model read (4 s) and, on a wrong model,
+# naming the listener (lsof + ps, 5 s each). A server answering at the end of the budget is then still read.
+BUSY_CHECK_PAD_S = 2 * BUSY_POLL_S + 15.0
+
+
+def preflight_spawn(
+    *,
+    url: str,
+    port: int,
+    api_key: str | None,
+    expected_model_path: str | None,
+    expected_profile: str | None,
+    budget_s: float,
+    logger: Any | None = None,
+) -> Literal["reuse", "spawn"]:
+    """After :func:`check_existing_llm_server` answered "spawn": decide without killing anything (#1344 PR 3a, owner
+    decisions 2026-11-03: the box-wide stale-server kill is gone).
+
+    - A process stop is pending: :class:`~maxim.exceptions.StopStillPending`, no model load starts.
+    - Our own running server is on ``url``: reuse it on a model match (busy, it failed the short probe), else the
+      wrong-model refusal ``check_existing_llm_server`` gives an idle one.
+    - A KEYLESS ``/v1/models`` (``local_server_spawner.probe_keyless``): refused connection = the port is free, spawn.
+      A 401 = a keyed llama-cpp-server, alive and busy: wait for it, see :func:`_await_busy_server`. Anything else
+      (an answer without a key, a 403, a timeout): :class:`~maxim.exceptions.LLMServerPortBusy` naming the pid.
+    """
+    from maxim.exceptions import LLMServerPortBusy, StopStillPending
+    from maxim.runtime.local_server_spawner import describe_port_listener, probe_keyless
+    from maxim.utils.cancellation import current_stop
+
+    stop = current_stop()
+    if stop is not None:
+        raise StopStillPending(stop.reason, refused="the LLM server spawn")
+    own = active_spawner()
+    if own is not None and own.base_url == url:
+        if _served_model_matches(own.model_path, expected_model_path, expected_profile) is False:
+            raise _wrong_model_error(url, own.model_path, expected_profile or expected_model_path or "<unknown>")
+        if logger is not None:
+            logger.info("Singleton check: the server at %s is this process's own (busy): reusing it", url)
+        return REUSE_EXISTING
+    state = probe_keyless(port)
+    if state == "absent":
+        return SPAWN_NEW
+    if state != "keyed":
+        raise LLMServerPortBusy(port, describe_port_listener(port), state)
+    return _await_busy_server(
+        url=url,
+        port=port,
+        api_key=api_key,
+        expected_model_path=expected_model_path,
+        expected_profile=expected_profile,
+        budget_s=budget_s,
+        logger=logger,
+    )
+
+
+def _await_busy_server(
+    *,
+    url: str,
+    port: int,
+    api_key: str | None,
+    expected_model_path: str | None,
+    expected_profile: str | None,
+    budget_s: float,
+    logger: Any | None,
+) -> Literal["reuse", "spawn"]:
+    """A keyed server is alive but busy. ONE keyed check, with the whole spawn budget to answer, on a daemon thread
+    (a queued keyed request takes the generation lock in turn, so polling would stack them); the caller waits for it
+    and for a process stop. "reuse" routes to it; anything short of an answer is :class:`LLMServerPortBusy`, never a
+    spawn beside a live listener. Its own refusals (wrong model, a 401 to our key) propagate."""
+    import time as _time
+
+    from maxim.exceptions import LLMServerPortBusy, StopStillPending
+    from maxim.runtime.local_server_spawner import describe_port_listener
+    from maxim.utils.cancellation import current_stop
+
+    box: list[tuple[str, Any]] = []
+
+    def _check() -> None:
+        try:
+            box.append(
+                (
+                    "ok",
+                    check_existing_llm_server(
+                        url=url,
+                        api_key=api_key,
+                        expected_model_path=expected_model_path,
+                        expected_profile=expected_profile,
+                        logger=logger,
+                        first_timeout_s=budget_s,
+                        retry_timeout_s=BUSY_POLL_S,
+                    ),
+                )
+            )
+        except BaseException as e:  # carried to the caller: never to threading.excepthook
+            box.append(("err", e))
+
+    if logger is not None:
+        logger.info("The server on port %d is busy: waiting up to %ds for it to answer", port, int(budget_s))
+    worker = threading.Thread(target=_check, name="maxim.busy-server-check", daemon=True)
+    worker.start()
+    end = _time.monotonic() + budget_s + BUSY_CHECK_PAD_S
+    while worker.is_alive() and _time.monotonic() < end:
+        stop = current_stop()
+        if stop is not None:
+            raise StopStillPending(stop.reason, refused="the LLM server spawn")
+        worker.join(BUSY_POLL_S)
+    if box and box[0][0] == "err":
+        raise box[0][1]
+    if box and box[0][1] == REUSE_EXISTING:
+        return REUSE_EXISTING
+    raise LLMServerPortBusy(port, describe_port_listener(port), f"stayed busy for {int(budget_s)}s")
 
 
 def profile_has_local_file(profile_name: str) -> bool:

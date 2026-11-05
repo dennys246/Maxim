@@ -56,8 +56,8 @@
       "missing": 494
     },
     "maxim/embodied_runtime": {
-      "percent": 50.5,
-      "missing": 1612
+      "percent": 56.8,
+      "missing": 1416
     },
     "maxim/embodiment": {
       "percent": 84.7,
@@ -140,8 +140,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 77.4,
-      "missing": 3060
+      "percent": 78.7,
+      "missing": 2973
     },
     "maxim/salience": {
       "percent": 68.6,
@@ -172,7 +172,7 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 65.6,
+      "percent": 66.8,
       "missing": 2095
     }
   },
@@ -182,8 +182,8 @@
       "missing": 319
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 75.8,
-      "missing": 249
+      "percent": 75.7,
+      "missing": 250
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
