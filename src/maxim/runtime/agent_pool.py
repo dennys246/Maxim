@@ -392,7 +392,9 @@ class AgentPool:
             raise ModelInferenceError(f"NPC '{agent_id}' has no LLM router", context={"agent_id": agent_id})
         try:
             text = router.generate(percept, system=system, max_tokens=100, request_context={"agent_id": agent_id})
-        except (ModelError, *SECURITY_REFUSALS):  # an offline refusal stays itself (#1315 item 10b)
+        except ModelError:
+            raise
+        except SECURITY_REFUSALS:  # a leader or offline refusal stays itself (#1315 item 10b)
             raise
         except Exception as e:  # a router that is not an LLMRouter: still a typed failure, never a stub
             raise ModelInferenceError(
