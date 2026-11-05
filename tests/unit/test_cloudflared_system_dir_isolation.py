@@ -22,10 +22,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.xfail(
-    strict=True, reason="red gate: the system cloudflared dir has no canonical, isolatable reader yet"
-)
-
 _ENV = "MAXIM_CLOUDFLARED_SYSTEM_DIR"
 _REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 

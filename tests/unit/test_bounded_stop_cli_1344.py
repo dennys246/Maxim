@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 import maxim
+from tests.unit._child_env import without_maxim_overrides
 
 _DRIVER = Path(__file__).with_name("_cli_signal_driver.py")
 _SRC = str(Path(maxim.__file__).resolve().parents[1])
@@ -32,7 +33,7 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
 
 class _Child:
     def __init__(self, scenario: str, tmp_path: Path, env: dict[str, str] | None = None, *, stdin: Any = None) -> None:
-        child_env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+        child_env = without_maxim_overrides()
         child_env.update({"PYTHONPATH": _SRC, "HOME": str(tmp_path), "PYTHONUNBUFFERED": "1"})
         child_env.update(env or {})
         self.proc = subprocess.Popen(
@@ -206,7 +207,7 @@ def test_g7_on_a_real_tty_with_readline_a_signal_wakes_input(tmp_path: Path, sig
     import select
 
     master, slave = pty.openpty()
-    child_env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    child_env = without_maxim_overrides()
     child_env.update({"PYTHONPATH": _SRC, "HOME": str(tmp_path), "PYTHONUNBUFFERED": "1"})
     proc = subprocess.Popen(
         [sys.executable, str(_DRIVER), "prompt_after_session"],
@@ -475,7 +476,7 @@ def test_g13_a_sigterm_to_the_real_maxim_serve_exits_0_not_143(tmp_path: Path) -
     pytest.importorskip("uvicorn")
 
     port = _free_port()
-    child_env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    child_env = without_maxim_overrides()
     child_env.update({"PYTHONPATH": _SRC, "HOME": str(tmp_path), "PYTHONUNBUFFERED": "1"})
     proc = subprocess.Popen(
         [sys.executable, str(_DRIVER), "real_serve", str(port)],

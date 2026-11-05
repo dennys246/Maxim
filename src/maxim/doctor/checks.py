@@ -1920,8 +1920,10 @@ def check_tunnel_config_sync() -> CheckResult:
 
     from pathlib import Path
 
+    from maxim.utils.paths import cloudflared_system_dir
+
     user_cfg = Path.home() / ".cloudflared" / "config.yml"
-    system_cfg = Path("/etc/cloudflared/config.yml")
+    system_cfg = cloudflared_system_dir() / "config.yml"
 
     if not user_cfg.is_file():
         return CheckResult(
@@ -1943,28 +1945,25 @@ def check_tunnel_config_sync() -> CheckResult:
         return CheckResult(
             name="Tunnel config sync",
             status="warn",
-            message="cannot read /etc/cloudflared/config.yml (permission denied)",
-            fix="Run: sudo cat /etc/cloudflared/config.yml",
+            message=f"cannot read {system_cfg} (permission denied)",
+            fix=f"Run: sudo cat {system_cfg}",
         )
 
     if user_text.strip() == system_text.strip():
         return CheckResult(
             name="Tunnel config sync",
             status="ok",
-            message="~/.cloudflared/config.yml and /etc/cloudflared/config.yml are in sync",
+            message=f"~/.cloudflared/config.yml and {system_cfg} are in sync",
         )
 
     return CheckResult(
         name="Tunnel config sync",
         status="warn",
-        message=(
-            "~/.cloudflared/config.yml and /etc/cloudflared/config.yml DIFFER — "
-            "systemd service may be using stale settings"
-        ),
+        message=(f"~/.cloudflared/config.yml and {system_cfg} DIFFER — systemd service may be using stale settings"),
         fix=(
-            "The systemd cloudflared service reads /etc/cloudflared/config.yml,\n"
+            f"The systemd cloudflared service reads {system_cfg},\n"
             "not ~/.cloudflared/config.yml. After editing the user config, sync it:\n"
-            "  sudo cp ~/.cloudflared/config.yml /etc/cloudflared/config.yml\n"
+            f"  sudo cp ~/.cloudflared/config.yml {system_cfg}\n"
             "  sudo systemctl restart cloudflared"
         ),
         retry_id="tunnel-config-sync",

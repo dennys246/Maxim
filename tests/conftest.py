@@ -40,6 +40,10 @@ _TEST_HOME.mkdir(parents=True)
 os.environ["HOME"] = str(_TEST_HOME)
 os.environ["XDG_CONFIG_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-config")
 os.environ["XDG_CACHE_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-cache")
+# /etc is not under HOME: a leader dev box's real /etc/cloudflared/config.yml made every role-dependent test resolve
+# "leader" (2026-11-05). utils/paths.py::cloudflared_system_dir is the one reader; exported, so subprocesses inherit it
+# (guard: tests/unit/test_cloudflared_system_dir_isolation.py).
+os.environ["MAXIM_CLOUDFLARED_SYSTEM_DIR"] = str(_TEST_ISOLATION_ROOT / "etc-cloudflared")
 
 _MODEL_TESTS_ENABLED = os.environ.get("MAXIM_RUN_MODEL_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
 if _MODEL_TESTS_ENABLED:

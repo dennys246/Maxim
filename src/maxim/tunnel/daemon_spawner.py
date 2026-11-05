@@ -24,11 +24,11 @@ from pathlib import Path
 from maxim.tunnel.cloudflared import find_cloudflared
 from maxim.utils.cancellation import spawn_registered, stop_child_group, unregister_child
 from maxim.tunnel.config import CONFIG_PATH as USER_CONFIG_PATH
+from maxim.utils.paths import cloudflared_system_dir
 
 logger = logging.getLogger(__name__)
 
 
-SYSTEM_CONFIG_PATH = Path("/etc/cloudflared/config.yml")
 READINESS_WAIT_S = 3.0  # give cloudflared time to fail if the config is bad
 
 
@@ -58,10 +58,13 @@ def resolve_config_path() -> Path | None:
     Prefers /etc/cloudflared/config.yml (system-wide, used by the
     systemd service) over ~/.cloudflared/config.yml (user-space).
     The systemd service is the authoritative tunnel process — its
-    config must match what we expect.
+    config must match what we expect. The system path comes from
+    ``utils/paths.py::cloudflared_system_dir`` on every call (role detection
+    and the doctor read the same one).
     """
-    if SYSTEM_CONFIG_PATH.is_file():
-        return SYSTEM_CONFIG_PATH
+    system_config = cloudflared_system_dir() / "config.yml"
+    if system_config.is_file():
+        return system_config
     if USER_CONFIG_PATH.is_file():
         return USER_CONFIG_PATH
     return None
@@ -163,5 +166,4 @@ __all__ = [
     "TunnelDaemonSpawner",
     "cloudflared_already_running",
     "resolve_config_path",
-    "SYSTEM_CONFIG_PATH",
 ]

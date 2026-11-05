@@ -125,6 +125,7 @@ Sum-then-branch-on-sign sites use the SIGNED 64-bit variant (an unsigned digest 
 ## 5. Env vars owned
 
 - `MAXIM_DATA_BUDGET_GB` = optional soft cap on `~/.maxim` disk usage; refuses model downloads over budget = `utils/storage.py` + `models/download.py` (resolved via `runtime/config_loader.py`).
+- `MAXIM_CLOUDFLARED_SYSTEM_DIR` = the system cloudflared config directory (default `/etc/cloudflared`) = `utils/paths.py::cloudflared_system_dir`, the one reader that role detection's rank 4, `tunnel/daemon_spawner.py` and the doctor's tunnel-sync check share; read on every call, never cached. `tests/conftest.py` exports it into the isolation root at import, beside `HOME`, so a host's real tunnel config never reaches a test or its subprocesses (2026-11-05; guard: `tests/unit/test_cloudflared_system_dir_isolation.py`). Not a feature toggle: operators leave it unset.
 
 (`MAXIM_ROLE` is documented in docs/agents/llm-routing.md's env table; its detection/export semantics are the merged role invariant above. Long env-var rationales: docs/lessons/claude-md-2026-08-13-pre-diet.md.)
 
