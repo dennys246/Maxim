@@ -17,6 +17,7 @@ builder renders the retry. Only the LLM is faked.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +56,6 @@ def test_the_run_reaches_the_retry_through_the_shipped_drop(composed: dict[str, 
     assert len(_checkpoints(composed)) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="#1592 red gate: the checkpoint lists the agent's tool names")
 @pytest.mark.timeout(240)
 def test_the_checkpoint_names_no_tool_of_the_agent(composed: dict[str, Any]) -> None:
     (checkpoint,) = _checkpoints(composed)
@@ -65,18 +65,18 @@ def test_the_checkpoint_names_no_tool_of_the_agent(composed: dict[str, Any]) -> 
     assert "observe_actions" in checkpoint, "it points at the narrator's own tool for the details"
 
 
-@pytest.mark.xfail(strict=True, reason="#1592 red gate: the follow-up retry does not say whose tool it was")
 @pytest.mark.timeout(240)
 def test_the_retry_says_the_tool_was_the_agents_and_names_the_narrators_own(composed: dict[str, Any]) -> None:
     retry = RUN_SIDE[ARM]["prompts"]["narrator"][-1]
     correction = retry[retry.index("=== Correction ===") :]
     assert WHOSE in correction, correction
     assert AGENT_TOOL in correction and "'send_message'" in correction, correction
-    # The checkpoint rode the failed follow-up and rides its retry: it must not re-prime the retry either.
-    assert _mentions(retry[: retry.index("=== Correction ===")], _narrator_roster()) == []
+    # The checkpoint rode the failed follow-up and rides its retry, as a held input: it must not re-prime the retry.
+    # (The observe_actions RESULT above it lists the agent's actions: data the narrator asked for, not a prime.)
+    (held,) = re.findall(r"=== New Instructions ===\n(.*?)(?:\n=== |\Z)", retry, re.S)
+    assert held.startswith("DIVERSITY CHECKPOINT") and _mentions(held, _narrator_roster()) == [], held
 
 
-@pytest.mark.xfail(strict=True, reason="#1592 red gate: the plan retry says neither whose tool it was nor its own")
 def test_a_plan_retry_after_an_agent_tool_says_whose_it_was_and_names_the_narrators_own() -> None:
     """The plan path: the checkpoint arrived with no follow-up in flight, so it is the plan's request."""
     from maxim.agents.llm_worker import LLMWorker

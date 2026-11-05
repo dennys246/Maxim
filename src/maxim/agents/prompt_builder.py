@@ -318,6 +318,13 @@ PLANNING_CORRECTIONS = {
         "Your last answer could not be read. Reply with ONLY one JSON object in the response format above, naming "
         "one of your tools: {own}."
     ),
+    # #1592: the narrator proposed a tool it lacks, in the Exp 63b smoke the AUT's, read from its checkpoint. Only a
+    # planning-liveness loop records a correction, and only the sim narrator opts in, so "the agent under test" is
+    # always its reader's agent.
+    "unregistered_tool_proposed": (
+        "Your last answer called a tool you do not have. A tool named in a checkpoint or a tool result is the "
+        "agent under test's, and you cannot call it. Call one of your tools: {own}."
+    ),
 }
 
 
@@ -383,7 +390,8 @@ def build_followup_retry_correction(request: LLMRequest) -> str:
     lines = ["=== Correction ==="] + ([planning] if planning else [])
     if names:
         own = ", ".join(repr(n) for n in sorted(request.available_tools))
-        choose = f" Your tools are: {own}. Choose one of these." if own else ""
+        # A planning correction already ends with the agent's own tools (``PLANNING_CORRECTIONS``): listed once.
+        choose = f" Your tools are: {own}. Choose one of these." if own and not planning else ""
         lines.append(f"You called {names}, which you do not have." + choose + _sense_tools_hint(request))
     return "\n".join(lines)
 
