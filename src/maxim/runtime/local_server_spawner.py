@@ -23,17 +23,15 @@ import socket
 import subprocess
 import sys
 import threading
-from typing import Any
 import time
 
 logger = logging.getLogger(__name__)
 from pathlib import Path
 
-from maxim.exceptions import LeaderRefusal
+from maxim.exceptions import LeaderRefusal, LLMServerPortBusy
+from maxim.utils.cancellation import child_groups, spawn_registered, stop_child_group, unregister_child
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
-
-import signal
 
 DEFAULT_PORT = 8100
 DEFAULT_N_CTX = 8192
@@ -44,156 +42,6 @@ DEFAULT_N_CTX = 8192
 # Override with MAXIM_AUTO_SPAWN_TIMEOUT_S.
 READINESS_TIMEOUT_S = 120.0
 READINESS_POLL_INTERVAL_S = 0.5
-
-
-def _kill_process_tree(pid: int) -> None:
-    """Best-effort kill of a process and all its children.
-
-    Uses psutil when available (handles the full tree reliably on all
-    platforms). Falls back to os.kill / taskkill for the common case
-    where psutil isn't installed.
-    """
-    try:
-        import psutil
-
-        try:
-            parent = psutil.Process(pid)
-        except psutil.NoSuchProcess:
-            return
-        children = parent.children(recursive=True)
-        # Kill children first, then parent
-        for child in children:
-            try:
-                child.kill()
-            except psutil.NoSuchProcess:
-                pass
-        try:
-            parent.kill()
-        except psutil.NoSuchProcess:
-            pass
-        # Reap zombies
-        psutil.wait_procs(children + [parent], timeout=3)
-        return
-    except ImportError:
-        pass
-
-    # Fallback: no psutil — platform-specific best-effort.
-    # Use os-level APIs to avoid going through subprocess.Popen (which may
-    # be mocked in tests and is heavier than needed here).
-    if sys.platform == "win32":
-        # taskkill /F /T /PID kills the process tree on Windows.
-        # Use os.system to avoid subprocess.Popen (keeps test mocks clean).
-        try:
-            os.system(f"taskkill /F /T /PID {int(pid)} >nul 2>&1")  # noqa: S605
-        except Exception:
-            pass
-    else:
-        # Unix: kill the process group if it was started with start_new_session
-        try:
-            os.killpg(os.getpgid(pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
-
-
-def find_stale_llm_servers(port: int = DEFAULT_PORT) -> list[dict[str, Any]]:
-    """Find llama-cpp-server processes that may be holding VRAM.
-
-    Returns a list of dicts with keys: pid, cmdline, port_match, status.
-    Works with or without psutil (degrades to port-only check without it).
-    """
-    results: list[dict[str, Any]] = []
-    try:
-        import psutil
-    except ImportError:
-        # No psutil — best-effort: check if something is listening on the port
-        try:
-            from maxim.utils import http as _http
-
-            resp = _http.fetch_url(
-                f"http://127.0.0.1:{port}/v1/models",
-                method="GET",
-                timeout=_http.TimeoutPolicy(connect_s=0.5, read_s=1.0, total_s=1.5),
-            )
-            if resp.status == 200:
-                results.append(
-                    {
-                        "pid": None,
-                        "cmdline": f"(unknown process on port {port})",
-                        "port_match": True,
-                        "status": "responding",
-                    }
-                )
-        except Exception:
-            pass
-        return results
-
-    for proc in psutil.process_iter(["pid", "cmdline", "status"]):
-        try:
-            cmdline = proc.info.get("cmdline") or []
-            cmd_str = " ".join(cmdline)
-            if "llama_cpp.server" in cmd_str or "llama_cpp/server" in cmd_str:
-                port_match = "--port" in cmd_str and str(port) in cmd_str
-                results.append(
-                    {
-                        "pid": proc.info["pid"],
-                        "cmdline": cmd_str[:200],
-                        "port_match": port_match,
-                        "status": proc.info.get("status", "unknown"),
-                    }
-                )
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    return results
-
-
-def kill_stale_llm_servers(port: int = DEFAULT_PORT) -> int:
-    """Find and kill any stale llama-cpp-server processes holding VRAM.
-
-    Returns the number of processes killed. Safe to call at startup or
-    when VRAM appears stuck — only targets llama_cpp.server processes.
-    """
-    stale = find_stale_llm_servers(port)
-    killed = 0
-    for entry in stale:
-        pid = entry.get("pid")
-        if pid is None:
-            # No psutil — find PID from port listener, platform-specific
-            if sys.platform == "win32":
-                try:
-                    out = subprocess.check_output(  # noqa: S603, S607
-                        ["netstat", "-ano"],
-                        text=True,
-                        timeout=5,
-                    )
-                    for line in out.splitlines():
-                        if f":{port}" in line and "LISTENING" in line:
-                            parts = line.split()
-                            try:
-                                _kill_process_tree(int(parts[-1]))
-                                killed += 1
-                            except (ValueError, IndexError):
-                                pass
-                except Exception:
-                    pass
-            else:
-                try:
-                    out = subprocess.check_output(  # noqa: S603, S607
-                        ["lsof", "-ti", f":{port}"],
-                        text=True,
-                        timeout=5,
-                    )
-                    for lpid_str in out.strip().split():
-                        try:
-                            _kill_process_tree(int(lpid_str))
-                            killed += 1
-                        except (ValueError, OSError):
-                            pass
-                except Exception:
-                    pass
-        else:
-            _kill_process_tree(pid)
-            killed += 1
-    return killed
 
 
 _SCRUBBED_ENV = frozenset({"HOST", "PORT", "CONFIG_FILE"})
@@ -219,6 +67,64 @@ class LLMServerKeyRejected(LLMServerExposureError):
         )
 
 
+def probe_keyless(port: int, *, connect_s: float = 0.5, read_s: float = 2.0) -> str:
+    """A keyless ``GET /v1/models`` on 127.0.0.1:<port>, classified (#1344 PR 3a; one place for this contract):
+    ``"keyed"`` (401: a llama-cpp-server holding a key; llama_cpp authenticates before its generation lock, so this
+    costs a busy server nothing), ``"absent"`` (connection refused), or what else the listener did, as a phrase
+    ("answers without a key", "answers 403", "did not answer /v1/models (HTTPTimeout)")."""
+    from maxim.utils import http as _http
+
+    try:
+        _http.fetch_url(
+            f"http://127.0.0.1:{port}/v1/models",
+            method="GET",
+            timeout=_http.TimeoutPolicy(connect_s=connect_s, read_s=read_s, total_s=connect_s + read_s),
+        )
+    except _http.HTTPAuthError as e:
+        status = getattr(e, "status", 401)
+        return "keyed" if status == 401 else f"answers {status}"
+    except _http.HTTPConnectionError:
+        return "absent"
+    except _http.HTTPError as e:
+        return f"did not answer /v1/models ({type(e).__name__})"
+    return "answers without a key"
+
+
+def describe_port_listener(port: int) -> str:
+    """Who listens on 127.0.0.1:<port>, as a phrase for a message: its pid and parent pid when ``lsof``/``ps`` can tell
+    (POSIX; each bounded at 5 s; never gates anything), naming a server this process spawned as such."""
+    pids: list[int] = []
+    if sys.platform != "win32":
+        try:
+            out = subprocess.run(  # noqa: S603, S607
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            ).stdout
+            pids = [int(tok) for tok in out.split() if tok.isdigit()]
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("lsof could not name the listener on port %d: %s", port, e)
+    if not pids:
+        return f"a listener whose pid is unknown (`lsof -nP -iTCP:{port} -sTCP:LISTEN` names it)"
+    ours = {child.proc.pid for child in child_groups("llm_server")}
+    parts = []
+    for pid in pids:
+        if pid in ours:
+            parts.append(f"pid {pid} (a llama-cpp-server this process spawned)")
+            continue
+        ppid = ""
+        try:
+            ppid = subprocess.run(  # noqa: S603, S607
+                ["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True, timeout=5
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("ps could not name pid %d's parent: %s", pid, e)
+        orphan = " (an orphan: its parent is gone)" if ppid == "1" else ""
+        parts.append(f"pid {pid}" + (f", parent {ppid}{orphan}" if ppid else ""))
+    return "a listener, " + "; ".join(parts)
+
+
 def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> None:
     """Check the server on ``127.0.0.1:<port>`` from the outside, or raise :class:`LLMServerExposureError`.
 
@@ -233,21 +139,10 @@ def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> N
     (not every interface or a VPN bridge). The real controls are the loopback
     ``--host`` and the scrubbed ``HOST``/``CONFIG_FILE`` env.
     """
-    from maxim.utils import http as _http
     from maxim.utils.net import primary_ipv4_address
 
-    try:
-        _http.fetch_url(
-            f"http://127.0.0.1:{port}/v1/models",
-            method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0),
-        )
-        unauth = "open"
-    except _http.HTTPAuthError:
-        unauth = "refused"
-    except _http.HTTPError as e:
-        unauth = f"unknown ({type(e).__name__})"
-    if unauth != "refused":
+    unauth = probe_keyless(port, connect_s=1.0, read_s=3.0)
+    if unauth not in ("keyed", "answers 403"):  # a 401 or 403 refuses the keyless request
         raise LLMServerExposureError(
             f"the llama-cpp-server on port {port} answered an unauthenticated request ({unauth}): it holds no key "
             "(one an older maxim started?) or ignored the key it was given. Refusing to serve inference without "
@@ -383,16 +278,25 @@ class LocalServerSpawner:
                 # shutdown explicitly via stop() / atexit, which means the
                 # server stays alive long enough for Maxim's cleanup path
                 # (e.g. sim-report LLM roundup) to make one last inference call.
-                self._process = subprocess.Popen(
-                    cmd,
-                    stdout=stream_target,
-                    stderr=stream_target,
-                    env=env,
-                    start_new_session=True,
+                # Registered with the launch, as one step (#1344 PR 3a): a forced stop kills it from here on, its
+                # readiness wait included, and a restart's closed registry launches nothing.
+                self._process = spawn_registered(
+                    lambda: subprocess.Popen(
+                        cmd,
+                        stdout=stream_target,
+                        stderr=stream_target,
+                        env=env,
+                        start_new_session=True,
+                    ),
+                    kind="llm_server",
+                    stop=self.stop,
                 )
             except (OSError, ValueError) as e:
                 logger.warning("LocalServerSpawner: failed to start subprocess: %s", e)
                 self._process = None
+                return None
+            if self._process is None:
+                logger.warning("LocalServerSpawner: registry closed: a restart is in progress, no server started")
                 return None
 
             if not self._atexit_registered:
@@ -419,36 +323,24 @@ class LocalServerSpawner:
         return None
 
     def stop(self) -> None:
-        """Terminate the subprocess if it's running. Idempotent, swallows errors.
+        """Stop the server's whole process group and reap it. Idempotent, swallows errors.
 
-        Kills the entire process tree so child workers (uvicorn, CUDA kernels)
-        release GPU memory even when the top-level process exits cleanly but
-        its children linger.
+        The one claimer of its process (#1344 PR 3a): the process is taken under the lock, so a second stopper finds
+        nothing. On POSIX the group gets SIGTERM, then SIGKILL only while the leader is still unreaped (it holds the
+        pgid, so the group cannot be a stranger's); nothing is signalled after the reap. Its registry entry goes last,
+        so a forced stop landing mid-stop still reaches it.
         """
         with self._lock:
             proc = self._process
             self._process = None
         if proc is None:
             return
-        pid = proc.pid
         try:
-            # Phase 1: graceful SIGTERM (or TerminateProcess on Windows)
-            proc.terminate()
-            try:
-                proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                # Phase 2: SIGKILL the main process
-                proc.kill()
-                try:
-                    proc.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    pass
+            stop_child_group(proc)
         except Exception:
             pass
-
-        # Phase 3: kill any orphaned children that survived the top-level
-        # kill (e.g. uvicorn workers holding CUDA contexts).  Best-effort.
-        _kill_process_tree(pid)
+        finally:
+            unregister_child(proc)
 
     # ─── internals ────────────────────────────────────────────────────────
 
@@ -554,6 +446,6 @@ __all__ = [
     "verify_llm_server_exposure",
     "DEFAULT_PORT",
     "DEFAULT_N_CTX",
-    "find_stale_llm_servers",
-    "kill_stale_llm_servers",
+    "LLMServerPortBusy",
+    "describe_port_listener",
 ]

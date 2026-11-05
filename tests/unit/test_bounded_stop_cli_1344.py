@@ -658,8 +658,13 @@ def test_the_watchdog_kills_the_spawned_servers_process_group(tmp_path: Path) ->
             os.killpg(pid, 0)
         except ProcessLookupError:
             return
+        except PermissionError:  # macOS answers EPERM for a killed group mid-teardown: not gone yet, poll again
+            pass
         time.sleep(0.1)
-    os.killpg(pid, signal.SIGKILL)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError:
+        pass
     raise AssertionError("the spawned server outlived the watchdog")
 
 

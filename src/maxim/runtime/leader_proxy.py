@@ -122,6 +122,24 @@ _REMOTE_UPDATE_DISABLED = (
 )
 
 
+def _stop_own_servers_for_restart() -> None:
+    """Before ``admin/restart``'s ``os.execv`` (which fires no atexit handler): stop every LLM server this process
+    spawned, a swap's server mid-readiness included, and none it did not (#1344 PR 3a). The registry is closed first,
+    so a swap cannot start one past the sweep. The cloudflared daemon is left running: it survives the execv, and the
+    new image finds it running and keeps it."""
+    from maxim.utils.cancellation import close_child_registry, stop_children
+
+    close_child_registry()
+    try:
+        from maxim.runtime.lane_backends import stop_active_spawner
+
+        stop_active_spawner()
+        logger.info("admin/restart: LLM server stopped")
+    except Exception as e:
+        logger.warning("admin/restart: failed to stop LLM server: %s", e)
+    stop_children("llm_server")
+
+
 class ProxyAuthError(LeaderRefusal):
     """The proxy was asked to serve in a way its auth does not allow."""
 
@@ -2412,23 +2430,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # is fully flushed before os.execv replaces the process image.
         def _do_restart() -> None:
             time.sleep(delay_s)
-            # Kill LLM server + cloudflared before replacing process image.
-            # os.execv() does NOT fire atexit handlers, so we must clean up
-            # child processes explicitly to prevent ghost servers.
-            try:
-                from maxim.runtime.lane_backends import stop_active_spawner
-
-                stop_active_spawner()
-                logger.info("admin/restart: LLM server stopped")
-            except Exception as e:
-                logger.warning("admin/restart: failed to stop LLM server: %s", e)
-            try:
-                from maxim.runtime.local_server_spawner import kill_stale_llm_servers
-
-                kill_stale_llm_servers()
-                logger.info("admin/restart: cleaned stale servers")
-            except Exception:
-                pass
+            # os.execv() does NOT fire atexit handlers: this process's own LLM servers are stopped first (#1344 PR 3a).
+            _stop_own_servers_for_restart()
             logger.info("admin/restart: executing os.execv — goodbye")
             # Re-exec with the original command line
             os.execv(sys.executable, [sys.executable] + sys.argv)
