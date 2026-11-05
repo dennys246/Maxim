@@ -330,6 +330,14 @@ def project_vram_usage(
     )
 
 
+def build_profile(profile: str | None) -> str:
+    """The profile a router build serves: the one it was handed (``build_primary_router(profile=)``), else the
+    session's ``MAXIM_LLM_PROFILE``. A caller with its own model passes it here, never through the process env:
+    an env write is every thread's profile while the build runs, and a build that raises before the restore leaves
+    it there (#1538). The one resolver: ``lane_backends._build_profile`` is this."""
+    return (profile or "").strip() or os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+
+
 def _lookup_fallback_nctx(profile_name: str, vram_gb: float) -> int:
     """Return the measured-safe n_ctx for ``profile_name`` at this VRAM, or 0."""
     rows = _NCTX_SAFE_FALLBACK.get(profile_name)
@@ -405,6 +413,7 @@ def detect_tiers(
     caps: RuntimeCapabilities | None = None,
     *,
     profile_available: ProfileAvailabilityCheck | None = None,
+    profile: str | None = None,
 ) -> dict[str, LaneConfig]:
     """Auto-detect available tiers based on hardware.
 
@@ -439,7 +448,8 @@ def detect_tiers(
     )
 
     # GPU with enough VRAM → large tier (profile selected by VRAM).
-    # Respect --language-model / MAXIM_LLM_PROFILE if set by the user.
+    # Respect --language-model / MAXIM_LLM_PROFILE if set by the user, or the
+    # ``profile`` a router build was handed (build_primary_router(profile=), #1538).
     #
     # MPS systems are now accepted into the large tier as long as they
     # report a non-zero vram_gb (which they do via `_mps_effective_vram_gb`
@@ -448,7 +458,7 @@ def detect_tiers(
     # memory, which capped a 24GB Mac at mistral-7b. The fallback path
     # below still creates a medium tier for Macs without enough effective
     # VRAM (<4GB) or Intel Macs where MPS reports vram_gb=0.
-    env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
+    env_profile = build_profile(profile)
     # gpu_type=None is the "detected a GPU but couldn't identify it" edge
     # case (e.g., torch exception mid-detection). Treat that as
     # unconfigured and fall through to the medium/CPU path rather than

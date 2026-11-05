@@ -161,12 +161,12 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 259
+      "lines": 213
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "build_primary_router",
-      "lines": 239
+      "lines": 207
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
@@ -211,7 +211,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1943
+      "lines": 1917
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -394,7 +394,9 @@
     "start_simulation_mode tightened 2032 -> 2007 on 2026-10-30 (#1259, rule T): the narrator's simulation-tool registrations left it for module-level orchestrator.py::_register_narrator_sim_tools, which carries the finish tool's new stop_event.",
     "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail).",
     "api.py::run tightened 276 -> 244 on 2026-10-31 (#1521, rule T): the stale shutdown comment is corrected in the cleanup it describes, which moved verbatim to api._tear_down_run (the names it reads passed as keywords). Merged with #1555 (main's run at 256 after _run_workspace and _build_run_executor moved out): 224.",
+    "build_primary_router tightened 239 -> 217 (207 at the review fold, which moved its remote large-tier placeholder verbatim to lane_backends._add_remote_large_placeholder), _maybe_auto_spawn_server 259 -> 248 and start_simulation_mode 1943 -> 1917 on 2026-11-02 (#1538, rule T): the router build takes the profile it serves as a parameter (build_primary_router(profile=)) instead of a MAXIM_LLM_PROFILE write around the call. It pays for the parameter with verbatim moves of its decision-log record, FunctionRouter build and heartbeat start (lane_backends._append_decision_record, _function_router_for, _start_heartbeat_if_enabled); auto-spawn's profile choice moved to lane_backends._auto_spawn_profile; the dual-LLM AUT router build left start_simulation_mode for orchestrator.py::_build_aut_router.",
     "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_handles, which register the event for the process stop.",
-    "MediaLoopMixin.live tightened 417 -> 296 on 2026-11-03 (#1499 PR 3, rule T): its outer try now starts right after the stop event opens, so the setup moved under it, paid for by moving the per-frame observation step and the transcriber stop out to _observe_frame and _stop_transcription_worker (verbatim) and the last shutdown to _shutdown_after_live."
+    "MediaLoopMixin.live tightened 417 -> 296 on 2026-11-03 (#1499 PR 3, rule T): its outer try now starts right after the stop event opens, so the setup moved under it, paid for by moving the per-frame observation step and the transcriber stop out to _observe_frame and _stop_transcription_worker (verbatim) and the last shutdown to _shutdown_after_live.",
+    "_maybe_auto_spawn_server tightened 259 -> 224 on 2026-11-03 (#1344 PR 3a, rule T): the box-wide kill_stale_llm_servers call left it, and its singleton check (check_existing_llm_server + the new llm_server.preflight_spawn) moved to lane_backends.py::_existing_server_decision. Merged with #1538 (main's _maybe_auto_spawn_server at 248 after its profile choice moved to _auto_spawn_profile): 213."
   ]
 }

@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import os
 import signal
+import subprocess
+import sys
 import threading
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -348,7 +351,7 @@ def test_die_runs_its_steps_on_a_helper_and_always_exits(monkeypatch: pytest.Mon
     release = threading.Event()
     monkeypatch.setattr(cli_signals.os, "_exit", exits.append)
     monkeypatch.setattr(cli_signals, "LAST_WORDS_S", 0.05)
-    monkeypatch.setattr(cli_signals, "_kill_spawned_server", lambda: 1 / 0)
+    monkeypatch.setattr(cli_signals, "_kill_spawned_children", lambda: 1 / 0)
     started = threading.Event()
 
     def _blocks(_reason: str) -> None:
@@ -374,46 +377,48 @@ def test_last_words_restore_the_terminal_then_write(monkeypatch: pytest.MonkeyPa
     assert order == ["restore", "write 2"]
 
 
-class _Server:
-    def __init__(self, pid: int | None) -> None:
-        self.pid = pid
-
-    def spawned_server_pid(self) -> int | None:
-        return self.pid
+def _sleeper() -> subprocess.Popen:
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
 
 
-def test_the_kill_targets_the_servers_group_never_our_own(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_kill_targets_registered_groups_never_our_own_nor_a_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The forced stop kills every group in the spawned-child registry (#1344 PR 3a), and only a real Popen's that is
+    not our own group."""
     killed: list[int] = []
-    monkeypatch.setattr(cli_signals.os, "killpg", lambda pid, sig: killed.append(pid))
-    monkeypatch.setitem(cli_signals.sys.modules, "maxim.runtime.llm_server", _Server(None))
-    cli_signals._kill_spawned_server()
-    monkeypatch.setitem(cli_signals.sys.modules, "maxim.runtime.llm_server", _Server(os.getpgrp()))
-    cli_signals._kill_spawned_server()
-    assert killed == []
-    monkeypatch.setitem(cli_signals.sys.modules, "maxim.runtime.llm_server", _Server(4242))
-    cli_signals._kill_spawned_server()
-    assert killed == [4242]
+    monkeypatch.setattr(cancellation.os, "killpg", lambda pid, sig: killed.append(pid))
+    child = _sleeper()
+    try:
+        cancellation.spawn_registered(lambda: child, kind="llm_server", stop=lambda: None)
+        cancellation.spawn_registered(
+            lambda: SimpleNamespace(pid=4242, returncode=None), kind="tunnel", stop=lambda: None
+        )
+        cli_signals._kill_spawned_children()
+        assert killed == [child.pid]
+        killed.clear()
+        real_pid = child.pid
+        child.pid = os.getpgrp()
+        try:
+            cli_signals._kill_spawned_children()
+        finally:
+            child.pid = real_pid
+        assert killed == []
+    finally:
+        child.kill()
+        child.wait(5)
 
 
 def test_the_kill_tolerates_a_server_already_gone(monkeypatch: pytest.MonkeyPatch) -> None:
     def _gone(*_a: Any) -> None:
         raise ProcessLookupError
 
-    monkeypatch.setattr(cli_signals.os, "killpg", _gone)
-    monkeypatch.setitem(cli_signals.sys.modules, "maxim.runtime.llm_server", _Server(4242))
-    cli_signals._kill_spawned_server()
-
-
-def test_spawned_server_pid_reads_a_live_process_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    from maxim.runtime import llm_server
-
-    monkeypatch.setattr(llm_server, "_active_spawner", None)
-    assert llm_server.spawned_server_pid() is None
-    process = type("P", (), {"pid": 7, "returncode": None})()
-    monkeypatch.setattr(llm_server, "_active_spawner", type("S", (), {"_process": process})())
-    assert llm_server.spawned_server_pid() == 7
-    process.returncode = -9
-    assert llm_server.spawned_server_pid() is None
+    monkeypatch.setattr(cancellation.os, "killpg", _gone)
+    child = _sleeper()
+    try:
+        cancellation.spawn_registered(lambda: child, kind="llm_server", stop=lambda: None)
+        cli_signals._kill_spawned_children()
+    finally:
+        child.kill()
+        child.wait(5)
 
 
 def test_make_and_start_request(monkeypatch: pytest.MonkeyPatch) -> None:
