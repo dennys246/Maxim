@@ -970,7 +970,7 @@ def _drive_maxim_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, learnin
     monkeypatch.setattr(api, "_validate_model", lambda model: None)
     monkeypatch.setattr(api, "_resolve_model", lambda model: model)
     monkeypatch.setattr(api, "configure", lambda **kwargs: None)
-    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda: (router, None))
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda **_kw: (router, None))
     monkeypatch.setattr("maxim.agents.llm_worker.LLMWorker", lambda **kw: worker)
     monkeypatch.setattr(
         "maxim.agents.maxim_agent.MaximAgent",

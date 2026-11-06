@@ -289,6 +289,14 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
         "record_builds": True,
         "env": OPERATOR_PROFILE_ENV,
     },
+    # #1586: the run's own model (``imagine``/``campaign`` hand it as ``llm_profile=``), handed to the shared build
+    # over the operator's profile in the env, which stays the operator's.
+    "run_profile": {
+        "max_turns": 10,
+        "record_builds": True,
+        "env": OPERATOR_PROFILE_ENV,
+        "kwargs": {"llm_profile": "orch-run-model"},
+    },
     # #1592: the AUT calls ``memory_recall`` (a tool the narrator lacks) on turns 1 and 2, so the diversity checkpoint
     # that lands during turn 3 (``_hold_for_agent_tool_arm``, as in the stall arm) is built over it. The narrator,
     # handed the checkpoint on its ``observe_actions`` follow-up, proposes ``memory_recall`` (the Exp 63b smoke's
