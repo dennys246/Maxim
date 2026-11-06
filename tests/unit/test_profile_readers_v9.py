@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from tests.unit._child_env import isolation_env
+from tests._child_env import isolation_env
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"

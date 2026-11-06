@@ -44,6 +44,30 @@ def test_the_reader_defaults_to_etc_cloudflared_when_unset(monkeypatch):
     assert cloudflared_system_dir() == Path("/etc/cloudflared")
 
 
+def test_a_relative_override_is_refused_not_silently_ignored(monkeypatch):
+    from maxim.exceptions import ConfigurationError
+    from maxim.utils.paths import cloudflared_system_dir
+
+    monkeypatch.setenv(_ENV, "etc/cloudflared")
+    with pytest.raises(ConfigurationError, match="must be an absolute path"):
+        cloudflared_system_dir()
+
+
+def test_the_strip_helpers_drop_overrides_but_keep_the_isolation(monkeypatch):
+    """The in-process form (_orch_harness, test_tty_stdin) and the child form (without_maxim_overrides)."""
+    from tests._child_env import drop_maxim_overrides, maxim_overrides, without_maxim_overrides
+
+    environ = {"MAXIM_LLM_PROFILE": "operator", _ENV: "/iso/etc-cloudflared", "PATH": "/usr/bin"}
+    drop_maxim_overrides(environ)
+    assert environ == {_ENV: "/iso/etc-cloudflared", "PATH": "/usr/bin"}
+    assert maxim_overrides({"MAXIM_X": "1", _ENV: "/iso"}) == {"MAXIM_X": "1"}
+
+    monkeypatch.setenv("MAXIM_LLM_PROFILE", "operator")
+    child = without_maxim_overrides()
+    assert "MAXIM_LLM_PROFILE" not in child
+    assert child[_ENV] == os.environ[_ENV]
+
+
 @pytest.mark.parametrize("name", ["config.yml", "config.yaml"])
 def test_role_detection_reads_the_system_config_through_the_reader(tmp_path, monkeypatch, name):
     import maxim.runtime.role as role

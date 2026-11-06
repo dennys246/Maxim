@@ -101,7 +101,9 @@ class TunnelDaemonSpawner:
 
             if self._config_path is None or not self._config_path.is_file():
                 logger.warning(
-                    "TunnelDaemonSpawner: no config.yml found (checked ~/.cloudflared/ and /etc/cloudflared/)"
+                    "TunnelDaemonSpawner: no config.yml found (checked %s and %s)",
+                    USER_CONFIG_PATH,
+                    cloudflared_system_dir() / "config.yml",
                 )
                 return False
 

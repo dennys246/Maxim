@@ -1270,9 +1270,10 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     state = _GlobalState()
     handle: Any = None  # the persistent_agent arm's MaximHandle (built inside the try: its build can raise)
     handle_seen: dict[str, Any] = {}
+    from tests._child_env import drop_maxim_overrides, maxim_overrides
+
     try:  # everything after the snapshot is restored in the finally, even when the setup itself raises
-        for key in [k for k in os.environ if k.startswith("MAXIM_")]:
-            del os.environ[key]
+        drop_maxim_overrides(os.environ)  # keeps conftest's isolation vars (tests/_child_env.py)
         os.environ.update(
             MAXIM_SIM_HARD_ABORT="0",
             MAXIM_DATA_HOME=str(work / "data"),
@@ -1322,7 +1323,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             raise HarnessHang(f"a causal hold timed out on a run thread: {_HOLD_HANGS}")
         stragglers = _join_sim_threads()
         threads_left = _threads_left(threads_before)
-        env_after = {k: v for k, v in os.environ.items() if k.startswith("MAXIM_")}
+        env_after = maxim_overrides(os.environ)  # what the run set or leaked; never conftest's isolation
         session_dir = Path(result.session_dir)
         aut_nac_path = session_dir / "aut_nac.json"
         if handle is not None:

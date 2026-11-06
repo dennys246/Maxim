@@ -14,6 +14,10 @@ Every module that previously did ``Path("data/util/foo.json")`` should
 use one of these helpers instead so that ``pip install pymaxim`` works
 outside a repo checkout.
 
+It also owns the one system path Maxim reads outside its own data:
+:func:`cloudflared_system_dir` (the user-side ``~/.cloudflared/config.yml``
+is ``tunnel/config.py::CONFIG_PATH``).
+
 Environment variables:
     MAXIM_DATA_HOME  Override user data directory (default ``~/.maxim``)
     MAXIM_CLOUDFLARED_SYSTEM_DIR  Override the system cloudflared config directory (default ``/etc/cloudflared``)
@@ -73,9 +77,19 @@ def cloudflared_system_dir() -> Path:
     call, never cached, so the override reaches every reader, including a child process that inherits it.
     ``tests/conftest.py`` points the override into its isolation root at import, beside ``HOME``: a leader dev box's
     real tunnel config otherwise made every role-dependent test resolve ``leader`` (2026-11-05).
+
+    Raises :class:`~maxim.exceptions.ConfigurationError` for a relative override: it would resolve against whatever
+    the working directory happens to be, and falling back to ``/etc`` would silently ignore it.
     """
     raw = os.environ.get("MAXIM_CLOUDFLARED_SYSTEM_DIR", "").strip()
-    return Path(raw) if raw else _DEFAULT_CLOUDFLARED_SYSTEM_DIR
+    if not raw:
+        return _DEFAULT_CLOUDFLARED_SYSTEM_DIR
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError(f"MAXIM_CLOUDFLARED_SYSTEM_DIR must be an absolute path, got {raw!r}")
+    return path
 
 
 # ---------------------------------------------------------------------------

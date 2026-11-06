@@ -1,4 +1,8 @@
-"""Generate and inspect ~/.cloudflared/config.yml for Maxim's leader-mode tunnel."""
+"""Generate and inspect ~/.cloudflared/config.yml for Maxim's leader-mode tunnel.
+
+The system-side copy the systemd service reads (``/etc/cloudflared/config.yml`` by default) has its own one reader,
+``utils/paths.py::cloudflared_system_dir``, shared by role detection, the spawner and the doctor.
+"""
 
 from __future__ import annotations
 

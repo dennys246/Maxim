@@ -120,8 +120,9 @@ def _mesh_yml_exists() -> bool:
 def _cloudflared_config_exists() -> Path | None:
     """Return the path to cloudflared's config file if present.
 
-    Searches both ``/etc/cloudflared/`` (systemd service, production)
-    and ``~/.cloudflared/`` (user-space, development), checking BOTH
+    Searches both the system cloudflared dir (systemd service, production;
+    ``/etc/cloudflared/`` by default) and ``~/.cloudflared/`` (user-space,
+    development), checking BOTH
     ``config.yml`` AND ``config.yaml`` extensions.
 
     Fold from pre-implementation CR2 review: the original

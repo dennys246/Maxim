@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 
 import maxim
-from tests.unit._child_env import without_maxim_overrides
+from tests._child_env import without_maxim_overrides
 
 _DRIVER = Path(__file__).with_name("_cli_signal_driver.py")
 _SRC = str(Path(maxim.__file__).resolve().parents[1])

@@ -1907,7 +1907,9 @@ def check_tunnel_config_sync() -> CheckResult:
     When cloudflared is installed as a systemd service, it reads from
     /etc/cloudflared/config.yml — NOT ~/.cloudflared/config.yml. After
     editing or regenerating the user config, the systemd copy must be
-    updated too, or the tunnel will use stale settings.
+    updated too, or the tunnel will use stale settings. The system copy
+    compared is ``utils/paths.py::cloudflared_system_dir() / "config.yml"``
+    (``/etc/cloudflared`` unless ``MAXIM_CLOUDFLARED_SYSTEM_DIR`` overrides it).
     """
     import platform
 
@@ -1961,8 +1963,8 @@ def check_tunnel_config_sync() -> CheckResult:
         status="warn",
         message=(f"~/.cloudflared/config.yml and {system_cfg} DIFFER — systemd service may be using stale settings"),
         fix=(
-            f"The systemd cloudflared service reads {system_cfg},\n"
-            "not ~/.cloudflared/config.yml. After editing the user config, sync it:\n"
+            "The systemd cloudflared service reads /etc/cloudflared/config.yml,\n"
+            "not ~/.cloudflared/config.yml. After editing the user config, sync the copy Maxim compared:\n"
             f"  sudo cp ~/.cloudflared/config.yml {system_cfg}\n"
             "  sudo systemctl restart cloudflared"
         ),

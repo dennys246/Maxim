@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._child_env import without_maxim_overrides
+from tests._child_env import without_maxim_overrides
 
 REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 
