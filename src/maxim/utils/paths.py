@@ -76,7 +76,10 @@ def cloudflared_system_dir() -> Path:
     (``tunnel/daemon_spawner.py``) and the doctor's sync check (``doctor/checks.py``) all go through it. Read on each
     call, never cached, so the override reaches every reader, including a child process that inherits it.
     ``tests/conftest.py`` points the override into its isolation root at import, beside ``HOME``: a leader dev box's
-    real tunnel config otherwise made every role-dependent test resolve ``leader`` (2026-11-05).
+    real tunnel config otherwise made every role-dependent test resolve ``leader`` (2026-11-05). conftest also REBINDS
+    the module global ``_DEFAULT_CLOUDFLARED_SYSTEM_DIR`` to the same dir, so a test that strips the variable still
+    never reads ``/etc``: keep the default a module-level name read here at call time, never inlined or captured
+    (guard: ``tests/unit/test_cloudflared_system_dir_isolation.py``).
 
     The override is meant to be an absolute path (conftest's always is); a relative one resolves against the working
     directory at each read.

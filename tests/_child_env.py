@@ -1,11 +1,14 @@
 """Strip operator overrides from a test's environment without stripping the suite's isolation.
 
 ``tests/conftest.py`` exports ``MAXIM_CLOUDFLARED_SYSTEM_DIR`` into its isolation root at import, the way it exports
-``HOME``. The suite's habit is "every ``MAXIM_*`` is an operator override: drop it all", in two forms: an in-process
-loop that deletes every ``MAXIM_*`` from ``os.environ`` around a run, and a child env built from scratch beside its own
-``HOME``. Both silently remove the isolation, and the next role read in that window sees the host's
-``/etc/cloudflared/config.yml``: ``leader`` on a leader dev box, ``solo`` on CI (2026-11-05). Every such site goes
-through this module; ``tests/unit/test_child_env_routing.py`` refuses one that does not.
+``HOME``, and points the reader's in-process default at the same dir. So in the TEST process an in-process strip of
+every ``MAXIM_*`` is harmless. A CHILD is a fresh process with the real ``/etc/cloudflared`` default, so it needs the
+variable itself: a child env built from scratch beside its own ``HOME`` takes :func:`isolation_env`, a copy without
+the operator's overrides is :func:`without_maxim_overrides`, and an in-process strip that a later child would inherit
+is :func:`drop_maxim_overrides`. Without it, the child's role detection reads the host's
+``/etc/cloudflared/config.yml``: ``leader`` on a leader dev box, invisible on CI (2026-11-05).
+``tests/unit/test_child_env_routing.py`` refuses a hand-written strip or a child env without the isolation (a
+heuristic scan; its docstring lists the limits).
 """
 
 from __future__ import annotations
