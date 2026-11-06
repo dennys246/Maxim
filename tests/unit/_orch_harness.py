@@ -289,6 +289,14 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
         "record_builds": True,
         "env": OPERATOR_PROFILE_ENV,
     },
+    # #1586: the run's own model (``imagine``/``campaign`` hand it as ``llm_profile=``), handed to the shared build
+    # over the operator's profile in the env, which stays the operator's.
+    "run_profile": {
+        "max_turns": 10,
+        "record_builds": True,
+        "env": OPERATOR_PROFILE_ENV,
+        "kwargs": {"llm_profile": "orch-run-model"},
+    },
 }
 # The operator lines the held_finish arms feed, in order (``_hold_for_held_finish``).
 HELD_GUIDANCE = ("please also ask which tools it has", "and ask what it remembers")

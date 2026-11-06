@@ -260,16 +260,13 @@ def test_the_build_hands_its_profile_to_the_tier_table_the_rewalk_and_the_pin(
 
 
 # Every direct writer of MAXIM_LLM_PROFILE in src/maxim, as ``file::function``. The variable is the SESSION's profile: the
-# CLI and config set it, a build records its own projections of config into it, and the three api.py entry points
-# still set it for their run (#1586). A caller with its own model hands it to the build (``build_primary_router(
-# profile=)``) instead. A new writer fails this scan: add it here only if it sets the session's profile. Out of its
+# CLI and config set it, and a build records its own projections of config into it. A caller with its own model (the
+# AUT build, ``create.router``, the api.py entry points since #1586) hands it to the build (``build_primary_router(
+# profile=)``, ``start_simulation_mode(llm_profile=)``) instead. A new writer fails this scan: add it here only if it sets the session's profile. Out of its
 # view: a write through a variable key, and the config projection's tables that name the variable as data
 # (``lane_backends._apply_lane_config_to_env_locked``'s ``_llm_env_map``, ``config_loader``'s env map), which also
 # set the session's profile.
 PROFILE_ENV_WRITERS = {
-    "maxim/api.py::run",  # #1586
-    "maxim/api.py::imagine",  # #1586
-    "maxim/api.py::campaign",  # #1586
     "maxim/cli_utils.py::normalize_args",
     "maxim/cli_utils.py::configure_cloud_solo_auto_detect",
     "maxim/cli_utils.py::configure_cpu_fallback_model",
