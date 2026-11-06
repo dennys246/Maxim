@@ -40,6 +40,12 @@ _TEST_HOME.mkdir(parents=True)
 os.environ["HOME"] = str(_TEST_HOME)
 os.environ["XDG_CONFIG_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-config")
 os.environ["XDG_CACHE_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-cache")
+# /etc is not under HOME: a leader dev box's real /etc/cloudflared/config.yml made every role-dependent test resolve
+# "leader" (2026-11-05). utils/paths.py::cloudflared_system_dir is the one reader; exported, so subprocesses inherit it,
+# and its in-process default is pointed here too (below, after the first maxim import), so a test that strips every
+# MAXIM_* (in any spelling) still never reads /etc (guard: tests/unit/test_cloudflared_system_dir_isolation.py).
+_TEST_CLOUDFLARED_SYSTEM_DIR = _TEST_ISOLATION_ROOT / "etc-cloudflared"
+os.environ["MAXIM_CLOUDFLARED_SYSTEM_DIR"] = str(_TEST_CLOUDFLARED_SYSTEM_DIR)
 
 _MODEL_TESTS_ENABLED = os.environ.get("MAXIM_RUN_MODEL_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
 if _MODEL_TESTS_ENABLED:
@@ -59,6 +65,11 @@ else:
 # ~/.config/maxim/profiles.yml, which must be the isolated one, never the developer's (guard:
 # tests/unit/test_conftest_isolation_order.py).
 from maxim.memory.encoding import EncodingSignals  # noqa: E402
+import maxim.utils.paths as _maxim_paths  # noqa: E402
+
+# The in-process half of the cloudflared isolation (above): with MAXIM_CLOUDFLARED_SYSTEM_DIR stripped, the reader
+# falls back to this default, so it must be the isolation dir in the test process, never /etc (delta review S1).
+_maxim_paths._DEFAULT_CLOUDFLARED_SYSTEM_DIR = _TEST_CLOUDFLARED_SYSTEM_DIR
 
 # profiles.yml merges on the first profile lookup, not at import (#1315 step 0a). Merge the ISOLATED (empty) one here,
 # once, so the suite's profile tables never depend on which test looks a profile up first, or under whose

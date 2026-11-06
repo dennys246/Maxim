@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._child_env import without_maxim_overrides
+
 REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 
 
@@ -55,7 +57,7 @@ def _populate(data_home: Path, monkeypatch) -> None:
 
 
 def _clear(data_home: Path, cwd: Path, *argv: str) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    env = without_maxim_overrides()
     env.update(MAXIM_DATA_HOME=str(data_home), MAXIM_ROLE="solo", PYTHONPATH=str(REPO_SRC), HOME=str(cwd))
     return subprocess.run(
         [sys.executable, "-m", "maxim", "--clear-memory", *argv],

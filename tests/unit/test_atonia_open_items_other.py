@@ -55,6 +55,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests._child_env import isolation_env
+
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
 MARKER = "@@O8_SERVER@@"
@@ -209,6 +211,7 @@ def test_o8_server_mode_not_ready_is_reported(tmp_path: Path) -> None:
         "MAXIM_LLM_ENABLED": "1",
         "MAXIM_ROLE": "solo",
         "MAXIM_SKIP_REMOTE_PROBE": "1",
+        **isolation_env(),  # beside HOME: the host's /etc/cloudflared never reaches the child
     }
     proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
         [sys.executable, "-I", "-B", str(script), str(cfg_path)],
