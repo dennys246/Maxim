@@ -100,6 +100,65 @@ def test_the_tunnel_spawner_resolves_the_system_config_through_the_reader(tmp_pa
     assert daemon_spawner.resolve_config_path() == tmp_path / "etc" / "config.yml"
 
 
+def _doctor_sync_setup(tmp_path, monkeypatch, *, system_text: str) -> Path:
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    home = tmp_path / "home"
+    (home / ".cloudflared").mkdir(parents=True)
+    (home / ".cloudflared" / "config.yml").write_text("tunnel: user\n")
+    monkeypatch.setenv("HOME", str(home))
+    system_dir = tmp_path / "etc"
+    system_dir.mkdir()
+    (system_dir / "config.yml").write_text(system_text)
+    monkeypatch.setenv(_ENV, str(system_dir))
+    return system_dir / "config.yml"
+
+
+def test_the_doctor_sync_check_names_the_system_path_when_in_sync(tmp_path, monkeypatch):
+    from maxim.doctor.checks import check_tunnel_config_sync
+
+    system_cfg = _doctor_sync_setup(tmp_path, monkeypatch, system_text="tunnel: user\n")
+    result = check_tunnel_config_sync()
+    assert result.status == "ok"
+    assert result.message == f"~/.cloudflared/config.yml and {system_cfg} are in sync"
+
+
+def test_the_doctor_sync_check_names_the_unreadable_system_path(tmp_path, monkeypatch):
+    from maxim.doctor.checks import check_tunnel_config_sync
+
+    system_cfg = _doctor_sync_setup(tmp_path, monkeypatch, system_text="tunnel: root-only\n")
+    real_read_text = Path.read_text
+
+    def read_text(self, *args, **kwargs):
+        if self == system_cfg:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    result = check_tunnel_config_sync()
+    assert result.status == "warn"
+    assert result.message == f"cannot read {system_cfg} (permission denied)"
+    assert result.fix == f"Run: sudo cat {system_cfg}"
+
+
+def test_the_tunnel_auto_spawn_names_the_system_path_it_found_nothing_in(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    import maxim.runtime.lane_backends as LB
+    from maxim.tunnel import daemon_spawner
+
+    monkeypatch.delenv("MAXIM_AUTO_SPAWN_TUNNEL", raising=False)
+    monkeypatch.setenv(_ENV, str(tmp_path / "etc"))
+    monkeypatch.setattr(daemon_spawner, "cloudflared_already_running", lambda: False)
+    monkeypatch.setattr(daemon_spawner, "resolve_config_path", lambda: None)
+    logger = MagicMock()
+    LB._maybe_auto_spawn_tunnel_daemon(logger)
+    (message,) = logger.debug.call_args.args
+    assert str(tmp_path / "etc" / "config.yml") in message
+    assert "/etc/cloudflared" not in message
+
+
 def test_the_doctor_sync_check_compares_against_the_reader(tmp_path, monkeypatch):
     import platform
 
