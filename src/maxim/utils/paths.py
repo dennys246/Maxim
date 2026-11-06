@@ -14,8 +14,13 @@ Every module that previously did ``Path("data/util/foo.json")`` should
 use one of these helpers instead so that ``pip install pymaxim`` works
 outside a repo checkout.
 
+It also owns the one system path Maxim reads outside its own data:
+:func:`cloudflared_system_dir` (the user-side ``~/.cloudflared/config.yml``
+is ``tunnel/config.py::CONFIG_PATH``).
+
 Environment variables:
     MAXIM_DATA_HOME  Override user data directory (default ``~/.maxim``)
+    MAXIM_CLOUDFLARED_SYSTEM_DIR  Override the system cloudflared config directory (default ``/etc/cloudflared``)
 """
 
 from __future__ import annotations
@@ -59,6 +64,28 @@ def _unreadable_config_message(path: Path, err: OSError) -> str:
         return msg
     blocker = next((d for d in reversed(path.parents) if not os.access(d, os.X_OK)), path.parent)
     return f"{msg}; {blocker} is not accessible: chmod 700 {blocker}"
+
+
+_DEFAULT_CLOUDFLARED_SYSTEM_DIR = Path("/etc/cloudflared")
+
+
+def cloudflared_system_dir() -> Path:
+    """The system cloudflared config directory: ``/etc/cloudflared``, or ``$MAXIM_CLOUDFLARED_SYSTEM_DIR``.
+
+    The ONE reader of that path. Role detection's rank 4 (``runtime/role.py``), the tunnel spawner
+    (``tunnel/daemon_spawner.py``) and the doctor's sync check (``doctor/checks.py``) all go through it. Read on each
+    call, never cached, so the override reaches every reader, including a child process that inherits it.
+    ``tests/conftest.py`` points the override into its isolation root at import, beside ``HOME``: a leader dev box's
+    real tunnel config otherwise made every role-dependent test resolve ``leader`` (2026-11-05). conftest also REBINDS
+    the module global ``_DEFAULT_CLOUDFLARED_SYSTEM_DIR`` to the same dir, so a test that strips the variable still
+    never reads ``/etc``: keep the default a module-level name read here at call time, never inlined or captured
+    (guard: ``tests/unit/test_cloudflared_system_dir_isolation.py``).
+
+    The override is meant to be an absolute path (conftest's always is); a relative one resolves against the working
+    directory at each read.
+    """
+    raw = os.environ.get("MAXIM_CLOUDFLARED_SYSTEM_DIR", "").strip()
+    return Path(raw).expanduser() if raw else _DEFAULT_CLOUDFLARED_SYSTEM_DIR
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,8 @@ from typing import Any
 
 import pytest
 
+from tests._child_env import isolation_env
+
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
 MARKER = "@@PROFILE_READER@@"
@@ -216,6 +218,7 @@ def _run(tmp_path: Path, body: str, yml: str, reader: str = "", **cfg_extra: Any
         "PYTHONPATH": str(SRC),  # ignored under -I; the child inserts SRC itself
         "PATH": "/usr/bin:/bin",
         "MAXIM_SKIP_REMOTE_PROBE": "1",
+        **isolation_env(),  # beside HOME: the host's /etc/cloudflared must not make the child a leader
     }
     proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
         [sys.executable, "-I", "-B", str(script), str(cfg_path)],
