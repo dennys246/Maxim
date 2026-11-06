@@ -89,6 +89,9 @@ PARTS: tuple[tuple[str, str], ...] = (
     # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
     # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it
     ("stall_detector.py", "_build_stall_nudge_example"),
+    # #1592 (2026-11-05): the narrator's checkpoint and nudge texts, out of _on_turn_progress and _nudge
+    ("stall_detector.py", "diversity_checkpoint_text"),
+    ("stall_detector.py", "stall_nudge_text"),
     ("stall_detector.py", "__init__"),
     ("stall_detector.py", "_now"),
     ("stall_detector.py", "run"),
