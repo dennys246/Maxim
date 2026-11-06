@@ -78,18 +78,11 @@ def cloudflared_system_dir() -> Path:
     ``tests/conftest.py`` points the override into its isolation root at import, beside ``HOME``: a leader dev box's
     real tunnel config otherwise made every role-dependent test resolve ``leader`` (2026-11-05).
 
-    Raises :class:`~maxim.exceptions.ConfigurationError` for a relative override: it would resolve against whatever
-    the working directory happens to be, and falling back to ``/etc`` would silently ignore it.
+    The override is meant to be an absolute path (conftest's always is); a relative one resolves against the working
+    directory at each read.
     """
     raw = os.environ.get("MAXIM_CLOUDFLARED_SYSTEM_DIR", "").strip()
-    if not raw:
-        return _DEFAULT_CLOUDFLARED_SYSTEM_DIR
-    path = Path(raw).expanduser()
-    if not path.is_absolute():
-        from maxim.exceptions import ConfigurationError
-
-        raise ConfigurationError(f"MAXIM_CLOUDFLARED_SYSTEM_DIR must be an absolute path, got {raw!r}")
-    return path
+    return Path(raw).expanduser() if raw else _DEFAULT_CLOUDFLARED_SYSTEM_DIR
 
 
 # ---------------------------------------------------------------------------

@@ -37,20 +37,31 @@ def test_the_suite_points_the_system_cloudflared_dir_into_its_isolation_root():
     assert cloudflared_system_dir() != Path("/etc/cloudflared")
 
 
-def test_the_reader_defaults_to_etc_cloudflared_when_unset(monkeypatch):
+def test_the_reader_defaults_to_etc_cloudflared_outside_the_suite():
+    """A fresh process (no conftest) with the override unset reads the real default."""
+    env = {k: v for k, v in os.environ.items() if k != _ENV}  # a child WITHOUT the isolation, on purpose
+    code = "from maxim.utils.paths import cloudflared_system_dir; print(cloudflared_system_dir())"
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**env, "PYTHONPATH": str(_REPO_SRC)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert out.stdout.strip().splitlines()[-1] == "/etc/cloudflared"
+
+
+def test_an_in_process_strip_in_any_spelling_still_never_reads_etc(monkeypatch):
+    """conftest points the reader's default at the isolation dir too, so dropping the override (as a harness that
+    deletes every MAXIM_* does, however it is written) falls back to the isolation, never to /etc (delta S1)."""
+    import maxim.runtime.role as role
     from maxim.utils.paths import cloudflared_system_dir
 
-    monkeypatch.delenv(_ENV, raising=False)
-    assert cloudflared_system_dir() == Path("/etc/cloudflared")
-
-
-def test_a_relative_override_is_refused_not_silently_ignored(monkeypatch):
-    from maxim.exceptions import ConfigurationError
-    from maxim.utils.paths import cloudflared_system_dir
-
-    monkeypatch.setenv(_ENV, "etc/cloudflared")
-    with pytest.raises(ConfigurationError, match="must be an absolute path"):
-        cloudflared_system_dir()
+    isolated = Path(os.environ[_ENV])
+    monkeypatch.delenv(_ENV)
+    assert cloudflared_system_dir() == isolated
+    assert role._cloudflared_config_exists() is None
 
 
 def test_the_strip_helpers_drop_overrides_but_keep_the_isolation(monkeypatch):

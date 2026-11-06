@@ -3316,9 +3316,8 @@ def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
         if logger is not None:
             from maxim.utils.paths import cloudflared_system_dir
 
-            logger.debug(
-                f"Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or {cloudflared_system_dir() / 'config.yml'} found."
-            )
+            system_config = cloudflared_system_dir() / "config.yml"
+            logger.debug(f"Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or {system_config} found.")
         return
     spawner = TunnelDaemonSpawner(config_path=config_path)
     if logger is not None:
