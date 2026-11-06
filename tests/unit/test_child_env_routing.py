@@ -48,7 +48,11 @@ ALLOWED: dict[str, str] = {
     "unit/test_child_env_routing.py": "this guard's own patterns, docstring and probes",
     "unit/test_ci_workflow_shape.py": "runs a workflow's shell step under stub binaries, not a maxim process",
     "unit/test_e4_text_widening_drift.py": (
-        "clears every MAXIM_* in-process (monkeypatch restores it) to test pin_environment's report; spawns no child"
+        "_clear_maxim_env is monkeypatch-scoped to the pin_environment tests, which spawn nothing (the file's one "
+        "subprocess runs unstripped); drop_maxim_overrides would leave the isolation var for pin_environment to report"
+    ),
+    "unit/test_rig_suite.py": (
+        "runs bash scripts/rig_suite.sh against a stub suite_at_commit.sh and a fake ssh, never a maxim process (#1604)"
     ),
 }
 
