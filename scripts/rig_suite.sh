@@ -12,7 +12,15 @@
 # suite_at_commit.sh (a PR that changes that script is not run by its own copy there).
 #
 # The remote run is detached (nohup), logs to ~/$RIG_SUITE_DIR/logs/<label>.log ending with `suite-exit=N`, and
-# records its pid beside it; this side polls the log, so a dropped SSH link loses nothing.
+# records its pid beside it; this side polls the log, so a dropped SSH link loses nothing. The log's first line is
+# `rig-suite-run=<nonce>`, written before the run starts; the run's argv carries `rig-suite-<nonce>` too. A launch
+# accepts a verdict only from a log that starts with its own nonce, and a pid counts as the run only while its argv
+# carries that nonce (a reused pid is not the run).
+#
+# No decision reads ssh's own exit status: the rig's Tailscale SSH reports 0 for every remote command (found 2026-11-03).
+# rig() reads each command's status from a sentinel line the remote prints after it, and a missing sentinel is a
+# failure (255). RIG_SUITE_POLL_S (default 60) is the poll interval. Residual: two machines launching one label at
+# the same moment can both pass the running-label check (only one machine launches today; follow-up issue owed).
 #
 # Exit: 0 = PASS, either outright or CALIBRATED with the listed tests re-run locally on the same commit and passing
 # (scripts/rig_suite_verdict.py: every stage passed except the fast suite, whose only failures are the known rig
@@ -33,7 +41,7 @@ main() {
 
     if [ "${1:-}" = "--attach" ]; then
         check_label "${2:-}"
-        poll "$2" "" ""
+        poll "$2" "" "" ""
     fi
     local wt="${1:?usage: rig_suite.sh <local-worktree> <label>}" label="${2:-}"
     check_label "$label"
@@ -43,10 +51,15 @@ main() {
     main_sha="$(git -C "$wt" rev-parse --verify origin/main^{commit})"
 
     # A label still running is refused: a second launch would truncate its log and both pollers would read one mix.
-    if rig "test -f ~/$dir/logs/$label.pid && kill -0 \$(cat ~/$dir/logs/$label.pid) 2>/dev/null"; then
-        echo "rig suite: a run labelled $label is still going (attach with --attach $label, or pick a new label)" >&2
-        exit 2
-    fi
+    # The remote prints `running` or `idle`; anything else (an unreachable rig, a lost sentinel) refuses too.
+    local guard
+    guard="$(rig "$(liveness_cmd "$label"); case \$s in alive | oldrun) echo \$s ;; *) echo idle ;; esac")" || guard="(rig exit $?) $guard"
+    case "$guard" in
+        idle) ;;
+        alive) echo "rig suite: a run labelled $label is still going (attach with --attach $label, or pick a new label)" >&2; exit 2 ;;
+        oldrun) echo "rig suite: $label holds an older runner's unfinished log (no run tag, not attachable); pick a new label" >&2; exit 2 ;;
+        *) echo "rig suite: could not tell whether a run labelled $label is still going: $guard" >&2; exit 2 ;;
+    esac
     # The rig's origin/main moves FORWARD only. A forced push of a stale worktree's origin/main used to move it back
     # under a run in flight, whose coverage ratchet diffs against the merge-base with origin/main (other branches'
     # changes read as its own). Only refs/remotes/origin/main is pushed: nothing on the rig reads refs/heads/main.
@@ -58,8 +71,11 @@ main() {
         esac
     fi
     git -C "$wt" push -q -f "ssh://$host/~/$dir/repo" "$sha:refs/heads/suite/$label"
-    echo "rig suite: $label at ${sha:0:12} (log on the rig: ~/$dir/logs/$label.log)"
-    rig "
+    local nonce launched rc=0
+    nonce="${sha:0:12}-$(date +%s)-$$-$RANDOM$RANDOM"
+    echo "rig suite: $label at ${sha:0:12} (log on the rig: ~/$dir/logs/$label.log, run rig-suite-run=$nonce)"
+    # The nonce line is written synchronously, before the run starts and before this call returns: the run appends.
+    launched="$(rig "
       set -e
       mkdir -p ~/$dir/logs
       cd ~/$dir/repo
@@ -67,54 +83,112 @@ main() {
         || { echo 'rig suite: the rig origin/main does not contain this worktree origin/main; refusing' >&2; exit 2; }
       git checkout -q --detach refs/remotes/origin/main  # the runner script; it tests $sha in its own worktree
       export PATH=\$HOME/$dir/venv/bin:\$PATH
-      nohup bash -c 'scripts/suite_at_commit.sh $sha; echo suite-exit=\$?' > ~/$dir/logs/$label.log 2>&1 < /dev/null &
+      rm -f ~/$dir/logs/$label.pid
+      printf 'rig-suite-run=%s\\n' '$nonce' > ~/$dir/logs/$label.log
+      nohup bash -c 'scripts/suite_at_commit.sh $sha; echo suite-exit=\$?' 'rig-suite-$nonce' >> ~/$dir/logs/$label.log 2>&1 < /dev/null &
       echo \$! > ~/$dir/logs/$label.pid
-    "
-    poll "$label" "$wt" "$sha"
+      head -n 1 ~/$dir/logs/$label.log
+    ")" || rc=$?
+    if [ "$rc" -eq 255 ]; then  # no reply: the run may have started before the link dropped
+        echo "rig suite: the launch reply was lost; the run may be going: check with --attach $label" >&2
+        exit 2
+    fi
+    if [ "$rc" -ne 0 ] || [ "${launched##*$'\n'}" != "rig-suite-run=$nonce" ]; then
+        echo "rig suite: the launch on the rig failed (exit $rc); nothing of $label is this run's" >&2
+        exit 2
+    fi
+    poll "$label" "$wt" "$sha" "$nonce"
+}
+
+liveness_cmd() {  # liveness_cmd <label>: remote shell text that sets s to nolog, nopid, notag, alive or dead
+    # Sets h (the log's first line) and s. alive: the pid file's process carries this log's nonce in its argv (a
+    # reused pid does not). A log with no nonce (an older runner's, which may write no pid file) is oldrun until it
+    # ends with its exit line, so it is never launched over; notag once it has.
+    local log="~/$dir/logs/$1.log" pidf="~/$dir/logs/$1.pid"
+    printf '%s' 'h=$(head -n 1 '"$log"' 2>/dev/null || true); n=${h#rig-suite-run=}; p=$(cat '"$pidf"' 2>/dev/null || true)
+if [ ! -f '"$log"' ]; then s=nolog
+elif [ "$n" = "$h" ] || [ -z "$n" ]; then
+  if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then s=alive
+  elif tail -n 1 '"$log"' | grep -q "^suite-exit=[0-9]"; then s=notag; else s=oldrun; fi
+elif [ -z "$p" ]; then s=nopid
+elif ps -p "$p" -o args= 2>/dev/null | grep -qF -- "rig-suite-$n"; then s=alive; else s=dead; fi
+'
 }
 
 check_label() {  # labels reach remote shells and file names
     case "$1" in "" | *[!A-Za-z0-9._-]*) echo "rig suite: label must be non-empty [A-Za-z0-9._-]" >&2; exit 2 ;; esac
 }
 
-rig() { ssh -o BatchMode=yes -o ConnectTimeout=20 "$host" "$@"; }
+rig() {  # rig <remote command>: run it on the rig, print its stdout, return ITS status (never ssh's)
+    [ "$#" -eq 1 ] || { echo "rig suite: rig() takes one command string" >&2; exit 2; }
+    local tag out rc
+    tag="__rig_rc_$RANDOM$RANDOM$RANDOM"
+    # A subshell, so the command's own `exit` or `set -e` ends only it and the sentinel still prints.
+    out="$(ssh -n -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$host" \
+        "( $1
+) ; printf '\\n$tag=%d\\n' \"\$?\"")" || :
+    case "$out" in
+        *"
+$tag="*) ;;
+        *) return 255 ;;  # no sentinel: the link dropped or the command was killed; nothing it printed counts
+    esac
+    rc="${out##*
+$tag=}"
+    case "$rc" in "" | *[!0-9]*) return 255 ;; esac  # anything after the sentinel, or a mangled one
+    printf '%s' "${out%
+$tag=*}"
+    return "$rc"
+}
 
-poll() {  # poll <label> <worktree|""> <sha|"">: wait for `suite-exit=N`, print the log, exit with the verdict
-    local label="$1" wt="$2" sha="$3" log="~/$dir/logs/$1.log" pidf="~/$dir/logs/$1.pid"
-    local done_line="" fails=0 started="$SECONDS" local_log noted=""
+poll() {  # poll <label> <worktree|""> <sha|""> <nonce|"">: wait for `suite-exit=N`, then judge ONE read of the log
+    local label="$1" wt="$2" sha="$3" nonce="${4:-}" log="~/$dir/logs/$1.log"
+    local poll_s="${RIG_SUITE_POLL_S:-60}" fails=0 started="$SECONDS" dead=0 out state head last
+    case "$poll_s" in "" | 0 | *[!0-9]*) echo "rig suite: RIG_SUITE_POLL_S must be a whole number of seconds >= 1" >&2; exit 2 ;; esac
     while :; do
-        # The exit line is the log's LAST line (the runner writes it after the suite): a match anywhere else could
-        # be a test's own output and would end the poll mid-run.
-        if done_line="$(rig "tail -n 1 $log 2>/dev/null | grep -a '^suite-exit=[0-9]' || true")"; then
-            [ -n "$done_line" ] && break
-            # No exit line yet: is the run still alive? (a reboot or an OOM kill never writes one.) The remote
-            # prints alive/dead/nopid and exits 0, so a nonzero rc is ssh itself (255), counted as unreachable.
-            local state=""
-            if state="$(rig "if [ ! -f $log ]; then echo nolog; elif [ ! -f $pidf ]; then echo nopid; elif kill -0 \$(cat $pidf) 2>/dev/null; then echo alive; else echo dead; fi")"; then
-                fails=0  # reset only when both checks reached the rig
-                case "$state" in
-                    nolog) echo "rig suite: no run labelled $label on the rig" >&2; exit 2 ;;
-                    dead)
-                        rig "tail -n 1 $log | grep -aq '^suite-exit=[0-9]'" && continue  # it ended just now
-                        echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2
-                        exit 2 ;;
-                    nopid)
-                        [ -n "$noted" ] || echo "rig suite: no pid file for $label (a run from before pid files?); polling the log only"
-                        noted=1 ;;
+        # One remote read per poll: the run's state, the log's first line (its nonce) and its LAST line. The runner
+        # writes `suite-exit=N` after the suite, so a match anywhere else could be a test's own output.
+        if out="$(rig "$(liveness_cmd "$label"); printf '%s\n%s\n%s\n' \"\$s\" \"\$h\" \"\$(tail -n 1 $log 2>/dev/null)\"")"; then
+            fails=0
+            state="$(printf '%s\n' "$out" | sed -n 1p)"
+            head="$(printf '%s\n' "$out" | sed -n 2p)"
+            last="$(printf '%s\n' "$out" | sed -n 3p)"
+            [ "$state" != nolog ] || { echo "rig suite: no run labelled $label on the rig" >&2; exit 2; }
+            if [ -z "$nonce" ]; then  # --attach: the run is whichever one this log is
+                case "$head" in
+                    rig-suite-run=?*) nonce="${head#rig-suite-run=}"; echo "rig suite: attached to $label, run rig-suite-run=$nonce" ;;
+                    *) echo "rig suite: the log of $label carries no run tag (a run from before run tags?); not attachable" >&2; exit 2 ;;
                 esac
-            else
-                fails=$((fails + 1))
             fi
+            if [ "$head" != "rig-suite-run=$nonce" ]; then
+                echo "rig suite: the log of $label on the rig is not this run's (its first line: ${head:-none}); no verdict" >&2
+                exit 2
+            fi
+            # The exit line counts once the run is gone: a test's own output could print one mid-run.
+            case "$last" in suite-exit=[0-9]*) [ "$state" = alive ] || break ;; esac
+            if [ "$state" != alive ]; then  # a reboot or an OOM kill never writes the exit line
+                [ "$dead" -eq 0 ] || { echo "rig suite: the run labelled $label died without finishing (log: $log on the rig)" >&2; exit 2; }
+                dead=1  # read once more: it may have ended between this read's lines
+                continue
+            fi
+            dead=0
         else
             fails=$((fails + 1))
             [ "$fails" -ge 30 ] && { echo "rig suite: the rig is unreachable (30 attempts); re-attach with --attach $label" >&2; exit 2; }
         fi
         echo "rig suite: $label running ($(( (SECONDS - started) / 60 )) min)"
-        sleep 60
+        sleep "$poll_s"
     done
+    # The verdict reads ONE copy of the log: its first line must still be this run's nonce, and the exit is its last.
+    local text rc=0 first done_line
+    text="$(rig "cat $log")" || rc=$?
+    [ "$rc" -eq 0 ] || { echo "rig suite: reading the log of $label failed (exit $rc); no verdict" >&2; exit 2; }
+    first="${text%%$'\n'*}"
+    done_line="${text##*$'\n'}"
+    [ "$first" = "rig-suite-run=$nonce" ] || { echo "rig suite: the log of $label changed under this poll; no verdict" >&2; exit 2; }
+    case "$done_line" in suite-exit=[0-9]*) ;; *) echo "rig suite: the log of $label does not end with suite-exit; no verdict" >&2; exit 2 ;; esac
     local_log="$(mktemp)"
     trap "rm -f $(printf %q "$local_log")" EXIT
-    rig "cat $log" | tee "$local_log"
+    printf '%s\n' "$text" | tee "$local_log"
     local code=0
     python3 "$here/rig_suite_verdict.py" "$local_log" "${done_line#suite-exit=}" || code=$?
     [ "$code" -eq 10 ] || exit "$code"

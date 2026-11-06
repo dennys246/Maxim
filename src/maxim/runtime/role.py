@@ -28,7 +28,7 @@ Decision order (first match wins) — pinned in
 2. ``config.json::role`` ∈ ``{leader, peer, solo}`` (NEW per C3)
 3. ``mesh.yml`` exists → ``peer``
 4. ``~/.cloudflared/config.{yml,yaml}`` OR ``/etc/cloudflared/config.{yml,yaml}``
-   exists → ``leader`` (MOVED UP from ``leader_mode.py`` + extension
+   (``utils/paths.py::cloudflared_system_dir``) exists → ``leader`` (MOVED UP from ``leader_mode.py`` + extension
    widened to fix Mac Mini Trigger #2)
 5. ``peer.yml`` exists → ``peer`` (DEMOTED below cloudflared — fixes
    Mac Mini Trigger #3, the stale-peer.yml-on-now-leader case)
@@ -120,8 +120,9 @@ def _mesh_yml_exists() -> bool:
 def _cloudflared_config_exists() -> Path | None:
     """Return the path to cloudflared's config file if present.
 
-    Searches both ``/etc/cloudflared/`` (systemd service, production)
-    and ``~/.cloudflared/`` (user-space, development), checking BOTH
+    Searches both the system cloudflared dir (systemd service, production;
+    ``/etc/cloudflared/`` by default) and ``~/.cloudflared/`` (user-space,
+    development), checking BOTH
     ``config.yml`` AND ``config.yaml`` extensions.
 
     Fold from pre-implementation CR2 review: the original
@@ -131,10 +132,16 @@ def _cloudflared_config_exists() -> Path | None:
     AND promotes this signal above ``peer.yml`` so a stale ``peer.yml``
     on a now-leader machine doesn't override a real provisioning
     signal (Mac Mini Trigger #3).
+
+    The system directory comes from ``utils/paths.py::cloudflared_system_dir`` (``/etc/cloudflared`` unless
+    ``MAXIM_CLOUDFLARED_SYSTEM_DIR`` overrides it), the one reader the tunnel spawner and the doctor share.
     """
+    from maxim.utils.paths import cloudflared_system_dir
+
+    system_dir = cloudflared_system_dir()
     candidates = [
-        Path("/etc/cloudflared/config.yml"),
-        Path("/etc/cloudflared/config.yaml"),
+        system_dir / "config.yml",
+        system_dir / "config.yaml",
         Path.home() / ".cloudflared" / "config.yml",
         Path.home() / ".cloudflared" / "config.yaml",
     ]

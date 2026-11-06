@@ -89,6 +89,8 @@ from typing import Any
 
 import pytest
 
+from tests._child_env import isolation_env
+
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
 OFFLINE_MODULE = SRC / "maxim" / "_offline.py"
@@ -330,6 +332,7 @@ def _run_child(
         "PYTHONPATH": str(SRC),  # ignored under -I; the child inserts SRC itself from its config
         "PATH": "/usr/bin:/bin",
         "MAXIM_SKIP_REMOTE_PROBE": "1",  # no build-time probe of a lane URL (the router children's 127.0.0.1:9)
+        **isolation_env(),  # beside HOME: the host's /etc/cloudflared never reaches the child
     }
     env.update(env_extra or {})
     for var in _HF_FORCED:
