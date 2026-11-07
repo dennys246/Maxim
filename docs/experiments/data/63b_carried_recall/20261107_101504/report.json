@@ -1,0 +1,619 @@
+{
+  "session_id": "20261107_101504",
+  "timestamp": "2026-11-07 10:19:55",
+  "goal": "escape a dungeon with a sleeping guard",
+  "mode": "generative",
+  "language_model": "/tmp/o19-home-9eppi8d8/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+  "language_provider": "lane-large",
+  "language_backend_class": "_MaximPeerBackend",
+  "language_endpoint": "http://127.0.0.1:8100",
+  "aut_model": "",
+  "aut_provider": "",
+  "aut_backend_class": "",
+  "aut_endpoint": "",
+  "duration_s": 290.6,
+  "turns": 8,
+  "finish_reason": "max_turns",
+  "total_actions": 8,
+  "blocked_actions": 0,
+  "tool_usage": {
+    "sense_tools": 1,
+    "base_humanoid_listen": 2,
+    "base_humanoid_move": 1,
+    "sense": 1,
+    "sense_presence": 2,
+    "respond": 1
+  },
+  "tool_success_rates": {
+    "sense_tools": 1.0,
+    "base_humanoid_listen": 1.0,
+    "base_humanoid_move": 1.0,
+    "sense": 0.0,
+    "sense_presence": 1.0,
+    "respond": 1.0
+  },
+  "response_texts": [
+    "I heard your question about 'the guard is sleeping. can you try to pick up the ', but I'm having trouble processing it right now. Could you try rephrasing?"
+  ],
+  "aut_memories_formed": 16,
+  "aut_causal_links": 21,
+  "aut_nac_summary": {
+    "total_links": 21,
+    "top_links": [
+      {
+        "event": "tool:base_humanoid_listen",
+        "outcome": "tool:base_humanoid_listen:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:sense_presence",
+        "outcome": "tool:sense_presence:positive",
+        "confidence": 0.609,
+        "observations": 2
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "tool:sense_tools:positive",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "success:Found 3 capabilities:\n- base_humanoid_listen: Atte",
+        "confidence": 0.475,
+        "observations": 1
+      },
+      {
+        "event": "tool:sense_tools",
+        "outcome": "plan:I'll explore my options to find out what I can do with the guard.:success",
+        "confidence": 0.475,
+        "observations": 1
+      }
+    ]
+  },
+  "cost_usd": 0.0,
+  "total_input_tokens": 60521,
+  "total_output_tokens": 2804,
+  "lane_breakdown": {
+    "large": {
+      "lane": "large",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    },
+    "small": {
+      "lane": "small",
+      "jobs_submitted": 0,
+      "jobs_completed": 0,
+      "jobs_failed": 0,
+      "failover_count": 0,
+      "failure_rate": 0.0,
+      "in_flight": 0,
+      "peak_in_flight": 0,
+      "avg_latency_ms": 0.0,
+      "p50_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
+      "local_calls": 0,
+      "remote_calls": 0,
+      "peer_calls": 0,
+      "cloud_calls": 0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_cost_usd": 0.0
+    }
+  },
+  "latency_p50_ms": 0.0,
+  "latency_p99_ms": 0.0,
+  "pain_events_count": 0,
+  "fear_blocks_count": 0,
+  "learn_events_count": 34,
+  "provider_failures": {},
+  "llm_summary": "During the simulation, the robot assistant successfully completed 8 actions within a dungeon environment, including listening, sensing presence, and moving. However, it failed to form any causal links related to the 'sense' action and had only one observation for the 'sense_tools' action. The simulation was terminated after reaching the maximum number of turns.",
+  "llm_issues_found": [
+    "The robot assistant did not effectively utilize the 'sense' action during this test, resulting in no causal links formed. This could limit its ability to navigate and interact with the environment efficiently."
+  ],
+  "llm_recommendations": [
+    "1) Increase the priority or effectiveness of the 'sense' action for the robot assistant to gather more information about the environment and objects within it.\n2) Implement a more robust error handling mechanism for the 'sense' action, allowing the robot to attempt rephrasing or alternative approaches when encountering unclear instructions."
+  ],
+  "llm_finish_status": "max_turns",
+  "llm_finish_reason": "reached max_turns=8",
+  "llm_finish_summary": "Simulation stopped after 8 turns because the configured max_turns cap (8) was reached without an LLM-initiated finish. Raise --sim-max-turns or add finish_simulation calls to the orchestrator's decision policy if more turns are expected.",
+  "substrate_metrics": {},
+  "bio_telemetry_path": "/tmp/o19-home-9eppi8d8/sim_reports/20261107_101504/bio_telemetry.jsonl",
+  "apparatus": {
+    "substrate_actions_per_turn": null
+  },
+  "ts": 1794071704.268429,
+  "provenance": {
+    "executed_maxim_file": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/__init__.py",
+    "executed_git_hash": "e841abca42e29ce17697621a524659e1401f13d8",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "be295a6ce2330860617bbfa0026bbc5be2ebc190eb4a9891c9eb3fece66b85a4",
+    "harness_run_id": "06142f16a488415398e4694dfe6f1458",
+    "python": "/Users/dennys/RMSrv/scripts/Maxim/.venv/bin/python",
+    "pythonpath": "/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages/gstreamer_python/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/.venv/lib/python3.12/site-packages:/Users/dennys/RMSrv/scripts/Maxim/src",
+    "maxim_version": "1.3.3",
+    "configured_n_ctx": 8192,
+    "configured_n_ctx_source": "config",
+    "language_profile": "mistral-7b-instruct-v0.2",
+    "language_router_n_ctx": 8192,
+    "language_budget_n_ctx": 8192,
+    "aut_profile": "mistral-7b-instruct-v0.2",
+    "aut_router_n_ctx": 8192,
+    "aut_budget_n_ctx": 8192,
+    "code_changed_during_run": false,
+    "end_executed_git_hash": "e841abca42e29ce17697621a524659e1401f13d8",
+    "end_code_tree_sha256": "be295a6ce2330860617bbfa0026bbc5be2ebc190eb4a9891c9eb3fece66b85a4",
+    "provenance_schema": 2,
+    "serving_captured": true,
+    "llm_calls": {
+      "1": {
+        "entries": [
+          {
+            "provider_key": "lane-large",
+            "model": "mistral-7b",
+            "backend_kind": "peer",
+            "endpoint": "http://127.0.0.1:8100",
+            "served_id": "/tmp/o19-home-9eppi8d8/models/LLM/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+            "quantization": null,
+            "seed": null,
+            "seed_honoured": false,
+            "temp": 0.3,
+            "n": 24,
+            "identity": "3e0039fd0273fcbebb49228943b17831aadd55cbcbf56f0af00499be2040ccf9",
+            "identity_source": "local_file",
+            "kv_quant": "f16"
+          }
+        ],
+        "counts": {
+          "started": 25,
+          "success": 24,
+          "exhausted": 1,
+          "budget_reject": 0,
+          "raised": 0
+        }
+      }
+    },
+    "language_router_serial": 1,
+    "aut_router_serial": 1,
+    "sampling_complete": true,
+    "sampling_problems": [],
+    "model_changed_during_run": false,
+    "concurrent_sims": false,
+    "leader_disk_heads": {
+      "http://127.0.0.1:8100": null
+    },
+    "scenario_inputs": [
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/base_humanoid.yaml",
+        "sha256": "ac75278d8d8b4216328526e7abeb8baab5767ffa09d8acc05ab96a200b3e12bf"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/cybernetic_arm.yaml",
+        "sha256": "901535009188bce40c3125d4fcd49828c64c9160861ddeaab8558f47779bf91d"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/host_machine.yaml",
+        "sha256": "3c0b2e5afc018b5e93f7f13e7c186eaf19d1c34effb3b2edcc5dbc0c6ef4b2eb"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/infant_humanoid.yaml",
+        "sha256": "fa4306673f5d10b5ab3d0048563a1ef39e06928c4789730c60a0e5e69a0b959b"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/infant_humanoid_chilled.yaml",
+        "sha256": "db9eaadda8960f0ce1b4abcf13c3a3fa62a08a6c65bafff34cc74ec6d9c21094"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/infant_humanoid_cold.yaml",
+        "sha256": "8c3b321695602bc7e0a1f3be645f51477563661b1ec3cd4bb1feb3cab306c37c"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/infant_humanoid_naming_v1.yaml",
+        "sha256": "be9aa66ec014a23ce00f3d921b097da727703d611a678fff76740042c31326c6"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/infant_operant.yaml",
+        "sha256": "c11286847762ad54b109e58864d54dd96d7759e4166fe899a9e735f57d72dacf"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/infant_operant_satiated.yaml",
+        "sha256": "cd359141c04b486e182a36702ea9565b3af3a6809be1884fc026cc0de0dd43d2"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/megarm_v3.yaml",
+        "sha256": "1bfe7392c5ffb07efa53ea93238495f7bdb1132634a315d5b4225dc7f5719bd1"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/minecraft_bench.yaml",
+        "sha256": "3c253c3642586fc5c49463484b1b084548e165921b15f1c853de25eb8f75f9bb"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/minecraft_bench57.yaml",
+        "sha256": "d8ec67bbdec5599a9c94645a19b43bd57c534cc2dd35abd20df11e68e34ee5f2"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/minecraft_bench_satiated.yaml",
+        "sha256": "230a48c492de227737475ce1bc961ad38b0e8bf7e2070f7ab9f3e4d3d6b6e53a"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/minecraft_player.yaml",
+        "sha256": "1b663eec6aa25c3911daca2c6fddc4892ad5586eafe582973a14afb3dc87cc6a"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/reachy_mini.yaml",
+        "sha256": "a180d5874e8a214774c524490b5359aa893fadd137f4d091e0e12e7490198f43"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/reachy_mini_infant.yaml",
+        "sha256": "0e68aa94a9a368a97aa2fb1be05d869377438a7f762ecf572d4eb42539452d5a"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/bodies/reachy_mini_infant_satiated.yaml",
+        "sha256": "6dcb725a3a67cd8aef45b966ab5fc61fdbd6b643003abf434c8aff0dd5a269bc"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/alien_xenomorph.yaml",
+        "sha256": "9c3f26e41651a0892ada140cbb887231095db25c084ad5bafe7ed2e86c645d13"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/cyberdog.yaml",
+        "sha256": "013995d168c599effd7cccf0665b8761acf747b72c023a6f23304f885a1fa659"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/dragon.yaml",
+        "sha256": "0e9316d70386765c88ce513bfb725e633f47c360a058d0bc89e7971f7ce0aa0c"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/giant_spider.yaml",
+        "sha256": "baaf7cfbc0453db2a9ec0608b51a32c1f1c034a1250a6a28bf4e82062aeb17f9"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/patrol_drone.yaml",
+        "sha256": "2688aaaa483c1177e4e6466787f4b4724338e6c724ab4c38f2e2413595a0c87f"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/revenant.yaml",
+        "sha256": "3b23576dd9ee59b417620449b9db4c2764aa6929a55f0babfae9f2cf3b611c7c"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/skeleton_warrior.yaml",
+        "sha256": "8ff58ea362c0e197a309504c5dda0fbfc67c9e2e51c0e1c42e7c48a65edd81d2"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/creatures/wolf.yaml",
+        "sha256": "cbdb76510c9f470235cf0abd79ace0a67b75c5edd84951548220530117ed21df"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/scenarios/embodiment/embodiment_baseline.yaml",
+        "sha256": "6373271442cde5ef30e36a24632a97f60ecc121ca24fab0400a0d49f9dcd26c5"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/scenarios/embodiment/engram_cycle_test.yaml",
+        "sha256": "7b785da590eedc55af7805525c6f329858ec1bb88ae2cc4d313ee4a3ad1835cf"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/scenarios/embodiment/robot_arm_3dof.yaml",
+        "sha256": "eb8998c7b7ca706e45274d2c094a33367ce3172842c02703bc284309ba0f51fe"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/scenarios/embodiment/sword_npc_demo.yaml",
+        "sha256": "2ccc3ae202469c05a2cf1f5d7cd2e8c90cf14e77a5f08579ca8b915fbb99f319"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/abandoned_warehouse.yaml",
+        "sha256": "5d9de0e65b5e526ecb69bb018d84ca8437391bd9c691f36e0405ae76b2572bb6"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/dungeon_corridor.yaml",
+        "sha256": "f7279a48d4e835e7c31d76bc096b76b7b8124bbf17cd3af30ed0fd64bf49ba47"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/enchanted_grove.yaml",
+        "sha256": "192c19d5de082c9807277c14823b346be4f4d9db8efa0645b2f28e9fca248df9"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/forest_clearing.yaml",
+        "sha256": "a2e391cee12091f8286c69a7c9343b393c26b8c0da5fd71497142b0e2842f75d"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/haunted_manor.yaml",
+        "sha256": "13c73e75d43cae913a0544974dbcc0143e73b4d5ced0db50394a5fc1b05beba6"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/megacorp_lobby.yaml",
+        "sha256": "17c36f1ebe582175fadd90015c4b19be18ecc3fa95fc4be1b0b7cf5de083c675"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/neon_alley.yaml",
+        "sha256": "8048d531a824de8f0cf7537df9ad7ea1e8b9cd848d447b4316fab3882f70f8bb"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/ripperdoc_clinic.yaml",
+        "sha256": "0ba1258c19e94bd060e2cae48bf896a29ecca69bdac533a7586a77690c83770a"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/roman_forum.yaml",
+        "sha256": "6700653f8e4d4582407e46f0497ca489352224ba77cc27ff8c3ccc0699ad0693"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/server_room.yaml",
+        "sha256": "8599aeedd0cbc859a25b13c7a648dd588a1424d2d80dc0479862dc79d9f94514"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/space_station_bridge.yaml",
+        "sha256": "d027ec63b0090a5d795d932700e223a995b3a4c956a9e2b676ba138c77544595"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/environments/tavern_interior.yaml",
+        "sha256": "b9464ae48106b674532488167cb0331c4c345387dc7a6486b45ac86c2c79548e"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/antidote_vial.yaml",
+        "sha256": "263b9ebd5bd9243c737c6dd5dcbe5000b8c242a727c83948cadc18aa2d3fe7db"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_blanket.yaml",
+        "sha256": "982a79f8380e06e6f430f118ca2c290b557a457e34649ec8259e8dcb5c9cc42b"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_button.yaml",
+        "sha256": "26ffa55e9cf29731d3ac23450747790fc14eb05947ab614132b16253d8d56c50"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_cool_air.yaml",
+        "sha256": "1dd4a8c7a8b0704d34ea6d7437a84fa5b20065a06d13df64c3c2e9ff5573bd4f"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_false_hearth.yaml",
+        "sha256": "30482332e039a5db7e4169f2cbb77e970506d9d154008fa4f326bcce3a614a91"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_fire_pit.yaml",
+        "sha256": "2b5e45a9218e07c09d944a4f558b294e93be2f2b2033487303ee27d97affa949"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_food.yaml",
+        "sha256": "c7063a3e6796382c1413db12464a1cccd40aa1f3cc31fe4c897bd35f1302d867"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_lever_door.yaml",
+        "sha256": "fe57acf8d1320505d9207ba9c780a4c7b8c892be63c0fd5a1f4c63b8c32a8d59"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cradle_sharp_rock.yaml",
+        "sha256": "466544c16320c3cc156cdfb951974f5c50caa88c5b0e6c23b38dcb357b0986c6"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/cursed_amulet.yaml",
+        "sha256": "917e8c04ac72c7a9bc72340cff377851e479fc59215a9215ba497c3aa4652859"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/food_ration.yaml",
+        "sha256": "f0e315c21b8f622c54be07ecd574e2ef8d376776e89ef9ce6367e3805e9b9274"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/green_flame.yaml",
+        "sha256": "a13af8bfc119120256aaa25543a978cd04dd5205dd16002810a903788c2ade42"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/green_flame_b.yaml",
+        "sha256": "ac2651923bf31533bf87cc4734b130efe298d3aeb6b619d4c1d8427b907f0dfa"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/green_hearth.yaml",
+        "sha256": "8e0195aacea8cbbcc74205e33c84516bf9d0b24fcab51aa3c4641e94c86fba51"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/green_hearth_b.yaml",
+        "sha256": "31d22f1cf0185e0afdf926137ea5eb8c433accfc520336674e3b00abdbae89db"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/healing_potion.yaml",
+        "sha256": "282e8aa65deb71e321722069e0a322d1b828bc04d0a18227308a2f387b02a021"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/laptop.yaml",
+        "sha256": "9350b953a836b69228db948e1fbd18dfa38c08b5a3f56c500e18cd9fd6247b90"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/lockpick_set.yaml",
+        "sha256": "c31ab53f5895758c2e6ee9ae8096ba7ba19e2bf308734ee9287599117d23dfa7"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/minecraft_bread.yaml",
+        "sha256": "d379df3acd2f56f437462ed0ddcbe06b216df662d3e3cfbf7da8fbc5f200a219"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/orange_triangular_crystal_vial.yaml",
+        "sha256": "f09fbfa7f147238cc73087b7b0d95d7bea99a61f33fcc3ee2acc995828619472"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/poison_vial.yaml",
+        "sha256": "1b17bb9c5be2a83fb354cf2acdfe39a3cc85257a456cd73d40c163c88aedd6d7"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/purple_flame.yaml",
+        "sha256": "96e9bd25a07cb637f87b528a9153b13d33da3f483e6928f17e5319428069de83"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/purple_flame_b.yaml",
+        "sha256": "1391623ebbac9e270da97d7b1eef0f1e79f02ecfa0832c14ee8461e5d7095884"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/purple_hearth.yaml",
+        "sha256": "239d053409cefc417dfa18f6e8b35a20270067acd3e523ba03295674b2f3d2ef"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/purple_hearth_b.yaml",
+        "sha256": "0c8e43e588807e0cb8380bcf90ea0269cc6cd1ec8bc03c4d811b70b32c904e77"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/purple_hexagonal_glass_vial.yaml",
+        "sha256": "26016452ba2746a52d927a290a0a4edebdda6c1acd64026c9f4c9708e977ea8c"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/radio_transceiver.yaml",
+        "sha256": "aa8aee0d2a6216aae24af017abdcf954ceff4aabed407f33eee08c01e013a743"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/spellbook.yaml",
+        "sha256": "25e8ffaf0525eecde7ca271844afabf2cbfa768b750658985776820e8ae3f3bc"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/teal_cylindrical_ceramic_vial.yaml",
+        "sha256": "45523effd0d29481d3eeb3f92d387dd714fc4d836fccf14085abcc29b93e4185"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/terminal_console.yaml",
+        "sha256": "5924196f5bd7f9558e6d4cb2ed531777fdc84b43e698a4f15791081f2b98d5d9"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/warmth_alpha_harm.yaml",
+        "sha256": "41875f22fe52376f75704398b6656728ebb14edfcf223f25ee2d08a01597a57d"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/warmth_alpha_safe.yaml",
+        "sha256": "c3fd0753d73b923b64cc7067bfbc74b75f2cfb5d5a8ae42e14eede6d741bdd4e"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/warmth_beta_harm.yaml",
+        "sha256": "3783b25cd97eab8701b1d8daad712f179d1b8097064d17a0c1bb032d64b387c7"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/warmth_beta_safe.yaml",
+        "sha256": "1e59bf168b2905b18dd23996cc666b66ac0d165670bc85cfd4b4dfd4d84b14bf"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/items/water_flask.yaml",
+        "sha256": "54d71639cf64afd3d32085e05239da03bdfef0acb63cbb51d41499d20c554649"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/base_humanoid.yaml",
+        "sha256": "79f2b66cbefaa5b93af2d3888a95f441b162141d246189677a132d199fb315c0"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/blacksmith.yaml",
+        "sha256": "b5488eedf3a16de63011745eed0e4610c29ccdca280c725bec2eb129c2858b90"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/corpo_guard.yaml",
+        "sha256": "91e2e0b6f928a0521d14edbe15602801d2564ff44cf2e15cab6cd63ce28143a4"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/detective.yaml",
+        "sha256": "d522590abdea8b6bf2d8d414e21e7d6255eb6610bed183855293d8149fff5b3f"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/ferryman.yaml",
+        "sha256": "d1ec343937fc688cecd152590f9869ffd7e206547093ad840c2b5a1f05d81647"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/guard.yaml",
+        "sha256": "5477a60a3eaeb52d0403b4a77d9a7b96116989fe736049974c4751a3a45e4529"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/merchant.yaml",
+        "sha256": "567f3e57e7d945b08e51fdc37e118e472aafba3edf191b46e25bcfce69ddfece"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/netrunner.yaml",
+        "sha256": "20dcbf32e21784defdbe4a77e1f2e227c9c942827b3bab47be582274389d470d"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/roman_legionary.yaml",
+        "sha256": "9054864add8eb00502f8e2a4b6797d2884a90f3f245ebeda0597addd2320a3b3"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/street_fixer.yaml",
+        "sha256": "6cc27c58f960401af7eb5fb1fc3e8fcec57ad725a45aa8fd3bffa37bfccb1d9e"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/sysadmin.yaml",
+        "sha256": "4dca45c032cb5e67912ee3cab3660805d582ab5ff5a4908bcdd44139774ce2be"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/thief.yaml",
+        "sha256": "af187e801eba0deee49210f37273d7ce281a076d20d1901a9fe95f33aabc794f"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/npcs/wizard.yaml",
+        "sha256": "6da3b1967460391fd186d438a692ab7c375f691a942fda9d49e3e08bd6ad8db8"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/vehicles/horse.yaml",
+        "sha256": "563936603e4e0f21175a6b6606fe5ff07be53fba5816199f85eab8595806bab2"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/vehicles/pickup_truck.yaml",
+        "sha256": "395925a9c3153610b6e996e06ba6df025d7d198e70b3ea07af36b97a01c20c09"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/vehicles/sailing_ship.yaml",
+        "sha256": "bf52417d21e2327a6fc30f253dcb4dbfbd69426324055ff8c0063a5a91a515dc"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/combat_knife.yaml",
+        "sha256": "53c1e0c26b3109f56f4f1350c6b3afe2ed4a0642d959c954c8307edbbdb46fdb"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/enchanted_bow.yaml",
+        "sha256": "34433c493cc6d8c4896094ecc08479aaab705495bbb737b7549a82657a939b05"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/longbow.yaml",
+        "sha256": "41be80fbdbebcaccd0e87abd3a6df0d9470444d82c8599d19ec7f4a8f11d23bb"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/magic_staff.yaml",
+        "sha256": "84b786a64b3d1ba9eaa61cfb0eada1d3685248f0e233e797b611cc26d0a813a9"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/neural_disruptor.yaml",
+        "sha256": "a95a843b91e7cf9093a97b3eee3a7f3414b66ede1f9342a660cbfe731228af7f"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/plasma_rifle.yaml",
+        "sha256": "58264692031062340f56f3acbbd503a48d6a4ef135803688eee02297d1f83307"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/poison_dagger.yaml",
+        "sha256": "de1ee75ffcc882c1831f8c8b08df8c39b5aae94b1d1bdf7f5c210ca091514b86"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/rusty_sword.yaml",
+        "sha256": "b18d7ac6eece6bcce14cea5de27e1edea6b0c5852288a4341dc94fe402e2b0d6"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/components/weapons/shock_baton.yaml",
+        "sha256": "c57a016c06717f270437bec4e4375b729bc2c3f478506be5976d141d4335e375"
+      },
+      {
+        "path": "/Users/dennys/RMSrv/scripts/Maxim/src/maxim/_data/reflexes/humanoid.yaml",
+        "sha256": "f0be0b2f01ec548878ba2b749da4cd5bd90887e799cda9860c4fb668f7a0a4fd"
+      }
+    ],
+    "scenario_content_sha256": null,
+    "scenario_sha256": "5500fb9400758b3c10d9bb76a71cc6474ac1bdddcb22dd5566ee654919da1487",
+    "global_seed": null,
+    "session_index": 0,
+    "aut_model_attribution": "not_established"
+  },
+  "record_kind": "sim_report",
+  "_format_version": "1.0"
+}
