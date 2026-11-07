@@ -190,8 +190,8 @@
       "missing": 41
     },
     "src/maxim/simulation/stall_detector.py": {
-      "percent": 82.8,
-      "missing": 43
+      "percent": 84.2,
+      "missing": 40
     },
     "src/maxim/simulation/stdin_lines.py": {
       "percent": 100.0,

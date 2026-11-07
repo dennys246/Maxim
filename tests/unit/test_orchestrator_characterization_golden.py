@@ -91,6 +91,11 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
   - #1453, #1454, #1457 (FIXED, the ``/new`` slice): the re-entry carries the run settings and the AUT's saved state,
     and ``--report-json`` describes the returned run (the new_goal arm's ``report_writes`` hold one extra
     ``save_aut_state`` and one ``emit_report_json``, and the fixture was regenerated for it in its own commit).
+  - #1592 (FIXED): the stall detector's narrator texts named the AUT's tools (the diversity checkpoint's
+    ``respond (2x)``, the idle nudge's last tool), which primed a weak narrator to propose them (Exp 63b smoke,
+    ``planning_failed``). The checkpoint now gives counts and points at ``observe_actions``, and the nudges name
+    only ``send_message``; the stall arm's two injected texts changed, and the fixture was regenerated for it in
+    its own commit.
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
@@ -323,7 +328,7 @@ def test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_n
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
     """The stall detector (§11) past its first diversity checkpoint and its idle threshold. The checkpoint (after
-    turn 3) carries the AUT's tools of turns 1-2 and rides the narrator's next follow-up (#1048). That follow-up is
+    turn 3) counts the AUT's actions of turns 1-2 (#1592: never their tool names) and rides the narrator's next follow-up (#1048). That follow-up is
     a WEDGED call: held, registered in the call registry, while the detector's injected clock jumps past the age it
     was allowed plus the margin, so the detector judges it wedged and injects its idle nudge, which rides the next
     follow-up; the narrator then finishes and the finish ends the run (#1259). Re-homed by #1259's fix (owner
@@ -337,7 +342,9 @@ def test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_n
         ("sim.stall", "DIVERSITY CHECKPOINT (turn 3): the agent"),
         ("sim.stall", "SYSTEM: Stall detected (<S>s idle, 3 AUT"),
     ]
-    assert "tools so far (not yours): respond (2x). Its blocked tools: none." in narrator[1]["text"]
+    # Counts only, never the AUT's tool names (#1592).
+    assert "has taken 2 action(s) with 1 different tool(s); 0 of those tools were blocked." in narrator[1]["text"]
+    assert "respond" not in narrator[1]["text"] and "respond" not in narrator[2]["text"]
     calls = t["narrator_calls"]
     wedged, nudged = [c for c in calls if c.get("executed") == "observe_actions"]
     assert wedged["held_inputs"].startswith("DIVERSITY CHECKPOINT (turn 3)")  # rode the follow-up (#1048)

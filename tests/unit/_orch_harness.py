@@ -297,7 +297,18 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
         "env": OPERATOR_PROFILE_ENV,
         "kwargs": {"llm_profile": "orch-run-model"},
     },
+    # #1592: the AUT calls ``memory_recall`` (a tool the narrator lacks) on turns 1 and 2, so the diversity checkpoint
+    # that lands during turn 3 (``_hold_for_agent_tool_arm``, as in the stall arm) is built over it. The narrator,
+    # handed the checkpoint on its ``observe_actions`` follow-up, proposes ``memory_recall`` (the Exp 63b smoke's
+    # failure, 2026-11-03); the loop drops it (``unregistered_tool_proposed``) and requeues the follow-up, and the
+    # retry finishes. The poll at its floor lands the checkpoint promptly; the idle threshold stays far off.
+    "agent_tool_after_checkpoint": {
+        "max_turns": 10,
+        "events": True,
+        "env": {"MAXIM_STALL_FLOOR_S": "120", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
+    },
 }
+AGENT_TOOL = "memory_recall"  # the agent_tool_after_checkpoint arm's AUT tool, which the narrator does not have
 # The operator lines the held_finish arms feed, in order (``_hold_for_held_finish``).
 HELD_GUIDANCE = ("please also ask which tools it has", "and ask what it remembers")
 # The imagination arm's scene manifest, one sentence per entity. Short noun phrases ("a rusty sword") would hit a
@@ -376,7 +387,7 @@ _ORIGINAL = re.compile(r"Original request: \"(.*?)\"\n\n", re.S)
 _TOOL_LIST = re.compile(r"=== Your Tools ===\nYour tools are: (.*?)\. Choose one of these\.", re.S)
 _TURN = re.compile(r"'turn': (\d+)")
 _NEW_INSTRUCTIONS = re.compile(r"=== New Instructions ===\n(.*?)(?:\n=== |\Z)", re.S)
-_HELD_INPUT_ARMS = ("stall",)
+_HELD_INPUT_ARMS = ("stall", "agent_tool_after_checkpoint")
 
 
 class FakeRouter:
@@ -504,6 +515,8 @@ class FakeRouter:
     def _answer_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
         if self.arm == "stall":
             return self._answer_stall_narrator(call)
+        if self.arm == "agent_tool_after_checkpoint":
+            return self._answer_agent_tool_narrator(call)
         if self.arm in ("new_goal", "persistent_agent", "imagination"):
             return self._answer_one_probe_narrator(call)
         if self.arm in ("held_finish", "held_finish_twice", "held_finish_two_lines"):
@@ -574,7 +587,30 @@ class FakeRouter:
             return _act("send_message", text="Hello, who are you?")
         return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
 
+    def _answer_agent_tool_narrator(self, call: dict[str, Any]) -> dict[str, Any]:
+        """The stall arm's three probes and ``observe_actions``; the follow-up that carries the diversity checkpoint
+        answers the AUT's ``AGENT_TOOL`` once (dropped and requeued by the loop), and its retry finishes."""
+        if call["kind"] == "followup" and call["executed"] == "send_message":
+            turn = call.get("turn")
+            if turn in _STALL_PROBES:
+                return _act("send_message", text=_STALL_PROBES[turn])
+            if turn == 3:
+                return _act("observe_actions")
+        if call["kind"] == "followup" and call["executed"] == "observe_actions":
+            proposed = any((c.get("answer") or {}).get("tool_name") == AGENT_TOOL for c in self.calls["narrator"])
+            if (call.get("held_inputs") or "").startswith("DIVERSITY CHECKPOINT") and not proposed:
+                return _act(AGENT_TOOL, query="favourite colour")
+            if proposed:
+                return _act("finish_simulation", status="completed", reason="retried with its own tool", summary="")
+        if call["kind"] == "plan" and call["request"].startswith("simulation goal:"):
+            return _act("send_message", text="Hello, who are you?")
+        return _act("finish_simulation", status="aborted", reason="unscripted narrator input", summary="")
+
     def _answer_aut(self, call: dict[str, Any]) -> dict[str, Any]:
+        if self.arm == "agent_tool_after_checkpoint" and call["kind"] == "plan":  # #1592: a tool the narrator lacks
+            return _act(AGENT_TOOL, query=call["request"][:40])
+        if self.arm == "agent_tool_after_checkpoint" and call["executed"] == AGENT_TOOL:
+            return _act("respond", message="I remembered.")
         if call["kind"] == "plan":
             return _act("respond", message=f"I heard: {call['request'][:40]}")
         if call["executed"] == "respond":  # reached only if the AUT's terminal respond is followed up (#1260)
@@ -1086,6 +1122,15 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
                 "the stall detector's idle nudge behind the wedged narrator call",
             )
 
+    def _hold_for_agent_tool_arm(role: str, call: dict[str, Any]) -> None:
+        """#1592: the stall arm's first hold only. The fake AUT answers turn 3's percept after the checkpoint has
+        landed, so the checkpoint counts turns 1 and 2 and rides the narrator's ``observe_actions`` follow-up."""
+        if role == "aut" and call["kind"] == "plan" and call["request"] == _STALL_PROBES[2].lower():
+            _wait_for(
+                lambda: any(e.get("text", "").startswith("DIVERSITY CHECKPOINT") for e in events),
+                "the stall detector's diversity checkpoint after turn 3",
+            )
+
     recorded: list[str] = []  # the held_finish arms: the lines the narrator's memory recorded, in order
 
     def _hold_for_held_finish(role: str, call: dict[str, Any]) -> None:
@@ -1143,6 +1188,8 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         router.hold = _hold_for_stall_arm
     if arm in PROBE_ARMS:
         router.hold = _hold_for_held_finish
+    if arm == "agent_tool_after_checkpoint":
+        router.hold = _hold_for_agent_tool_arm
 
     def _cancel_after_finish(bridge: Any) -> None:
         """The narrator's finish ends the run (#1259). The operator ``/cancel`` these arms used to send after it is now
