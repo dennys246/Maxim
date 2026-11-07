@@ -300,13 +300,17 @@ class LocalServerSpawner:
             if self._process is None:
                 logger.warning("LocalServerSpawner: registry closed: a restart is in progress, no server started")
                 return None
-            # The spawn record (#1344 PR 3b): what lets an operator's `maxim llm reap` tell this server from a
-            # stranger's if this process dies without stopping it. Advisory: a failure is logged, the spawn goes on.
-            write_spawn_record(pid=self._process.pid, port=self._port, model_path=self._model_path)
+            spawned_pid = self._process.pid
 
             if not self._atexit_registered:
                 atexit.register(self.stop)
                 self._atexit_registered = True
+
+        # The spawn record (#1344 PR 3b): what lets an operator's `maxim llm reap` tell this server from a stranger's
+        # if this process dies without stopping it. Advisory (a failure is logged, the spawn goes on), and written
+        # OUTSIDE the lock: on macOS it runs `ps` (5 s bound each), and stop(), the forced-stop path, needs the lock.
+        # A stop() that wins the race leaves one stale record, which the next spawn prunes.
+        write_spawn_record(pid=spawned_pid, port=self._port, model_path=self._model_path)
 
         try:
             ready = self._wait_ready(timeout_s)

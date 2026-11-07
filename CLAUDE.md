@@ -138,7 +138,9 @@ Full CLI reference, including every command this section used to list: [docs/use
 
 `maxim peer update && maxim peer restart` (`--dev` for git-checkout leaders, `--dry-run` first if unsure). Every one of these, dry runs included, needs the leader's opt-in (`maxim config set proxy.allow_remote_update true`, off by default since 2026-10-14). Flags and troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
 
-**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, `maxim peer llm --status`, and `maxim peer deps` are safe and read-only. `maxim peer update`, `maxim peer restart`, `maxim peer llm <model>`, and `maxim peer install <extras>` modify leader state — only run when explicitly asked by the user. So does `maxim llm reap` (it kills a leftover LLM server): never run it, under a pty wrapper or otherwise, unless the user asked for that run. Regression guard: process invariant — mechanization backlog M86.
+**Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, `maxim peer llm --status`, and `maxim peer deps` are safe and read-only. `maxim peer update`, `maxim peer restart`, `maxim peer llm <model>`, and `maxim peer install <extras>` modify leader state — only run when explicitly asked by the user.
+
+**Claude agents never run `maxim llm reap`** (it kills a leftover local LLM server) unless the user asked for that run; its TTY gate stops a script or pipe, but a pty wrapper defeats it, so the bar is this rule. Regression guard: process invariant — mechanization backlog M87.
 
 ## Versioning
 

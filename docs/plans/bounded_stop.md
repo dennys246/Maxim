@@ -480,7 +480,7 @@ identity still matches at signal time.
 - **The gate:** unless stdin AND stdout are TTYs it prints the report and "run `maxim llm reap --port N` yourself in a
   terminal", exit 2, without reading stdin or printing a kill line. At a TTY the operator types the pid (anything else
   cancels, exit 1); connections are re-read after it, and a new one is shown and asked again. A pty wrapper defeats the
-  TTY check: agents are kept off the command by policy (CLAUDE.md's agent command list; backlog M86).
+  TTY check: agents are kept off the command by policy (CLAUDE.md's agent command list; backlog M87, M86 being #1614's).
 - **The kill.** Linux: `pidfd_open` (a failure refuses; never `os.kill` by number), identity re-verified while the pidfd
   pins the process, SIGTERM through the pidfd with `PIDFD_SIGNAL_PROCESS_GROUP` (4) when the kernel takes it (6.9+),
   else to the leader and then `killpg` only while the leader has not exited; 5 s, then SIGKILL the same way. macOS:
@@ -489,9 +489,12 @@ identity still matches at signal time.
   "stayed busy" case is a server generating for someone). `maxim doctor` gains a read-only INFO line per stale record
   or recorded server whose spawner is gone; it never says a server is unused.
 - **Residuals, stated:** no record, no reap (a pre-3b orphan or a hand-started server is killed by hand); connections
-  are a hint, so a confirmed kill can still cut off a client between calls; a pty wrapper defeats the TTY check; on
+  are a hint, so a confirmed kill can still cut off a client between calls (and on Linux a connection still in the
+  accept queue has no server fd, so it is not counted); a pty wrapper defeats the TTY check; on
   Linux before 6.9 and on macOS the group signal goes by number (a leader exiting between the check and `killpg`, with
-  an empty group and an immediate pid wrap, could reach a stranger's group); macOS `lsof` sees only this user's
+  an empty group and an immediate pid wrap, could reach a stranger's group); a group member that ignores SIGTERM
+while its leader exits is not followed, as in 3a's `stop_child_group` (llama_cpp.server does not fork today); macOS
+`lsof` sees only this user's
   sockets, so an unattributable listener is not detected there; native Windows writes no records and the command
   refuses.
 

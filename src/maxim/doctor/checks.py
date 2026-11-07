@@ -2127,7 +2127,7 @@ def check_llm_server_exposure(port: int | None = None) -> CheckResult:
 
 
 def check_llm_spawn_records(port: int | None = None) -> CheckResult:
-    """Read-only: the spawn records for the LLM port (#1344 PR 3b), as INFO. A stale record, or a recorded server
+    """Read-only: the spawn records for the LLM port (#1344 PR 3b): INFO when there is one to report, else ok. A stale record, or a recorded server
     whose spawner is gone (a leftover `maxim llm reap` can clean up at a terminal). Never says a server is unused."""
     import os
 
@@ -2140,7 +2140,7 @@ def check_llm_spawn_records(port: int | None = None) -> CheckResult:
             port = 8100
     phrases = describe_records(port)
     if not phrases:
-        return CheckResult(name="LLM spawn records", status="info", message=f"nothing to report for :{port}")
+        return CheckResult(name="LLM spawn records", status="ok", message=f"nothing to report for :{port}")
     return CheckResult(name="LLM spawn records", status="info", message="; ".join(phrases))
 
 

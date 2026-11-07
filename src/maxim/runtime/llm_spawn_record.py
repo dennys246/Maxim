@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NamedTuple, TextIO
 
+from maxim._offline import OfflineRefusal
 from maxim.utils import paths as _paths
 
 logger = logging.getLogger(__name__)
@@ -184,19 +185,23 @@ def write_spawn_record(*, pid: int, port: int, model_path: str) -> Path | None:
     Called right after the launch. First prunes the provably dead records for this port (files only; nothing is
     signalled). A failure never blocks the spawn: no record only means no reap.
     """
+    if not isinstance(pid, int) or pid <= 1:  # a test double's pid (int(MagicMock()) == 1 is init), never our child
+        logger.debug("no spawn record for pid %r: not a spawned child's pid", pid)
+        return None
     d = _writable_record_dir()
     if d is None:
         return None
     try:
         ident = process_identity(pid)
         parent = process_identity(os.getpid())
-    except (OSError, ValueError, IndexError) as e:
+        if ident is not None:
+            prune_dead_records(port, d)
+    except (OSError, ValueError, IndexError, OfflineRefusal) as e:
         logger.error("cannot read the start time of pid %d, no spawn record written: %s", pid, e)
         return None
     if ident is None:
         logger.warning("LLM server pid %d exited before its spawn record was written", pid)
         return None
-    prune_dead_records(port, d)
     from maxim import __version__
     from maxim.utils.atomic_io import atomic_write_text
     from maxim.utils.format_version import with_format_version
@@ -227,7 +232,7 @@ def write_spawn_record(*, pid: int, port: int, model_path: str) -> Path | None:
 def remove_spawn_record(port: int, pid: int) -> None:
     """Unlink THIS spawner's own record (``<port>.<pid>.json``), once its server is reaped."""
     d = _paths.llm_spawn_record_dir()
-    if d is None or sys.platform == "win32":
+    if d is None or sys.platform == "win32" or not isinstance(pid, int):
         return
     try:
         (d / f"{int(port)}.{int(pid)}.json").unlink(missing_ok=True)
@@ -294,6 +299,20 @@ def prune_dead_records(port: int, d: Path | None = None) -> list[Path]:
                 removed.append(path)
             except OSError as e:
                 logger.warning("cannot prune the dead LLM spawn record %s: %s", path, e)
+    # A writer that died mid-write leaves `<port>.<pid>.json.tmp` (the pid is the SERVER's), which the `*.json`
+    # glob never sees: drop it once that server is gone (no record is needed for it then).
+    for tmp in sorted(d.glob(f"{int(port)}.*.json.tmp")):
+        parts = tmp.name.split(".")
+        try:
+            gone = parts[1].isdigit() and process_identity(int(parts[1])) is None
+        except (OSError, ValueError, IndexError):
+            gone = False
+        if gone:
+            try:
+                tmp.unlink()
+                removed.append(tmp)
+            except OSError as e:
+                logger.warning("cannot prune the partial LLM spawn record %s: %s", tmp, e)
     return removed
 
 
@@ -451,6 +470,13 @@ def describe_records(port: int) -> list[str]:
     """One read-only phrase per record for ``port``, for ``maxim doctor``: a stale record, or a recorded server whose
     spawner is gone. Never claims a server is idle: connections are not inspected here."""
     try:
+        return _describe_records(port)
+    except OfflineRefusal as e:
+        return [f"not checked: MAXIM_OFFLINE refuses the ps this needs ({e})"]
+
+
+def _describe_records(port: int) -> list[str]:
+    try:
         records = read_records(port)
     except _NotTrusted as e:
         return [f"spawn records not trusted: {e}"]
@@ -531,6 +557,14 @@ def reap(port: int, *, stdin: TextIO | None = None, stdout: TextIO | None = None
     def say(msg: str) -> None:
         print(msg, file=stdout, flush=True)
 
+    try:
+        return _reap(port, stdin, stdout, say)
+    except OfflineRefusal as e:  # macOS reads identities and listeners through ps/lsof, which the latch refuses
+        say(f"refusing: MAXIM_OFFLINE refuses the ps/lsof this needs ({e}). Nothing touched.")
+        return 2
+
+
+def _reap(port: int, stdin: TextIO, stdout: TextIO, say: Any) -> int:
     if sys.platform == "win32":
         say("`maxim llm reap` needs Linux or macOS: native Windows writes no spawn records. Nothing touched.")
         return 2
@@ -610,7 +644,7 @@ def _kill(rec: SpawnRecord, port: int, say: Any) -> int:
     if exited is None:
         return 2
     if not exited:
-        say(f"pid {rec.pid} did not exit after SIGKILL; its record is kept.")
+        say(f"pid {rec.pid} has not exited; its record is kept.")
         return 2
     try:
         rec.path.unlink(missing_ok=True)
@@ -645,6 +679,9 @@ def _kill_linux(rec: SpawnRecord, port: int, say: Any) -> bool | None:
             group = os.getpgid(pid) == pid  # the spawner starts a new session: pgid == pid
         except ProcessLookupError:
             return True
+        except OSError as e:
+            say(f"refusing: cannot read pid {pid}'s process group ({e}); nothing signalled.")
+            return None
         flagged = False
         if group:
             try:

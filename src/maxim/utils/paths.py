@@ -109,13 +109,17 @@ def llm_spawn_record_dir() -> Path | None:
     keep the default a module-level name read here at call time (guard:
     ``tests/unit/test_llm_spawn_record_dir_isolation.py``).
     """
+    if sys.platform == "win32":  # first: the override never turns records on natively (no getuid, no pidfd)
+        return None
     raw = os.environ.get("MAXIM_LLM_SPAWN_RECORD_DIR", "").strip()
     if raw:
-        return Path(raw).expanduser()
+        try:
+            return Path(raw).expanduser()
+        except RuntimeError as e:  # `~nosuchuser/...`: unusable, like a missing passwd home (never raise to a spawner)
+            _spawn_record_dir_unusable(f"MAXIM_LLM_SPAWN_RECORD_DIR={raw!r} cannot be expanded ({e})")
+            return None
     if _DEFAULT_LLM_SPAWN_RECORD_DIR is not None:
         return _DEFAULT_LLM_SPAWN_RECORD_DIR
-    if sys.platform == "win32":
-        return None
     import pwd
 
     try:
@@ -123,17 +127,21 @@ def llm_spawn_record_dir() -> Path | None:
     except KeyError:
         pw_dir = ""
     if not pw_dir or pw_dir == "/" or not os.path.isdir(pw_dir):
-        global _spawn_record_dir_error_logged
-        if not _spawn_record_dir_error_logged:
-            _spawn_record_dir_error_logged = True
-            logging.getLogger(__name__).error(
-                "no usable passwd home for uid %d (%r): LLM spawn records are off, so `maxim llm reap` cannot clean "
-                "up a server this process spawns. Set MAXIM_LLM_SPAWN_RECORD_DIR to enable them.",
-                os.getuid(),
-                pw_dir,
-            )
+        _spawn_record_dir_unusable(f"no usable passwd home for uid {os.getuid()} ({pw_dir!r})")
         return None
     return Path(pw_dir) / ".maxim" / "run" / "llm_server"
+
+
+def _spawn_record_dir_unusable(why: str) -> None:
+    """Log, once per process, that LLM spawn records are off and why."""
+    global _spawn_record_dir_error_logged
+    if not _spawn_record_dir_error_logged:
+        _spawn_record_dir_error_logged = True
+        logging.getLogger(__name__).error(
+            "%s: LLM spawn records are off, so `maxim llm reap` cannot clean up a server this process spawns. Set "
+            "MAXIM_LLM_SPAWN_RECORD_DIR to a usable directory to enable them.",
+            why,
+        )
 
 
 # ---------------------------------------------------------------------------

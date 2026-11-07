@@ -21,6 +21,7 @@ _REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 POSIX = pytest.mark.skipif(sys.platform == "win32", reason="spawn records are POSIX only")
 
 
+@POSIX
 def test_the_suite_points_the_record_dir_into_its_isolation_root():
     from maxim.utils.paths import llm_spawn_record_dir
 
@@ -42,6 +43,7 @@ def test_the_record_dir_ignores_home_and_data_home_and_honours_the_override(tmp_
     assert llm_spawn_record_dir() == tmp_path / "records"
 
 
+@POSIX
 def test_an_in_process_strip_still_never_reads_the_real_home(monkeypatch):
     from maxim.utils.paths import llm_spawn_record_dir
 
