@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 from pathlib import Path
 
 from maxim.exceptions import LeaderRefusal, LLMServerPortBusy
+from maxim.runtime.llm_spawn_record import remove_spawn_record, write_spawn_record
 from maxim.utils.cancellation import child_groups, spawn_registered, stop_child_group, unregister_child
 from maxim.utils.gpu_compat import get_original_cuda_devices
 
@@ -63,7 +64,8 @@ class LLMServerKeyRejected(LLMServerExposureError):
         super().__init__(
             f"the llama-cpp-server on 127.0.0.1:{port} rejects this process's key (401). Likely: a role mismatch "
             "(a leader's server holds the mesh key, a solo's the local server key: check MAXIM_ROLE), a mesh key "
-            f"rotated since that server started (restart it), or another server on port {port} (stop it)."
+            f"rotated since that server started (restart it), or another server on port {port} (stop it). If it is a "
+            f"leftover maxim server, run `maxim llm reap --port {port}` in a terminal."
         )
 
 
@@ -298,6 +300,9 @@ class LocalServerSpawner:
             if self._process is None:
                 logger.warning("LocalServerSpawner: registry closed: a restart is in progress, no server started")
                 return None
+            # The spawn record (#1344 PR 3b): what lets an operator's `maxim llm reap` tell this server from a
+            # stranger's if this process dies without stopping it. Advisory: a failure is logged, the spawn goes on.
+            write_spawn_record(pid=self._process.pid, port=self._port, model_path=self._model_path)
 
             if not self._atexit_registered:
                 atexit.register(self.stop)
@@ -328,7 +333,8 @@ class LocalServerSpawner:
         The one claimer of its process (#1344 PR 3a): the process is taken under the lock, so a second stopper finds
         nothing. On POSIX the group gets SIGTERM, then SIGKILL only while the leader is still unreaped (it holds the
         pgid, so the group cannot be a stranger's); nothing is signalled after the reap. Its registry entry goes last,
-        so a forced stop landing mid-stop still reaches it.
+        so a forced stop landing mid-stop still reaches it. Its own spawn record goes once the leader is reaped (one
+        still alive keeps the record that lets an operator reap it, #1344 PR 3b).
         """
         with self._lock:
             proc = self._process
@@ -341,6 +347,8 @@ class LocalServerSpawner:
             pass
         finally:
             unregister_child(proc)
+            if proc.poll() is not None:
+                remove_spawn_record(self._port, proc.pid)
 
     # ─── internals ────────────────────────────────────────────────────────
 

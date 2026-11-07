@@ -21,13 +21,16 @@ is ``tunnel/config.py::CONFIG_PATH``).
 Environment variables:
     MAXIM_DATA_HOME  Override user data directory (default ``~/.maxim``)
     MAXIM_CLOUDFLARED_SYSTEM_DIR  Override the system cloudflared config directory (default ``/etc/cloudflared``)
+    MAXIM_LLM_SPAWN_RECORD_DIR  Override the LLM spawn-record directory (default ``<passwd home>/.maxim/run/llm_server``)
 """
 
 from __future__ import annotations
 
 import errno
+import logging
 import os
 import stat
+import sys
 from pathlib import Path
 
 from maxim.exceptions import ConfigDirUnreadable
@@ -86,6 +89,51 @@ def cloudflared_system_dir() -> Path:
     """
     raw = os.environ.get("MAXIM_CLOUDFLARED_SYSTEM_DIR", "").strip()
     return Path(raw).expanduser() if raw else _DEFAULT_CLOUDFLARED_SYSTEM_DIR
+
+
+# None: resolve from the passwd home at each call. tests/conftest.py rebinds it to its isolation dir.
+_DEFAULT_LLM_SPAWN_RECORD_DIR: Path | None = None
+_spawn_record_dir_error_logged = False
+
+
+def llm_spawn_record_dir() -> Path | None:
+    """Where maxim records the LLM servers it spawns: ``<passwd home>/.maxim/run/llm_server/``, or
+    ``$MAXIM_LLM_SPAWN_RECORD_DIR`` (#1344 PR 3b, ``runtime/llm_spawn_record.py``).
+
+    The ONE reader. It ignores ``HOME`` and ``MAXIM_DATA_HOME`` on purpose: a TCP port is box-wide, so a record that
+    followed a per-run data home would be invisible to the operator's ``maxim llm reap`` (design round 5 D1). The home
+    comes from ``pwd.getpwuid(os.getuid())``. None (no record is written, the command refuses) on native Windows, or
+    when the passwd entry is missing or its home is ``/`` or does not exist: never a fallback to ``HOME``; that case
+    logs one ERROR per process. ``tests/conftest.py`` exports the override into its isolation root and REBINDS
+    ``_DEFAULT_LLM_SPAWN_RECORD_DIR``, so a test that strips the variable never reaches the developer's real records:
+    keep the default a module-level name read here at call time (guard:
+    ``tests/unit/test_llm_spawn_record_dir_isolation.py``).
+    """
+    raw = os.environ.get("MAXIM_LLM_SPAWN_RECORD_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    if _DEFAULT_LLM_SPAWN_RECORD_DIR is not None:
+        return _DEFAULT_LLM_SPAWN_RECORD_DIR
+    if sys.platform == "win32":
+        return None
+    import pwd
+
+    try:
+        pw_dir = pwd.getpwuid(os.getuid()).pw_dir
+    except KeyError:
+        pw_dir = ""
+    if not pw_dir or pw_dir == "/" or not os.path.isdir(pw_dir):
+        global _spawn_record_dir_error_logged
+        if not _spawn_record_dir_error_logged:
+            _spawn_record_dir_error_logged = True
+            logging.getLogger(__name__).error(
+                "no usable passwd home for uid %d (%r): LLM spawn records are off, so `maxim llm reap` cannot clean "
+                "up a server this process spawns. Set MAXIM_LLM_SPAWN_RECORD_DIR to enable them.",
+                os.getuid(),
+                pw_dir,
+            )
+        return None
+    return Path(pw_dir) / ".maxim" / "run" / "llm_server"
 
 
 # ---------------------------------------------------------------------------

@@ -46,6 +46,11 @@ os.environ["XDG_CACHE_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-cache")
 # MAXIM_* (in any spelling) still never reads /etc (guard: tests/unit/test_cloudflared_system_dir_isolation.py).
 _TEST_CLOUDFLARED_SYSTEM_DIR = _TEST_ISOLATION_ROOT / "etc-cloudflared"
 os.environ["MAXIM_CLOUDFLARED_SYSTEM_DIR"] = str(_TEST_CLOUDFLARED_SYSTEM_DIR)
+# The LLM spawn records follow the PASSWD home, not HOME (a port is box-wide, #1344 PR 3b), so redirecting HOME does
+# not isolate them: export the override the same way, and rebind the reader's default below (guard:
+# tests/unit/test_llm_spawn_record_dir_isolation.py).
+_TEST_LLM_SPAWN_RECORD_DIR = _TEST_ISOLATION_ROOT / "llm-spawn-records"
+os.environ["MAXIM_LLM_SPAWN_RECORD_DIR"] = str(_TEST_LLM_SPAWN_RECORD_DIR)
 
 _MODEL_TESTS_ENABLED = os.environ.get("MAXIM_RUN_MODEL_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
 if _MODEL_TESTS_ENABLED:
@@ -70,6 +75,7 @@ import maxim.utils.paths as _maxim_paths  # noqa: E402
 # The in-process half of the cloudflared isolation (above): with MAXIM_CLOUDFLARED_SYSTEM_DIR stripped, the reader
 # falls back to this default, so it must be the isolation dir in the test process, never /etc (delta review S1).
 _maxim_paths._DEFAULT_CLOUDFLARED_SYSTEM_DIR = _TEST_CLOUDFLARED_SYSTEM_DIR
+_maxim_paths._DEFAULT_LLM_SPAWN_RECORD_DIR = _TEST_LLM_SPAWN_RECORD_DIR
 
 # profiles.yml merges on the first profile lookup, not at import (#1315 step 0a). Merge the ISOLATED (empty) one here,
 # once, so the suite's profile tables never depend on which test looks a profile up first, or under whose

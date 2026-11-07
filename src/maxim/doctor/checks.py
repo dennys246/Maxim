@@ -2126,6 +2126,24 @@ def check_llm_server_exposure(port: int | None = None) -> CheckResult:
     return CheckResult(name="LLM server exposure", status="ok", message=f":{port} loopback-only, auth as expected")
 
 
+def check_llm_spawn_records(port: int | None = None) -> CheckResult:
+    """Read-only: the spawn records for the LLM port (#1344 PR 3b), as INFO. A stale record, or a recorded server
+    whose spawner is gone (a leftover `maxim llm reap` can clean up at a terminal). Never says a server is unused."""
+    import os
+
+    from maxim.runtime.llm_spawn_record import describe_records
+
+    if port is None:
+        try:
+            port = int(os.environ.get("MAXIM_AUTO_SPAWN_PORT", "8100"))
+        except ValueError:
+            port = 8100
+    phrases = describe_records(port)
+    if not phrases:
+        return CheckResult(name="LLM spawn records", status="info", message=f"nothing to report for :{port}")
+    return CheckResult(name="LLM spawn records", status="info", message="; ".join(phrases))
+
+
 def check_key_age() -> CheckResult:
     """Warn when the API key file is older than 90 days."""
     import time
@@ -3778,6 +3796,7 @@ def run_all_checks(
                     check_vram_pressure(),
                     check_inference_coherence(),
                     check_llm_server_exposure(),
+                    check_llm_spawn_records(),
                     check_loopback_lane_auth(),
                 ],
             ),
@@ -3845,6 +3864,7 @@ __all__ = [
     "check_lan_access",
     "check_remote_admin",
     "check_llm_server_exposure",
+    "check_llm_spawn_records",
     "check_cloudflared",
     "check_tunnel_config",
     "check_tunnel_config_sync",

@@ -145,6 +145,7 @@ Core keeps the two command lines and the safe/unsafe verb split. Details: `maxim
 - `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `GROQ_API_KEY` / `TOGETHER_API_KEY` / `FIREWORKS_API_KEY` / `MISTRAL_API_KEY` / `DEEPSEEK_API_KEY` = cloud provider auth = `models/language/config.py`
 - `MAXIM_ROLE` = explicit role leader|peer|solo, exported once at startup = `runtime/role.py` (detection order: docs/agents/persistence-config.md)
 - `MAXIM_CLOUDFLARED_SYSTEM_DIR` = the system cloudflared dir that role detection, `tunnel/daemon_spawner.py` and the doctor's tunnel-sync check read (default `/etc/cloudflared`; test isolation, operators leave it unset) = `utils/paths.py::cloudflared_system_dir`; owned and documented in docs/agents/persistence-config.md §5
+- `MAXIM_LLM_SPAWN_RECORD_DIR` = where `LocalServerSpawner.start` records each LLM server it spawns, read by `maxim llm reap` and the doctor's spawn-record line (default `<passwd home>/.maxim/run/llm_server`, never `HOME`/`MAXIM_DATA_HOME`: a port is box-wide; test isolation, operators leave it unset) = `utils/paths.py::llm_spawn_record_dir`; owned and documented in docs/agents/persistence-config.md §5
 - `MAXIM_LLM_ENABLED` = enable LLM inference = `models/language/router.py`
 - `MAXIM_LLM_PROFILE` = default model profile = `models/language/config.py`
 - `MAXIM_LLM_N_CTX` = override llama.cpp n_ctx (prefer `maxim config set llm.n_ctx` — see gotcha above) = `runtime/lane_backends.py`

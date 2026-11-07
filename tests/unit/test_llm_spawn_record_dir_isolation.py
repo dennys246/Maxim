@@ -21,11 +21,6 @@ _REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 POSIX = pytest.mark.skipif(sys.platform == "win32", reason="spawn records are POSIX only")
 
 
-def red(why: str):
-    return pytest.mark.xfail(strict=True, reason=f"PR 3b red gate 9: {why}")
-
-
-@red("conftest exports the override into the isolation root")
 def test_the_suite_points_the_record_dir_into_its_isolation_root():
     from maxim.utils.paths import llm_spawn_record_dir
 
@@ -36,7 +31,6 @@ def test_the_suite_points_the_record_dir_into_its_isolation_root():
 
 
 @POSIX
-@red("the dir ignores HOME and MAXIM_DATA_HOME and honours the override")
 def test_the_record_dir_ignores_home_and_data_home_and_honours_the_override(tmp_path, monkeypatch):
     from maxim.utils.paths import llm_spawn_record_dir
 
@@ -48,7 +42,6 @@ def test_the_record_dir_ignores_home_and_data_home_and_honours_the_override(tmp_
     assert llm_spawn_record_dir() == tmp_path / "records"
 
 
-@red("an in-process strip falls back to the isolation dir, never the passwd home")
 def test_an_in_process_strip_still_never_reads_the_real_home(monkeypatch):
     from maxim.utils.paths import llm_spawn_record_dir
 
@@ -57,7 +50,6 @@ def test_an_in_process_strip_still_never_reads_the_real_home(monkeypatch):
     assert llm_spawn_record_dir() == isolated
 
 
-@red("the child-env helpers keep the variable")
 def test_the_strip_helpers_keep_the_record_dir(monkeypatch):
     from tests._child_env import ISOLATION_VARS, drop_maxim_overrides, without_maxim_overrides
 
@@ -69,7 +61,6 @@ def test_the_strip_helpers_keep_the_record_dir(monkeypatch):
 
 
 @POSIX
-@red("a fresh process without the override reads <passwd home>/.maxim/run/llm_server, whatever HOME says")
 def test_a_child_without_the_override_reads_the_passwd_home(tmp_path):
     import pwd
 
@@ -91,7 +82,6 @@ def test_a_child_without_the_override_reads_the_passwd_home(tmp_path):
 
 
 @POSIX
-@red("an unusable passwd home writes no record and never falls back to HOME")
 @pytest.mark.parametrize("case", ["keyerror", "root", "missing"])
 def test_an_unusable_passwd_home_yields_none(monkeypatch, tmp_path, case):
     import pwd
@@ -107,7 +97,9 @@ def test_an_unusable_passwd_home_yields_none(monkeypatch, tmp_path, case):
         if case == "keyerror":
             raise KeyError(uid)
         pw_dir = "/" if case == "root" else str(tmp_path / "no-such-home")
-        return pwd.struct_passwd((real.pw_name, real.pw_passwd, real.pw_uid, real.pw_gid, real.pw_gecos, pw_dir, "/bin/sh"))
+        return pwd.struct_passwd(
+            (real.pw_name, real.pw_passwd, real.pw_uid, real.pw_gid, real.pw_gecos, pw_dir, "/bin/sh")
+        )
 
     monkeypatch.setattr(pwd, "getpwuid", getpwuid)
     assert paths.llm_spawn_record_dir() is None

@@ -28,10 +28,6 @@ POSIX = pytest.mark.skipif(sys.platform == "win32", reason="spawn records are PO
 LINUX = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the pidfd kill path is Linux only")
 
 
-def red(n: int, why: str):
-    return pytest.mark.xfail(strict=True, reason=f"PR 3b red gate {n}: {why}")
-
-
 _FAKE_SERVER = (
     "import socket, sys, time\n"
     "flag = '--bind' if '--bind' in sys.argv else '--port'\n"
@@ -150,7 +146,6 @@ def _write(fake: _Fake) -> Path:
 
 
 @POSIX
-@red(1, "no record means no reap")
 def test_a_listener_with_no_record_is_named_and_never_killed(record_dir, fake_server):
     fake = fake_server()
     rc, out, _ = _reap(fake.port, typed=str(fake.pid))
@@ -165,7 +160,6 @@ def test_a_listener_with_no_record_is_named_and_never_killed(record_dir, fake_se
 
 
 @POSIX
-@red(2, "a record whose identity no longer matches is never acted on")
 @pytest.mark.parametrize("field", ["pid", "start_time", "boot_id"])
 def test_a_record_whose_identity_differs_never_kills(record_dir, fake_server, field):
     fake = fake_server()
@@ -189,7 +183,6 @@ def test_a_record_whose_identity_differs_never_kills(record_dir, fake_server, fi
 # ─── gate 3: the exact --port token pair ──────────────────────────────────────────────────────────
 
 
-@red(3, "the cmdline must name the port as an exact token pair, not a substring")
 @pytest.mark.parametrize(
     ("tokens", "port", "matches"),
     [
@@ -208,7 +201,6 @@ def test_the_cmdline_identity_is_the_exact_port_token_pair(tokens, port, matches
 
 
 @POSIX
-@red(3, "a recorded process whose argv names another port is not the server on this one")
 def test_a_server_whose_argv_names_a_longer_port_is_not_matched(record_dir, fake_server):
     port = _free_port()
     fake = fake_server(port, argv_port=int(str(port) + "0"))
@@ -225,7 +217,6 @@ def test_a_server_whose_argv_names_a_longer_port_is_not_matched(record_dir, fake
 
 
 @POSIX
-@red(4, "two listeners, a listener that is not the recorded pid, or an unattributable socket refuses")
 @pytest.mark.parametrize("seen", ["two", "stranger", "unattributed"])
 def test_anything_but_one_visible_recorded_listener_refuses(record_dir, fake_server, monkeypatch, seen):
     import maxim.runtime.llm_spawn_record as rec
@@ -249,7 +240,6 @@ def test_anything_but_one_visible_recorded_listener_refuses(record_dir, fake_ser
 
 
 @POSIX
-@red(5, "a recorded server that is alive but not listening (loading or hung) is reported, never killed")
 def test_an_alive_recorded_server_that_is_not_listening_is_reported_not_killed(record_dir, fake_server):
     fake = fake_server(listen=False)
     _write(fake)
@@ -264,7 +254,6 @@ def test_an_alive_recorded_server_that_is_not_listening_is_reported_not_killed(r
 
 
 @POSIX
-@red(6, "a non-TTY run prints the report and the command to run, never reads stdin, never prints a kill line")
 @pytest.mark.parametrize("which", ["stdin", "stdout", "both"])
 def test_a_non_tty_run_never_kills_never_reads_stdin_and_prints_no_kill_line(record_dir, fake_server, which):
     from maxim.runtime.llm_spawn_record import reap
@@ -287,7 +276,6 @@ def test_a_non_tty_run_never_kills_never_reads_stdin_and_prints_no_kill_line(rec
 
 
 @LINUX
-@red(7, "on Linux a pidfd_open that fails refuses; the kill never falls back to os.kill by number")
 @pytest.mark.parametrize("errno_name", ["ENOSYS", "EPERM"])
 def test_a_failed_pidfd_open_refuses_without_signalling_by_number(record_dir, fake_server, monkeypatch, errno_name):
     import errno
@@ -301,10 +289,12 @@ def test_a_failed_pidfd_open_refuses_without_signalling_by_number(record_dir, fa
     def pidfd_open(pid, flags=0):
         raise OSError(getattr(errno, errno_name), errno_name)
 
-    monkeypatch.setattr(rec.os, "pidfd_open", pidfd_open)
-    monkeypatch.setattr(rec.os, "kill", lambda *a: signalled.append(("kill", *a)))
-    monkeypatch.setattr(rec.os, "killpg", lambda *a: signalled.append(("killpg", *a)))
-    rc, out, _ = _reap(fake.port, typed=str(fake.pid))
+    with monkeypatch.context() as m:  # scoped: the fixture's teardown must still kill its own child
+        m.setattr(rec.os, "pidfd_open", pidfd_open)
+        m.setattr(rec.os, "kill", lambda *a: signalled.append(("kill", *a)))
+        m.setattr(rec.os, "killpg", lambda *a: signalled.append(("killpg", *a)))
+        m.setattr(rec.signal, "pidfd_send_signal", lambda *a: signalled.append(("pidfd_send_signal", *a)))
+        rc, out, _ = _reap(fake.port, typed=str(fake.pid))
     assert rc == 2
     assert errno_name in out or os.strerror(getattr(errno, errno_name)) in out
     assert signalled == []
@@ -315,7 +305,6 @@ def test_a_failed_pidfd_open_refuses_without_signalling_by_number(record_dir, fa
 
 
 @POSIX
-@red(8, "the spawner writes its record, prunes only provably dead records for its own port, unlinks only its own")
 def test_the_spawner_writes_prunes_and_unlinks_only_what_it_should(record_dir, fake_server, tmp_path, monkeypatch):
     import maxim.runtime.local_server_spawner as LSS
     from maxim.runtime.llm_spawn_record import write_spawn_record
@@ -364,7 +353,6 @@ def test_the_spawner_writes_prunes_and_unlinks_only_what_it_should(record_dir, f
 
 
 @POSIX
-@red(10, "a group/world-writable or foreign-owned record dir or file is never written to or trusted")
 @pytest.mark.parametrize("what", ["dir_mode", "file_mode", "foreign_owner"])
 def test_an_insecure_record_dir_or_file_is_refused(record_dir, fake_server, monkeypatch, what):
     import maxim.runtime.llm_spawn_record as rec
@@ -390,7 +378,6 @@ def test_an_insecure_record_dir_or_file_is_refused(record_dir, fake_server, monk
 # ─── gate 11: native Windows ──────────────────────────────────────────────────────────────────────
 
 
-@red(11, "native Windows writes no record and the command refuses")
 def test_win32_writes_no_record_and_the_command_refuses(record_dir, monkeypatch):
     import maxim.runtime.llm_spawn_record as rec
 
@@ -405,7 +392,6 @@ def test_win32_writes_no_record_and_the_command_refuses(record_dir, monkeypatch)
 # ─── gate 12: where the hint is surfaced ──────────────────────────────────────────────────────────
 
 
-@red(12, "the reap hint goes on the wrong-model and key-rejected refusals, never on the busy one")
 def test_the_reap_hint_is_on_wrong_model_and_key_rejected_never_on_port_busy(monkeypatch):
     import maxim.runtime.local_server_spawner as LSS
     from maxim.exceptions import LLMServerPortBusy
@@ -423,7 +409,6 @@ def test_the_reap_hint_is_on_wrong_model_and_key_rejected_never_on_port_busy(mon
 
 
 @POSIX
-@red(13, "at a TTY, a recorded matching server whose pid is typed is reaped and its record unlinked")
 def test_a_typed_pid_at_a_tty_reaps_the_recorded_server(record_dir, fake_server):
     fake = fake_server()
     path = _write(fake)
@@ -435,7 +420,6 @@ def test_a_typed_pid_at_a_tty_reaps_the_recorded_server(record_dir, fake_server)
 
 
 @POSIX
-@red(13, "anything but the exact pid cancels with exit 1")
 @pytest.mark.parametrize("typed", ["", "y", "yes", "PID"])
 def test_anything_but_the_pid_cancels(record_dir, fake_server, typed):
     fake = fake_server()
@@ -447,7 +431,6 @@ def test_anything_but_the_pid_cancels(record_dir, fake_server, typed):
 
 
 @POSIX
-@red(13, "no listener and no live record is nothing to do: exit 0, stale records counted")
 def test_nothing_recorded_is_exit_0(record_dir):
     rc, out, _ = _reap(_free_port())
     assert rc == 0
@@ -457,7 +440,6 @@ def test_nothing_recorded_is_exit_0(record_dir):
 # ─── gate 14: the CLI route ───────────────────────────────────────────────────────────────────────
 
 
-@red(14, "`maxim llm reap` is a non-sim subcommand routed to the reap command")
 def test_maxim_llm_reap_is_routed(monkeypatch):
     import maxim.cli as cli
     import maxim.runtime.llm_spawn_record as rec
@@ -467,3 +449,56 @@ def test_maxim_llm_reap_is_routed(monkeypatch):
     monkeypatch.setattr(rec, "reap", lambda port, **kw: seen.append(port) or 2)
     assert cli.main(["llm", "reap", "--port", "8123"]) == 2
     assert seen == [8123]
+
+
+# ─── the re-snapshot after the typed pid (R7-N-d) ─────────────────────────────────────────────────
+
+
+@POSIX
+@pytest.mark.parametrize(("second", "rc_expected"), [("pid", 0), ("no", 1)])
+def test_a_connection_that_appears_after_the_report_is_shown_and_asked_again(
+    record_dir, fake_server, monkeypatch, second, rc_expected
+):
+    import maxim.runtime.llm_spawn_record as rec
+
+    fake = fake_server()
+    _write(fake)
+    snapshots = iter([[], ["from 127.0.0.1:40000 (pid 1: a client)"], ["from 127.0.0.1:40000 (pid 1: a client)"]])
+    monkeypatch.setattr(rec, "established_connections", lambda port, pid: next(snapshots))
+    typed = f"{fake.pid}\n" + (f"{fake.pid}\n" if second == "pid" else "no\n")
+    stdin, stdout = _Stream(typed, tty=True), _Stream(tty=True)
+    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == rc_expected
+    out = stdout.getvalue()
+    assert "new connections since the report" in out and "40000" in out
+    assert stdin.reads == 2
+    if rc_expected == 0:
+        assert fake.proc.wait(timeout=10) is not None
+    else:
+        assert fake.alive()
+
+
+# ─── maxim doctor's read-only line ────────────────────────────────────────────────────────────────
+
+
+@POSIX
+def test_doctor_reports_stale_records_and_orphaned_servers_never_idleness(record_dir, fake_server):
+    from maxim.doctor.checks import check_llm_spawn_records
+
+    fake = fake_server()
+    path = _write(fake)
+    result = check_llm_spawn_records(fake.port)
+    assert result.status == "info" and result.message.startswith("nothing to report")  # its spawner (us) is alive
+
+    gone = subprocess.Popen([sys.executable, "-c", "pass"], env=without_maxim_overrides())
+    gone.wait(timeout=30)
+    data = json.loads(path.read_text())
+    data["spawned_by_pid"] = gone.pid
+    path.write_text(json.dumps(data))
+    stale = path.with_name(f"{fake.port}.{gone.pid}.json")
+    stale.write_text(json.dumps({"_format_version": "1.0", "pid": gone.pid, "port": fake.port, "start_time": "1"}))
+    stale.chmod(0o600)
+    message = check_llm_spawn_records(fake.port).message
+    assert f"a recorded LLM server whose spawner is gone (pid {fake.pid})" in message
+    assert f"stale spawn record (pid {gone.pid} gone)" in message
+    assert "connection" not in message and "idle" not in message
+    assert fake.alive() and stale.exists()  # read-only
