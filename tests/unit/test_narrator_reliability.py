@@ -71,7 +71,17 @@ CORRECTED = {
     "proposal_not_ready_to_act": "ready_to_act to false",
     "proposal_completed_without_action": "goal is achieved but called no tool",
     "fallback_proposal_dropped": "could not be read",
+    "unregistered_tool_proposed": "a tool that is not in your list",  # #1592
 }
+
+
+def test_every_planning_correction_is_exercised_on_both_paths() -> None:
+    """A new ``PLANNING_CORRECTIONS`` reason joins ``CORRECTED`` too, or the both-path test below skips it (#1592)."""
+    from maxim.agents.prompt_builder import PLANNING_CORRECTIONS
+
+    assert set(CORRECTED) == set(PLANNING_CORRECTIONS)
+
+
 NOT_THE_MODELS_FAULT = ("stale_proposal_dropped", "proposal_error:timeout", "planning_job_completed_without_proposal")
 FOLLOWUP = (
     "[ACTION_FOLLOWUP type=process tool=send_message mode=live query='talk to the agent']: "

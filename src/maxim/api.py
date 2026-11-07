@@ -215,6 +215,28 @@ def _restore_env(saved: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
+def _enable_llm_for_run() -> dict[str, str | None]:
+    """Turn the LLM on for an API run unless the session says otherwise; the snapshot ``_restore_env`` restores.
+
+    Only ``MAXIM_LLM_ENABLED`` rides the env: the run's model is handed to its router build (#1586)."""
+    saved = {"MAXIM_LLM_ENABLED": os.environ.get("MAXIM_LLM_ENABLED")}
+    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
+    return saved
+
+
+def _build_run_router(model: str) -> Any:
+    """``run()``'s router, built on its ``model`` over the session's ``MAXIM_LLM_PROFILE``, which stays as it was
+    (#1586); a build with no backend raises ``ConfigurationError``."""
+    from maxim.runtime.lane_backends import build_primary_router
+
+    router, _lane_manager = build_primary_router(profile=model)
+    if router is None:
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError(f"No LLM backend available for model={model!r}: check its profile and backend.")
+    return router
+
+
 def _release_run_robot(lease: _RunRobotLease) -> None:
     """Restore awake state and release a connection acquired by ``run()``."""
     from maxim.hardware.registry import RobotRegistry
@@ -758,7 +780,6 @@ def run(
             build_state,
             build_tool_registry,
         )
-        from maxim.runtime.lane_backends import build_primary_router
 
         configure(verbosity=verbosity)
 
@@ -776,15 +797,8 @@ def run(
         os.makedirs(effective_home, exist_ok=True)
 
         # ── LLM router ───────────────────────────────────────────────────
-        _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-        os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-        os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
-        router, _lane_manager = build_primary_router()
-        if router is None:
-            from maxim.exceptions import ConfigurationError
-
-            raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
+        _saved_env = _enable_llm_for_run()
+        router = _build_run_router(model)
         # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
         # LLMWorker construction site that resolved no n_ctx at all — the
         # constructor default (4096) applied, and only the old cloud max()
@@ -943,10 +957,6 @@ def imagine(
     _validate_model(model)
     configure(verbosity=verbosity)
 
-    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
     # Pre-sim auto-curation
     if auto_curate:
         try:
@@ -971,6 +981,7 @@ def imagine(
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
+    _saved_env = _enable_llm_for_run()
     try:
         sim_result = start_simulation_mode(
             goal=goal,
@@ -978,6 +989,7 @@ def imagine(
             max_turns=max_turns,
             debug=verbosity >= 3,
             sandbox_backend=sandbox,
+            llm_profile=model,
             pre_campaign_turns=pre_campaign_turns,
             resume_session=resume,
         )
@@ -1501,10 +1513,6 @@ def campaign(
     model = _resolve_model(model)
     configure(verbosity=verbosity)
 
-    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
     from maxim.simulation.dm_schema import load_campaign as _load_campaign
     from maxim.embodiment.component_registry import ComponentRegistry
     from pathlib import Path as _Path
@@ -1539,10 +1547,12 @@ def campaign(
             )
         set_interactive_mode(InteractiveMode.ON if interactive else InteractiveMode.OFF)
 
+    _saved_env = _enable_llm_for_run()
     try:
         sim_result = start_simulation_mode(
             goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
             mode="dm",
+            llm_profile=model,
             dm_campaign=campaign_def,
             prompt_handler=prompt_handler,
         )
@@ -1753,6 +1763,7 @@ def research(
         print(result.paper_draft[:200])
         print(f"Review verdict: {result.review}")
     """
+    model = _resolve_model(model)
     configure(verbosity=verbosity)
 
     from maxim.simulation.research_orchestrator import start_research_mode

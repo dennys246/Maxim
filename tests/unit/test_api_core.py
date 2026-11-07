@@ -222,7 +222,7 @@ def mocked_run_runtime(monkeypatch):
     monkeypatch.setattr(api, "_resolve_model", lambda model: model)
     monkeypatch.setattr(api, "configure", lambda **kwargs: None)
     monkeypatch.setattr(api, "_inject_registered_tools", lambda tool_registry: None)
-    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda: (router, None))
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda **_kw: (router, None))
     monkeypatch.setattr("maxim.agents.llm_worker.LLMWorker", _RunTestWorker)
     monkeypatch.setattr("maxim.agents.maxim_agent.MaximAgent", _RunTestAgent)
     monkeypatch.setattr("maxim.runtime.bootstrap.build_environment", lambda **kwargs: MagicMock())

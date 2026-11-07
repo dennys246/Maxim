@@ -87,8 +87,9 @@ def _persist_research_result(
     )
 
 
-def _build_research_llm() -> Any:
-    """The LLM router for the Writer + Reviewer, or None (they fall back to heuristics).
+def _build_research_llm(language_model: str | None = None) -> Any:
+    """The LLM router for the Writer + Reviewer, or None (they fall back to heuristics), on ``language_model`` when
+    the caller has its own (#1586; None: the session's ``MAXIM_LLM_PROFILE``).
 
     A :class:`~maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
     llama-cpp-server) propagates: a security refusal is not an availability
@@ -99,9 +100,9 @@ def _build_research_llm() -> Any:
         from maxim.models.language.router import LLMRouter, load_llm_config
         from maxim.runtime.lane_backends import build_primary_router
 
-        research_llm, _ = build_primary_router(logger=logger)
+        research_llm, _ = build_primary_router(logger=logger, profile=language_model)
         if research_llm is None:
-            config = load_llm_config()
+            config = load_llm_config(profile_override=language_model)
             if config.enabled:
                 research_llm = LLMRouter(config)
         if research_llm is not None:
@@ -112,6 +113,36 @@ def _build_research_llm() -> Any:
     except Exception as e:
         logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)
     return research_llm
+
+
+def _load_campaign_turns(campaign: str | None) -> list[dict]:
+    """The researcher's campaign turns from the campaign YAML (empty with none, or when it fails to load)."""
+    from maxim.simulation.sim_logger import display_status
+
+    campaign_turns: list[dict] = []
+    if campaign:
+        try:
+            from maxim.simulation.scenario_source import load_scenario
+            from pathlib import Path as _Path
+
+            scenario = load_scenario(_Path(campaign))
+            for p in scenario.percepts:
+                text = p.get("cli_input", "")
+                if text:
+                    campaign_turns.append(
+                        {
+                            "text": text.strip(),
+                            "phase": p.get("metadata", {}).get("phase", ""),
+                            "role": p.get("metadata", {}).get("experiment_role", ""),
+                            "tag": p.get("metadata", {}).get("scenario_tag", ""),
+                            "salience": p.get("salience", 0.8),
+                            "novelty": p.get("novelty", 0.7),
+                        }
+                    )
+            display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
+        except Exception as e:
+            logger.warning("Failed to load campaign YAML: %s", e)
+    return campaign_turns
 
 
 def start_research_mode(
@@ -158,7 +189,7 @@ def start_research_mode(
     experiment_log = ExperimentLog(session_dir=session_dir, agent_nickname="researcher")
 
     # Build the LLM router for Writer + Reviewer (research agents)
-    research_llm = _build_research_llm()
+    research_llm = _build_research_llm(language_model)
 
     from maxim.simulation.sim_logger import display_status, display_summary
 
@@ -175,29 +206,7 @@ def start_research_mode(
     display_status("Phase 1: Running experiments...")
 
     # Load campaign YAML and extract percept texts for the researcher
-    campaign_turns: list[dict] = []
-    if campaign:
-        try:
-            from maxim.simulation.scenario_source import load_scenario
-            from pathlib import Path as _Path
-
-            scenario = load_scenario(_Path(campaign))
-            for p in scenario.percepts:
-                text = p.get("cli_input", "")
-                if text:
-                    campaign_turns.append(
-                        {
-                            "text": text.strip(),
-                            "phase": p.get("metadata", {}).get("phase", ""),
-                            "role": p.get("metadata", {}).get("experiment_role", ""),
-                            "tag": p.get("metadata", {}).get("scenario_tag", ""),
-                            "salience": p.get("salience", 0.8),
-                            "novelty": p.get("novelty", 0.7),
-                        }
-                    )
-            display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
-        except Exception as e:
-            logger.warning("Failed to load campaign YAML: %s", e)
+    campaign_turns = _load_campaign_turns(campaign)
 
     # Build the researcher goal — for non-campaign runs only.
     # Campaign runs bypass the orchestrator LLM entirely.
@@ -217,6 +226,7 @@ def start_research_mode(
         debug=debug,
         sandbox_backend=sandbox_backend,
         aut_model=aut_model,
+        llm_profile=language_model,
         no_sim_env=True,
         pre_campaign_turns=campaign_turns if campaign_turns else None,
         experiment_log=experiment_log,

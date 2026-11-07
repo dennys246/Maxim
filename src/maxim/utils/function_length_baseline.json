@@ -11,7 +11,7 @@
     {
       "file": "src/maxim/api.py",
       "qualname": "run",
-      "lines": 224
+      "lines": 216
     },
     {
       "file": "src/maxim/cli.py",
@@ -211,7 +211,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1917
+      "lines": 1910
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -221,7 +221,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 262
+      "lines": 241
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -398,6 +398,8 @@
     "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_handles, which register the event for the process stop.",
     "MediaLoopMixin.live tightened 417 -> 296 on 2026-11-03 (#1499 PR 3, rule T): its outer try now starts right after the stop event opens, so the setup moved under it, paid for by moving the per-frame observation step and the transcriber stop out to _observe_frame and _stop_transcription_worker (verbatim) and the last shutdown to _shutdown_after_live.",
     "_maybe_auto_spawn_server tightened 259 -> 224 on 2026-11-03 (#1344 PR 3a, rule T): the box-wide kill_stale_llm_servers call left it, and its singleton check (check_existing_llm_server + the new llm_server.preflight_spawn) moved to lane_backends.py::_existing_server_decision. Merged with #1538 (main's _maybe_auto_spawn_server at 248 after its profile choice moved to _auto_spawn_profile): 213.",
+    "api.py::run tightened 224 -> 216 and start_simulation_mode 1917 -> 1910 on 2026-11-03 (#1586, rule T): the API's model is handed to the run's router build (build_primary_router(profile=), start_simulation_mode(llm_profile=)) instead of a MAXIM_LLM_PROFILE write for the run. run's router build moved to api._build_run_router and its MAXIM_LLM_ENABLED setdefault to api._enable_llm_for_run (shared with imagine and campaign); the shared sim router build moved to orchestrator.py::_build_shared_router.",
+    "start_research_mode tightened 262 -> 241 on 2026-11-03 (#1586 review fold, rule T): research hands its model to its router build (_build_research_llm(language_model)) and its sim (start_simulation_mode(llm_profile=)); the campaign YAML load moved verbatim to research_orchestrator._load_campaign_turns.",
     "_main_impl tightened 1377 -> 1345 on 2026-11-06 (#1344 PR 3b, rule T): the serve/tunnel/doctor/bench/roy/model subcommand dispatch moved verbatim to cli.py::_dispatch_tool_cli, carrying the new `llm` route."
   ]
 }
