@@ -585,10 +585,10 @@ def _reap(port: int, stdin: TextIO, stdout: TextIO, say: Any) -> int:
 
     if not scan.pids and not scan.unattributed:
         if alive:
-            for rec in alive.values():
+            for live in alive.values():
                 say(
-                    f"recorded server pid {rec.pid} is alive but not listening on port {port} (loading or hung); "
-                    f"{_spawner_state(rec)}. Not touched: wait for it, or stop it by hand."
+                    f"recorded server pid {live.pid} is alive but not listening on port {port} (loading or hung); "
+                    f"{_spawner_state(live)}. Not touched: wait for it, or stop it by hand."
                 )
             return 2
         say(f"no maxim-recorded server on port {port}{stale_note}.")
