@@ -116,26 +116,98 @@ def test_every_planning_correction_ends_with_the_agents_own_tools() -> None:
     assert all(text.rstrip().endswith("{own}.") for text in PLANNING_CORRECTIONS.values()), PLANNING_CORRECTIONS
 
 
+@pytest.mark.parametrize("reason", [None, "proposal_without_action"])
+def test_with_the_echo_on_the_own_tools_are_listed_once_and_last(reason: str | None) -> None:
+    """The echo-on path (any reason but ``unregistered_tool_proposed``): the rejected name is echoed, and the
+    agent's own tools follow it once, as the last tool names in the correction (#1592 delta-round NIT 1)."""
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.agents.prompt_builder import build_followup_retry_correction
+    from tests.unit.test_narrator_reliability import _narrator_request
+
+    request = _narrator_request(followup=True)
+    LLMWorker._add_failed_tool_feedback(request, AGENT_TOOL)
+    if reason:
+        LLMWorker._add_planning_correction(request, reason)
+    correction = build_followup_retry_correction(request)
+    own = ", ".join(repr(n) for n in sorted(request.available_tools))
+    assert repr(AGENT_TOOL) in correction, "the echo is on for this request"
+    assert correction.count(own) == 1 and correction.index(own) > correction.index(repr(AGENT_TOOL)), correction
+    tail = correction[correction.index(own) + len(own) :]
+    assert _mentions(tail, _narrator_roster()) == [] and AGENT_TOOL not in tail, correction
+
+
+def _opts_into_planning_liveness(source: str) -> bool:
+    """A CALL that passes ``planning_liveness`` anything but a literal False/None or the enclosing function's own
+    same-named PARAMETER (a pass-through, as in ``agent_loop``/``loop_setup``). A computed flag, a same-named LOCAL,
+    or a ``**{"planning_liveness": ...}`` literal counts as opting in (#1592 delta-round NIT 2)."""
+    import ast
+
+    def off(v: ast.expr) -> bool:
+        return isinstance(v, ast.Constant) and v.value in (False, None)
+
+    def scan(scope: ast.AST, params: frozenset[str]) -> bool:
+        for node in ast.iter_child_nodes(scope):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                a = node.args
+                names = {p.arg for p in (*a.posonlyargs, *a.args, *a.kwonlyargs)}
+                assigned = {
+                    t.id
+                    for n in ast.walk(node)
+                    if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+                    for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                    if isinstance(t, ast.Name)
+                }
+                if scan(node, frozenset(names - assigned)):
+                    return True
+                continue
+            if isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if kw.arg == "planning_liveness":
+                        v = kw.value
+                        passthrough = isinstance(v, ast.Name) and v.id == "planning_liveness" and v.id in params
+                        if not (off(v) or passthrough):
+                            return True
+                    elif kw.arg is None and isinstance(kw.value, ast.Dict):
+                        for k, v in zip(kw.value.keys, kw.value.values):
+                            if isinstance(k, ast.Constant) and k.value == "planning_liveness" and not off(v):
+                                return True
+            if scan(node, params):
+                return True
+        return False
+
+    return scan(ast.parse(source), frozenset())
+
+
+@pytest.mark.parametrize(
+    ("source", "opts"),
+    [
+        ("f(planning_liveness=True)", True),
+        ("f(planning_liveness=False)", False),
+        ("f(planning_liveness=None)", False),
+        ("def g(planning_liveness): f(planning_liveness=planning_liveness)", False),
+        ("def g(planning_liveness=False): f(planning_liveness=planning_liveness)", False),
+        ("def g(*, planning_liveness): f(planning_liveness=planning_liveness)", False),
+        ("def g(planning_liveness):\n    planning_liveness = True\n    f(planning_liveness=planning_liveness)", True),
+        ("def g():\n    planning_liveness = True\n    f(planning_liveness=planning_liveness)", True),
+        ("planning_liveness = True\nf(planning_liveness=planning_liveness)", True),
+        ("f(**{'planning_liveness': True})", True),
+        ("f(**{'planning_liveness': False})", False),
+        ("def g(on): f(planning_liveness=on)", True),
+    ],
+)
+def test_the_planning_liveness_scan_sees_every_way_to_opt_in(source: str, opts: bool) -> None:
+    assert _opts_into_planning_liveness(source) is opts
+
+
 def test_only_the_sim_narrator_opts_into_planning_liveness() -> None:
     """``PLANNING_CORRECTIONS`` speak to the narrator ("the agent under test"): only a planning-liveness loop records
     one, and the orchestrator's narrator loop must stay the only one that opts in (#1592 architecture review F5)."""
-    import ast
-
-    def opts_in(path: Path) -> bool:
-        """A CALL passing ``planning_liveness=`` anything but a literal False/None or its own same-named parameter
-        (a pass-through, as in ``agent_loop``/``loop_setup``): a computed flag counts as opting in."""
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            for kw in node.keywords if isinstance(node, ast.Call) else []:
-                v = kw.value
-                passthrough = isinstance(v, ast.Name) and v.id == "planning_liveness"
-                off = isinstance(v, ast.Constant) and v.value in (False, None)
-                if kw.arg == "planning_liveness" and not (passthrough or off):
-                    return True
-        return False
-
     root = Path(__file__).resolve().parents[2]
     callers = sorted(
-        p.relative_to(root).as_posix() for d in ("src", "scripts") for p in (root / d).rglob("*.py") if opts_in(p)
+        p.relative_to(root).as_posix()
+        for d in ("src", "scripts")
+        for p in (root / d).rglob("*.py")
+        if _opts_into_planning_liveness(p.read_text(encoding="utf-8"))
     )
     assert callers == ["src/maxim/simulation/orchestrator.py"], callers
 
