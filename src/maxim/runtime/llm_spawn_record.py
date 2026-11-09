@@ -1,9 +1,10 @@
-"""Spawn records and ``maxim llm reap``: an operator-run cleanup of a leftover LLM server (#1344 PR 3b).
+"""Spawn records and the checks and kill behind ``maxim llm reap``, an operator-run cleanup of a leftover LLM server
+(#1344 PR 3b). The command's operator side (the report, the TTY gate, the typed pid) is ``runtime/llm_cli.py``.
 
 PR 3a's promise holds: no maxim code kills a process it did not start, and nothing here kills automatically. The one
-kill path is :func:`reap`, run by an operator at a terminal (stdin AND stdout TTYs, the exact pid typed), acting only
-on a server whose spawn record says a maxim process started it and whose identity still matches at signal time
-(docs/plans/bounded_stop.md §7b).
+kill path is :func:`kill_recorded`, called only by ``runtime/llm_cli.py::reap`` once an operator at a terminal (stdin
+AND stdout TTYs) typed the exact pid, and acting only on a server whose spawn record says a maxim process started it
+and whose identity still matches at signal time (docs/plans/bounded_stop.md §7b).
 
 The TTY gate stops an accidental or scripted kill (a pipe, CI, a script, an agent's ordinary shell). A pty wrapper
 (``script``, ``expect``, tmux send-keys) defeats it: nothing tells a human from an agent at a pty, so agents are kept
@@ -27,10 +28,11 @@ import stat
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, NamedTuple, TextIO
+from typing import Any, NamedTuple
 
 from maxim._offline import OfflineRefusal
 from maxim.utils import paths as _paths
@@ -42,14 +44,13 @@ FILE_TYPE = "llm_spawn_record"
 PIDFD_SIGNAL_PROCESS_GROUP = 4
 TERM_GRACE_S = 5.0
 _SERVER_MODULE = "llama_cpp.server"
-CONNECTIONS_ARE_A_HINT = "connections are a hint: a client between calls holds none"
 
 
-class _NotTrusted(Exception):
+class RecordsNotTrusted(Exception):
     """The record dir or a record file is not safe to act on (a symlink, another owner, group/world-writable)."""
 
 
-class _Refused(Exception):
+class ListenerScanRefused(Exception):
     """The command cannot decide safely (a tool it needs is missing); the message says why."""
 
 
@@ -151,15 +152,15 @@ def cmdline_names_server_on_port(tokens: list[str], port: int) -> bool:
 def _check_trusted(path: Path, *, is_dir: bool) -> None:
     st = os.lstat(path)
     if stat.S_ISLNK(st.st_mode):
-        raise _NotTrusted(f"{path} is a symlink")
+        raise RecordsNotTrusted(f"{path} is a symlink")
     if is_dir and not stat.S_ISDIR(st.st_mode):
-        raise _NotTrusted(f"{path} is not a directory")
+        raise RecordsNotTrusted(f"{path} is not a directory")
     if not is_dir and not stat.S_ISREG(st.st_mode):
-        raise _NotTrusted(f"{path} is not a regular file")
+        raise RecordsNotTrusted(f"{path} is not a regular file")
     if st.st_uid != os.getuid():
-        raise _NotTrusted(f"{path} is owned by uid {st.st_uid}, not this user ({os.getuid()})")
+        raise RecordsNotTrusted(f"{path} is owned by uid {st.st_uid}, not this user ({os.getuid()})")
     if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise _NotTrusted(f"{path} is group- or world-writable (mode {stat.S_IMODE(st.st_mode):o})")
+        raise RecordsNotTrusted(f"{path} is group- or world-writable (mode {stat.S_IMODE(st.st_mode):o})")
 
 
 def _writable_record_dir() -> Path | None:
@@ -173,7 +174,7 @@ def _writable_record_dir() -> Path | None:
     try:
         d.mkdir(mode=0o700, parents=True, exist_ok=True)
         _check_trusted(d, is_dir=True)
-    except (OSError, _NotTrusted) as e:
+    except (OSError, RecordsNotTrusted) as e:
         logger.error("LLM spawn record dir unusable, no record written (`maxim llm reap` cannot clean up): %s", e)
         return None
     return d
@@ -290,7 +291,7 @@ def prune_dead_records(port: int, d: Path | None = None) -> list[Path]:
         try:
             _check_trusted(path, is_dir=False)
             rec = _load(path, port)
-        except (OSError, ValueError, _NotTrusted) as e:
+        except (OSError, ValueError, RecordsNotTrusted) as e:
             logger.warning("skipping the LLM spawn record %s while pruning: %s", path, e)
             continue
         if rec is not None and _provably_dead(rec):
@@ -317,23 +318,23 @@ def prune_dead_records(port: int, d: Path | None = None) -> list[Path]:
 
 
 def read_records(port: int) -> list[SpawnRecord]:
-    """Every record for ``port``. Raises :class:`_NotTrusted` when the dir or a record file is unsafe to act on."""
+    """Every record for ``port``. Raises :class:`RecordsNotTrusted` when the dir or a record file is unsafe to act on."""
     d = _paths.llm_spawn_record_dir()
     if d is None or not os.path.lexists(d):
         return []
     try:
         _check_trusted(d, is_dir=True)
     except OSError as e:
-        raise _NotTrusted(f"cannot stat {d}: {e}") from e
+        raise RecordsNotTrusted(f"cannot stat {d}: {e}") from e
     records = []
     for path in sorted(d.glob(f"{int(port)}.*.json")):
         try:
             _check_trusted(path, is_dir=False)
             rec = _load(path, port)
         except OSError as e:
-            raise _NotTrusted(f"cannot read {path}: {e}") from e
+            raise RecordsNotTrusted(f"cannot read {path}: {e}") from e
         except ValueError as e:
-            raise _NotTrusted(f"{path} is not a valid record: {e}") from e
+            raise RecordsNotTrusted(f"{path} is not a valid record: {e}") from e
         if rec is not None:
             records.append(rec)
     return records
@@ -401,7 +402,7 @@ def _socket_owners(inodes: set[str]) -> dict[str, set[int]]:
 
 def listening_pids(port: int) -> ListenerScan:
     """Who owns a listening TCP socket on ``port``: Linux reads every uid's sockets in this netns from /proc/net/tcp*
-    and maps the ones it can to pids; macOS asks ``lsof`` (missing: :class:`_Refused`)."""
+    and maps the ones it can to pids; macOS asks ``lsof`` (missing: :class:`ListenerScanRefused`)."""
     if _linux():
         inodes = {inode for _, _, inode in _proc_net_tcp(port, "0A")}
         owners = _socket_owners(inodes)
@@ -412,11 +413,11 @@ def listening_pids(port: int) -> ListenerScan:
             ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"], capture_output=True, text=True, timeout=10
         )
     except FileNotFoundError as e:
-        raise _Refused("lsof is not installed, so the listener on the port cannot be named") from e
+        raise ListenerScanRefused("lsof is not installed, so the listener on the port cannot be named") from e
     except subprocess.SubprocessError as e:
-        raise _Refused(f"lsof did not answer: {e}") from e
+        raise ListenerScanRefused(f"lsof did not answer: {e}") from e
     if res.returncode not in (0, 1):
-        raise _Refused(f"lsof failed (exit {res.returncode}): {res.stderr.strip()}")
+        raise ListenerScanRefused(f"lsof failed (exit {res.returncode}): {res.stderr.strip()}")
     return ListenerScan(pids=frozenset(int(t) for t in res.stdout.split() if t.isdigit()), unattributed=0)
 
 
@@ -478,12 +479,12 @@ def describe_records(port: int) -> list[str]:
 def _describe_records(port: int) -> list[str]:
     try:
         records = read_records(port)
-    except _NotTrusted as e:
+    except RecordsNotTrusted as e:
         return [f"spawn records not trusted: {e}"]
     phrases = []
     for rec in records:
         if identity_mismatch(rec, port) is None:
-            if _spawner_alive(rec) is False:
+            if spawner_alive(rec) is False:
                 phrases.append(
                     f"a recorded LLM server whose spawner is gone (pid {rec.pid}); "
                     f"`maxim llm reap --port {port}` in a terminal reports it"
@@ -493,24 +494,10 @@ def _describe_records(port: int) -> list[str]:
     return phrases
 
 
-# ─── the command ─────────────────────────────────────────────────────────────────────────────────
+# ─── what the reap needs (its operator UI is runtime/llm_cli.py) ─────────────────────────────────
 
 
-def _describe(pid: int) -> str:
-    argv = process_argv(pid)
-    return f"pid {pid} ({' '.join(argv)[:160]})" if argv else f"pid {pid}"
-
-
-def _age(rec: SpawnRecord) -> str:
-    try:
-        created = datetime.fromisoformat(str(rec.data.get("created_at")))
-    except ValueError:
-        return "unknown age"
-    secs = int((datetime.now(timezone.utc) - created).total_seconds())
-    return f"started {secs // 3600}h{(secs % 3600) // 60:02d}m ago"
-
-
-def _spawner_alive(rec: SpawnRecord) -> bool | None:
+def spawner_alive(rec: SpawnRecord) -> bool | None:
     """Whether the process that spawned ``rec`` still runs (same pid AND start time); None when it cannot be told."""
     ppid = rec.data.get("spawned_by_pid")
     if not isinstance(ppid, int):
@@ -522,17 +509,7 @@ def _spawner_alive(rec: SpawnRecord) -> bool | None:
     return ident is not None and ident.start_time == str(rec.data.get("spawned_by_start_time"))
 
 
-def _spawner_state(rec: SpawnRecord) -> str:
-    ppid = rec.data.get("spawned_by_pid")
-    alive = _spawner_alive(rec)
-    if alive is None:
-        return f"its spawner (pid {ppid}) cannot be checked"
-    if alive:
-        return f"its spawner (pid {ppid}) is ALIVE: this server may still be in use"
-    return f"its spawner (pid {ppid}) is gone"
-
-
-def _classify(records: list[SpawnRecord], port: int) -> tuple[dict[int, SpawnRecord], dict[int, str], int]:
+def classify_records(records: list[SpawnRecord], port: int) -> tuple[dict[int, SpawnRecord], dict[int, str], int]:
     """``(alive by pid, mismatch reason by pid, stale count)``."""
     alive: dict[int, SpawnRecord] = {}
     mismatched: dict[int, str] = {}
@@ -548,98 +525,13 @@ def _classify(records: list[SpawnRecord], port: int) -> tuple[dict[int, SpawnRec
     return alive, mismatched, stale
 
 
-def reap(port: int, *, stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
-    """``maxim llm reap [--port N]``: report the maxim-recorded LLM server on ``port`` and, at a terminal only, kill it
-    once the operator types its pid. Exit 0 reaped or nothing recorded, 1 cancelled, 2 refused."""
-    stdin = stdin if stdin is not None else sys.stdin
-    stdout = stdout if stdout is not None else sys.stdout
-
-    def say(msg: str) -> None:
-        print(msg, file=stdout, flush=True)
-
-    try:
-        return _reap(port, stdin, stdout, say)
-    except OfflineRefusal as e:  # macOS reads identities and listeners through ps/lsof, which the latch refuses
-        say(f"refusing: MAXIM_OFFLINE refuses the ps/lsof this needs ({e}). Nothing touched.")
-        return 2
-
-
-def _reap(port: int, stdin: TextIO, stdout: TextIO, say: Any) -> int:
-    if sys.platform == "win32":
-        say("`maxim llm reap` needs Linux or macOS: native Windows writes no spawn records. Nothing touched.")
-        return 2
-    if _paths.llm_spawn_record_dir() is None:
-        say("no usable spawn-record directory (no passwd home; set MAXIM_LLM_SPAWN_RECORD_DIR). Nothing touched.")
-        return 2
-    try:
-        records = read_records(port)
-        alive, mismatched, stale = _classify(records, port)
-        scan = listening_pids(port)
-    except _NotTrusted as e:
-        say(f"spawn records not trusted: {e}. Nothing touched.")
-        return 2
-    except _Refused as e:
-        say(f"refusing: {e}. Nothing touched.")
-        return 2
-    stale_note = f" ({stale} stale record{'s' if stale != 1 else ''} left for the next spawn to prune)" if stale else ""
-
-    if not scan.pids and not scan.unattributed:
-        if alive:
-            for live in alive.values():
-                say(
-                    f"recorded server pid {live.pid} is alive but not listening on port {port} (loading or hung); "
-                    f"{_spawner_state(live)}. Not touched: wait for it, or stop it by hand."
-                )
-            return 2
-        say(f"no maxim-recorded server on port {port}{stale_note}.")
-        return 0
-    if scan.unattributed or len(scan.pids) != 1:
-        seen = ", ".join(_describe(p) for p in sorted(scan.pids)) or "none visible"
-        hidden = f" and {scan.unattributed} socket(s) whose owner this user cannot see" if scan.unattributed else ""
-        say(f"refusing: port {port} has listeners {seen}{hidden}; expected exactly one. Nothing touched.")
-        return 2
-    (pid,) = scan.pids
-    rec = alive.get(pid)
-    if rec is None:
-        if pid in mismatched:
-            say(f"{_describe(pid)} listens on port {port} and has a record, but {mismatched[pid]}. Not touched.")
-        else:
-            say(
-                f"{_describe(pid)} listens on port {port}: not started by a maxim that records spawns; not touched."
-                + stale_note
-            )
-        return 2
-
-    shown = established_connections(port, pid)
-    say(f"port {port}: maxim-recorded llama_cpp.server {_describe(pid)}")
-    say(f"  model: {rec.data.get('model_path')}; {_age(rec)}; {_spawner_state(rec)}")
-    say(f"  established connections: {len(shown)}" + "".join(f"\n    {c}" for c in shown))
-    say(f"  {CONNECTIONS_ARE_A_HINT}")
-    if not (stdin.isatty() and stdout.isatty()):
-        say(
-            f"Not at a terminal, so nothing was touched: run `maxim llm reap --port {port}` yourself in a terminal "
-            "to clean it up."
-        )
-        return 2
-    while True:
-        stdout.write(f"type the pid ({pid}) to kill it (anything else cancels): ")
-        stdout.flush()
-        if stdin.readline().strip() != str(pid):
-            say("cancelled. Nothing touched.")
-            return 1
-        now = established_connections(port, pid)
-        new = [c for c in now if c not in shown]
-        if not new:
-            break
-        say("new connections since the report:" + "".join(f"\n    {c}" for c in new))
-        shown = now
-    return _kill(rec, port, say)
-
-
 # ─── the kill ────────────────────────────────────────────────────────────────────────────────────
 
 
-def _kill(rec: SpawnRecord, port: int, say: Any) -> int:
+def kill_recorded(rec: SpawnRecord, port: int, say: Callable[[str], None]) -> int:
+    """Kill the recorded server ``rec`` (the reap's last step, after the operator typed its pid): SIGTERM, a grace,
+    SIGKILL, its identity re-verified first (Linux: on a pidfd; macOS: before each signal); the record is removed once
+    the pid has exited. Exit code as ``reap``: 0 stopped, 2 refused or not exited."""
     exited = _kill_linux(rec, port, say) if _linux() else _kill_macos(rec, port, say)
     if exited is None:
         return 2
@@ -661,7 +553,7 @@ def _readable(fd: int, timeout_s: float) -> bool:
     return bool(poller.poll(int(timeout_s * 1000)))
 
 
-def _kill_linux(rec: SpawnRecord, port: int, say: Any) -> bool | None:
+def _kill_linux(rec: SpawnRecord, port: int, say: Callable[[str], None]) -> bool | None:
     """SIGTERM, 5 s, SIGKILL through a pidfd that pins the process. None: refused before any signal."""
     pid = rec.pid
     try:
@@ -726,7 +618,7 @@ def _gone_or_zombie(pid: int) -> bool:
     return state is None or state.startswith("Z")
 
 
-def _kill_macos(rec: SpawnRecord, port: int, say: Any) -> bool | None:
+def _kill_macos(rec: SpawnRecord, port: int, say: Callable[[str], None]) -> bool | None:
     """macOS has no pidfd: re-verify the identity immediately before EACH signal. None: refused before any signal."""
     pid = rec.pid
     for n, sig in enumerate((signal.SIGTERM, signal.SIGKILL)):

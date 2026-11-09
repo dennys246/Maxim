@@ -143,7 +143,7 @@ class _Stream(io.StringIO):
 
 
 def _reap(port: int, *, typed: str | None = None, tty: bool = True) -> tuple[int, str, _Stream]:
-    from maxim.runtime.llm_spawn_record import reap
+    from maxim.runtime.llm_cli import reap
 
     stdin = _Stream((typed or "") + "\n", tty=tty)
     stdout = _Stream(tty=tty)
@@ -273,7 +273,7 @@ def test_an_alive_recorded_server_that_is_not_listening_is_reported_not_killed(r
 @POSIX
 @pytest.mark.parametrize("which", ["stdin", "stdout", "both"])
 def test_a_non_tty_run_never_kills_never_reads_stdin_and_prints_no_kill_line(record_dir, fake_server, which):
-    from maxim.runtime.llm_spawn_record import reap
+    from maxim.runtime.llm_cli import reap
 
     fake = fake_server()
     _write(fake)
@@ -459,11 +459,11 @@ def test_nothing_recorded_is_exit_0(record_dir):
 
 def test_maxim_llm_reap_is_routed(monkeypatch):
     import maxim.cli as cli
-    import maxim.runtime.llm_spawn_record as rec
+    import maxim.runtime.llm_cli as llm_cli
 
     assert "llm" in cli._NON_SIM_SUBCOMMANDS
     seen: list[int] = []
-    monkeypatch.setattr(rec, "reap", lambda port, **kw: seen.append(port) or 2)
+    monkeypatch.setattr(llm_cli, "reap", lambda port, **kw: seen.append(port) or 2)
     assert cli.main(["llm", "reap", "--port", "8123"]) == 2
     assert seen == [8123]
 
@@ -476,6 +476,7 @@ def test_maxim_llm_reap_is_routed(monkeypatch):
 def test_a_connection_that_appears_after_the_report_is_shown_and_asked_again(
     record_dir, fake_server, monkeypatch, second, rc_expected
 ):
+    import maxim.runtime.llm_cli as llm_cli
     import maxim.runtime.llm_spawn_record as rec
 
     fake = fake_server()
@@ -484,7 +485,7 @@ def test_a_connection_that_appears_after_the_report_is_shown_and_asked_again(
     monkeypatch.setattr(rec, "established_connections", lambda port, pid: next(snapshots))
     typed = f"{fake.pid}\n" + (f"{fake.pid}\n" if second == "pid" else "no\n")
     stdin, stdout = _Stream(typed, tty=True), _Stream(tty=True)
-    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == rc_expected
+    assert llm_cli.reap(fake.port, stdin=stdin, stdout=stdout) == rc_expected
     out = stdout.getvalue()
     assert "new connections since the report" in out and "40000" in out
     assert stdin.reads == 2
@@ -557,6 +558,7 @@ def _dead(pid: int, timeout_s: float = 10.0) -> bool:
 @POSIX
 def test_the_identity_is_re_verified_at_signal_time(record_dir, fake_server, monkeypatch):
     """The pid's start time changing between the report and the kill (a reuse) refuses, before any signal."""
+    import maxim.runtime.llm_cli as llm_cli
     import maxim.runtime.llm_spawn_record as rec
 
     fake = fake_server()
@@ -574,7 +576,7 @@ def test_the_identity_is_re_verified_at_signal_time(record_dir, fake_server, mon
             return line
 
     stdin, stdout = _Swap(f"{fake.pid}\n", tty=True), _Stream(tty=True)
-    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == 2
+    assert llm_cli.reap(fake.port, stdin=stdin, stdout=stdout) == 2
     assert "changed since the report" in stdout.getvalue()
     time.sleep(0.2)
     assert fake.alive()
@@ -775,6 +777,7 @@ def test_a_test_double_pid_writes_no_record(record_dir):
 @POSIX
 def test_the_ps_branch_re_verifies_before_its_first_signal(record_dir, fake_server, monkeypatch):
     """macOS has no pidfd: a start time that changes between the report and the kill refuses before SIGTERM."""
+    import maxim.runtime.llm_cli as llm_cli
     import maxim.runtime.llm_spawn_record as rec
 
     if not _ps_has_lstart():
@@ -798,7 +801,7 @@ def test_the_ps_branch_re_verifies_before_its_first_signal(record_dir, fake_serv
             return line
 
     stdin, stdout = _Swap(f"{fake.pid}\n", tty=True), _Stream(tty=True)
-    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == 2
+    assert llm_cli.reap(fake.port, stdin=stdin, stdout=stdout) == 2
     assert "changed since the report" in stdout.getvalue()
     time.sleep(0.2)
     assert fake.alive()
@@ -860,7 +863,7 @@ def test_an_lsof_that_cannot_answer_refuses(monkeypatch, raises, outcome, why):
 
     monkeypatch.setattr(rec, "_linux", lambda: False)
     monkeypatch.setattr(rec.subprocess, "run", run)
-    with pytest.raises(rec._Refused, match=why):
+    with pytest.raises(rec.ListenerScanRefused, match=why):
         rec.listening_pids(8100)
 
 
