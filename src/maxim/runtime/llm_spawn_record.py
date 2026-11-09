@@ -4,7 +4,8 @@
 PR 3a's promise holds: no maxim code kills a process it did not start, and nothing here kills automatically. The one
 kill path is :func:`kill_recorded`, called only by ``runtime/llm_cli.py::reap`` once an operator at a terminal (stdin
 AND stdout TTYs) typed the exact pid, and acting only on a server whose spawn record says a maxim process started it
-and whose identity still matches at signal time (docs/plans/bounded_stop.md §7b).
+and whose identity still matches at signal time (docs/plans/bounded_stop.md §7b). Regression guard (the one caller):
+tests/unit/test_llm_spawn_record.py::test_only_the_cli_references_kill_recorded.
 
 The TTY gate stops an accidental or scripted kill (a pipe, CI, a script, an agent's ordinary shell). A pty wrapper
 (``script``, ``expect``, tmux send-keys) defeats it: nothing tells a human from an agent at a pty, so agents are kept
@@ -531,7 +532,7 @@ def classify_records(records: list[SpawnRecord], port: int) -> tuple[dict[int, S
 def kill_recorded(rec: SpawnRecord, port: int, say: Callable[[str], None]) -> int:
     """Kill the recorded server ``rec`` (the reap's last step, after the operator typed its pid): SIGTERM, a grace,
     SIGKILL, its identity re-verified first (Linux: on a pidfd; macOS: before each signal); the record is removed once
-    the pid has exited. Exit code as ``reap``: 0 stopped, 2 refused or not exited."""
+    the pid has exited. Exit code as ``llm_cli.reap``: 0 stopped, 2 refused or not exited."""
     exited = _kill_linux(rec, port, say) if _linux() else _kill_macos(rec, port, say)
     if exited is None:
         return 2

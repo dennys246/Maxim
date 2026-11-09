@@ -454,6 +454,60 @@ def test_nothing_recorded_is_exit_0(record_dir):
     assert "no maxim-recorded server" in out
 
 
+@POSIX
+def test_no_usable_record_dir_refuses_rather_than_reporting_nothing(record_dir, monkeypatch):
+    """No record directory (no passwd home, an unexpandable override) is a refusal (exit 2), never "nothing recorded"
+    (exit 0): the records that would name the server cannot be read at all."""
+    import maxim.utils.paths as paths
+
+    monkeypatch.setattr(paths, "llm_spawn_record_dir", lambda: None)
+    rc, out, _ = _reap(_free_port(), typed="1")
+    assert rc == 2
+    assert "no usable spawn-record directory" in out and "Nothing touched" in out
+
+
+@POSIX
+def test_a_listener_scan_that_cannot_decide_refuses_through_the_command(record_dir, monkeypatch):
+    """``listening_pids`` raising ``ListenerScanRefused`` (macOS without a working lsof) reaches the operator as a
+    refusal with its reason, not a traceback."""
+    import maxim.runtime.llm_spawn_record as rec
+
+    def refused(port):
+        raise rec.ListenerScanRefused("lsof is not installed, so the listener on the port cannot be named")
+
+    monkeypatch.setattr(rec, "listening_pids", refused)
+    rc, out, _ = _reap(_free_port(), typed="1")
+    assert rc == 2
+    assert "refusing: lsof is not installed" in out and "Nothing touched" in out
+
+
+def test_only_the_cli_references_kill_recorded():
+    """``kill_recorded`` is the one kill path, and only ``maxim llm reap`` (after the TTY gate and the typed pid) may
+    reach it: no other module in src/ or scripts/ names it, so nothing kills automatically."""
+    import ast
+
+    root = Path(__file__).resolve().parents[2]
+    allowed = {"src/maxim/runtime/llm_cli.py"}
+    defined_in = "src/maxim/runtime/llm_spawn_record.py"
+    found: list[str] = []
+    for base in ("src", "scripts"):
+        for path in sorted((root / base).rglob("*.py")):
+            rel = path.relative_to(root).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+            for node in ast.walk(tree):
+                named = (
+                    (isinstance(node, ast.Name) and node.id == "kill_recorded")
+                    or (isinstance(node, ast.Attribute) and node.attr == "kill_recorded")
+                    or (isinstance(node, ast.alias) and node.name == "kill_recorded")
+                    or (isinstance(node, ast.Constant) and node.value == "kill_recorded")
+                )
+                if named and rel not in allowed:
+                    found.append(f"{rel}:{getattr(node, 'lineno', '?')}")
+    # the definition itself is a FunctionDef (not walked as a Name); any other use inside its own module is a caller too
+    assert found == [], f"kill_recorded named outside {sorted(allowed)}: {found} (defined in {defined_in})"
+    assert "kill_recorded(" in (root / "src/maxim/runtime/llm_cli.py").read_text(encoding="utf-8")
+
+
 # ─── gate 14: the CLI route ───────────────────────────────────────────────────────────────────────
 
 
