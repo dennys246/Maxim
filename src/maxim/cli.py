@@ -604,6 +604,54 @@ def _dispatch_hivemind_cli(raw_argv: list[str]) -> int | None:
     return None
 
 
+def _dispatch_tool_cli(raw_argv: list[str]) -> int | None:
+    """Route the serve / tunnel / doctor / bench / roy / model / llm subcommands; None if not one of them.
+
+    Moved verbatim out of ``_main_impl`` (#1344 PR 3b, rule T) when ``llm`` was added: the same lazy imports per branch.
+    """
+    if raw_argv and raw_argv[0] == "serve":
+        from maxim.console import run_serve_subcommand
+
+        return run_serve_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "tunnel":
+        from maxim.tunnel import run_tunnel_subcommand
+
+        return run_tunnel_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "doctor":
+        from maxim.doctor import run_doctor_subcommand
+
+        return run_doctor_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "bench":
+        # Plan 4 B: recovery-time (and future) benchmark harnesses.
+        # Entry point lives in maxim.bench.cli — no CUDA imports,
+        # no sim orchestrator, just a tight LLM call loop.
+        from maxim.bench import run_bench_subcommand
+
+        return run_bench_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "roy":
+        # Roy harness — persona-convergence crucible utilities.
+        # Currently exposes `roy diff <session_a> <session_b>`, which
+        # delegates to maxim.analysis.substrate_diff.
+        from maxim.roy import run_roy_subcommand
+
+        return run_roy_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "model":
+        # `maxim model add/remove/list` — user-profile management
+        # per leader_ux_profile_management.md L3. Writes to
+        # ~/.config/maxim/profiles.yml; the loader at
+        # maxim.models.language.profile_loader picks up changes on
+        # the next process start.
+        from maxim.models.model_cli import run_model_subcommand
+
+        return run_model_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "llm":
+        # `maxim llm reap`: the operator-run cleanup of a leftover LLM server (#1344 PR 3b).
+        from maxim.runtime.llm_cli import run_llm_subcommand
+
+        return run_llm_subcommand(raw_argv[1:])
+    return None
+
+
 _RUNTIME_SWITCHABLE_MODES = ("sleep", "live", "agentic", "passive", "active")
 
 
@@ -1205,7 +1253,7 @@ def _cli_agent_config(*, mem_dir: str | None, is_sim_mode: bool, embodiment_ref:
 # The positional subcommands that run no simulation. `roy run` runs sims in-process, and a subcommand not listed here
 # stays unknown, so a stop exits 4: a new one is strict until someone declares it (#1344).
 _NON_SIM_SUBCOMMANDS = frozenset(
-    {"serve", "tunnel", "doctor", "bench", "model", "config", "peer", "oasis", "hive", "substrate"}
+    {"serve", "tunnel", "doctor", "bench", "model", "config", "peer", "oasis", "hive", "substrate", "llm"}
 )
 
 
@@ -1315,41 +1363,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # Subcommand dispatch — intercepts positional subcommands before argparse.
     _declare_subcommand_mode(raw_argv)
-    if raw_argv and raw_argv[0] == "serve":
-        from maxim.console import run_serve_subcommand
-
-        return run_serve_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "tunnel":
-        from maxim.tunnel import run_tunnel_subcommand
-
-        return run_tunnel_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "doctor":
-        from maxim.doctor import run_doctor_subcommand
-
-        return run_doctor_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "bench":
-        # Plan 4 B: recovery-time (and future) benchmark harnesses.
-        # Entry point lives in maxim.bench.cli — no CUDA imports,
-        # no sim orchestrator, just a tight LLM call loop.
-        from maxim.bench import run_bench_subcommand
-
-        return run_bench_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "roy":
-        # Roy harness — persona-convergence crucible utilities.
-        # Currently exposes `roy diff <session_a> <session_b>`, which
-        # delegates to maxim.analysis.substrate_diff.
-        from maxim.roy import run_roy_subcommand
-
-        return run_roy_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "model":
-        # `maxim model add/remove/list` — user-profile management
-        # per leader_ux_profile_management.md L3. Writes to
-        # ~/.config/maxim/profiles.yml; the loader at
-        # maxim.models.language.profile_loader picks up changes on
-        # the next process start.
-        from maxim.models.model_cli import run_model_subcommand
-
-        return run_model_subcommand(raw_argv[1:])
+    _tool_rc = _dispatch_tool_cli(raw_argv)
+    if _tool_rc is not None:
+        return _tool_rc
     _hivemind_rc = _dispatch_hivemind_cli(raw_argv)
     if _hivemind_rc is not None:
         return _hivemind_rc

@@ -450,11 +450,53 @@ rounds: the PR body.
   `os.execv` that raises leaves the process with its registry closed (every later spawn refused; the swap path
   already refuses, `_active_spawner` being cleared).
 
-### 7b. PR 3b: the lock-based reaper (own clock)
+### 7b. PR 3b (#1344): no automatic reaper; an operator-run `maxim llm reap`
 
-Starts from the PR 3 approach note v4 with its round-4 folds: per-port `.gate` (EX) and `.users` (SH, held for life by
-every process using the server; freed by the kernel), reap iff `.users` EX|NB succeeds under the gate and the server's
-identity matches; the hot-swap-with-another-holder question; Linux pdeathsig through one long-lived spawn thread.
+**Owner decision 2026-11-06:** no automatic reaper. Five design rounds on the lock-based one (blockers 2, 1, 2, 1, 4)
+found one class every time: a reap while the server is in use. What automatic reaping would need (a per-use token
+every user of the server holds) is recorded with round 5, not built. The replacement went two further rounds (6:
+sound with conditions; delta 7: sound with conditions, no further round owed). Carried decisions: identity by spawn
+record only; Linux pdeathsig is #1613; the cold-boot tunnel/proxy gap is #1610, its own PR; the hot-swap 409 question
+is moot.
+
+Promise: 3a's holds, **no maxim code kills a process it did not start**, and nothing kills automatically. The one new
+kill path is run by an operator at a terminal and acts only on a server a maxim process recorded spawning, whose
+identity still matches at signal time.
+- **The spawn record** (`runtime/llm_spawn_record.py`): `<llm_spawn_record_dir()>/<port>.<pid>.json`, written by
+  `LocalServerSpawner.start` right after `spawn_registered` (auto-spawn and the hot swap), with the server's start time
+  (Linux `/proc/<pid>/stat` field 22 plus the boot id; macOS `ps -o lstart` under `LC_ALL=C TZ=UTC`), model, spawner
+  pid and start time. The writer first prunes the provably dead records for its port (files only). The owner's
+  `stop()` unlinks its own record once the leader is reaped. Advisory: no record means no reap (3a's behaviour).
+  The dir is `utils/paths.py::llm_spawn_record_dir`, the passwd home's `.maxim/run/llm_server/` (never `HOME` or
+  `MAXIM_DATA_HOME`: a port is box-wide), override `MAXIM_LLM_SPAWN_RECORD_DIR`; created 0700, and a dir or file that is
+  a symlink, another user's, or group/world-writable is neither written nor trusted.
+- **`maxim llm reap [--port N]`** reads every record for the port, then the listeners (Linux `/proc/net/tcp*` over every
+  uid in the netns, inodes mapped through `/proc/<pid>/fd`; macOS `lsof`, whose absence refuses). It acts only on
+  exactly one visible listener that is an alive recorded pid whose start time, boot id and exact `--port <N>` argv pair
+  all match. No listener and no live record: exit 0. A live record not listening (loading or hung), a listener with no
+  record or a mismatched one, several listeners or an unattributable socket: reported, exit 2. The report gives the
+  pid, model, age, whether the spawner lives, and the server-side ESTABLISHED connections, with "connections are a
+  hint: a client between calls holds none". It opens no connection of its own.
+- **The gate:** unless stdin AND stdout are TTYs it prints the report and "run `maxim llm reap --port N` yourself in a
+  terminal", exit 2, without reading stdin or printing a kill line. At a TTY the operator types the pid (anything else
+  cancels, exit 1); connections are re-read after it, and a new one is shown and asked again. A pty wrapper defeats the
+  TTY check: agents are kept off the command by policy (CLAUDE.md's agent command list; backlog M87, M86 being #1614's).
+- **The kill.** Linux: `pidfd_open` (a failure refuses; never `os.kill` by number), identity re-verified while the pidfd
+  pins the process, SIGTERM through the pidfd with `PIDFD_SIGNAL_PROCESS_GROUP` (4) when the kernel takes it (6.9+),
+  else to the leader and then `killpg` only while the leader has not exited; 5 s, then SIGKILL the same way. macOS:
+  identity re-verified before each signal. Then the record is unlinked. Exit 0 reaped, 1 cancelled, 2 refused.
+- **Surfaced:** `_wrong_model_error` and `LLMServerKeyRejected` name the command; `LLMServerPortBusy` does not (its
+  "stayed busy" case is a server generating for someone). `maxim doctor` gains a read-only INFO line per stale record
+  or recorded server whose spawner is gone; it never says a server is unused.
+- **Residuals, stated:** no record, no reap (a pre-3b orphan or a hand-started server is killed by hand); connections
+  are a hint, so a confirmed kill can still cut off a client between calls (and on Linux a connection still in the
+  accept queue has no server fd, so it is not counted); a pty wrapper defeats the TTY check; on
+  Linux before 6.9 and on macOS the group signal goes by number (a leader exiting between the check and `killpg`, with
+  an empty group and an immediate pid wrap, could reach a stranger's group); a group member that ignores SIGTERM
+while its leader exits is not followed, as in 3a's `stop_child_group` (llama_cpp.server does not fork today); macOS
+`lsof` sees only this user's
+  sockets, so an unattributable listener is not detected there; native Windows writes no records and the command
+  refuses.
 
 ## 8. Proof
 

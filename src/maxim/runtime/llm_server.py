@@ -323,7 +323,8 @@ def _wrong_model_error(url: str, served: str | None, configured: str) -> Runtime
 
     from maxim.runtime.local_server_spawner import describe_port_listener
 
-    listener = describe_port_listener(urlsplit(url).port or 8100)
+    port = urlsplit(url).port or 8100
+    listener = describe_port_listener(port)
     # Most common cause when configured and served diverge: the operator
     # ran ``maxim --llm <new>`` to swap the runtime server but did not
     # also update ``config.json::llm.profile``. The two state files are
@@ -349,6 +350,7 @@ def _wrong_model_error(url: str, served: str | None, configured: str) -> Runtime
         f"  (b) Stop that server ({listener}), then restart with the configured model:\n"
         f"        maxim --llm {configured}\n"
         f"  (c) Stop that server ({listener}) and let this run spawn fresh.\n"
+        f"If it is a leftover maxim server, run `maxim llm reap --port {port}` in a terminal.\n"
         f"\n"
         f"See the CLAUDE.md lesson 'Config.json vs active_llm_model.txt drift "
         f"after maxim --llm <model>'."

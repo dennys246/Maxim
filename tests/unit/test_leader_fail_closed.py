@@ -378,7 +378,8 @@ def test_a_fresh_spawn_that_fails_the_exposure_check_is_stopped_and_raises(monke
     gguf.write_bytes(b"GGUF")
     spawner = lss.LocalServerSpawner(model_path=str(gguf), api_key=GOOD_KEY)
     stopped: list[bool] = []
-    monkeypatch.setattr(lss.subprocess, "Popen", lambda *a, **k: SimpleNamespace(poll=lambda: None))
+    # A real Popen always has a pid (the spawn record reads it); 0 names no process, so no record is written.
+    monkeypatch.setattr(lss.subprocess, "Popen", lambda *a, **k: SimpleNamespace(pid=0, poll=lambda: None))
     monkeypatch.setattr(spawner, "_wait_ready", lambda _t: True)
     monkeypatch.setattr(spawner, "stop", lambda: stopped.append(True))
 
