@@ -242,6 +242,28 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-11-09, #1620 (the content keys converge a word's inflections)
+
+#1620 changes `memory/text.py::settle_key`, the content-key layer every memory store keys through (`key_tokens`,
+`content_tokens`): "move"/"moved"/"moving" now reach one key. `normalize_tokens` is unchanged. The changed keys reach
+the Hippocampus ranker and cue, `keywords()`, the association index, enrichment's keywords (and through them NAc's
+keyword scan) and ATL's `name_token:` index (`key_tokens(concept.name)`); none is persisted, so nothing on disk
+changes.
+
+- **T1-16 fires by effect, conservatively.** Its `Re-run on:` names "a change to `_rank_by_relevance` or
+  `_query_hippocampus`", not the keying, but the ranker's output changes through `key_tokens`, as the 2026-10-25 re-assessment counted for #1064.
+  No status change: the row is already STALE, and Exp 63c (#1476's successor, owner hold of 2026-11-09) is its re-run,
+  on the new keying. Exp 63b's verdict stands as judged: `scripts/o19_verdict.py` (left byte-identical) imports no
+  `maxim` and copies e841abca's keying (gate G2), whose pin now reads a vendored copy
+  (`tests/fixtures/exp63b/executed_text.py`). Owed with the 63b interpretation PR's merge: add "`memory/text.py`
+  content keying (`key_tokens`/`settle_key`)" to the row's `Re-run on:`, so the next change fires it by its letter.
+- **T1-2 (Exp 37) fires conservatively** by "prompt construction change": enrichment's recalled memories, which
+  reach the prompt, are chosen by these keys. No status change: the row is STALE since 2026-10-02 and its re-fire is
+  baseline-floors Stage B4.
+- **Not fired:** T1-1 (SUPERSEDED), T3-9 (reflexes), and the situation-keyed rows (T1-13/14/15: NAc's
+  `SituationSignature` is excluded from the keying on purpose, bio-memory brief). No other row names enrichment,
+  keying or the tokenizer.
+
 ### Trigger walk — 2026-10-18, #1363 + #1365 (the NAc audit, merged) and experience-clock S1
 
 One walk for three changes to `decisions/nac.py` and its neighbours, from the 2026-10-17 NAc audit (#1361):
