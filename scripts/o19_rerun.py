@@ -378,11 +378,12 @@ def check_host_identity() -> None:
 
 
 def port_accepts(port: int) -> bool:
-    """Whether 127.0.0.1:``port`` accepts a TCP connection (#1616). A bare connect, never an HTTP read: it logs
-    nothing, so the harness waits out the sim's server start silently instead of recording a refused read and
-    ``utils/http.py``'s ``http_request_failed`` WARNING. Accepting is not serving (llama-server binds before it
-    loads the model and answers 503 meanwhile); a read that still fails before the first OK one is flagged
-    ``not_ready`` by :func:`spawn_phase`, and the judge recomputes the first-OK window itself (63c's S2′)."""
+    """Whether something accepts a TCP connection on 127.0.0.1:``port`` (#1616). A bare connect, never an HTTP
+    read: it logs nothing, so the harness waits out the sim's server start without recording a refused read or
+    ``utils/http.py``'s ``http_request_failed`` WARNING (a transport failure; a 503 logs below WARNING). Accepting is
+    not serving, and nothing here says WHICH process accepted: the reads that follow are the evidence. The harness
+    labels no read; a judge works out which reads it judges from the reads themselves (63c's S2′ judge must compute
+    its own first-OK to last-OK window)."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(1.0)
         return s.connect_ex(("127.0.0.1", port)) == 0
@@ -576,10 +577,10 @@ def spawn_phase(
     }
     url = f"http://127.0.0.1:{v.SIM_PORT}/v1"
     reads: list[dict] = []
+    # listening_at: when the port first accepted (a timestamp, not evidence of whose server it was).
     fields["served_model"] = served = {"url": url, "reads": reads, "listening_at": None}
     timed_out = False
     last_read = 0.0
-    served_ok = False  # whether a read has returned the served id yet: a failure before it is a start, not a fault
     with console.open("wb") as out:
         proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         deadline = time.monotonic() + timeout_s
@@ -589,13 +590,9 @@ def spawn_phase(
                     timed_out = True
                     break
                 if served["listening_at"] is None and port_accepts(v.SIM_PORT):
-                    served["listening_at"] = time.time()  # #1616: no read before the sim's server listens
+                    served["listening_at"] = time.time()  # #1616: no read before the port accepts
                 if served["listening_at"] is not None and time.monotonic() - last_read >= SERVED_EVERY_S:
-                    row = read_served(v.SIM_PORT, gguf)
-                    if row.get("error") and not served_ok:
-                        row["not_ready"] = True  # listening, still loading: reported, never judged (63c S2′)
-                    served_ok = served_ok or bool(row.get("served") and not row.get("error"))
-                    reads.append(row)
+                    reads.append(read_served(v.SIM_PORT, gguf))
                     # after the read: a read that waited out a completion keeps the spacing
                     last_read = time.monotonic()
                 time.sleep(POLL_S)
@@ -681,7 +678,11 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         "ts": now,
         "end_ts": now,
         "returncode": 0,
-        "served_model": {"url": endpoint, "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}]},
+        "served_model": {
+            "url": endpoint,
+            "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}],
+            "listening_at": now,
+        },
         "depends_on": [],
         "sims": [_provenance.sim_evidence(sdir, report)],
     }

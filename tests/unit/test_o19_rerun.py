@@ -1029,7 +1029,7 @@ def test_an_interrupted_poll_stops_the_sim(monkeypatch, tmp_path) -> None:
 
 def test_no_served_read_before_the_sims_port_listens(monkeypatch, tmp_path) -> None:
     """#1616: the first read waits for the port to accept (a silent connect, no http_request_failed WARNING); a
-    read that fails after that but before the first OK one is flagged not_ready, a later failure is not."""
+    read after that is recorded as it came back: the harness labels none of them (a judge computes its own window)."""
     listening = iter([False, False, True])
     reads = iter(
         [
@@ -1055,8 +1055,12 @@ def test_no_served_read_before_the_sims_port_listens(monkeypatch, tmp_path) -> N
     )
     assert called[0] == 3 and len(probed) == 3  # no read until the third probe accepted; no probe after that
     served = fields["served_model"]
-    assert isinstance(served["listening_at"], float)
-    assert [r.get("not_ready") for r in served["reads"]] == [True, None, None]
+    assert fields["ts"] <= served["listening_at"] <= fields["end_ts"]
+    assert served["reads"] == [
+        {"served": None, "error": "HTTPServerError: 503"},
+        {"served": "g", "match": True},
+        {"served": None, "error": "HTTPConnectionError: refused"},
+    ]  # recorded verbatim: no harness label
 
 
 def test_port_accepts_is_a_bare_connect(monkeypatch) -> None:
