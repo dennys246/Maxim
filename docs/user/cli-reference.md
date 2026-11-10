@@ -428,6 +428,15 @@ directly rather than running a full scenario.
 | `--show-last` | flag | | Show all saved invocations and exit |
 | `--clear-last` | flag | | Clear saved invocations and exit |
 
+### `maxim llm reap [--port N]`
+
+Clean up a leftover LLM server that a maxim process spawned and did not stop (a crash, a killed terminal). Not
+`maxim peer llm`, which switches a leader's model. It reports the server on the port (default `MAXIM_AUTO_SPAWN_PORT`,
+else 8100): pid, model, age, whether its spawner still runs, and its connections ("connections are a hint: a client between
+calls holds none"). At a terminal, type the pid to stop it (SIGTERM, then SIGKILL after 5 s); anything else cancels.
+It never touches a server without a matching spawn record (one started by hand or by a maxim before 1.3.4), and
+outside a terminal it only reports. Exit 0 stopped or nothing recorded, 1 cancelled, 2 refused. Linux and macOS only.
+
 ---
 
 ## Examples

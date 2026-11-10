@@ -6,7 +6,9 @@ every ``MAXIM_*`` is harmless. A CHILD is a fresh process with the real ``/etc/c
 variable itself: a child env built from scratch beside its own ``HOME`` takes :func:`isolation_env`, a copy without
 the operator's overrides is :func:`without_maxim_overrides`, and an in-process strip that a later child would inherit
 is :func:`drop_maxim_overrides`. Without it, the child's role detection reads the host's
-``/etc/cloudflared/config.yml``: ``leader`` on a leader dev box, invisible on CI (2026-11-05).
+``/etc/cloudflared/config.yml``: ``leader`` on a leader dev box, invisible on CI (2026-11-05). The same holds for
+``MAXIM_LLM_SPAWN_RECORD_DIR`` (#1344 PR 3b): its default follows the passwd home, not ``HOME``, so a child without it
+would read and write the developer's real LLM spawn records.
 ``tests/unit/test_child_env_routing.py`` refuses a hand-written strip or a child env without the isolation (a
 heuristic scan; its docstring lists the limits).
 """
@@ -17,7 +19,7 @@ import os
 from collections.abc import MutableMapping
 
 # Variables tests/conftest.py exports to isolate the suite from the host; never an operator override.
-ISOLATION_VARS: tuple[str, ...] = ("MAXIM_CLOUDFLARED_SYSTEM_DIR",)
+ISOLATION_VARS: tuple[str, ...] = ("MAXIM_CLOUDFLARED_SYSTEM_DIR", "MAXIM_LLM_SPAWN_RECORD_DIR")
 
 
 def isolation_env() -> dict[str, str]:
