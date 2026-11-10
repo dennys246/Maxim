@@ -27,6 +27,10 @@
       "percent": 39.7,
       "missing": 534
     },
+    "maxim/bench": {
+      "percent": 81.5,
+      "missing": 37
+    },
     "maxim/bridges": {
       "percent": 54.4,
       "missing": 686
