@@ -722,6 +722,23 @@ jobs:
       GH_TOKEN: ${{ github.token }}
 
     steps:
+      # TEMPORARY (#1426 design gate): record the runner facts the namespace change depends on. Never merged.
+      - name: "DIAG #1426: runner facts"
+        continue-on-error: true
+        run: |
+          set +e
+          echo "== os"; head -3 /etc/os-release
+          echo "== id"; id; echo "primary gid: $(id -g)"; getent group docker
+          echo "== docker socket"; ls -l /var/run /var/run/docker.sock /run/docker.sock 2>&1
+          stat -L /var/run/docker.sock 2>&1
+          (command -v getfacl >/dev/null && getfacl -p /var/run/docker.sock) 2>&1 || echo "getfacl missing"
+          echo "== containerd"; ls -l /run/containerd 2>&1
+          echo "== user runtime dir"; echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset}"; ls -la "/run/user/$(id -u)" 2>&1
+          ls -la "/run/user/$(id -u)/systemd" 2>&1 | head -5
+          echo "== sudo"; sudo -n true && echo "host sudo -n: yes" || echo "host sudo -n: no"
+          echo "== setpriv"; setpriv --version
+          echo "== inside today's namespace"
+          bash scripts/ci_netns.sh 'sudo -n true && echo "SUDO INSIDE NETNS: yes" || echo "SUDO INSIDE NETNS: no"; id; "$PY" -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect(\"/var/run/docker.sock\"); print(\"DOCKER SOCKET INSIDE NETNS: reachable\")" || echo "DOCKER SOCKET INSIDE NETNS: blocked"'
       - uses: actions/checkout@v4
         with:
           # FULL history. The diff-scoped lints below resolve a merge-base with
