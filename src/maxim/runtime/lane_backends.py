@@ -2226,7 +2226,7 @@ def build_primary_router(
       1. Detect RuntimeCapabilities if not provided.
       2. Clone DEFAULT_LANES + apply capability-driven profile assignments
          (Phase 2).
-      3. Apply MAXIM_LANE_{NAME}_REMOTE_URL / _MODEL / _REMOTE_API_KEY env overrides
+      3. Apply MAXIM_LANE_{NAME}_REMOTE_URL / _MODEL / _API_KEY env overrides
          (Phase 4).
       4. Construct LaneBackendManager with the gates (Phase 3 + 4 safety).
       5. Return (manager.get_backend("large"), manager).
