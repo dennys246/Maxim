@@ -28,6 +28,41 @@ _EVIDENCE_OUT_PATH = (
 )  # the fixture redirects the harness's rows; the verdict needs the real one
 _REAL_PROVENANCE = h._provenance.executed_code_provenance
 _PROVENANCE: dict = {}  # one real provenance block per test session (#1081 item 6)
+_EXECUTED_TEXT_PATH = REPO / "tests" / "fixtures" / "exp63b" / "executed_text.py"
+_EXECUTED_TEXT_MARKER = "# --- verbatim below ---\n"
+
+
+def _executed_text():
+    """Exp 63b's executed keying (e841abca), vendored at ``tests/fixtures/exp63b/executed_text.py``."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("exp63b_executed_text", _EXECUTED_TEXT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(autouse=True)
+def _exp63b_executed_keying(monkeypatch):
+    """Every experiment this module judges (Exp 10, 63, 63b) is judged under the keying before #1620 changed the
+    shipped content keys: the verdict's FROZEN port (G2) copies Exp 63b's (e841abca). So the shipped stores these tests
+    build and recall key text as e841abca's ``memory/text.py`` did: its ``settle_key``/``key_tokens``/``content_tokens``
+    stand in for the shipped ones (every caller imports them from the module at call time), and NAc's memoized
+    signature keys are cleared on both sides so no key from the other keying is reused. A record keyed BEFORE the
+    fixture runs (one built at import) keeps its cached shipped keys, so build records inside the test.
+
+    A run on post-#1620 code fails this port's C5(b)/C5(d) checks by design (its keys are not the port's): Exp 63c
+    runs on the new keying with its own port, and its tests must opt out of this fixture."""
+    from maxim.decisions import nac
+    from maxim.memory import text
+
+    executed = _executed_text()
+    for name in ("settle_key", "key_tokens", "content_tokens"):
+        monkeypatch.setattr(text, name, getattr(executed, name))
+    nac._signature_tokens.cache_clear()
+    yield
+    nac._signature_tokens.cache_clear()
 
 
 def stable_provenance(monkeypatch) -> None:
@@ -3238,11 +3273,40 @@ def _port_records() -> list[dict]:
     return recs
 
 
-def test_exp63b_the_port_is_the_shipped_keying() -> None:
-    from maxim.memory import text as T
+def test_the_vendored_keying_is_the_executed_commits() -> None:
+    """The vendored module is ``memory/text.py`` byte for byte at Exp 63b's executed commit (where history exists)."""
+    import subprocess
+
+    try:
+        src = subprocess.run(
+            ["git", "show", "e841abca:src/maxim/memory/text.py"], cwd=REPO, capture_output=True, text=True, check=True
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip("the executed commit is not in this clone's history")
+    vendored = _EXECUTED_TEXT_PATH.read_text()
+    assert vendored[vendored.index(_EXECUTED_TEXT_MARKER) + len(_EXECUTED_TEXT_MARKER) :] == src
+
+
+def test_the_shipped_keying_is_not_the_executed_keying() -> None:
+    """The fixture is live: the shipped content keys differ from the executed ones on #1620's forms, so a test here
+    that reached the shipped keying (a caller that bound ``key_tokens`` at import) would be judged on the wrong keys."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("shipped_text", REPO / "src" / "maxim" / "memory" / "text.py")
+    assert spec is not None and spec.loader is not None
+    shipped = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shipped)
+    from maxim.memory import text
+
+    assert text.key_tokens("moved") == _executed_text().key_tokens("moved") == ["mov"]
+    assert shipped.key_tokens("move moving") == ["mov", "mov"] != text.key_tokens("move moving")
+
+
+def test_exp63b_the_port_is_the_executed_keying() -> None:
     from maxim.memory.hippocampus_persistence import store_digest
     from maxim.memory.types import CompressedMemory, EpisodicMemory
 
+    T = _executed_text()
     assert v._P_STOP_WORDS == T._STOP_WORDS and v._P_METADATA_KEYS == T._METADATA_KEYS
     assert v._P_PUNCT_STRIP == T._PUNCT_STRIP
     for words in [_FUZZ_WORDS, *[[w] for w in _FUZZ_WORDS]]:
