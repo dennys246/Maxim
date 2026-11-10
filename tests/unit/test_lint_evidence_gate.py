@@ -473,6 +473,20 @@ def test_the_real_pass_table_supports_exp63b_earned_from_pass_only() -> None:
     assert G.pass_table_problems(table, "HEAD") == [] and "exp63b_verdict" in R.O19_KINDS
 
 
+@pytest.mark.xfail(strict=True, reason="red gate (build order step 4): the Exp 63c harness lands in the next commit")
+def test_the_real_pass_table_supports_exp63c_earned_from_pass_only() -> None:
+    """Exp 63c's prereg (§Attempts, verdict, ledger): ``exp63c_verdict`` -> {PASS} supports EARNED (narrow) on T1-16
+    and nothing else: NOT SHOWN does not raise the row (OD2), and a root campaign has no REPRODUCED."""
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    assert table["exp63c_verdict"] == {
+        "rows": ["T1-16"],
+        "scopes": ["narrow"],
+        "targets": {"EARNED": ["PASS"]},
+        "require": {"apparatus_checked": True},
+    }
+    assert G.pass_table_problems(table, "HEAD") == [] and "exp63c_verdict" in R.O19_KINDS
+
+
 def test_unknown_digests_never_match() -> None:
     assert R.unknown("unknown") and R.unknown("unknown: OSError") and R.unknown(None) and R.unknown("")
     assert not R.unknown("a" * 64)
