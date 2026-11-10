@@ -943,12 +943,13 @@ def _early_leader_boot() -> int | None:
 
         detected_role = detect_role()
         if detected_role.role == "leader":
-            from maxim.runtime.leader_proxy import start_leader_proxy_for_role
+            from maxim.runtime.leader_mode import claim_leader_services
 
             # Fails closed: no usable mesh key, or the port held by something
             # that is not an authenticated LeaderProxy, raises here and the
-            # handler below exits before anything else starts.
-            start_leader_proxy_for_role(detected_role.bind_host)
+            # handler below exits before anything else starts. Binding the
+            # proxy claims the tunnel + heartbeat for this process (#1610).
+            claim_leader_services(detected_role.bind_host)
     except LeaderRefusal as _e:
         _fix = getattr(_e, "fix_hint", "Run `maxim doctor` for diagnostics.")
         _why = detected_role.reason if detected_role is not None else "unknown"

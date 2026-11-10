@@ -161,12 +161,12 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 213
+      "lines": 205
     },
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "build_primary_router",
-      "lines": 207
+      "lines": 206
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
@@ -400,6 +400,7 @@
     "_maybe_auto_spawn_server tightened 259 -> 224 on 2026-11-03 (#1344 PR 3a, rule T): the box-wide kill_stale_llm_servers call left it, and its singleton check (check_existing_llm_server + the new llm_server.preflight_spawn) moved to lane_backends.py::_existing_server_decision. Merged with #1538 (main's _maybe_auto_spawn_server at 248 after its profile choice moved to _auto_spawn_profile): 213.",
     "api.py::run tightened 224 -> 216 and start_simulation_mode 1917 -> 1910 on 2026-11-03 (#1586, rule T): the API's model is handed to the run's router build (build_primary_router(profile=), start_simulation_mode(llm_profile=)) instead of a MAXIM_LLM_PROFILE write for the run. run's router build moved to api._build_run_router and its MAXIM_LLM_ENABLED setdefault to api._enable_llm_for_run (shared with imagine and campaign); the shared sim router build moved to orchestrator.py::_build_shared_router.",
     "start_research_mode tightened 262 -> 241 on 2026-11-03 (#1586 review fold, rule T): research hands its model to its router build (_build_research_llm(language_model)) and its sim (start_simulation_mode(llm_profile=)); the campaign YAML load moved verbatim to research_orchestrator._load_campaign_turns.",
-    "_main_impl tightened 1377 -> 1345 on 2026-11-06 (#1344 PR 3b, rule T): the serve/tunnel/doctor/bench/roy/model subcommand dispatch moved verbatim to cli.py::_dispatch_tool_cli, carrying the new `llm` route."
+    "_main_impl tightened 1377 -> 1345 on 2026-11-06 (#1344 PR 3b, rule T): the serve/tunnel/doctor/bench/roy/model subcommand dispatch moved verbatim to cli.py::_dispatch_tool_cli, carrying the new `llm` route.",
+    "_maybe_auto_spawn_server tightened 213 -> 205 and build_primary_router 207 -> 206 on 2026-11-09 (#1610, rule T; owner decisions: one role-keyed owner of a leader's services, CLI leaders only): the fresh-spawn tail that started the tunnel, proxy and heartbeat left auto-spawn (the tunnel starter moved to tunnel/daemon_spawner.auto_spawn_tunnel_daemon; _maybe_start_leader_proxy was deleted, and the CLI's early boot claims through leader_mode.claim_leader_services), and build_primary_router's heartbeat start became one call to lane_backends._start_process_services, which first starts the claimed leader's services."
   ]
 }

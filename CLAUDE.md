@@ -41,7 +41,7 @@ This file is the always-loaded core; everything subsystem-specific lives one hop
 | Touching | Read first |
 |---|---|
 | `src/maxim/memory/`, `decisions/`, `similarity/`, `integration/memory_hub.py`, `hivemind/`, `time/`, `agents/bus.py` (tiers/valence), substrate encoding | [docs/agents/bio-memory.md](docs/agents/bio-memory.md) |
-| `src/maxim/models/language/`, `runtime/lane_*.py`, `runtime/function_router.py`, `runtime/leader_proxy.py`, `runtime/llm_server.py`, `runtime/llm_call_registry.py`, `peer/`, `mesh/`, `tunnel/`, `doctor/`, `utils/http.py` | [docs/agents/llm-routing.md](docs/agents/llm-routing.md) |
+| `src/maxim/models/language/`, `runtime/lane_*.py`, `runtime/function_router.py`, `runtime/leader_proxy.py`, `runtime/leader_mode.py`, `runtime/llm_server.py`, `runtime/llm_call_registry.py`, `peer/`, `mesh/`, `tunnel/`, `doctor/`, `utils/http.py` | [docs/agents/llm-routing.md](docs/agents/llm-routing.md) |
 | `src/maxim/embodiment/`, `proprioception/`, `bridges/`, `reactions/`, `default_network/`, `embodied_runtime/`, `motion/`, robot YAMLs, **anything commanding Reachy motion** | [docs/agents/embodiment.md](docs/agents/embodiment.md) — hardware-safety section is mandatory before motion code |
 | `scripts/benchmark_*`, `scripts/exp*`, `scripts/orient_*`, `simulation/`, `interactive/`, `tests/behavioral/`, `docs/experiments/`, running any sim | [docs/agents/simulation-experiments.md](docs/agents/simulation-experiments.md) |
 | `utils/atomic_io.py`, `utils/format_version.py`, `utils/seeding.py`, `utils/paths.py`, `runtime/config_loader.py`, `runtime/config_writer.py`, `runtime/role.py`, any persisted-JSON shape, any frozen dataclass | [docs/agents/persistence-config.md](docs/agents/persistence-config.md) |

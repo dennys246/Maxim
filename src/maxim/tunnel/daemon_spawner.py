@@ -20,6 +20,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 from maxim.tunnel.cloudflared import find_cloudflared
 from maxim.utils.cancellation import spawn_registered, stop_child_group, unregister_child
@@ -164,7 +165,48 @@ class TunnelDaemonSpawner:
             unregister_child(proc)
 
 
+def auto_spawn_tunnel_daemon(logger: Any | None) -> None:
+    """Spawn the cloudflared tunnel daemon if a tunnel config exists and no daemon is running. Called only by
+    ``runtime/leader_mode.py::start_claimed_leader_services``, for the process that owns a leader's services (#1610;
+    moved here from ``lane_backends``).
+
+    Opt out with MAXIM_AUTO_SPAWN_TUNNEL=0.
+    """
+    if os.environ.get("MAXIM_AUTO_SPAWN_TUNNEL", "").strip().lower() in (
+        "0",
+        "false",
+        "f",
+        "no",
+        "n",
+        "off",
+    ):
+        return
+    if cloudflared_already_running():
+        if logger is not None:
+            logger.info(
+                "Cloudflared daemon already running — skipping auto-spawn (managed elsewhere, e.g. systemd service)"
+            )
+        return
+    config_path = resolve_config_path()
+    if config_path is None:
+        if logger is not None:
+            system_config = cloudflared_system_dir() / "config.yml"
+            logger.debug(f"Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or {system_config} found.")
+        return
+    spawner = TunnelDaemonSpawner(config_path=config_path)
+    if logger is not None:
+        logger.info("Auto-spawning cloudflared tunnel daemon (config=%s)", config_path)
+    if not spawner.start():
+        if logger is not None:
+            logger.warning(
+                "Cloudflared daemon auto-spawn failed — tunnel will not be active "
+                "until you start it manually: cloudflared --config %s tunnel run",
+                config_path,
+            )
+
+
 __all__ = [
+    "auto_spawn_tunnel_daemon",
     "TunnelDaemonSpawner",
     "cloudflared_already_running",
     "resolve_config_path",

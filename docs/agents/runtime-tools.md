@@ -8,7 +8,7 @@
 
 1. `configure_logging` — at the very top, BEFORE subcommand dispatch, so `MAXIM_LOG_FILE` and structured events work for the `doctor`/`peer`/`tunnel` short-circuits too (the sim loop's later `configure_logging(force=True)` dedupes handlers, so early+late is safe).
 2. `runtime/role.py::detect_and_apply_role(raw_argv)` — role detected ONCE, exported as `MAXIM_ROLE`; downstream reads env, never re-detects (home: docs/agents/persistence-config.md).
-3. LeaderProxy start — BEFORE `_normalize_args()`, because arg normalization can trigger heavy CUDA imports (5-15s) and peers polling for the proxy during restart would time out.
+3. LeaderProxy start (`runtime/leader_mode.py::claim_leader_services`, which also claims the leader's tunnel + heartbeat for this process; #1610, docs/agents/llm-routing.md) — BEFORE `_normalize_args()`, because arg normalization can trigger heavy CUDA imports (5-15s) and peers polling for the proxy during restart would time out.
 4. `_normalize_args()` → subcommand dispatch / sim loop.
 
 Any code that runs early in `_main_impl` and consumes `argv` must explicitly handle subcommand entry paths (`maxim tunnel --llm X` once mis-detected role as `solo`).
