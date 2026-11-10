@@ -143,7 +143,7 @@ class _Stream(io.StringIO):
 
 
 def _reap(port: int, *, typed: str | None = None, tty: bool = True) -> tuple[int, str, _Stream]:
-    from maxim.runtime.llm_spawn_record import reap
+    from maxim.runtime.llm_cli import reap
 
     stdin = _Stream((typed or "") + "\n", tty=tty)
     stdout = _Stream(tty=tty)
@@ -273,7 +273,7 @@ def test_an_alive_recorded_server_that_is_not_listening_is_reported_not_killed(r
 @POSIX
 @pytest.mark.parametrize("which", ["stdin", "stdout", "both"])
 def test_a_non_tty_run_never_kills_never_reads_stdin_and_prints_no_kill_line(record_dir, fake_server, which):
-    from maxim.runtime.llm_spawn_record import reap
+    from maxim.runtime.llm_cli import reap
 
     fake = fake_server()
     _write(fake)
@@ -454,16 +454,70 @@ def test_nothing_recorded_is_exit_0(record_dir):
     assert "no maxim-recorded server" in out
 
 
+@POSIX
+def test_no_usable_record_dir_refuses_rather_than_reporting_nothing(record_dir, monkeypatch):
+    """No record directory (no passwd home, an unexpandable override) is a refusal (exit 2), never "nothing recorded"
+    (exit 0): the records that would name the server cannot be read at all."""
+    import maxim.utils.paths as paths
+
+    monkeypatch.setattr(paths, "llm_spawn_record_dir", lambda: None)
+    rc, out, _ = _reap(_free_port(), typed="1")
+    assert rc == 2
+    assert "no usable spawn-record directory" in out and "Nothing touched" in out
+
+
+@POSIX
+def test_a_listener_scan_that_cannot_decide_refuses_through_the_command(record_dir, monkeypatch):
+    """``listening_pids`` raising ``ListenerScanRefused`` (macOS without a working lsof) reaches the operator as a
+    refusal with its reason, not a traceback."""
+    import maxim.runtime.llm_spawn_record as rec
+
+    def refused(port):
+        raise rec.ListenerScanRefused("lsof is not installed, so the listener on the port cannot be named")
+
+    monkeypatch.setattr(rec, "listening_pids", refused)
+    rc, out, _ = _reap(_free_port(), typed="1")
+    assert rc == 2
+    assert "refusing: lsof is not installed" in out and "Nothing touched" in out
+
+
+def test_only_the_cli_references_kill_recorded():
+    """``kill_recorded`` is the one kill path, and only ``maxim llm reap`` (after the TTY gate and the typed pid) may
+    reach it: no other module in src/ or scripts/ names it, so nothing kills automatically."""
+    import ast
+
+    root = Path(__file__).resolve().parents[2]
+    allowed = {"src/maxim/runtime/llm_cli.py"}
+    defined_in = "src/maxim/runtime/llm_spawn_record.py"
+    found: list[str] = []
+    for base in ("src", "scripts"):
+        for path in sorted((root / base).rglob("*.py")):
+            rel = path.relative_to(root).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+            for node in ast.walk(tree):
+                named = (
+                    (isinstance(node, ast.Name) and node.id == "kill_recorded")
+                    or (isinstance(node, ast.Attribute) and node.attr == "kill_recorded")
+                    or (isinstance(node, ast.alias) and node.name == "kill_recorded")
+                    or (isinstance(node, ast.Constant) and node.value == "kill_recorded")
+                )
+                if named and rel not in allowed:
+                    found.append(f"{rel}:{getattr(node, 'lineno', '?')}")
+    # the definition itself is a FunctionDef (not walked as a Name); any other use inside its own module is a caller too
+    assert found == [], f"kill_recorded named outside {sorted(allowed)}: {found} (defined in {defined_in})"
+    assert "kill_recorded(" in (root / "src/maxim/runtime/llm_cli.py").read_text(encoding="utf-8")
+
+
 # ─── gate 14: the CLI route ───────────────────────────────────────────────────────────────────────
 
 
 def test_maxim_llm_reap_is_routed(monkeypatch):
     import maxim.cli as cli
-    import maxim.runtime.llm_spawn_record as rec
+    import maxim.runtime.llm_cli as llm_cli
 
     assert "llm" in cli._NON_SIM_SUBCOMMANDS
     seen: list[int] = []
-    monkeypatch.setattr(rec, "reap", lambda port, **kw: seen.append(port) or 2)
+    monkeypatch.setattr(llm_cli, "reap", lambda port, **kw: seen.append(port) or 2)
     assert cli.main(["llm", "reap", "--port", "8123"]) == 2
     assert seen == [8123]
 
@@ -476,6 +530,7 @@ def test_maxim_llm_reap_is_routed(monkeypatch):
 def test_a_connection_that_appears_after_the_report_is_shown_and_asked_again(
     record_dir, fake_server, monkeypatch, second, rc_expected
 ):
+    import maxim.runtime.llm_cli as llm_cli
     import maxim.runtime.llm_spawn_record as rec
 
     fake = fake_server()
@@ -484,7 +539,7 @@ def test_a_connection_that_appears_after_the_report_is_shown_and_asked_again(
     monkeypatch.setattr(rec, "established_connections", lambda port, pid: next(snapshots))
     typed = f"{fake.pid}\n" + (f"{fake.pid}\n" if second == "pid" else "no\n")
     stdin, stdout = _Stream(typed, tty=True), _Stream(tty=True)
-    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == rc_expected
+    assert llm_cli.reap(fake.port, stdin=stdin, stdout=stdout) == rc_expected
     out = stdout.getvalue()
     assert "new connections since the report" in out and "40000" in out
     assert stdin.reads == 2
@@ -557,6 +612,7 @@ def _dead(pid: int, timeout_s: float = 10.0) -> bool:
 @POSIX
 def test_the_identity_is_re_verified_at_signal_time(record_dir, fake_server, monkeypatch):
     """The pid's start time changing between the report and the kill (a reuse) refuses, before any signal."""
+    import maxim.runtime.llm_cli as llm_cli
     import maxim.runtime.llm_spawn_record as rec
 
     fake = fake_server()
@@ -574,7 +630,7 @@ def test_the_identity_is_re_verified_at_signal_time(record_dir, fake_server, mon
             return line
 
     stdin, stdout = _Swap(f"{fake.pid}\n", tty=True), _Stream(tty=True)
-    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == 2
+    assert llm_cli.reap(fake.port, stdin=stdin, stdout=stdout) == 2
     assert "changed since the report" in stdout.getvalue()
     time.sleep(0.2)
     assert fake.alive()
@@ -775,6 +831,7 @@ def test_a_test_double_pid_writes_no_record(record_dir):
 @POSIX
 def test_the_ps_branch_re_verifies_before_its_first_signal(record_dir, fake_server, monkeypatch):
     """macOS has no pidfd: a start time that changes between the report and the kill refuses before SIGTERM."""
+    import maxim.runtime.llm_cli as llm_cli
     import maxim.runtime.llm_spawn_record as rec
 
     if not _ps_has_lstart():
@@ -798,7 +855,7 @@ def test_the_ps_branch_re_verifies_before_its_first_signal(record_dir, fake_serv
             return line
 
     stdin, stdout = _Swap(f"{fake.pid}\n", tty=True), _Stream(tty=True)
-    assert rec.reap(fake.port, stdin=stdin, stdout=stdout) == 2
+    assert llm_cli.reap(fake.port, stdin=stdin, stdout=stdout) == 2
     assert "changed since the report" in stdout.getvalue()
     time.sleep(0.2)
     assert fake.alive()
@@ -860,7 +917,7 @@ def test_an_lsof_that_cannot_answer_refuses(monkeypatch, raises, outcome, why):
 
     monkeypatch.setattr(rec, "_linux", lambda: False)
     monkeypatch.setattr(rec.subprocess, "run", run)
-    with pytest.raises(rec._Refused, match=why):
+    with pytest.raises(rec.ListenerScanRefused, match=why):
         rec.listening_pids(8100)
 
 
