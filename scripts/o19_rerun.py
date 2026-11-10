@@ -998,7 +998,7 @@ def exp63_attempt_problems(exp: str, data_root: Path, sessions: list, *, smoke: 
             )
         goal = v.PROTOCOL[exp]["phases"][-1][1]
         if v.experiment_of(exp) == "63b":  # the smoke never reads R3a (its view included): build order step 4
-            return v.exp63b_c5_problems(phases, goal=goal, r3a_view=not smoke)
+            return v.exp63b_c5_problems(phases, goal=goal, key=v.keying_of(exp), r3a_view=not smoke)
         return v.exp63_c5_problems(phases, goal=goal)
     except (OSError, ValueError, v.Refusal) as exc:
         return [f"C5 the copied phases could not be read: {type(exc).__name__}: {exc}"]
@@ -1362,7 +1362,7 @@ def smoke_checks(
         return checks, reported
     base, gate = (_copied_phase(data_root, r["session_id"]) for r in rows)
     goal = v.PROTOCOL[exp]["phases"][1][1]
-    c5 = v.exp63b_c5_problems([base, gate], goal=goal, r3a_view=False)
+    c5 = v.exp63b_c5_problems([base, gate], goal=goal, key=v.keying_of(exp), r3a_view=False)
     check("C5 holds (the instrument reads true)", not c5, "; ".join(c5))
     base_records, records = v.store_records(base["store"]), v.store_records(gate["store"])
     n1, seq_c = len(base_records), v._seq_c(base_records)
@@ -1384,7 +1384,7 @@ def smoke_checks(
     )
     carried = set(base_records)
     conform = {
-        t: h is not None and v.exp63b_turn(h[1], records, carried, goal, decide=False)["conforms"]
+        t: h is not None and v.exp63b_turn(h[1], records, carried, goal, key=v.keying_of(exp), decide=False)["conforms"]
         for t, h in per_turn.items()
     }
     check(

@@ -1203,9 +1203,13 @@ _TEXT_LEN = re.compile(r"\btext_len=(\d+)\b")
 # ``_lemmatize``, ``settle_key``, ``text_values``, ``content_tokens``, ``same_words``), of
 # ``maxim.utils.content_safety``'s frame removal, of ``memory.types``' ``text_fields`` / ``content_tokens`` /
 # ``input_text`` / ``copy_key`` for both record kinds, and of ``hippocampus_retrieval``'s ``_rank_by_relevance`` and
-# ``distinct_copies``, over the saved store's JSON dicts. tests/unit/test_o19_rerun.py pins each against the shipped
-# code; once the run lands, that pin moves to a vendored copy of the executed closure (as tests/fixtures/exp63/ does),
-# never deleted. A saved store whose records the loader would rewrite (a 1.0 ``ToolOutput(`` result) is C5(d).
+# ``distinct_copies``, over the saved store's JSON dicts. Exp 63b ran (e841abca) before #1620 changed the shipped
+# content keys, so tests/unit/test_o19_rerun.py pins THIS keying against the vendored executed copy
+# (tests/fixtures/exp63b/executed_text.py), never against the shipped code; the rest of the port (frames, record
+# fields, ranker, collapse) is unchanged since e841abca and stays pinned against the shipped code. Exp 63c's keying is
+# its own port below (``c_key_tokens``, pinned against the shipped ``memory/text.py``). Every function that keys text
+# takes the keying as a REQUIRED ``key=`` (``keying_of``), so a site that forgets it is a TypeError, never the other
+# experiment's keys. A saved store whose records the loader would rewrite (a 1.0 ``ToolOutput(`` result) is C5(d).
 
 _P_STOP_WORDS = frozenset(
     {
@@ -1412,8 +1416,71 @@ def _p_settle_key(token: str) -> str:
 
 
 def p_key_tokens(text: str) -> list[str]:
-    """``maxim.memory.text.key_tokens``."""
+    """``maxim.memory.text.key_tokens`` as Exp 63b executed it (e841abca, before #1620)."""
     return [_p_settle_key(t) for t in _p_normalize_tokens(text)]
+
+
+# Exp 63c's keying: ``maxim.memory.text`` after #1620 (PR #1624, d40eb4c0). ``normalize_tokens`` and ``_lemmatize`` are
+# frozen (unchanged by #1620, so the 63b copies above serve); ``settle_key`` converges a word's regular inflections
+# (``_converge``, guarded by ``_kept``) under the two length caps. tests/unit/test_o19_rerun.py pins it against the
+# shipped module on fuzz words, and the harness refuses before the marker when it disagrees with the sim interpreter's
+# ``key_tokens`` (``o19_rerun.check_keying``).
+_C_CONVERGE_MAX_LEN = 40
+_C_SETTLE_MAX_LEN = 64
+
+
+def _c_kept(token: str) -> bool:
+    again = _p_normalize_tokens(token)
+    return bool(again) and again[0] not in _P_STOP_WORDS
+
+
+def _c_converge(token: str) -> str:
+    if len(token) > _C_CONVERGE_MAX_LEN or not (token.isascii() and token.isalpha()):
+        return token
+    if token.endswith("ing") and len(token) > 4:
+        stem = token[:-3]
+        if len(stem) >= 3 and _p_has_vowel(stem) and _c_kept(stem):
+            token = stem
+    if len(token) >= 4 and token[-1] == token[-2] and token[-1] not in "aeiouys" and _c_kept(token[:-1]):
+        token = token[:-1]
+    if len(token) >= 4 and token[-1] == "e" and token[-2] not in "aeioy" and _c_kept(token[:-1]):
+        token = token[:-1]
+    return token
+
+
+def _c_settle_key(token: str) -> str:
+    if len(token) > _C_SETTLE_MAX_LEN:
+        for _ in range(4):
+            again = _p_normalize_tokens(token)
+            if not again or again == [token]:
+                return token
+            token = again[0]
+        return token
+    while True:
+        while True:
+            again = _p_normalize_tokens(token)
+            if not again or again == [token]:
+                break
+            token = again[0]
+        converged = _c_converge(token)
+        if converged == token:
+            return token
+        token = converged
+
+
+def c_key_tokens(text: str) -> list[str]:
+    """``maxim.memory.text.key_tokens`` after #1620 (Exp 63c's keying)."""
+    return [_c_settle_key(t) for t in _p_normalize_tokens(text)]
+
+
+# The keying each experiment's recall was keyed with: the one place a judge picks it (an experiment without a port of
+# its own raises, never borrows one).
+KEYINGS = {"63b": p_key_tokens, "63c": c_key_tokens}
+
+
+def keying_of(exp: str):
+    """The content-key function Exp ``exp``'s port judges with (``KEYINGS``); KeyError for an experiment with none."""
+    return KEYINGS[experiment_of(exp)]
 
 
 def _p_unbalanced_markers(text: str) -> tuple[list, list]:
@@ -1471,12 +1538,12 @@ def _p_text_values(value, *, depth: int = 3):
             yield from _p_text_values(inner, depth=depth - 1)
 
 
-def p_content_tokens(*values) -> set[str]:
-    """``maxim.memory.text.content_tokens``."""
+def p_content_tokens(*values, key) -> set[str]:
+    """``maxim.memory.text.content_tokens`` under the keying ``key`` (``keying_of``)."""
     tokens: set[str] = set()
     for value in values:
         for text in _p_text_values(value):
-            tokens.update(p_key_tokens(text))
+            tokens.update(key(text))
     return tokens
 
 
@@ -1491,12 +1558,14 @@ def _p_parts(rec: dict) -> tuple[dict, dict, dict, dict, dict]:
     return tuple(_dict(rec.get(k)) for k in ("perception", "context", "decision", "action", "outcome"))  # type: ignore[return-value]
 
 
-def p_record_tokens(rec: dict) -> frozenset[str]:
+def p_record_tokens(rec: dict, *, key) -> frozenset[str]:
     """A saved record's ``content_tokens()``: its ``text_fields`` and labels (an episode), or what compression kept
     (a compressed record), read with the defaults ``from_dict`` reads them with."""
     if rec.get("_compressed", False):
         return frozenset(
-            p_content_tokens(rec.get("heard") or "", rec.get("goal"), rec.get("active_goal"), rec.get("tool_name", ""))
+            p_content_tokens(
+                rec.get("heard") or "", rec.get("goal"), rec.get("active_goal"), rec.get("tool_name", ""), key=key
+            )
         )
     p, c, d, a, o = _p_parts(rec)
     return frozenset(
@@ -1512,6 +1581,7 @@ def p_record_tokens(rec: dict) -> frozenset[str]:
             a.get("tool_name", ""),
             p.get("detected_objects", []),
             p.get("detected_people", []),
+            key=key,
         )
     )
 
@@ -1549,9 +1619,9 @@ def _p_rows_sha256(rows) -> str:
     return sha256_bytes(json.dumps(rows, separators=(",", ":")).encode("utf-8"))
 
 
-def p_store_digest(records: dict[str, dict]) -> tuple[str, dict[str, str]]:
+def p_store_digest(records: dict[str, dict], *, key) -> tuple[str, dict[str, str]]:
     """I1's digest of a saved store (``hippocampus_persistence.store_digest``) and each record's 16-hex row hash."""
-    rows = sorted([rid, sorted(p_record_tokens(rec)), repr(p_copy_key(rec))] for rid, rec in records.items())
+    rows = sorted([rid, sorted(p_record_tokens(rec, key=key)), repr(p_copy_key(rec))] for rid, rec in records.items())
     return _p_rows_sha256(rows), {row[0]: _p_rows_sha256(row)[:16] for row in rows}
 
 
@@ -1561,27 +1631,27 @@ def _copy_class(rec: dict, rid: str) -> tuple:
     return ("id", rid) if key is None else ("copy", key)
 
 
-def p_ranked_groups(records: dict[str, dict], ids: list[str], query: str) -> list[list[str]]:
+def p_ranked_groups(records: dict[str, dict], ids: list[str], query: str, *, key) -> list[list[str]]:
     """``_rank_by_relevance``'s order over ``ids`` as TIE GROUPS (exact ``(score, timestamp)`` equality; a candidate
     set's order is not reproducible, so within a group any order is the ranker's). A zero score is not ranked (D1);
     a query with no content key ranks nothing."""
-    query_tokens = set(p_key_tokens(query))
+    query_tokens = set(key(query))
     if not query_tokens:
         return []
     keyed = []
     for rid in ids:
-        overlap = query_tokens & p_record_tokens(records[rid])
+        overlap = query_tokens & p_record_tokens(records[rid], key=key)
         if overlap:
             keyed.append(((len(overlap) / len(query_tokens), records[rid]["timestamp"]), rid))
     keyed.sort(key=lambda kv: kv[0], reverse=True)
     groups: list[list[str]] = []
     last = None
-    for key, rid in keyed:
-        if groups and key == last:
+    for rank, rid in keyed:
+        if groups and rank == last:
             groups[-1].append(rid)
         else:
             groups.append([rid])
-        last = key
+        last = rank
     return groups
 
 
@@ -1653,11 +1723,11 @@ def p_simulate(graph: list[str], cue: list[str], goal: list[str] | None) -> tupl
     return ids[:EXP63_TOP], paths[:EXP63_TOP]
 
 
-def _nongoal_score(rec: dict, nongoal: set[str]) -> int:
-    return len(nongoal & p_record_tokens(rec))
+def _nongoal_score(rec: dict, nongoal: set[str], *, key) -> int:
+    return len(nongoal & p_record_tokens(rec, key=key))
 
 
-def exp63b_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str, *, decide: bool = True) -> dict:
+def exp63b_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str, *, key, decide: bool = True) -> dict:
     """R3' and R3d for one trace, by ONE mechanism (G1): every tie ordering of the cue and goal rankings over the pool
     V0 + L less the trace's ``own_ids`` is run through :func:`p_simulate`; R3' holds when one reproduces the log, R3d
     when EVERY one that does is decisive (G4). ``over_bound`` = more orderings than ``EXP63B_TIE_BOUND`` (C5).
@@ -1672,8 +1742,8 @@ def exp63b_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str
     cue_pool = [m for m in goal_pool if m not in late_goal]
     classes = {m: _copy_class(records[m], m) for m in goal_pool}
     graph = [m for m, p in zip(ids, paths) if p == "graph"]
-    cue_groups = p_ranked_groups(records, cue_pool, cue_text)
-    goal_groups = p_ranked_groups(records, goal_pool, goal) if goal else []
+    cue_groups = p_ranked_groups(records, cue_pool, cue_text, key=key)
+    goal_groups = p_ranked_groups(records, goal_pool, goal, key=key) if goal else []
     cue_upto = max(
         _groups_needed(cue_groups, classes, EXP63B_CUE_LIMIT),
         _groups_needed(cue_groups, classes, EXP63B_CUE_LIMIT, skip=frozenset(carried)),
@@ -1694,7 +1764,7 @@ def exp63b_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str
             valid_cue.add(r)
     out["conforms"] = bool(valid_cue)
     shown_cue = [m for m, p in zip(ids, paths) if p == "cue"]
-    nongoal = set(p_key_tokens(cue_text)) - set(p_key_tokens(goal))
+    nongoal = set(key(cue_text)) - set(key(goal))
     carried_cue = [m for m in shown_cue if m in carried]
     graph_r = [m for m in graph if m not in carried]
 
@@ -1703,7 +1773,7 @@ def exp63b_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str
         r_ids, r_paths = p_simulate(graph_r, reduced, None)
         displaced = [m for m, p in zip(r_ids, r_paths) if p == "cue" and m not in ids]
         return any(
-            _nongoal_score(records[c], nongoal) > _nongoal_score(records[d], nongoal)
+            _nongoal_score(records[c], nongoal, key=key) > _nongoal_score(records[d], nongoal, key=key)
             for c in carried_cue
             for d in displaced
         )
@@ -1726,7 +1796,9 @@ def exp63b_turn(tr: dict, records: dict[str, dict], carried: set[str], goal: str
             "observed_carried": len(set(ids) & carried),
             "carried_share": (len(set(ids) & carried) / len(ids)) if ids else None,
             "cue_nongoal_keys": sorted(nongoal),
-            "cue_hits_on_nongoal_keys": {m: _nongoal_score(records[m], nongoal) for m in shown_cue if m in records},
+            "cue_hits_on_nongoal_keys": {
+                m: _nongoal_score(records[m], nongoal, key=key) for m in shown_cue if m in records
+            },
             "cue_added_over_goal": [m for m in shown_cue if m not in canonical_goal],
             "distinct_heard_texts": len(heard - {""}),
             "goal_fill_win": [m for m, p in zip(ids, paths) if p == "goal" and m in carried],
@@ -1861,7 +1933,7 @@ def _b0_router_problems(r, label: str) -> list[str]:
     return p
 
 
-def _exp63b_shape_problems(tr: dict, records: dict[str, dict], goal: str) -> str | None:
+def _exp63b_shape_problems(tr: dict, records: dict[str, dict], goal: str, *, key) -> str | None:
     """C5(b) for one AUT trace: Exp 63's shape, the cue path accepted, and I1's fields, each with its identity check
     (``query_text`` is ``cue_text`` cut at 120, ``keywords`` the port's keys of it)."""
     ids, paths = tr.get("memory_ids"), tr.get("memory_paths")
@@ -1890,7 +1962,7 @@ def _exp63b_shape_problems(tr: dict, records: dict[str, dict], goal: str) -> str
         return f"cue_text / recall_failed missing ({type(cue).__name__}, {tr.get('recall_failed')!r})"
     if tr.get("query_text") != cue[:120]:
         return "query_text is not cue_text's first 120 characters"
-    if tr.get("keywords") != list(dict.fromkeys(p_key_tokens(cue)))[:8]:
+    if tr.get("keywords") != list(dict.fromkeys(key(cue)))[:8]:
         return f"keywords {tr.get('keywords')!r} are not the port's keys of cue_text"
     return None
 
@@ -1908,10 +1980,10 @@ def _enter_text_lens(lines: list[dict]) -> dict[int, int]:
     return out
 
 
-def _digest_problem(phase_label: str, line: dict, records: dict[str, dict]) -> str | None:
+def _digest_problem(phase_label: str, line: dict, records: dict[str, dict], *, key) -> str | None:
     """C5(d): a save line's digest against the port's recomputation from the same phase's saved bytes, naming the
     first record whose row differs."""
-    digest, per_record = p_store_digest(records)
+    digest, per_record = p_store_digest(records, key=key)
     if line.get("sha256") == digest and line.get("records") == len(records):
         return None
     logged = {str(x[0]): x[1] for x in _list(line.get("record_sha256")) if isinstance(x, list) and len(x) == 2}
@@ -1922,7 +1994,7 @@ def _digest_problem(phase_label: str, line: dict, records: dict[str, dict]) -> s
     )
 
 
-def exp63b_c5_problems(phases: list[dict], *, goal: str, r3a_view: bool = True) -> list[str]:
+def exp63b_c5_problems(phases: list[dict], *, goal: str, key, r3a_view: bool = True) -> list[str]:
     """C5 for Exp 63b (G5), R3a's view and the tie bound: every failure makes the attempt INCOMPLETE (an aborted
     attempt, never a FAIL). ``phases`` = [baseline, gate], each ``{report, store, lines}``. Type-guarded throughout: a
     corrupt trace or store aborts, never crashes. ``r3a_view=False`` (the smoke, which never reads R3a) skips R3a's
@@ -1949,7 +2021,7 @@ def exp63b_c5_problems(phases: list[dict], *, goal: str, r3a_view: bool = True) 
     # (b) every phase-2 AUT trace's shape and I1's fields; I1's digest lines.
     shaped: list[tuple[int, dict]] = []
     for i, tr in traces:
-        bad = _exp63b_shape_problems(tr, records, goal)
+        bad = _exp63b_shape_problems(tr, records, goal, key=key)
         if bad:
             problem("(b)", f"gate line {i + 1}: {bad}")
         else:
@@ -1989,7 +2061,7 @@ def exp63b_c5_problems(phases: list[dict], *, goal: str, r3a_view: bool = True) 
                 problem("(d)", f"{label} record {rid}: a legacy ToolOutput( result the loader would rewrite")
         lines = saves[label]
         if lines:
-            bad = _digest_problem(label, lines[-1], store)
+            bad = _digest_problem(label, lines[-1], store, key=key)
             if bad:
                 problem("(d)", bad)
     # (c) rendering identity, as Exp 63.
@@ -2033,7 +2105,7 @@ def exp63b_c5_problems(phases: list[dict], *, goal: str, r3a_view: bool = True) 
         return list(found.values())
     turns = {}
     for turn, (i, tr) in sorted(turn_hits.items()):
-        turns[turn] = exp63b_turn(tr, records, carried, goal, decide=False)
+        turns[turn] = exp63b_turn(tr, records, carried, goal, key=key, decide=False)
         if turns[turn]["over_bound"]:
             problem("(t)", f"turn {turn}: {turns[turn]['orderings']} tie orderings, over {EXP63B_TIE_BOUND}")
     # R3a's view and a late id in it (G3), only while P1 and P2 hold.
@@ -2075,7 +2147,7 @@ def _store_gates(base: dict, gate: dict) -> dict:
     return out
 
 
-def exp63b_gates(phases: list[dict], *, goal: str) -> dict:
+def exp63b_gates(phases: list[dict], *, goal: str, key) -> dict:
     """P0-P3, R1, R2', R3a, R3' and R3d over one attempt's two phases, and the verdict (the prereg's table). Also
     computed over an aborted attempt's committed phases for the leaked-gate bars, where a gate reads passed only in its
     held state (R3a unobservable, no view or a late id, and no decisive turn each read not passed)."""
@@ -2089,13 +2161,15 @@ def exp63b_gates(phases: list[dict], *, goal: str) -> dict:
         "turns": sorted(t for t, h in per_turn.items() if h),
     }
     loads = digest_lines(gate["lines"], "load")
-    want = p_store_digest(base_records)[0]
+    want = p_store_digest(base_records, key=key)[0]
     out["R2prime"] = {
         "restore_digest": loads[0].get("sha256") if len(loads) == 1 else None,
         "phase1_saved_digest": want,
         "pass": len(loads) == 1 and loads[0].get("sha256") == want and loads[0].get("records") == len(base_records),
     }
-    turns = {t: None if hit is None else exp63b_turn(hit[1], records, carried, goal) for t, hit in per_turn.items()}
+    turns = {
+        t: None if hit is None else exp63b_turn(hit[1], records, carried, goal, key=key) for t, hit in per_turn.items()
+    }
     out["R3prime"] = {
         "pass": all(x is not None and x["conforms"] for x in turns.values()),
         "nonconforming": [t for t, x in turns.items() if x is None or not x["conforms"]],
@@ -2159,8 +2233,8 @@ def _gate_passes(key: str, phases: list[dict]) -> dict[str, bool]:
         raise ValueError(f"no gates for experiment {experiment!r}")  # unjudgeable, which bars: never another's gates
     if len(phases) == 1:
         return {"P0": len(store_records(phases[0]["store"])) >= 3}
-    gates = exp63b_gates if experiment == "63b" else exp63_gates
-    g = gates(phases, goal=PROTOCOL[key]["phases"][1][1])
+    goal = PROTOCOL[key]["phases"][1][1]
+    g = exp63b_gates(phases, goal=goal, key=keying_of(key)) if experiment == "63b" else exp63_gates(phases, goal=goal)
     return {name: g[name]["pass"] for name in LEAK_GATES[experiment][2]}
 
 
@@ -2740,8 +2814,11 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
             entry["problems"].append(f"{len(phases)} of {len(PROTOCOL[exp]['phases'])} phases recorded")
         if experiment_of(exp) in ("63", "63b") and len(phases) == len(PROTOCOL[exp]["phases"]):
             # C5 and R3a's observability, from the committed traces and stores: an instrument fault is not data.
-            c5 = exp63b_c5_problems if experiment_of(exp) == "63b" else exp63_c5_problems
-            entry["problems"] += c5(phases, goal=PROTOCOL[exp]["phases"][1][1])
+            goal = PROTOCOL[exp]["phases"][1][1]
+            if experiment_of(exp) == "63b":
+                entry["problems"] += exp63b_c5_problems(phases, goal=goal, key=keying_of(exp))
+            else:
+                entry["problems"] += exp63_c5_problems(phases, goal=goal)
         entry["complete"] = not entry["problems"]
         if entry["complete"]:
             deciding = (entry, phases)  # the first complete attempt decides
@@ -2765,7 +2842,7 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
     out["deciding_attempt"] = entry["run_id"]
     experiment = experiment_of(exp)
     if experiment == "63b":
-        gates = exp63b_gates(phases, goal=PROTOCOL[exp]["phases"][1][1])
+        gates = exp63b_gates(phases, goal=PROTOCOL[exp]["phases"][1][1], key=keying_of(exp))
     elif experiment == "63":
         gates = exp63_gates(phases, goal=PROTOCOL[exp]["phases"][1][1])
     elif experiment == "10":

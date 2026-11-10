@@ -43,23 +43,34 @@ def _executed_text():
     return module
 
 
-@pytest.fixture(autouse=True)
-def _exp63b_executed_keying(monkeypatch):
-    """Every experiment this module judges (Exp 10, 63, 63b) is judged under the keying before #1620 changed the
-    shipped content keys: the verdict's FROZEN port (G2) copies Exp 63b's (e841abca). So the shipped stores these tests
-    build and recall key text as e841abca's ``memory/text.py`` did: its ``settle_key``/``key_tokens``/``content_tokens``
-    stand in for the shipped ones (every caller imports them from the module at call time), and NAc's memoized
-    signature keys are cleared on both sides so no key from the other keying is reused. A record keyed BEFORE the
-    fixture runs (one built at import) keeps its cached shipped keys, so build records inside the test.
+@pytest.fixture
+def keying_63c():
+    """Requested by a test that judges Exp 63c: it runs on the keying Exp 63c executes, which is the SHIPPED
+    ``memory/text.py`` (after #1620) until its run lands, when this pin moves to a vendored copy of the executed
+    closure (as ``tests/fixtures/exp63b/`` does for 63b), never deleted. See :func:`_executed_keying`."""
+    return "63c"
 
-    A run on post-#1620 code fails this port's C5(b)/C5(d) checks by design (its keys are not the port's): Exp 63c
-    runs on the new keying with its own port, and its tests must opt out of this fixture."""
+
+@pytest.fixture(autouse=True)
+def _executed_keying(request, monkeypatch):
+    """Each test runs on the keying of the experiment it judges (per experiment, never one keying for all).
+
+    By default (Exp 10, 63, 63b): the keying before #1620 changed the shipped content keys, since 63b's FROZEN port
+    (G2) copies Exp 63b's (e841abca). The shipped stores these tests build and recall key text as e841abca's
+    ``memory/text.py`` did: its ``settle_key``/``key_tokens``/``content_tokens`` stand in for the shipped ones (every
+    caller imports them from the module at call time), and NAc's memoized signature keys are cleared on both sides so
+    no key from the other keying is reused. A record keyed BEFORE the fixture runs (one built at import) keeps its
+    cached shipped keys, so build records inside the test.
+
+    A test that requests :func:`keying_63c` keeps the shipped keying (Exp 63c's port, ``c_key_tokens``, is pinned
+    against it); NAc's memo is cleared all the same. A 63c-keyed run fails 63b's port's C5(b)/C5(d) checks by design."""
     from maxim.decisions import nac
     from maxim.memory import text
 
-    executed = _executed_text()
-    for name in ("settle_key", "key_tokens", "content_tokens"):
-        monkeypatch.setattr(text, name, getattr(executed, name))
+    if "keying_63c" not in request.fixturenames:
+        executed = _executed_text()
+        for name in ("settle_key", "key_tokens", "content_tokens"):
+            monkeypatch.setattr(text, name, getattr(executed, name))
     nac._signature_tokens.cache_clear()
     yield
     nac._signature_tokens.cache_clear()
@@ -3166,14 +3177,14 @@ C5B_PERTURB = [
 
 
 def test_exp63b_the_mock_is_c5_clean(exp63b_phases) -> None:
-    assert v.exp63b_c5_problems(exp63b_phases, goal=GOAL63B) == []
+    assert v.exp63b_c5_problems(exp63b_phases, goal=GOAL63B, key=v.p_key_tokens) == []
 
 
 @pytest.mark.parametrize("label,perturb", C5B_PERTURB, ids=[f.__name__ for _l, f in C5B_PERTURB])
 def test_exp63b_each_c5_check_flips(exp63b_phases, label, perturb) -> None:
     p = copy.deepcopy(exp63b_phases)
     perturb(p)
-    problems = v.exp63b_c5_problems(p, goal=GOAL63B)
+    problems = v.exp63b_c5_problems(p, goal=GOAL63B, key=v.p_key_tokens)
     assert any(x.startswith(label) for x in problems), problems
 
 
@@ -3181,7 +3192,7 @@ def test_exp63b_a_save_digest_mismatch_names_the_record(exp63b_phases) -> None:
     p = copy.deepcopy(exp63b_phases)
     rid = p[1]["store"]["memories"][-1]["id"]
     _c5d_saved_text_moved(p)
-    (problem,) = [x for x in v.exp63b_c5_problems(p, goal=GOAL63B) if x.startswith("C5(d)")]
+    (problem,) = [x for x in v.exp63b_c5_problems(p, goal=GOAL63B, key=v.p_key_tokens) if x.startswith("C5(d)")]
     assert repr(rid) in problem, problem
 
 
@@ -3192,17 +3203,19 @@ def test_exp63b_the_tie_bound_aborts_rather_than_guesses(exp63b_phases) -> None:
     stamp = memories[0]["timestamp"]
     for m in memories:
         m["timestamp"] = stamp
-    assert any(x.startswith("C5(t)") for x in v.exp63b_c5_problems(p, goal=GOAL63B))
+    assert any(x.startswith("C5(t)") for x in v.exp63b_c5_problems(p, goal=GOAL63B, key=v.p_key_tokens))
 
 
 def test_exp63b_the_smoke_never_reads_r3a_or_r3d(exp63b_phases) -> None:
     p = copy.deepcopy(exp63b_phases)
     _c5r3a_no_view(p)
-    assert not any(x.startswith("C5(R3a)") for x in v.exp63b_c5_problems(p, goal=GOAL63B, r3a_view=False))
+    assert not any(
+        x.startswith("C5(R3a)") for x in v.exp63b_c5_problems(p, goal=GOAL63B, key=v.p_key_tokens, r3a_view=False)
+    )
     tr = _turn_trace(exp63b_phases, 2)
     carried = set(v.store_records(exp63b_phases[0]["store"]))
     records = v.store_records(exp63b_phases[1]["store"])
-    assert v.exp63b_turn(tr, records, carried, GOAL63B, decide=False)["decisive"] is None
+    assert v.exp63b_turn(tr, records, carried, GOAL63B, key=v.p_key_tokens, decide=False)["decisive"] is None
 
 
 def test_exp63b_c4_double_prime_is_the_gates_b0(mock_attempt, monkeypatch) -> None:
@@ -3366,10 +3379,92 @@ def test_exp63b_the_port_is_the_executed_keying() -> None:
     for rec in records:
         mem = (CompressedMemory if rec.get("_compressed") else EpisodicMemory).from_dict(rec)
         live[rec["id"]] = mem
-        assert v.p_record_tokens(rec) == mem.content_tokens(), rec["id"]
+        assert v.p_record_tokens(rec, key=v.p_key_tokens) == mem.content_tokens(), rec["id"]
         assert v.p_input_text(rec) == mem.input_text and v.p_copy_key(rec) == mem.copy_key(), rec["id"]
     by_id = {r["id"]: r for r in records}  # a compressed copy shares its episode's id: the later one stands
-    assert v.p_store_digest(by_id)[0] == store_digest(live[i] for i in by_id)
+    assert v.p_store_digest(by_id, key=v.p_key_tokens)[0] == store_digest(live[i] for i in by_id)
+
+
+# Words that exercise #1620's convergence (each step of ``_converge``, ``_kept``'s refusals, both length caps) and the
+# 63c script's own vocabulary (prereg §The script), beside the 63b fuzz words.
+_CONVERGE_WORDS = (
+    "move moved moving moves stopped stopping stop pulling pull pulls close closed closing whose issue issues "
+    "asking ask placed place placing used using use agreed agree freed passing pass accessing hidden hid slept hung "
+    "plan plane made mad care car hope hop done don't fast-suite sweep** 1000 100 hmmmmmmmmmmmm settings "
+    "alcove asleep cold damp lie wish brass ladle hangs copper hook beside chair knife beneath straw mattress small "
+    "cell hatch cracked padlock chain squeaks water drips crevice north bricks drain grate sleeping comes mind sum "
+    "intention sentence back silver bell ringing chapel purple banner draped stirs escape dungeon guard guard's "
+    + "e" * 39
+    + "d "
+    + "a" * 41
+    + "ing "
+    + "ed" * 33
+    + " "
+    + "s" * 65
+    + " "
+    + "x" * 70
+    + "ing"
+).split(" ")
+
+
+def _shipped_text():
+    """``src/maxim/memory/text.py`` as shipped, loaded from the file (whatever the session's fixtures patch)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("shipped_text_63c", REPO / "src" / "maxim" / "memory" / "text.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_exp63c_the_port_is_the_shipped_keying(keying_63c) -> None:
+    """Exp 63c's port (``c_key_tokens``) against the shipped post-#1620 keying, word by word and as running text;
+    the frozen pieces it shares with 63b's port (stop words, punctuation, metadata keys) against the shipped ones."""
+    from maxim.memory import text
+
+    S = _shipped_text()
+    assert text.key_tokens is S.key_tokens or text.key_tokens("moving") == ["mov"]  # this test is NOT on 63b's keying
+    assert v._P_STOP_WORDS == S._STOP_WORDS and v._P_METADATA_KEYS == S._METADATA_KEYS
+    assert v._P_PUNCT_STRIP == S._PUNCT_STRIP
+    assert (v._C_CONVERGE_MAX_LEN, v._C_SETTLE_MAX_LEN) == (S._CONVERGE_MAX_LEN, S._SETTLE_MAX_LEN)
+    words = [*_FUZZ_WORDS, *_CONVERGE_WORDS]
+    for chunk in [words, *[[w] for w in words]]:
+        line = " ".join(chunk)
+        assert v.c_key_tokens(line) == S.key_tokens(line), line
+    for w in words:  # the settle step alone, on raw and already-keyed tokens (idempotency up to the cap)
+        assert v._c_settle_key(w.lower()) == S.settle_key(w.lower()), w
+    # Not vacuous: the two keyings differ exactly where #1620 changed the keys.
+    assert v.c_key_tokens("move moved moving moves") == ["mov"] * 4 != v.p_key_tokens("move moved moving moves")
+    assert v.KEYINGS == {"63b": v.p_key_tokens, "63c": v.c_key_tokens} and v.keying_of("63b") is v.p_key_tokens
+
+
+def test_exp63c_the_port_reads_records_as_the_shipped_store(keying_63c) -> None:
+    """Under the shipped keying, the port's record keys and I1 digest (``key=c_key_tokens``) are the shipped
+    records' ``content_tokens()`` and ``store_digest``; under 63b's keying they would not be (the pin is not vacuous)."""
+    from maxim.memory.hippocampus_persistence import store_digest
+    from maxim.memory.types import CompressedMemory, EpisodicMemory
+
+    records = _port_records()
+    differs = 0
+    live = {}
+    for rec in records:
+        mem = (CompressedMemory if rec.get("_compressed") else EpisodicMemory).from_dict(rec)
+        live[rec["id"]] = mem
+        assert v.p_record_tokens(rec, key=v.c_key_tokens) == mem.content_tokens(), rec["id"]
+        differs += v.p_record_tokens(rec, key=v.p_key_tokens) != mem.content_tokens()
+    assert differs, "no record keys differently under 63b's keying: the pin would not see the wrong port"
+    by_id = {r["id"]: r for r in records}
+    assert v.p_store_digest(by_id, key=v.c_key_tokens)[0] == store_digest(live[i] for i in by_id)
+
+
+def test_a_judge_without_a_keying_raises() -> None:
+    """Only experiments with a port of their own key text: 63 and 10 have none and never borrow one."""
+    for exp in ("63", "10", "09"):
+        with pytest.raises(KeyError):
+            v.keying_of(exp)
+    with pytest.raises(TypeError):
+        v.p_record_tokens({})  # the keying is required: a forgotten one is a TypeError, never 63b's keys
 
 
 def test_exp63b_the_port_ranks_and_collapses_as_the_shipped_ranker() -> None:
@@ -3382,7 +3477,7 @@ def test_exp63b_the_port_ranks_and_collapses_as_the_shipped_ranker() -> None:
     mems = [EpisodicMemory.from_dict(r) for r in records.values()]
     collapsed = 0
     for query in ("the sleeping guard's door", "carried batteries", "exits keys used", "of the"):
-        groups = v.p_ranked_groups(records, list(records), query)
+        groups = v.p_ranked_groups(records, list(records), query, key=v.p_key_tokens)
         assert [m.id for m in _rank_by_relevance(mems, query, 10**6)] == [m for g in groups for m in g]  # no ties here
         classes = {i: v._copy_class(records[i], i) for i in records}
         shipped = [m.id for m in _rank_by_relevance(mems, query, 5, collapse_copies=True)]
@@ -3440,7 +3535,7 @@ def test_exp63b_simulate_is_the_shipped_recall() -> None:
             )
             tr = traces[-1]
             records = v.store_records(json.loads(json.dumps(hc.dump())))
-            turn = v.exp63b_turn(tr, records, set(), GOAL63B, decide=False)
+            turn = v.exp63b_turn(tr, records, set(), GOAL63B, key=v.p_key_tokens, decide=False)
             assert turn["over_bound"] or turn["conforms"], (trial, tr["memory_ids"], tr["memory_paths"])
             checked += not turn["over_bound"]
     finally:
@@ -3466,7 +3561,7 @@ def _trace(ids, paths, cue: str, horizon: int, own=("own",)) -> dict:
 def _decisive(records: list[dict], carried: set[str], ids, cue: str) -> dict:
     recs = {r["id"]: r for r in records}
     tr = _trace(ids, ["cue"] * len(ids), cue, max(r["capture_seq"] for r in records))
-    return v.exp63b_turn(tr, recs, carried, GOAL63B)
+    return v.exp63b_turn(tr, recs, carried, GOAL63B, key=v.p_key_tokens)
 
 
 def test_r3d_a_carried_cue_win_that_displaces_a_lower_new_record_is_decisive() -> None:
@@ -3521,11 +3616,11 @@ def test_r3d_counts_only_turns_after_a_held_r3as(exp63b_phases, monkeypatch) -> 
     """A decisive turn at or before R3a's does not count, and with R3a unobservable none does (NOT SHOWN)."""
     real = v.exp63b_turn
     monkeypatch.setattr(v, "exp63b_turn", lambda *a, **k: {**real(*a, **k), "decisive": True})
-    g = v.exp63b_gates(exp63b_phases, goal=GOAL63B)
+    g = v.exp63b_gates(exp63b_phases, goal=GOAL63B, key=v.p_key_tokens)
     assert g["R3a"]["turn"] == 1 and g["R3d"]["decisive_turns"] == list(range(2, 9)), g["R3d"]
     real_r3a = v.exp63b_r3a
     monkeypatch.setattr(v, "exp63b_r3a", lambda *a: {**real_r3a(*a), "status": "unobservable", "pass": False})
-    g = v.exp63b_gates(exp63b_phases, goal=GOAL63B)
+    g = v.exp63b_gates(exp63b_phases, goal=GOAL63B, key=v.p_key_tokens)
     assert g["R3d"]["decisive_turns"] == [] and g["verdict"] == "NOT SHOWN", (g["R3d"], g["verdict"])
 
 
@@ -3537,7 +3632,7 @@ def test_a_late_goal_path_id_is_in_the_goal_pool_only() -> None:
         for r in (_rec63b("N", "the iron key", 1, 1, goal=GOAL63B), _rec63b("L", "the iron door", 9, 9, goal=GOAL63B))
     }
     tr = {**_trace(["N", "L"], ["cue", "goal"], "where is the iron key", 5)}
-    out = v.exp63b_turn(tr, records, set(), GOAL63B)
+    out = v.exp63b_turn(tr, records, set(), GOAL63B, key=v.p_key_tokens)
     assert out["late"] == ["L"] and out["conforms"], (
         out
     )  # with L in the cue's pool the cue shows it; without L, no goal id
@@ -3570,7 +3665,7 @@ def test_r3a_outcomes() -> None:
 def test_exp63b_a_malformed_record_aborts_and_never_crashes(exp63b_phases, index) -> None:
     p = copy.deepcopy(exp63b_phases)
     p[1]["store"]["memories"][index].pop("timestamp")
-    problems = v.exp63b_c5_problems(p, goal=GOAL63B)
+    problems = v.exp63b_c5_problems(p, goal=GOAL63B, key=v.p_key_tokens)
     assert any(x.startswith("C5(d)") for x in problems), problems
 
 
