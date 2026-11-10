@@ -1,5 +1,12 @@
 # Exp 63b: carried memory takes part in recall on the content-token ranker and the cue path (pre-registered 2026-11-02)
 
+> **Outcome 2026-11-07 (run and verdict): NOT SHOWN; ledger T1-16 stays STALE 2026-10-25 (OD2: no raise).** Attempt 1
+> was complete: P0–P3, R1, R2′, R3a (turn 1: 3 carried memories surfaced) and R3′ (8 of 8 turns) hold, and R3d found no
+> decisive turn. Every shown memory came from the cue path; the carried memories shown after turn 1 held none of the
+> cue's words outside the goal ([verdict](data/63b_carried_recall/verdict.json),
+> [rows](data/63b_carried_recall/rows.jsonl)). The text below is the frozen pre-registration.
+> [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **Status: frozen. Design review folded ([confounding](rationale/exp63b-carried-recall/confounding.md),
 > [bio-faithful](rationale/exp63b-carried-recall/bio-faithful.md), [wiring](rationale/exp63b-carried-recall/wiring.md));
 > owner decisions OD1 and OD2 taken 2026-11-02; re-read against #1573's code on `main`. No
