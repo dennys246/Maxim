@@ -3255,16 +3255,22 @@ def test_the_within_campaign_rule(rejudged, refused) -> None:
 
 def test_the_within_campaign_trigger_is_vacuous_for_every_verdict_on_main() -> None:
     """The four pre-#1079 campaigns: ABORT (10, 10c2) or deciding at k = 1 (09, 63), so their bound judges, which do
-    not emit the bar, still support exactly what they did."""
+    not emit the bar, still support exactly what they did. Every later campaign's verdict (Exp 63b onward) carries
+    the bar its judge computes (#1079), and on main it is empty: no earlier attempt leaked a failed gate."""
+    import o19_verdict
+
     found = {}
     for path in sorted((REPO / DATA).glob("*/verdict.json")):
         rec = json.loads(path.read_text())
         if R.str_field(rec, "kind") not in R.O19_KINDS:
             continue
         found[rec["experiment"]] = rec.get("deciding_attempt")
-        assert "within_campaign_leaks" not in rec, path
+        if rec["experiment"] in o19_verdict.PRE_1079_KEYS:
+            assert "within_campaign_leaks" not in rec, path
+        else:
+            assert rec.get("within_campaign_leaks") == [], path
         assert R.o19_within_campaign_problems({"rejudged": rec}, rec["experiment"]) == [], path
-    assert set(found) == {"10", "10c2", "09", "63"}, found
+    assert set(found) >= o19_verdict.PRE_1079_KEYS == {"10", "10c2", "09", "63"}, found
 
 
 # ── #1081 item 7: a redaction record retires the campaign (owner decisions 2026-10-04 + 2026-10-08) ─────────────
