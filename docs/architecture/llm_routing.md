@@ -168,6 +168,7 @@ class RequestContext:
 - `BackendAuthFailed` → **300s hard backoff**
 - `BackendModelMissing` → 60s backoff
 - `BackendInferenceBroken` → 15s backoff (**should match** the probe cache `inference_broken` TTL — these two constants are linked via `INFERENCE_BROKEN_BACKOFF_S` in `models/language/types.py` (added in Plan 2 R2b) to prevent drift)
+- `BackendContextOverflow` → **no cooldown** (#1369): the request overflowed the window, the provider is healthy; a WARNING with the requested tokens, the server's window and the router's own n_ctx belief, `last_error` set for the report, and the dispatch moves on
 - `BackendError` (generic) → normal failure
 - `Exception` (safety net) → increments `backend_unclassified_errors_total`; flag to investigate
 
@@ -217,10 +218,11 @@ def resolve_backend_class(identifier: str) -> type | None:
 - Normalise `request_context` via the canonical `_normalize_request_context` shim (Plan 2 R2b) — single bridge from legacy dict to typed `RequestContext`, no parallel implementation
 - Build the OpenAI-compatible chat completions payload
 - Call `http.post("peer-{provider_key}", path="/chat/completions", json=payload, context=context)` or `http.stream_post(...)` for streaming
-- Classify the HTTP response in specific-before-general `except` order:
+- Classify the HTTP response in specific-before-general order, in the one mapping `_MaximPeerBackend._typed_http_failure` that the buffered and the streamed call share:
   - `HTTPAuthError` (401/403) → `BackendAuthFailed`
   - `HTTPRateLimited` (429) → `BackendOverloaded` (carries `retry_after_s` + `suggested_peer` + `queue_depth` from `X-Maxim-Queue-Depth` header)
   - `HTTPClientError` 404 → `BackendModelMissing`
+  - `HTTPClientError` 400/413 whose body is a context overflow → `BackendContextOverflow` with `requested_tokens` + `context_window` (#1369; the shapes are read by `_context_overflow_counts`)
   - `HTTPClientError` other 4xx → generic `BackendError`
   - `HTTPServerError` (5xx) → `BackendDown` with `.status`
   - `HTTPTimeout` → `BackendTimeout` with `elapsed_s`
@@ -350,7 +352,7 @@ Outside Maxim. HTTPS to the leader's Cloudflare tunnel (or direct LAN URL for pr
 
 ## Error taxonomy [Present]
 
-**Plan 2 R2b SHIPPED 2026-04-12** — the `BackendError` hierarchy lives in [src/maxim/models/language/types.py](../../src/maxim/models/language/types.py) and mirrors the `HTTPError` shape from `utils/http.py` exactly — same three access patterns (`.status`, `.response`, `.fix_hint`). **Plan 3 R2.5 SHIPPED 2026-04-12** (PR #94) — the router's `_try_provider` now catches each typed subclass in specific-before-general order (`BackendOverloaded` → `BackendAuthFailed` → `BackendModelMissing` → `BackendInferenceBroken` → `BackendTimeout` → `BackendDown` → `BackendError` → `Exception` safety net) with the per-class backoff policy documented below. The HTTP → Backend bridge happens inside `_MaximPeerBackend` via simple `except HTTPRateLimited as e: raise BackendOverloaded(...) from e` pairs — no string matching. `INFERENCE_BROKEN_BACKOFF_S = 15.0` is the single source of truth linking router backoff to probe-cache TTL; imported from `types.py` by both `router.py` and `probe_cache.py` so the value cannot drift.
+**Plan 2 R2b SHIPPED 2026-04-12** — the `BackendError` hierarchy lives in [src/maxim/models/language/types.py](../../src/maxim/models/language/types.py) and mirrors the `HTTPError` shape from `utils/http.py` exactly — same three access patterns (`.status`, `.response`, `.fix_hint`). **Plan 3 R2.5 SHIPPED 2026-04-12** (PR #94) — the router's `_try_provider` now catches each typed subclass in specific-before-general order (`BackendOverloaded` → `BackendAuthFailed` → `BackendModelMissing` → `BackendInferenceBroken` → `BackendTimeout` → `BackendDown` → `BackendContextOverflow` → `BackendError` → `Exception` safety net) with the per-class backoff policy documented below. The HTTP → Backend bridge happens inside `_MaximPeerBackend` via simple `except HTTPRateLimited as e: raise BackendOverloaded(...) from e` pairs — no string matching. `INFERENCE_BROKEN_BACKOFF_S = 15.0` is the single source of truth linking router backoff to probe-cache TTL; imported from `types.py` by both `router.py` and `probe_cache.py` so the value cannot drift.
 
 The `BackendError` hierarchy is the router's language for classifying failures. Every class has a `.fix_hint` attribute so log lines are actionable without the operator needing to look up exception codes.
 
@@ -361,7 +363,8 @@ BackendError
 ├── BackendTimeout             (exceeded TimeoutPolicy)
 ├── BackendAuthFailed          (401/403 — 300s hard backoff)
 ├── BackendModelMissing        (404 — operator needs to install the model)
-└── BackendInferenceBroken     (stage-2 probe failed — 15s short backoff)
+├── BackendInferenceBroken     (stage-2 probe failed — 15s short backoff)
+└── BackendContextOverflow     (400/413 or an error chunk: the prompt overflowed the window — no cooldown, #1369)
 ```
 
 **Per-class backoff policy** (applied in `LLMRouter._try_provider`):
@@ -374,6 +377,7 @@ BackendError
 | `BackendAuthFailed` | **300s hard backoff** | Doesn't self-heal — operator must rotate key |
 | `BackendModelMissing` | 60s | Operator must install — waste no retries |
 | `BackendInferenceBroken` | 15s | Might be mid-load; matches probe cache TTL |
+| `BackendContextOverflow` | **None** | The request's fault: the next, smaller prompt must still reach the provider (#1369) |
 | Generic `BackendError` | Normal router default | Unknown — try next anyway |
 | Safety net (`Exception`) | Normal default + metric | Missing taxonomy entry — file a bug |
 
