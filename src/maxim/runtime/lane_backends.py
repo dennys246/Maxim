@@ -2166,6 +2166,16 @@ def _start_heartbeat_if_enabled() -> None:
         pass
 
 
+def _start_process_services(logger: Any | None) -> None:
+    """``build_primary_router``'s process services, first thing in the build: the claimed leader's tunnel and
+    heartbeat (``leader_mode.start_claimed_leader_services``, a no-op unless this process owns them, #1610), then the
+    env-enabled heartbeat (:func:`_start_heartbeat_if_enabled`)."""
+    from maxim.runtime.leader_mode import start_claimed_leader_services
+
+    start_claimed_leader_services(logger)
+    _start_heartbeat_if_enabled()
+
+
 def build_primary_router(
     capabilities: Any | None = None,
     *,
@@ -2207,6 +2217,7 @@ def build_primary_router(
         detect_tiers,
     )
 
+    _start_process_services(logger)  # the leader owner's tunnel + heartbeat, then MAXIM_HEARTBEAT's (#1610)
     _require_valid_user_profiles()
     profile = (profile or "").strip() or None  # a blank profile is no profile, wherever it is read (#1538)
 
@@ -2365,8 +2376,6 @@ def build_primary_router(
     _print_lane_banner(manager)
 
     _append_decision_record(capabilities, lane_configs, _auto_spawn_sources, _has_peer_config, logger, profile)
-
-    _start_heartbeat_if_enabled()
 
     # Primary inference backend: "large" tier.
     router = manager.get_backend("large")
@@ -2915,14 +2924,6 @@ def _maybe_auto_spawn_server(
         served_n_ctx=resolved_n_ctx,
     )
 
-    # Leader mode: also auto-spawn the cloudflared daemon alongside the LLM
-    # server, so `maxim` on the leader brings up the full stack in one
-    # command. No-op when daemon is already running (systemd service, etc.).
-    if role_decision.role == "leader":
-        # Remote update is opt-in (proxy.allow_remote_update); it is no longer
-        # switched on for every leader here.
-        _maybe_auto_spawn_tunnel_daemon(logger)
-        _maybe_start_leader_proxy(role_decision.bind_host, logger)
     return out
 
 
@@ -3281,56 +3282,6 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
         _swap_lock.release()
 
 
-def _maybe_auto_spawn_tunnel_daemon(logger: Any | None) -> None:
-    """Spawn the cloudflared tunnel daemon if leader mode + config + no daemon running.
-
-    Opt out with MAXIM_AUTO_SPAWN_TUNNEL=0.
-    """
-    if os.environ.get("MAXIM_AUTO_SPAWN_TUNNEL", "").strip().lower() in (
-        "0",
-        "false",
-        "f",
-        "no",
-        "n",
-        "off",
-    ):
-        return
-    try:
-        from maxim.tunnel.daemon_spawner import (
-            TunnelDaemonSpawner,
-            cloudflared_already_running,
-            resolve_config_path,
-        )
-    except Exception as e:
-        if logger is not None:
-            logger.warning("Tunnel daemon spawner not available: %s", e)
-        return
-    if cloudflared_already_running():
-        if logger is not None:
-            logger.info(
-                "Cloudflared daemon already running — skipping auto-spawn (managed elsewhere, e.g. systemd service)"
-            )
-        return
-    config_path = resolve_config_path()
-    if config_path is None:
-        if logger is not None:
-            from maxim.utils.paths import cloudflared_system_dir
-
-            system_config = cloudflared_system_dir() / "config.yml"
-            logger.debug(f"Tunnel auto-spawn skipped: no ~/.cloudflared/config.yml or {system_config} found.")
-        return
-    spawner = TunnelDaemonSpawner(config_path=config_path)
-    if logger is not None:
-        logger.info("Auto-spawning cloudflared tunnel daemon (config=%s)", config_path)
-    if not spawner.start():
-        if logger is not None:
-            logger.warning(
-                "Cloudflared daemon auto-spawn failed — tunnel will not be active "
-                "until you start it manually: cloudflared --config %s tunnel run",
-                config_path,
-            )
-
-
 def _server_key_for_role() -> str:
     """The key this process's llama-cpp-server is spawned with: a leader's mesh key, read
     fail-closed (``require_leader_key`` raises ``LeaderKeyError``), or for any other role the
@@ -3347,32 +3298,6 @@ def _server_key_for_role() -> str:
     if resolved_role()[0] != "leader":
         return ensure_local_server_key()
     return require_leader_key()
-
-
-def _maybe_start_leader_proxy(
-    bind_host: str,
-    logger: Any | None,
-) -> None:
-    """Start the LeaderProxy reverse proxy in front of llama-cpp-server.
-
-    Handles auth, per-request logging, GPU debug endpoints, and injects
-    X-Maxim-* headers for peer-side trace enrichment. Tunnel ingress
-    should point at the proxy port (8099) instead of the inference
-    server (8100).
-    """
-    # The one leader entry point: reads the key fail-closed and refuses a
-    # port held by anything but an authenticated LeaderProxy.
-    from maxim.runtime.leader_proxy import start_leader_proxy_for_role
-
-    start_leader_proxy_for_role(bind_host)
-
-    # Start heartbeat monitor in leader mode (always on for leaders)
-    try:
-        from maxim.runtime.heartbeat import get_heartbeat_monitor
-
-        get_heartbeat_monitor().start()
-    except Exception:
-        pass
 
 
 def _print_lane_banner(manager: "LaneBackendManager") -> None:

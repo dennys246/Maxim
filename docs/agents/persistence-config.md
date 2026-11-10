@@ -41,7 +41,7 @@ If you want a mutable field *in* a declarative file ("operator committed their i
 | Stable hashing | `src/maxim/utils/seeding.py` (`stable_hash_32`, `stable_hash_64_signed`) |
 | Config load/precedence | `src/maxim/runtime/config_loader.py` (`resolve_setting`, `_env_is_set`, env coercers, `_maybe_migrate_from_peer_yml`, `_apply_lane_config_to_env`) |
 | Config write | `src/maxim/runtime/config_writer.py` (the ONLY sanctioned config.json writer) |
-| Role detection | `src/maxim/runtime/role.py` (`detect_role`, `detect_and_apply_role`), `src/maxim/runtime/leader_mode.py` (thin back-compat wrapper) |
+| Role detection | `src/maxim/runtime/role.py` (`detect_role`, `detect_and_apply_role`), `src/maxim/runtime/leader_mode.py` (thin back-compat wrapper; it also owns a leader's services, #1610: docs/agents/llm-routing.md) |
 
 ## 3. Invariants & lessons
 

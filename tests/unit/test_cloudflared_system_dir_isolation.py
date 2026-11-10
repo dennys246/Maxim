@@ -145,7 +145,6 @@ def test_the_doctor_sync_check_names_the_unreadable_system_path(tmp_path, monkey
 def test_the_tunnel_auto_spawn_names_the_system_path_it_found_nothing_in(tmp_path, monkeypatch):
     from unittest.mock import MagicMock
 
-    import maxim.runtime.lane_backends as LB
     from maxim.tunnel import daemon_spawner
 
     monkeypatch.delenv("MAXIM_AUTO_SPAWN_TUNNEL", raising=False)
@@ -153,7 +152,7 @@ def test_the_tunnel_auto_spawn_names_the_system_path_it_found_nothing_in(tmp_pat
     monkeypatch.setattr(daemon_spawner, "cloudflared_already_running", lambda: False)
     monkeypatch.setattr(daemon_spawner, "resolve_config_path", lambda: None)
     logger = MagicMock()
-    LB._maybe_auto_spawn_tunnel_daemon(logger)
+    daemon_spawner.auto_spawn_tunnel_daemon(logger)
     (message,) = logger.debug.call_args.args
     assert str(tmp_path / "etc" / "config.yml") in message
     assert "/etc/cloudflared" not in message

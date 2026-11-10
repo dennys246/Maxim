@@ -41,9 +41,9 @@ LEADER = SimpleNamespace(role="leader", bind_host="127.0.0.1", reason="test")
 def services(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """No claim yet; the tunnel and the heartbeat only record."""
     started: list[str] = []
-    monkeypatch.setattr(leader_mode, "_claimed_by_pid", None, raising=False)
-    monkeypatch.setattr(leader_mode, "_started_by_pid", None, raising=False)
-    monkeypatch.setattr(daemon_spawner, "auto_spawn_tunnel_daemon", lambda log: started.append("tunnel"), raising=False)
+    monkeypatch.setattr(leader_mode, "_claimed_by_pid", None)
+    monkeypatch.setattr(leader_mode, "_started_by_pid", None)
+    monkeypatch.setattr(daemon_spawner, "auto_spawn_tunnel_daemon", lambda log: started.append("tunnel"))
     monkeypatch.setattr(
         "maxim.runtime.heartbeat.get_heartbeat_monitor",
         lambda: SimpleNamespace(start=lambda: started.append("heartbeat")),
@@ -76,12 +76,10 @@ def _claimed(monkeypatch: pytest.MonkeyPatch, services: list[str]) -> None:
 # ─── the claim ────────────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_binding_the_default_port_proxy_claims_the_services(monkeypatch, services):
     _claimed(monkeypatch, services)
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_sharing_another_processes_proxy_claims_nothing(monkeypatch, services):
     """A sub-sim on the leader box finds the leader's proxy on the port: the leader keeps its tunnel."""
     _proxy(monkeypatch, bound_here=False, started=services)
@@ -91,7 +89,6 @@ def test_sharing_another_processes_proxy_claims_nothing(monkeypatch, services):
     assert services == ["proxy@127.0.0.1"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_a_proxy_on_a_non_default_port_claims_nothing(monkeypatch, services):
     """``start_leader_proxy_for_role`` returns a server but records no singleton (a harness child's own port)."""
     monkeypatch.setattr(leader_proxy, "_leader_proxy_server", None)
@@ -100,7 +97,6 @@ def test_a_proxy_on_a_non_default_port_claims_nothing(monkeypatch, services):
     assert not leader_mode.owns_leader_services()
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_a_forked_child_does_not_inherit_the_claim(monkeypatch, services):
     _claimed(monkeypatch, services)
     real_pid = os.getpid()
@@ -110,7 +106,6 @@ def test_a_forked_child_does_not_inherit_the_claim(monkeypatch, services):
     assert "tunnel" not in services
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_the_owner_starts_the_tunnel_and_heartbeat_once(monkeypatch, services):
     _claimed(monkeypatch, services)
     for _ in range(3):  # the orchestrator builds its routers more than once per process
@@ -118,7 +113,6 @@ def test_the_owner_starts_the_tunnel_and_heartbeat_once(monkeypatch, services):
     assert services == ["proxy@127.0.0.1", "tunnel", "heartbeat"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_a_tunnel_start_that_raises_is_logged_and_the_heartbeat_still_starts(monkeypatch, services):
     """E.g. a PermissionError reading /etc/cloudflared: the owner's router build must not fail on its tunnel."""
     _claimed(monkeypatch, services)
@@ -131,7 +125,6 @@ def test_a_tunnel_start_that_raises_is_logged_and_the_heartbeat_still_starts(mon
     assert services == ["proxy@127.0.0.1", "heartbeat"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_the_early_leader_boot_claims(monkeypatch, services):
     import maxim.cli as cli
 
@@ -141,7 +134,6 @@ def test_the_early_leader_boot_claims(monkeypatch, services):
     assert leader_mode.owns_leader_services()
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_maxim_serve_on_a_leader_never_claims_or_binds_the_proxy(monkeypatch, services):
     """Owner decision: only the CLI leader owns a leader's services; the console shares, never binds :8099."""
     from maxim.console import server
@@ -164,7 +156,6 @@ def test_maxim_serve_on_a_leader_never_claims_or_binds_the_proxy(monkeypatch, se
 # ─── the tunnel starter ──────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_the_tunnel_opt_out_starts_nothing(monkeypatch):
     seen: list[str] = []
     monkeypatch.setattr(daemon_spawner, "cloudflared_already_running", lambda: seen.append("pgrep") or False)
@@ -219,7 +210,6 @@ def auto_spawn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     return run
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 @pytest.mark.parametrize("decision", ["reuse", "spawn"])
 def test_auto_spawn_starts_no_leader_service_on_any_path(monkeypatch, services, auto_spawn, decision):
     """Even for a claimed leader: the LLM path decides only the LLM (the reuse arm skipped the tunnel, #1610)."""
@@ -230,7 +220,6 @@ def test_auto_spawn_starts_no_leader_service_on_any_path(monkeypatch, services, 
     assert services == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 @pytest.mark.parametrize("fails_at", ["_require_valid_user_profiles", "_project_lane_env_for_build"])
 def test_the_build_starts_the_owners_services_first_even_when_it_raises(monkeypatch, services, fails_at):
     """A server-mode leader stays up behind its proxy when its LLM fails (#1338), including on an invalid profile;
@@ -280,7 +269,6 @@ def _names_outside(name: str, allowed: set[str]) -> list[str]:
     return found
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_only_the_tunnel_starter_builds_a_tunnel_daemon():
     """``TunnelDaemonSpawner`` is built in one module; auto-spawn and the router build never name it."""
     assert _names_outside("TunnelDaemonSpawner", {"src/maxim/tunnel/daemon_spawner.py"}) == []
@@ -291,7 +279,6 @@ def test_only_the_owner_starts_the_tunnel():
     assert _names_outside("auto_spawn_tunnel_daemon", allowed) == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_only_the_owner_starts_the_leader_role_proxy():
     """``start_leader_proxy_for_role`` is reached only through ``leader_mode.claim_leader_services``. The sanctioned
     exception is ``maxim oasis serve``, which calls ``start_leader_proxy`` itself with its own auth (not this name)."""
@@ -312,7 +299,6 @@ def _starts_the_heartbeat(node: ast.AST) -> bool:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="#1610: red gate; leader services still start from the LLM spawn path")
 def test_the_heartbeat_is_started_from_two_places_only():
     """The chained ``get_heartbeat_monitor().start()`` form: the leader owner's (``leader_mode``) and the env-enabled
     one (``lane_backends._start_heartbeat_if_enabled``). The console's own sampling start

@@ -46,7 +46,7 @@ maxim config set auto_spawn.tunnel true
 maxim doctor
 
 # 5. Run it:
-maxim                                   # auto-spawns llama.cpp + cloudflared,
+maxim                                   # starts the LeaderProxy + cloudflared, then llama.cpp,
                                         # role exported as MAXIM_ROLE=leader
                                         # by the unified detector at startup
 ```
@@ -465,7 +465,7 @@ is `solo`; a leader is never chosen by default.
 - `~/.cloudflared/config.yml` or `/etc/cloudflared/config.yml` exists, OR
 - You set `MAXIM_ROLE=leader`
 
-**Auto-spawn of cloudflared daemon:** when leader mode fires on `maxim` startup AND a tunnel config is present AND no cloudflared daemon is already running, Maxim launches the daemon as a managed subprocess alongside the llama-cpp-server. Respects existing systemd services (checks `pgrep` before spawning). Opt out with `MAXIM_AUTO_SPAWN_TUNNEL=0`.
+**Auto-spawn of cloudflared daemon:** when leader mode fires on `maxim` startup AND a tunnel config is present AND no cloudflared daemon is already running, the `maxim` process that holds the LeaderProxy launches the daemon as a managed subprocess when it builds its LLM, whether it spawned a llama-cpp-server, reused one already on the port, or runs without one. `maxim serve` (the console) and Python-API processes never start it: run `maxim` on the leader. Respects existing systemd services (checks `pgrep` before spawning). Opt out with `MAXIM_AUTO_SPAWN_TUNNEL=0`.
 
 Other valid roles:
 
@@ -478,7 +478,7 @@ Other valid roles:
 **Setting up a home leader:**
 
 1. Install cloudflared + configure tunnel (see next section) — or skip and just use LAN IP
-2. Make sure the key exists and is private (`maxim tunnel key rotate`, `chmod 600 ~/.config/maxim/api_key`), then run `maxim` — auto-spawn detects cloudflared, promotes to leader, and starts the LeaderProxy on `:8099`
+2. Make sure the key exists and is private (`maxim tunnel key rotate`, `chmod 600 ~/.config/maxim/api_key`), then run `maxim` — role detection sees cloudflared and promotes to leader; `maxim` starts the LeaderProxy on `:8099` at boot and the tunnel when it builds its LLM
 3. On a peer machine: `MAXIM_LANE_LARGE_REMOTE_URL=https://maxim-llm.yourdomain.com/v1 maxim`
 
 The leader's Maxim still runs locally too — both your home CLI and the laptop CLI hit the same GPU.
