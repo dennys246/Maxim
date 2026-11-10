@@ -200,10 +200,9 @@ def test_the_gguf_is_rehashed_at_preflight(monkeypatch, tmp_path) -> None:
     assert h.check_gguf_identity("63b", str(tmp_path / "absent.gguf")) is None
 
 
-def test_prepare_rehashes_the_gguf_after_the_model_check(monkeypatch, tmp_path) -> None:
-    """The wire, not only the helper: ``prepare`` (non-mock) calls it with the configured model path."""
-    seen: list = []
-    monkeypatch.setattr(h, "check_gguf_identity", lambda exp, path: seen.append((exp, path)))
+def test_run_and_smoke_call_the_gguf_check_after_the_model_check() -> None:
+    """A source-order check (the mock path skips the model check, so no ``main --mock`` run can reach it): ``prepare``
+    and ``smoke`` each re-hash the configured GGUF after the model check and before the port check."""
     src = Path(h.__file__).read_text()
     for block in (
         src[src.index("def prepare(") : src.index("def run(")],
@@ -390,9 +389,12 @@ def test_the_63c_judge_reads_the_keying_table_not_a_hard_coded_port(exp63c, monk
     """Swapping KEYINGS["63c"] changes what the judge computes (63b's keying makes C5(b) fail: the traces' keywords
     are the shipped keys), so preflight's check_keying guards the port the judge actually calls."""
     _rows, _out, phases = exp63c()
-    assert v.exp63c_c5_problems(phases, goal=GOAL, key=v.keying_of("63c")) == []
+    assert v.exp63c_c5_problems(phases, goal=GOAL, key=v.keying_of("63c"), verdict_time=True) == []
     monkeypatch.setitem(v.KEYINGS, "63c", v.p_key_tokens)
-    assert any(x.startswith("C5(b)") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=v.keying_of("63c")))
+    assert any(
+        x.startswith("C5(b)")
+        for x in v.exp63c_c5_problems(phases, goal=GOAL, key=v.keying_of("63c"), verdict_time=True)
+    )
 
 
 def test_r3d_counts_only_cue_turns_after_a_held_r3a(exp63c, monkeypatch) -> None:
@@ -417,9 +419,13 @@ def test_a_control_alone_decisive_is_not_shown_and_contaminated_is_never_c5(exp6
     monkeypatch.setattr(v, "exp63b_turn", only_control)
     g = v.exp63c_gates(phases, goal=GOAL, key=_key())
     assert g["R3d"]["decisive_turns"] == [] and g["verdict"] == "NOT SHOWN"
-    assert any(x.startswith("C5(k) turn 2") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key()))
+    assert any(
+        x.startswith("C5(k) turn 2") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key(), verdict_time=True)
+    )
     monkeypatch.setattr(v, "exp63c_control_status", lambda *a, **k: "contaminated")
-    assert not any(x.startswith("C5(k)") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key()))
+    assert not any(
+        x.startswith("C5(k)") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key(), verdict_time=True)
+    )
 
 
 def test_c5_i_prime_checks_both_halves_in_both_phases(exp63c) -> None:
@@ -430,12 +436,18 @@ def test_c5_i_prime_checks_both_halves_in_both_phases(exp63c) -> None:
         for r in p[index]["lines"]:
             if r.get("e") == "enrichment_trace" and r.get("cue_text") == line:
                 r["cue_text"] = "something else"
-        assert any("turn 3: cue_text is not script line 3" in x for x in v.exp63c_c5_problems(p, goal=GOAL, key=_key()))
+        assert any(
+            "turn 3: cue_text is not script line 3" in x
+            for x in v.exp63c_c5_problems(p, goal=GOAL, key=_key(), verdict_time=True)
+        )
         p = copy.deepcopy(phases)
         for r in p[index]["lines"]:
             if "ENTER turn=3 " in str(r.get("message", "")):
                 r["message"] = r["message"].replace(f"text_len={len(line)}", "text_len=1")
-        assert any("turn 3: the bridge sent 1 characters" in x for x in v.exp63c_c5_problems(p, goal=GOAL, key=_key()))
+        assert any(
+            "turn 3: the bridge sent 1 characters" in x
+            for x in v.exp63c_c5_problems(p, goal=GOAL, key=_key(), verdict_time=True)
+        )
 
 
 def test_c5_q_fires_on_a_decisive_pair_without_a_shared_key_and_never_in_the_smoke(exp63c, monkeypatch) -> None:
@@ -452,7 +464,7 @@ def test_c5_q_fires_on_a_decisive_pair_without_a_shared_key_and_never_in_the_smo
         return {**x, "decisive": True}
 
     monkeypatch.setattr(v, "exp63b_turn", broken)
-    assert any(x.startswith("C5(q)") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key()))
+    assert any(x.startswith("C5(q)") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key(), verdict_time=True))
     smoke = v.exp63c_c5_problems(phases, goal=GOAL, key=_key(), r3a_view=False, verdict_time=False)
     assert not any(x.startswith(("C5(q)", "C5(k)")) for x in smoke)  # ruling S1
 
@@ -492,18 +504,51 @@ def test_contested_and_the_literal_uncontested_rule_read_every_valid_order(exp63
     _rows, _out, phases = exp63c()
     real = v.exp63b_turn
 
-    def two_orders(tr, *a, **k):
-        x = real(tr, *a, **k)
-        if k.get("explain") and x.get("orders"):
-            o = x["orders"][0]
-            c = o["pairs"][0][0] if o["pairs"] else "c"
-            x["orders"] = [o, {"displaced": ["d2"], "displaced_scores": {"d2": 1}, "pairs": [[c, "d2", 3, 1]]}]
-        return x
+    def with_orders(orders):
+        def fake(tr, *a, **k):
+            x = real(tr, *a, **k)
+            if k.get("explain") and x.get("orders") and tr.get("cue_text") == v.EXP63C_LINES[1][2]:
+                c = x["orders"][0]["pairs"][0][0]
+                x["orders"] = [{**o, "pairs": [[c, *pr[1:]] for pr in o["pairs"]]} for o in orders]
+            return x
 
-    monkeypatch.setattr(v, "exp63b_turn", two_orders)
+        return fake
+
+    # S3 i: a second order whose best pair is contested makes the turn contested
+    contested = [{"displaced": ["d1"], "displaced_scores": {"d1": 0}, "pairs": [["c", "d1", 3, 0]]},
+                 {"displaced": ["d2"], "displaced_scores": {"d2": 1}, "pairs": [["c", "d2", 3, 1]]}]  # fmt: skip
+    monkeypatch.setattr(v, "exp63b_turn", with_orders(contested))
     d = v.exp63c_gates(phases, goal=GOAL, key=_key())["descriptive"]
     assert d["cue_turns"][3]["contested"] is True and d["cue_turns"][3]["uncontested_literal"] is False
     assert d["uncontested"] is False and 3 in d["contested_turns"]
+    # S3 ii: the best pair is "3 v 0" (uncontested) but another displaced id holds a cue key: NOT literally uncontested
+    split = [{"displaced": ["d1", "d2"], "displaced_scores": {"d1": 0, "d2": 1},
+              "pairs": [["c", "d1", 3, 0], ["c", "d2", 3, 1]]}]  # fmt: skip
+    monkeypatch.setattr(v, "exp63b_turn", with_orders(split))
+    d = v.exp63c_gates(phases, goal=GOAL, key=_key())["descriptive"]
+    r = d["cue_turns"][3]
+    assert r["score"] == "3 v 0" and r["contested"] is False and r["uncontested_literal"] is False
+    assert d["uncontested"] is False and d["contested_turns"] == [3]  # the PASS wording names the turn
+
+
+def test_explain_covers_every_valid_tie_order_of_the_real_function() -> None:
+    """X and Y tie exactly below the cut (63b's G4 case): removing the carried C lets either in, so there are two valid
+    orders, and explain= reports both: displacing X (no cue non-goal key) and displacing Y (one)."""
+    key = _key()
+
+    def rec(rid, text, ts, seq):
+        return {"id": rid, "timestamp": ts, "capture_seq": seq, "perception": {"cli_input": text, "observations": {}},
+                "context": {"active_goal": None}, "action": {"tool_name": ""}, "outcome": {}}  # fmt: skip
+
+    records = [rec("A", "the iron door", 20, 0), rec("B", "an iron door gate", 21, 1), rec("C", "a door", 5, 2),
+               rec("X", "the guard", 3, 3), rec("Y", "the door", 3, 4)]  # fmt: skip
+    recs = {r["id"]: r for r in records}
+    tr = {"memory_ids": ["B", "A", "C"], "memory_paths": ["cue"] * 3, "own_ids": ["own"],
+          "cue_text": "where is the iron door guard", "goal_path_horizon": 4, "goal_path_holes": [], "goal": GOAL}  # fmt: skip
+    x = v.exp63b_turn(tr, recs, {"C"}, GOAL, key=key, explain=True)
+    assert x["conforms"] and len(x["orders"]) == 2, x.get("orders")
+    assert sorted(tuple(o["displaced"]) for o in x["orders"]) == [("X",), ("Y",)]
+    assert {d: s for o in x["orders"] for d, s in o["displaced_scores"].items()} == {"X": 0, "Y": 1}
 
 
 # ── the prereg's deletion probes (build order step 4) ────────────────────────────────────────────────────
@@ -576,6 +621,18 @@ def test_the_smoke_stops_on_a_narrator_submit_and_a_call_in_flight() -> None:
     bad = {label for label, ok in found if not ok}
     assert {"phase 1: zero narrator submits", "phase 1: no LLM call in flight at any ENTER",
             "phase 1: the peak prompt is under n_ctx", "phase 1: eight ENTER lines, one per script line"} <= bad  # fmt: skip
+
+
+def test_the_smoke_through_main_never_decides_a_turn(monkeypatch, capsys, tmp_path) -> None:
+    """Ruling S1 on the production path: every turn decision the smoke makes is decide=False (no R3d), so a forgotten
+    verdict_time=False in smoke_checks or exp63_attempt_problems goes red here."""
+    _harness(monkeypatch, tmp_path / "unused.jsonl")
+    monkeypatch.setattr(h, "MOCK63B_VARIANT", "pass")
+    seen: list = []
+    real = v.exp63b_turn
+    monkeypatch.setattr(v, "exp63b_turn", lambda *a, **k: seen.append(k.get("decide", True)) or real(*a, **k))
+    assert h.main(["smoke", "--exp", "63c", "--mock"]) == 0, capsys.readouterr()
+    assert seen and not any(seen), f"{sum(seen)} of {len(seen)} turn calls decided"
 
 
 def test_the_smokes_echo_count_is_nac_and_atl_only() -> None:

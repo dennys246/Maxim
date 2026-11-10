@@ -271,7 +271,9 @@ def protocol_problems(protocol: dict[str, dict] | None = None) -> list[str]:
             problems.append(f"campaign {key}: experiment {p.get('experiment')!r} is not 10, 09, 63, 63b or 63c")
         base = p.get("base_preregs", [])
         others = {q.get("prereg") for k, q in protocol.items() if k != key}
-        if not isinstance(base, list) or not all(isinstance(b, str) and b in others for b in base):
+        if not isinstance(base, list) or not all(
+            isinstance(b, str) and b in others and b != p.get("prereg") for b in base
+        ):
             problems.append(f"campaign {key}: base_preregs {base!r} is not a list of other campaigns' preregs")
         if not isinstance(p.get("scope"), str) or not _SCOPE.fullmatch(p["scope"]):
             problems.append(f"campaign {key}: scope {p.get('scope')!r} is not one path component [0-9a-z_]+")
@@ -2416,14 +2418,12 @@ def _exp63c_turns(gate: dict, records: dict[str, dict], carried: set[str], goal:
     }
 
 
-def exp63c_c5_problems(
-    phases: list[dict], *, goal: str, key, r3a_view: bool = True, verdict_time: bool = True
-) -> list[str]:
+def exp63c_c5_problems(phases: list[dict], *, goal: str, key, verdict_time: bool, r3a_view: bool = True) -> list[str]:
     """C5 for Exp 63c: 63b's (G5) under 63c's keying, plus (i') each turn's ``cue_text`` and ENTER ``text_len`` are
     its script line exactly, in both phases; and, at verdict time only, (k) an armed control reads decisive and (q) a
     decisive pair whose carried record shares none of the cue's non-goal keys (G4 condition 3 cannot hold without one;
-    a guard against a broken port). ``verdict_time=False`` (the smoke, which never computes R3d: ruling S1) skips
-    (k) and (q) and computes no decisive status."""
+    a guard against a broken port, checked in EVERY valid order). ``verdict_time`` is required: False (the smoke,
+    which never computes R3d: ruling S1) skips (k) and (q) and computes no decisive status."""
     found = exp63b_c5_problems(phases, goal=goal, key=key, r3a_view=r3a_view)
     for index, phase in enumerate(phases):
         label = ("baseline", "gate")[index]
@@ -2447,9 +2447,11 @@ def exp63c_c5_problems(
         if turn in EXP63C_CONTROL_TURNS and exp63c_control_status(turn, base_records, goal, key=key) == "armed":
             found.append(f"C5(k) turn {turn}: an armed control reads decisive")
         nongoal = _exp63c_nongoal(EXP63C_LINES[1][turn - 1], goal, key=key)
-        winners = {c for o in x.get("orders", []) for c, _d, sc, sd in o["pairs"] if sc > sd}
-        if not any(nongoal & p_record_tokens(records[c], key=key) for c in winners):
-            found.append(f"C5(q) turn {turn}: no decisive carried record shares a cue non-goal key")
+        for o in x.get("orders", []):
+            winners = {c for c, _d, sc, sd in o["pairs"] if sc > sd}
+            if not any(nongoal & p_record_tokens(records[c], key=key) for c in winners):
+                found.append(f"C5(q) turn {turn}: no decisive carried record shares a cue non-goal key")
+                break
     return found
 
 
@@ -3178,7 +3180,7 @@ def judge(exp: str, attempts_in_order: list[dict], data_root: Path) -> dict:
             # C5 and R3a's observability, from the committed traces and stores: an instrument fault is not data.
             goal = PROTOCOL[exp]["phases"][1][1]
             if experiment_of(exp) == "63c":
-                entry["problems"] += exp63c_c5_problems(phases, goal=goal, key=keying_of(exp))
+                entry["problems"] += exp63c_c5_problems(phases, goal=goal, key=keying_of(exp), verdict_time=True)
             elif experiment_of(exp) == "63b":
                 entry["problems"] += exp63b_c5_problems(phases, goal=goal, key=keying_of(exp))
             else:

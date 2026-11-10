@@ -1566,7 +1566,7 @@ def smoke_checks_63c(phases: list[dict], check, reported: list[str]) -> None:
         reported.append(f"{label} NAc/ATL enrichment lines by turn (echo channels): {echo}")
         key, goal = v.keying_of("63c"), v.PROTOCOL["63c"]["phases"][1][1]
         watched = {k for t in (*v.EXP63C_CONTROL_TURNS, *v.EXP63C_CUE_TURNS) for k in v._exp63c_nongoal(
-            v.EXP63C_LINES[1][t - 1], goal, key=key)}  # fmt: skip
+            v.EXP63C_LINES[1][t - 1], goal, key=key)} | {k for keys in v.EXP63C_ANSWER_KEYS.values() for k in keys}  # fmt: skip
         touched = sorted({k for r in lines if r.get("e") == "sim_imagination"
                           for k in set(key(json.dumps(r, default=str))) & watched})  # fmt: skip
         reported.append(
