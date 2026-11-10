@@ -1,0 +1,5554 @@
+{
+ "r": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 1,
+     "hang": 0,
+     "ladl": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "goal"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "p": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 1,
+     "hang": 0,
+     "ladl": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "e1": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.2",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 2,
+     "hang": 2,
+     "ladl": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 1,
+     "straw": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 1,
+     "hatch": 1,
+     "padlock": 1,
+     "squeak": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "goal"
+     ],
+     [
+      "P2.5",
+      "goal"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.6",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 2,
+     "drip": 2,
+     "water": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "e2": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.2",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 2,
+     "hang": 2,
+     "ladl": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 2",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 3,
+     "straw": 3
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.4",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P1.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 2,
+     "hatch": 2,
+     "padlock": 2,
+     "squeak": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "goal"
+     ],
+     [
+      "P2.5",
+      "goal"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": false,
+    "winner": "P1.5",
+    "displaced": "P2.4.aut",
+    "margin": "3 v 3",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 3,
+     "drip": 3,
+     "water": 3
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 3
+ },
+ "e3": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.2",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 2,
+     "hang": 2,
+     "ladl": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 2",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 3,
+     "straw": 3
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "cel": 4,
+     "hatch": 4,
+     "padlock": 4,
+     "squeak": 4
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "goal"
+     ],
+     [
+      "P2.5",
+      "goal"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": false,
+    "winner": "P1.5",
+    "displaced": "P2.4.aut",
+    "margin": "3 v 3",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 4,
+     "drip": 4,
+     "water": 4
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 2
+ },
+ "b4": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.2",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 2,
+     "hang": 2,
+     "ladl": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "beneath": 3,
+     "mattress": 3,
+     "straw": 3
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "cel": 4,
+     "hatch": 4,
+     "padlock": 4,
+     "squeak": 4
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "crevic": 6,
+     "drip": 6,
+     "water": 6
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 1
+ },
+ "cpart": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 0,
+     "hang": 0,
+     "ladl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.2.aut",
+    "margin": "4 v 3",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 4,
+     "hatch": 4,
+     "padlock": 4,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "goal"
+     ],
+     [
+      "P2.4.aut",
+      "goal"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "goal"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 3
+ },
+ "cpart2": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 0,
+     "hang": 0,
+     "ladl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.2.aut",
+    "margin": "4 v 3",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 4,
+     "hatch": 4,
+     "padlock": 4,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "goal"
+     ],
+     [
+      "P2.5",
+      "goal"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "goal"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 3
+ },
+ "pA": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.2",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 2,
+     "hang": 1,
+     "ladl": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "pB": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 1,
+     "hang": 0,
+     "ladl": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.3",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 1,
+     "mattress": 1,
+     "straw": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "pC": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 1,
+     "hang": 0,
+     "ladl": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.4",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 1,
+     "hatch": 1,
+     "padlock": 1,
+     "squeak": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "pD": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 1,
+     "hang": 0,
+     "ladl": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.6",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 1,
+     "drip": 1,
+     "water": 1
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "stuckA": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.2",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P1.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 2,
+     "hang": 2,
+     "ladl": 2
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 4
+ },
+ "stuckB": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 0,
+     "hang": 0,
+     "ladl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "beneath": 3,
+     "mattress": 3,
+     "straw": 3
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3.aut",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 3
+ },
+ "stuckC": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 0,
+     "hang": 0,
+     "ladl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "cel": 4,
+     "hatch": 4,
+     "padlock": 4,
+     "squeak": 4
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": true,
+    "winner": "P1.5",
+    "displaced": "P2.5.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.5",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.6",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "crevic": 0,
+     "drip": 0,
+     "water": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.7.aut",
+      "cue"
+     ],
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 3
+ },
+ "stuckD": {
+  "rows": [
+   {
+    "turn": 1,
+    "role": "R3a view",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P1.6",
+      "cue"
+     ],
+     [
+      "P1.4.aut",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [],
+    "new_pool": 0,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "back": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 2,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ],
+     [
+      "P1.7.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.1.aut",
+      "cue"
+     ],
+     [
+      "P2.1",
+      "cue"
+     ]
+    ],
+    "new_pool": 2,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "bel": 0,
+     "chapel": 0,
+     "ring": 0,
+     "silver": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 3,
+    "role": "cue A",
+    "decisive": true,
+    "winner": "P1.2",
+    "displaced": "P2.1.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.2",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.2.aut",
+      "cue"
+     ],
+     [
+      "P2.2",
+      "cue"
+     ],
+     [
+      "P2.1.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 4,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "brass": 0,
+     "hang": 0,
+     "ladl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 4,
+    "role": "cue B",
+    "decisive": true,
+    "winner": "P1.3",
+    "displaced": "P2.2.aut",
+    "margin": "3 v 0",
+    "shown": [
+     [
+      "P1.3",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ],
+     [
+      "P2.2.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 6,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "beneath": 0,
+     "mattress": 0,
+     "straw": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 5,
+    "role": "cue C",
+    "decisive": true,
+    "winner": "P1.4",
+    "displaced": "P2.3",
+    "margin": "4 v 0",
+    "shown": [
+     [
+      "P1.4",
+      "cue"
+     ],
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.4",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ],
+     [
+      "P2.3",
+      "cue"
+     ]
+    ],
+    "new_pool": 8,
+    "armed": null,
+    "completion": true,
+    "echo_load": {
+     "cel": 0,
+     "hatch": 0,
+     "padlock": 0,
+     "squeak": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 6,
+    "role": "control",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ],
+     [
+      "P2.3.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 10,
+    "armed": true,
+    "completion": null,
+    "echo_load": {
+     "banner": 0,
+     "drap": 0,
+     "purpl": 0
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 7,
+    "role": "cue D",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.4.aut",
+      "cue"
+     ]
+    ],
+    "new_pool": 12,
+    "armed": null,
+    "completion": false,
+    "echo_load": {
+     "crevic": 6,
+     "drip": 6,
+     "water": 6
+    },
+    "goal_fill_win": []
+   },
+   {
+    "turn": 8,
+    "role": "closing",
+    "decisive": false,
+    "winner": null,
+    "displaced": null,
+    "margin": null,
+    "shown": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "shown_wo": [
+     [
+      "P2.6.aut",
+      "cue"
+     ],
+     [
+      "P2.5.aut",
+      "cue"
+     ],
+     [
+      "P2.5",
+      "cue"
+     ]
+    ],
+    "new_pool": 14,
+    "armed": null,
+    "completion": null,
+    "echo_load": {
+     "stir": 0
+    },
+    "goal_fill_win": []
+   }
+  ],
+  "distractor": true,
+  "k": 3
+ }
+}

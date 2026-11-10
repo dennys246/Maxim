@@ -1,0 +1,12 @@
+base: r:4 p:4 e1:4 e2:3 e3:2 b4:1 cpart:3 cpart2:3 pA:4 pB:4 pC:4 pD:4 stuckA:4 stuckB:3 stuckC:3 stuckD:3
+   min k=1; decisive cue turns=53, planted-fact winner=53, contested=4 [('e2', 4, '3 v 2'), ('e3', 4, '3 v 2'), ('cpart', 5, '4 v 3'), ('cpart2', 5, '4 v 3')]; completion on decisive=53/53; armed controls decisive=0; unarmed control turns=0
+neutral: r:4 p:4 e1:4 e2:3 e3:2 b4:1 cpart:3 cpart2:3 pA:4 pB:4 pC:4 pD:4 stuckA:4 stuckB:3 stuckC:3 stuckD:3
+   min k=1; decisive cue turns=53, planted-fact winner=53, contested=4 [('e2', 4, '3 v 2'), ('e3', 4, '3 v 2'), ('cpart', 5, '4 v 3'), ('cpart2', 5, '4 v 3')]; completion on decisive=53/53; armed controls decisive=0; unarmed control turns=0
+neutral+nogoal: r:3 p:4 e1:4 e2:3 e3:2 b4:1 cpart:3 cpart2:3 pA:4 pB:4 pC:4 pD:4 stuckA:4 stuckB:3 stuckC:3 stuckD:3
+   min k=1; decisive cue turns=52, planted-fact winner=52, contested=4 [('e2', 4, '3 v 2'), ('e3', 4, '3 v 2'), ('cpart', 5, '4 v 3'), ('cpart2', 5, '4 v 3')]; completion on decisive=52/52; armed controls decisive=0; unarmed control turns=0
+bare: r:4 p:4 e1:4 e2:3 e3:2 b4:1 cpart:3 cpart2:3 pA:4 pB:4 pC:4 pD:4 stuckA:4 stuckB:3 stuckC:3 stuckD:3
+   min k=1; decisive cue turns=53, planted-fact winner=53, contested=4 [('e2', 4, '3 v 2'), ('e3', 4, '3 v 2'), ('cpart', 5, '4 v 3'), ('cpart2', 5, '4 v 3')]; completion on decisive=53/53; armed controls decisive=0; unarmed control turns=0
+naut2: r:4 p:4 e1:2 e2:1 e3:1 b4:0 cpart:3 cpart2:3 pA:4 pB:4 pC:4 pD:4 stuckA:3 stuckB:3 stuckC:3 stuckD:3
+   min k=0; decisive cue turns=46, planted-fact winner=46, contested=5 [('e2', 4, '3 v 2'), ('e3', 4, '3 v 2'), ('cpart', 5, '4 v 3'), ('cpart2', 5, '4 v 3'), ('pA', 3, '3 v 2')]; completion on decisive=46/46; armed controls decisive=0; unarmed control turns=0
+neutral+naut2: r:4 p:4 e1:2 e2:1 e3:1 b4:0 cpart:3 cpart2:3 pA:4 pB:4 pC:4 pD:4 stuckA:3 stuckB:3 stuckC:3 stuckD:3
+   min k=0; decisive cue turns=46, planted-fact winner=46, contested=5 [('e2', 4, '3 v 2'), ('e3', 4, '3 v 2'), ('cpart', 5, '4 v 3'), ('cpart2', 5, '4 v 3'), ('pA', 3, '3 v 2')]; completion on decisive=46/46; armed controls decisive=0; unarmed control turns=0
