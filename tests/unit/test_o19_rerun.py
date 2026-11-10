@@ -371,6 +371,7 @@ def test_the_mock_gate_phase_is_complete(mock_attempt) -> None:
     rows = mock_attempt("10")
     row, rep = _phase(rows, 1)
     assert v.complete_problems("10", 1, row, rep, _p1(rows), set(v.RESUME_STORES)) == []
+    assert row["served_model"]["listening_at"] == row["ts"]  # the mock row has the real row's shape (#1616)
 
 
 @pytest.mark.parametrize("label,perturb", PERTURB)
