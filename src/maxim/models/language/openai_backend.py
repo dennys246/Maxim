@@ -14,7 +14,7 @@ from maxim.utils.structured_logging import log_structured
 log = logging.getLogger(__name__)
 from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
 from maxim.models.language.config import LLMConfig
-from maxim.models.language.types import LLMResponse
+from maxim.models.language.types import LLMResponse, resolved_entry_key
 
 # Fix #6 (R2 review): Plan 2 R2d moved the SSRF check from this module
 # to maxim.utils.net. The alias preserves backward compatibility for
@@ -155,6 +155,13 @@ class _OpenAIBackend:
 
     def _get_api_key(self) -> str:
         cfg = self._provider_cfg()
+        # A lane or placement entry marked api_key_resolved carries the key already resolved at the lane build (env
+        # over config): that key is the one to send (#1371; models/language/types.py::resolved_entry_key). Falling
+        # through to the profile's env var below would let an unrelated OPENAI_API_KEY (or a stale one) win over it.
+        # Every other entry keeps env-first.
+        resolved = resolved_entry_key(cfg)
+        if resolved:
+            return resolved
         # Provider entry wins; fall back to the top-level LLMConfig.api_key_env
         # (set from the active profile by load_llm_config) for the default cloud
         # path where the provider entry is synthesized in the router and the

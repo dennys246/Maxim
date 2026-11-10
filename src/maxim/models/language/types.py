@@ -216,6 +216,25 @@ class BackendInferenceBroken(BackendError):
     fix_hint = "Model loading, llama-cpp crashed, or chat template broken. Check peer logs."
 
 
+RESOLVED_KEY_MARKER = "api_key_resolved"
+
+
+def resolved_entry_key(entry: Any) -> str | None:
+    """The key a provider entry carries already resolved, or None (#1371).
+
+    A lane or placement entry built by ``runtime/lane_backends.py`` (``_build_remote_backend``,
+    ``_placement_entry_to_provider`` for PEER and url-CLOUD) carries the key it resolved at the build, where an
+    operator's ``MAXIM_LANE_<TIER>_REMOTE_API_KEY`` already beat config, and marks it ``api_key_resolved: True``. Every
+    backend sends that key and consults no env var for it. Any other entry (a cloud profile, a hand-written llm.json
+    provider) keeps its backend's env-first rule (CLI > env > config): the marker, never the absence of an
+    ``api_key_env``, is what says "already resolved", so an entry that gains an ``api_key_env`` later cannot silently
+    flip back."""
+    if not isinstance(entry, dict) or entry.get(RESOLVED_KEY_MARKER) is not True:
+        return None
+    key = entry.get("api_key")
+    return str(key).strip() if key else None
+
+
 @dataclass
 class ProviderState:
     """Tracks provider health and backoff state."""

@@ -165,9 +165,10 @@ def test_an_operator_lane_key_cannot_override_our_servers_key(caplog) -> None:
 
 @pytest.mark.parametrize("server_owned", [True, False])
 def test_our_servers_key_rides_on_the_provider_entry_never_the_env(monkeypatch, server_owned: bool) -> None:
-    """For our own server the key is the truth: it goes on the lane's provider entry, so an earlier value of the env
+    """The lane's resolved key is the truth: it goes on the lane's provider entry, so an earlier value of the env
     var (a stale "not-needed", a peer-setup export) cannot win, and the key never enters the process env that child
-    processes inherit. Any other lane keeps today's behaviour: the operator's export wins (setdefault)."""
+    processes inherit. Since #1371 (owner decision 2026-11-10) this holds for every lane, not only our own server's:
+    the operator's override is MAXIM_LANE_<TIER>_REMOTE_API_KEY, which the lane's key already honours."""
     from unittest.mock import patch
 
     from maxim.models.language.config import LLMConfig
@@ -195,9 +196,9 @@ def test_our_servers_key_rides_on_the_provider_entry_never_the_env(monkeypatch, 
     backend = _MaximPeerBackend.__new__(_MaximPeerBackend)
     backend._api_key_override = None
     monkeypatch.setattr(backend, "_provider_cfg", lambda: entry, raising=False)
-    expected = "server-key-0123456789" if server_owned else "stale-or-exported"
+    expected = "server-key-0123456789"
     assert backend._get_api_key() == expected
-    assert ("api_key" in entry) is server_owned
+    assert entry.get("api_key") == expected
 
 
 def test_a_lane_config_repr_never_carries_the_key() -> None:

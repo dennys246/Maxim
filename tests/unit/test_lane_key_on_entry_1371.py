@@ -20,8 +20,6 @@ import pytest
 
 from maxim.models.language.config import LLMConfig
 
-_RED = pytest.mark.xfail(strict=True, reason="red gate: #1371 not fixed yet")
-
 
 def _lane(url: str, key: str | None):
     from maxim.runtime.worker_pool import LaneConfig
@@ -57,15 +55,15 @@ SELF_HOSTED = "http://192.168.1.50:8100/v1"
 CLOUD = "https://api.example-llm.com/v1"
 
 
-@_RED
 @pytest.mark.parametrize("url", [SELF_HOSTED, CLOUD], ids=["self-hosted", "cloud"])
 def test_a_rotated_config_key_beats_a_stale_internal_env_value(monkeypatch, url: str) -> None:
     monkeypatch.setenv("MAXIM_LANE_LARGE_API_KEY", "stale-key-from-an-earlier-build")
+    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-openai-key")  # the cloud backend's profile fallback
     entry = _entry_for(url, "rotated-key-0123456789")
     assert _key_the_backend_sends(entry) == "rotated-key-0123456789"
+    assert entry.get("api_key_resolved") is True and "api_key_env" not in entry
 
 
-@_RED
 @pytest.mark.parametrize("url", [SELF_HOSTED, CLOUD], ids=["self-hosted", "cloud"])
 def test_the_build_never_writes_the_key_to_the_process_env(monkeypatch, url: str) -> None:
     monkeypatch.delenv("MAXIM_LANE_LARGE_API_KEY", raising=False)
@@ -74,7 +72,6 @@ def test_the_build_never_writes_the_key_to_the_process_env(monkeypatch, url: str
     assert entry.get("api_key") == "rotated-key-0123456789"
 
 
-@_RED
 def test_a_stale_internal_value_is_warned_about_once_without_its_value(monkeypatch, caplog) -> None:
     from maxim.runtime import lane_backends
 
@@ -90,7 +87,6 @@ def test_a_stale_internal_value_is_warned_about_once_without_its_value(monkeypat
     assert "stale-key" not in message and "rotated-key" not in message
 
 
-@_RED
 @pytest.mark.parametrize("origin", ["PEER", "CLOUD"])
 def test_a_placement_entry_carries_its_key_and_writes_no_env(monkeypatch, origin: str) -> None:
     from maxim.runtime.lane_backends import _placement_entry_to_provider, _placement_provider_api_key_env
@@ -98,12 +94,14 @@ def test_a_placement_entry_carries_its_key_and_writes_no_env(monkeypatch, origin
 
     name = _placement_provider_api_key_env("fallback-1")
     monkeypatch.setenv(name, "stale-placement-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-openai-key")
     placement = ProviderPlacement(
         origin=Origin[origin], url=SELF_HOSTED if origin == "PEER" else CLOUD, model="m", api_key="placement-key-0123"
     )
     prov, _is_cloud = _placement_entry_to_provider(placement, "fallback-1")
     assert prov is not None
     assert prov.get("api_key") == "placement-key-0123"
+    assert prov.get("api_key_resolved") is True and "api_key_env" not in prov
     assert _key_the_backend_sends(prov) == "placement-key-0123"
     assert os.environ[name] == "stale-placement-key"  # untouched: never written, never read
 
@@ -123,3 +121,34 @@ def test_control_a_cloud_profile_entry_still_reads_its_env_first(monkeypatch) ->
     entry = {"type": "openai", "base_url": CLOUD, "api_key_env": "TEST_PROFILE_KEY_1371", "api_key": "from-config"}
     backend = _OpenAIBackend(dataclasses.replace(LLMConfig(), providers={"p": entry}), provider_key="p")
     assert backend._get_api_key() == "from-env"
+
+
+@pytest.mark.parametrize("backend", ["openai", "anthropic"])
+def test_control_a_hand_written_provider_with_a_key_stays_env_first(monkeypatch, backend: str) -> None:
+    """An llm.json provider carrying a literal key (no marker) keeps CLI > env > config: the exported env wins."""
+    env = "OPENAI_API_KEY" if backend == "openai" else "ANTHROPIC_API_KEY"
+    monkeypatch.setenv(env, "from-env")
+    entry = {"type": backend, "base_url": CLOUD, "api_key": "from-llm-json"}
+    if backend == "openai":
+        from maxim.models.language.openai_backend import _OpenAIBackend as cls
+    else:
+        from maxim.models.language.anthropic_backend import _AnthropicBackend as cls
+    backend_obj = cls(dataclasses.replace(LLMConfig(), providers={"p": entry}), provider_key="p")
+    assert backend_obj._get_api_key() == "from-env"
+
+
+def test_a_marked_entry_wins_even_if_it_names_an_env_var(monkeypatch) -> None:
+    """The marker, not the absence of api_key_env, says "already resolved": a later producer adding an env name
+    cannot silently flip a lane back to env-first."""
+    from maxim.models.language.openai_backend import _OpenAIBackend
+
+    monkeypatch.setenv("OPENAI_API_KEY", "stale")
+    entry = {
+        "type": "openai",
+        "base_url": CLOUD,
+        "api_key": "resolved",
+        "api_key_env": "OPENAI_API_KEY",
+        "api_key_resolved": True,
+    }
+    backend = _OpenAIBackend(dataclasses.replace(LLMConfig(), providers={"p": entry}), provider_key="p")
+    assert backend._get_api_key() == "resolved"
