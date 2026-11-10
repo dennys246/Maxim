@@ -13,6 +13,7 @@ import pytest
 from maxim.models.language.types import (
     INFERENCE_BROKEN_BACKOFF_S,
     BackendAuthFailed,
+    BackendContextOverflow,
     BackendDown,
     BackendError,
     BackendInferenceBroken,
@@ -24,6 +25,7 @@ from maxim.models.language.types import (
 
 ALL_SUBCLASSES = [
     BackendAuthFailed,
+    BackendContextOverflow,
     BackendDown,
     BackendInferenceBroken,
     BackendModelMissing,
@@ -70,6 +72,14 @@ def test_backend_timeout_carries_elapsed():
 def test_backend_model_missing_carries_requested_model():
     e = BackendModelMissing("local-llama", requested_model="mistral-7b")
     assert e.requested_model == "mistral-7b"
+
+
+def test_backend_context_overflow_carries_its_counts():
+    e = BackendContextOverflow("local-llama", status=413, requested_tokens=9512, context_window=8192)
+    assert (e.status, e.requested_tokens, e.context_window) == (413, 9512, 8192)
+    assert BackendContextOverflow("local-llama").requested_tokens is None
+    with pytest.raises(TypeError):
+        BackendContextOverflow("local-llama", requested=1)  # type: ignore[call-arg]
 
 
 def test_inference_broken_backoff_constant_exported():
