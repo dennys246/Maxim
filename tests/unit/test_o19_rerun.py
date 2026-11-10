@@ -1011,6 +1011,7 @@ class _FakeSim:
 def _spawn(monkeypatch, tmp_path, sim, read_served):
     monkeypatch.setattr(h.subprocess, "Popen", lambda *a, **k: sim)
     monkeypatch.setattr(h, "POLL_S", 0.0)
+    monkeypatch.setattr(h, "port_accepts", lambda port: True)
     return h.spawn_phase(
         "10", 0, home=tmp_path, run_id="r" * 32, resume=None, gguf="g", timeout_s=60, read_served=read_served
     )
@@ -1024,6 +1025,49 @@ def test_an_interrupted_poll_stops_the_sim(monkeypatch, tmp_path) -> None:
     with pytest.raises(KeyboardInterrupt):
         _spawn(monkeypatch, tmp_path, sim, interrupt)
     assert sim.calls[0] == "term"  # the sim (and the server it spawned) does not outlive the harness
+
+
+def test_no_served_read_before_the_sims_port_listens(monkeypatch, tmp_path) -> None:
+    """#1616: the first read waits for the port to accept (a silent connect, no http_request_failed WARNING); a
+    read that fails after that but before the first OK one is flagged not_ready, a later failure is not."""
+    listening = iter([False, False, True])
+    reads = iter(
+        [
+            {"served": None, "error": "HTTPServerError: 503"},
+            {"served": "g", "match": True},
+            {"served": None, "error": "HTTPConnectionError: refused"},
+        ]
+    )
+    probed: list = []
+    sim = _FakeSim([None] * 5 + [0])
+    monkeypatch.setattr(h.subprocess, "Popen", lambda *a, **k: sim)
+    monkeypatch.setattr(h, "POLL_S", 0.0)
+    monkeypatch.setattr(h, "SERVED_EVERY_S", 0.0)
+    monkeypatch.setattr(h, "port_accepts", lambda port: probed.append(port) or next(listening))
+    called: list = []
+
+    def read(port, gguf):
+        called.append(len(probed))
+        return dict(next(reads))
+
+    _sdir, _report, fields, *_rest = h.spawn_phase(
+        "10", 0, home=tmp_path, run_id="r" * 32, resume=None, gguf="g", timeout_s=60, read_served=read
+    )
+    assert called[0] == 3 and len(probed) == 3  # no read until the third probe accepted; no probe after that
+    served = fields["served_model"]
+    assert isinstance(served["listening_at"], float)
+    assert [r.get("not_ready") for r in served["reads"]] == [True, None, None]
+
+
+def test_port_accepts_is_a_bare_connect(monkeypatch) -> None:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        assert h.port_accepts(port) is True
+    assert h.port_accepts(port) is False
 
 
 def test_the_row_records_the_env_actually_passed(monkeypatch, tmp_path) -> None:

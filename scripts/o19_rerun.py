@@ -32,7 +32,8 @@ An attempt, in order:
   3. Each phase from ONE fresh ``MAXIM_DATA_HOME`` (models symlinked, no ``active_llm_model`` state, so the
      configured profile decides). The sim's environment is the operator's minus every ``MAXIM_*`` key, plus the
      harness's and the protocol's own (recorded exactly). While the sim runs, the harness reads the served model
-     from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s. The sim's own report is
+     from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s, the first read once the port
+     accepts a connection (#1616). The sim's own report is
      found by run id (``spawn_evidence``); the session directory and its run log are copied into the data dir,
      the files hashed (uncompressed) into the row; the row says ``failed`` when the complete-attempt condition
      (C1–C4, ``o19_verdict.complete_problems``) does not hold, and later phases do not run. A source file that
@@ -376,6 +377,17 @@ def check_host_identity() -> None:
         )
 
 
+def port_accepts(port: int) -> bool:
+    """Whether 127.0.0.1:``port`` accepts a TCP connection (#1616). A bare connect, never an HTTP read: it logs
+    nothing, so the harness waits out the sim's server start silently instead of recording a refused read and
+    ``utils/http.py``'s ``http_request_failed`` WARNING. Accepting is not serving (llama-server binds before it
+    loads the model and answers 503 meanwhile); a read that still fails before the first OK one is flagged
+    ``not_ready`` by :func:`spawn_phase`, and the judge recomputes the first-OK window itself (63c's S2′)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1.0)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 def served_reader():
     """The served-model reader, imported BEFORE the marker (a failed import must not cost an attempt). It reads
     ``GET /v1/models`` the way the peer backend's discovery does (the first ``data[].id``), with a budget that
@@ -564,9 +576,10 @@ def spawn_phase(
     }
     url = f"http://127.0.0.1:{v.SIM_PORT}/v1"
     reads: list[dict] = []
-    fields["served_model"] = {"url": url, "reads": reads}
+    fields["served_model"] = served = {"url": url, "reads": reads, "listening_at": None}
     timed_out = False
     last_read = 0.0
+    served_ok = False  # whether a read has returned the served id yet: a failure before it is a start, not a fault
     with console.open("wb") as out:
         proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         deadline = time.monotonic() + timeout_s
@@ -575,8 +588,14 @@ def spawn_phase(
                 if time.monotonic() > deadline:
                     timed_out = True
                     break
-                if time.monotonic() - last_read >= SERVED_EVERY_S:
-                    reads.append(read_served(v.SIM_PORT, gguf))
+                if served["listening_at"] is None and port_accepts(v.SIM_PORT):
+                    served["listening_at"] = time.time()  # #1616: no read before the sim's server listens
+                if served["listening_at"] is not None and time.monotonic() - last_read >= SERVED_EVERY_S:
+                    row = read_served(v.SIM_PORT, gguf)
+                    if row.get("error") and not served_ok:
+                        row["not_ready"] = True  # listening, still loading: reported, never judged (63c S2′)
+                    served_ok = served_ok or bool(row.get("served") and not row.get("error"))
+                    reads.append(row)
                     # after the read: a read that waited out a completion keeps the spacing
                     last_read = time.monotonic()
                 time.sleep(POLL_S)
