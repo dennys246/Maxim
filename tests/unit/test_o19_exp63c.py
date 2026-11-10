@@ -642,3 +642,45 @@ def test_the_smokes_echo_count_is_nac_and_atl_only() -> None:
     phase = {"lines": lines, "store": {"memories": []}}
     h.smoke_checks_63c([phase, phase], lambda *a, **k: None, reported)
     assert any("NAc/ATL enrichment lines by turn (echo channels): {1: 1}" in r for r in reported), reported
+
+
+# ── the second delta round's pins (each guard went green when reverted) ─────────────────────────────────
+
+
+def test_c5_q_fires_when_any_one_valid_order_lacks_a_shared_key(exp63c, monkeypatch) -> None:
+    _rows, _out, phases = exp63c()
+    real = v.exp63b_turn
+    carried = v.store_records(phases[0]["store"])
+    neutral = next(m for m, rec in carried.items() if v.p_input_text(rec) == v.EXP63C_LINES[0][6])  # no cue key
+
+    def two_orders(tr, *a, **k):
+        x = real(tr, *a, **k)
+        if k.get("explain") and x.get("orders") and x["orders"][0]["pairs"]:
+            sound = x["orders"][0]
+            x["orders"] = [sound, {"displaced": ["d"], "displaced_scores": {"d": 0}, "pairs": [[neutral, "d", 1, 0]]}]
+        return x
+
+    monkeypatch.setattr(v, "exp63b_turn", two_orders)
+    assert any(x.startswith("C5(q)") for x in v.exp63c_c5_problems(phases, goal=GOAL, key=_key(), verdict_time=True))
+
+
+def test_a_base_prereg_is_never_the_campaigns_own_even_when_another_campaign_shares_it() -> None:
+    bad = copy.deepcopy(v.PROTOCOL)
+    bad["63d"] = {**copy.deepcopy(v.PROTOCOL["63c"]), "scope": "63d_x", "base_preregs": []}  # shares 63c's prereg
+    bad["63c"]["base_preregs"] = [v.PROTOCOL["63c"]["prereg"]]
+    assert any("campaign 63c: base_preregs" in x for x in v.protocol_problems(bad))
+
+
+def test_the_smoke_reports_an_answer_key_in_an_imagination_line() -> None:
+    lines = [{"e": "sim_exec", "agent_id": "x", "t": 1.0, "message": "Bridge.send_and_wait ENTER turn=1 text_len=3"},
+             {"e": "sim_imagination", "t": 2.0, "message": "a copper pot in the scene"}]  # fmt: skip
+    reported: list = []
+    phase = {"lines": lines, "store": {"memories": []}}
+    h.smoke_checks_63c([phase, phase], lambda *a, **k: None, reported)
+    assert any("holding a control or planted key (never C5): ['copper']" in r for r in reported), reported
+
+
+def test_verdict_time_is_required() -> None:
+    import inspect
+
+    assert inspect.signature(v.exp63c_c5_problems).parameters["verdict_time"].default is inspect.Parameter.empty
