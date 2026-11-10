@@ -114,8 +114,8 @@ def test_goals_caps_and_scope_are_the_preregs() -> None:
     assert "`--embodiment bodies/base_humanoid`, `--sim-max-turns 8`, `--sim-run-full-turns`" in p09
     assert v.PROTOCOL["09"]["phases"][0][4] == ["--embodiment", "bodies/base_humanoid", "--sim-run-full-turns"]
     for exp in (
-        k for k in v.PROTOCOL if v.experiment_of(k) not in ("63", "63b")
-    ):  # their preregs: test_exp63*_protocol_*
+        k for k in v.PROTOCOL if v.experiment_of(k) not in ("63", "63b", "63c")
+    ):  # their preregs: test_exp63*_protocol_* (63c's in tests/unit/test_o19_exp63c.py)
         assert f"**Scope:** `{v.PROTOCOL[exp]['scope']}`" in PREREG[exp]
         assert f"--data {v.rows_path(exp)}" in _squash(PREREG[exp]).replace("\\ ", "")
         assert f"`{v.MODEL_GGUF}`" in PREREG[exp] and f"`llm.profile {v.MODEL_PROFILE}`" in PREREG[exp]
@@ -1141,7 +1141,7 @@ def test_the_campaign_table_refuses() -> None:
         "or is reserved": _table(**{"preflight": c2, "10c2": None}),
         "superseded more than once": _table(**{"10c3": {**c2, "scope": "rerun_exp10_o19c3"}}),
         "2 open campaigns": _table(**{"10c2": {k: x for k, x in c2.items() if k != "supersedes"}}),
-        "is not 10, 09, 63 or 63b": _table(**{"09": {**v.PROTOCOL["09"], "experiment": "11"}}),
+        "is not 10, 09, 63, 63b or 63c": _table(**{"09": {**v.PROTOCOL["09"], "experiment": "11"}}),
         "another experiment or kind": _table(**{"10c2": {**c2, "kind": "exp09_verdict"}}),
         "is not 10's own": _table(**{"10c2": {**c2, "supersedes": {**c2["supersedes"], "verdict": "docs/x.json"}}}),
         "owner_decision is missing": _table(
@@ -3459,9 +3459,10 @@ def test_exp63c_the_port_reads_records_as_the_shipped_store(keying_63c) -> None:
 
 
 def test_a_judge_without_a_keying_raises() -> None:
-    """Only experiments with a port of their own key text: 63 and 10 have none and never borrow one."""
-    for exp in ("63", "10", "09"):
-        with pytest.raises(KeyError):
+    """Only experiments with a port of their own key text: 63 and 10 have none and never borrow one (a typed refusal,
+    never a bare KeyError), and an unknown campaign key is refused the same way."""
+    for exp in ("63", "10", "09", "nope"):
+        with pytest.raises(v.Refusal, match="no content-key port"):
             v.keying_of(exp)
     with pytest.raises(TypeError):
         v.p_record_tokens({})  # the keying is required: a forgotten one is a TypeError, never 63b's keys

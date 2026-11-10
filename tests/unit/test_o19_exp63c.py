@@ -25,10 +25,6 @@ sys.path.insert(0, str(REPO / "scripts"))
 import o19_rerun as h  # noqa: E402
 import o19_verdict as v  # noqa: E402
 
-pytestmark = pytest.mark.xfail(
-    strict=True, reason="red gate (build order step 4): the Exp 63c harness lands in the next commit"
-)
-
 REPLAY = REPO / "docs/experiments/rationale/exp63c-scripted-recall/replay"
 PREREG_PATH = REPO / "docs/experiments/exp63c_scripted_recall_prereg.md"
 GOAL = v.EXP10_GOAL_DUNGEON
