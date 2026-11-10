@@ -14,8 +14,6 @@ from types import SimpleNamespace
 
 import pytest
 
-_RED = pytest.mark.xfail(strict=True, reason="red gate: #1404 item 2 not fixed yet")
-
 SECRET_URL = "https://user:s3cret@files.example.com/private/report.pdf?token=t0ken"
 
 
@@ -50,14 +48,12 @@ def _written(tmp_path, *actions) -> list[dict]:
     return [r for r in lines if r.get("_record_kind") != "header"]
 
 
-@_RED
 def test_a_url_in_tool_args_keeps_only_its_origin(tmp_path) -> None:
     rec = _written(tmp_path, _action(tool_args={"url": SECRET_URL, "nested": {"links": [SECRET_URL]}}))[0]
     assert rec["params"]["url"] == "https://files.example.com"
     assert rec["params"]["nested"]["links"] == ["https://files.example.com"]
 
 
-@_RED
 @pytest.mark.parametrize(
     "field, attr", [("output", "result_output"), ("error", "result_error"), ("block_reason", "block_reason")]
 )
@@ -67,7 +63,6 @@ def test_a_url_in_free_text_fields_keeps_only_its_origin(tmp_path, field: str, a
     assert rec[field] == "ConnectError while fetching https://files.example.com: refused"
 
 
-@_RED
 def test_no_credential_survives_anywhere_in_the_written_file(tmp_path) -> None:
     from maxim.simulation.report import save_action_log
 
@@ -85,3 +80,27 @@ def test_control_text_and_values_without_a_url_are_unchanged(tmp_path) -> None:
     rec = _written(tmp_path, _action(tool_name="touch", tool_args=args, result_output="You touch the fire pit."))[0]
     assert rec["params"] == args
     assert rec["output"] == "You touch the fire pit."
+
+
+def test_an_object_leaf_is_scrubbed_before_json_would_stringify_it(tmp_path) -> None:
+    from pathlib import PurePosixPath
+
+    class Weird:
+        def __str__(self) -> str:
+            return SECRET_URL
+
+    rec = _written(tmp_path, _action(tool_args={"obj": Weird(), "path": PurePosixPath("/tmp/x")}))[0]
+    assert rec["params"] == {"obj": "https://files.example.com", "path": "/tmp/x"}
+
+
+def test_a_url_used_as_a_dict_key_keeps_only_its_origin(tmp_path) -> None:
+    rec = _written(tmp_path, _action(tool_args={"pages": {SECRET_URL: "body"}}))[0]
+    assert rec["params"] == {"pages": {"https://files.example.com": "body"}}
+
+
+def test_a_self_referencing_arg_is_written_not_recursed_forever(tmp_path) -> None:
+    looped: dict = {"url": SECRET_URL}
+    looped["self"] = looped
+    rec = _written(tmp_path, _action(tool_args=looped))[0]
+    assert rec["params"]["url"] == "https://files.example.com"
+    assert "s3cret" not in json.dumps(rec)
