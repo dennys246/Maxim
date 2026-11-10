@@ -107,7 +107,8 @@ class LLMServerPortBusy(MaximError, RuntimeError):
 
 
 class LLMSwapRefused(MaximError, RuntimeError):
-    """A hot swap (``/v1/admin/llm-swap``) this process will not do, for a reason the operator can act on (#1408).
+    """A hot swap (the leader proxy's llm-swap admin route) this process will not do, for a reason the operator can
+    act on (#1408).
     The message and ``fix_hint`` are static, so the leader proxy returns both as a 409
     (``leader_proxy.py::_ProxyHandler._handle_admin_llm_swap``) instead of a generic 500. Raised by
     ``runtime/lane_backends.py::_swap_key`` when no llama-cpp-server started by this process is there to swap.
