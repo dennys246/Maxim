@@ -1,0 +1,28 @@
+goal keys ['dungeon', 'escap', 'guard', 'sleep'] | blacklist 669
+
+== PHASE 1
+P1.1 [scene] goal=['dungeon', 'escap', 'guard'] nongoal=['alcov', 'asleep', 'cold', 'damp', 'lie', 'wish'] answer=[]
+P1.2 [fact A] goal=['guard'] nongoal=['besid', 'brass', 'chair', 'copper', 'hang', 'hook', 'ladl'] answer=['copper', 'chair']
+P1.3 [fact B] goal=['guard'] nongoal=['beneath', 'hid', 'knif', 'mattress', 'smal', 'straw'] answer=['knife', 'small']
+     WARN answer key 'knife' not a key of the line (keys as ['knif'])
+     WARN answer key 'small' not a key of the line (keys as ['smal'])
+P1.4 [fact C] goal=['guard'] nongoal=['cel', 'chain', 'crack', 'hatch', 'padlock', 'squeak', 'whose'] answer=['chain', 'crack']
+P1.5 [fact D] goal=['dungeon'] nongoal=['brick', 'crevic', 'drain', 'drip', 'grat', 'north', 'water'] answer=['drain', 'grate', 'north']
+     WARN answer key 'grate' not a key of the line (keys as ['grat'])
+P1.6 [goal-words distractor] goal=['dungeon', 'guard', 'sleep'] nongoal=[] answer=[]
+P1.7 [neutral] goal=[] nongoal=['com', 'mind'] answer=[]
+P1.8 [neutral] goal=[] nongoal=['intention', 'sentenc', 'sum'] answer=[]
+
+== PHASE 2
+P2.1 [R3a view] goal=['dungeon', 'guard', 'sleep'] nongoal=['back'] shares_with={}
+P2.2 [control] goal=['guard'] nongoal=['bel', 'chapel', 'ring', 'silver'] shares_with={}
+P2.3 [cue A] goal=['guard'] nongoal=['brass', 'hang', 'ladl'] shares_with={'P1.2': ['brass', 'hang', 'ladl']}
+     cue->fact fact A: shared non-goal=['brass', 'hang', 'ladl'] (n=3); answer keys the cue lacks: ['copper', 'chair']; answer keys in cue: []
+P2.4 [cue B] goal=['guard'] nongoal=['beneath', 'mattress', 'straw'] shares_with={'P1.3': ['beneath', 'mattress', 'straw']}
+     cue->fact fact B: shared non-goal=['beneath', 'mattress', 'straw'] (n=3); answer keys the cue lacks: ['knife', 'small']; answer keys in cue: []
+P2.5 [cue C] goal=['guard'] nongoal=['cel', 'hatch', 'padlock', 'squeak'] shares_with={'P1.4': ['cel', 'hatch', 'padlock', 'squeak']}
+     cue->fact fact C: shared non-goal=['cel', 'hatch', 'padlock', 'squeak'] (n=4); answer keys the cue lacks: ['chain', 'crack']; answer keys in cue: []
+P2.6 [control] goal=['dungeon'] nongoal=['banner', 'drap', 'purpl'] shares_with={}
+P2.7 [cue D] goal=['dungeon'] nongoal=['crevic', 'drip', 'water'] shares_with={'P1.5': ['crevic', 'drip', 'water']}
+     cue->fact fact D: shared non-goal=['crevic', 'drip', 'water'] (n=3); answer keys the cue lacks: ['drain', 'grate', 'north']; answer keys in cue: []
+P2.8 [closing] goal=['guard'] nongoal=['stir'] shares_with={}
