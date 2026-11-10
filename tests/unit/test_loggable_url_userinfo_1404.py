@@ -11,10 +11,7 @@ import logging
 
 import pytest
 
-_RED = pytest.mark.xfail(strict=True, reason="red gate: #1404 item 5 not fixed yet")
 
-
-@_RED
 @pytest.mark.parametrize(
     "url, expected",
     [
@@ -33,16 +30,14 @@ def test_the_logged_url_drops_userinfo(url: str, expected: str) -> None:
     assert "s3cret" not in logged and "p%40ss" not in logged
 
 
-@_RED
 @pytest.mark.parametrize("url", ["http://[::1/x", "https://u:s3cret@[bad/x"], ids=["unbalanced", "unbalanced-userinfo"])
 def test_a_url_urlsplit_refuses_is_logged_as_a_placeholder_not_raised(url: str) -> None:
     from maxim.utils.http import _loggable_url
 
     logged = _loggable_url(url)
-    assert "s3cret" not in logged
+    assert logged == "<url>"
 
 
-@_RED
 def test_the_failed_request_warning_carries_no_password(caplog) -> None:
     """A real refused loopback dial (port 9, discard: nothing listens), so the event is the shipped one."""
     from maxim.utils import http
@@ -62,3 +57,27 @@ def test_control_query_and_fragment_are_still_stripped() -> None:
         _loggable_url("https://api.duckduckgo.com/?q=secret+llm+query&format=json") == "https://api.duckduckgo.com/?…"
     )
     assert _loggable_url("https://example.com/docs/page") == "https://example.com/docs/page"
+
+
+def test_the_host_is_what_follows_the_last_at() -> None:
+    from maxim.utils.http import _loggable_url
+
+    assert _loggable_url("https://u@v:s3cret@host.example/x") == "https://host.example/x"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["user:s3cret@host:80/x", "u:s3cret@h", "https:u:s3cret@h/x", "mailto:u:s3cret@h", r"https:\\u:s3cret@h\x"],
+    ids=["no-scheme-slashes", "bare", "https-no-slashes", "mailto", "backslashes"],
+)
+def test_userinfo_without_a_netloc_is_logged_as_a_placeholder(url: str) -> None:
+    from maxim.utils.http import _loggable_url
+
+    assert _loggable_url(url) == "<url>"
+
+
+def test_control_an_at_in_the_path_of_a_real_url_is_kept() -> None:
+    from maxim.utils.http import _loggable_url
+
+    assert _loggable_url("https://h.example/p@x:y") == "https://h.example/p@x:y"
+    assert _loggable_url("file:///tmp/x") == "file:///tmp/x"
