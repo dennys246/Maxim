@@ -163,6 +163,10 @@ def test_the_turns_reach_start_simulation_mode_through_the_cli(monkeypatch, tmp_
     with the resume id and the turn cap, and leaves the finish reason to the runner (no relabel)."""
     import maxim.simulation.orchestrator as orch
 
+    # cli.main saves a --sim invocation (utils/last_run.py) under the data home: keep it in this test's tmp, never the
+    # suite's shared HOME (test_last_run asserts that HOME holds no last_runs.json).
+    data_home = tmp_path / "data"
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(data_home))
     seen: dict = {}
 
     class _Started(Exception):
@@ -179,6 +183,7 @@ def test_the_turns_reach_start_simulation_mode_through_the_cli(monkeypatch, tmp_
     assert seen["pre_campaign_turns"] == load_campaign_turns(str(f))
     assert (seen["goal"], seen["resume_session"], seen["max_turns"]) == (GOAL, "S1", len(LINES))
     assert seen["generative"] is False and seen["continuous"] is False
+    assert not (Path.home() / ".maxim" / "last_runs.json").exists()  # nothing leaked into the suite's HOME
 
 
 def test_a_refusal_through_the_real_entry_point_starts_nothing(tmp_path) -> None:
