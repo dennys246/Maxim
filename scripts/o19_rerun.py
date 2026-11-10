@@ -32,7 +32,8 @@ An attempt, in order:
   3. Each phase from ONE fresh ``MAXIM_DATA_HOME`` (models symlinked, no ``active_llm_model`` state, so the
      configured profile decides). The sim's environment is the operator's minus every ``MAXIM_*`` key, plus the
      harness's and the protocol's own (recorded exactly). While the sim runs, the harness reads the served model
-     from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s. The sim's own report is
+     from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s, the first read once the port
+     accepts a connection (#1616). The sim's own report is
      found by run id (``spawn_evidence``); the session directory and its run log are copied into the data dir,
      the files hashed (uncompressed) into the row; the row says ``failed`` when the complete-attempt condition
      (C1–C4, ``o19_verdict.complete_problems``) does not hold, and later phases do not run. A source file that
@@ -376,6 +377,18 @@ def check_host_identity() -> None:
         )
 
 
+def port_accepts(port: int) -> bool:
+    """Whether something accepts a TCP connection on 127.0.0.1:``port`` (#1616). A bare connect, never an HTTP
+    read: it logs nothing, so the harness waits out the sim's server start without recording a refused read or
+    ``utils/http.py``'s ``http_request_failed`` WARNING (a transport failure; a 503 logs below WARNING). Accepting is
+    not serving, and nothing here says WHICH process accepted: the reads that follow are the evidence. The harness
+    labels no read; a judge works out which reads it judges from the reads themselves (63c's S2′ judge must compute
+    its own first-OK to last-OK window)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1.0)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 def served_reader():
     """The served-model reader, imported BEFORE the marker (a failed import must not cost an attempt). It reads
     ``GET /v1/models`` the way the peer backend's discovery does (the first ``data[].id``), with a budget that
@@ -564,7 +577,8 @@ def spawn_phase(
     }
     url = f"http://127.0.0.1:{v.SIM_PORT}/v1"
     reads: list[dict] = []
-    fields["served_model"] = {"url": url, "reads": reads}
+    # listening_at: when the port first accepted (a timestamp, not evidence of whose server it was).
+    fields["served_model"] = served = {"url": url, "reads": reads, "listening_at": None}
     timed_out = False
     last_read = 0.0
     with console.open("wb") as out:
@@ -575,7 +589,9 @@ def spawn_phase(
                 if time.monotonic() > deadline:
                     timed_out = True
                     break
-                if time.monotonic() - last_read >= SERVED_EVERY_S:
+                if served["listening_at"] is None and port_accepts(v.SIM_PORT):
+                    served["listening_at"] = time.time()  # #1616: no read before the port accepts
+                if served["listening_at"] is not None and time.monotonic() - last_read >= SERVED_EVERY_S:
                     reads.append(read_served(v.SIM_PORT, gguf))
                     # after the read: a read that waited out a completion keeps the spacing
                     last_read = time.monotonic()
@@ -662,7 +678,11 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         "ts": now,
         "end_ts": now,
         "returncode": 0,
-        "served_model": {"url": endpoint, "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}]},
+        "served_model": {
+            "url": endpoint,
+            "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}],
+            "listening_at": now,
+        },
         "depends_on": [],
         "sims": [_provenance.sim_evidence(sdir, report)],
     }
