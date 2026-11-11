@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import socket
 import ssl
 import time
@@ -70,6 +71,7 @@ from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import (
     INFERENCE_BROKEN_BACKOFF_S,  # noqa: F401  — re-exported for callers
     BackendAuthFailed,
+    BackendContextOverflow,
     BackendDown,
     BackendError,
     BackendInferenceBroken,
@@ -120,6 +122,88 @@ def _register_byte_received_safe() -> None:
                 "Stall registry instrumentation failed (further occurrences suppressed): %s",
                 exc,
             )
+
+
+# ─── Context overflow: the request's fault, not the provider's (#1369) ──
+#
+# Each server says "this prompt does not fit" in its own shape, and only the body tells it apart from any other
+# 400. This is the one place that reads those shapes; everything downstream branches on the typed
+# :class:`BackendContextOverflow`. vLLM carries no structured code, so its message is the only signal.
+# Counts are ASCII digits, at most 9 of them: a hostile or broken body (a superscript digit, a 5000-digit number)
+# must not raise a raw ValueError out of the typed contract. Each pattern gives (window, requested) or
+# (requested, window); the third alternative states no numbers.
+_OVERFLOW_WINDOW_FIRST = re.compile(
+    r"maximum context length is ([0-9]{1,9}) tokens.{0,40}?(?:requested|request has) ([0-9]{1,9}) (?:input )?tokens",
+    re.IGNORECASE | re.DOTALL,
+)
+_OVERFLOW_REQUESTED_FIRST = re.compile(
+    r"prompt \(length ([0-9]{1,9})\) is longer than the maximum model length of ([0-9]{1,9})",
+    re.IGNORECASE,
+)
+_OVERFLOW_WITHOUT_NUMBERS = re.compile(r"exceeds the available context size", re.IGNORECASE)
+
+
+def _count(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if 0 <= value < 10**9 else None
+    if isinstance(value, str) and value.isascii() and value.isdigit() and len(value) <= 9:
+        return int(value)
+    return None
+
+
+def _overflow_counts_in(message: str) -> tuple[int | None, int | None] | None:
+    match = _OVERFLOW_WINDOW_FIRST.search(message)
+    if match is not None:
+        return int(match.group(2)), int(match.group(1))
+    match = _OVERFLOW_REQUESTED_FIRST.search(message)
+    if match is not None:
+        return int(match.group(1)), int(match.group(2))
+    if _OVERFLOW_WITHOUT_NUMBERS.search(message):
+        return None, None
+    return None
+
+
+def _context_overflow_counts(payload: object) -> tuple[int | None, int | None] | None:
+    """``(requested_tokens, context_window)`` when ``payload`` is a context-overflow error body, else ``None``.
+
+    The shapes: the leader proxy's admission gate (``code == "context_overflow"``, numbers as fields; ``requested``
+    is the total it refused on, prompt + max_tokens + its safety overhead), the llama.cpp server (``type ==
+    "exceed_context_size_error"``, prompt tokens and ``n_ctx`` as fields; older builds say "exceeds the available
+    context size" with no numbers), llama-cpp-python (``code == "context_length_exceeded"``) and vLLM (no code; the
+    error object sits at the top level), both of which state the numbers only in the message. An ``error`` that is a
+    bare string is read as its message. Either count is ``None`` when the body does not carry it.
+    """
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("error")
+    inner = error if isinstance(error, dict) else {"message": error} if isinstance(error, str) else payload
+    code, kind = inner.get("code"), inner.get("type")
+    if code == "context_overflow":
+        parts = [_count(inner.get(k)) for k in ("estimated_prompt_tokens", "max_tokens", "safety_overhead_tokens")]
+        requested = sum(p or 0 for p in parts) if parts[0] is not None else None
+        return requested, _count(inner.get("context_window"))
+    if kind == "exceed_context_size_error":
+        return _count(inner.get("n_prompt_tokens")), _count(inner.get("n_ctx"))
+    message = inner.get("message")
+    counts = _overflow_counts_in(message) if isinstance(message, str) else None
+    if counts is not None:
+        return counts
+    if code == "context_length_exceeded":
+        return None, None
+    return None
+
+
+def _json_body(response: Any) -> object:
+    """The decoded JSON body of an error response, or ``None`` when it has none or it is not JSON."""
+    content = getattr(response, "content", None)
+    if not content:
+        return None
+    try:
+        return json.loads(content)
+    except (ValueError, RecursionError):
+        return None
 
 
 # ─── Probe primitives (moved from runtime/llm_server.py) ─────────────────
@@ -522,57 +606,8 @@ class _MaximPeerBackend:
                 json=payload,
                 context=context,
             )
-        except HTTPAuthError as e:
-            self._log_failure("auth_rejected", e, context, t0)
-            raise BackendAuthFailed(
-                self._provider_key,
-                status=e.status,
-            ) from e
-        except HTTPRateLimited as e:
-            self._log_failure("overloaded", e, context, t0)
-            raise BackendOverloaded(
-                self._provider_key,
-                status=e.status,
-                retry_after_s=e.retry_after_s,
-                suggested_peer=e.suggested_peer,
-                queue_depth=self._parse_queue_depth(e.response.headers if e.response is not None else None),
-            ) from e
-        except HTTPClientError as e:
-            # 404 on /v1/chat/completions with a model body means the
-            # listener is alive but the requested model isn't loaded.
-            self._log_failure("model_missing" if e.status == 404 else "client_error", e, context, t0)
-            if e.status == 404:
-                raise BackendModelMissing(
-                    self._provider_key,
-                    status=e.status,
-                    requested_model=model,
-                ) from e
-            err = BackendError(self._provider_key, status=e.status, fix_hint=e.fix_hint)
-            raise err from e
-        except HTTPServerError as e:
-            self._log_failure("down", e, context, t0)
-            raise BackendDown(
-                self._provider_key,
-                status=e.status,
-            ) from e
-        except HTTPTimeout as e:
-            elapsed_s = time.monotonic() - t0
-            self._log_failure("timeout", e, context, t0)
-            raise BackendTimeout(
-                self._provider_key,
-                elapsed_s=elapsed_s,
-            ) from e
-        except HTTPConnectionError as e:
-            self._log_failure("down", e, context, t0)
-            raise BackendDown(
-                self._provider_key,
-            ) from e
         except HTTPError as e:
-            # Generic catch-all for HTTPError subclasses we didn't
-            # handle above. Preserves status + fix_hint to the router.
-            self._log_failure("generic_http_error", e, context, t0)
-            err = BackendError(self._provider_key, status=e.status, fix_hint=e.fix_hint)
-            raise err from e
+            raise self._typed_http_failure(e, model=model, context=context, start=t0) from e
 
         try:
             raw = resp.json()
@@ -1025,26 +1060,7 @@ class _MaximPeerBackend:
                         continue
                     if data.strip() == "[DONE]":
                         break
-                    try:
-                        chunk = json.loads(data)
-                    except Exception as parse_exc:
-                        # A malformed chunk mid-stream is a broken peer.
-                        # Do NOT silently accept partial output. R3
-                        # review fix: emit a per-call
-                        # ``peer_backend_failed`` WARN before raising so
-                        # the operator sees the malformed-chunk signal
-                        # in the per-call log, not just in the router's
-                        # aggregated ``dispatch_exhausted`` line.
-                        err = BackendDown(
-                            self._provider_key,
-                            fix_hint=(
-                                f"Peer streamed non-JSON chunk "
-                                f"(broken upstream, model={model}): "
-                                f"{type(parse_exc).__name__}"
-                            ),
-                        )
-                        self._log_failure("malformed_chunk", err, context, start)
-                        raise err
+                    chunk = self._stream_chunk(data, model=model, context=context, start=start)
                     chunks_seen += 1
                     usage = chunk.get("usage")
                     if isinstance(usage, dict):
@@ -1079,48 +1095,10 @@ class _MaximPeerBackend:
                             self._provider_key,
                             fix_hint="Request cancelled by caller during stream",
                         )
-        except HTTPAuthError as e:
-            self._log_failure("auth_rejected", e, context, start)
-            raise BackendAuthFailed(self._provider_key, status=e.status) from e
-        except HTTPRateLimited as e:
-            self._log_failure("overloaded", e, context, start)
-            raise BackendOverloaded(
-                self._provider_key,
-                status=e.status,
-                retry_after_s=e.retry_after_s,
-                suggested_peer=e.suggested_peer,
-                queue_depth=self._parse_queue_depth(e.response.headers if e.response is not None else None),
-            ) from e
-        except HTTPClientError as e:
-            self._log_failure("model_missing" if e.status == 404 else "client_error", e, context, start)
-            if e.status == 404:
-                raise BackendModelMissing(
-                    self._provider_key,
-                    status=e.status,
-                    requested_model=model,
-                ) from e
-            err = BackendError(self._provider_key, status=e.status, fix_hint=e.fix_hint)
-            raise err from e
-        except HTTPServerError as e:
-            self._log_failure("down", e, context, start)
-            raise BackendDown(self._provider_key, status=e.status) from e
-        except HTTPTimeout as e:
-            self._log_failure("timeout", e, context, start)
-            raise BackendTimeout(
-                self._provider_key,
-                elapsed_s=time.monotonic() - start,
-            ) from e
-        except HTTPConnectionError as e:
-            # A mid-stream read failure from httpx surfaces here.
-            self._log_failure("down", e, context, start)
-            raise BackendDown(self._provider_key) from e
-        except BackendError:
-            # Already typed — re-raise unchanged.
-            raise
         except HTTPError as e:
-            self._log_failure("generic_http_error", e, context, start)
-            err = BackendError(self._provider_key, status=e.status, fix_hint=e.fix_hint)
-            raise err from e
+            # A mid-stream read failure from httpx surfaces here as HTTPConnectionError; an error status on open as
+            # the matching HTTPError subclass. A BackendError raised in the loop is already typed and passes through.
+            raise self._typed_http_failure(e, model=model, context=context, start=start) from e
 
         content = "".join(text_parts).strip()
         if not content:
@@ -1174,6 +1152,107 @@ class _MaximPeerBackend:
             cached_input_tokens=cached,
             uncached_input_tokens=uncached,
         )
+
+    def _stream_chunk(
+        self,
+        data: str,
+        *,
+        model: str,
+        context: RequestContext,
+        start: float,
+    ) -> dict[str, Any]:
+        """One SSE ``data:`` payload as a JSON object, or a typed raise. Never partial output as success.
+
+        A malformed chunk mid-stream is a broken peer: do NOT silently accept partial output. R3 review fix: emit a
+        per-call ``peer_backend_failed`` WARN before raising so the operator sees the malformed-chunk signal in the
+        per-call log, not just in the router's aggregated ``dispatch_exhausted`` line. A chunk that is JSON but not an
+        object is malformed the same way, and a chunk carrying a truthy ``error`` is the server ending the generation in a
+        failure (#1370): it raises :class:`BackendContextOverflow` when the error is an overflow, else
+        :class:`BackendDown`, and the text streamed before it is discarded.
+        """
+        try:
+            chunk = json.loads(data)
+        except (ValueError, RecursionError) as parse_exc:
+            err: BackendError = BackendDown(
+                self._provider_key,
+                fix_hint=f"Peer streamed non-JSON chunk (broken upstream, model={model}): {type(parse_exc).__name__}",
+            )
+            self._log_failure("malformed_chunk", err, context, start)
+            raise err from parse_exc
+        if not isinstance(chunk, dict):
+            err = BackendDown(
+                self._provider_key,
+                fix_hint=f"Peer streamed a JSON chunk that is not an object (broken upstream, model={model})",
+            )
+            self._log_failure("malformed_chunk", err, context, start)
+            raise err
+        if not chunk.get("error"):
+            return chunk
+        counts = _context_overflow_counts(chunk)
+        if counts is not None:
+            err = BackendContextOverflow(self._provider_key, requested_tokens=counts[0], context_window=counts[1])
+            self._log_failure("context_overflow", err, context, start)
+            raise err
+        err = BackendDown(
+            self._provider_key,
+            fix_hint=f"Peer streamed an error chunk mid-stream (model={model}); its partial text was discarded",
+        )
+        self._log_failure("error_chunk", err, context, start)
+        raise err
+
+    def _typed_http_failure(
+        self,
+        e: HTTPError,
+        *,
+        model: str,
+        context: RequestContext,
+        start: float,
+    ) -> BackendError:
+        """Log a failed call and return the typed :class:`BackendError` for its :class:`HTTPError`.
+
+        The one mapping for the buffered and the streamed call, specific-before-general (an auth error must never
+        read as anything else). A 404 on ``/v1/chat/completions`` with a model body means the listener is alive but
+        the requested model is not loaded. A 400 or 413 whose body is a context overflow becomes
+        :class:`BackendContextOverflow` (#1369), so the router does not cool down a healthy provider. The generic
+        catch-all keeps ``status`` and ``fix_hint`` for the router.
+        """
+        key = self._provider_key
+        if isinstance(e, HTTPAuthError):
+            self._log_failure("auth_rejected", e, context, start)
+            return BackendAuthFailed(key, status=e.status)
+        if isinstance(e, HTTPRateLimited):
+            self._log_failure("overloaded", e, context, start)
+            return BackendOverloaded(
+                key,
+                status=e.status,
+                retry_after_s=e.retry_after_s,
+                suggested_peer=e.suggested_peer,
+                queue_depth=self._parse_queue_depth(e.response.headers if e.response is not None else None),
+            )
+        if isinstance(e, HTTPClientError):
+            if e.status == 404:
+                self._log_failure("model_missing", e, context, start)
+                return BackendModelMissing(key, status=e.status, requested_model=model)
+            counts = _context_overflow_counts(_json_body(e.response)) if e.status in (400, 413) else None
+            if counts is not None:
+                self._log_failure("context_overflow", e, context, start)
+                return BackendContextOverflow(
+                    key, status=e.status, requested_tokens=counts[0], context_window=counts[1]
+                )
+            self._log_failure("client_error", e, context, start)
+            return BackendError(key, status=e.status, fix_hint=e.fix_hint)
+        if isinstance(e, HTTPServerError):
+            self._log_failure("down", e, context, start)
+            return BackendDown(key, status=e.status)
+        if isinstance(e, HTTPTimeout):
+            elapsed_s = time.monotonic() - start
+            self._log_failure("timeout", e, context, start)
+            return BackendTimeout(key, elapsed_s=elapsed_s)
+        if isinstance(e, HTTPConnectionError):
+            self._log_failure("down", e, context, start)
+            return BackendDown(key)
+        self._log_failure("generic_http_error", e, context, start)
+        return BackendError(key, status=e.status, fix_hint=e.fix_hint)
 
     @staticmethod
     def _parse_queue_depth(headers: Mapping[str, str] | None) -> int:
