@@ -70,6 +70,10 @@ jobs:
           PY
           pip install -r extras-reqs.txt -c .github/constraints/console.txt
 
+      # unit-tests installs mypy in its "mypy public API surface" step; the suite's test_lint_mypy_ratchet needs it.
+      - name: Install mypy (as unit-tests does)
+        run: pip install "mypy==1.20.0"
+
       - name: Cache the advisor GGUF fixtures
         uses: actions/cache@v4
         with:
