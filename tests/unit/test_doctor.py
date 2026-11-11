@@ -1164,50 +1164,50 @@ class TestCheckContextWindow:
 
     def test_n_ctx_ok_above_8192(self, monkeypatch):
         import json
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         from maxim.doctor.checks import check_context_window
         from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 
         models_response = json.dumps({"data": [{"id": "qwen2.5-14b", "context_length": 16384}]}).encode()
 
-        with patch.object(_MaximPeerBackend, "health_check", return_value=True):
-            import socket as _socket
+        # The shared probe (#1408): /v1/models through utils/http, no host process scan.
+        from maxim.utils.http import Response
 
-            mock_sock = MagicMock()
-            mock_sock.__enter__ = lambda s: s
-            mock_sock.__exit__ = MagicMock(return_value=False)
-            mock_sock.recv.side_effect = [
-                b"HTTP/1.0 200 OK\r\n\r\n" + models_response,
-                b"",
-            ]
-            with patch.object(_socket, "create_connection", return_value=mock_sock):
-                result = check_context_window()
+        resp = Response(status=200, headers={}, content=models_response, elapsed_ms=1.0, endpoint="e", request_id="r")
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=True),
+            patch("maxim.doctor.checks._accepted_server_key", return_value=("llm_server_key", "k", "accepted")),
+            patch("maxim.utils.http.fetch_url", return_value=resp),
+            patch("maxim.runtime.local_server_spawner._server_argvs", return_value=[]),
+            patch("maxim.runtime.local_server_spawner._own_spawner_n_ctx", return_value=None),
+        ):
+            result = check_context_window()
 
         assert result.status == "ok"
         assert "16384" in result.message
 
     def test_n_ctx_below_8192_warns(self, monkeypatch):
         import json
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         from maxim.doctor.checks import check_context_window
         from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 
         models_response = json.dumps({"data": [{"id": "model", "context_length": 4096}]}).encode()
 
-        with patch.object(_MaximPeerBackend, "health_check", return_value=True):
-            import socket as _socket
+        # The shared probe (#1408): /v1/models through utils/http, no host process scan.
+        from maxim.utils.http import Response
 
-            mock_sock = MagicMock()
-            mock_sock.__enter__ = lambda s: s
-            mock_sock.__exit__ = MagicMock(return_value=False)
-            mock_sock.recv.side_effect = [
-                b"HTTP/1.0 200 OK\r\n\r\n" + models_response,
-                b"",
-            ]
-            with patch.object(_socket, "create_connection", return_value=mock_sock):
-                result = check_context_window()
+        resp = Response(status=200, headers={}, content=models_response, elapsed_ms=1.0, endpoint="e", request_id="r")
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=True),
+            patch("maxim.doctor.checks._accepted_server_key", return_value=("llm_server_key", "k", "accepted")),
+            patch("maxim.utils.http.fetch_url", return_value=resp),
+            patch("maxim.runtime.local_server_spawner._server_argvs", return_value=[]),
+            patch("maxim.runtime.local_server_spawner._own_spawner_n_ctx", return_value=None),
+        ):
+            result = check_context_window()
 
         assert result.status == "warn"
         assert "4096" in result.message
