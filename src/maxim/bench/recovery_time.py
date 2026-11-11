@@ -73,6 +73,7 @@ from typing import Any
 from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.models.language.types import (
     BackendAuthFailed,
+    BackendContextOverflow,
     BackendDown,
     BackendError,
     BackendInferenceBroken,
@@ -205,6 +206,8 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
         return "timeout", _hint(exc)
     if isinstance(exc, BackendDown):
         return "down", _hint(exc)
+    if isinstance(exc, BackendContextOverflow):
+        return "context_overflow", _hint(exc)
     if isinstance(exc, BackendError):
         return "generic_backend_error", _hint(exc)
     return "unhandled_" + type(exc).__name__, str(exc)

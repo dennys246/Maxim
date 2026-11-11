@@ -216,6 +216,35 @@ class BackendInferenceBroken(BackendError):
     fix_hint = "Model loading, llama-cpp crashed, or chat template broken. Check peer logs."
 
 
+class BackendContextOverflow(BackendError):
+    """The REQUEST overflowed the model's context window; the provider is healthy (#1369).
+
+    Raised from a 400/413 whose body says so: the leader proxy's admission gate, llama-cpp-python, vLLM and the
+    llama.cpp server each have a shape (``maxim_peer_backend.py::_context_overflow_counts``), and from a mid-stream
+    error chunk of one of those shapes. The router gives it no cooldown, because the next, smaller prompt should
+    still reach this provider. ``requested_tokens`` (prompt plus completion, or the prompt alone when the server
+    reports only that) and ``context_window`` are ``None`` when the body did not carry them.
+    """
+
+    fix_hint = (
+        "The prompt exceeds the model's context window. Shrink the prompt or max_tokens, or raise llm.n_ctx; "
+        "`maxim doctor`'s context-window check reports the n_ctx the running server uses."
+    )
+
+    def __init__(
+        self,
+        provider_key: str,
+        *,
+        status: int | None = None,
+        fix_hint: str = "",
+        requested_tokens: int | None = None,
+        context_window: int | None = None,
+    ) -> None:
+        self.requested_tokens = requested_tokens
+        self.context_window = context_window
+        super().__init__(provider_key, status=status, fix_hint=fix_hint)
+
+
 @dataclass
 class ProviderState:
     """Tracks provider health and backoff state."""
