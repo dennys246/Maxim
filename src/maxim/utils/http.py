@@ -995,11 +995,27 @@ def _loggable_url(url: str) -> str:
     log buffer. Scheme + host + path keep the events debuggable (which
     endpoint failed) without the free text. A ``?…`` suffix marks that
     a query and/or fragment was stripped.
+
+    The userinfo (``user:pass@``) is dropped too (#1404 item 5): the host
+    is everything after the netloc's LAST ``@``, as ``urlsplit`` itself
+    reads it. A URL ``urlsplit`` refuses (an unbalanced IPv6 bracket) is
+    logged as ``<url>``, so the log line never raises inside the failure
+    path it reports.
     """
     from urllib.parse import urlsplit
 
-    parts = urlsplit(url)
-    base = f"{parts.scheme}://{parts.netloc}{parts.path}" if parts.scheme else parts.path
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<url>"
+    # Unlike url_origin (which records "" for a "%" in the host, a percent-encoded "user:p%40ss@" read as host),
+    # a log line keeps whatever follows the LAST "@": nothing before it can be the host, so no credential survives.
+    host = parts.netloc.rpartition("@")[2]
+    if not parts.netloc and "@" in parts.path:
+        # No "//" after the scheme ("user:pw@host/x", "mailto:u:pw@h", a backslash form): urlsplit reads the
+        # userinfo as path, which no netloc rule above can see. Nothing here is a host worth logging.
+        return "<url>"
+    base = f"{parts.scheme}://{host}{parts.path}" if parts.scheme else parts.path
     if parts.query or parts.fragment:
         return base + "?…"
     return base
