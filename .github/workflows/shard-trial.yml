@@ -17,6 +17,13 @@ jobs:
     if: github.head_ref == 'ci/1645-sharded-fast-suite'
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    # The same as unit-tests: the suite's git-diff lints (scripts/_lint_git.py) fail closed without them on a PR.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
