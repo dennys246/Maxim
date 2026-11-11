@@ -114,14 +114,9 @@
       "lines": 269
     },
     {
-      "file": "src/maxim/models/language/maxim_peer_backend.py",
-      "qualname": "_MaximPeerBackend._stream_response",
-      "lines": 225
-    },
-    {
       "file": "src/maxim/models/language/router.py",
       "qualname": "LLMRouter._try_provider",
-      "lines": 212
+      "lines": 203
     },
     {
       "file": "src/maxim/peer/admin_core.py",
@@ -402,6 +397,7 @@
     "start_research_mode tightened 262 -> 241 on 2026-11-03 (#1586 review fold, rule T): research hands its model to its router build (_build_research_llm(language_model)) and its sim (start_simulation_mode(llm_profile=)); the campaign YAML load moved verbatim to research_orchestrator._load_campaign_turns.",
     "_main_impl tightened 1377 -> 1345 on 2026-11-06 (#1344 PR 3b, rule T): the serve/tunnel/doctor/bench/roy/model subcommand dispatch moved verbatim to cli.py::_dispatch_tool_cli, carrying the new `llm` route.",
     "_maybe_auto_spawn_server tightened 213 -> 205 and build_primary_router 207 -> 206 on 2026-11-09 (#1610, rule T; owner decisions: one role-keyed owner of a leader's services, CLI leaders only): the fresh-spawn tail that started the tunnel, proxy and heartbeat left auto-spawn (the tunnel starter moved to tunnel/daemon_spawner.auto_spawn_tunnel_daemon; _maybe_start_leader_proxy was deleted, and the CLI's early boot claims through leader_mode.claim_leader_services), and build_primary_router's heartbeat start became one call to lane_backends._start_process_services, which first starts the claimed leader's services.",
-    "_main_impl tightened 1345 -> 1312 and cli_parser.py::_build_parser 610 -> 593 on 2026-11-10 (#1628, --sim-script, rule T): the goal-string orchestrator call moved to cli.py::_run_goal_sim (verbatim, plus pre_campaign_turns) and the --sim value's kind to cli.py::_sim_value_kind (shared with the --sim-script check), and the turn flags (--sim-max-turns, whose default the change touches, --sim-run-full-turns and the new --sim-script) to cli_parser.py::_add_turn_cap_arguments, so each extraction carries the edit."
+    "_main_impl tightened 1345 -> 1312 and cli_parser.py::_build_parser 610 -> 593 on 2026-11-10 (#1628, --sim-script, rule T): the goal-string orchestrator call moved to cli.py::_run_goal_sim (verbatim, plus pre_campaign_turns) and the --sim value's kind to cli.py::_sim_value_kind (shared with the --sim-script check), and the turn flags (--sim-max-turns, whose default the change touches, --sim-run-full-turns and the new --sim-script) to cli_parser.py::_add_turn_cap_arguments, so each extraction carries the edit.",
+    "_MaximPeerBackend._stream_response 225 -> 168 (now under the 200 threshold, entry removed) and LLMRouter._try_provider 212 -> 203 on 2026-11-10 (#1370 #1369, rule T): the streamed and the buffered call's HTTPError -> BackendError mappings became the one _MaximPeerBackend._typed_http_failure (which adds the context-overflow classification), chunk decoding moved to _MaximPeerBackend._stream_chunk (which adds the error-chunk and non-object checks), and _try_provider's BackendDown branch body moved to LLMRouter._note_provider_down beside the new _note_context_overflow."
   ]
 }
