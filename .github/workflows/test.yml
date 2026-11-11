@@ -550,25 +550,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      # #1318: the wheels pip BUILDS (llama-cpp-python's 2m50s sdist build), not its downloads (GBs, over the 10 GB repo cap), one entry
-      # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
-      # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
-      # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
-      - name: Cache pip (this job, this Python, these pins)
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
-          key: pip-${{ runner.os }}-${{ github.job }}-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
-
-      - name: Install package and test dependencies
-        env:
-          # #1318: a portable llama-cpp-python build, because the pip cache reuses the wheel on other runners
-          # (.github/constraints/ci-backends.txt says why).
-          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
+      - name: Install the test tools (light; every run, a re-use run included)
         run: |
           # pytest-timeout is load-bearing, not convenience: the D12 guard
           # (tests/unit/test_inference_lock_timeout.py) fails by HANGING
@@ -582,7 +564,49 @@ jobs:
           # (the version constant there must move with this pin).
           # pyyaml here (not only in the guarded optional line below): the coverage ratchet reads
           # this workflow structurally to verify its own step.
+          # Split from the heavy install (#1640): the re-use decision and the ratchet need pyyaml, the runtime twin
+          # needs pytest's `_pytest`, and a re-use run installs nothing else.
           pip install pytest "pytest-cov==7.0.0" "coverage==7.13.3" pytest-xdist pytest-timeout "pyyaml>=6.0,<7.0"
+
+      - name: Re-use a verified measurement? (#1640, a floors-only push)
+        # Always exits 0. Writes reuse=true only when this pull_request run (attempt 1) changes nothing but
+        # scripts/coverage_floors.json, raise-only, against a Tests run of this branch from the last 48 h whose head
+        # differs only in that file, whose suite and MemoryHub passed, and whose stamped tree is this one; it then
+        # places that run's coverage.json and fast-suite.xml here. Rules: scripts/lint_coverage.py's docstring,
+        # pinned by lint_coverage.ci_step_rules (every `if:` below is an exact, pinned literal).
+        id: reuse
+        run: python scripts/lint_coverage.py --reuse-decision
+
+      - name: Stamp the measured tree (#1640)
+        if: steps.reuse.outputs.reuse != 'true'
+        run: python scripts/lint_coverage.py --stamp
+
+      # #1318: the wheels pip BUILDS (llama-cpp-python's 2m50s sdist build), not its downloads (GBs, over the 10 GB repo cap), one entry
+      # per job and Python: setup-python's own `cache: pip` key has no job in it, so a short job saved the shared key
+      # first and the long job never got the wheel. Exact key only, no restore-keys: an edit to pyproject or a
+      # constraints file (the llama pin) starts a fresh entry, so nothing stale or unbounded is ever restored.
+      # #1640: after the re-use decision and skipped with the heavy install it serves, so a re-use run (which builds
+      # nothing) can never save an entry without the llama wheel under the exact key.
+      - name: Cache pip (this job, this Python, these pins)
+        if: steps.reuse.outputs.reuse != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip/wheels  # built wheels only (the llama build); downloads would be GBs of CUDA torch
+          key: pip-${{ runner.os }}-${{ github.job }}-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
+
+      - name: Install system dependencies
+        if: steps.reuse.outputs.reuse != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
+
+      - name: Install package and test dependencies
+        if: steps.reuse.outputs.reuse != 'true'
+        env:
+          # #1318: a portable llama-cpp-python build, because the pip cache reuses the wheel on other runners
+          # (.github/constraints/ci-backends.txt says why).
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
+        run: |
           # The package WITH its core dependencies (httpx, rich, json-repair, filelock<4, ...). It was
           # `--no-deps` from 2026-04 while reachy-mini (robot SDK) was a core dependency; it is an extra now,
           # and `--no-deps` left the core deps to arrive transitively: huggingface-hub 2.x (2026-10-09)
@@ -594,6 +618,7 @@ jobs:
             -c .github/constraints/ci-backends.txt
 
       - name: Install the console + sign extras (the extras lane)
+        if: steps.reuse.outputs.reuse != 'true'
         # roadmap 1.3.x "Test/CI truthfulness" / public_oasis Phase 0 item 1: without these the
         # console, bundle-signing, hive-pull and Oasis-exchange tests skipped on EVERY lane, and the
         # 1.2 and 1.3 headlines both travel the signed-bundle path. Read from pyproject so the lane
@@ -629,6 +654,7 @@ jobs:
         # the test suite for faster failure feedback.
         # NOT the lint job's "mypy per-file ratchet" invocation (that one: --no-site-packages,
         # --check-untyped-defs, all of src/maxim): neither step green implies the other.
+        if: steps.reuse.outputs.reuse != 'true'
         run: |
           pip install "mypy==1.20.0"
           bash scripts/run_mypy_public.sh
@@ -637,6 +663,7 @@ jobs:
       # by URL, size and sha256 in the script, so the cache key is the script itself. Fetched BEFORE the suite: the
       # suite runs in a netns with no network, and the advisor gates fail (never skip) on a missing fixture.
       - name: Cache the advisor GGUF fixtures
+        if: steps.reuse.outputs.reuse != 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -646,6 +673,7 @@ jobs:
           key: advisor-fixtures-${{ hashFiles('scripts/fetch_advisor_fixtures.py') }}
 
       - name: Fetch and verify the advisor GGUF fixtures
+        if: steps.reuse.outputs.reuse != 'true'
         run: python3 scripts/fetch_advisor_fixtures.py
 
       - name: Run required fast suite
@@ -658,8 +686,10 @@ jobs:
         # spawns, the kernel can. MAXIM_EXPECT_NETNS=1 arms the positive control, tests/unit/test_network_boundary.py.
         #
         # --junitxml=fast-suite.xml feeds the release gate's runtime twin below (scripts/lint_release_gates.py
-        # rule 6: every evidence test of a satisfied gate item is collected and PASSED in THIS run, which a conftest
+        # rule 6: every evidence test of a satisfied gate item is collected and PASSED in this run, or in the git- and
+        # stamp-bound source run it re-used (#1640), which a conftest
         # skip would otherwise hide from the static rules). The gate checks this flag is here.
+        if: steps.reuse.outputs.reuse != 'true'
         run: |
           rm -f .coverage coverage.json coverage.xml fast-suite.xml
           SUITE='"$PY" -m pytest tests/ -x -q -m "not slow" --tb=short \
@@ -674,6 +704,7 @@ jobs:
       # enforced by nothing but developer habit — the same "advertised suite is
       # not the executed suite" defect D20 exists to close. It runs in ~1s.
       - name: MemoryHub integration gate
+        if: steps.reuse.outputs.reuse != 'true'
         run: python -m pytest tests/integration/test_memory_hub.py -q
 
       - name: Coverage ratchet (roadmap 1.3.2 item 5)
@@ -687,7 +718,8 @@ jobs:
 
       - name: Release gates, runtime twin (owner decision 2026-10-15)
         # Every evidence nodeid of a satisfied item or arm in scripts/release_gates.json, and each satisfied arm's
-        # golden case, must be in the fast suite's JUnit report with every case PASSED: static analysis cannot see
+        # golden case, must be in the fast suite's JUnit report with every case PASSED in this run, or in the git- and
+        # stamp-bound source run it re-used (#1640, the decision step places that report): static analysis cannot see
         # a conftest skip. Runs at every version. After the coverage ratchet, because lint_coverage.ci_step_rules
         # allows nothing between the measuring suite and its gate but MemoryHub. Its twin is the lint job's
         # "Release gates" step; each checks the other's wiring. Positive control: tests/unit/test_lint_release_gates.py.
@@ -699,14 +731,29 @@ jobs:
         # diagnostic. #1103: a few statements flip between identical CI runs (they did
         # not flip across two identical local runs, 2026-10-08); diffing `executed_lines` of two runs of one
         # commit names the timing-dependent lines. Uploaded even when the gate fails, which is when it matters.
-        if: always()
+        # #1640: also the re-use decision's input (fast-suite.xml for the twin, measured-tree.json for the binding),
+        # and never from a re-use run, which would upload the fetched file as a copy (the pointer below instead).
+        if: always() && steps.reuse.outputs.reuse != 'true'
         uses: actions/upload-artifact@v4
         with:
           # Bound to its attempt (M60a): `lint_coverage.py --pins-from-run` reads only the latest attempt's file.
           name: coverage-json-${{ github.run_attempt }}
-          path: coverage.json
+          path: |
+            coverage.json
+            fast-suite.xml
+            measured-tree.json
           retention-days: 14
           if-no-files-found: warn
+
+      - name: Upload the re-use pointer (#1640)
+        # A re-use run's artifact names its source run ({run_id, attempt, head_sha, tree_id}); it is not a measurement.
+        if: always() && steps.reuse.outputs.reuse == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reused-from-${{ github.run_attempt }}
+          path: coverage-reused-from.json
+          retention-days: 14
+          if-no-files-found: error
 
   lint:
     runs-on: ubuntu-latest
