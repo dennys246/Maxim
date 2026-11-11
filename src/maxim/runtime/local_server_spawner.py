@@ -173,6 +173,132 @@ def verify_llm_server_exposure(port: int, *, allow_authenticated_lan: bool) -> N
     )
 
 
+def served_n_ctx(port: int, *, api_key: str | None) -> int | None:
+    """The context window of the llama server on 127.0.0.1:``port``, or None: the ONE n_ctx probe (#1408 item 2).
+
+    Doctor's ``check_context_window`` and ``check_vram_pressure`` and the leader proxy's ``/v1/debug/vram`` all
+    call it. In order:
+
+    1. this process's own spawner when it serves ``port`` (``LocalServerSpawner.n_ctx``, the value the server was
+       launched with: the source of truth);
+    2. ``/v1/models`` with ``api_key`` (every spawned server is keyed since #1314, so a keyless probe gets 401 and
+       learns nothing; the key is a required keyword so forgetting it is a TypeError, not a silent 401). It reads
+       ``context_length``, ``n_ctx``, ``max_context_length`` and vLLM's ``max_model_len``;
+    3. the argv of the process that serves ``port``: the pid that owns its listening socket, or a spawn record
+       whose argv names ``llama_cpp.server --port <port>`` (``runtime/llm_spawn_record.py``). llama-cpp-python's
+       window lives only here, since its ``/v1/models`` carries none. Never any other llama process: a foreign
+       server's window would let doctor pass a server that really runs at 4096.
+
+    Under the offline latch, step 2's ``fetch_url`` raises ``OfflineRefusal``; it is not caught here.
+    """
+    own = _own_spawner_n_ctx(port)
+    if own:
+        return own
+    return _n_ctx_from_models(port, api_key) or _n_ctx_from_server_argv(port)
+
+
+def _own_spawner_n_ctx(port: int) -> int | None:
+    import maxim.runtime.llm_server as _server_mod
+
+    spawner = _server_mod._active_spawner
+    # Only while its child runs: a dead child's port may now hold someone else's server.
+    if (
+        isinstance(spawner, LocalServerSpawner)
+        and spawner.port == int(port)
+        and spawner.n_ctx > 0
+        and spawner.is_running
+    ):
+        return spawner.n_ctx
+    return None
+
+
+def _n_ctx_from_models(port: int, api_key: str | None) -> int | None:
+    from maxim.utils import http as _http
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        data = _http.fetch_url(
+            f"http://127.0.0.1:{port}/v1/models",
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=2.0, total_s=3.0),
+        ).json()
+    except (_http.HTTPError, ValueError) as e:
+        logger.debug("n_ctx probe: /v1/models on :%d gave nothing (%s)", port, type(e).__name__)
+        return None
+    models = data.get("data") if isinstance(data, dict) else None
+    for model in models if isinstance(models, list) else []:
+        if not isinstance(model, dict):
+            continue
+        for key in ("context_length", "n_ctx", "max_context_length", "max_model_len"):
+            ctx = _window(model.get(key))
+            if ctx:
+                return ctx
+    return None
+
+
+def _window(value: object) -> int | None:
+    """A positive window from an int or a decimal string (bounded), else None; a bool is not a window."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if 0 < value < 10**9 else None
+    if isinstance(value, str) and value.isascii() and value.isdigit() and len(value) <= 9:
+        return int(value) or None
+    return None
+
+
+_N_CTX_FLAGS = ("--n_ctx", "--n-ctx", "--ctx-size", "-c")
+
+
+def n_ctx_from_args(args: list[str]) -> int | None:
+    """The context window a llama server's argv sets, or None: every spelling llama-cpp-python (``--n_ctx``, our
+    spawner's) and the llama.cpp server (``--ctx-size``, ``-c``) accept, with a value or ``=value``."""
+    for i, arg in enumerate(args):
+        value: str | None = None
+        if arg in _N_CTX_FLAGS and i + 1 < len(args):
+            value = args[i + 1]
+        elif arg.startswith(tuple(f"{flag}=" for flag in _N_CTX_FLAGS if flag.startswith("--"))):
+            value = arg.split("=", 1)[1]
+        if value is not None:
+            return int(value) if value.isascii() and value.isdigit() and len(value) <= 9 else None
+    return None
+
+
+def _server_argvs(port: int) -> list[list[str]]:
+    """The argv of each process that serves ``port``: the listener's pid first (its argv is authoritative whatever it
+    runs), then any spawn record's pid whose argv names ``llama_cpp.server --port <port>``."""
+    from maxim.runtime import llm_spawn_record as _rec
+
+    # Each step degrades to "nothing found", never a raise: the probe's contract is "or None", and doctor builds its
+    # whole check list in one expression, so one raise here would end the `maxim doctor` run (a PermissionError on
+    # /proc/net/tcp under SELinux or a sandbox, or from lsof, is the usual one).
+    listeners: list[int] = []
+    try:
+        listeners = sorted(_rec.listening_pids(port).pids)
+    except (_rec.ListenerScanRefused, OSError) as e:
+        logger.debug("n_ctx probe: cannot name the listener on :%d (%s)", port, e)
+    try:
+        recorded = [r.pid for r in _rec.read_records(port) if r.pid not in listeners]
+    except (_rec.RecordsNotTrusted, OSError) as e:
+        logger.debug("n_ctx probe: spawn records for :%d not usable (%s)", port, e)
+        recorded = []
+    argvs: list[list[str]] = []
+    for pid in listeners + recorded:
+        argv = _rec.process_argv(pid)
+        if argv and (pid in listeners or _rec.cmdline_names_server_on_port(argv, port)):
+            argvs.append(argv)
+    return argvs
+
+
+def _n_ctx_from_server_argv(port: int) -> int | None:
+    for argv in _server_argvs(port):
+        n_ctx = n_ctx_from_args(argv)
+        if n_ctx:
+            return n_ctx
+    return None
+
+
 class LocalServerSpawner:
     """Manage a llama-cpp-python server subprocess.
 
@@ -214,6 +340,11 @@ class LocalServerSpawner:
         # Callers connect via loopback even when bind_host=0.0.0.0 (that's
         # for peers). Use 127.0.0.1 for the local client.
         return f"http://127.0.0.1:{self._port}/v1"
+
+    @property
+    def port(self) -> int:
+        """The port this spawner launches (or launched) the server on (public: ``served_n_ctx`` matches on it)."""
+        return self._port
 
     @property
     def n_ctx(self) -> int:
