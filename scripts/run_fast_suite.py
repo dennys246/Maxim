@@ -230,17 +230,25 @@ def main(argv: list[str] | None = None) -> int:
         log = open(cwd / f"shard{k:02d}.log", "wb")  # noqa: SIM115 - closed below
         logs.append(log)
         procs.append(subprocess.Popen(cmd, cwd=cwd, env=shard_env(k), stdout=log, stderr=subprocess.STDOUT))
-    rcs: list[int | None] = []
-    times: list[float] = []
-    for k, p in enumerate(procs):
-        try:
-            rcs.append(p.wait(timeout=max(1.0, SHARD_TIMEOUT_S - (time.monotonic() - started))))
-        except subprocess.TimeoutExpired:
-            p.kill()
-            p.wait()
-            rcs.append(None)
-        times.append(time.monotonic() - started)
-        logs[k].close()
+    rcs: list[int | None] = [None] * n
+    times: list[float] = [0.0] * n
+    pending = set(range(n))
+    while pending:  # poll, so each shard's own finish time is recorded (not the order it was waited on)
+        for k in sorted(pending):
+            rc = procs[k].poll()
+            if rc is not None:
+                rcs[k], times[k] = rc, time.monotonic() - started
+                pending.discard(k)
+        if pending and time.monotonic() - started > SHARD_TIMEOUT_S:
+            for k in pending:
+                procs[k].kill()
+                procs[k].wait()
+                times[k] = time.monotonic() - started  # rcs[k] stays None: reported as a timeout
+            pending.clear()
+        if pending:
+            time.sleep(1.0)
+    for log in logs:
+        log.close()
     order = sorted(range(n), key=lambda k: (rcs[k] == 0, k))  # a failing shard's output first
     for k in order:
         print(f"\n===== shard {k}/{n}: rc={rcs[k]} ({times[k] / 60:.1f} min to finish) =====")
