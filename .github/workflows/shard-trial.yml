@@ -1,0 +1,126 @@
+name: Shard trial (#1645, data only)
+
+# The #1645 trial, pre-registered in docs/plans/ci_sharded_suite_1645_approach.md (v2): >= 3 sharded and >= 3 serial
+# runs of ONE commit, each uploading its coverage.json, collection records, junit, memory samples and runner
+# identity. It gates nothing and is not a required check; the analysis (T1-T4) runs offline from the artifacts.
+# It runs only on the trial's own branch.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    if: github.head_ref == 'ci/1645-sharded-fast-suite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [sharded, serial]
+        rep: [1, 2, 3]
+    name: trial ${{ matrix.mode }} ${{ matrix.rep }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip (this job, this Python, these pins)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip/wheels
+          key: pip-${{ runner.os }}-unit-tests-py3.12-${{ hashFiles('pyproject.toml', '.github/constraints/*.txt') }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base
+
+      - name: Install package and test dependencies
+        env:
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
+        run: |
+          pip install pytest "pytest-cov==7.0.0" "coverage==7.13.3" pytest-xdist pytest-timeout "pyyaml>=6.0,<7.0"
+          pip install -e .
+          pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml \
+            -c .github/constraints/ci-backends.txt
+
+      - name: Install the console + sign extras (the extras lane)
+        run: |
+          python - <<'PY' > extras-reqs.txt
+          import tomllib
+          extras = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]
+          multipart = [r for r in extras["comms"] if r.startswith("python-multipart")]
+          print("\n".join(extras["console"] + extras["sign"] + multipart))
+          PY
+          pip install -r extras-reqs.txt -c .github/constraints/console.txt
+
+      - name: Cache the advisor GGUF fixtures
+        uses: actions/cache@v4
+        with:
+          path: |
+            tests/fixtures/advisor/vocab/ggml-vocab-command-r.gguf
+            tests/fixtures/advisor/vocab/ggml-vocab-qwen2.gguf
+            tests/fixtures/advisor/vocab/ggml-vocab-llama-bpe.gguf
+          key: advisor-fixtures-${{ hashFiles('scripts/fetch_advisor_fixtures.py') }}
+
+      - name: Fetch and verify the advisor GGUF fixtures
+        run: python3 scripts/fetch_advisor_fixtures.py
+
+      - name: Runner identity
+        run: |
+          mkdir -p trial-out
+          {
+            echo "head_sha=$(git rev-parse HEAD)"
+            echo "image_version=${ImageVersion:-unknown}"
+            echo "cpu=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p')"
+            echo "nproc=$(nproc)"
+            echo "mem_total_kb=$(sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\).*/\1/p' /proc/meminfo)"
+          } | tee trial-out/identity.txt
+
+      - name: Run the fast suite (${{ matrix.mode }})
+        run: |
+          rm -f .coverage .coverage.* coverage.json coverage.xml fast-suite.xml fast-suite.shard*.xml shard*.collect.json
+          ( while true; do
+              echo "$(date +%s) $(free -k | awk '/^Mem:/{print $3}') $(free -k | awk '/^Swap:/{print $3}')"
+              sleep 5
+            done ) > trial-out/mem.log &
+          SAMPLER=$!
+          ARGS='tests/ -x -q -m "not slow" --tb=short \
+            --ignore=tests/integration/test_memory_hub.py \
+            --require-extras=console,sign \
+            --junitxml=fast-suite.xml \
+            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report='
+          start=$(date +%s)
+          set +e
+          if [ "${{ matrix.mode }}" = sharded ]; then
+            bash scripts/ci_netns.sh "\"\$PY\" scripts/run_fast_suite.py --shards 4 -- $ARGS"
+          else
+            bash scripts/ci_netns.sh "\"\$PY\" -m pytest $ARGS"
+          fi
+          rc=$?
+          set -e
+          echo "rc=$rc wall_s=$(( $(date +%s) - start ))" | tee trial-out/result.txt
+          kill $SAMPLER || true
+          cat /sys/fs/cgroup/memory.events > trial-out/memory.events 2>/dev/null || echo "no cgroup memory.events" > trial-out/memory.events
+          sudo dmesg 2>/dev/null | grep -i -E "oom|killed process" > trial-out/oom.txt || true
+          cp coverage.json fast-suite.xml trial-out/ 2>/dev/null || true
+          cp fast-suite.shard*.xml shard*.collect.json shard*.log trial-out/ 2>/dev/null || true
+          exit $rc
+
+      - name: Upload the trial artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trial-${{ matrix.mode }}-${{ matrix.rep }}-${{ github.run_attempt }}
+          path: trial-out/
+          retention-days: 30
+          if-no-files-found: warn

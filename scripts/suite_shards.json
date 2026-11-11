@@ -1,0 +1,6 @@
+{
+  "_format_version": "1.0",
+  "n": 4,
+  "_comment": "#1645: test-module path -> shard index. Unlisted modules go to sha256(path) mod n. Empty until the trial's per-file times balance it.",
+  "shards": {}
+}
