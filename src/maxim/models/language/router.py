@@ -38,6 +38,7 @@ from maxim.models.language.types import (
     BackendAuthFailed,
     BackendModelMissing,
     BackendInferenceBroken,
+    BackendContextOverflow,
 )
 from maxim.models.language.cloud_dispatch import (
     MODEL_DOWNGRADE_MAP as _MODEL_DOWNGRADE_MAP,
@@ -1510,18 +1511,9 @@ class LLMRouter:
             self._maybe_schedule_auto_drain(provider_key, "timeout")
             return "", None, "failed"
         except BackendDown as e:
-            http_status = getattr(e, "status", None)
-            self._note_provider_failure(
-                provider_key,
-                f"down_{http_status}"[:200] if http_status is not None else "down",
-            )
-            self._record_attempt_outcome(
-                provider_key,
-                outcome="down",
-                extra={"http_status": http_status},
-            )
-            self._maybe_schedule_auto_drain(provider_key, "down")
-            return "", None, "failed"
+            return self._note_provider_down(provider_key, e)
+        except BackendContextOverflow as e:
+            return self._note_context_overflow(provider_key, e)
         except BackendError as e:
             # Unmapped BackendError subclass or generic base. Records as
             # generic_backend_error (still typed, still actionable — the
@@ -1551,6 +1543,59 @@ class LLMRouter:
         self._note_provider_failure(provider_key, "call_failed")
         self._record_attempt_outcome(provider_key, outcome="empty_response")
         self._maybe_schedule_auto_drain(provider_key, "empty_response")
+        return "", None, "failed"
+
+    def _note_provider_down(self, provider_key: str, e: BackendDown) -> tuple[str, None, str]:
+        """``_try_provider``'s :class:`BackendDown` branch: the exponential cooldown, the attempt, a drain check."""
+        http_status = getattr(e, "status", None)
+        self._note_provider_failure(
+            provider_key,
+            f"down_{http_status}"[:200] if http_status is not None else "down",
+        )
+        self._record_attempt_outcome(
+            provider_key,
+            outcome="down",
+            extra={"http_status": http_status},
+        )
+        self._maybe_schedule_auto_drain(provider_key, "down")
+        return "", None, "failed"
+
+    def _note_context_overflow(self, provider_key: str, e: BackendContextOverflow) -> tuple[str, None, str]:
+        """``_try_provider``'s :class:`BackendContextOverflow` branch (#1369): the REQUEST failed, the provider is fine.
+
+        No cooldown, no failure count and no drain check, so the next, smaller prompt still reaches this provider;
+        the dispatch still moves on, because a provider with a larger window may serve this one. Loud, with the
+        numbers: a prompt the budgeter let through that the server refuses usually means the two disagree on n_ctx,
+        so the router's own belief (``believed_n_ctx``) is logged beside the server's window. ``last_error`` is set
+        (and only that) so a run's report.json names the provider when the overflow was its last outcome
+        (``simulation/report.py::_provider_failures``; a later success clears it, as for every failure class).
+        """
+        requested = "?" if e.requested_tokens is None else str(e.requested_tokens)
+        window = "?" if e.context_window is None else str(e.context_window)
+        believed = self._provider_n_ctx(self._providers.get(provider_key, {}))
+        warn(
+            "LLM prompt overflows %s's context window: requested %s tokens, server window %s, router belief %s "
+            "(HTTP %s). Not cooling the provider down. %s",
+            provider_key,
+            requested,
+            window,
+            believed,
+            e.status,
+            e.fix_hint,
+        )
+        state = self._provider_states.get(provider_key)
+        if state is not None and not self._is_cancelled():
+            state.last_error = f"context_overflow: requested {requested}, window {window}"
+        self._record_attempt_outcome(
+            provider_key,
+            outcome="context_overflow",
+            extra={
+                "http_status": e.status,
+                "requested_tokens": e.requested_tokens,
+                "context_window": e.context_window,
+                "believed_n_ctx": believed,
+            },
+        )
         return "", None, "failed"
 
     def _check_provider_budget(
