@@ -182,7 +182,8 @@ def test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_e
     full = _build_parser().parse_args(["--sim", "g", "--sim-max-turns", "8", "--sim-run-full-turns"])
     assert cli._sim_turn_caps(plain) == {"max_turns": 8, "min_finish_turns": 0}
     assert cli._sim_turn_caps(full) == {"max_turns": 8, "min_finish_turns": 8}
-    assert inspect.getsource(cli._main_impl).count("**_sim_turn_caps(args)") >= 3, "every sim launch passes both caps"
+    launches = (cli._main_impl, cli._run_goal_sim)  # the goal-string launch moved out with --sim-script (#1628)
+    assert sum(inspect.getsource(f).count("**_sim_turn_caps(args)") for f in launches) >= 3, "every launch: both caps"
     src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
     assert "min_turns=0 if _is_observe_only else min_finish_turns" in src
     assert src.index("_is_observe_only = ") < src.index("FinishSimulationTool("), "known before the tool is built"

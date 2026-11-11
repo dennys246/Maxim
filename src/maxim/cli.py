@@ -923,6 +923,183 @@ def _sim_turn_caps(args: Any) -> dict[str, int]:
     return {"max_turns": max_turns, "min_finish_turns": max_turns if getattr(args, "sim_run_full_turns", False) else 0}
 
 
+def _run_goal_sim(
+    args: Any,
+    goal: str,
+    *,
+    debug_raw: Any,
+    aut_mode: str,
+    research_telemetry: bool,
+    entity_ref: str | None,
+    pre_campaign_turns: list[dict[str, Any]] | None,
+) -> None:
+    """The plain goal-string sim (``--sim "<goal>"`` without ``--research``): the orchestrator, then exit with its
+    result. ``pre_campaign_turns`` is ``--sim-script``'s (``_sim_script_turns``), delivered before the narrator."""
+    # Pure generative campaign — use the orchestrator.
+    # When the goal matches a builtin narrative arc (cradle,
+    # memory_recall, etc.), enable the generative campaign runner
+    # so the narrator drives multi-turn structured phases.
+    from maxim.simulation.orchestrator import start_simulation_mode
+
+    mode = _resolve_mode(args)
+    debug = bool(debug_raw)
+    resume_sim = getattr(args, "resume_sim", None)
+
+    # Auto-detect generative mode: if goal matches a builtin arc,
+    # route through the generative campaign runner.
+    _use_generative = False
+    try:
+        from maxim.simulation.arcs import select_arc_for_goal
+
+        if select_arc_for_goal(goal) is not None:
+            _use_generative = True
+    except Exception:
+        pass
+
+    result = start_simulation_mode(
+        goal=goal,
+        mode=mode,
+        debug=debug,
+        resume_session=resume_sim,
+        continuous=bool(getattr(args, "continuous", False)),
+        no_sim_env=bool(getattr(args, "no_sim_env", False)),
+        sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+        sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
+        sandbox_network=getattr(args, "sandbox_network", "none"),
+        aut_model=getattr(args, "aut_model", None),
+        aut_mode=aut_mode,
+        research_telemetry=research_telemetry,
+        **_sim_turn_caps(args),
+        entity_ref=entity_ref,
+        pre_campaign_turns=pre_campaign_turns,
+        generative=_use_generative,
+    )
+    sys.exit(_simulation_result_exit_code(result))
+
+
+def _sim_value_kind(value: str) -> str:
+    """What a ``--sim`` value selects: ``"yaml"`` (a scenario or campaign file), the legacy aliases ``"agent"``,
+    ``"research"`` and ``"benchmark"``, ``"interactive"`` (the REPL; ``--sim`` with no value), else ``"goal"`` (a goal
+    string for the generative campaign). The goal-string dispatch and ``--sim-script`` decide by it; a few older
+    sites (``_declare_run_mode``, the benchmark and REPL checks) still compare the value inline."""
+    value = value.strip()
+    if value.endswith((".yaml", ".yml")):
+        return "yaml"
+    lower = value.lower()
+    return lower if lower in ("agent", "research", "benchmark", "interactive") else "goal"
+
+
+# ``--sim-script`` runs on the plain goal-string orchestrator call only: a WHITELIST of the parsed options that may
+# differ from the parser's defaults. Any other option (a mode or driver flag, a management command, one added later)
+# refuses, so no dispatch that runs before the goal-string branch (``--foundry``, ``--generate-simulation``,
+# ``--list-models``, ...) can drop the script silently.
+_SIM_SCRIPT_ALLOWED = frozenset(
+    {
+        "sim",
+        "sim_script",
+        "sim_max_turns",
+        "resume_sim",
+        "interactive",
+        "sim_run_full_turns",
+        "language_model",
+        "aut_model",
+        "display",
+        "show_channels",
+        "debug",
+        "sandbox_backend",
+        "sandbox_image",
+        "sandbox_network",
+        "no_sim_env",
+    }
+)
+# The option ``normalize_args`` coerces away from its parsed default whatever was passed ("true" -> True), so its
+# value cannot be compared with the default; it is not a driver. (``sim_mode``'s default is SUPPRESS, so it is never
+# compared and has its own check below; ``interactive`` and ``language_model`` are whitelisted.)
+_SIM_SCRIPT_NORMALIZED = frozenset({"audio"})
+
+
+def _sim_script_unexpected_options(args: Any) -> list[str]:
+    """The options outside :data:`_SIM_SCRIPT_ALLOWED` whose value differs from the parser's default, as the first
+    option string of each (``--dm``), in parser order."""
+    from maxim.cli_parser import _build_parser
+
+    parser = _build_parser()
+    defaults = vars(parser.parse_args([]))
+    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
+    return [
+        flags.get(dest, dest)
+        for dest, default in defaults.items()
+        if dest not in _SIM_SCRIPT_ALLOWED
+        and dest not in _SIM_SCRIPT_NORMALIZED
+        and getattr(args, dest, default) != default
+    ]
+
+
+def _sim_script_refusal(args: Any) -> str | None:
+    """Why ``--sim-script`` may not run with these args (None = it may). Never reads the script."""
+    sim = getattr(args, "sim", None)
+    if sim is None or _sim_value_kind(str(sim)) != "goal" or not str(sim).strip():
+        return (
+            'it runs only with a goal string: --sim "<goal>" (not a YAML --sim, agent, research, benchmark or the REPL)'
+        )
+    unexpected = _sim_script_unexpected_options(args)
+    if unexpected:
+        return f"{', '.join(unexpected)} not accepted with it (only a plain goal-string sim)"
+    if getattr(args, "sim_mode", None) not in (None, "generative"):  # normalized, so not in the comparison above
+        return "--sim-mode not accepted with it (only a plain goal-string sim)"
+    if _resolve_interactive_mode(args, is_dm=False, is_tty=sys.stdout.isatty()) != "off":
+        return "interactive mode is on: pass --interactive false"
+    cap = getattr(args, "sim_max_turns", None)
+    if cap is None or cap < 1:
+        return f"--sim-max-turns is required with it, at least 1 (the script's length must equal it; got {cap!r})"
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    try:
+        arc = select_arc_for_goal(str(sim).strip())
+    except Exception as exc:  # noqa: BLE001 -- reported as the refusal: a probe that raises is never "no arc"
+        return f"the goal's arc could not be checked ({type(exc).__name__}: {exc})"
+    if arc is not None:
+        return "the goal selects a narrative arc, whose runner would run before the script and stop it"
+    return None
+
+
+def resolve_sim_script(args: Any) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """``--sim-script <file>``'s turns, or why it is refused: ``(turns, None)``, ``(None, reason)``, or ``(None, None)``
+    without the flag. No output and no exit, so a harness can run the CLI's own check before it spends a run (Exp
+    63c's preflight). ``args`` must have been through ``normalize_args`` (the interactive check reads
+    ``interactive_explicit``, which only it sets; on raw args ``--interactive false`` is the truthy string "false"):
+    a ``TypeError`` otherwise, never a guess. Turns come from ``experiment.load_campaign_turns(strict=True)``; a
+    relative path resolves against the working directory."""
+    path = getattr(args, "sim_script", None)
+    if path is None:
+        return None, None
+    if not hasattr(args, "interactive_explicit"):
+        raise TypeError("resolve_sim_script needs args that have been through cli_utils.normalize_args")
+    reason = _sim_script_refusal(args)
+    if reason is not None:
+        return None, reason
+    from maxim.simulation.experiment import load_campaign_turns
+
+    try:
+        turns = load_campaign_turns(path, strict=True)
+    except (OSError, ValueError) as exc:
+        return None, f"the script could not be loaded: {exc}"
+    if len(turns) != args.sim_max_turns:
+        return None, f"the script has {len(turns)} lines but --sim-max-turns is {args.sim_max_turns} (must match)"
+    return turns, None
+
+
+def _sim_script_turns(args: Any) -> list[dict[str, Any]] | None:
+    """The CLI's :func:`resolve_sim_script`: the turns for ``start_simulation_mode(pre_campaign_turns=...)`` (None
+    without the flag), or exit 1 with the refusal on stderr, before any sim starts. A scripted narrator: each line is
+    one turn sent through the bridge as the narrator's would be, and the run ends ``completed``."""
+    turns, reason = resolve_sim_script(args)
+    if reason is not None:
+        print(f"Error: --sim-script refused: {reason}.", file=sys.stderr)
+        sys.exit(1)
+    return turns
+
+
 def _early_leader_boot() -> int | None:
     """Start the LeaderProxy for a leader before anything heavy; return an exit code to stop, or None.
 
@@ -1459,6 +1636,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # ── Normalize args (after proxy boot — can trigger heavy CUDA imports) ──
     _normalize_args(args)
+    _script_turns = _sim_script_turns(args)  # --sim-script: refused (exit 1) before anything starts
 
     # Save this invocation if it's meaningful
     if should_save(raw_argv):
@@ -1655,24 +1833,20 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
         # -- Detect sim mode from --sim value ---------------------------------
         _sim_val = str(sim_path).strip()
-        _sim_val_lower = _sim_val.lower()
 
         # New unified detection:
         # - "agent", "research", "benchmark" → legacy aliases
         # - ends with .yaml/.yml → YAML campaign/scenario
         # - "interactive" or empty → REPL
         # - anything else → goal string for generative campaign
-        _is_yaml = _sim_val.endswith((".yaml", ".yml"))
-        _is_legacy_agent = _sim_val_lower == "agent"
-        _is_legacy_research = _sim_val_lower == "research"
-        _is_legacy_benchmark = _sim_val_lower == "benchmark"
-
-        # Legacy aliases: --sim agent/research/benchmark still work
-        # but the preferred forms are --sim "goal" / --research / --benchmark
-        _is_interactive = _sim_val_lower == "interactive"
-        _is_goal_string = not (
-            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
-        )
+        # (legacy aliases: --sim agent/research/benchmark still work, but the preferred forms are --sim "goal" /
+        # --research / --benchmark)
+        _sim_kind = _sim_value_kind(_sim_val)
+        _is_yaml = _sim_kind == "yaml"
+        _is_legacy_agent = _sim_kind == "agent"
+        _is_legacy_research = _sim_kind == "research"
+        _is_interactive = _sim_kind == "interactive"
+        _is_goal_string = _sim_kind == "goal"
 
         # If --research flag is set with a goal string, use research mode
         _wants_research = getattr(args, "research", False)
@@ -1854,45 +2028,15 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 )
                 sys.exit(_research_result_exit_code(result))
             else:
-                # Pure generative campaign — use the orchestrator.
-                # When the goal matches a builtin narrative arc (cradle,
-                # memory_recall, etc.), enable the generative campaign runner
-                # so the narrator drives multi-turn structured phases.
-                from maxim.simulation.orchestrator import start_simulation_mode
-
-                mode = _resolve_mode(args)
-                debug = bool(_debug_raw)
-                resume_sim = getattr(args, "resume_sim", None)
-
-                # Auto-detect generative mode: if goal matches a builtin arc,
-                # route through the generative campaign runner.
-                _use_generative = False
-                try:
-                    from maxim.simulation.arcs import select_arc_for_goal
-
-                    if select_arc_for_goal(goal) is not None:
-                        _use_generative = True
-                except Exception:
-                    pass
-
-                result = start_simulation_mode(
-                    goal=goal,
-                    mode=mode,
-                    debug=debug,
-                    resume_session=resume_sim,
-                    continuous=bool(getattr(args, "continuous", False)),
-                    no_sim_env=bool(getattr(args, "no_sim_env", False)),
-                    sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-                    sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
-                    sandbox_network=getattr(args, "sandbox_network", "none"),
-                    aut_model=getattr(args, "aut_model", None),
+                _run_goal_sim(
+                    args,
+                    goal,
+                    debug_raw=_debug_raw,
                     aut_mode=_aut_mode_val,
                     research_telemetry=bool(_wants_research),
-                    **_sim_turn_caps(args),
                     entity_ref=_sim_entity_ref,
-                    generative=_use_generative,
+                    pre_campaign_turns=_script_turns,
                 )
-                sys.exit(_simulation_result_exit_code(result))
 
         # ── Legacy: agent mode (deprecated alias) ──
         _sim_agent = _is_legacy_agent
