@@ -3121,10 +3121,12 @@ def _swap_key() -> str:
     client's key and every peer's were fixed when that server started, so a swap must not pick up a key rotated
     since (the new server would 401 them all until a restart). With no server this process started there is
     nothing to swap: refuse rather than spawn beside a server started elsewhere."""
+    from maxim.exceptions import LLMSwapRefused
+
     spawner = _server_mod._active_spawner
     key = getattr(spawner, "_api_key", None) if spawner is not None else None
     if not key:
-        raise RuntimeError(
+        raise LLMSwapRefused(
             "no llama-cpp-server started by this process to swap (the one serving was started elsewhere); "
             "restart maxim with the new model instead"
         )
@@ -3198,15 +3200,18 @@ def swap_llm_server(profile: str, logger: Any | None = None) -> dict[str, Any]:
     LocalServerSpawner.
 
     Returns a result dict consumed by the admin endpoint.
-    Raises ValueError for client errors (400-level) and RuntimeError for
+    Raises ValueError for client errors (400-level), ``maxim.exceptions.LLMSwapRefused`` (and its
+    ``LLMSwapInProgress``) for a refusal the operator can act on (409, #1408), and any other RuntimeError for
     server errors (500-level).
     """
+    from maxim.exceptions import LLMSwapInProgress
+
     # Validate + resolve target before touching any globals
     resolved, _profile_data = _validate_swap_profile(profile)
 
     # Acquire swap lock (non-blocking — reject concurrent swaps)
     if not _swap_lock.acquire(blocking=False):
-        raise RuntimeError("LLM swap already in progress")
+        raise LLMSwapInProgress("LLM swap already in progress")
 
     try:
         # Same model = no-op
