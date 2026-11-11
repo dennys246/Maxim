@@ -524,10 +524,11 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
-    # 60, not 45: the fast suite now runs under coverage (roadmap 1.3.2 item 5). Figures so far:
-    # 18:26 for the fast suite in CI without coverage (run 37217982246); 26:46 locally with --cov.
-    # The CI figure with coverage is recorded on the gate PR.
-    timeout-minutes: 60
+    # 75 is a STOPGAP (#1645, owner decision 2026-11-11): main's runs took 40-56 min (median ~50) on 2026-11-07..11
+    # against the old 60, and #1643 timed out at 99%. The real fix is the deterministic sharded fast suite (#1645);
+    # its switch PR sets this back to 60 once its post-switch revert window closes. A timed-out run is cancelled,
+    # not passed, so this limit was never a safety gate, only the detector for a hung run.
+    timeout-minutes: 75
     # On a push to main the diff-scoped lints judge the range since the last push whose job passed
     # (scripts/_lint_git.py::push_base, #1089): they read the Actions runs and each landed commit's merged PR through
     # `gh api`, so the job needs those read scopes and a token. Pinned by tests/unit/test_lint_git_push.py.

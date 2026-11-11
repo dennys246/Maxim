@@ -568,7 +568,7 @@ def ensure_available(
     import sys
 
     from maxim.runtime.llm_server import profile_has_local_file
-    from maxim.utils.process_lock import LockContended, file_lock
+    from maxim.utils.process_lock import LockContended, LockUnavailable, file_lock
     from maxim.utils.paths import data_home
     from maxim.utils.storage import can_download, format_report, report_storage
 
@@ -670,6 +670,12 @@ def ensure_available(
         print(
             f"\n  Another maxim process is downloading models. Wait for it to finish, "
             f"or kill it and retry.\n  (lock file: {lock_path})\n"
+        )
+        return False
+    except LockUnavailable as e:
+        print(
+            f"\n  Cannot lock the download ({e.strerror}): the data home's filesystem does not support file locks.\n"
+            f"  Keep ~/.maxim on a local filesystem (not NFS without a lock daemon).\n  (lock file: {lock_path})\n"
         )
         return False
 
@@ -831,7 +837,7 @@ def ensure_tts_voice(
     import sys
 
     from maxim.utils.paths import data_home
-    from maxim.utils.process_lock import LockContended, file_lock
+    from maxim.utils.process_lock import LockContended, LockUnavailable, file_lock
     from maxim.utils.storage import can_download
 
     info = TTS_MODELS.get(model_name)
@@ -879,6 +885,13 @@ def ensure_tts_voice(
             return verified() or (download_tts(model_name, tts_dir) and verified())
     except LockContended:
         logger.warning("Another process is downloading TTS voice %s; try again shortly", model_name)
+        return False
+    except LockUnavailable as e:
+        logger.warning(
+            "Cannot lock the TTS voice %s download (%s): the data home's filesystem does not support file locks",
+            model_name,
+            e.strerror,
+        )
         return False
 
 

@@ -1338,17 +1338,14 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
 def check_context_window(port: int = 8100) -> CheckResult:
     """Detect the context window actually in use by the running llama-cpp server.
 
-    Queries ``/v1/models`` first (cheap). If that doesn't carry n_ctx, falls
-    back to inspecting the process command-line on Linux (``/proc/*/cmdline``)
-    and macOS/Windows (``ps``/``wmic``). Returns info if server isn't running.
+    Queries ``/v1/models`` with the key the server accepts first (cheap). If that doesn't carry n_ctx, falls
+    back to the command line of the process serving the port, through the one shared probe
+    ``runtime/local_server_spawner.py::served_n_ctx`` (#1408). Returns info if server isn't running.
 
     This check exists specifically to catch the silent inference_broken cascade
     where llama-cpp runs at n_ctx=4096 and long prompts overflow the KV cache,
     returning empty ``choices`` with HTTP 200.
     """
-    import platform
-    import subprocess
-
     url = f"http://127.0.0.1:{port}/v1"
 
     # Step 1: is the server up at all?
@@ -1371,79 +1368,10 @@ def check_context_window(port: int = 8100) -> CheckResult:
             message="context window check unavailable (server not reachable)",
         )
 
-    # Step 2: check /v1/models for n_ctx in metadata
-    n_ctx: int | None = None
-    try:
-        import socket
+    # Steps 2 and 3: /v1/models with the key, then the server's command line, through the one shared probe (#1408).
+    from maxim.runtime.local_server_spawner import served_n_ctx
 
-        _auth_line = f"Authorization: Bearer {_key}\r\n" if _key else ""
-        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n{_auth_line}\r\n").encode()
-        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
-            s.sendall(req_bytes)
-            raw = b""
-            while True:
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                raw += chunk
-        body = raw.split(b"\r\n\r\n", 1)[-1]
-        import json as _json
-
-        data = _json.loads(body)
-        for model in data.get("data", []):
-            ctx = model.get("context_length") or model.get("n_ctx") or model.get("max_context_length")
-            if ctx:
-                n_ctx = int(ctx)
-                break
-    except Exception:
-        pass
-
-    # Step 3: inspect process args (cross-platform, best-effort)
-    if n_ctx is None:
-        try:
-            system = platform.system().lower()
-            if system == "linux":
-                # /proc is authoritative and doesn't require ps
-                import glob
-
-                for cmdline_path in glob.glob("/proc/*/cmdline"):
-                    try:
-                        with open(cmdline_path, "rb") as f:
-                            args = f.read().split(b"\x00")
-                        args_str = [a.decode("utf-8", errors="ignore") for a in args]
-                        if any("llama" in a or "llama-server" in a for a in args_str):
-                            for i, arg in enumerate(args_str):
-                                if arg in ("--ctx-size", "-c", "--n-ctx", "--n_ctx") and i + 1 < len(args_str):
-                                    n_ctx = int(args_str[i + 1])
-                                    break
-                                if arg.startswith(("--ctx-size=", "--n_ctx=")):
-                                    n_ctx = int(arg.split("=", 1)[1])
-                                    break
-                    except Exception:
-                        continue
-                    if n_ctx is not None:
-                        break
-            elif system == "darwin":
-                out = subprocess.check_output(
-                    ["ps", "aux"],
-                    timeout=3.0,
-                    stderr=subprocess.DEVNULL,
-                ).decode("utf-8", errors="ignore")
-                for line in out.splitlines():
-                    if "llama" not in line:
-                        continue
-                    parts = line.split()
-                    for i, p in enumerate(parts):
-                        if p in ("--ctx-size", "-c", "--n-ctx", "--n_ctx") and i + 1 < len(parts):
-                            n_ctx = int(parts[i + 1])
-                            break
-                        if p.startswith(("--ctx-size=", "--n_ctx=")):
-                            n_ctx = int(p.split("=", 1)[1])
-                            break
-                    if n_ctx is not None:
-                        break
-        except Exception:
-            pass
+    n_ctx = served_n_ctx(port, api_key=_key)
 
     if n_ctx is None:
         # Post-implementation field-coverage fold: surface the
@@ -1503,14 +1431,14 @@ def check_context_window(port: int = 8100) -> CheckResult:
 def _current_llama_server_n_ctx(port: int) -> int | None:
     """Return the n_ctx the running llama-cpp-server is configured for, or None.
 
-    Delegates to the canonical implementation in ``leader_proxy`` -- both
-    this module and ``_handle_debug_vram`` share the same probe logic.
+    Delegates to the one probe, ``runtime/local_server_spawner.py::served_n_ctx``
+    (shared with the leader proxy's ``/v1/debug/vram``), with the key the server
+    on ``port`` accepts (#1408; doctor may run under a different role from the
+    process that started it).
     """
-    from maxim.runtime.leader_proxy import (
-        _current_llama_server_n_ctx as _probe_n_ctx,
-    )
+    from maxim.runtime.local_server_spawner import served_n_ctx
 
-    return _probe_n_ctx(port)
+    return served_n_ctx(port, api_key=_accepted_server_key(port)[1])
 
 
 def check_vram_pressure(port: int = 8100) -> CheckResult:
