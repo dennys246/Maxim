@@ -613,6 +613,20 @@ def test_a_command_that_handles_its_own_ctrl_c_keeps_its_exit_code(tmp_path: Pat
     assert code == 0
 
 
+@pytest.mark.parametrize(
+    ("scenario", "sig"), [("late_claim", signal.SIGTERM), ("pre_session_handles_interrupt", signal.SIGINT)]
+)
+def test_a_signal_the_moment_ready_prints_is_caught_by_the_scenario(scenario: str, sig: int, tmp_path: Path) -> None:
+    """#1645: these scenarios printed READY BEFORE entering the ``try`` that catches the stop's KeyboardInterrupt, so a
+    signal sent the moment the parent read READY could land outside it (3 of 6 sharded CI runs failed g10_a). The gap
+    holds the child 0.5 s right after READY: with READY inside the ``try`` the signal is still caught; moved back
+    before it, both cases fail every time (verified by that deletion)."""
+    code, _, child = _run(scenario, tmp_path, sig, env={"CLI_SIGNAL_DRIVER_READY_GAP_S": "0.5"})
+    assert code == 0
+    if scenario == "late_claim":
+        assert "BORN_STOPPED" in child.lines
+
+
 @pytest.mark.parametrize("ask", ["_prompt_confirm", "_prompt_text"])
 def test_a_rich_prompt_entered_after_a_stop_returns_its_default_without_reading(
     ask: str, monkeypatch: pytest.MonkeyPatch
