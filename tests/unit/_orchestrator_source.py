@@ -182,6 +182,10 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
         "#1261: the narrator-facing per-action summary, factored out of SendMessageTool, ExtendSimulationTool and "
         "SpawnSubSimulationTool (three identical copies) to add the utterance; not orchestrator run code"
     ),
+    ("report.py", "_url_scrubbed"): (
+        "#1404 item 2: the recursive URL scrub save_action_log applies to actions.jsonl's params/output/error/"
+        "block_reason; record redaction, not orchestrator run code"
+    ),
     ("report.py", "_provider_failures"): (
         "#997: build_report's provider-failure attribution block moved out verbatim (rule T, after the URL scrub "
         "touched it); report assembly, not orchestrator run code"
