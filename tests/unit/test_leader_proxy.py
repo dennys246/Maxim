@@ -463,44 +463,61 @@ class TestEnsureLogBuffer:
 
 
 class TestCurrentLlamaServerNCtx:
-    """Tests for _current_llama_server_n_ctx lifted from doctor/checks.py."""
+    """Tests for local_server_spawner.served_n_ctx, the one n_ctx probe (#1408; the end-to-end keyed-server test is in
+    tests/unit/test_server_key_followups_1408.py)."""
+
+    @staticmethod
+    def _models(body: dict):
+        import json
+
+        from maxim.utils.http import Response
+
+        return Response(
+            status=200, headers={}, content=json.dumps(body).encode(), elapsed_ms=1.0, endpoint="e", request_id="r"
+        )
 
     def test_returns_context_length_from_models_endpoint(self):
         """Happy path: /v1/models returns context_length."""
-        import json
-        from maxim.runtime.leader_proxy import _current_llama_server_n_ctx
+        from maxim.runtime.local_server_spawner import served_n_ctx as _current_llama_server_n_ctx
 
-        models_resp = json.dumps({"data": [{"id": "test", "context_length": 8192}]})
-        http_resp = f"HTTP/1.0 200 OK\r\n\r\n{models_resp}".encode()
-
-        with patch("socket.create_connection") as mock_conn:
-            mock_sock = mock_conn.return_value.__enter__.return_value
-            mock_sock.recv.side_effect = [http_resp, b""]
-            result = _current_llama_server_n_ctx(8100)
-
-        assert result == 8192
+        body = {"data": [{"id": "test", "context_length": 8192}]}
+        with (
+            patch("maxim.utils.http.fetch_url", return_value=self._models(body)),
+            patch("maxim.runtime.local_server_spawner._server_argvs", return_value=[]),
+        ):
+            assert _current_llama_server_n_ctx(8100, api_key="k") == 8192
 
     def test_returns_none_when_connection_refused(self):
-        from maxim.runtime.leader_proxy import _current_llama_server_n_ctx
+        from maxim.runtime.local_server_spawner import served_n_ctx as _current_llama_server_n_ctx
+        from maxim.utils.http import HTTPConnectionError
 
-        with patch("socket.create_connection", side_effect=ConnectionRefusedError):
-            result = _current_llama_server_n_ctx(8100)
-
-        assert result is None
+        with (
+            patch("maxim.utils.http.fetch_url", side_effect=HTTPConnectionError("e")),
+            patch("maxim.runtime.local_server_spawner._server_argvs", return_value=[]),
+        ):
+            assert _current_llama_server_n_ctx(8100, api_key="k") is None
 
     def test_returns_none_for_empty_models_list(self):
-        import json
-        from maxim.runtime.leader_proxy import _current_llama_server_n_ctx
+        from maxim.runtime.local_server_spawner import served_n_ctx as _current_llama_server_n_ctx
 
-        models_resp = json.dumps({"data": []})
-        http_resp = f"HTTP/1.0 200 OK\r\n\r\n{models_resp}".encode()
+        with (
+            patch("maxim.utils.http.fetch_url", return_value=self._models({"data": []})),
+            patch("maxim.runtime.local_server_spawner._server_argvs", return_value=[]),
+        ):
+            assert _current_llama_server_n_ctx(8100, api_key="k") is None
 
-        with patch("socket.create_connection") as mock_conn:
-            mock_sock = mock_conn.return_value.__enter__.return_value
-            mock_sock.recv.side_effect = [http_resp, b""]
-            result = _current_llama_server_n_ctx(8100)
+    def test_falls_back_to_the_argv_of_the_process_serving_the_port(self):
+        """llama-cpp-python's /v1/models carries no window, so the argv of the process serving the port is the
+        real source (``_server_argvs`` yields only those, listener first)."""
+        from maxim.runtime.local_server_spawner import served_n_ctx as _current_llama_server_n_ctx
 
-        assert result is None
+        other = ["python", "-m", "llama_cpp.server", "--port", "8200", "--n_ctx", "4096"]
+        ours = ["python", "-m", "llama_cpp.server", "--port", "8100", "--n_ctx", "16384"]
+        with (
+            patch("maxim.utils.http.fetch_url", return_value=self._models({"data": [{"id": "m"}]})),
+            patch("maxim.runtime.local_server_spawner._server_argvs", return_value=[ours, other]),
+        ):
+            assert _current_llama_server_n_ctx(8100, api_key="k") == 16384
 
 
 # ── /v1/debug/vram endpoint ────────────────────────────────────────────────
@@ -572,7 +589,7 @@ class TestHandleDebugVram:
             patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
             patch("maxim.runtime.llm_server._active_model", "qwen2.5-14b-instruct"),
             patch(
-                "maxim.runtime.leader_proxy._current_llama_server_n_ctx",
+                "maxim.runtime.local_server_spawner.served_n_ctx",
                 return_value=8192,
             ),
         ):

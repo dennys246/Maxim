@@ -106,6 +106,26 @@ class LLMServerPortBusy(MaximError, RuntimeError):
         self.port = port
 
 
+class LLMSwapRefused(MaximError, RuntimeError):
+    """A hot swap (the leader proxy's llm-swap admin route) this process will not do, for a reason the operator can
+    act on (#1408).
+    The message and ``fix_hint`` are static, so the leader proxy returns both as a 409
+    (``leader_proxy.py::_ProxyHandler._handle_admin_llm_swap``) instead of a generic 500. Raised by
+    ``runtime/lane_backends.py::_swap_key`` when no llama-cpp-server started by this process is there to swap.
+
+    Not a :class:`LeaderRefusal`: a swap refusal is not a security refusal. A ``RuntimeError``, so a caller catching
+    that still catches it.
+    """
+
+    fix_hint = "Restart maxim on the leader with the new model."
+
+
+class LLMSwapInProgress(LLMSwapRefused):
+    """Another hot swap is running in this process (``lane_backends.py::swap_llm_server``'s swap lock is held)."""
+
+    fix_hint = "Wait for the running swap to finish, then check `maxim peer llm --status`."
+
+
 class LeaderRefusal(MaximError, RuntimeError):
     """A process refused to serve because doing so would be unauthenticated or over-exposed.
 
@@ -641,6 +661,8 @@ __all__ = [
     "KeyFileUnusable",
     "StopStillPending",
     "LLMServerPortBusy",
+    "LLMSwapRefused",
+    "LLMSwapInProgress",
     "LeaderRefusal",
     "AdvisorError",
     "AdvisorCompositionError",
