@@ -24,6 +24,40 @@ def _add_tts_arguments(group: argparse._ArgumentGroup) -> None:
     )
 
 
+def _add_turn_cap_arguments(sim: argparse._ArgumentGroup) -> None:
+    """The sim's turn flags: the cap (``--sim-max-turns``), ``--sim-run-full-turns`` and ``--sim-script``, whose
+    length must equal the cap (``cli._sim_script_turns``)."""
+    sim.add_argument(
+        "--sim-max-turns",
+        type=int,
+        default=None,  # unset = 50 (cli._sim_turn_caps); --sim-script requires it given
+        dest="sim_max_turns",
+        metavar="N",
+        help="Maximum simulation turns before forced termination. "
+        "When reached, the stall detector injects a max_turns termination "
+        "into the bridge so the report shows finish_reason='max_turns'. "
+        "Default: 50.",
+    )
+    sim.add_argument(
+        "--sim-script",
+        type=str,
+        default=None,
+        dest="sim_script",
+        metavar="PATH",
+        help="A scripted narrator: a percept YAML (percepts: - cli_input: <line>) whose lines are sent to the agent "
+        "one per turn, in place of the narrator's, before the run ends 'completed'. Only on a plain --sim \"<goal>\" "
+        "run (no arc; refused with any other mode or driver flag), with --interactive false and --sim-max-turns "
+        "equal to its line count; combines with --resume-sim.",
+    )
+    sim.add_argument(
+        "--sim-run-full-turns",
+        action="store_true",
+        dest="sim_run_full_turns",
+        help="Run every --sim-max-turns turn: the narrator's finish_simulation is refused before the cap (re-run "
+        "harnesses use this so a phase cannot end early; observe-only sessions are exempt).",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="maxim",
@@ -310,24 +344,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "(safety net for runaway runs that may still be hitting the LLM backend). "
         "Equivalent to MAXIM_REAP_ORPHANS=1.",
     )
-    sim.add_argument(
-        "--sim-max-turns",
-        type=int,
-        default=50,
-        dest="sim_max_turns",
-        metavar="N",
-        help="Maximum simulation turns before forced termination. "
-        "When reached, the stall detector injects a max_turns termination "
-        "into the bridge so the report shows finish_reason='max_turns'. "
-        "Default: 50.",
-    )
-    sim.add_argument(
-        "--sim-run-full-turns",
-        action="store_true",
-        dest="sim_run_full_turns",
-        help="Run every --sim-max-turns turn: the narrator's finish_simulation is refused before the cap (re-run "
-        "harnesses use this so a phase cannot end early; observe-only sessions are exempt).",
-    )
+    _add_turn_cap_arguments(sim)
     sim.add_argument(
         "--research",
         action="store_true",
