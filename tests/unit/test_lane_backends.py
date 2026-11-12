@@ -394,7 +394,8 @@ class TestRemoteBackendBuild:
             assert remote_cfg.cloud_enabled is True
             assert remote_cfg.providers["lane-large"]["allow_local_endpoints"] is False
 
-    def test_api_key_propagated_to_env(self, monkeypatch):
+    def test_api_key_rides_on_the_provider_entry_not_the_env(self, monkeypatch):
+        """#1371: the resolved key goes on the entry; the process env is never written."""
         monkeypatch.delenv("MAXIM_LANE_LARGE_API_KEY", raising=False)
         mgr = LaneBackendManager(
             {"large": self._remote_lane("https://api.anthropic.com/v1", "claude-3", key="sk-test")},
@@ -403,7 +404,7 @@ class TestRemoteBackendBuild:
         )
         with (
             patch("maxim.models.language.config.load_llm_config") as mock_load,
-            patch("maxim.models.language.router.LLMRouter"),
+            patch("maxim.models.language.router.LLMRouter") as mock_router,
         ):
             from maxim.models.language.config import LLMConfig
 
@@ -411,7 +412,10 @@ class TestRemoteBackendBuild:
             mgr.get_backend("large")
             import os
 
-            assert os.environ.get("MAXIM_LANE_LARGE_API_KEY") == "sk-test"
+            assert "MAXIM_LANE_LARGE_API_KEY" not in os.environ
+            (remote_cfg,), _ = mock_router.call_args
+            assert remote_cfg.providers["lane-large"]["api_key"] == "sk-test"
+            assert "api_key_env" not in remote_cfg.providers["lane-large"]
 
 
 class TestBuildPrimaryRouter:

@@ -29,9 +29,9 @@ from maxim.runtime.worker_pool import LaneConfig
 
 @pytest.fixture(autouse=True)
 def _scrub_lane_api_key_env(monkeypatch):
-    """_build_remote_backend does os.environ.setdefault(MAXIM_LANE_LARGE_API_KEY,
-    remote_api_key) — without this scrub the test key 'k' leaks into the
-    process and later lane-router tests read it (arch-lens review fold)."""
+    """Before #1371 _build_remote_backend did os.environ.setdefault(MAXIM_LANE_LARGE_API_KEY, remote_api_key);
+    it no longer writes the env (conftest's _isolate_internal_lane_key_env now scrubs the name for every test), so
+    this scrub is belt and braces."""
     monkeypatch.delenv("MAXIM_LANE_LARGE_API_KEY", raising=False)
     yield
     monkeypatch.delenv("MAXIM_LANE_LARGE_API_KEY", raising=False)
