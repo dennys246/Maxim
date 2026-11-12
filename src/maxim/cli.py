@@ -163,25 +163,52 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
-def _ensure_agentic_model(llm_router: Any) -> None:
-    """The agentic path's router has a missing model file: ask the consent gate, on the main thread (#1343).
+def _ensure_router_model(llm_router: Any) -> bool:
+    """A CLI-built router has a missing model file: ask the consent gate, on the main thread (#1343, #1396).
 
-    ``ExecAgent._ensure_router`` builds the router directly, so ``build_primary_router``'s preflight never ran. This is
-    the one place on that path that may prompt; the backend's own lazy load never does.
+    ``ExecAgent._ensure_router`` (the agentic path) and :func:`_cli_local_router` (foundry, auto-curate) build their
+    router directly, so ``build_primary_router``'s preflight never ran. This is the one place on those paths that may
+    prompt; the backend's own lazy load never does. True when the router loads no local GGUF (its resolved backend is
+    not llama_cpp: ``load_llm_config`` fills a ``.gguf`` ``model_path`` even for a cloud backend, so the path alone
+    cannot say), its file is present, or the gate reports the profile's registry file on disk after this call. False
+    when a llama.cpp model is missing and was not downloaded; for a profile outside the registry the gate prints how to
+    place the file by hand.
     """
+    from maxim.models.language.router import LLAMA_CPP_PROVIDER_TYPES, normalize_provider_type
+
+    if normalize_provider_type(getattr(llm_router.cfg, "backend", "") or "llama_cpp") not in LLAMA_CPP_PROVIDER_TYPES:
+        return True  # cloud, transformers, a peer: no local GGUF to load (load_llm_config fills model_path anyway)
     model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
     if not model_path or os.path.exists(model_path):
-        return
+        return True
     profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
     if not profile:
         print("  Model not found. Run: maxim --list-models to see available models.")
-        return
+        return False
     from maxim.models.download import ensure_available
 
     log = logging.getLogger(__name__)
     log.info("Model not found at %s — asking to download %s", model_path, profile)
     if not ensure_available(profile, logger=log):
         print("  Model not available. Run: maxim --list-models to see available models.")
+        return False
+    return True
+
+
+def _cli_local_router(profile: str) -> Any | None:
+    """The router foundry and auto-curate build from ``--llm`` (#1396): the consent gate asks first, on the main thread.
+
+    These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
+    missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
+    None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
+    """
+    from maxim.models.language.config import load_llm_config
+    from maxim.models.language.router import LLMRouter
+
+    router = LLMRouter(load_llm_config(profile_override=profile))
+    if not _ensure_router_model(router):
+        return None
+    return router
 
 
 def _handle_clear_memory(scope: str, args: Any, raw_argv: Sequence[str] | None) -> int:
@@ -1358,6 +1385,71 @@ def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
     return gateway
 
 
+def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
+    """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
+    ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup."""
+    _auto_curate = bool(getattr(args, "auto_curate", False))
+    _no_curate = bool(getattr(args, "no_curate", False))
+    if _auto_curate and not _no_curate and _sim_entity_ref:
+        _curate_threshold = int(getattr(args, "curate_threshold", 5) or 5)
+        # Infer genre from entity_ref or --foundry-genre flag
+        _curate_genre = getattr(args, "foundry_genre", "fantasy") or "fantasy"
+
+        try:
+            from maxim.embodiment.component_registry import ComponentRegistry
+            from maxim.simulation.foundry import auto_curate
+
+            _curate_registry = ComponentRegistry()
+
+            # Build ComponentIndex for dedup (optional — degrades gracefully)
+            _curate_index = None
+            try:
+                from maxim.embodiment.component_index import ComponentIndex
+
+                _curate_index = ComponentIndex(_curate_registry)
+            except Exception as _idx_err:
+                logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
+
+            # Reuse the LLM router from --llm if available
+            _curate_llm = None
+            _curate_profile = str(getattr(args, "language_model", "") or "").strip()
+            if _curate_profile:
+                try:
+                    _curate_llm = _cli_local_router(_curate_profile)
+                    if _curate_llm is None:
+                        print("  WARNING: LLM model not available — curation will use template fallback.")
+                    elif hasattr(_curate_llm, "warmup"):
+                        _curate_llm.warmup()
+                except Exception as _llm_err:
+                    logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
+
+            print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
+            _curate_report = auto_curate(
+                genre=_curate_genre,
+                threshold=_curate_threshold,
+                registry=_curate_registry,
+                component_index=_curate_index,
+                llm_router=_curate_llm,
+            )
+            if _curate_report.total_promoted > 0:
+                print(
+                    f"  Curated: {_curate_report.total_promoted} promoted, "
+                    f"{_curate_report.total_skipped_dedup} dedup-skipped"
+                )
+            elif _curate_report.categories_below_threshold == 0:
+                print("  Coverage OK — no curation needed")
+            else:
+                print(f"  Generated {_curate_report.total_generated} candidates, none promoted (below score threshold)")
+        except Exception as _cur_err:
+            logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
+            print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
+    elif _auto_curate and not _no_curate and not _sim_entity_ref:
+        print(
+            "  NOTE: --auto-curate requires --embodiment to determine genre context; skipping curation.",
+            file=sys.stderr,
+        )
+
+
 def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     """``maxim --foundry <theme>``: the Asset Foundry run (moved verbatim out of ``_main_impl``, #1315 step 0a)."""
     from maxim.simulation.foundry import FoundryRunner
@@ -1369,14 +1461,12 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
     if _foundry_profile:
         try:
-            from maxim.models.language.config import load_llm_config
-            from maxim.models.language.router import LLMRouter
-
-            _foundry_cfg = load_llm_config(profile_override=_foundry_profile)
-            _foundry_llm = LLMRouter(_foundry_cfg)
-            if hasattr(_foundry_llm, "warmup"):
+            _foundry_llm = _cli_local_router(_foundry_profile)
+            if _foundry_llm is None:
+                print("  WARNING: LLM model not available — foundry will use template fallback.")
+            elif hasattr(_foundry_llm, "warmup"):
                 _foundry_llm.warmup()
-            if hasattr(_foundry_llm, "wait_ready"):
+            if _foundry_llm is not None and hasattr(_foundry_llm, "wait_ready"):
                 print(f"  Waiting for LLM ({_foundry_profile}) to load...")
                 if not _foundry_llm.wait_ready(timeout=120.0):
                     print("  WARNING: LLM failed to load — foundry will use template fallback.")
@@ -1938,71 +2028,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             )
 
         # ── E3: Pre-sim auto-curation ─────────────────────────────────
-        _auto_curate = bool(getattr(args, "auto_curate", False))
-        _no_curate = bool(getattr(args, "no_curate", False))
-        if _auto_curate and not _no_curate and _sim_entity_ref:
-            _curate_threshold = int(getattr(args, "curate_threshold", 5) or 5)
-            # Infer genre from entity_ref or --foundry-genre flag
-            _curate_genre = getattr(args, "foundry_genre", "fantasy") or "fantasy"
-
-            try:
-                from maxim.embodiment.component_registry import ComponentRegistry
-                from maxim.simulation.foundry import auto_curate
-
-                _curate_registry = ComponentRegistry()
-
-                # Build ComponentIndex for dedup (optional — degrades gracefully)
-                _curate_index = None
-                try:
-                    from maxim.embodiment.component_index import ComponentIndex
-
-                    _curate_index = ComponentIndex(_curate_registry)
-                except Exception as _idx_err:
-                    logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
-
-                # Reuse the LLM router from --llm if available
-                _curate_llm = None
-                _curate_profile = str(getattr(args, "language_model", "") or "").strip()
-                if _curate_profile:
-                    try:
-                        from maxim.models.language.config import load_llm_config
-                        from maxim.models.language.router import LLMRouter
-
-                        _curate_cfg = load_llm_config(profile_override=_curate_profile)
-                        _curate_llm = LLMRouter(_curate_cfg)
-                        if hasattr(_curate_llm, "warmup"):
-                            _curate_llm.warmup()
-                    except Exception as _llm_err:
-                        logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
-
-                print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
-                _curate_report = auto_curate(
-                    genre=_curate_genre,
-                    threshold=_curate_threshold,
-                    registry=_curate_registry,
-                    component_index=_curate_index,
-                    llm_router=_curate_llm,
-                )
-                if _curate_report.total_promoted > 0:
-                    print(
-                        f"  Curated: {_curate_report.total_promoted} promoted, "
-                        f"{_curate_report.total_skipped_dedup} dedup-skipped"
-                    )
-                elif _curate_report.categories_below_threshold == 0:
-                    print("  Coverage OK — no curation needed")
-                else:
-                    print(
-                        f"  Generated {_curate_report.total_generated} candidates, "
-                        f"none promoted (below score threshold)"
-                    )
-            except Exception as _cur_err:
-                logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
-                print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
-        elif _auto_curate and not _no_curate and not _sim_entity_ref:
-            print(
-                "  NOTE: --auto-curate requires --embodiment to determine genre context; skipping curation.",
-                file=sys.stderr,
-            )
+        _auto_curate_before_sim(args, _sim_entity_ref)
 
         # ── Generative campaign mode (new default for goal strings) ──
         if _is_goal_string and not _is_legacy_agent:
@@ -2577,7 +2603,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     agentic_agent.exec_agent._ensure_llm()
                     llm_router = agentic_agent.exec_agent._ensure_router()
                 if llm_router is not None:
-                    _ensure_agentic_model(llm_router)
+                    _ensure_router_model(llm_router)
                     if hasattr(llm_router, "warmup"):
                         llm_router.warmup()
                     # In simulation mode, wait for LLM to be fully loaded before starting
