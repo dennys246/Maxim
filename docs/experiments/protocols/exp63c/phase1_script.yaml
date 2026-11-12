@@ -1,0 +1,13 @@
+# Exp 63c, phase 1: the scripted narrator's eight lines (frozen prereg docs/experiments/exp63c_scripted_recall_prereg.md,
+# §The script, v4 = rationale/exp63c-scripted-recall/replay/script_v5x.py). Run with
+# `--sim-script docs/experiments/protocols/exp63c/phase1_script.yaml --sim-max-turns 8`. Pinned by content in
+# scripts/o19_verdict.py PROTOCOL["63c"] (scenario_content_sha256 over load_campaign_turns' dicts): do not edit.
+percepts:
+  - cli_input: "You lie in a cold damp alcove. The guard is asleep in the dungeon and you wish to escape."
+  - cli_input: "A brass ladle hangs from a copper hook beside the guard's chair."
+  - cli_input: "The guard hid a small knife beneath the straw mattress."
+  - cli_input: "The cell hatch by the guard has a cracked padlock whose chain squeaks."
+  - cli_input: "Water drips from a crevice in the north bricks into a drain grate in the dungeon."
+  - cli_input: "The guard is still sleeping in the dungeon."
+  - cli_input: "What comes to mind?"
+  - cli_input: "Sum up your intention in a sentence."

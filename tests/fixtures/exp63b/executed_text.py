@@ -4,7 +4,7 @@
 # #1620 changed the shipped content keys (``settle_key`` converges silent-e and doubled-consonant inflections), which
 # fires T1-16's named re-run trigger. scripts/o19_verdict.py's FROZEN port (G2) copies THIS keying, so its pin
 # ``tests/unit/test_o19_rerun.py::test_exp63b_the_port_is_the_executed_keying`` is re-pointed here, never deleted, and
-# the module's tests run the shipped stores on this keying (the ``_exp63b_executed_keying`` fixture). Vendored, not read
+# the module's tests run the shipped stores on this keying (the ``_executed_keying`` fixture). Vendored, not read
 # through ``git show`` at test time, so a shallow checkout still runs the pin;
 # ``test_the_vendored_keying_is_the_executed_commits`` checks the bytes below the marker against the commit wherever
 # its history is present. Do not edit anything below the marker.
