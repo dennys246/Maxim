@@ -53,6 +53,15 @@ from maxim.models.language.cloud_dispatch import (
 
 _SYSTEM_PLAIN_TEXT = "You are a helpful assistant. Reply in plain text, concisely."
 
+# The provider types the router builds a ``_LlamaCppBackend`` for, after ``LLMRouter._provider_type``'s
+# normalisation. ``cli.py::_ensure_router_model`` reads the same table to decide whether a router loads a local GGUF.
+LLAMA_CPP_PROVIDER_TYPES: tuple[str, ...] = ("llama", "llama_cpp", "llamacpp")
+
+
+def normalize_provider_type(raw: object) -> str:
+    """A backend/provider type as the router compares it: stripped, lower-cased, ``-`` as ``_``."""
+    return str(raw or "").strip().lower().replace("-", "_")
+
 
 def _inference_lock_timeout_s() -> float:
     """Ceiling on waiting for ``_inference_lock`` (bugs ledger D12).
@@ -358,7 +367,7 @@ class LLMRouter:
 
     def _provider_type(self, provider_cfg: dict[str, Any]) -> str:
         raw = provider_cfg.get("type") or provider_cfg.get("backend") or self.cfg.backend
-        return str(raw or "").strip().lower().replace("-", "_")
+        return normalize_provider_type(raw)
 
     def _provider_is_cloud(self, provider_cfg: dict[str, Any]) -> bool:
         provider_type = self._provider_type(provider_cfg)
@@ -405,7 +414,7 @@ class LLMRouter:
         provider_type = self._provider_type(provider_cfg)
 
         # Local backends
-        if provider_type in ("llama", "llama_cpp", "llamacpp"):
+        if provider_type in LLAMA_CPP_PROVIDER_TYPES:
             cfg = self._build_provider_config(provider_cfg)
             backend = _LlamaCppBackend(cfg)
         elif provider_type in ("pytorch", "torch", "transformers", "huggingface", "hf"):
