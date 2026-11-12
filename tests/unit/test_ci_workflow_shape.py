@@ -423,16 +423,36 @@ def test_release_build_vendors_the_pinned_console_and_audits_it_without_a_waiver
     assert len(verify) == 1 and verify[0].get("if") == "github.event_name == 'pull_request'", verify
 
 
-def _stub_netns(tmp_path, sudo_mode: str):
-    """A PATH where sudo/unshare/setpriv/ip are stubs, so the REAL ci_netns.sh runs on any box. ``sudo_mode``:
-    "preserve" passes exactly the names in --preserve-env (both real sudos do); "drop" passes nothing, which is what
-    sudo-rs did to ``-E`` (O20)."""
+def _stub_netns(tmp_path, sudo_mode: str, *, docker_gid: str = "", groups: str = "1001 4 100", primary: str = "1001"):
+    """A PATH where sudo/unshare/setpriv/ip/mount/id/getent are stubs, so the REAL ci_netns.sh runs on any box, from a
+    copy beside a stub ci_netns_probe.py (the real probe checks the box it runs on; its rules are tested in
+    tests/unit/test_ci_netns_probe.py). Returns ``(env, script, log)``; the stubs record setpriv's argv, every mount
+    target and the probe's mode and environment under ``log``.
+
+    ``sudo_mode``: "preserve" passes exactly the names in --preserve-env (both real sudos do); "drop" passes nothing,
+    which is what sudo-rs did to ``-E`` (O20). ``docker_gid`` injects a docker group (empty: none), ``groups`` and
+    ``primary`` are what ``id -G`` / ``id -g`` print in the caller phase."""
     import os
+    import shutil
     import stat
     import sys
 
     stubs = tmp_path / "stubs"
-    stubs.mkdir()
+    stubs.mkdir(parents=True)
+    log = tmp_path / "log"
+    log.mkdir()
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    script = scripts_dir / "ci_netns.sh"
+    shutil.copy(ROOT / "scripts" / "ci_netns.sh", script)
+    (scripts_dir / "ci_netns_probe.py").write_text(
+        "import os, sys\n"
+        f"open({str(log / 'probe')!r}, 'w').write(' '.join(sys.argv[1:]) + "
+        "' no_docker=' + os.environ.get('MAXIM_EXPECT_NO_DOCKER', '<unset>') + "
+        "' netns=' + os.environ.get('MAXIM_EXPECT_NETNS', '<unset>'))\n"
+        "sys.exit(int(os.environ.get('STUB_PROBE_EXIT', '0')))\n"
+    )
+    real_id = shutil.which("id")
     scripts = {
         "sudo": f"""#!/usr/bin/env bash
 kept=()
@@ -444,8 +464,21 @@ fi
 exec env -i "${{kept[@]}}" "$@"
 """,
         "unshare": '#!/usr/bin/env bash\nwhile [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n',
-        "setpriv": '#!/usr/bin/env bash\nwhile [[ "$1" == --* ]]; do shift; done; exec "$@"\n',
+        "setpriv": f'#!/usr/bin/env bash\necho "$*" > {str(log / "setpriv")!r}\n'
+        'while [[ "$1" == --* ]]; do shift; done; exec "$@"\n',
         "ip": "#!/bin/sh\nexit 0\n",
+        "find": '#!/bin/sh\n[ -n "$STUB_FIND_FAIL" ] && { echo "find: denied" >&2; exit 1; }\nexit 0\n',
+        "mount": f'#!/bin/sh\necho "$3" >> {str(log / "mount")!r}\n',
+        "id": f"""#!/usr/bin/env bash
+if [ "${{CI_NETNS_PHASE:-}}" = root ] && [ "$1" = -u ]; then echo 0; exit 0; fi
+case "$1" in
+  -G) echo "{groups}" ;;
+  -g) echo "{primary}" ;;
+  *) exec {real_id} "$@" ;;
+esac
+""",
+        "getent": f'#!/bin/sh\n[ "$1 $2" = "group docker" ] && [ -n "{docker_gid}" ] && '
+        f'echo "docker:x:{docker_gid}:runner" && exit 0\nexit 2\n',
     }
     for name, body in scripts.items():
         path = stubs / name
@@ -461,21 +494,135 @@ exec env -i "${{kept[@]}}" "$@"
         "GH_TOKEN": "not-for-the-suite",
         "HF_TOKEN": "not-for-the-suite",
     }
-    return env
+    return env, script, log
+
+
+def _run_netns(env, script, *args):
+    return subprocess.run(["bash", str(script), *args], env=env, capture_output=True, text=True, timeout=60)
 
 
 @pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
 @pytest.mark.parametrize("sudo_mode", ["preserve", "drop"])
 def test_the_netns_arrival_check_passes_a_carried_environment_and_refuses_a_dropped_one(tmp_path, sudo_mode):
     """The behaviour behind the string pins above (architecture review A3): the real script, stubbed below sudo."""
-    env = _stub_netns(tmp_path, sudo_mode)
+    env, script, _log = _stub_netns(tmp_path, sudo_mode)
     suite = 'echo "voice=${MAXIM_TEST_TTS_VOICE_DIR:-<unset>} gh=${GH_TOKEN:-<unset>} hf=${HF_TOKEN:-<unset>}"'
-    r = subprocess.run(
-        ["bash", str(ROOT / "scripts" / "ci_netns.sh"), suite], env=env, capture_output=True, text=True, timeout=60
-    )
+    r = _run_netns(env, script, suite)
     if sudo_mode == "preserve":
         assert r.returncode == 0, r.stderr
         assert "voice=/cache/voice gh=<unset> hf=<unset>" in r.stdout  # carried; secret-shaped names kept out
     else:
         assert r.returncode == 3, (r.returncode, r.stdout, r.stderr)
         assert "lost:" in r.stderr and "MAXIM_TEST_TTS_VOICE_DIR" in r.stderr and "voice=" not in r.stdout
+
+
+# ── #1426: no privilege regained, the docker group dropped, the probe run ─────────────────────────────────────────
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_closed_mode_drops_the_docker_gid_regains_no_privilege_and_runs_the_closed_probe(tmp_path):
+    env, script, log = _stub_netns(tmp_path, "preserve", docker_gid="113", groups="1001 4 113 999")
+    r = _run_netns(env, script, "echo ran")
+    assert r.returncode == 0, r.stderr
+    argv = (log / "setpriv").read_text().split()
+    assert "--no-new-privs" in argv and "--init-groups" not in argv
+    assert "--groups=1001,4,999" in argv  # the equals form, docker's 113 gone
+    assert (log / "probe").read_text() == "--mode closed no_docker=1 netns=1"
+    assert "ran" in r.stdout
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_keep_docker_keeps_the_groups_still_regains_no_privilege_and_runs_the_keep_probe(tmp_path):
+    env, script, log = _stub_netns(tmp_path, "preserve", docker_gid="113", groups="1001 113")
+    env["MAXIM_EXPECT_NO_DOCKER"] = "1"  # a caller's export must not reach a keep lane
+    r = _run_netns(env, script, "--keep-docker", "echo ran")
+    assert r.returncode == 0, r.stderr
+    argv = (log / "setpriv").read_text().split()
+    assert "--no-new-privs" in argv and "--init-groups" in argv
+    assert (log / "probe").read_text() == "--mode keep no_docker=<unset> netns=1"
+    assert not (log / "mount").exists()  # nothing masked in a keep lane
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_an_empty_group_list_is_clear_groups_and_no_docker_group_drops_nothing(tmp_path):
+    env, script, log = _stub_netns(tmp_path, "preserve", docker_gid="113", groups="113", primary="1001")
+    assert _run_netns(env, script, "true").returncode == 0
+    assert "--clear-groups" in (log / "setpriv").read_text().split()
+    env2, script2, log2 = _stub_netns(tmp_path / "b", "preserve", docker_gid="", groups="1001 4")
+    assert _run_netns(env2, script2, "true").returncode == 0
+    assert "--groups=1001,4" in (log2 / "setpriv").read_text().split()
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_a_docker_primary_group_is_refused_closed_and_allowed_with_keep_docker(tmp_path):
+    env, script, _log = _stub_netns(tmp_path, "preserve", docker_gid="113", groups="113 4", primary="113")
+    r = _run_netns(env, script, "echo ran")
+    assert r.returncode == 2 and "primary group is docker" in r.stderr and "ran" not in r.stdout
+    assert _run_netns(env, script, "--keep-docker", "echo ran").returncode == 0
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_a_failed_probe_stops_the_suite_with_exit_4(tmp_path):
+    env, script, _log = _stub_netns(tmp_path, "preserve")
+    env["STUB_PROBE_EXIT"] = "4"
+    r = _run_netns(env, script, "echo ran")
+    assert r.returncode == 4 and "ran" not in r.stdout
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+@pytest.mark.parametrize(
+    "args, code, ran",
+    [
+        (("--keep-docker",), 127, False),  # one argument is the COMMAND (not found), run closed: never a flag
+        (("--keep-docker", ""), 2, False),
+        (("--keep-docker", "true", "extra"), 2, False),
+        (("echo ran", "extra"), 2, False),
+        ((), 2, False),
+    ],
+    ids=["flag-alone-is-a-command", "flag-no-command", "three-args", "two-args-no-flag", "none"],
+)
+def test_the_argument_contract(tmp_path, args, code, ran):
+    env, script, log = _stub_netns(tmp_path, "preserve")
+    r = _run_netns(env, script, *args)
+    assert r.returncode == code, (r.returncode, r.stderr)
+    if code == 127:
+        assert (log / "probe").read_text().startswith("--mode closed")
+    else:
+        assert not (log / "probe").exists()
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_an_unknown_phase_is_refused(tmp_path):
+    """An unknown phase is refused. (A caller-set root or user phase fails on a real box, on the root phase's uid
+    check and the probe's only-lo check; the stubs here answer both, so this test cannot show that part.)"""
+    env, script, _log = _stub_netns(tmp_path, "preserve")
+    r = _run_netns({**env, "CI_NETNS_PHASE": "bogus"}, script, "echo ran")
+    assert r.returncode == 2 and "ran" not in r.stdout and "unknown CI_NETNS_PHASE" in r.stderr
+
+
+def test_only_the_slow_lane_keeps_docker():
+    """#1426: --keep-docker is the slow lane's, as the first argument after the script, literally; no other job's
+    line names it at all."""
+    calls = []
+    for job, spec in yaml.safe_load((ROOT / ".github" / "workflows" / "test.yml").read_text())["jobs"].items():
+        for step in spec.get("steps", []):
+            run = _run(step)
+            if "ci_netns.sh" in run or "--keep-docker" in run:
+                calls.append((job, run))
+    keep = [(job, run) for job, run in calls if "--keep-docker" in run]
+    assert [job for job, _run_text in keep] == ["slow-tests"], keep
+    assert "bash scripts/ci_netns.sh --keep-docker '" in keep[0][1]
+    assert any(job == "unit-tests" and 'bash scripts/ci_netns.sh "$SUITE"' in run for job, run in calls)
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="needs bash")
+def test_a_runtime_dir_that_cannot_be_listed_stops_the_run_closed(tmp_path):
+    """The mask list goes through a file so find's failure is seen: a subtree left unlisted would stay unmasked."""
+    import os
+
+    if not os.path.isdir(f"/run/user/{os.getuid()}"):
+        pytest.skip("no runtime dir for this uid on this box")
+    env, script, _log = _stub_netns(tmp_path, "preserve")
+    env["STUB_FIND_FAIL"] = "1"  # crosses the stub sudo by name, like any job variable
+    r = _run_netns(env, script, "echo ran")
+    assert r.returncode == 4 and "cannot list" in r.stderr and "ran" not in r.stdout
