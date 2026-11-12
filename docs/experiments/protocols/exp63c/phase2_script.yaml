@@ -1,0 +1,13 @@
+# Exp 63c, phase 2 (resumes phase 1): the scripted narrator's eight lines (frozen prereg
+# docs/experiments/exp63c_scripted_recall_prereg.md, §The script, v4). Run with
+# `--sim-script docs/experiments/protocols/exp63c/phase2_script.yaml --sim-max-turns 8 --resume-sim <phase 1>`.
+# Pinned by content in scripts/o19_verdict.py PROTOCOL["63c"]: do not edit.
+percepts:
+  - cli_input: "You are back in the dungeon and the guard is still sleeping."
+  - cli_input: "Is a silver bell ringing in the guard's chapel?"
+  - cli_input: "Where does the brass ladle hang by the guard?"
+  - cli_input: "What is beneath the guard's straw mattress?"
+  - cli_input: "Does the padlock on the cell hatch by the guard squeak?"
+  - cli_input: "Is a purple banner draped in the dungeon?"
+  - cli_input: "Where does water from the crevice drip in the dungeon?"
+  - cli_input: "The guard stirs. What do you do now?"

@@ -184,7 +184,11 @@ job. The input is that printed block saved as JSON — the uploaded ``coverage.j
 input. It enforces the spread of the runs it is given (SF-3, owner decision 2026-10-13): it exits 1 and prints no
 floors when a merged scope is measured in fewer than two of the runs, when the runs' ``missing`` differ by more than
 the scope's k, when the runs carry different ``retired_files``, or when two inputs are byte-identical (the same
-file given twice). Every entry is validated as a floor (``{percent, missing}``, both or neither null) and a bad one
+file given twice). A floors block printed by a run that RE-USED a measurement (#1640) is the source run's sample,
+not a second one: the gate then prints ``measurement re-used from run N attempt A — not an independent sample`` at
+the top of its report and again directly above the block (:func:`reuse_banner`; its mark is
+``coverage-reused-from.json`` at the repo root, which only the decision step writes), so never feed both to
+``--merge-floors``; re-run the job instead (attempt 2 always measures). Every entry is validated as a floor (``{percent, missing}``, both or neither null) and a bad one
 is a format error (exit 2). The gate cannot see where a pin came from: whether the inputs are two different CI
 runs, or runs of this commit, is NOT detected (two copies differing by one byte pass) — review reads the pin's
 provenance (mechanization backlog M52). A flaky scope is fixed (the non-deterministic test), never absorbed into a
@@ -202,7 +206,56 @@ exclusion is grandfathered when its path matched a non-fixed ``omit`` pattern in
 cleanup and the exact ``--cov`` arguments; exactly one later step runs exactly
 ``python scripts/lint_coverage.py`` and carries only ``name`` and ``run`` (no ``if:``, ``env:``,
 ``shell:``, ``with:``, ``|| true``); the only step allowed between the two is the MemoryHub step,
-matched by its run line, so nothing can rewrite ``coverage.json``; no ``continue-on-error``.
+matched by its run line and its exact re-use ``if:``, so nothing can rewrite ``coverage.json``; no
+``continue-on-error``. The re-use path's wiring is pinned too (#1640, :func:`_reuse_wiring_rules`): exactly one
+``id: reuse`` step running exactly ``python scripts/lint_coverage.py --reuse-decision`` before the suite, one stamp
+step between it and the suite, exactly one ``~/.cache/pip/wheels`` cache between them too (a re-use run must never
+save #1318's entry), the exact ``if: steps.reuse.outputs.reuse != 'true'`` on every step from the decision
+through the suite and on MemoryHub, the measurement upload's exact ``if: always() && steps.reuse.outputs.reuse !=
+'true'`` (of ``coverage.json``, ``fast-suite.xml``, ``measured-tree.json``), the pointer upload's exact ``if:
+always() && steps.reuse.outputs.reuse == 'true'``, and no other ``if:`` anywhere in the job.
+
+**Re-using a verified measurement (#1640, owner decisions 2026-11-10).** A push that changes nothing but
+``scripts/coverage_floors.json`` (the bookkeeping failures: a rise not pinned, a package without a floor) skips the
+45-minute suite and judges the new floors against a measurement CI already made. ``--reuse-decision`` (the
+``id: reuse`` step, before the suite) ALWAYS exits 0 and writes ``reuse=true`` to ``$GITHUB_OUTPUT`` only when every
+check holds; any doubt (an API or git error, a mismatch, a parse failure) writes ``reuse=false``, prints why, and the
+job runs in full. The checks:
+
+- ``pull_request`` only (a push to main always measures) and ``github.run_attempt == 1`` only (a re-run is the
+  documented way to take a second sample: the bootstrap's two runs, a noise-refused lowering, #1103);
+- the floors diff is raise-only against the ratchet's own base (``base_ref``): every changed floor raises
+  (``percent`` >= base, ``missing`` <= base) or adds a ``null``; a lowering, a removal, a set-back to null or a NEW
+  non-null floor is verified against an independent sample, a full run (the strict option);
+- the source is the newest Tests ``pull_request`` run of this head branch from this repository (no forks), other
+  than this one, that qualifies: it started within 48 h (pip resolves fresh each run); **check 1, from git**: its
+  ``head_sha`` from the API is fetched and ``git diff --name-only <head_sha> HEAD^2`` holds nothing but the floors
+  file, so that run's workflow, conftest, tests and lint code were this branch's (a stamp alone is code the PR
+  controlled: an unreviewed push could run ``true`` under the real step names and stamp the next tree); its latest
+  attempt's ``unit-tests`` steps through the measuring suite and MemoryHub are all ``success``; its attempt-bound
+  ``coverage-json-<attempt>`` artifact is listed and unexpired and holds ``coverage.json``, ``fast-suite.xml`` and
+  ``measured-tree.json``; **check 2, from the stamp** (honest because of check 1): the stamp's tree id equals this
+  checkout's, the sha256 of ``git ls-tree -r -z HEAD`` minus the floors entry (:func:`measured_tree_id`), which
+  catches ``main`` moving under the PR; the coverage file passes :func:`load_coverage` and the JUnit file parses.
+  Check 1 is ONE helper, :func:`floors_only_beyond` (shared with ``--pins-from-run``): it fetches a head only when the
+  clone lacks it, and never fetches a sha twice. A candidate's own API, download or git error refuses that candidate
+  and the search goes on; the whole decision has a 5-minute budget, after which it writes ``reuse=false``.
+- ``--stamp`` never turns a full run red: a git or OS error leaves no stamp (a warning), which only makes that run
+  ineligible as a later source.
+
+The two files are then placed at the repo root, and the gate (bare, unconditional) and the twin read them as after a
+full run. ``--stamp`` writes ``measured-tree.json`` before a full run's suite. A re-use run uploads only a pointer,
+``coverage-reused-from-<attempt>`` (``{run_id, attempt, head_sha, tree_id}``), never a copy, and names the source in
+its log and job summary: point ``--pins-from-run`` at that source run from the pin commit (it accepts a run whose
+head differs from ``HEAD`` only in the floors file, by check 1; it refuses a re-use run, whose suite step is
+``skipped``), and #1103's two-run diff never sees one sample twice.
+
+**Failure 3 shifted left (#1640).** ``--missing-floors`` (run by ``scripts/prepr.py``) lists every package at or over
+N statements with no floor key, counting with coverage's own parser (imported lazily in that mode only) under this
+checkout's ``[tool.coverage]``, the omits and the exclusion list, so the count is CI's ``num_statements``
+(``tests/unit/test_lint_coverage_reuse.py`` holds the parity test against a real coverage run). The AST
+``statement_count`` the split rule uses is NOT coverage's count (it counts docstrings and excluded code, and counts
+statements where coverage counts lines: ``a = 1; b = 2`` is two statements, one line), so it is not used here. Exit 0, 1 (listed), 2 (coverage missing or another version).
 
 **"The merge-base" below means the base:** on a pull request the merge-base with ``main``; on a push to main the
 last push whose ``unit-tests`` job passed (``_lint_git.push_base``, #1089).
@@ -210,7 +263,7 @@ last push whose ``unit-tests`` job passed (``_lint_git.push_base``, #1089).
 **Pinning a rise in one command (M60a, owner decisions 2026-10-27).** ``--pins-from-run RUN_ID`` writes the pins the
 "raise it to" hint prints, for every floored scope more than ``band`` above its floor, from CI run ``RUN_ID``'s own
 measurement. It binds the run before reading anything: a Tests (``test.yml``) run of a ``pull_request`` or
-``push``, whose ``head_sha`` is this checkout's ``HEAD``, whose latest attempt's ``unit-tests`` job ran
+``push``, whose ``head_sha`` is this checkout's ``HEAD`` (or differs from it only in the floors file, #1640), whose latest attempt's ``unit-tests`` job ran
 ``RUN_SUITE_STEP`` to ``success`` (a ``-x`` failure leaves partial data). It then reads that attempt's
 ``coverage-json-<attempt>`` artifact; the unsuffixed legacy name is accepted only on attempt 1. A PR run measures the
 merge with main, so files this branch lacks are accepted: the pins are for that merge, and CI re-measures it on the
@@ -228,6 +281,14 @@ runs them too, against the last push whose ``unit-tests`` job passed (``_lint_gi
 coverage, so the numbers live in the CI log.
 
 **Residuals (not mechanized):**
+
+- a re-used RAISE is verified against its own sample (#1640): the pin was taken from the run it is re-checked on,
+  bounded by the CHANGED cap's designed ``K_MIN`` slack; the first independent sample is the push to main after the
+  merge. A lowering or a NEW floor never re-uses (raise-only);
+- ``--missing-floors`` matches ``FIXED_OMIT`` with ``fnmatch`` on the absolute and relative path, which can only skip
+  files coverage would also omit or more (an undercount, a miss CI still catches), never add one: no false positive;
+- ``scripts/prepr.py`` runs ``--missing-floors`` beside the workflow steps, so ``--fail-fast`` does not stop at it and
+  the "N/M steps passed" line does not count it (it prints its own PASS/FAIL line);
 
 - the CHANGED cap's ``K_MIN`` slack (M60a): a re-pinned ``missing`` may sit up to ``K_MIN`` (5) statements above
   the run it is verified on, and never above its base. LOWERING and the split and rename SUM rules read that pin, so
@@ -288,29 +349,36 @@ Regression guard: tests/unit/test_lint_coverage.py (fixture git repos + syntheti
 ratchet (roadmap 1.3.2 item 5)" step in .github/workflows/test.yml (unit-tests job).
 
 Exits: 0 clean; 1 a rule failed (stderr); 2 the measurement or git could not answer.
-Stdlib plus ``pyyaml`` (to read the workflow structurally); does not import ``maxim`` or ``coverage``.
-``--pins-from-run`` also needs the ``gh`` CLI, authenticated for this repository.
+Stdlib plus ``pyyaml`` (to read the workflow structurally); does not import ``maxim``, and imports ``coverage`` only
+inside ``--missing-floors``. ``--pins-from-run`` and ``--reuse-decision`` also need the ``gh`` CLI, authenticated for
+this repository.
 """
 
 from __future__ import annotations
 
 import ast
+import datetime as dt
 import fnmatch
+import hashlib
 import io
 import json
 import math
 import os
 import posixpath
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import tokenize
 import tomllib
-from collections.abc import Callable
+import traceback
+import urllib.parse
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402  (pyyaml: pinned in the unit-tests job's first install, not the guarded one)
@@ -322,6 +390,9 @@ SCOPE = "src/maxim"
 FLOORS_REL = "scripts/coverage_floors.json"
 EXCLUSIONS_REL = "scripts/coverage_exclusions.json"
 COVERAGE_JSON = "coverage.json"
+JUNIT_XML = "fast-suite.xml"  # the fast suite's JUnit report (the release gates' runtime twin reads it)
+STAMP_JSON = "measured-tree.json"  # what a full run measured (#1640): uploaded beside coverage.json
+REUSED_FROM_JSON = "coverage-reused-from.json"  # a re-use run's pointer at its source run (#1640)
 
 COVERAGE_VERSION = "7.13.3"  # == the `coverage==` pin in the unit-tests job
 BAND = 1.0
@@ -347,6 +418,15 @@ CI_COV_ARGS = "--cov=src/maxim --cov-branch --cov-report=json:coverage.json --co
 CI_LINT_RUN = "run: python scripts/lint_coverage.py"
 CI_CLEAN = "rm -f .coverage coverage.json coverage.xml"
 CI_BETWEEN_RUN = "python -m pytest tests/integration/test_memory_hub.py -q"  # the one step allowed in between
+# Re-using a verified measurement (#1640): the decision step, the stamp step, and the exact `if:` strings the job's
+# steps carry. ci_step_rules pins each literal; no other `if:` may appear in the job.
+CI_REUSE_ID = "reuse"
+CI_REUSE_RUN = "python scripts/lint_coverage.py --reuse-decision"
+CI_STAMP_RUN = "python scripts/lint_coverage.py --stamp"
+CI_REUSE_SKIP_IF = "steps.reuse.outputs.reuse != 'true'"  # every skipped step (an absent output runs them)
+CI_UPLOAD_IF = "always() && steps.reuse.outputs.reuse != 'true'"  # the measurement upload: never a copy
+CI_POINTER_IF = "always() && steps.reuse.outputs.reuse == 'true'"  # the pointer upload, even after a red gate
+CI_PIP_CACHE_PATH = "~/.cache/pip/wheels"  # #1318's cache: after the decision, skipped on a re-use (never saved by it)
 CANONICAL_EXCLUDE_LINES = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
@@ -1491,7 +1571,12 @@ def ci_step_rules(root: Path) -> list[str]:
         out.append(
             f"{where}: needs exactly one measuring step, running `{CI_CLEAN}` and the fast suite with `{CI_COV_ARGS}`"
         )
-    gate = [i for i, s in enumerate(steps) if "lint_coverage.py" in run(s)]
+    # The re-use decision and the stamp also run this script (#1640); each is pinned by _reuse_wiring_rules.
+    gate = [
+        i
+        for i, s in enumerate(steps)
+        if "lint_coverage.py" in run(s) and run(s).strip() not in (CI_REUSE_RUN, CI_STAMP_RUN)
+    ]
     if len(gate) != 1 or run(steps[gate[0]]).strip() != CI_LINT_RUN[5:]:
         out.append(f"{where}: needs exactly one step whose run is `{CI_LINT_RUN[5:]}` (no `|| true`)")
         return out
@@ -1504,11 +1589,70 @@ def ci_step_rules(root: Path) -> list[str]:
         if gate[0] < suite[0]:
             out.append(f"{where}: the coverage-ratchet step must come after the fast suite that measures")
         for s in steps[suite[0] + 1 : gate[0]]:
-            if set(s) != {"name", "run"} or run(s).strip() != CI_BETWEEN_RUN:
+            if set(s) != {"name", "run", "if"} or run(s).strip() != CI_BETWEEN_RUN or s.get("if") != CI_REUSE_SKIP_IF:
                 out.append(
                     f"{where}: step {s.get('name')!r} sits between the measuring suite and the coverage ratchet — "
-                    f"only the MemoryHub step (`{CI_BETWEEN_RUN}`) may, so nothing can rewrite coverage.json"
+                    f"only the MemoryHub step (`{CI_BETWEEN_RUN}`, `if: {CI_REUSE_SKIP_IF}`) may, so nothing can "
+                    "rewrite coverage.json"
                 )
+        out += _reuse_wiring_rules(steps, suite[0], gate[0], where, run)
+    return out
+
+
+def _upload_paths(s: dict) -> set[str]:
+    return {ln.strip() for ln in str((s.get("with") or {}).get("path", "")).splitlines() if ln.strip()}
+
+
+def _reuse_wiring_rules(steps: list[dict], suite: int, gate: int, where: str, run: Callable[[dict], str]) -> list[str]:
+    """The re-use path's wiring (#1640), read from the parsed job: exactly one ``id: reuse`` step running exactly
+    :data:`CI_REUSE_RUN` before the suite; exactly one stamp step between it and the suite; every step after the
+    decision through the measuring suite, and the MemoryHub step between the suite and the gate, carries exactly
+    ``if:`` :data:`CI_REUSE_SKIP_IF`; the measurement upload carries :data:`CI_UPLOAD_IF` (a bare ``always()`` would
+    upload a re-use run's fetched file as a copy) and the pointer upload :data:`CI_POINTER_IF`; no other step carries an
+    ``if:``. The gate and the twin stay bare and unconditional."""
+    out: list[str] = []
+    decide = [i for i, s in enumerate(steps) if s.get("id") == CI_REUSE_ID or "--reuse-decision" in run(s)]
+    if len(decide) != 1 or set(steps[decide[0]]) != {"name", "id", "run"} or steps[decide[0]].get("id") != CI_REUSE_ID:
+        return [
+            f"{where}: needs exactly one step `id: {CI_REUSE_ID}` (only `name`, `id`, `run`) running `{CI_REUSE_RUN}`"
+        ]
+    r = decide[0]
+    if run(steps[r]).strip() != CI_REUSE_RUN:
+        out.append(f"{where}: the `id: {CI_REUSE_ID}` step's run must be exactly `{CI_REUSE_RUN}`")
+    if r > suite:
+        out.append(f"{where}: the `id: {CI_REUSE_ID}` step must come before the measuring suite")
+    stamp = [i for i, s in enumerate(steps) if "--stamp" in run(s)]
+    if len(stamp) != 1 or run(steps[stamp[0]]).strip() != CI_STAMP_RUN or not r < stamp[0] < suite:
+        out.append(f"{where}: needs exactly one step running `{CI_STAMP_RUN}`, after the decision and before the suite")
+    elif set(steps[stamp[0]]) != {"name", "run", "if"}:
+        out.append(f"{where}: the stamp step may carry only `name`, `run` and `if`")
+    caches = [
+        i
+        for i, s in enumerate(steps)
+        if str(s.get("uses", "")).startswith("actions/cache@")
+        and str((s.get("with") or {}).get("path", "")).split("#")[0].strip() == CI_PIP_CACHE_PATH
+    ]
+    if len(caches) != 1 or not r < caches[0] < suite:
+        # A re-use run builds no wheel: a pip cache it ran would save an entry without the llama wheel under #1318's
+        # exact key, and every later full run would restore that entry (the skip `if:` below keeps it from running).
+        out.append(f"{where}: needs exactly one `{CI_PIP_CACHE_PATH}` cache, after the decision and before the suite")
+    want: dict[int, str] = {i: CI_REUSE_SKIP_IF for i in range(r + 1, suite + 1)}
+    want.update({i: CI_REUSE_SKIP_IF for i in range(suite + 1, gate)})  # MemoryHub
+    uploads = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/upload-artifact@")]
+    for name, value, paths in (
+        (COVERAGE_ARTIFACT, CI_UPLOAD_IF, {COVERAGE_JSON, JUNIT_XML, STAMP_JSON}),
+        (REUSED_ARTIFACT, CI_POINTER_IF, {REUSED_FROM_JSON}),
+    ):
+        full = f"{name}-${{{{ github.run_attempt }}}}"
+        found = [i for i in uploads if (steps[i].get("with") or {}).get("name") == full]
+        if len(found) != 1 or found[0] < gate or _upload_paths(steps[found[0]]) != paths:
+            out.append(f"{where}: needs exactly one upload `{full}` after the gate, of exactly {sorted(paths)}")
+        else:
+            want[found[0]] = value
+    for i, s in enumerate(steps):
+        if s.get("if") != want.get(i):
+            need = f"exactly `if: {want[i]}`" if i in want else "no `if:`"
+            out.append(f"{where}: step {s.get('name') or s.get('uses')!r} must carry {need} (found {s.get('if')!r})")
     return out
 
 
@@ -1879,7 +2023,9 @@ def merge_floors(texts: list[str], committed: Floors | None) -> tuple[dict, list
 # ── --pins-from-run: CI's printed pins, applied in one command (M60a) ─────────────────────────────────────────────
 
 RUN_SUITE_STEP = "Run required fast suite"
+MEMORYHUB_STEP = "MemoryHub integration gate"
 COVERAGE_ARTIFACT = "coverage-json"
+REUSED_ARTIFACT = "coverage-reused-from"
 
 
 def _download_artifact(run_id: str, name: str, dest: Path) -> Path:
@@ -1898,6 +2044,26 @@ def _download_artifact(run_id: str, name: str, dest: Path) -> Path:
     return dest / COVERAGE_JSON
 
 
+def _unit_tests_steps(api: Callable[[str], object], prefix: str, run_id: object, attempt: int) -> list[dict]:
+    """The ``unit-tests`` job's steps in ``attempt`` of run ``run_id`` (shared by ``--pins-from-run`` and
+    ``--reuse-decision``). Raises :class:`MeasurementError` when the attempt has no such job."""
+    jobs = api(f"{prefix}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+    listed = jobs.get("jobs", []) if isinstance(jobs, dict) else []
+    job = next((j for j in listed if isinstance(j, dict) and j.get("name") == CI_JOB), None)
+    if job is None:
+        raise MeasurementError(f"run {run_id} attempt {attempt} has no {CI_JOB} job")
+    return [s for s in job.get("steps") or [] if isinstance(s, dict)]
+
+
+def _artifact_names(api: Callable[[str], object], prefix: str, run_id: object) -> set[str]:
+    """Run ``run_id``'s unexpired artifacts, by name. An upload still in flight is not listed."""
+    data = api(f"{prefix}/actions/runs/{run_id}/artifacts?per_page=100")
+    listed = data.get("artifacts", []) if isinstance(data, dict) else []
+    return {
+        a["name"] for a in listed if isinstance(a, dict) and isinstance(a.get("name"), str) and not a.get("expired")
+    }
+
+
 def run_measurement(
     root: Path,
     run_id: str,
@@ -1906,21 +2072,33 @@ def run_measurement(
     download: Callable[[str, str, Path], Path] = _download_artifact,
     tmp: Path,
 ) -> dict[str, FileCov]:
-    """The ``coverage.json`` of CI run ``run_id``, bound to this checkout: the run's head SHA is ``HEAD``, its latest
+    """The ``coverage.json`` of CI run ``run_id``, bound to this checkout: the run's head SHA is ``HEAD`` (or differs
+    from it in nothing but the floors file, :func:`floors_only_beyond`, so the source run a floors-only push re-used
+    can still pin, #1640), its latest
     attempt's ``unit-tests`` job ran the measuring suite to ``success`` (a ``-x`` failure leaves partial data, and the
     upload runs on ``always()``), and the artifact is that attempt's (``coverage-json-<attempt>``; the unsuffixed
     legacy name only on attempt 1). Raises :class:`MeasurementError` naming the refusal, :class:`GitUnavailable` when
     ``gh`` cannot answer."""
     api = api or (lambda path: gh_api(path, cwd=root))  # {owner}/{repo} resolved from the checkout HEAD is read from
-    run = api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}")
+    prefix = "repos/{owner}/{repo}"
+    run = api(f"{prefix}/actions/runs/{run_id}")
     if not isinstance(run, dict):
         raise MeasurementError(f"run {run_id}: unexpected API response")
     head = git(root, "rev-parse", "HEAD").strip()
-    if run.get("head_sha") != head:
-        raise MeasurementError(
-            f"run {run_id} measured {str(run.get('head_sha'))[:12]}, not this checkout's HEAD {head[:12]}: "
-            "pin from the run of the commit you are on"
-        )
+    sha = run.get("head_sha")
+    if sha != head:  # #1640: the run a floors-only push re-used measured the commit before the pin commit
+        why = f"run {run_id} measured {str(sha)[:12]}, not this checkout's HEAD {head[:12]}"
+        if not isinstance(sha, str) or not _SHA40.fullmatch(sha):
+            raise MeasurementError(f"{why}: pin from the run of the commit you are on")
+        try:
+            extra = floors_only_beyond(root, sha, "HEAD")  # check 1, the same helper --reuse-decision uses
+        except GitUnavailable as e:
+            raise MeasurementError(f"{why}, and that head could not be fetched or diffed ({e})") from e
+        if extra:
+            raise MeasurementError(
+                f"{why}, and the two differ beyond {FLOORS_REL} ({extra[:5]}): pin from the run of the commit you "
+                "are on, or from the run a floors-only push re-used"
+            )
     if not str(run.get("path", "")).endswith("workflows/test.yml") or run.get("event") not in ("pull_request", "push"):
         raise MeasurementError(
             f"run {run_id} is {run.get('path')!r} on {run.get('event')!r}: pin from a Tests run of a pull_request or push"
@@ -1928,24 +2106,20 @@ def run_measurement(
     attempt = run.get("run_attempt")
     if not isinstance(attempt, int) or attempt < 1:
         raise MeasurementError(f"run {run_id}: no run_attempt in the API response")
-    jobs = api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
-    job = next((j for j in (jobs or {}).get("jobs", []) if isinstance(j, dict) and j.get("name") == "unit-tests"), None)
-    if job is None:
-        raise MeasurementError(f"run {run_id} attempt {attempt} has no unit-tests job")
-    step = next((s for s in job.get("steps") or [] if isinstance(s, dict) and s.get("name") == RUN_SUITE_STEP), None)
+    step = next((s for s in _unit_tests_steps(api, prefix, run_id, attempt) if s.get("name") == RUN_SUITE_STEP), None)
     if step is None or step.get("conclusion") != "success":
         found = "absent" if step is None else step.get("conclusion")
+        hint = (
+            " (a run that re-used a measurement skips its suite, #1640: point --pins-from-run at the source run its "
+            "job summary names)"
+            if found == "skipped"
+            else ""
+        )
         raise MeasurementError(
             f"run {run_id} attempt {attempt}: the step {RUN_SUITE_STEP!r} is {found}, not success: a failed or "
-            "skipped suite leaves partial coverage data"
+            f"skipped suite leaves partial coverage data{hint}"
         )
-    names = {
-        a.get("name")
-        for a in (api(f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/artifacts?per_page=100") or {}).get(
-            "artifacts", []
-        )
-        if isinstance(a, dict) and not a.get("expired")
-    }
+    names = _artifact_names(api, prefix, run_id)
     wanted = f"{COVERAGE_ARTIFACT}-{attempt}"
     if wanted not in names:
         if attempt == 1 and COVERAGE_ARTIFACT in names:
@@ -2036,6 +2210,457 @@ def pins_from_run_main(root: Path, run_id: str) -> int:
     return 0
 
 
+# ── --reuse-decision / --stamp: a floors-only push re-uses a verified measurement (#1640) ────────────────────────
+
+REUSE_MAX_AGE = dt.timedelta(hours=48)  # owner decision 2026-11-10: 48 h (pip resolves fresh each run)
+REUSE_SEARCH_RUNS = 30  # the newest Tests pull_request runs of the branch that are examined
+REUSE_DEADLINE_SECONDS = 300.0  # the decision's wall-clock budget: past it, the run measures
+STAMP_ALGO = "ls-tree-r-z-minus-floors-sha256-v1"
+_SHA40 = re.compile(r"[0-9a-f]{40}")
+
+
+class NoReuse(RuntimeError):
+    """Why this run measures instead of re-using: a full run, never an error (``--reuse-decision`` exits 0)."""
+
+
+def _have_commit(root: Path, sha: str) -> bool:
+    try:
+        git(root, "cat-file", "-e", f"{sha}^{{commit}}")
+    except GitUnavailable:
+        return False  # absent here: the caller fetches it
+    return True
+
+
+def floors_only_beyond(root: Path, sha: str, against: str, *, failed: set[str] | None = None) -> list[str]:
+    """CHECK 1 (#1640), the one helper ``--reuse-decision`` and ``--pins-from-run`` share: the paths
+    ``git diff --name-only <sha> <against>`` holds beyond :data:`FLOORS_REL` (empty: the trees differ in that file at
+    most). ``sha`` is fetched from ``origin`` only when this clone lacks it, and a sha whose fetch failed (``failed``)
+    is not fetched again. Raises :class:`GitUnavailable` (the callers fail closed)."""
+    if not _have_commit(root, sha):
+        if failed is not None and sha in failed:
+            raise GitUnavailable(f"the fetch of {sha[:12]} already failed")
+        try:
+            git(root, "fetch", "--quiet", "--no-tags", "origin", sha, timeout=120)
+        except GitUnavailable:
+            if failed is not None:
+                failed.add(sha)
+            raise
+    changed = set(git(root, "diff", "--name-only", "--no-renames", "-z", sha, against).split("\0")) - {""}
+    return sorted(changed - {FLOORS_REL})
+
+
+def measured_tree_id(root: Path) -> str:
+    """What a run measured, minus the one file a re-use may change: sha256 of ``git ls-tree -r -z HEAD`` with the
+    :data:`FLOORS_REL` entry removed, prefixed by :data:`STAMP_ALGO`. A PR run's HEAD is the merge with ``main``,
+    so this also catches ``main`` moving under the PR."""
+    raw = git(root, "ls-tree", "-r", "-z", "HEAD", raw=True)
+    kept = [e for e in raw.split("\0") if e and e.split("\t", 1)[-1] != FLOORS_REL]
+    digest = hashlib.sha256("\0".join(kept).encode("utf-8", "surrogateescape")).hexdigest()
+    return f"{STAMP_ALGO}:{digest}"
+
+
+def stamp_main(root: Path, env: Mapping[str, str] | None = None) -> int:
+    """``--stamp``: write :data:`STAMP_JSON` (``{algo, tree_id, head_sha, merge_sha, run_id, attempt}``) for the
+    measurement upload. On a pull request ``head_sha`` is the PR head (``HEAD^2`` of the merge checkout). It never
+    turns a full run red: on a git or OS error it warns and exits 0 WITHOUT a stamp, which only makes this run
+    ineligible as a later source (fail-closed)."""
+    env = os.environ if env is None else env
+    try:
+        merge = git(root, "rev-parse", "HEAD").strip()
+        head = git(root, "rev-parse", "HEAD^2").strip() if env.get("GITHUB_EVENT_NAME") == "pull_request" else merge
+        doc = {
+            "algo": STAMP_ALGO,
+            "tree_id": measured_tree_id(root),
+            "head_sha": head,
+            "merge_sha": merge,
+            "run_id": env.get("GITHUB_RUN_ID"),
+            "attempt": env.get("GITHUB_RUN_ATTEMPT"),
+        }
+        (root / STAMP_JSON).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    except (GitUnavailable, OSError) as e:
+        (root / STAMP_JSON).unlink(missing_ok=True)  # no partial stamp: an absent one makes no source
+        print(
+            f"coverage: --stamp WARNING: no {STAMP_JSON} ({e}); this run cannot be a re-use source later",
+            file=sys.stderr,
+        )
+        return 0
+    print(f"coverage: stamped {STAMP_JSON}: {doc['tree_id']} (head {head[:12]}, merge {merge[:12]})")
+    return 0
+
+
+def raise_only_problems(base_fl: Floors, fl: Floors) -> list[str]:
+    """Why a floors diff is NOT raise-only (owner decision 2026-11-10, the strict option): every changed floor must
+    raise (``percent`` >= base and ``missing`` <= base) or be a ``null`` floor added where the base had none. A
+    lowering, a removal, a set-back to null and a NEW non-null floor are verified against an independent sample
+    (a full run), never against the sample being re-used. Judged against the ratchet's own base (``base_ref``)."""
+    out: list[str] = []
+    for attr in ("band", "min_statements", "version", "retired"):
+        if getattr(base_fl, attr) != getattr(fl, attr):
+            out.append(f"{attr} changed")
+    pairs = [("overall", base_fl.overall, fl.overall)]
+    for b_map, h_map in ((base_fl.packages, fl.packages), (base_fl.files, fl.files)):
+        pairs += [(k, b_map.get(k), h_map.get(k)) for k in sorted(set(b_map) | set(h_map))]
+    for name, b, h in pairs:
+        if b == h:
+            continue
+        if h is None:
+            out.append(f"{name}: floor removed")
+        elif b is None or b.percent is None or b.missing is None:
+            if h.percent is not None:
+                out.append(f"{name}: a NEW non-null floor (pinned from two runs, never from a re-used one)")
+        elif h.percent is None or h.missing is None:
+            out.append(f"{name}: floor set back to null")
+        elif h.percent < b.percent - 1e-9 or h.missing > b.missing:
+            out.append(f"{name}: {b.percent}%/{b.missing} -> {h.percent}%/{h.missing} is not a raise")
+    return out
+
+
+def _started(run: dict) -> dt.datetime:
+    raw = run.get("run_started_at")
+    try:
+        started = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError as e:
+        raise NoReuse(f"unreadable run_started_at {raw!r}") from e
+    if started.tzinfo is None:
+        raise NoReuse(f"run_started_at {raw!r} carries no timezone")
+    return started
+
+
+def _junit_ok(path: Path) -> None:
+    root = ElementTree.parse(path).getroot()
+    if root.tag not in ("testsuites", "testsuite") or next(root.iter("testcase"), None) is None:
+        raise NoReuse(f"{JUNIT_XML} holds no testcase")
+
+
+@dataclass
+class ReuseSource:
+    """The run whose measurement this run re-uses, and where its artifact was downloaded."""
+
+    run_id: int
+    attempt: int
+    head_sha: str
+    tree_id: str
+    started: str
+    files: Path
+
+    def pointer(self) -> dict:
+        return {"run_id": self.run_id, "attempt": self.attempt, "head_sha": self.head_sha, "tree_id": self.tree_id}
+
+
+def _qualify(
+    root: Path,
+    run: dict,
+    *,
+    repo: str,
+    branch: str,
+    pr_head: str,
+    tree: str,
+    api: Callable[[str], object],
+    download: Callable[[str, str, Path], Path],
+    now: dt.datetime,
+    tmp: Path,
+    failed_fetches: set[str],
+) -> ReuseSource:
+    """``run`` as a source, or :class:`NoReuse` naming why not. Check 1 (git): the run's API ``head_sha`` differs
+    from this PR head in nothing but the floors file, so that run's workflow, tests and lint code were this branch's
+    and its ``success`` means what it says. Check 2 (the stamp that honest code wrote): it measured this tree."""
+    run_id = run.get("id")
+    if not isinstance(run_id, int):
+        raise NoReuse("no run id")
+    if run.get("event") != "pull_request" or not str(run.get("path", "")).endswith("workflows/test.yml"):
+        raise NoReuse(f"{run.get('path')!r} on {run.get('event')!r}, not a Tests pull_request run")
+    if run.get("head_branch") != branch or (run.get("head_repository") or {}).get("full_name") != repo:
+        raise NoReuse("another branch, a fork or another repository")
+    age = now - _started(run)
+    if age > REUSE_MAX_AGE:
+        raise NoReuse(f"started {age} ago, more than {REUSE_MAX_AGE} (an old measurement stands in for an old pip)")
+    sha = run.get("head_sha")
+    if not isinstance(sha, str) or not _SHA40.fullmatch(sha):
+        raise NoReuse(f"no valid head_sha ({sha!r})")
+    try:
+        extra = floors_only_beyond(root, sha, pr_head, failed=failed_fetches)
+    except GitUnavailable as e:
+        raise NoReuse(f"its head {sha[:12]} could not be fetched or diffed ({e})") from e
+    if extra:
+        raise NoReuse(f"its head {sha[:12]} differs from this PR head {pr_head[:12]} beyond {FLOORS_REL}: {extra[:5]}")
+    attempt = run.get("run_attempt")
+    if not isinstance(attempt, int) or attempt < 1:
+        raise NoReuse("no run_attempt")
+    prefix = f"repos/{repo}"
+    try:
+        steps = _unit_tests_steps(api, prefix, run_id, attempt)
+    except MeasurementError as e:
+        raise NoReuse(str(e)) from e
+    seen: set[str] = set()
+    for s in sorted(steps, key=lambda s: s.get("number") if isinstance(s.get("number"), int) else 0):
+        if s.get("conclusion") != "success":
+            raise NoReuse(f"attempt {attempt}: step {s.get('name')!r} is {s.get('conclusion')!r}, not success")
+        seen.add(str(s.get("name")))
+        if {RUN_SUITE_STEP, MEMORYHUB_STEP} <= seen:
+            break
+    else:
+        raise NoReuse(f"attempt {attempt}: the steps {RUN_SUITE_STEP!r} and {MEMORYHUB_STEP!r} did not both run")
+    wanted = f"{COVERAGE_ARTIFACT}-{attempt}"
+    if wanted not in _artifact_names(api, prefix, run_id):
+        raise NoReuse(f"no unexpired, finalized artifact {wanted!r}")
+    dest = tmp / str(run_id)
+    download(str(run_id), wanted, dest)
+    return _validate_artifact(root, ReuseSource(run_id, attempt, sha, tree, str(run.get("run_started_at")), dest))
+
+
+def _validate_artifact(root: Path, src: ReuseSource) -> ReuseSource:
+    """The downloaded artifact holds the stamp of THIS tree written by run ``src`` itself, a ``coverage.json`` that
+    :func:`load_coverage` accepts and names only files this checkout has, and a JUnit report that parses."""
+    absent = [n for n in (COVERAGE_JSON, JUNIT_XML, STAMP_JSON) if not (src.files / n).is_file()]
+    if absent:
+        raise NoReuse(f"its artifact lacks {absent}")
+    try:
+        stamp = json.loads((src.files / STAMP_JSON).read_text(encoding="utf-8"))
+        cov = load_coverage(root, src.files / COVERAGE_JSON)
+        _junit_ok(src.files / JUNIT_XML)
+    except (OSError, ValueError, MeasurementError, ElementTree.ParseError) as e:
+        raise NoReuse(f"its artifact does not validate ({type(e).__name__}: {e})") from e
+    expect = {"algo": STAMP_ALGO, "tree_id": src.tree_id, "head_sha": src.head_sha}
+    got = {k: stamp.get(k) for k in expect} if isinstance(stamp, dict) else {}
+    if got != expect or str(stamp.get("run_id")) != str(src.run_id) or str(stamp.get("attempt")) != str(src.attempt):
+        raise NoReuse(f"its stamp {got} is not this tree's {expect} from run {src.run_id} attempt {src.attempt}")
+    unknown = [rel for rel in cov if not (root / rel).is_file()]
+    if unknown:
+        raise NoReuse(f"its {COVERAGE_JSON} names files this checkout lacks: {unknown[:5]}")
+    return src
+
+
+def reuse_decision(
+    root: Path,
+    *,
+    env: Mapping[str, str],
+    api: Callable[[str], object],
+    download: Callable[[str, str, Path], Path],
+    now: dt.datetime,
+    tmp: Path,
+    clock: Callable[[], float] = time.monotonic,
+) -> ReuseSource:
+    """The source run whose measurement this run may re-use, or :class:`NoReuse`. Only on ``pull_request``, only
+    on attempt 1 (a re-run is a second sample, #1103), only for a raise-only floors diff, and only from the newest
+    run that qualifies (:func:`_qualify`). A candidate's own API, download or git error refuses that candidate and the
+    search goes on; past :data:`REUSE_DEADLINE_SECONDS` of ``clock`` the search stops (a full run)."""
+    deadline = clock() + REUSE_DEADLINE_SECONDS
+    if env.get("GITHUB_EVENT_NAME") != "pull_request":
+        raise NoReuse(f"event {env.get('GITHUB_EVENT_NAME')!r}: only a pull_request run re-uses; a push measures")
+    if env.get("GITHUB_RUN_ATTEMPT") != "1":
+        raise NoReuse(f"attempt {env.get('GITHUB_RUN_ATTEMPT')!r}: a re-run always measures (a second sample)")
+    repo, branch, this_run = (env.get(k, "") for k in ("GITHUB_REPOSITORY", "GITHUB_HEAD_REF", "GITHUB_RUN_ID"))
+    if not (repo and branch and this_run):
+        raise NoReuse("GITHUB_REPOSITORY, GITHUB_HEAD_REF or GITHUB_RUN_ID is unset")
+    fl = parse_floors((root / FLOORS_REL).read_text(encoding="utf-8"))
+    base_text = show(root, base_ref(root), FLOORS_REL)
+    if not base_text:
+        raise NoReuse(f"no {FLOORS_REL} at the base (bootstrap)")
+    if problems := raise_only_problems(parse_floors(base_text), fl):
+        raise NoReuse("the floors diff is not raise-only: " + "; ".join(problems))
+    try:
+        pr_head = git(root, "rev-parse", "HEAD^2").strip()
+    except GitUnavailable as e:
+        raise NoReuse(f"HEAD is not a pull-request merge commit ({e})") from e
+    tree = measured_tree_id(root)
+    query = f"event=pull_request&branch={urllib.parse.quote(branch, safe='')}&per_page={REUSE_SEARCH_RUNS}"
+    data = api(f"repos/{repo}/actions/workflows/test.yml/runs?{query}")
+    listed = data.get("workflow_runs") if isinstance(data, dict) else None
+    if not isinstance(listed, list):
+        raise NoReuse("the workflow-runs API gave an unexpected response")
+    candidates = [r for r in listed if isinstance(r, dict) and str(r.get("id")) != this_run]
+    failed_fetches: set[str] = set()
+    for n, run in enumerate(sorted(candidates, key=lambda r: str(r.get("run_started_at") or ""), reverse=True)):
+        if clock() > deadline:
+            raise NoReuse(f"the {REUSE_DEADLINE_SECONDS:.0f} s decision deadline passed after {n} candidate(s)")
+        try:
+            return _qualify(
+                root,
+                run,
+                repo=repo,
+                branch=branch,
+                pr_head=pr_head,
+                tree=tree,
+                api=api,
+                download=download,
+                now=now,
+                tmp=tmp,
+                failed_fetches=failed_fetches,
+            )
+        except NoReuse as e:
+            print(f"coverage reuse: run {run.get('id')} does not qualify: {e}")
+        except (GitUnavailable, MeasurementError, OSError, ValueError) as e:  # this candidate's API/download error
+            print(f"coverage reuse: run {run.get('id')} does not qualify: {type(e).__name__}: {e}")
+    raise NoReuse(f"none of the {len(candidates)} earlier Tests run(s) of {branch!r} qualifies")
+
+
+def reuse_banner(root: Path) -> str | None:
+    """The gate's second-sample warning (#1640). The decision step's one mark is :data:`REUSED_FROM_JSON` at the repo
+    root, written only after a re-used measurement was placed: with it present, the numbers this gate prints are the
+    source run's sample, so a printed floors block must not be taken as the second run of ``--merge-floors``."""
+    p = root / REUSED_FROM_JSON
+    if not p.is_file():
+        return None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        src = f"run {d['run_id']} attempt {d['attempt']}"
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        src = f"an unreadable {REUSED_FROM_JSON} ({type(e).__name__})"
+    return f"coverage: measurement re-used from {src} — not an independent sample"
+
+
+def _write_github_file(env: Mapping[str, str], var: str, text: str) -> None:
+    path = env.get(var)
+    if path:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(text)
+
+
+def _place_reused(root: Path, src: ReuseSource) -> None:
+    """The source run's ``coverage.json`` and JUnit report at the repo root (the gate and the twin read them there),
+    re-validated where they landed, and the pointer for the upload."""
+    try:
+        for name in (COVERAGE_JSON, JUNIT_XML):
+            shutil.copyfile(src.files / name, root / name)
+        load_coverage(root)  # the gate's own strict read: every named file exists here
+        (root / REUSED_FROM_JSON).write_text(json.dumps(src.pointer(), indent=2) + "\n", encoding="utf-8")
+    except BaseException:
+        for name in (COVERAGE_JSON, JUNIT_XML, REUSED_FROM_JSON):  # nothing half-placed survives a refusal
+            (root / name).unlink(missing_ok=True)
+        raise
+
+
+def reuse_decision_main(
+    root: Path,
+    *,
+    env: Mapping[str, str] | None = None,
+    api: Callable[[str], object] | None = None,
+    download: Callable[[str, str, Path], Path] = _download_artifact,
+    now: dt.datetime | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> int:
+    """``--reuse-decision``: ALWAYS exits 0. ``reuse=true`` goes to ``$GITHUB_OUTPUT`` only after the source's files
+    are placed and validated; every doubt (API, git, a mismatch, a parse failure, a bug) writes ``reuse=false``,
+    prints why, and costs a full run, never a red job."""
+    env = os.environ if env is None else env
+    api = api or (lambda path: gh_api(path, cwd=root))
+    now = now or dt.datetime.now(dt.timezone.utc)
+    src: ReuseSource | None = None
+    why = ""
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            found = reuse_decision(root, env=env, api=api, download=download, now=now, tmp=Path(td), clock=clock)
+            _place_reused(root, found)
+            src = found
+    except NoReuse as e:
+        why = str(e)
+    except (GitUnavailable, MeasurementError, FileFormatError, OSError, ValueError, KeyError, TypeError) as e:
+        why = f"{type(e).__name__}: {e}"
+    except Exception as e:  # any doubt is a full run, never a red job (#1640): printed with its traceback
+        traceback.print_exc()
+        why = f"unexpected {type(e).__name__}: {e}"
+    if src is None:
+        print(f"coverage reuse: NO — {why}; the full suite runs")
+    else:
+        print(
+            f"coverage reuse: YES — re-using run {src.run_id} attempt {src.attempt} (head {src.head_sha[:12]}, "
+            f"started {src.started}); this run judges the new floors against that measurement"
+        )
+    try:
+        _write_github_file(env, "GITHUB_OUTPUT", f"reuse={'true' if src else 'false'}\n")
+        if src is not None:
+            _write_github_file(
+                env,
+                "GITHUB_STEP_SUMMARY",
+                f"**Coverage measurement re-used (#1640)** from run {src.run_id} attempt {src.attempt} "
+                f"(head `{src.head_sha[:12]}`): this run did not run the suite. `--pins-from-run` takes "
+                f"{src.run_id}.\n",
+            )
+    except OSError as e:  # an absent output reads as "not true": the suite runs
+        print(f"coverage reuse: could not write the step output ({e}); the full suite runs")
+    return 0
+
+
+# ── --missing-floors: failure 3 shifted left to prepr (#1640) ────────────────────────────────────────────────────
+
+
+def coverage_statement_counter(root: Path) -> Callable[[str], int]:
+    """A file's statement count as coverage itself reports it (``num_statements``), with this checkout's
+    ``[tool.coverage]`` (its ``exclude_lines``). coverage is imported HERE only: no other mode imports it."""
+    try:
+        import coverage  # lazily: this mode only
+    except ImportError as e:
+        raise MeasurementError(
+            f'--missing-floors needs coverage: pip install "coverage=={COVERAGE_VERSION}" ({e})'
+        ) from e
+    if coverage.__version__ != COVERAGE_VERSION:
+        raise MeasurementError(
+            f"coverage {coverage.__version__} is installed, CI pins {COVERAGE_VERSION} (its parser decides the count): "
+            f'pip install "coverage=={COVERAGE_VERSION}"'
+        )
+    cov = coverage.Coverage(data_file=None, config_file=str(root / "pyproject.toml"))
+
+    def count(rel: str) -> int:
+        try:
+            return len(cov.analysis2(str(root / rel))[1])
+        except coverage.CoverageException as e:
+            raise MeasurementError(f"{rel}: coverage cannot parse it ({e})") from e
+
+    return count
+
+
+def _reported_unexecuted(root: Path, rel: str) -> bool:
+    """coverage reports an unexecuted file under a ``source`` directory only inside a package (every directory below
+    ``src/maxim`` has an ``__init__.py``; ``include_namespace_packages`` is off). Counting the others could only
+    over-count, and a false positive would block prepr."""
+    d = root / SCOPE
+    for part in rel[len(SCOPE) + 1 :].split("/")[:-1]:
+        d = d / part
+        if not (d / "__init__.py").is_file():
+            return False
+    return True
+
+
+def package_statements(root: Path, omitted: set[str], count: Callable[[str], int]) -> dict[str, int]:
+    """Per-package statement counts of what CI measures: every ``src/maxim`` file but the omits (the fixed globs and
+    the exclusion list, as ``[tool.coverage.run] omit`` holds them)."""
+    out: dict[str, int] = {}
+    for rel in _src_files(root):
+        absolute = (root / rel).as_posix()
+        if rel in omitted or any(fnmatch.fnmatch(absolute, p) or fnmatch.fnmatch(rel, p) for p in FIXED_OMIT):
+            continue
+        if not _reported_unexecuted(root, rel):
+            continue
+        out[package_of(rel)] = out.get(package_of(rel), 0) + count(rel)
+    return out
+
+
+def missing_floors_main(root: Path, count: Callable[[str], int] | None = None) -> int:
+    """``--missing-floors``: exit 1 listing every package at or over N statements with no floor key (a floored
+    package keeps its floor under N: hysteresis; a committed ``null`` is the documented NEW-floor path, so it is not
+    flagged), 2 when the count cannot be made, 0 otherwise."""
+    try:
+        fl = parse_floors((root / FLOORS_REL).read_text(encoding="utf-8"))
+        ex = parse_exclusions((root / EXCLUSIONS_REL).read_text(encoding="utf-8"))
+        stmts = package_statements(root, set(ex.paths), count or coverage_statement_counter(root))
+    except (OSError, FileFormatError, MeasurementError) as e:
+        print(f"coverage: --missing-floors cannot count: {e}", file=sys.stderr)
+        return 2
+    problems = [
+        f"{pkg}: {n} statements (>= {MIN_PACKAGE_STATEMENTS}) and no floor — commit "
+        f'"{pkg}": {{"percent": null, "missing": null}} and pin it from two CI runs (--merge-floors)'
+        for pkg, n in sorted(stmts.items())
+        if pkg not in fl.packages and n >= MIN_PACKAGE_STATEMENTS
+    ]
+    if problems:
+        print("coverage: --missing-floors FAILED (CI's ratchet would fail these):", file=sys.stderr)
+        for p in problems:
+            print(f"  - {p}", file=sys.stderr)
+        return 1
+    print(f"coverage: --missing-floors: every package of >= {MIN_PACKAGE_STATEMENTS} statements has a floor")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["--merge-floors"]:
@@ -2063,6 +2688,12 @@ def main(argv: list[str] | None = None) -> int:
             print("usage: lint_coverage.py --pins-from-run RUN_ID", file=sys.stderr)
             return 2
         return pins_from_run_main(REPO_ROOT, argv[1])
+    if argv == ["--reuse-decision"]:
+        return reuse_decision_main(REPO_ROOT)
+    if argv == ["--stamp"]:
+        return stamp_main(REPO_ROOT)
+    if argv == ["--missing-floors"]:
+        return missing_floors_main(REPO_ROOT)
     # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
     # in CI's environment (macOS reads 1-2 pt off Linux), so locally NO floor gates, in either direction (M60a, owner
     # decision 2026-10-27; it gated the touched packages' floors before, which gave false reds and false greens): every
@@ -2077,6 +2708,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     started = time.monotonic()
     root = REPO_ROOT
+    banner = reuse_banner(root)
+    if banner:
+        print(banner)
     event = os.environ.get("GITHUB_EVENT_NAME")
     failures: list[str] = []
     fl, err = _read(root, FLOORS_REL, parse_floors)
@@ -2107,6 +2741,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             failures += floor_head_rules(root, fl, overall, pkgs, files=files)
         if fl.overall.percent is None or any(f.percent is None for f in [*fl.packages.values(), *fl.files.values()]):
+            if banner:  # #1640: a pasted block from a re-use run is the source run's sample, not a second one
+                print(banner)
             print(f"coverage: measured floors for {FLOORS_REL} (rounded down to 0.1; review before committing):")
             print(json.dumps(suggested_floors(fl, overall, pkgs, files), indent=2))
 
