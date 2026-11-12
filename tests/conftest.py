@@ -14,6 +14,7 @@ os.environ.pop("MAXIM_OFFLINE", None)
 import atexit
 import functools
 import os
+import re
 import shutil
 import signal
 import sys
@@ -478,6 +479,36 @@ def _isolate_maxim_llm_profile_env():
         os.environ.pop("MAXIM_LLM_PROFILE", None)
         if saved is not None:
             os.environ["MAXIM_LLM_PROFILE"] = saved
+
+
+_INTERNAL_KEY_ENV = re.compile(r"^MAXIM_(LANE|PLACEMENT)_[A-Z0-9_]+_API_KEY$")
+
+
+def _internal_key_env_names() -> list[str]:
+    return [n for n in os.environ if _INTERNAL_KEY_ENV.match(n) and not n.endswith("_REMOTE_API_KEY")]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_internal_lane_key_env():
+    """Scrub the internal key variables ``build_primary_router`` reads for its #1371 warning
+    (``MAXIM_LANE_<TIER>_API_KEY``, ``MAXIM_PLACEMENT_<KEY>_API_KEY``; never ``..._REMOTE_API_KEY``, which
+    ``_isolate_config_json_env`` owns), and forget which were warned about, so one test's export cannot change a
+    later test's warnings.
+
+    Saves and restores ``os.environ`` itself, NOT through ``monkeypatch``: an autouse fixture requesting
+    ``monkeypatch`` would set it up before ``tests/script_module_guard.py``'s check and so tear it down after,
+    which reads a test's ``monkeypatch.setitem(sys.modules, ...)`` as a leak."""
+    from maxim.runtime.lane_backends import _reset_ignored_key_env_warnings
+
+    saved = {n: os.environ.pop(n) for n in _internal_key_env_names()}
+    _reset_ignored_key_env_warnings()
+    try:
+        yield
+    finally:
+        for n in _internal_key_env_names():
+            os.environ.pop(n, None)
+        os.environ.update(saved)
+        _reset_ignored_key_env_warnings()
 
 
 @pytest.fixture(autouse=True)
