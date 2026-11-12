@@ -47,6 +47,9 @@ nosetests.xml
 coverage.xml
 coverage.json
 fast-suite.xml
+# #1640: the measured-tree stamp and a re-use run's pointer (scripts/lint_coverage.py)
+measured-tree.json
+coverage-reused-from.json
 *.cover
 *.py.cover
 .hypothesis/

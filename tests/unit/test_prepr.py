@@ -534,6 +534,7 @@ def quiet(monkeypatch):
     monkeypatch.setattr(P, "gh_pr_view", lambda root=P.REPO_ROOT: None)
     monkeypatch.setattr(P, "scan_pr_text", lambda root, base, head, text: 0)
     monkeypatch.setattr(P, "repo_owner", lambda root=P.REPO_ROOT: "dennys246")
+    monkeypatch.setattr(P, "missing_floors", lambda root: (0, 0.0, ""))  # #1640: its own tests are below
 
 
 def _final(out: str) -> str:
@@ -972,3 +973,83 @@ def test_a_test_step_naming_test_lint_secrets_is_not_a_secret_scan():
 def test_another_package_index_is_a_plan_error_with_its_own_message(line):
     with pytest.raises(P.PlanError, match="another package index"):
         P.build_plan(_wf([{"name": "x", "run": f"{line}\nruff check src/\n"}]))
+
+
+# ── #1640: the mypy step's re-use `if:`, and --missing-floors ──────────────────────────────────────────────────────
+
+
+def _mypy_wf(if_value: object) -> dict:
+    wf = _wf([{"name": "ok", "run": "true"}])
+    wf["jobs"]["unit-tests"]["steps"][-1]["if"] = if_value
+    return wf
+
+
+def test_the_mypy_step_may_carry_only_the_coverage_reuse_if():
+    from scripts import lint_coverage as L
+
+    assert P.MYPY_STEP_IF == L.CI_REUSE_SKIP_IF  # one literal, two readers
+    plan = P.build_plan(_mypy_wf(P.MYPY_STEP_IF))
+    assert plan.steps[-1].job == "unit-tests"  # accepted, and run unconditionally here (a local run never re-uses)
+    for other in ("always()", L.CI_POINTER_IF, "steps.reuse.outputs.reuse == 'true'", False):
+        with pytest.raises(P.PlanError, match="cannot be reproduced locally"):
+            P.build_plan(_mypy_wf(other))
+    with pytest.raises(P.PlanError, match="cannot be reproduced locally"):  # a lint step still may not carry it
+        P.build_plan(_wf([{"name": "x", "run": "true", "if": P.MYPY_STEP_IF}]))
+
+
+def test_the_real_workflow_still_builds_a_plan_with_the_reuse_ifs():
+    assert P.load_plan(ROOT).steps[-1].name.startswith("mypy")
+
+
+def test_main_fails_on_a_missing_coverage_floor(tmp_path, quiet, capsys, monkeypatch):
+    root = make_repo(tmp_path / "r")
+    monkeypatch.setattr(P, "missing_floors", lambda root: (1, 0.1, "  - maxim/new: 250 statements and no floor"))
+    assert P.main(["--no-fetch"], root=root) == 1
+    out = capsys.readouterr().out
+    assert re.search(r"FAIL .*\[prepr\] Coverage floors", out) and "maxim/new: 250 statements" in out
+    assert _final(out).startswith(f"prepr: FAIL (1): {P.MISSING_FLOORS}")
+
+
+@pytest.mark.parametrize(
+    "out",
+    [
+        'coverage: --missing-floors cannot count: --missing-floors needs coverage: pip install "coverage==7.13.3"',
+        "coverage: --missing-floors cannot count: coverage 7.0 is installed, CI pins 7.13.3",
+        "cannot run --missing-floors ([Errno 2] No such file)",
+    ],
+)
+def test_main_refuses_when_missing_floors_cannot_count(tmp_path, quiet, capsys, monkeypatch, out):
+    """Exit 2 of --missing-floors (coverage absent, another version, not runnable) means prepr cannot reproduce CI's
+    verdict: REFUSED (exit 2) with the install hint, never FAIL (exit 1)."""
+    root = make_repo(tmp_path / "r")
+    monkeypatch.setattr(P, "missing_floors", lambda root: (2, 0.1, out))
+    assert P.main(["--no-fetch"], root=root) == 2
+    captured = capsys.readouterr()
+    assert _final(captured.out) == "prepr: REFUSED (exit 2)"
+    assert P.MISSING_FLOORS in captured.err and out.split(": ")[-1] in captured.err
+
+
+def test_missing_floors_maps_a_failure_to_run_to_exit_2(tmp_path, monkeypatch):
+    def run(cmd, **kw):
+        raise OSError("no python")
+
+    monkeypatch.setattr(P.subprocess, "run", run)
+    assert P.missing_floors(tmp_path)[0] == 2
+
+
+def test_missing_floors_runs_the_lint_mode_in_a_scrubbed_environment(tmp_path, monkeypatch):
+    seen: dict = {}
+
+    class R:
+        returncode, stdout, stderr = 1, "out\n", "err\n"
+
+    def run(cmd, **kw):
+        seen.update(cmd=cmd, env=kw["env"], cwd=kw["cwd"])
+        return R()
+
+    monkeypatch.setenv("MAXIM_FOO", "1")
+    monkeypatch.setattr(P.subprocess, "run", run)
+    rc, _, out = P.missing_floors(tmp_path)
+    assert rc == 1 and out == "out\nerr\n"
+    assert seen["cmd"] == [sys.executable, str(tmp_path / "scripts/lint_coverage.py"), "--missing-floors"]
+    assert seen["cwd"] == tmp_path and "MAXIM_FOO" not in seen["env"]

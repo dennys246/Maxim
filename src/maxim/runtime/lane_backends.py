@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from maxim.models.language.types import RESOLVED_KEY_MARKER
+
 logger = logging.getLogger(__name__)
 
 from maxim.runtime.worker_pool import LaneConfig, Origin, ProviderPlacement
@@ -1351,12 +1353,12 @@ class LaneBackendManager:
         remote_timeout_s = primary.timeout_s if primary else cfg.remote_timeout_s
 
         provider_key = f"lane-{cfg.name}"
-        api_key_env = f"MAXIM_LANE_{cfg.name.upper()}_API_KEY"
-        # Our own spawned/reused server (#1314): its key rides on the provider entry, so no earlier value of the env
-        # var can win and the key never reaches the process env (child processes inherit it).
-        server_key = remote_api_key if cfg.remote_api_key_is_server_key and remote_url == cfg.remote_url else None
-        if not server_key:
-            os.environ.setdefault(api_key_env, remote_api_key or "not-needed")
+        # The resolved key rides on the provider entry and never reaches the process env (#1314 for our own server,
+        # #1371 for every lane): no earlier value of an env var can beat a key rotated in config since, and child
+        # processes do not inherit it. The operator's override is MAXIM_LANE_<TIER>_REMOTE_API_KEY, which the
+        # resolution of remote_api_key already honours; the old internal MAXIM_LANE_<TIER>_API_KEY is not read.
+        lane_key = remote_api_key or "not-needed"
+        _warn_ignored_key_env(f"MAXIM_LANE_{cfg.name.upper()}_API_KEY", lane_key, f"lanes.{cfg.name}")
 
         providers = dict(base.providers or {})
         # Plan 3 R2.5: dispatch to _MaximPeerBackend for self-hosted
@@ -1366,7 +1368,8 @@ class LaneBackendManager:
         provider_entry: dict[str, Any] = {
             "type": backend_type,
             "base_url": remote_url,
-            "api_key_env": api_key_env,
+            "api_key": lane_key,
+            RESOLVED_KEY_MARKER: True,  # the backend sends this key, never an env var (#1371)
             "model": remote_model,
             "allow_local_endpoints": (kind == "self-hosted"),
             # Peer-tunnel URLs resolve to Cloudflare IPs (classified as cloud)
@@ -1375,8 +1378,6 @@ class LaneBackendManager:
             # when no pricing entry exists for the model name.
             "pricing_required": False,
         }
-        if server_key:
-            provider_entry["api_key"] = server_key
         # llm_timeout_scalability.md Stage 2: thread per-tier timeout_s
         # into the provider config. Both backends (_MaximPeerBackend
         # _get_timeout_policy, _OpenAIBackend _get_timeout) already read
@@ -1550,8 +1551,35 @@ def _apply_config_placements(
 
 
 def _placement_provider_api_key_env(key: str) -> str:
-    """Per-fallback-provider api-key env var name."""
+    """Per-fallback-provider api-key env var name (since #1371 read only for a keyless url-CLOUD placement)."""
     return f"MAXIM_PLACEMENT_{key.upper().replace('-', '_')}_API_KEY"
+
+
+_ignored_key_env_warned: set[str] = set()
+
+
+def _warn_ignored_key_env(name: str, key_in_use: str, where: str) -> None:
+    """One WARNING per process when ``name``, an internal key variable the build no longer reads (#1371), holds a
+    value other than the key in use: an export from before #1371, or a value a child inherited from an older maxim
+    parent. Names only, never a value. The operator's override is ``MAXIM_LANE_<TIER>_REMOTE_API_KEY`` (or the
+    placement's ``api_key_ref``), which the key in use already honours."""
+    value = os.environ.get(name)
+    if not value or value == key_in_use or name in _ignored_key_env_warned:
+        return
+    _ignored_key_env_warned.add(name)
+    tier = name.removeprefix("MAXIM_LANE_").removesuffix("_API_KEY") if name.startswith("MAXIM_LANE_") else ""
+    override = f"MAXIM_LANE_{tier}_REMOTE_API_KEY" if tier else "the placement's api_key_ref"
+    logger.warning(
+        "%s is set but no longer used (#1371): %s sends the key resolved from config. To override it, set %s.",
+        name,
+        where,
+        override,
+    )
+
+
+def _reset_ignored_key_env_warnings() -> None:
+    """Test hook: forget which internal key variables were warned about."""
+    _ignored_key_env_warned.clear()
 
 
 # Review fold: one-shot deprecation INFO for the --cloud-lane / --cloud-fallback
@@ -1588,13 +1616,16 @@ def _placement_entry_to_provider(entry: ProviderPlacement, key: str) -> tuple[di
     - ``LOCAL`` → resolve the profile via ``load_llm_config`` into a llama-cpp /
       transformers provider entry (model_path/n_ctx from the profile).
     """
+    # The resolved key rides on the entry and never reaches the process env (#1371, as for a lane): an earlier value
+    # of MAXIM_PLACEMENT_<KEY>_API_KEY must not beat a key rotated in config, and children must not inherit it.
     if entry.origin is Origin.PEER:
-        api_key_env = _placement_provider_api_key_env(key)
-        os.environ.setdefault(api_key_env, entry.api_key or "not-needed")
+        peer_key = entry.api_key or "not-needed"
+        _warn_ignored_key_env(_placement_provider_api_key_env(key), peer_key, f"placement {key}")
         prov: dict[str, Any] = {
             "type": "maxim_peer",
             "base_url": entry.url,
-            "api_key_env": api_key_env,
+            "api_key": peer_key,
+            RESOLVED_KEY_MARKER: True,
             "model": entry.model,
             "allow_local_endpoints": True,
             "pricing_required": False,
@@ -1606,15 +1637,18 @@ def _placement_entry_to_provider(entry: ProviderPlacement, key: str) -> tuple[di
     if entry.origin is Origin.CLOUD:
         if entry.url:
             api_key_env = _placement_provider_api_key_env(key)
-            if entry.api_key:
-                os.environ.setdefault(api_key_env, entry.api_key)
             prov = {
                 "type": "openai",
                 "base_url": entry.url,
-                "api_key_env": api_key_env,
                 "model": entry.model,
                 "pricing_required": False,
             }
+            if entry.api_key:
+                _warn_ignored_key_env(api_key_env, entry.api_key, f"placement {key}")
+                prov["api_key"] = entry.api_key
+                prov[RESOLVED_KEY_MARKER] = True  # the backend sends this key (#1371)
+            else:
+                prov["api_key_env"] = api_key_env  # keyless: as before, the backend's own fallbacks
             if entry.timeout_s is not None:
                 prov["timeout_s"] = float(entry.timeout_s)
             return prov, True
@@ -1681,8 +1715,8 @@ def _inject_placement_tail(
 
     ``lane_name`` qualifies each fallback provider's api-key env var so two
     tiers' credentialed fallbacks at the same tail index don't collide on one
-    ``MAXIM_PLACEMENT_*`` name (mirrors the per-lane ``MAXIM_LANE_<NAME>_API_KEY``
-    of the primary remote path).
+    ``MAXIM_PLACEMENT_*`` name. Since #1371 that name is read only for a keyless url-CLOUD placement; a keyed
+    one carries its resolved key on its provider entry, as the primary remote path does.
     """
     if not tail:
         return llm_config

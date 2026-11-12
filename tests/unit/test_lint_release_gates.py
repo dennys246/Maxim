@@ -1016,6 +1016,57 @@ def test_no_other_step_may_name_the_report(repo, capsys):
     assert rc == 1 and "only the fast suite and the release-gate step may name fast-suite.xml" in out
 
 
+def test_an_upload_artifact_step_may_name_the_report_it_only_reads(repo, capsys):
+    """#1640: the coverage artifact carries fast-suite.xml so a floors-only push can re-use a verified run; an upload
+    reads the file, so it is the one exception (any other step naming it still fails, above)."""
+    upload = (
+        "      - name: Upload\n        uses: actions/upload-artifact@v4\n"
+        "        with:\n          name: x\n          path: fast-suite.xml\n"
+    )
+    wf = WORKFLOW.replace(
+        "      - name: Release gates, runtime twin\n", upload + "      - name: Release gates, runtime twin\n"
+    )
+    repo.write(".github/workflows/test.yml", wf)
+    rc, out = run(capsys)
+    assert "may name fast-suite.xml" not in out, out
+    repo.write(".github/workflows/test.yml", wf.replace("actions/upload-artifact@v4", "actions/cache@v4"))
+    rc, out = run(capsys)
+    assert rc == 1 and "may name fast-suite.xml" in out
+
+
+_SUITE_STEP = "      - name: Run required fast suite\n"
+
+
+@pytest.mark.parametrize(
+    "decide, needle",
+    [
+        (f"      - name: decide\n        id: reuse\n        run: {L.REUSE_RUN}\n", None),
+        (
+            f"      - name: decide\n        id: reuse\n        run: {L.REUSE_RUN} --extra\n",
+            "the one other writer of fast-suite.xml is exactly one",
+        ),
+    ],
+)
+def test_the_reuse_decision_is_the_one_named_other_writer_of_the_report(repo, capsys, decide, needle):
+    """#1640 (Arch SF-2): the decision step places the re-used source run's report; the wiring names it explicitly,
+    exactly that run line, before the suite."""
+    from scripts import lint_coverage as LC
+
+    assert L.REUSE_RUN == LC.CI_REUSE_RUN
+    repo.write(".github/workflows/test.yml", WORKFLOW.replace(_SUITE_STEP, decide + _SUITE_STEP))
+    rc, out = run(capsys)
+    if needle is None:
+        assert "the one other writer" not in out and "must come before the fast suite" not in out, out
+        after = WORKFLOW.replace(
+            "      - name: Release gates, runtime twin\n", decide + "      - name: Release gates, runtime twin\n"
+        )
+        repo.write(".github/workflows/test.yml", after)
+        rc, out = run(capsys)
+        assert rc == 1 and "must come before the fast suite" in out
+    else:
+        assert rc == 1 and needle in out, out
+
+
 def test_the_twin_must_follow_the_suite(repo, capsys):
     wf = WORKFLOW.replace(
         "      - name: Release gates, runtime twin\n        run: python scripts/lint_release_gates.py --junit fast-suite.xml\n",

@@ -298,6 +298,20 @@ def test_no_step_name_was_truncated_by_a_yaml_comment():
 # ── #1318: the pip cache, and the pin that keeps it honest ─────────────────────────────────────────────────────────
 
 _INSTALLS_THE_PACKAGE = re.compile(r"\bpip install\b[^\n]*?(?:-e\s+)?\.(?:\s|$|\[|\")")
+REUSE_SKIP_IF = "steps.reuse.outputs.reuse != 'true'"  # == lint_coverage.CI_REUSE_SKIP_IF (pinned below)
+
+
+def test_the_unit_tests_pip_cache_is_skipped_on_a_reuse_by_the_coverage_gates_literal():
+    """#1640: a re-use run must never save #1318's pip-cache entry (it builds no wheel)."""
+    from scripts import lint_coverage as L
+
+    assert REUSE_SKIP_IF == L.CI_REUSE_SKIP_IF
+    steps = _steps("unit-tests")
+    cache = next(i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache@"))
+    decide = next(i for i, s in enumerate(steps) if s.get("id") == "reuse")
+    assert decide < cache and steps[cache].get("if") == REUSE_SKIP_IF
+
+
 # Jobs that install the package where a runner-side pip cache cannot reach, each with its reason.
 _UNCACHEABLE = {
     "aarch64-install": "installs inside an arm64 Docker container (/venv/bin/pip), not on the runner",
@@ -338,15 +352,22 @@ def test_every_job_that_installs_the_package_has_its_own_exact_pip_cache():
         caches = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache@")]
         spec = steps[caches[0]].get("with", {}) if caches else {}
         key = str(spec.get("key", ""))
+        # #1640, unit-tests ONLY: the cache sits after the re-use decision, skipped by exactly its literal, so a re-use
+        # run (which builds nothing) never saves an entry under the exact key; it still precedes the install that
+        # builds the wheels (the package install). Every other job keeps "before the first install, no `if:`".
+        first, allowed_if = _first_install(steps), None
+        if job == "unit-tests":
+            first = next(i for i, s in enumerate(steps) if _INSTALLS_THE_PACKAGE.search(_commands(s)))
+            allowed_if = REUSE_SKIP_IF
         if not (
             caches
-            and caches[0] < _first_install(steps)
+            and caches[0] < first
             and str(spec.get("path", "")).split("#")[0].strip() == "~/.cache/pip/wheels"
             and "${{ github.job }}" in key
             and "hashFiles('pyproject.toml', '.github/constraints/*.txt')" in key
             and re.search(r"-py(3\.12|\$\{\{ matrix\.python-version \}\})-", key)
             and "restore-keys" not in spec
-            and "if" not in steps[caches[0]]
+            and steps[caches[0]].get("if") == allowed_if
         ):
             offenders.append((job, spec))
     assert not offenders, offenders
