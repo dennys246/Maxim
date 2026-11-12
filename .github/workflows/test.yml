@@ -358,9 +358,11 @@ jobs:
           HF_HOME: /home/runner/.cache/huggingface
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
-        # Inside the loopback-only network namespace too (scripts/ci_netns.sh): the models are warmed above.
+        # Inside the loopback-only network namespace too (scripts/ci_netns.sh): the models are warmed above. The one
+        # lane that passes --keep-docker (#1426): its real-Docker tests reach the daemon over its socket, and their
+        # containers have the host's network by design; it still runs without privilege (no_new_privs).
         run: |
-          bash scripts/ci_netns.sh '"$PY" -m pytest tests/ -q -m "slow" --tb=short --require-extras=console,sign \
+          bash scripts/ci_netns.sh --keep-docker '"$PY" -m pytest tests/ -q -m "slow" --tb=short --require-extras=console,sign \
             --junitxml=slow-results.xml'
       - name: Assert the lane ran its exact roster
         # Runs even when the lane itself failed: "not its roster" and "3 failed" are different diagnoses and the

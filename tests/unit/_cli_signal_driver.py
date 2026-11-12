@@ -20,6 +20,12 @@ from typing import Any
 def _ready() -> None:
     sys.stdout.write("READY\n")
     sys.stdout.flush()
+    # The parent signals the moment it reads READY. A scenario that catches the stop's KeyboardInterrupt must print
+    # READY INSIDE its ``try``, or a signal that lands before the ``try`` escapes it (#1645: 3 of 6 sharded CI runs,
+    # under CPU contention). The gap widens that window on purpose, for the guard test only.
+    gap = os.environ.get("CLI_SIGNAL_DRIVER_READY_GAP_S")
+    if gap:
+        time.sleep(float(gap))
 
 
 def _claim_session() -> Any:
@@ -92,8 +98,8 @@ def _body(scenario: str) -> int:
         return 3
     if scenario == "pre_session_handles_interrupt":  # a command that handles Ctrl+C itself (server mode, tunnel)
         _mode("non_sim")
-        _ready()
         try:
+            _ready()  # inside the try: see _ready
             time.sleep(60)
         except KeyboardInterrupt:
             return 0
@@ -167,8 +173,8 @@ def _body(scenario: str) -> int:
         return 0 if cancellation.stop_noted() else 3
     if scenario == "late_claim":  # a signal before any session, then a loop claims on another thread
         _mode("non_sim")
-        _ready()
         try:
+            _ready()  # inside the try: see _ready
             time.sleep(60)
         except KeyboardInterrupt:
             ev = threading.Event()
