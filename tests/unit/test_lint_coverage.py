@@ -37,13 +37,41 @@ WORKFLOW = (
     "          fetch-depth: 0\n"
     "      - name: deps\n"
     f'        run: pip install "coverage=={L.COVERAGE_VERSION}"\n'
+    "      - name: decide\n"
+    f"        id: {L.CI_REUSE_ID}\n"
+    f"        run: {L.CI_REUSE_RUN}\n"
+    "      - name: stamp\n"
+    f'        if: "{L.CI_REUSE_SKIP_IF}"\n'
+    f"        run: {L.CI_STAMP_RUN}\n"
+    "      - name: pipcache\n"
+    f'        if: "{L.CI_REUSE_SKIP_IF}"\n'
+    "        uses: actions/cache@v4\n"
+    "        with:\n"
+    f"          path: {L.CI_PIP_CACHE_PATH}\n"
+    "          key: k\n"
     "      - name: suite\n"
+    f'        if: "{L.CI_REUSE_SKIP_IF}"\n'
     "        run: |\n"
     f"          {L.CI_CLEAN}\n"
     "          python -m pytest tests/ -x \\\n"
     f"            {L.CI_COV_ARGS}\n"
     "      - name: Coverage ratchet\n"
     f"        {L.CI_LINT_RUN}\n"
+    "      - name: upload\n"
+    f'        if: "{L.CI_UPLOAD_IF}"\n'
+    "        uses: actions/upload-artifact@v4\n"
+    "        with:\n"
+    "          name: coverage-json-${{ github.run_attempt }}\n"
+    "          path: |\n"
+    "            coverage.json\n"
+    "            fast-suite.xml\n"
+    "            measured-tree.json\n"
+    "      - name: pointer\n"
+    f'        if: "{L.CI_POINTER_IF}"\n'
+    "        uses: actions/upload-artifact@v4\n"
+    "        with:\n"
+    "          name: coverage-reused-from-${{ github.run_attempt }}\n"
+    "          path: coverage-reused-from.json\n"
     "  lint:\n"
     "    steps: []\n"
 )
@@ -902,7 +930,10 @@ def test_a_covered_by_claim_is_rejected_while_no_lane_measures_it(repo, capsys):
     assert rc == 1 and "covered_by must be null" in err
 
 
-_HUB = "      - name: MemoryHub\n        run: python -m pytest tests/integration/test_memory_hub.py -q\n"
+_HUB = (
+    f'      - name: MemoryHub\n        if: "{L.CI_REUSE_SKIP_IF}"\n'
+    "        run: python -m pytest tests/integration/test_memory_hub.py -q\n"
+)
 _GATE = f"      - name: Coverage ratchet\n        {L.CI_LINT_RUN}\n"
 
 
@@ -945,6 +976,86 @@ def test_the_gate_checks_its_own_CI_step(repo, capsys, old, new, needle):
         assert rc == 0, err  # the parsed run, not its YAML spelling, is what counts
     else:
         assert rc == 1 and needle in err
+
+
+_DECIDE = f"      - name: decide\n        id: {L.CI_REUSE_ID}\n        run: {L.CI_REUSE_RUN}\n"
+_STAMP = f'      - name: stamp\n        if: "{L.CI_REUSE_SKIP_IF}"\n        run: {L.CI_STAMP_RUN}\n'
+_SKIP = f'        if: "{L.CI_REUSE_SKIP_IF}"\n'
+
+
+@pytest.mark.parametrize(
+    "old,new,needle",
+    [
+        # the decision step: exactly one, exactly this run line, only name/id/run, before the suite
+        (_DECIDE, "", "needs exactly one step `id: reuse`"),
+        (_DECIDE, _DECIDE + _DECIDE.replace("decide", "again"), "needs exactly one step `id: reuse`"),
+        # any other spelling of the decision's run line reads as a second gate step
+        (f"run: {L.CI_REUSE_RUN}\n", f"run: {L.CI_REUSE_RUN} || true\n", "needs exactly one step whose run is"),
+        # a decision that just claims reuse
+        (f"run: {L.CI_REUSE_RUN}\n", 'run: echo "reuse=true" >> "$GITHUB_OUTPUT"\n', "run must be exactly"),
+        (f"        id: {L.CI_REUSE_ID}\n", "        id: other\n", "needs exactly one step `id: reuse`"),
+        (f"        id: {L.CI_REUSE_ID}\n", f"        id: {L.CI_REUSE_ID}\n        if: always()\n", "only `name`, `id`"),
+        # the stamp step: exactly one, between the decision and the suite, with the skip `if:`
+        (_STAMP, "", f"running `{L.CI_STAMP_RUN}`"),
+        (_STAMP, _STAMP.replace(_SKIP, ""), "must carry exactly `if: steps.reuse.outputs.reuse != 'true'`"),
+        # every step after the decision through the suite carries the exact skip literal
+        ("      - name: suite\n" + _SKIP, "      - name: suite\n", "'suite' must carry exactly"),
+        (
+            "      - name: suite\n" + _SKIP,
+            "      - name: suite\n        if: steps.reuse.outputs.reuse == 'false'\n",
+            "'suite' must carry exactly",
+        ),
+        (_STAMP, _STAMP + "      - name: heavy\n        run: pip install x\n", "'heavy' must carry exactly"),
+        # no other `if:` anywhere in the job: not before the decision, not on the gate, not on a later step
+        ("      - name: deps\n", "      - name: deps\n        if: always()\n", "'deps' must carry no `if:`"),
+        (_GATE, _GATE + "      - name: twin\n        if: always()\n        run: true\n", "'twin' must carry no"),
+        # the two uploads: exact `if:` literals, exact paths
+        (f'if: "{L.CI_UPLOAD_IF}"', "if: always()", "'upload' must carry exactly `if: always() &&"),
+        (f'if: "{L.CI_POINTER_IF}"', "if: always()", "'pointer' must carry exactly"),
+        (f'if: "{L.CI_POINTER_IF}"', "if: steps.reuse.outputs.reuse == 'true'", "'pointer' must carry exactly"),
+        # #1318's pip cache: after the decision with the skip literal (a re-use run must never save its entry)
+        (
+            "          key: k\n",
+            "          key: k\n      - name: pipcache2\n" + _SKIP + "        uses: actions/cache@v4\n"
+            f"        with:\n          path: {L.CI_PIP_CACHE_PATH}\n",
+            f"needs exactly one `{L.CI_PIP_CACHE_PATH}` cache",
+        ),
+        ("      - name: pipcache\n" + _SKIP, "      - name: pipcache\n", "'pipcache' must carry exactly"),
+        ("            measured-tree.json\n", "", "needs exactly one upload `coverage-json-"),
+        ("path: coverage-reused-from.json", "path: coverage.json", "needs exactly one upload `coverage-reused-from-"),
+    ],
+)
+def test_the_gate_pins_the_reuse_wiring(repo, capsys, old, new, needle):
+    assert old in WORKFLOW
+    _write(repo, ".github/workflows/test.yml", WORKFLOW.replace(old, new, 1))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and needle in err, err
+
+
+def test_the_pip_cache_must_come_after_the_reuse_decision(repo, capsys):
+    cache = (
+        "      - name: pipcache\n" + _SKIP + "        uses: actions/cache@v4\n"
+        f"        with:\n          path: {L.CI_PIP_CACHE_PATH}\n          key: k\n"
+    )
+    assert cache in WORKFLOW
+    moved = WORKFLOW.replace(cache, "").replace(_DECIDE, cache.replace(_SKIP, "") + _DECIDE)
+    _write(repo, ".github/workflows/test.yml", moved)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"needs exactly one `{L.CI_PIP_CACHE_PATH}` cache, after the decision" in err, err
+
+
+def test_the_reuse_decision_must_come_before_the_suite(repo, capsys):
+    moved = WORKFLOW.replace(_DECIDE, "").replace(_GATE, _GATE + _DECIDE)
+    _write(repo, ".github/workflows/test.yml", moved)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "`id: reuse` step must come before the measuring suite" in err
+
+
+def test_the_MemoryHub_step_needs_the_exact_skip_if_between_the_suite_and_the_gate(repo, capsys):
+    for hub in (_HUB.replace(_SKIP, ""), _HUB.replace(_SKIP, "        if: always()\n")):
+        _write(repo, ".github/workflows/test.yml", WORKFLOW.replace(_GATE, hub + _GATE))
+        rc, _, err = _run(capsys)
+        assert rc == 1 and "sits between the measuring suite" in err, err
 
 
 def test_the_MemoryHub_step_may_sit_between_the_suite_and_the_gate(repo, capsys):
@@ -2430,6 +2541,35 @@ def test_pins_from_run_refuses_a_run_it_cannot_bind(repo, tmp_path, kw, match):
         _measure(repo, tmp_path, _api(head, **kw))
 
 
+def test_pins_from_run_accepts_the_source_run_of_a_floors_only_push_and_nothing_wider(repo, tmp_path):
+    """#1640 (Wire SF-1): a re-use run names its SOURCE run, which measured the commit before the pin commit; check 1
+    (the helper --reuse-decision uses) accepts a head that differs from HEAD only in the floors file."""
+    source = _git(repo, "rev-parse", "HEAD").strip()
+    _write(repo, L.FLOORS_REL, _floors(alpha=(81.0, 2)))
+    _commit(repo)  # the pin commit: floors only
+    cov, got = _measure(repo, tmp_path, _api(source))
+    assert got == ["coverage-json-1"] and A in cov
+    _write(repo, A, _lines(11, "a"))
+    _commit(repo)  # any other file: refused
+    with pytest.raises(L.MeasurementError, match="differ beyond scripts/coverage_floors.json"):
+        _measure(repo, tmp_path, _api(source))
+
+
+def test_a_gate_on_a_reused_measurement_says_it_is_not_an_independent_sample(repo, capsys):
+    """#1640 (Wire SF-3): the decision step's mark is coverage-reused-from.json; the gate prints the warning first and
+    again directly above a paste-ready floors block, which must not become --merge-floors' second run."""
+    _write(repo, L.FLOORS_REL, _floors(alpha=None))
+    (repo / L.REUSED_FROM_JSON).write_text(json.dumps({"run_id": 42, "attempt": 1, "head_sha": "x", "tree_id": "t"}))
+    _, out, _ = _run(capsys)
+    banner = "coverage: measurement re-used from run 42 attempt 1 — not an independent sample"
+    lines = out.splitlines()
+    assert lines[0] == banner and lines.count(banner) == 2
+    assert lines[lines.index(banner, 1) + 1].startswith("coverage: measured floors")
+    (repo / L.REUSED_FROM_JSON).unlink()
+    _, out, _ = _run(capsys)
+    assert "not an independent sample" not in out  # a measured run prints no banner
+
+
 def test_pins_from_run_accepts_the_legacy_artifact_name_on_attempt_one_only(repo, tmp_path):
     head = _git(repo, "rev-parse", "HEAD").strip()
     _, got = _measure(repo, tmp_path, _api(head, artifacts=("coverage-json",)))
@@ -2604,8 +2744,13 @@ def test_the_pinner_names_match_the_real_workflow():
     suite = [s for s in job["steps"] if s.get("name") == L.RUN_SUITE_STEP]
     assert len(suite) == 1 and L.CI_COV_ARGS in " ".join(suite[0]["run"].split())
     up = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact")]
-    assert [s["with"]["name"] for s in up] == [L.COVERAGE_ARTIFACT + "-${{ github.run_attempt }}"]
-    assert up[0]["with"]["path"] == L.COVERAGE_JSON and up[0]["if"] == "always()"
+    assert [s["with"]["name"] for s in up] == [
+        L.COVERAGE_ARTIFACT + "-${{ github.run_attempt }}",
+        L.REUSED_ARTIFACT + "-${{ github.run_attempt }}",  # #1640: a re-use run's pointer, never a copy
+    ]
+    assert up[0]["with"]["path"].split() == [L.COVERAGE_JSON, L.JUNIT_XML, L.STAMP_JSON]
+    assert up[0]["if"] == L.CI_UPLOAD_IF and up[1]["if"] == L.CI_POINTER_IF
+    assert [s for s in job["steps"] if s.get("name") == L.MEMORYHUB_STEP]  # --reuse-decision reads its conclusion
 
 
 def test_gh_runs_from_the_checkout_it_pins(repo, tmp_path, monkeypatch):
