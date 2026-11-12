@@ -1,0 +1,5 @@
+probe1 edits applied: 1
+r3d calls=128 non-conforming=0 decisive mismatches=53 over_bound=0 max tie orderings=1 C5(k)=0 C5(q)=0
+TOTAL decisive cue turns=0; not uncontested-literal=0
+probe2 edits applied: 1
+  r       k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'contaminated', 6: 'armed'}
