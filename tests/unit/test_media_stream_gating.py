@@ -105,3 +105,33 @@ class TestCaptureManagerVisionGate:
             assert cm._audio_thread is None
         finally:
             cm.stop(timeout=0.5)
+
+
+class TestAudioQueueOverflow:
+    """#1645: a full audio queue had no direct test, so its branch ran only when a threaded test happened to fill it."""
+
+    def test_a_full_queue_drops_the_oldest_sample_and_keeps_the_newest(self):
+        import numpy as np
+
+        from maxim.runtime.capture import CapturedAudio
+
+        cm = CaptureManager(maxim=None, audio_queue_size=1, has_vision=False)
+        first = CapturedAudio(samples=np.zeros(4), timestamp=1.0, sample_rate=16000)
+        second = CapturedAudio(samples=np.ones(4), timestamp=2.0, sample_rate=16000)
+        feed = iter([first, second])
+
+        def capture():
+            try:
+                return next(feed)
+            except StopIteration:
+                cm._stop_event.set()
+                return None
+
+        cm._capture_audio = capture  # type: ignore[method-assign]
+        seen: list = []
+        cm._audio_callbacks.append(seen.append)
+        cm._audio_capture_loop()  # in this thread: it returns once the feed is spent
+        assert cm._audio_queue.get_nowait() is second
+        assert cm._audio_queue.empty()
+        assert cm._latest_audio is second
+        assert seen == [first, second], "every sample reaches the callbacks, the dropped one included"
