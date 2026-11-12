@@ -39,7 +39,7 @@ O19_RERUN = "scripts/o19_rerun.py"
 # that an old judge fails.
 # ``protocol_problems`` arrived with campaign succession: required only when the judge's table has a successor.
 O19_INTERFACE = ("PROTOCOL", "rows_path", "attempts_from_rows", "judge", "MARKER_NAMESPACE", "MAX_ATTEMPTS")
-O19_KINDS = frozenset({"exp10_verdict", "exp09_verdict", "exp63_verdict", "exp63b_verdict"})
+O19_KINDS = frozenset({"exp10_verdict", "exp09_verdict", "exp63_verdict", "exp63b_verdict", "exp63c_verdict"})
 # A run's finish reasons that are citable (pinned against simulation/sim_types.py's failure set by a test).
 FINISH_OK = frozenset({"completed", "max_turns", "complete", "all_encounters_complete"})
 FINISH_OK_PREFIX = "campaign_end:"
@@ -1239,8 +1239,8 @@ def rejudge_o19(
     capture: dict | None = None,
 ):
     """Run the given ``o19_verdict`` bytes' ``judge`` on the record's bytes (half A: the bound judge; half B: an
-    edited HEAD judge). With ``bound_files``, they must be exactly the judge, the harness and the campaign's prereg
-    as this judge's table names it. Returns the judge's output dict, or a refusal reason. ``capture`` receives the
+    edited HEAD judge). With ``bound_files``, they must be exactly the judge, the harness, the campaign's prereg and
+    its base preregs as this judge's table names it. Returns the judge's output dict, or a refusal reason. ``capture`` receives the
     loaded judge's ``protocol`` and ``harness_env`` (JSON-plain; None when it has none), for the succession rules."""
     markers = as_dict(rec.get("apparatus")).get("markers")
     if not isinstance(markers, list) or not markers or not all(isinstance(m, dict) for m in markers):
@@ -1279,7 +1279,12 @@ def _rejudge_with(mod, rec: dict, rows: list[dict], data_dir: str, ctx: Ctx, ord
     if protocol[exp].get("kind") != rec.get("kind"):
         return f"campaign {exp} is not of kind {rec.get('kind')!r}"
     if bound_files is not None:
-        want = {O19_JUDGE, O19_RERUN, protocol[exp].get("prereg")}
+        # The judge, the harness, the campaign's prereg and the preregs it builds on (Exp 63c binds 63b's by hash,
+        # ``base_preregs``); an old judge's table has no such key, so its set is the three it always was.
+        base = protocol[exp].get("base_preregs", [])
+        if not isinstance(base, list) or not all(isinstance(b, str) for b in base):
+            return f"campaign {exp}'s base_preregs {base!r} is not a list of paths"
+        want = {O19_JUDGE, O19_RERUN, protocol[exp].get("prereg"), *base}
         if set(bound_files) != want:
             return f"bound_files names {sorted(bound_files)}, not exactly {sorted(map(str, want))}"
     if rec.get("data") != mod.rows_path(exp):
