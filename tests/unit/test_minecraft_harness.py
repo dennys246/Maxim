@@ -421,3 +421,22 @@ class TestL11AnalyzerOnSyntheticTrace:
         with _pytest.raises(SystemExit) as exc:
             mod.analyze(a)
         assert exc.value.code == 4
+
+
+def test_the_fake_bridge_ends_a_connection_when_the_client_hangs_up():
+    """#1645: the hang-up return had no direct test; it ran only when a test's client happened to close first."""
+    import socket
+    import threading
+
+    srv = FakeBridgeServer(state_interval_s=0.05)
+    a, b = socket.socketpair()
+    try:
+        t = threading.Thread(target=srv._serve, args=(a,), daemon=True)
+        t.start()
+        b.shutdown(socket.SHUT_WR)  # the client hangs up its side; it can still read
+        t.join(timeout=5)
+        assert not t.is_alive(), "_serve must return when recv reads end-of-stream"
+    finally:
+        srv.close()
+        a.close()
+        b.close()

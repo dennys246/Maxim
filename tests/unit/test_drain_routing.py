@@ -384,8 +384,17 @@ class TestRouterDrainIntegration:
         assert router._provider_states["peer1"].consecutive_errors == 3
         assert router._provider_states["peer1"].last_error == "timeout"
 
+    # ── Auto-drain thresholds ──────────────────────────────────────────────────
 
-# ── Auto-drain thresholds ──────────────────────────────────────────────────
+    def test_a_blocked_budget_drops_a_drained_provider_from_the_local_fallback(self, router_with_drain):
+        """#1645: the drain filter on the budget-blocked local fallback had no direct test."""
+        router, drained_set = router_with_drain
+        drained_set.add("peer1")
+        router._budget_status = lambda now: ("blocked", {})
+        assert router._routing_policy.fallback_on_budget_exceeded == "local"
+        candidates, tier, _ = router._candidate_providers(0, 100, time.time())
+        assert tier == "blocked"
+        assert candidates == ["peer2"]
 
 
 class TestAutoDrainThreshold:

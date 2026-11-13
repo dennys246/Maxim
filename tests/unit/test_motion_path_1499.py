@@ -1379,3 +1379,19 @@ def test_a_disconnect_during_a_split_stops_it_at_the_next_chunk(daemon):
     assert not out and _kind(out) == "cancelled"
     assert len(daemon.gotos()) == 1
     assert ctl._stop_latched and not ctl._stop_by_sleep
+
+
+def test_a_failed_final_readback_is_partial_and_counts_the_chunk_that_ran(daemon):
+    """#1645: the final-readback refusal had no direct test; it ran only when another test's timing reached it."""
+    ctl = controller(daemon)
+    real_goto = daemon.goto_target
+
+    def _goto_then_break_the_read(**kw):
+        real_goto(**kw)
+        daemon.rest_mode = "status500"
+
+    daemon.goto_target = _goto_then_break_the_read  # type: ignore[method-assign]
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "partial"
+    assert "the final readback failed" in as_outcome_reason(out)
+    assert len(daemon.gotos()) == 1
