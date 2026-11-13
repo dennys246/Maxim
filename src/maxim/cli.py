@@ -6,7 +6,7 @@ import sys
 import threading
 from pathlib import Path
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from maxim.cli_parser import _build_parser
@@ -1413,9 +1413,31 @@ def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
     return gateway
 
 
+def _curate_router_factory(profile: str) -> Callable[[], Any | None]:
+    """The ``--auto-curate`` router, built through :func:`_cli_local_router` only when ``auto_curate`` calls this:
+    after it finds a coverage gap, so full coverage never asks about a missing model (#1396, owner decision
+    2026-11-12). The factory's None is the template fallback; a build or warmup error keeps what was built, as
+    before the move."""
+
+    def build() -> Any | None:
+        router = None
+        try:
+            router = _cli_local_router(profile)
+            if router is None:
+                print("  WARNING: LLM model not available — curation will use template fallback.")
+            elif hasattr(router, "warmup"):
+                router.warmup()
+        except Exception as _llm_err:
+            logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
+        return router
+
+    return build
+
+
 def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
     """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
-    ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup."""
+    ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup, and builds
+    it only once ``auto_curate`` finds a gap (:func:`_curate_router_factory`)."""
     _auto_curate = bool(getattr(args, "auto_curate", False))
     _no_curate = bool(getattr(args, "no_curate", False))
     if _auto_curate and not _no_curate and _sim_entity_ref:
@@ -1438,18 +1460,8 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
             except Exception as _idx_err:
                 logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
 
-            # Reuse the LLM router from --llm if available
-            _curate_llm = None
+            # The --llm router is built (and a missing model asked about) only once a coverage gap is found.
             _curate_profile = str(getattr(args, "language_model", "") or "").strip()
-            if _curate_profile:
-                try:
-                    _curate_llm = _cli_local_router(_curate_profile)
-                    if _curate_llm is None:
-                        print("  WARNING: LLM model not available — curation will use template fallback.")
-                    elif hasattr(_curate_llm, "warmup"):
-                        _curate_llm.warmup()
-                except Exception as _llm_err:
-                    logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
 
             print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
             _curate_report = auto_curate(
@@ -1457,7 +1469,7 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
                 threshold=_curate_threshold,
                 registry=_curate_registry,
                 component_index=_curate_index,
-                llm_router=_curate_llm,
+                llm_router_factory=_curate_router_factory(_curate_profile) if _curate_profile else None,
             )
             if _curate_report.total_promoted > 0:
                 print(
