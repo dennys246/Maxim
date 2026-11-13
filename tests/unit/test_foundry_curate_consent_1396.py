@@ -80,14 +80,18 @@ def _run_foundry(monkeypatch, profile: str) -> list:
 
 
 def _run_curate(monkeypatch, profile: str) -> list:
-    """Run ``_auto_curate_before_sim`` with fake registry, index and curator; returns the routers it was handed."""
+    """Run ``_auto_curate_before_sim`` with fake registry, index and curator; returns the routers it was handed.
+
+    The fake curator stands for a coverage gap: it calls the router factory, as the real one does once it finds a
+    gap (the no-gap case runs the real ``auto_curate``: ``test_full_coverage_never_builds_the_router_or_asks``)."""
     from maxim import cli
 
     handed: list = []
 
     def fake_auto_curate(**kw):
-        handed.append(kw["llm_router"])
-        return SimpleNamespace(total_promoted=0, total_skipped_dedup=0, categories_below_threshold=0, total_generated=0)
+        assert kw.get("llm_router") is None  # the CLI hands over a factory, never a router built before the check
+        handed.append(kw["llm_router_factory"]())
+        return SimpleNamespace(total_promoted=0, total_skipped_dedup=0, categories_below_threshold=1, total_generated=0)
 
     monkeypatch.setattr("maxim.simulation.foundry.auto_curate", fake_auto_curate)
     monkeypatch.setattr("maxim.embodiment.component_registry.ComponentRegistry", lambda: object())
@@ -258,3 +262,81 @@ def test_every_spelling_the_router_reads_as_llama_cpp_still_asks(fake_router, mo
     assert fake_router.downloads == []
     assert fake_router.warmups == 0
     assert handed == [None]
+
+
+def _run_real_curate(monkeypatch, profile: str, gaps: dict[str, int]) -> list:
+    """Run ``_auto_curate_before_sim`` through the REAL ``auto_curate``, with ``analyze_coverage`` reporting ``gaps``
+    and a fake FoundryRunner; returns the router each category's runner was handed."""
+    from maxim import cli
+
+    runners: list = []
+
+    class FakeRunner:
+        def __init__(self, **kw):
+            runners.append(kw["llm_router"])
+
+        def run(self, count):
+            return SimpleNamespace(promoted=[], dedup_skipped=[], generated=0, promoted_paths=[])
+
+    monkeypatch.setattr("maxim.simulation.foundry.analyze_coverage", lambda genre, **k: dict(gaps))
+    monkeypatch.setattr("maxim.simulation.foundry.FoundryRunner", FakeRunner)
+    monkeypatch.setattr("maxim.embodiment.component_registry.ComponentRegistry", lambda: object())
+    monkeypatch.setattr("maxim.embodiment.component_index.ComponentIndex", lambda registry: None)
+    args = SimpleNamespace(auto_curate=True, no_curate=False, language_model=profile)
+    cli._auto_curate_before_sim(args, "bodies/base_humanoid")
+    return runners
+
+
+def test_full_coverage_never_builds_the_router_or_asks(fake_router, monkeypatch, capsys) -> None:
+    """Owner decision 2026-11-12 (Q1 A): with every category covered, curation never uses the model, so nothing is
+    built and nothing is asked: no "download ~N GB?" for a model the run would not touch."""
+    asked: list[str] = []
+    monkeypatch.setattr("maxim.models.download.ensure_available", lambda name, **k: asked.append(name) or False)
+    runners = _run_real_curate(monkeypatch, fake_router.profile, gaps={})
+    assert asked == []
+    assert fake_router.built == []
+    assert fake_router.downloads == [] and fake_router.warmups == 0
+    assert runners == []
+    assert "Coverage OK" in capsys.readouterr().out
+
+
+def test_a_gap_builds_the_router_once_for_every_category(fake_router, monkeypatch) -> None:
+    """With gaps, the router is built (and asked about) once, after the check, and every category's runner gets it."""
+    monkeypatch.setenv("MAXIM_AUTO_DOWNLOAD_MODELS", "1")
+    runners = _run_real_curate(monkeypatch, fake_router.profile, gaps={"weapons": 2, "armor": 1})
+    assert len(fake_router.built) == 1
+    assert runners == [fake_router.built[0]] * 2
+    assert fake_router.downloads == [fake_router.profile]
+    assert fake_router.warmups == 1
+
+
+def test_a_declined_gap_hands_every_category_the_template_fallback(fake_router, monkeypatch) -> None:
+    runners = _run_real_curate(monkeypatch, fake_router.profile, gaps={"weapons": 2, "armor": 1})
+    assert fake_router.downloads == [] and fake_router.warmups == 0
+    assert runners == [None, None]
+
+
+def test_auto_curate_calls_no_factory_without_a_gap_and_refuses_both_kinds_of_router(monkeypatch) -> None:
+    from maxim.simulation import foundry
+
+    calls: list[int] = []
+    monkeypatch.setattr(foundry, "analyze_coverage", lambda genre, **k: {})
+    foundry.auto_curate("fantasy", registry=object(), llm_router_factory=lambda: calls.append(1))
+    assert calls == []
+    with pytest.raises(TypeError, match="not both"):
+        foundry.auto_curate("fantasy", registry=object(), llm_router=object(), llm_router_factory=lambda: None)
+
+
+def test_a_warmup_error_keeps_the_built_router_and_curation_goes_on(fake_router, monkeypatch, capsys) -> None:
+    """Review round NIT: the factory's handler, moved from the old curate block, keeps what was built when warmup
+    raises (debug-logged, as before the move) and never reaches the outer "Auto-curation failed" handler."""
+    monkeypatch.setenv("MAXIM_AUTO_DOWNLOAD_MODELS", "1")
+    from maxim.models.language import router as router_mod
+
+    def boom(self):
+        raise RuntimeError("warmup failed")
+
+    monkeypatch.setattr(router_mod.LLMRouter, "warmup", boom)
+    runners = _run_real_curate(monkeypatch, fake_router.profile, gaps={"weapons": 2})
+    assert runners == fake_router.built and runners[0] is not None
+    assert "Auto-curation failed" not in capsys.readouterr().err
