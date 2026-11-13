@@ -6,6 +6,12 @@
 > reason; as of 2026-10-18 only item 3, the privacy read, and item 5's server read tier remain). **No src before the fence lifts:** the fence lifts when 1.3.6's decomposition slices land — the point at which T0 can pass (it was "before 1.3.2"; re-pointed 2026-10-17 and 2026-10-18. This plan's read path
 > lands in the selection code the loop decomposition is splitting). Stays active as a parallel paper line (owner
 > 2026-10-17). **No rig time before E3's campaign** (one rig, one operator).
+> **2026-11-12 (owner decision HA-O15):** this plan's foreign advice layer (§2, §6) is now owned by
+> [foreign_advice_layer.md](foreign_advice_layer.md). That shared mechanism also serves the hybrid-arbitration line's
+> LLM source. This plan keeps the Oasis mirror, its gate on public_oasis Phase 0, and the mirror-source rules:
+> learned trust, promotion-if-it-worked, and the consult budget. **Schedule effect:** the layer's `src/` now waits for
+> the 1.4.0 cut (foreign_advice_layer.md), so this plan's S1 waits with it. Its older "src after 1.3.2" wording is
+> superseded.
 > **Opt-in, off by default, never active in an E1–E3 arm.** **Nothing here is built.** The Design
 > section describes intended behaviour in the present tense for readability; none of it exists.
 >

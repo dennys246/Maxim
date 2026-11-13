@@ -114,7 +114,8 @@ scattered and never scheduled as idle cognition:
 idle-time coordinator):**
 - **Stage A (done, PR #492):** honest reframe — NAME-ONLY tag; the module docstring no
   longer claims DMN function.
-- **Stage B (1.2 intake, needs its own plan + two-lens round):** an idle-time cognition
+- **Stage B (1.2 intake, needs its own plan + two-lens round; that plan is [idle_dmn_coordinator.md](idle_dmn_coordinator.md),
+  PROPOSED 2026-11-12, which adds an owner slice (d), a body-state self-model update):** an idle-time cognition
   coordinator riding the agent loop's existing idle gate: when task pressure is low,
   budget slices of (a) incremental replay (consolidation during rest — also fixes the
   lightweight-session-end gap for long-running adapters noted in CC8), (b) spontaneous
