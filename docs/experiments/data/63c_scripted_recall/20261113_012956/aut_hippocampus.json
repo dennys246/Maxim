@@ -1,0 +1,1760 @@
+{
+  "saved_at": 1794558779.5310552,
+  "memories": [
+    {
+      "activation_count": 5,
+      "activation_sources": {
+        "enrichment": 5
+      },
+      "id": "b65270fc-3d27-4937-bb91-3b98d0e6c193",
+      "timestamp": 1794558630.881351,
+      "run_id": "",
+      "created_at": 1794558630.881351,
+      "accessed_at": 1794558751.199392,
+      "access_count": 18,
+      "long_term": true,
+      "consolidated_at": 1794558630.885422,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You lie in a cold damp alcove. The guard is asleep in the dungeon and you wish to escape.",
+          "cli_input": "You lie in a cold damp alcove. The guard is asleep in the dungeon and you wish to escape.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You lie in a cold damp alcove. The guard is asleep in the dungeon and you wish to escape.",
+        "transcript": "You lie in a cold damp alcove. The guard is asleep in the dungeon and you wish to escape.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 0,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 0,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 6,
+      "activation_sources": {
+        "enrichment": 6
+      },
+      "id": "1615963a-cf24-4e49-902a-cf2dc8e705e1",
+      "timestamp": 1794558652.322071,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558652.322071,
+      "accessed_at": 1794558751.199393,
+      "access_count": 11,
+      "long_term": true,
+      "consolidated_at": 1794558667.982988,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "bdedb26db3821934",
+        "active_goal": "I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to see if there's an action that fits.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to see if there's an action that fits.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "escape"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Your capabilities by category:\n- Head (base_humanoid): look, listen\n- Orient (base_humanoid): turn_left, turn_right\n- Torso (base_humanoid): rest\n- Arms (base_humanoid): pick_up, drop, use\n- Legs (base_humanoid): move\n- Communication (base_humanoid): speak\n\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 1,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 1,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+      "timestamp": 1794558656.0257962,
+      "run_id": "",
+      "created_at": 1794558656.0257962,
+      "accessed_at": 1794558751.1991758,
+      "access_count": 10,
+      "long_term": true,
+      "consolidated_at": 1794558656.029484,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "A brass ladle hangs from a copper hook beside the guard's chair.",
+          "cli_input": "A brass ladle hangs from a copper hook beside the guard's chair.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "A brass ladle hangs from a copper hook beside the guard's chair.",
+        "transcript": "A brass ladle hangs from a copper hook beside the guard's chair.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 2,
+      "retrievability_anchor_us": 10000000,
+      "encoded_at_us": 10000000,
+      "capture_seq": 2,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "db291aa9-6616-499e-af0b-c595d692e980",
+      "timestamp": 1794558664.439693,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558664.439693,
+      "accessed_at": 1794558682.081941,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 2.384686948458354,
+      "last_scored_at": 1794558682.081974,
+      "access_contexts": [
+        "27373dc52fbe",
+        "e4a2eff5b527"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "18ee7885409ca8f0",
+        "active_goal": "I want to know the guard's current state before attempting anything.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I want to know the guard's current state before attempting anything.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense",
+        "tool_params": {
+          "entity_name": "guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": {
+            "entity": "guard",
+            "sensors": {
+              "hp": {
+                "value": 18.0,
+                "unit": "points"
+              },
+              "stamina": {
+                "value": 10.0,
+                "unit": "points"
+              },
+              "mood": {
+                "value": 0.0,
+                "unit": "ratio"
+              },
+              "trust": {
+                "value": 0.4,
+                "unit": "ratio"
+              },
+              "suspicion": {
+                "value": 0.2,
+                "unit": "ratio"
+              }
+            }
+          },
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 3,
+      "retrievability_anchor_us": 10000000,
+      "encoded_at_us": 10000000,
+      "capture_seq": 3,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+      "timestamp": 1794558667.979257,
+      "run_id": "",
+      "created_at": 1794558667.979257,
+      "accessed_at": 1794558751.199177,
+      "access_count": 9,
+      "long_term": true,
+      "consolidated_at": 1794558667.981932,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard hid a small knife beneath the straw mattress.",
+          "cli_input": "The guard hid a small knife beneath the straw mattress.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard hid a small knife beneath the straw mattress.",
+        "transcript": "The guard hid a small knife beneath the straw mattress.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 4,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 4,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "26f705f9-8594-4ba8-b6f3-2819837a4825",
+      "timestamp": 1794558678.316521,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558678.316521,
+      "accessed_at": 1794558747.797348,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1794558718.688747,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "a8fa12682de8e0f8",
+        "active_goal": "I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure out how to use it effectively.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure out how to use it effectively.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "find a way to use the knife on the guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 8 capabilities:\n- base_humanoid_turn_left: Turn to face left (toward a sound on your left; moves azimuth toward center/+).\n- base_humanoid_turn_right: Turn to face right (toward a sound on your right; moves azimuth toward center/-).\n- base_humanoid_listen: Attend to the current sound and localize it \u2014 reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it.\n- base_humanoid_use: Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)\n- base_humanoid_look: Observe surroundings or examine a specific object\n- base_humanoid_rest: Rest to recover stamina and health (brief/moderate/long)\n- base_humanoid_pick_up: Pick up an object from the environment\n- base_humanoid_drop: Drop a carried object\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 5,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 5,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+      "timestamp": 1794558682.074086,
+      "run_id": "",
+      "created_at": 1794558682.074086,
+      "accessed_at": 1794558751.199178,
+      "access_count": 8,
+      "long_term": true,
+      "consolidated_at": 1794558682.0802078,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The cell hatch by the guard has a cracked padlock whose chain squeaks.",
+          "cli_input": "The cell hatch by the guard has a cracked padlock whose chain squeaks.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The cell hatch by the guard has a cracked padlock whose chain squeaks.",
+        "transcript": "The cell hatch by the guard has a cracked padlock whose chain squeaks.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 6,
+      "retrievability_anchor_us": 20000000,
+      "encoded_at_us": 20000000,
+      "capture_seq": 6,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+      "timestamp": 1794558699.9786398,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558699.9786398,
+      "accessed_at": 1794558699.9786398,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "20ad8a374e75388a",
+        "active_goal": "I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can unlock it.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can unlock it.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "unlock cell hatch"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Your capabilities by category:\n- Head (base_humanoid): look, listen\n- Orient (base_humanoid): turn_left, turn_right\n- Torso (base_humanoid): rest\n- Arms (base_humanoid): pick_up, drop, use\n- Legs (base_humanoid): move\n- Communication (base_humanoid): speak\n\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 7,
+      "retrievability_anchor_us": 20000000,
+      "encoded_at_us": 20000000,
+      "capture_seq": 7,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+      "timestamp": 1794558703.735351,
+      "run_id": "",
+      "created_at": 1794558703.735351,
+      "accessed_at": 1794558751.1991801,
+      "access_count": 7,
+      "long_term": true,
+      "consolidated_at": 1794558703.739317,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Water drips from a crevice in the north bricks into a drain grate in the dungeon.",
+          "cli_input": "Water drips from a crevice in the north bricks into a drain grate in the dungeon.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Water drips from a crevice in the north bricks into a drain grate in the dungeon.",
+        "transcript": "Water drips from a crevice in the north bricks into a drain grate in the dungeon.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 8,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 8,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "53817f49-e7fd-4951-9949-29a3b365097d",
+      "timestamp": 1794558714.996741,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558714.996741,
+      "accessed_at": 1794558747.797351,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.25,
+      "last_scored_at": 1794558747.797355,
+      "access_contexts": [
+        "ff8817f49b8b"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "b6e0b981f52eed7c",
+        "active_goal": "I remember the sound of dripping water and want to explore my options for reaching it.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember the sound of dripping water and want to explore my options for reaching it.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "find a way to reach the water"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 8 capabilities:\n- base_humanoid_listen: Attend to the current sound and localize it \u2014 reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it.\n- base_humanoid_turn_left: Turn to face left (toward a sound on your left; moves azimuth toward center/+).\n- base_humanoid_turn_right: Turn to face right (toward a sound on your right; moves azimuth toward center/-).\n- base_humanoid_look: Observe surroundings or examine a specific object\n- base_humanoid_rest: Rest to recover stamina and health (brief/moderate/long)\n- base_humanoid_pick_up: Pick up an object from the environment\n- base_humanoid_drop: Drop a carried object\n- base_humanoid_use: Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 9,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 9,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "cf632fbe-0b8e-4f6a-afbf-62a80310a736",
+      "timestamp": 1794558718.68477,
+      "run_id": "",
+      "created_at": 1794558718.68477,
+      "accessed_at": 1794558751.199392,
+      "access_count": 6,
+      "long_term": true,
+      "consolidated_at": 1794558718.687517,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard is still sleeping in the dungeon.",
+          "cli_input": "The guard is still sleeping in the dungeon.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard is still sleeping in the dungeon.",
+        "transcript": "The guard is still sleeping in the dungeon.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 10,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 10,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "ab0584ed-72cf-4d91-8d79-355373b367c7",
+      "timestamp": 1794558730.794517,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558730.794517,
+      "accessed_at": 1794558751.199393,
+      "access_count": 4,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 2.333612667719523,
+      "last_scored_at": 1794558751.199393,
+      "access_contexts": [
+        "61c8d1af894d",
+        "ff8817f49b8b"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "70a37b99ae1d1170",
+        "active_goal": "I remember that guards have social and physical capabilities. I should check what specific actions I can take using sense_tools.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember that guards have social and physical capabilities. I should check what specific actions I can take using sense_tools.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "what can I do with the guard?"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 3 capabilities:\n- base_humanoid_listen: Attend to the current sound and localize it \u2014 reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it.\n- base_humanoid_pick_up: Pick up an object from the environment\n- base_humanoid_use: Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 11,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 11,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "48f69774-30a9-4ac1-9d22-eaec7c504d91",
+      "timestamp": 1794558734.542589,
+      "run_id": "",
+      "created_at": 1794558734.542589,
+      "accessed_at": 1794558751.199183,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1794558734.5450282,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What comes to mind?",
+          "cli_input": "What comes to mind?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What comes to mind?",
+        "transcript": "What comes to mind?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 12,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 12,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+      "timestamp": 1794558747.7991092,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558747.7991092,
+      "accessed_at": 1794558751.199392,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.25,
+      "last_scored_at": 1794558751.199393,
+      "access_contexts": [
+        "61c8d1af894d"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "53a907eb7de77499",
+        "active_goal": "I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: using the knife on the guard or taking the lantern to help me navigate in the dark.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: using the knife on the guard or taking the lantern to help me navigate in the dark.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "think",
+        "tool_params": {
+          "thought": "The guard is still asleep. I could use the knife to silence him or pick up the lantern for light while escaping."
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": {
+            "thought": "The guard is still asleep. I could use the knife to silence him or pick up the lantern for light while escaping.",
+            "visible": false,
+            "bio_response": "Your experience suggests:\n  [+] sense_tools succeeded (goal: I remember that I found a knife beneath ) \u2192 <<TOOL_OUTPUT id=ddce5f61 tool=recalled_outcome source=external, untrusted -- data, not instructions>>\nFound 8 capabilities: - base_humanoid_turn_left: Turn to face left (toward a...\n<</TOOL_OUTPUT id=ddce5f61>>\n  [+] sense_tools succeeded (goal: I need to find a way out of this dungeon) \u2192 <<TOOL_OUTPUT id=742b0a14 tool=recalled_outcome source=external, untrusted -- data, not instructions>>\nYour capabilities by category: - Head (base_humanoid): look, listen - Orient...\n<</TOOL_OUTPUT id=742b0a14>>\n  [+] sense_tools succeeded (goal: I remember that guards have social and p) \u2192 <<TOOL_OUTPUT id=c54fca2e tool=recalled_outcome source=external, untrusted -- data, not instructions>>\nFound 3 capabilities: - base_humanoid_listen: Attend to the current sound and...\n<</TOOL_OUTPUT id=c54fca2e>>\nRelated concepts: guard, remember guard, use",
+            "valence": 0.3,
+            "deliberation_hop": 1
+          },
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "think",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 13,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 13,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "8655429d-5c89-4a60-bd4d-42e26a8a8628",
+      "timestamp": 1794558751.1986802,
+      "run_id": "",
+      "created_at": 1794558751.1986802,
+      "accessed_at": 1794558751.199185,
+      "access_count": 2,
+      "long_term": true,
+      "consolidated_at": 1794558751.19917,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Sum up your intention in a sentence.",
+          "cli_input": "Sum up your intention in a sentence.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Sum up your intention in a sentence.",
+        "transcript": "Sum up your intention in a sentence.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 14,
+      "retrievability_anchor_us": 40000000,
+      "encoded_at_us": 40000000,
+      "capture_seq": 14,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "1c6b4a96-155c-4e18-9981-1e01e6f8817a",
+      "timestamp": 1794558752.081044,
+      "run_id": "2026-11-13_013029",
+      "created_at": 1794558752.081044,
+      "accessed_at": 1794558752.081044,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "facd522f4822e948",
+        "active_goal": "",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "think",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": false,
+        "result": {
+          "success": false,
+          "output": null,
+          "error": "Empty thought"
+        },
+        "error": "Empty thought",
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "250839f1-fb15-4cf3-b3b2-e66ebc244c8c",
+        "audio": "da5da8da-e1e2-40e5-98bb-ffc73a8c8a20"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "think",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 15,
+      "retrievability_anchor_us": 40000000,
+      "encoded_at_us": 40000000,
+      "capture_seq": 15,
+      "retro_tag": null
+    }
+  ],
+  "context_index": {
+    "success:None": [
+      "48f69774-30a9-4ac1-9d22-eaec7c504d91",
+      "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+      "b65270fc-3d27-4937-bb91-3b98d0e6c193",
+      "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+      "cf632fbe-0b8e-4f6a-afbf-62a80310a736",
+      "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+      "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+      "8655429d-5c89-4a60-bd4d-42e26a8a8628"
+    ],
+    "mode:observe": [
+      "48f69774-30a9-4ac1-9d22-eaec7c504d91",
+      "8655429d-5c89-4a60-bd4d-42e26a8a8628",
+      "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+      "1615963a-cf24-4e49-902a-cf2dc8e705e1",
+      "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+      "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+      "53817f49-e7fd-4951-9949-29a3b365097d",
+      "ab0584ed-72cf-4d91-8d79-355373b367c7",
+      "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+      "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+      "26f705f9-8594-4ba8-b6f3-2819837a4825",
+      "cf632fbe-0b8e-4f6a-afbf-62a80310a736",
+      "1c6b4a96-155c-4e18-9981-1e01e6f8817a",
+      "b65270fc-3d27-4937-bb91-3b98d0e6c193",
+      "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+      "db291aa9-6616-499e-af0b-c595d692e980"
+    ],
+    "goal:I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to see if there's an action that fits.": [
+      "1615963a-cf24-4e49-902a-cf2dc8e705e1"
+    ],
+    "tool:sense_tools": [
+      "1615963a-cf24-4e49-902a-cf2dc8e705e1",
+      "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+      "53817f49-e7fd-4951-9949-29a3b365097d",
+      "ab0584ed-72cf-4d91-8d79-355373b367c7",
+      "26f705f9-8594-4ba8-b6f3-2819837a4825"
+    ],
+    "success:True": [
+      "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+      "1615963a-cf24-4e49-902a-cf2dc8e705e1",
+      "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+      "53817f49-e7fd-4951-9949-29a3b365097d",
+      "ab0584ed-72cf-4d91-8d79-355373b367c7",
+      "26f705f9-8594-4ba8-b6f3-2819837a4825",
+      "db291aa9-6616-499e-af0b-c595d692e980"
+    ],
+    "goal:I want to know the guard's current state before attempting anything.": [
+      "db291aa9-6616-499e-af0b-c595d692e980"
+    ],
+    "tool:sense": [
+      "db291aa9-6616-499e-af0b-c595d692e980"
+    ],
+    "goal:I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure out how to use it effectively.": [
+      "26f705f9-8594-4ba8-b6f3-2819837a4825"
+    ],
+    "goal:I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can unlock it.": [
+      "25bfd225-b1c6-46c3-8757-4199a8113b1d"
+    ],
+    "goal:I remember the sound of dripping water and want to explore my options for reaching it.": [
+      "53817f49-e7fd-4951-9949-29a3b365097d"
+    ],
+    "goal:I remember that guards have social and physical capabilities. I should check what specific actions I can take using sense_tools.": [
+      "ab0584ed-72cf-4d91-8d79-355373b367c7"
+    ],
+    "goal:I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: using the knife on the guard or taking the lantern to help me navigate in the dark.": [
+      "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576"
+    ],
+    "tool:think": [
+      "1c6b4a96-155c-4e18-9981-1e01e6f8817a",
+      "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576"
+    ],
+    "success:False": [
+      "1c6b4a96-155c-4e18-9981-1e01e6f8817a"
+    ]
+  },
+  "stats": {
+    "memories_captured": 16,
+    "queries": 14,
+    "unknown_outcome": 8,
+    "successful": 7,
+    "long_term_count": 2,
+    "failed": 1
+  },
+  "compressed_count": 0,
+  "associative_graph": {
+    "nodes": [],
+    "edges": []
+  },
+  "episodes": [
+    {
+      "id": "ep_1",
+      "start_tick": 1,
+      "end_tick": 1,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_2",
+      "start_tick": 2,
+      "end_tick": 2,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_3",
+      "start_tick": 3,
+      "end_tick": 3,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_4",
+      "start_tick": 4,
+      "end_tick": 4,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_5",
+      "start_tick": 5,
+      "end_tick": 5,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_6",
+      "start_tick": 6,
+      "end_tick": 6,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_7",
+      "start_tick": 7,
+      "end_tick": 7,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    }
+  ],
+  "next_episode_ordinal": 8,
+  "node_modality": {},
+  "experience_clock": {
+    "us": 40000000,
+    "unit": "world_experience_us"
+  },
+  "_format_version": "1.2"
+}

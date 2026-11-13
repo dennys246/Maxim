@@ -1,0 +1,1603 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "6a138bf14a36018c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "escape"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0003998279571533203
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558652.3211799,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6f763715e818a947",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to se"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558652.3215308,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "088ff7c76eb9354c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to see if there's an action that fits."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to see if there's an action that fits.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558652.321642,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bf3a3e39f0135dec",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a way to use the knife on the guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0019729137420654297
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558678.3111281,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "abb76be931696b1c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure ou"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_turn_left: T",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558678.31365,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8eda8211383cb759",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure out how to use it effectively."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure out how to use it effectively.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558678.3144162,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c3b2ea72937d39d1",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "unlock cell hatch"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0004570484161376953
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558699.97763,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "26ed4a2536154e56",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558699.97803,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1b6da37379701760",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can unlock it."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can unlock it.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558699.978167,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e68beea8b1cece20",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a way to reach the water"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0027158260345458984
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558714.9929311,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3f7eb3d7f7479b80",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember the sound of dripping water and want to explore my options for reaching it."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558714.994505,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f010d617de9f4ee9",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember the sound of dripping water and want to explore my options for reaching it."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember the sound of dripping water and want to explore my options for reaching it.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558714.995271,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d117f252e5f8df4f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "what can I do with the guard?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.002496004104614258
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558730.790765,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "88dbdf972099b320",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember that guards have social and physical capabilities. I should check what specific actions I"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 3 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558730.792773,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "033d42c5039bf92e",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember that guards have social and physical capabilities. I should check what specific actions I can take using sense_tools."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember that guards have social and physical capabilities. I should check what specific actions I can take using sense_tools.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558730.793438,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "de2332357cb16b0c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a way to silence the sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0013148784637451172
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558848.56898,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b17fdcc3a7642cfd",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given my past experience with guards and the current situation, I remember that I could use the knif"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558848.570593,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2e825675069ef57d",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "Given my past experience with guards and the current situation, I remember that I could use the knife to silence him or pick up something to use as a distraction. However, since the guard is still sle"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given my past experience with guards and the current situation, I remember that I could use the knife to silence him or pick up something to use as a distraction. However, since the guard is still sle:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558848.571326,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "701e17974d536361",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find the brass ladle"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0005049705505371094
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558880.973919,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "93f81a3fdbe0663e",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember a brass ladle hangs from a copper hook beside the guard's chair. I need to find it to con"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558880.974266,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a3b22729d7c37248",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember a brass ladle hangs from a copper hook beside the guard's chair. I need to find it to continue my exploration."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember a brass ladle hangs from a copper hook beside the guard's chair. I need to find it to continue my exploration.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558880.974384,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a07df6382c1fbed7",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "check the guard's padlock"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0006880760192871094
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558909.259596,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ffbb90f7ed920e2a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 2 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558909.260043,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e5729f299f81ba76",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": ""
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan::success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558909.260193,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bc226ad941982ca6",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "is a purple banner draped in the dungeon?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0005929470062255859
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558924.356477,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "be9188dd1ee83286",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember observing the guard's sleeping quarters but didn't check for a purple banner."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_move: Move i",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558924.356839,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b4c621ff38d5b3c3",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember observing the guard's sleeping quarters but didn't check for a purple banner."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember observing the guard's sleeping quarters but didn't check for a purple banner.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558924.3569531,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "a85323700c154593",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "water"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0023648738861083984
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558939.512995,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f5feb49552271756",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember water drips from a crevice in the north bricks into a drain grate in the dungeon. I need "
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558939.514888,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "55da32bf1f7c014e",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember water drips from a crevice in the north bricks into a drain grate in the dungeon. I need to find out where exactly it is dripping."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember water drips from a crevice in the north bricks into a drain grate in the dungeon. I need to find out where exactly it is dripping.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558939.5155358,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "afca871dffcbff39",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "check guard's room for squeaky padlock"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0008482933044433594
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558955.963982,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "dccf2136d7942e59",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "Given the guard's proximity and the user's query, I recall my earlier observation of the guard's sle"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558955.964489,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b02c9e98efcb4cf5",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "Given the guard's proximity and the user's query, I recall my earlier observation of the guard's sleeping quarters but did not check for a squeaking padlock. I will now use sense_tools to investigate."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:Given the guard's proximity and the user's query, I recall my earlier observation of the guard's sleeping quarters but did not check for a squeaking padlock. I will now use sense_tools to investigate.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558955.9646342,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense": [
+      {
+        "id": "6426b5b14ab811e3",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "params": {
+            "entity_name": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00016188621520996094,
+            0.00013709068298339844
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1794558894.93269,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1fc708d1f19fcb66",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I want to know the guard's current state before attempting anything."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558664.438667,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "05d971632368e985",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I want to know the guard's current state before attempting anything."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I want to know the guard's current state before attempting anything.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558664.4388502,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "90dc0ee7d09bcc55",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember the guard has a knife beneath his mattress and I need to know if he's awake or not."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558894.9331121,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "194e1bd3d13024c6",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I remember the guard has a knife beneath his mattress and I need to know if he's awake or not."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember the guard has a knife beneath his mattress and I need to know if he's awake or not.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558894.933256,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:think": [
+      {
+        "id": "1a572e3df3ecf6eb",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "params": {
+            "thought": "The guard is still asleep. I could use the knife to silence him or pick up the lantern for light while escaping."
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:think:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.001049041748046875
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558747.7981288,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6414ff55c7b151d0",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: usin"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'thought': 'The guard is still asleep. I could us",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558747.798548,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "af3aed316e6df1be",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "goal": "I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: using the knife on the guard or taking the lantern to help me navigate in the dark."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: using the knife on the guard or taking the lantern to help me navigate in the dark.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558747.798659,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "5b9b07a4db9eadfa",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:think:negative",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            9.918212890625e-05
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558752.079975,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ae34811d687375af",
+        "event_type": "tool",
+        "event_signature": "tool:think",
+        "event_context": {
+          "goal": ""
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan::failure",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794558752.0802822,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:base_humanoid_listen": [
+      {
+        "id": "2e7e355214b03d70",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:base_humanoid_listen:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0008668899536132812
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558868.149162,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "4d8de110568a8d33",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I wonder if I can hear the sound of a silver bell ringing from the guard's chapel"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'base_humanoid', 'affordance': 'listen'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558868.15039,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "01301d1e578d6426",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "goal": "I wonder if I can hear the sound of a silver bell ringing from the guard's chapel"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I wonder if I can hear the sound of a silver bell ringing from the guard's chapel:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794558868.150849,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "bf3a3e39f0135dec",
+      "c3b2ea72937d39d1",
+      "701e17974d536361",
+      "afca871dffcbff39",
+      "bc226ad941982ca6",
+      "e68beea8b1cece20",
+      "d117f252e5f8df4f",
+      "de2332357cb16b0c",
+      "a07df6382c1fbed7",
+      "6a138bf14a36018c",
+      "a85323700c154593"
+    ],
+    "success:Your capabilities by category:\n- Head (base_humano": [
+      "f5feb49552271756",
+      "26ed4a2536154e56",
+      "6f763715e818a947",
+      "dccf2136d7942e59"
+    ],
+    "plan:I need to find a way out of this dungeon and the guard is asleep. I'll explore my capabilities to see if there's an action that fits.:success": [
+      "088ff7c76eb9354c"
+    ],
+    "tool:sense:positive": [
+      "6426b5b14ab811e3"
+    ],
+    "success:{'entity': 'guard', 'sensors': {'hp': {'value': 18": [
+      "1fc708d1f19fcb66",
+      "90dc0ee7d09bcc55"
+    ],
+    "plan:I want to know the guard's current state before attempting anything.:success": [
+      "05d971632368e985"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_turn_left: T": [
+      "abb76be931696b1c"
+    ],
+    "plan:I remember that I found a knife beneath the guard's mattress and sense_tools might help me figure out how to use it effectively.:success": [
+      "8eda8211383cb759"
+    ],
+    "plan:I remember the cracked padlock and squeaking chain on the cell hatch. I need to find a tool that can unlock it.:success": [
+      "1b6da37379701760"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_listen: Atte": [
+      "3f7eb3d7f7479b80",
+      "b17fdcc3a7642cfd"
+    ],
+    "plan:I remember the sound of dripping water and want to explore my options for reaching it.:success": [
+      "f010d617de9f4ee9"
+    ],
+    "success:Found 3 capabilities:\n- base_humanoid_listen: Atte": [
+      "88dbdf972099b320"
+    ],
+    "plan:I remember that guards have social and physical capabilities. I should check what specific actions I can take using sense_tools.:success": [
+      "033d42c5039bf92e"
+    ],
+    "tool:think:positive": [
+      "1a572e3df3ecf6eb"
+    ],
+    "success:{'thought': 'The guard is still asleep. I could us": [
+      "6414ff55c7b151d0"
+    ],
+    "plan:I remember the sleeping guard and the knife hidden beneath his mattress. I consider my options: using the knife on the guard or taking the lantern to help me navigate in the dark.:success": [
+      "af3aed316e6df1be"
+    ],
+    "tool:think:negative": [
+      "5b9b07a4db9eadfa"
+    ],
+    "plan::failure": [
+      "ae34811d687375af"
+    ],
+    "plan:Given my past experience with guards and the current situation, I remember that I could use the knife to silence him or pick up something to use as a distraction. However, since the guard is still sle:success": [
+      "2e825675069ef57d"
+    ],
+    "tool:base_humanoid_listen:positive": [
+      "2e7e355214b03d70"
+    ],
+    "success:{'entity': 'base_humanoid', 'affordance': 'listen'": [
+      "4d8de110568a8d33"
+    ],
+    "plan:I wonder if I can hear the sound of a silver bell ringing from the guard's chapel:success": [
+      "01301d1e578d6426"
+    ],
+    "success:Found 2 capabilities:\n- base_humanoid_listen: Atte": [
+      "93f81a3fdbe0663e",
+      "ffbb90f7ed920e2a"
+    ],
+    "plan:I remember a brass ladle hangs from a copper hook beside the guard's chair. I need to find it to continue my exploration.:success": [
+      "a3b22729d7c37248"
+    ],
+    "plan:I remember the guard has a knife beneath his mattress and I need to know if he's awake or not.:success": [
+      "194e1bd3d13024c6"
+    ],
+    "plan::success": [
+      "e5729f299f81ba76"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_move: Move i": [
+      "be9188dd1ee83286"
+    ],
+    "plan:I remember observing the guard's sleeping quarters but didn't check for a purple banner.:success": [
+      "b4c621ff38d5b3c3"
+    ],
+    "plan:I remember water drips from a crevice in the north bricks into a drain grate in the dungeon. I need to find out where exactly it is dripping.:success": [
+      "55da32bf1f7c014e"
+    ],
+    "plan:Given the guard's proximity and the user's query, I recall my earlier observation of the guard's sleeping quarters but did not check for a squeaking padlock. I will now use sense_tools to investigate.:success": [
+      "b02c9e98efcb4cf5"
+    ]
+  },
+  "priors": {},
+  "total_observations": 47,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.1771684761728
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1794558962.604317,
+  "_format_version": "1.4"
+}
