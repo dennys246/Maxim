@@ -212,6 +212,31 @@ class TestAutoSpawnStamp:
         lane = self._reuse_run(monkeypatch, tmp_path, spawner)
         assert lane.served_n_ctx is None
 
+    def test_a_missing_gguf_skips_the_spawn_and_names_the_path(self, monkeypatch, tmp_path):
+        """#1645: the skip's warning had no direct test; it ran only when an earlier test's state reached it."""
+        import sys
+        import types
+        from unittest import mock as _m
+
+        from maxim.runtime import lane_backends as lb
+
+        monkeypatch.setitem(sys.modules, "llama_cpp.server", types.ModuleType("llama_cpp.server"))
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+        monkeypatch.delenv("MAXIM_AUTO_SPAWN_LLM_SERVER", raising=False)
+        monkeypatch.setattr(lb, "_read_persisted_model", lambda: None)
+        missing = tmp_path / "absent.gguf"
+        cfg = LaneConfig(name="large", max_workers=1, model_profile="mistral-7b")
+        log = _m.MagicMock()
+        with _m.patch(
+            "maxim.models.language.config.load_llm_config",
+            return_value=types.SimpleNamespace(model_path=str(missing)),
+        ):
+            out = lb._maybe_auto_spawn_server(_Caps(), {"large": cfg}, log)
+        assert out["large"] is cfg, "a missing GGUF leaves the lane unchanged (no spawn, no stamp)"
+        skips = [c for c in log.warning.call_args_list if "GGUF file not found" in c.args[0]]
+        assert len(skips) == 1
+        assert skips[0].args[1:] == (str(missing), "mistral-7b")
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
