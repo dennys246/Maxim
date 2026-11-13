@@ -145,6 +145,7 @@ session snapshot deleted; the imagination teardown's ``clear_ephemeral`` deleted
 from __future__ import annotations
 
 import json
+import threading
 import logging
 import os
 import subprocess
@@ -229,6 +230,24 @@ def test_orchestrator_run_matches_the_golden(arm: str, tmp_path_factory: pytest.
     if canonical_json(got) != canonical_json(want):
         loop_log = "\n".join(_LOOP_LOGS.get(arm, [])[-150:])
         pytest.fail(f"{_first_difference(got, want)}\n--- agent loop log, last 150 lines (#1488) ---\n{loop_log}")
+
+
+@pytest.mark.timeout(240)
+def test_a_reader_left_alive_by_an_earlier_test_does_not_stall_the_stdin_arm(tmp_path: Path) -> None:
+    """#1654: the harness waits on the run's OWN reader for ``/cancel``. It once looked the reader up by the name
+    ``sim.stdin``, found a reader an earlier test had left alive, waited out its 30 s timeout, and failed turn 2's
+    ``send_message`` (``nac_credits.other[0]: length 1 != 2``). A fresh run, never the cached trace."""
+    assert_this_checkout()
+    release = threading.Event()
+    stale = threading.Thread(target=release.wait, args=(120,), name="sim.stdin", daemon=True)
+    stale.start()
+    try:
+        trace = run_arm("stdin", tmp_path)
+    finally:
+        release.set()
+    trace.pop("_elapsed_s")
+    got, want = json.loads(canonical_json(trace)), _fixture()["arms"]["stdin"]
+    assert canonical_json(got) == canonical_json(want), _first_difference(got, want)
 
 
 # ── direct assertions (each is also in the golden; these say what the golden means) ──
