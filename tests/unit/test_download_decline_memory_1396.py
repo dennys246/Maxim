@@ -21,9 +21,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src" / "maxim"
-_RED = pytest.mark.xfail(
-    strict=True, reason="#1396 Q2 red gate: the download gate has no decline memory yet; the fix commit removes this"
-)
 
 
 @pytest.fixture
@@ -58,7 +55,6 @@ def _ask(rec) -> bool:
     return ensure_available(rec.profile)
 
 
-@_RED
 @pytest.mark.parametrize("answer", [False, None], ids=["no", "timeout"])
 def test_an_answer_at_the_prompt_is_asked_once_per_armed_scope(gate, capsys, answer) -> None:
     from maxim.models.download import download_decline_scope
@@ -83,7 +79,6 @@ def test_outside_any_scope_the_gate_asks_every_time(gate) -> None:
     assert len(gate.questions) == 2
 
 
-@_RED
 def test_an_unarmed_scope_asks_every_time(gate) -> None:
     from maxim.models.download import download_decline_scope
 
@@ -93,7 +88,6 @@ def test_an_unarmed_scope_asks_every_time(gate) -> None:
     assert len(gate.questions) == 2
 
 
-@_RED
 def test_arming_turns_on_the_innermost_scope_and_without_a_scope_does_nothing(gate, caplog) -> None:
     from maxim.models.download import arm_download_decline_memory, download_decline_scope
 
@@ -111,7 +105,6 @@ def test_arming_turns_on_the_innermost_scope_and_without_a_scope_does_nothing(ga
     assert len(gate.questions) == 4
 
 
-@_RED
 def test_nested_scopes_neither_inherit_nor_wipe_the_outer_memory(gate) -> None:
     from maxim.models.download import download_decline_scope
 
@@ -124,7 +117,6 @@ def test_nested_scopes_neither_inherit_nor_wipe_the_outer_memory(gate) -> None:
     assert len(gate.questions) == 2
 
 
-@_RED
 def test_a_scope_restores_the_outer_state_when_its_body_raises(gate) -> None:
     from maxim.models.download import download_decline_scope
 
@@ -135,7 +127,6 @@ def test_a_scope_restores_the_outer_state_when_its_body_raises(gate) -> None:
     assert len(gate.questions) == 2
 
 
-@_RED
 def test_an_in_process_grant_after_a_no_still_downloads(gate, monkeypatch) -> None:
     """Grants are checked before the memory. (An operator cannot grant mid-run from outside: config is cached per
     process, so the printed hint offers the manual download now and the grants from the next run.)"""
@@ -149,7 +140,6 @@ def test_an_in_process_grant_after_a_no_still_downloads(gate, monkeypatch) -> No
     assert len(gate.questions) == 1
 
 
-@_RED
 def test_a_file_that_appears_after_a_no_still_loads(gate) -> None:
     from maxim.models.download import download_decline_scope
 
@@ -159,7 +149,6 @@ def test_a_file_that_appears_after_a_no_still_loads(gate) -> None:
         assert _ask(gate) is True
 
 
-@_RED
 def test_a_refusal_that_asked_nothing_is_not_remembered(gate, monkeypatch) -> None:
     """No terminal: refused without a question. A later call at a terminal still asks."""
     from maxim.models.download import download_decline_scope
@@ -172,7 +161,6 @@ def test_a_refusal_that_asked_nothing_is_not_remembered(gate, monkeypatch) -> No
     assert len(gate.questions) == 1
 
 
-@_RED
 def test_a_yes_whose_download_fails_asks_again(gate, monkeypatch) -> None:
     """Only a "no" or a timeout is remembered: a "yes" whose download failed may be retried with a fresh ask."""
     from maxim.models import download
@@ -187,7 +175,6 @@ def test_a_yes_whose_download_fails_asks_again(gate, monkeypatch) -> None:
     assert gate.downloads == [gate.profile, gate.profile]
 
 
-@_RED
 def test_a_call_on_another_thread_inside_the_scope_sees_the_memory(gate) -> None:
     """Module state, not a contextvar: Python threads do not inherit the caller's context, and preflights run off
     the main thread (the reason the note rejects a contextvar)."""
@@ -201,7 +188,6 @@ def test_a_call_on_another_thread_inside_the_scope_sees_the_memory(gate) -> None
     assert len(gate.questions) == 1
 
 
-@_RED
 def test_the_composed_sim_path_asks_once_after_a_no(gate) -> None:
     """The seam #1396 names: ``--sim interactive`` asks in ``_ensure_router_model``, then the sim's own preflight."""
     from maxim import cli
@@ -220,7 +206,6 @@ def test_the_composed_sim_path_asks_once_after_a_no(gate) -> None:
     assert out["large"].model_profile is None  # the preflight's own fallback, unchanged
 
 
-@_RED
 def test_main_guarded_opens_an_unarmed_scope_that_main_impl_arms(gate, monkeypatch) -> None:
     from maxim import cli
     from maxim.models.download import arm_download_decline_memory
@@ -246,7 +231,6 @@ def test_main_guarded_opens_an_unarmed_scope_that_main_impl_arms(gate, monkeypat
     assert len(gate.questions) == 4
 
 
-@_RED
 def test_each_menu_choice_is_its_own_run(gate, monkeypatch) -> None:
     """A "no" in one bare-``maxim`` menu choice never refuses the next choice (each is a separate intent)."""
     from maxim import cli
@@ -279,7 +263,6 @@ def _calls_in(callee: str) -> set[str]:
     return found
 
 
-@_RED
 def test_only_the_cli_run_sites_open_or_arm_the_memory() -> None:
     """A new scope or arm site widens what a "no" refuses: it must be a deliberate, reviewed change."""
     assert _calls_in("download_decline_scope") == {"cli.py::_main_guarded", "cli.py::_run_menu_choice"}
@@ -288,7 +271,6 @@ def test_only_the_cli_run_sites_open_or_arm_the_memory() -> None:
     assert "cli.py::_bare_maxim_menu" not in _calls_in("_run_menu_sim")
 
 
-@_RED
 def test_an_inner_scopes_no_does_not_leak_into_the_outer_scope(gate) -> None:
     """Exit restores the outer SET, not only the armed flag: the CLI's run must not inherit a menu choice's "no"."""
     from maxim.models.download import download_decline_scope
@@ -300,7 +282,6 @@ def test_an_inner_scopes_no_does_not_leak_into_the_outer_scope(gate) -> None:
     assert len(gate.questions) == 2
 
 
-@_RED
 def test_a_path_that_never_asks_is_unchanged_after_a_no(gate, capsys, caplog) -> None:
     """The memory sits inside the prompting branch only: the llama backend's lazy load (``interactive=False``, on the
     warmup thread) keeps its own logged message and prints nothing (#1343), even after a "no" at the terminal."""
@@ -319,7 +300,6 @@ def test_a_path_that_never_asks_is_unchanged_after_a_no(gate, capsys, caplog) ->
     assert len(gate.questions) == 1
 
 
-@_RED
 def test_a_no_answered_after_its_scope_exited_is_dropped(gate, monkeypatch) -> None:
     """A thread still at the prompt when its scope exits: its answer belongs to no current run, so it is dropped
     rather than landing in the outer scope."""

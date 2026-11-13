@@ -655,6 +655,24 @@ def _isolate_maxim_auto_download_env():
 
 
 @pytest.fixture(autouse=True)
+def _reset_download_decline_memory():
+    """Reset the download gate's decline memory (#1396) around every test.
+
+    ``models/download.py`` keeps a module-level "no" memory that ``cli.py::_main_guarded`` scopes; a test that leaves
+    a scope open (or arms one) would make a later test's gate skip its question. Touches the module only when it is
+    already imported (never imports maxim from here), and requests no ``monkeypatch``: an autouse fixture that does
+    reorders teardown after the scripts-module guard (the #1371 lesson).
+    """
+    mod = sys.modules.get("maxim.models.download")
+    if mod is not None:
+        mod._reset_decline_memory_for_tests()
+    yield
+    mod = sys.modules.get("maxim.models.download")
+    if mod is not None:
+        mod._reset_decline_memory_for_tests()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_harness_run_id_env():
     """Scrub ``MAXIM_HARNESS_RUN_ID`` across every test (M1b, #1003).
 
