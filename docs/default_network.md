@@ -458,10 +458,10 @@ Clear with: `maxim --clear-memory threshold`
 
 | Biological | Maxim Equivalent |
 |------------|------------------|
-| Default Mode Network | DefaultNetwork coordinator |
+| Salience network / exogenous attention | DefaultNetwork reactive layer (the name is historical: NAME-ONLY, not the default mode network) |
 | Thalamus | ThalamicGate filtering |
 | Superior colliculus | OrientingResponse |
 | FEF (frontal eye fields) | GazeController |
 | Amygdala | StartleResponse, SocialAttention |
 
-The DN provides fast, naturalistic behavior without the latency of LLM deliberation, similar to how biological default mode networks handle routine cognition.
+The DN provides fast, naturalistic behavior without the latency of LLM deliberation. Despite its name, it does a salience and exogenous-attention job (orienting to what the world demands), not the biological default mode network's job. The DMN is task-negative: it is active at rest and does replay, prospection and self-referential processing. A true idle-time coordinator that would earn the DMN name is proposed in [plans/bio_faithful_roadmap.md](plans/bio_faithful_roadmap.md) (Default-Network reorganization, Stage B) and [plans/hybrid_arbitration.md](plans/hybrid_arbitration.md) §B.

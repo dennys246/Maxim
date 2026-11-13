@@ -2,6 +2,75 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-11-11 — Hybrid arbitration is a 1.5 candidate line: the substrate acts by default, the LLM is called when the substrate is unsure, and a default mode network works at idle
+
+### Decision (owner, 2026-11-11, direction only; design in [docs/plans/hybrid_arbitration.md](docs/plans/hybrid_arbitration.md))
+
+1. **A parallel paper line, not a 1.4 rung.**
+   - No `src/` change for this line before the 1.4.0 cut (mechanization backlog M89). This also keeps `NAc.recommend_action`'s selection path untouched while E1's mechanism lives there.
+   - Before 1.4.0 the line is paper, plus Step 0: a calibration analysis of the `NAc_RECOMMEND` provenance logs that
+     already exist. If those are too thin, a substrate-only logging re-run.
+   - It is never active in an E1–E3 arm. Until mechanization backlog M88 closes, that rule is policy, not a check.
+   - Its claims are candidate 1.5 headlines.
+2. **Arbitration is per decision, at the cognition layer.** This does not reverse the 2026-07-17 HYBRID decision or its
+   deferred plan ([deferred/hybrid_substrate_reflex_runtime.md](docs/plans/deferred/hybrid_substrate_reflex_runtime.md)).
+   That plan rejected `aut_mode="hybrid"` for a motor reflex running UNDER the LLM, which needs no mode switch. This
+   line needs a per-decision choice between two controllers; how it is switched on is HA-O1. The two compose.
+   - **SF-1 (one-way inhibition) carries over unchanged.**
+   - **BL-4 (NAc separation) does NOT carry over.** This line shares one NAc between the controllers on purpose, so
+     that LLM-chosen actions can become habits. The resulting Wire-A content is owner decision HA-O9.
+   - The new mode value is not the July-rejected literal `"hybrid"`.
+3. **The default mode network is the idle-time half, not the substrate path.** It is bio_faithful_roadmap Stage B,
+   now its own plan, [idle_dmn_coordinator.md](docs/plans/idle_dmn_coordinator.md).
+   `default_network/` stays a salience/reactive layer under a historical name. Two docs that called it a DMN are
+   corrected in the same change.
+4. **The claim is efficiency first, and two-sided.**
+   - The hybrid must beat substrate-primary and the floors on outcome.
+   - It must also be non-inferior to llm-primary, at a fraction of the LLM calls.
+   - BF2 binds every claim of the line, so none EARNs before B2.
+   - The hybrid becomes the default only by a later owner decision.
+
+5. **The design decisions (owner, 2026-11-12; HA-O1–HA-O16 in the plan).**
+   - **The mode value** is named for the arbiter and enters through exhaustive dispatch.
+   - **The substrate acts by default**, after a per-world hold that is scaled by conflict.
+   - **Pre-emption is asymmetric:**
+     - the LLM pre-empts on authority;
+     - the substrate pre-empts only on danger or staleness, with self-caused changes excluded;
+     - the habit the LLM overrode is suppressed, capped, and cleared by any danger event.
+   - **A safety floor (HA-O16).** The LLM can never override, withdraw, cancel, delay or suppress a danger-selected
+     or protective action.
+   - **Coupling is a two-way 2×2 with the both-on cell primary.** The LLM → substrate direction goes through the
+     shared [foreign_advice_layer.md](docs/plans/foreign_advice_layer.md): credit-isolated, never persisted or
+     promoted. Advice-flipped actions are stamped `substrate_advised` and credited as LLM choices.
+   - **Credit is per chooser.**
+   - **The claim** is per-decision efficiency across a portfolio, under the project's effect-size pass rule. Each
+     member has its own comparator role, and a safety DEGRADE vetoes the claim.
+   - **The first evidence slice** is a one-cell, boundary-only Exp 49 re-run, reported as exploratory.
+   - **The arbiter is ExecutiveFunction Stage 3, revived for this line.**
+   - **Split out into four plans of their own:** the advice layer (above), mid-action cancel
+     ([sem_interruptibility.md](docs/plans/sem_interruptibility.md), owned by embodiment, MP13 for the robot),
+     the learned hold ([learned_hold_window.md](docs/plans/learned_hold_window.md)), and the idle DMN coordinator.
+     The chooser stamp joins M1.
+   - **`default_network/` keeps its name.**
+
+### Reason
+
+Exp 49 split the two controllers cleanly. The substrate was about 20× faster where its policy applied, and the LLM
+crossed a trap the substrate could not. Exp 37/38/40 found that when the substrate only annotates the LLM's prompt,
+the coupling follows the LLM's prior: the prior dominates it, or the substrate amplifies the prior. Letting the
+substrate act, and escalating only when it is unsure, replaces that coupling without a new bus or bio-system. The
+arbiter is proposed as the deferred ExecutiveFunction Stage 3.
+
+### Tradeoffs
+
+- A per-tick arbiter adds a third control path to a loop still being decomposed. That is why no `src/` lands
+  before the 1.4.0 cut, why the mode enters through exhaustive dispatch, and why it is composed once in the
+  loop-stack builder.
+- The full design depends on about ten unbuilt plans or stages owned by other lines, among them GL3.B7's stale-LLM
+  pre-emption (not GL3.B4). So a 1.5 EARNED claim is unrealistic. The first slice is a one-cell Exp 49 run that
+  needs neither GL3.B7 nor the advice layer.
+- Confidence is not calibrated today, so the line can stop at Step 0 (no rising calibration curve).
+
 ## 2026-11-02 — The bounded stop: the library never exits, sessions have one owner, and the CLI owns signals (#1438, #1344)
 
 ### Decision (owner, 2026-10-25/26, 2026-10-30 and 2026-11-02; design in [docs/plans/bounded_stop.md](docs/plans/bounded_stop.md))
