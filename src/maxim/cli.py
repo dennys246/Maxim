@@ -388,7 +388,7 @@ def _bare_maxim_menu() -> int:
             continue
 
         try:
-            _run_menu_sim(action)
+            _run_menu_choice(action)
         except KeyboardInterrupt:
             print("\n")
         if stop_noted():  # a process stop ends the menu: a later sim would refuse (owner decision 2026-11-02)
@@ -508,6 +508,34 @@ def _setup_interactive_display() -> None:
             set_active_display(display)
     except Exception:
         pass
+
+
+def _apply_sim_report_flags(args: Any) -> int | None:
+    """Cross-flag validation of ``--sim-report`` / ``--report-json`` (each needs ``--sim``): 1 on a misuse, else None
+    after exporting ``--report-json``. Moved verbatim out of ``_main_impl`` (rule T) by #1396."""
+    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
+        print("Error: --sim-report requires --sim.", file=sys.stderr)
+        return 1
+    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
+        print("Error: --report-json requires --sim.", file=sys.stderr)
+        return 1
+    # --report-json is read by simulation/orchestrator.py via environment
+    # rather than by threading through start_simulation_mode's signature
+    # (which has 5+ invocation sites).  Set it once here and let the
+    # orchestrator emit when it builds the report.
+    _report_json_arg = getattr(args, "report_json", None)
+    if _report_json_arg:
+        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
+    return None
+
+
+def _run_menu_choice(action: str) -> None:
+    """One bare-``maxim`` menu choice is one run: its own armed download-decline scope (#1396), so a "no" in one choice
+    never refuses the next, and nothing from the CLI's outer scope carries into it."""
+    from maxim.models.download import download_decline_scope
+
+    with download_decline_scope(armed=True):
+        _run_menu_sim(action)
 
 
 def _run_menu_sim(action: str) -> None:
@@ -1769,20 +1797,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     if _foundry_theme:
         return _handle_foundry(args, _foundry_theme)
 
-    # ── Cross-flag validation ───────────────────────────────────────────
-    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
-        print("Error: --sim-report requires --sim.", file=sys.stderr)
-        return 1
-    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
-        print("Error: --report-json requires --sim.", file=sys.stderr)
-        return 1
-    # --report-json is read by simulation/orchestrator.py via environment
-    # rather than by threading through start_simulation_mode's signature
-    # (which has 5+ invocation sites).  Set it once here and let the
-    # orchestrator emit when it builds the report.
-    _report_json_arg = getattr(args, "report_json", None)
-    if _report_json_arg:
-        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
+    # ── The run modes: from here a "no" to a model download is asked once per run (#1396) ──
+    from maxim.models.download import arm_download_decline_memory
+
+    arm_download_decline_memory()
+    _report_flags_rc = _apply_sim_report_flags(args)
+    if _report_flags_rc is not None:
+        return _report_flags_rc
 
     # Scenario generation if requested
     gen_description = getattr(args, "generate_simulation", None)
@@ -2868,9 +2889,11 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
     exception re-raises — we don't want to swallow bugs.
     """
     from maxim.exceptions import LeaderRefusal
+    from maxim.models.download import download_decline_scope
 
     try:
-        return _main_impl(argv)
+        with download_decline_scope(armed=False):  # _main_impl arms it for the run modes (#1396)
+            return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
     except LeaderRefusal as refusal:
