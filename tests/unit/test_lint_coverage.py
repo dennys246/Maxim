@@ -26,6 +26,8 @@ HW = "src/maxim/hw/robot.py"
 IMPORT_COV = "import " + "coverage"
 NO_COV = "--no-" + "cov"
 ENV_COV = "COVERAGE" + "_FILE"
+RUNNER = (Path(__file__).resolve().parents[2] / L.RUNNER_REL).read_text(encoding="utf-8")
+_SUITE_RUN = "".join(f"          {ln}\n" for ln in L.RF.CI_STEP_RUN.splitlines())  # the pinned step, as YAML
 
 
 WORKFLOW = (
@@ -52,9 +54,7 @@ WORKFLOW = (
     "      - name: suite\n"
     f'        if: "{L.CI_REUSE_SKIP_IF}"\n'
     "        run: |\n"
-    f"          {L.CI_CLEAN}\n"
-    "          python -m pytest tests/ -x \\\n"
-    f"            {L.CI_COV_ARGS}\n"
+    f"{_SUITE_RUN}"
     "      - name: Coverage ratchet\n"
     f"        {L.CI_LINT_RUN}\n"
     "      - name: upload\n"
@@ -66,6 +66,15 @@ WORKFLOW = (
     "            coverage.json\n"
     "            fast-suite.xml\n"
     "            measured-tree.json\n"
+    "      - name: shards\n"
+    f'        if: "{L.CI_UPLOAD_IF}"\n'
+    "        uses: actions/upload-artifact@v4\n"
+    "        with:\n"
+    "          name: fast-suite-shards-${{ github.run_attempt }}\n"
+    "          path: |\n"
+    "            shard*.log\n"
+    "            fast-suite.shard*.xml\n"
+    "            shard*.collect.json\n"
     "      - name: pointer\n"
     f'        if: "{L.CI_POINTER_IF}"\n'
     "        uses: actions/upload-artifact@v4\n"
@@ -214,6 +223,7 @@ def repo(tmp_path: Path, monkeypatch):
     _write(tmp_path, HW, _lines(3, "h"))
     _write(tmp_path, "tests/test_x.py", "def test_x():\n    assert True\n")
     _write(tmp_path, ".github/workflows/test.yml", WORKFLOW)
+    _write(tmp_path, L.RUNNER_REL, RUNNER)
     _write(tmp_path, L.FLOORS_REL, _floors())
     _write(tmp_path, L.EXCLUSIONS_REL, _exclusions())
     _commit(tmp_path)
@@ -381,6 +391,7 @@ def test_bootstrap_without_a_base_floors_file_checks_every_floor_as_new(tmp_path
     _write(tmp_path, ".gitignore", "coverage.json\n")
     _write(tmp_path, "pyproject.toml", _pyproject(omit=["*/hw/robot.py"]))
     _write(tmp_path, ".github/workflows/test.yml", WORKFLOW)
+    _write(tmp_path, L.RUNNER_REL, RUNNER)
     for rel, text in ((A, _lines(10, "a")), (B, _lines(10, "b") + "zz = 0  # pragma: no cover\n"), (HW, "h = 1\n")):
         _write(tmp_path, rel, text)
     _commit(tmp_path)
@@ -610,6 +621,56 @@ def test_banned_options_env_and_imports_FAIL(repo, capsys, rel, text, needle):
     _cov(repo)
     rc, _, err = _run(capsys)
     assert rc == 1 and needle in err
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        lambda t: t.replace(L.RUNNER_ENV_ALLOW, L.RUNNER_ENV_ALLOW + "\n    env['COVERAGE" + "_RCFILE'] = 'x'"),
+        lambda t: t.replace(L.RUNNER_ENV_ALLOW, L.RUNNER_ENV_ALLOW + "\n    " + L.RUNNER_ENV_ALLOW),
+        lambda t: t.replace(L.RUNNER_ENV_ALLOW, 'env["COVERAGE' + '_FILE"] = ".coverage"'),
+        None,
+    ],
+    ids=["second-name", "set-twice", "other-value", "runner-missing"],
+)
+def test_the_sharded_runner_may_set_only_its_shards_data_file(repo, capsys, edit):
+    """#1645 S1: the runner is part of the measurement, and the env ban reads only workflows and ini sources, so the
+    runner itself is scanned: one coverage environment name, set once, to the shard's own data file. (That the shards
+    inherit no OTHER such name is the stub-pytest test's, tests/unit/test_run_fast_suite.py.)"""
+    if edit is None:
+        (repo / L.RUNNER_REL).unlink()
+    else:
+        _write(repo, L.RUNNER_REL, edit(RUNNER))
+    _cov(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and L.RUNNER_REL in err, err
+
+
+@pytest.mark.parametrize(
+    "old,new,name",
+    [
+        ("  unit-tests:\n", "  unit-tests:\n    env:\n      PYTEST_ADDOPTS: -k notmemory\n", "PYTEST_ADDOPTS"),
+        ("      - name: suite\n", "      - name: suite\n        env:\n          PYTEST_PLUGINS: x\n", "PYTEST_PLUGINS"),
+        (
+            "      - name: suite\n",
+            "      - name: narrow\n        run: echo 'PYTEST_ADDOPTS=-k notmemory' >> \"$GITHUB_ENV\"\n      - name: suite\n",
+            "PYTEST_ADDOPTS",
+        ),
+        (
+            "  unit-tests:\n",
+            "  unit-tests:\n    env:\n      PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'\n",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        ),
+    ],
+    ids=["job-env", "step-env", "github-env", "autoload-off"],
+)
+def test_a_pytest_env_knob_in_the_workflow_FAILS(repo, capsys, old, new, name):
+    """#1645 delta review: ci_netns.sh carries the job's environment into the namespace, so PYTEST_ADDOPTS (or a
+    plugin knob) set anywhere in a workflow narrows every shard's run past the pinned step arguments."""
+    assert old in WORKFLOW
+    _write(repo, ".github/workflows/test.yml", WORKFLOW.replace(old, new, 1))
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"names {name} — it changes the suite's selection or plugins" in err, err
 
 
 # ── coverage.json staleness (S8) ─────────────────────────────────────────────
@@ -952,8 +1013,18 @@ _GATE = f"      - name: Coverage ratchet\n        {L.CI_LINT_RUN}\n"
             "continue-on-error is banned",
         ),
         ("  unit-tests:\n", "  unit-tests:\n    continue-on-error: true\n", "continue-on-error is banned"),
-        (f"            {L.CI_COV_ARGS}\n", "            --cov=src/maxim\n", "needs exactly one measuring step"),
+        (" --cov-branch", "", "needs exactly one measuring step"),
+        # #1645: the shards' diagnostic upload is pinned like the coverage upload (name, exact paths, `if:`)
+        ("            shard*.collect.json\n", "", "needs exactly one upload `fast-suite-shards-"),
+        ("          name: fast-suite-shards-", "          name: coverage-json-x-", "needs exactly one upload"),
         (f"          {L.CI_CLEAN}\n", "", "needs exactly one measuring step"),
+        # #1645: the measuring step is pinned whole, so every part of the sharded invocation is load-bearing
+        (" .coverage.* ", " ", "needs exactly one measuring step"),  # a stale shard data file would be combined
+        ("--shards 4", "--shards 2", "needs exactly one measuring step"),
+        ("scripts/run_fast_suite.py --shards 4 --", "-m pytest", "needs exactly one measuring step"),
+        (" --require-extras=console,sign", "", "needs exactly one measuring step"),
+        ('bash scripts/ci_netns.sh "$SUITE"', 'bash -c "$SUITE"', "needs exactly one measuring step"),
+        ('ci_netns.sh "$SUITE"\n', 'ci_netns.sh "$SUITE" || true\n', "needs exactly one measuring step"),
         ("          fetch-depth: 0\n", "          fetch-depth: 1\n", "fetch-depth: 0"),
         ("        with:\n          fetch-depth: 0\n", "        # fetch-depth: 0\n", "fetch-depth: 0"),
         (f'"coverage=={L.COVERAGE_VERSION}"', '"coverage"', "exact coverage pin"),
@@ -976,6 +1047,43 @@ def test_the_gate_checks_its_own_CI_step(repo, capsys, old, new, needle):
         assert rc == 0, err  # the parsed run, not its YAML spelling, is what counts
     else:
         assert rc == 1 and needle in err
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        (" --cov-branch", ""),
+        (" --ignore=tests/integration/test_memory_hub.py", ""),
+        ('-m "not slow"', '-m "unit"'),
+        (" .coverage.* ", " "),
+        # the delta review's fail-open additions: each one, alone, passed the old "appears in" check
+        (" --cov=src/maxim ", " -k notmemory --cov=src/maxim "),
+        (" --cov=src/maxim ", " --deselect tests/unit/test_box_quiet.py --cov=src/maxim "),
+        (" --cov=src/maxim ", " --cov=src/maxim/memory --cov=src/maxim "),
+    ],
+    ids=["no-branch", "no-ignore", "other-marker", "clean-narrowed", "extra-k", "extra-deselect", "second-cov"],
+)
+def test_an_edit_to_the_runners_step_text_alone_fails_the_gate(repo, capsys, monkeypatch, old, new):
+    """#1645 review: the step text lives in run_fast_suite.py, but what is measured is this gate's own literals
+    (CI_CLEAN, CI_PYTEST_ARGS, CI_STEP_EXPECTED), compared for equality. Editing the runner's step text and pytest
+    arguments AND the workflow to match still fails, for a removed argument and an added one alike."""
+    edited = L.RF.CI_STEP_RUN.replace(old, new)
+    assert edited != L.RF.CI_STEP_RUN
+    monkeypatch.setattr(L.RF, "CI_STEP_RUN", edited)
+    if old in L.RF.CI_PYTEST_ARGS:
+        monkeypatch.setattr(L.RF, "CI_PYTEST_ARGS", L.RF.CI_PYTEST_ARGS.replace(old, new))
+    workflow = WORKFLOW.replace(_SUITE_RUN, "".join(f"          {ln}\n" for ln in edited.splitlines()))
+    _write(repo, ".github/workflows/test.yml", workflow)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "run_fast_suite.CI_STEP_RUN differs from the gate's own literal" in err, err
+    if old in L.CI_PYTEST_ARGS:
+        assert "run_fast_suite.CI_PYTEST_ARGS differs from the gate's own literal" in err, err
+    assert "needs exactly one measuring step" not in err  # the step matches the runner; only the literals catch it
+
+
+def test_the_gates_own_step_literal_is_the_runners_today():
+    assert L.RF.flat_run(L.RF.CI_STEP_RUN) == L.RF.flat_run(L.CI_STEP_EXPECTED)
+    assert L.RF.flat_run(L.RF.CI_PYTEST_ARGS) == L.RF.flat_run(L.CI_PYTEST_ARGS)
 
 
 _DECIDE = f"      - name: decide\n        id: {L.CI_REUSE_ID}\n        run: {L.CI_REUSE_RUN}\n"
@@ -1401,13 +1509,17 @@ def test_the_suite_script_measures_with_cis_own_command():
     local ratchet; a drifted copy of the command would measure something CI does not."""
     text = (Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh").read_text(encoding="utf-8")
     flat = " ".join(text.replace("\\\n", " ").split())
-    clean, measure, local = (
+    clean, measure, runner, local = (
         flat.find(L.CI_CLEAN),
         flat.find(L.CI_COV_ARGS),
+        # #1645: through CI's own runner, which forwards the arguments verbatim (its stub-pytest test)
+        flat.find('python scripts/run_fast_suite.py --shards "$shards" $covmode -- "${args[@]}"'),
         flat.find("python scripts/lint_coverage.py --local"),
     )
-    assert -1 < clean < measure < local, (clean, measure, local)  # clean, then measure, then the local ratchet
+    # clean, then the measuring arguments, then the runner, then the local ratchet
+    assert -1 < clean < measure < runner < local, (clean, measure, runner, local)
     assert '-m "not slow" --ignore=tests/integration/test_memory_hub.py' in flat
+    assert flat.count(L.CI_COV_ARGS) == 1, "one copy of the measuring arguments (the runner's --no-cov drops them)"
 
 
 def test_local_mode_only_notes_a_touched_package_fall(repo, capsys):
@@ -1489,6 +1601,16 @@ def test_floor_head_rules_only_skips_an_untouched_package_without_a_floor(repo):
     assert not any(
         "maxim/gamma" in m for m in L.floor_head_rules(repo, fl, overall, pkgs, only={"maxim/alpha"}, files={})
     )
+
+
+@pytest.mark.parametrize(
+    "args", [["--shards", "0"], ["--shards", "four"], ["--shards"], ["--bogus"], ["abc", "def"]], ids=str
+)
+def test_the_suite_script_refuses_bad_arguments_before_any_work(tmp_path, args):
+    """#1645: `--shards N` reaches the runner and box_quiet's weight; a bad value stops before any worktree or pytest."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "suite_at_commit.sh"
+    r = subprocess.run(["bash", str(script), *args], cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert r.returncode == 2 and "usage: scripts/suite_at_commit.sh" in r.stderr, r.stderr
 
 
 def test_the_suite_scripts_version_check_runs():
@@ -2746,10 +2868,12 @@ def test_the_pinner_names_match_the_real_workflow():
     up = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact")]
     assert [s["with"]["name"] for s in up] == [
         L.COVERAGE_ARTIFACT + "-${{ github.run_attempt }}",
+        L.SHARDS_ARTIFACT + "-${{ github.run_attempt }}",  # #1645: the shards' diagnostics, never a measurement
         L.REUSED_ARTIFACT + "-${{ github.run_attempt }}",  # #1640: a re-use run's pointer, never a copy
     ]
     assert up[0]["with"]["path"].split() == [L.COVERAGE_JSON, L.JUNIT_XML, L.STAMP_JSON]
-    assert up[0]["if"] == L.CI_UPLOAD_IF and up[1]["if"] == L.CI_POINTER_IF
+    assert set(up[1]["with"]["path"].split()) == L.SHARDS_PATHS
+    assert up[0]["if"] == L.CI_UPLOAD_IF and up[1]["if"] == L.CI_UPLOAD_IF and up[2]["if"] == L.CI_POINTER_IF
     assert [s for s in job["steps"] if s.get("name") == L.MEMORYHUB_STEP]  # --reuse-decision reads its conclusion
 
 

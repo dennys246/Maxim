@@ -1,11 +1,17 @@
-# #1645: the fast suite runs in deterministic shards (approach note, DRAFT v2)
+# #1645: the fast suite runs in deterministic shards (approach note, v2, switch built)
 
-> **Status: DRAFT v2** (maxim-4d, 2026-11-11). v1 had an adversarial gate pass, verdict DO NOT BUILD as written:
-> D1 and D2, S1–S12, N1–N8, in `review_1645_adversarial.md`. All of them are folded here.
+> **Status: v2, trial passed, switch BUILT 2026-11-13** (pending its three-lens review folds and merge). Written by
+> maxim-4d, 2026-11-11. v1 had an adversarial gate pass, verdict DO NOT BUILD as written:
+> D1 and D2, S1–S12, N1–N8, in [reviews/1645/adversarial.md](reviews/1645/adversarial.md). All of them are folded
+> here. Where the build departs from this note, see "As built" at the end.
 > Owner request (2026-11-11): do the real fix now, not a timeout bump.
 >
 > **v2 in one line:** the TRIAL is data only and can be built now. The SWITCH changes no ratchet rule and grants no
 > exception; the statements sharding loses get direct tests first.
+>
+> **2026-11-13:** trial run 6 (CI run 43533293370) passed T1–T4; the owner approved the switch, built on branch
+> `ci/1645-shard-switch` (the strict path, no exception). The switch deletes `.github/workflows/shard-trial.yml`; the
+> deletion probes below live in `tests/unit/test_run_fast_suite.py`.
 
 ## Problem
 
@@ -79,7 +85,8 @@ Two variables sharding adds (review, claim 1), and how each is handled:
    - **Modes** (S10): `--no-x`, `--no-cov` and `--cacheprovider` for `suite_at_commit.sh`. `--shards 1` is
      byte-equivalent to serial (same order, no partition), and the rig keeps it until its `RIG_KNOWN_FAILURES` is
      re-calibrated under sharding.
-   - It is in scope for the silent-swallow lint; every exception exits non-zero.
+   - Every exception exits non-zero. (As built: the silent-swallow lint scans `src/maxim` only, so the runner has its
+     own no-broad-`except` test; see "As built".)
 3. **The wiring checks** are re-pointed exactly (S1, S12):
    - `ci_step_rules` pins the measuring step's run text to the exact runner invocation inside `ci_netns.sh`;
    - `config_rules` scans the runner, with one allowlisted `COVERAGE_FILE` assignment;
@@ -152,3 +159,41 @@ Each of these must turn the build red:
 2. **N = 4 in one job,** dropping to 3 or 2 on memory. No matrix.
 3. **Interim relief while this lands** (days): raise `timeout-minutes` 60 → 75 as an explicit stopgap, reverted by the
    switch PR. Or none: keep 60, re-run timed-out PRs, and read every "cancelled" run before merging.
+
+## As built (the switch, 2026-11-13)
+
+Taken: 1 strict, 2 N = 4, 3 the stopgap (now reverted to 60). Departures from the design above:
+
+- **Modes:** only `--no-cov` was built. `--no-x` and `--cacheprovider` would have had no caller:
+  `suite_at_commit.sh` passes its own arguments, which carry no `-x`, and the runner adds `-p no:cacheprovider`
+  unless the arguments already carry it.
+- **Empty shard:** detected after the shards ran (reconciliation: "kept no tests"), not refused before launch. Each
+  shard collects the whole suite, so its kept set is known only after collection.
+- **Exit codes:** a reconciliation or merge failure exits 1, not 2. Exit 2 is kept for refusals before anything runs
+  (leftover outputs, an argument the runner cannot forward, a selection not starting with `tests/`).
+- **The stub-pytest argv test** lives in `tests/unit/test_run_fast_suite.py`, with the deletion probes, not in
+  `test_lint_coverage.py`.
+- **The silent-swallow lint does not cover the runner**: it scans `src/maxim` only. The runner's own guard is
+  `tests/unit/test_run_fast_suite.py::test_the_runner_and_plugin_catch_no_broad_exception` (no bare or broad
+  `except` in the runner or the plugin).
+- **The rebalance rule** (Design 1: a rebalance lands only when no scope falls by more than k) has no check yet.
+  Regression guard: process invariant — mechanization backlog M90.
+- **The S9 revert window** is counted by hand. A revert restores the serial step, its pins and `timeout-minutes: 75`.
+  Regression guard: process invariant — mechanization backlog M22.
+- **The rename rule** runs in the lint job (`run_fast_suite.py --check-map`), not in the measuring step: that step
+  runs inside the network namespace, and a push's base needs `gh api`.
+- **Diagnostics:** each shard's log, junit and collection record are uploaded as `fast-suite-shards-<attempt>`
+  (`if: always()`), separately from `coverage-json-<attempt>`.
+- `.github/workflows/shard-trial.yml` is deleted.
+
+Known limits, left as they are:
+
+- the per-shard timeout kills each shard's process, not its grandchildren;
+- the runner forwards no SIGTERM to its shards (a cancelled job relies on the runner's process group being killed);
+- on a `-x` stop the sibling shards are not killed; they run to their end;
+- `SHARD_TIMEOUT_S` (50 min) counts from the step's start, not the job's, so it names a hung shard before the job's
+  60-minute limit only while the setup before the step (install, the re-use decision, mypy) takes under 10 min.
+
+Pins (after the delta review): the step text lives in the runner (`CI_STEP_RUN`), but `lint_coverage.py` keeps its
+own `CI_PYTEST_ARGS` and `CI_STEP_EXPECTED` literals, and the runner's text must EQUAL them (rule 9 compares against
+the same literal). The stub-pytest test drives the runner with the gate's literal, not the runner's constant.

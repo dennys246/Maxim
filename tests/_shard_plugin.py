@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-MAP_REL = "scripts/suite_shards.json"
+from scripts.run_fast_suite import MAP_REL, MapError, parse_map
 
 
 def shard_of(path: str, n: int, mapping: dict[str, int]) -> int:
@@ -30,18 +30,12 @@ def shard_of(path: str, n: int, mapping: dict[str, int]) -> int:
 
 
 def load_map(root: Path, n: int) -> dict[str, int]:
-    """``scripts/suite_shards.json``'s ``shards`` for ``n``; a malformed map raises (the runner exits non-zero)."""
-    data = json.loads((root / MAP_REL).read_text(encoding="utf-8"))
-    if data.get("_format_version") != "1.0" or not isinstance(data.get("shards"), dict):
-        raise pytest.UsageError(f"{MAP_REL}: needs _format_version 1.0 and a `shards` object")
-    if data.get("n") != n:
-        raise pytest.UsageError(f"{MAP_REL}: balanced for n={data.get('n')!r}, this run has N={n}")
-    out: dict[str, int] = {}
-    for key, value in data["shards"].items():
-        if type(value) is not int or not 0 <= value < n:
-            raise pytest.UsageError(f"{MAP_REL}: {key!r} -> {value!r} is not a shard index in 0..{n - 1}")
-        out[key] = value
-    return out
+    """``scripts/suite_shards.json``'s ``shards`` for ``n``, parsed by the runner's own rules (duplicate keys, indices,
+    ``n``: ``scripts/run_fast_suite.py::parse_map``); a malformed map is a usage error (the runner exits non-zero)."""
+    try:
+        return parse_map((root / MAP_REL).read_text(encoding="utf-8"), n)
+    except MapError as e:
+        raise pytest.UsageError(str(e)) from e
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
