@@ -620,8 +620,8 @@ class TestProvenanceStore:
 
         manifest = store._load_manifest()
         assert len(manifest) == 2
-        # No .tmp file left behind
-        assert not os.path.exists(os.path.join(store_dir, "sessions.tmp"))
+        # No temp file left behind, under any name atomic_io uses (#1663: unique per write)
+        assert [n for n in os.listdir(store_dir) if n.endswith(".tmp")] == []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

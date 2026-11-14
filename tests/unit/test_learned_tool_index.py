@@ -331,7 +331,7 @@ class TestPersistence:
         path = str(tmp_path / "tool_index.json")
         index.save(path)
         assert os.path.exists(path)
-        assert not os.path.exists(f"{path}.tmp")
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["tool_index.json"]  # no temp left (#1663 names)
         # Verify valid JSON. v1.0 wraps tool data under "tools" with the
         # _format_version field at root (CC1 persistence-format contract).
         with open(path) as f:
