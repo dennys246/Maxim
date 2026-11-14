@@ -92,7 +92,7 @@ def test_one_run_is_counted_once_under_its_top_most_process():
     ]
     now = B.running(procs, claims={}, own_pid=0)
     assert sorted(now[B.SUITE]) == [100, 300]
-    assert now[B.CHECK] == [200]
+    assert list(now[B.CHECK]) == [200]
 
 
 def test_a_waiter_never_counts_itself_or_the_run_it_was_started_inside():
@@ -104,7 +104,7 @@ def test_a_waiter_never_counts_itself_or_the_run_it_was_started_inside():
         P(300, 1, "python -m pytest tests/ -q"),  # somebody else's suite still counts
     ]
     now = B.running(procs, claims={102: B.CHECK}, own_pid=101)
-    assert now[B.SUITE] == [300] and now[B.CHECK] == [102]
+    assert list(now[B.SUITE]) == [300] and list(now[B.CHECK]) == [102]
 
 
 def test_a_waiter_nested_in_a_claimed_run_does_not_wait_for_its_parent():
@@ -117,8 +117,11 @@ def test_a_waiter_nested_in_a_claimed_run_does_not_wait_for_its_parent():
         P(20, 1, "python3 scripts/prepr.py"),  # another session's check still counts
     ]
     now = B.running(procs, claims={12: B.CHECK}, own_pid=13)
-    assert now[B.CHECK] == [20]
-    assert B.running(procs, claims={12: B.CHECK}, own_pid=99)[B.CHECK] == [12, 20]  # everyone else counts the claim
+    assert list(now[B.CHECK]) == [20]
+    assert list(B.running(procs, claims={12: B.CHECK}, own_pid=99)[B.CHECK]) == [
+        12,
+        20,
+    ]  # everyone else counts the claim
 
 
 def test_ps_is_asked_for_untruncated_args(monkeypatch):
@@ -137,8 +140,8 @@ def test_ps_is_asked_for_untruncated_args(monkeypatch):
 def test_a_claimed_child_counts_before_ps_shows_it_and_its_descendants_are_not_recounted():
     procs = [P(500, 1, "bash"), P(501, 500, "python -m pytest tests/ -q")]
     now = B.running(procs, claims={500: B.SUITE, 777: B.CHECK}, own_pid=0)
-    assert now[B.SUITE] == [500]
-    assert now[B.CHECK] == [777]
+    assert now[B.SUITE] == {500: 1}
+    assert now[B.CHECK] == {777: 1}
 
 
 @pytest.mark.parametrize(
@@ -146,7 +149,7 @@ def test_a_claimed_child_counts_before_ps_shows_it_and_its_descendants_are_not_r
     [(0, 0, True, True), (1, 0, True, False), (2, 0, False, False), (0, 1, False, False)],
 )
 def test_the_box_rule(suites, checks, suite_fits, check_fits):
-    now = {B.SUITE: list(range(suites)), B.CHECK: list(range(checks))}
+    now = {B.SUITE: dict.fromkeys(range(suites), 1), B.CHECK: dict.fromkeys(range(checks), 1)}
     assert B.fits(B.SUITE, now) is suite_fits
     assert B.fits(B.CHECK, now) is check_fits
 
@@ -158,8 +161,10 @@ def T(critical: bool, waited_s: float, pid: int, kind: str) -> B.Ticket:
     return B.Ticket(critical, NOW - int(waited_s * 1e9), pid, kind, "t0")
 
 
-def _now(suites=0, checks=0):
-    return {B.SUITE: list(range(suites)), B.CHECK: list(range(checks))}
+def _now(suites=0, checks=0, weights=()):
+    """``suites`` running suites of weight 1, then one more per entry of ``weights`` (a sharded suite)."""
+    running = dict.fromkeys(range(suites), 1) | {100 + i: w for i, w in enumerate(weights)}
+    return {B.SUITE: running, B.CHECK: dict.fromkeys(range(checks), 1)}
 
 
 def test_a_fitting_suite_goes_past_a_young_check_that_cannot_fit():
@@ -377,3 +382,95 @@ def test_run_mypy_public_is_counted_after_it_execs_mypy():
 def test_only_matching_is_refused_on_the_shared_state_dir():
     with pytest.raises(SystemExit):
         B.main(["--only-matching", "x", "status"])
+
+
+# ── #1645: a sharded suite weighs its shard count ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "cmd,kind,weight",
+    [
+        ("python scripts/run_fast_suite.py --shards 4 -- tests/ -x -q", B.SUITE, 4),
+        ("/usr/bin/python3 /x/scripts/run_fast_suite.py --shards=2 -- tests/", B.SUITE, 2),
+        ("python3 scripts/run_fast_suite.py --check-map", None, 1),  # the lint job's map check is not a suite
+        ("bash scripts/suite_at_commit.sh --shards 4 abc", B.SUITE, 4),
+        ("bash scripts/suite_at_commit.sh --no-cov abc", B.SUITE, 1),
+        ("bash scripts/suite_at_commit.sh --shards bogus abc", B.SUITE, 1),  # refused by the script before pytest
+        ("python -m pytest tests/ --shard=0/4", B.SUITE, 1),  # one shard is one pytest
+        ("python3 scripts/box_quiet.py wait -- bash scripts/suite_at_commit.sh --shards 4", None, 1),
+    ],
+)
+def test_a_sharded_suite_is_a_suite_of_its_shard_count(cmd, kind, weight):
+    argv = tuple(cmd.split())
+    assert B.classify(argv) == kind and B.weight(argv) == weight
+
+
+def test_a_sharded_run_counts_once_at_its_shard_count_not_one_and_not_n_plus_one():
+    """S10: the runner plus its N pytest children is ONE suite of weight N, under whichever process is top-most."""
+    shards = [P(110 + k, 101, f"python -m pytest tests/ -x -q -p tests._shard_plugin --shard={k}/4") for k in range(4)]
+    procs = [
+        P(100, 1, "bash scripts/suite_at_commit.sh --shards 4 abc"),
+        P(101, 100, "python scripts/run_fast_suite.py --shards 4 -- tests/ -q"),
+        *shards,
+        P(200, 1, "python scripts/run_fast_suite.py --shards 4 -- tests/ -q"),  # a bare runner
+        *[P(210 + k, 200, f"python -m pytest tests/ -q --shard={k}/4") for k in range(4)],
+    ]
+    now = B.running(procs, claims={}, own_pid=0)
+    assert now[B.SUITE] == {100: 4, 200: 4} and B.suite_load(now) == 8
+    # a claimed wrapper weighs what it runs, even when its own argv says nothing
+    wrapped = [P(500, 1, "bash"), P(501, 500, "python scripts/run_fast_suite.py --shards 3 -- tests/"),
+               *[P(510 + k, 501, f"python -m pytest tests/ --shard={k}/3") for k in range(3)]]  # fmt: skip
+    assert B.running(wrapped, claims={500: B.SUITE}, own_pid=0)[B.SUITE] == {500: 3}
+
+
+@pytest.mark.parametrize(
+    "running,need,fits",
+    [
+        ((), 4, True),  # heavier than the cap: only on an otherwise empty box
+        ((1,), 4, False),
+        ((4,), 1, False),  # nothing joins a run that already fills the box past the cap
+        ((), 2, True),
+        ((1,), 2, False),
+        ((1,), 1, True),
+        ((2,), 1, False),
+    ],
+)
+def test_the_box_rule_in_weights(running, need, fits):
+    assert B.fits(B.SUITE, _now(weights=running), need) is fits
+    assert B.fits(B.CHECK, _now(weights=running)) is (not running)
+
+
+def test_a_waiters_weight_comes_from_its_command_and_survives_the_ticket_file(tmp_path):
+    s = _state(tmp_path)
+    me = B.Ticket(False, 1, 4242, B.SUITE, "t0", 4)
+    (s / "queue" / me.name).write_text(json.dumps({"critical": False, "queued_ns": 1, "pid": 4242, "kind": "suite",
+                                                   "started": "t0", "weight": 4}))  # fmt: skip
+    old = B.Ticket(False, 2, 4343, B.SUITE, "t0")
+    (s / "queue" / old.name).write_text(
+        json.dumps({"critical": False, "queued_ns": 2, "pid": 4343, "kind": "suite", "started": "t0"})
+    )  # fmt: skip  (written before #1645)
+    procs = [P(4242, 1, "x"), P(4343, 1, "y")]
+    assert [t.weight for t in B._load_queue(s, procs, prune=False)] == [4, 1]
+    assert not B.may_start(me, [me], _now(suites=1), NOW)  # 1 + 4 > the cap and the box is not empty
+    assert B.may_start(me, [me], _now(), NOW)
+
+
+def test_a_heavy_suite_that_outranks_a_light_one_drains_the_box_for_itself():
+    """#1645 review (Executor): a suite heavier than the cap waits for an empty box, and fresh weight-1 suites used to
+    overtake it forever (only checks drained). Once a heavier waiter outranks a lighter suite and is critical or has
+    waited DRAIN_AFTER_S, the lighter suite holds back, as it does for a draining check."""
+    heavy = B.Ticket(True, NOW - 3600 * 10**9, 100, B.SUITE, "t0", 4)  # critical --shards 4, waited 1 h
+    light = B.Ticket(False, NOW, 200, B.SUITE, "t0", 1)
+    one_running = _now(suites=1)
+    assert not B.may_start(heavy, [heavy, light], one_running, NOW)  # it needs an empty box
+    assert not B.may_start(light, [heavy, light], one_running, NOW)  # and the light suite no longer overtakes it
+    assert B.may_start(heavy, [heavy, light], _now(), NOW)  # the box empties: the heavy suite goes
+
+
+def test_a_fresh_non_critical_heavy_waiter_does_not_idle_the_box():
+    """Efficiency (owner, 2026-11-03): a heavy suite that is neither critical nor long-waiting holds nobody back."""
+    heavy = B.Ticket(False, NOW - 10 * 10**9, 100, B.SUITE, "t0", 4)
+    light = B.Ticket(False, NOW, 200, B.SUITE, "t0", 1)
+    assert B.may_start(light, [heavy, light], _now(suites=1), NOW)
+    old = B.Ticket(False, NOW - int(B.DRAIN_AFTER_S * 1e9) - 1, 100, B.SUITE, "t0", 4)
+    assert not B.may_start(light, [old, light], _now(suites=1), NOW)

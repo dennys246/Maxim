@@ -526,11 +526,15 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
-    # 75 is a STOPGAP (#1645, owner decision 2026-11-11): main's runs took 40-56 min (median ~50) on 2026-11-07..11
-    # against the old 60, and #1643 timed out at 99%. The real fix is the deterministic sharded fast suite (#1645);
-    # its switch PR sets this back to 60 once its post-switch revert window closes. A timed-out run is cancelled,
-    # not passed, so this limit was never a safety gate, only the detector for a hung run.
-    timeout-minutes: 75
+    # 60 again since the #1645 switch, which reverts the 75-minute stopgap of 2026-11-11 (owner decision 3 of
+    # docs/plans/ci_sharded_suite_1645_approach.md): the fast suite runs as 4 deterministic shards in this one job,
+    # 17-24 min in the trial against serial's 57. It stays 60 at least until the post-switch revert window closes
+    # (docs/agents/ci-testing.md §1); pinned by tests/unit/test_ci_workflow_shape.py. A timed-out run is cancelled,
+    # not passed, so this limit was never a safety gate, only the detector for a hung run. Each shard's own 50-minute
+    # limit (scripts/run_fast_suite.py) counts from the suite step's start, so it names a hung shard before this job
+    # limit only while the setup before the step (install, re-use decision, mypy) takes under 10 min (the approach
+    # note's Known limits).
+    timeout-minutes: 60
     # On a push to main the diff-scoped lints judge the range since the last push whose job passed
     # (scripts/_lint_git.py::push_base, #1089): they read the Actions runs and each landed commit's merged PR through
     # `gh api`, so the job needs those read scopes and a token. Pinned by tests/unit/test_lint_git_push.py.
@@ -692,10 +696,19 @@ jobs:
         # rule 6: every evidence test of a satisfied gate item is collected and PASSED in this run, or in the git- and
         # stamp-bound source run it re-used (#1640), which a conftest
         # skip would otherwise hide from the static rules). The gate checks this flag is here.
+        #
+        # As 4 deterministic shards in this one job (#1645; the strict path, owner decision 2026-11-11):
+        # scripts/run_fast_suite.py forwards these arguments verbatim to 4 `python -m pytest` processes, changing only
+        # an allowlist (tests/unit/test_run_fast_suite.py drives it with a stub pytest). Each shard collects the whole
+        # suite and keeps the files tests/_shard_plugin.py assigns it from scripts/suite_shards.json; the runner
+        # reconciles the shards as SETS, merges fast-suite.xml and combines exactly one arc-data file per shard into
+        # coverage.json. The shards are children of the netns shell, so they run inside the namespace too. The exact
+        # run text is scripts/run_fast_suite.py::CI_STEP_RUN, pinned by lint_coverage.ci_step_rules,
+        # lint_release_gates rule 9 and tests/unit/test_ci_workflow_shape.py.
         if: steps.reuse.outputs.reuse != 'true'
         run: |
-          rm -f .coverage coverage.json coverage.xml fast-suite.xml
-          SUITE='"$PY" -m pytest tests/ -x -q -m "not slow" --tb=short \
+          rm -f .coverage .coverage.* coverage.json coverage.xml fast-suite.xml fast-suite.shard*.xml shard*.collect.json
+          SUITE='"$PY" scripts/run_fast_suite.py --shards 4 -- tests/ -x -q -m "not slow" --tb=short \
             --ignore=tests/integration/test_memory_hub.py \
             --require-extras=console,sign \
             --junitxml=fast-suite.xml \
@@ -745,6 +758,21 @@ jobs:
             coverage.json
             fast-suite.xml
             measured-tree.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload the shards' logs and reports (#1645 diagnostic)
+        # Each shard's full log, junit and collection record, for a red run (the step log keeps only each shard's tail).
+        # A separate artifact: coverage-json-<attempt> is a measurement input with its own consumers. Pinned by
+        # lint_coverage.ci_step_rules (name, `if:` and exact paths).
+        if: always() && steps.reuse.outputs.reuse != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-suite-shards-${{ github.run_attempt }}
+          path: |
+            shard*.log
+            fast-suite.shard*.xml
+            shard*.collect.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -1551,6 +1579,13 @@ jobs:
         # Positive control: tests/unit/test_lint_orphan_modules.py.
         run: |
           python3 scripts/lint_orphan_modules.py
+
+      - name: Shard map (#1645)
+        # scripts/suite_shards.json parses for CI's N (no duplicate key, every index in 0..N-1), and a test module
+        # renamed in this diff carries its entry: an unmapped new path would move the module to another shard, and
+        # with it other packages' coverage. A key with no file is a printed NOTE. Diff-scoped: fails closed on a PR
+        # or a push without a base. Positive control: tests/unit/test_run_fast_suite.py.
+        run: python3 scripts/run_fast_suite.py --check-map
 
       - name: Dead-import lint (#1436)
         # Every maxim import in src/ and scripts/, at any depth (lazy, TYPE_CHECKING, class body),
