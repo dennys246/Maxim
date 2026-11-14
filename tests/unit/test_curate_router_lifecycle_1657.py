@@ -52,7 +52,6 @@ def _router():
 # ── LLMRouter.unload ──────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_unload_releases_every_built_backend_once() -> None:
     """The default backend is also in the per-provider cache: it is released once, and every other backend too."""
     log: list[str] = []
@@ -66,7 +65,6 @@ def test_unload_releases_every_built_backend_once() -> None:
     assert sorted(log) == ["cloud", "default"]  # a second call releases nothing again
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_a_backend_that_fails_to_unload_is_logged_and_the_others_are_still_released(caplog) -> None:
     log: list[str] = []
     router = _router()
@@ -77,7 +75,6 @@ def test_a_backend_that_fails_to_unload_is_logged_and_the_others_are_still_relea
     assert "would not unload" in caplog.text
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_an_unloaded_router_builds_no_backend_again(monkeypatch) -> None:
     """After unload, a late warmup (or any call) builds nothing, so a model is not loaded behind its owner's back."""
     from maxim.models.language import router as router_mod
@@ -117,7 +114,6 @@ def _warming(router, backend):
 
 
 @pytest.mark.parametrize("raises", [False, True], ids=["load-ends", "load-raises"])
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_unload_never_waits_on_a_load_in_flight_and_the_warmup_releases_it(raises) -> None:
     """Review round (Executor, Architecture, Wire integrity): a timed-out load made unload() block for the rest of
     the load. Now it returns at once, and the warmup releases the backend when its load ends or fails."""
@@ -135,7 +131,6 @@ def test_unload_never_waits_on_a_load_in_flight_and_the_warmup_releases_it(raise
     assert router.wait_ready(timeout=0.1) is False and router.is_ready is False
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_a_warmup_that_raises_is_reported_failed_at_once() -> None:
     """A raising warmup used to kill its thread before ``_ready_event`` was set, so ``wait_ready`` sat out its whole
     timeout; now the failure is reported as soon as the load fails."""
@@ -148,7 +143,6 @@ def test_a_warmup_that_raises_is_reported_failed_at_once() -> None:
     assert time.monotonic() - started < 2.0
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_an_unloaded_router_is_not_ready_even_after_a_good_warmup() -> None:
     router = _router()
     slow = _SlowBackend([])
@@ -159,7 +153,6 @@ def test_an_unloaded_router_is_not_ready_even_after_a_good_warmup() -> None:
     assert router.is_ready is False and router.wait_ready(timeout=0.1) is False
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_a_backend_built_while_unload_runs_is_released_not_cached(monkeypatch) -> None:
     """A call outside ``_backend_lock`` can build a backend while ``unload()`` clears the cache: it is released once
     and never cached."""
@@ -177,7 +170,6 @@ def test_a_backend_built_while_unload_runs_is_released_not_cached(monkeypatch) -
     assert log == ["late"] and router._backends == {}
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_a_backend_without_unload_is_skipped() -> None:
     router = _router()
     router._backends["bare"] = SimpleNamespace(complete=lambda *a, **k: "")
@@ -185,7 +177,6 @@ def test_a_backend_without_unload_is_skipped() -> None:
     assert router._backends == {}
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_runtime_shutdown_now_releases_the_lane_managers_routers() -> None:
     """``LaneBackendManager.unload_all`` (agentic runtime shutdown, "releases VRAM immediately") calls ``unload`` on
     the routers it caches; before ``LLMRouter.unload`` existed it skipped every real router."""
@@ -214,14 +205,12 @@ def unloads(fake_router, monkeypatch):
     return calls
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_a_gap_run_unloads_the_curation_router_once_it_ends(fake_router, unloads, monkeypatch) -> None:
     runners = _run_real_curate(monkeypatch, fake_router.profile, gaps={"weapons": 2, "armor": 1})
     assert runners == [fake_router.built[0]] * 2
     assert unloads == [fake_router.built[0]]
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_the_curation_router_is_unloaded_when_curation_raises(fake_router, unloads, monkeypatch, caplog) -> None:
     from maxim.simulation import foundry
 
@@ -248,7 +237,6 @@ def test_the_curation_router_is_unloaded_when_curation_raises(fake_router, unloa
     assert "Auto-curation failed" in caplog.text
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_a_router_not_ready_in_time_is_not_handed_to_the_runners_and_is_unloaded(
     fake_router,
     unloads,
@@ -282,7 +270,6 @@ def test_full_coverage_and_a_declined_gap_unload_nothing(fake_router, monkeypatc
     assert calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1657: flips with LLMRouter.unload and the CLI owning the curation router")
 def test_foundry_unloads_a_router_that_did_not_load_in_time(fake_router, unloads, monkeypatch) -> None:
     """Foundry's timeout path called ``shutdown()`` behind a hasattr check LLMRouter never answered."""
     from maxim.models.language import router as router_mod
@@ -296,19 +283,7 @@ def test_foundry_unloads_a_router_that_did_not_load_in_time(fake_router, unloads
 # ── #1659: one spelling table ────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "spelling",
-    [
-        "llama_cpp",
-        pytest.param(
-            "Llama-CPP", marks=pytest.mark.xfail(strict=True, reason="#1659: flips with the router's spelling table")
-        ),
-        pytest.param(
-            " LLAMACPP ", marks=pytest.mark.xfail(strict=True, reason="#1659: flips with the router's spelling table")
-        ),
-        "llama",
-    ],
-)
+@pytest.mark.parametrize("spelling", ["llama_cpp", "Llama-CPP", " LLAMACPP ", "llama"])
 def test_the_swap_check_accepts_every_spelling_the_router_builds_as_llama_cpp(monkeypatch, spelling) -> None:
     from maxim.models.language import config
     from maxim.runtime import lane_backends

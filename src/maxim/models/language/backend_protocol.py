@@ -48,6 +48,7 @@ class LLMBackend(Protocol):
     Optional methods (checked via hasattr):
         complete_with_usage(): Structured completion returning LLMResponse
         warmup(): Pre-load model at startup, return True if ready
+        unload(): Free the model or client; called by ``LLMRouter.unload`` (#1657). Must be safe to call twice
     """
 
     requires_prompt_formatting: bool
