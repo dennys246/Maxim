@@ -166,6 +166,9 @@ class LLMRouter:
 
     # Sentinel value to distinguish "init failed" from "not yet initialized"
     _INIT_FAILED = object()
+    # Read by wait_ready/is_ready/_get_backend_for_provider; a class default so a router built without __init__
+    # (LLMRouter.__new__, as some tests and stand-ins do) reads as not unloaded (#1657).
+    _unloaded: bool = False
 
     def __init__(
         self,
@@ -182,6 +185,9 @@ class LLMRouter:
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
         self._backend_lock = threading.Lock()
+        self._unloaded = False  # set by unload() (#1657): this router builds no backend after it
+        self._warmups_running = 0  # warmup threads not yet finished (#1657)
+        self._deferred_release: list[Any] = []  # backends unload() left to the last running warmup to release
         self._inference_lock = threading.Lock()  # Serializes inference calls (llama-cpp not thread-safe)
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
@@ -406,6 +412,8 @@ class LLMRouter:
         return self._provider_is_cloud(provider_cfg)
 
     def _get_backend_for_provider(self, provider_key: str) -> Any | None:
+        if self._unloaded:
+            return None
         backend = self._backends.get(provider_key)
         if backend is not None:
             return None if backend is LLMRouter._INIT_FAILED else backend
@@ -471,6 +479,11 @@ class LLMRouter:
                 backend = LLMRouter._INIT_FAILED
 
         self._backends[provider_key] = backend
+        if self._unloaded and self._backends.pop(provider_key, None) is backend:
+            # unload() ran while this backend was being built (a call outside _backend_lock): unload()'s snapshot
+            # missed it, so it is released here instead (#1657). The pop makes the release happen exactly once.
+            self._release_backends([backend])
+            return None
         return None if backend is LLMRouter._INIT_FAILED else backend
 
     def _build_provider_config(self, provider_cfg: dict[str, Any]) -> LLMConfig:
@@ -1920,56 +1933,80 @@ class LLMRouter:
         Call this after other initialization is complete. The model loading
         happens in a background thread so it doesn't block startup.
 
-        Returns True if warmup was initiated, False if LLM is disabled.
+        Returns True if warmup was initiated, False if LLM is disabled or the router was unloaded.
         """
         if not self.enabled():
             return False
+        with self._backend_lock:
+            if self._unloaded:
+                return False
+            self._warmups_running += 1
 
         import threading
-        import time
 
         def _warmup_thread():
-            start_time = time.time()
-            log_agentic(
-                "llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]}
-            )
-            backend = self._get_backend()
-            success = False
-            if backend is not None and hasattr(backend, "warmup"):
-                info("Warming up LLM backend...")
-                if backend.warmup():
-                    elapsed = time.time() - start_time
-                    info("LLM model loaded and ready")
-                    log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
-                    success = True
-                else:
-                    warn("LLM warmup failed")
-                    log_agentic(
-                        "llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING"
-                    )
-            elif backend is not None:
-                # Backend doesn't have warmup, try a minimal completion to load
-                info("Warming up LLM backend (no warmup method, using test prompt)...")
-                try:
-                    backend.complete(
-                        prompt="Hello",
-                        max_tokens=1,
-                        temperature=0.0,
-                        stop=(),
-                    )
-                    elapsed = time.time() - start_time
-                    info("LLM model loaded and ready")
-                    log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
-                    success = True
-                except Exception as e:
-                    warn("LLM warmup failed: %s", e)
-                    log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
-            self._warmup_failed = not success
-            self._ready_event.set()
+            try:
+                self._warm_default_backend()
+            except Exception as e:  # a raising warmup is a failed one, never "ready" (it used to kill the thread)
+                self._warmup_failed = True
+                warn("LLM warmup failed: %s", e)
+                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+            finally:
+                with self._backend_lock:
+                    self._warmups_running -= 1
+                    deferred = self._deferred_release if self._warmups_running == 0 else []
+                    if deferred:
+                        self._deferred_release = []
+                # unload() left the backend being warmed to the last warmup, so unload() never waits on a load (#1657).
+                self._release_backends(deferred)
+                self._ready_event.set()
 
         thread = threading.Thread(target=_warmup_thread, daemon=True, name="LLMWarmup")
         thread.start()
         return True
+
+    def _warm_default_backend(self) -> Any | None:
+        """The warmup thread's body: load the default backend; sets ``_warmup_failed``. Returns the backend it warmed
+        (or tried to)."""
+        import time
+
+        start_time = time.time()
+        log_agentic(
+            "llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]}
+        )
+        backend = self._get_backend()
+        success = False
+        if backend is not None and hasattr(backend, "warmup"):
+            info("Warming up LLM backend...")
+            if backend.warmup():
+                elapsed = time.time() - start_time
+                info("LLM model loaded and ready")
+                log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                success = True
+            else:
+                warn("LLM warmup failed")
+                log_agentic(
+                    "llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING"
+                )
+        elif backend is not None:
+            # Backend doesn't have warmup, try a minimal completion to load
+            info("Warming up LLM backend (no warmup method, using test prompt)...")
+            try:
+                backend.complete(
+                    prompt="Hello",
+                    max_tokens=1,
+                    temperature=0.0,
+                    stop=(),
+                )
+                elapsed = time.time() - start_time
+                info("LLM model loaded and ready")
+                log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                success = True
+            except Exception as e:
+                warn("LLM warmup failed: %s", e)
+                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+        self._warmup_failed = not success
+        return backend
 
     def wait_ready(self, timeout: float = 120.0) -> bool:
         """Block until the LLM is loaded and ready, or timeout expires.
@@ -1988,22 +2025,64 @@ class LLMRouter:
         """
         from maxim.utils.cancellation import yield_requested
 
-        if not self.enabled():
+        if not self.enabled() or self._unloaded:
             return False
         end = time.monotonic() + timeout
         while not self._ready_event.wait(timeout=max(0.0, min(0.5, end - time.monotonic()))):
+            if self._unloaded:
+                return False
             if yield_requested():
                 info("LLM wait_ready stopped: a process stop was requested")
                 return False
             if time.monotonic() >= end:
                 warn("LLM wait_ready timed out after %.1fs", timeout)
                 return False
-        return not self._warmup_failed
+        return not self._warmup_failed and not self._unloaded
 
     @property
     def is_ready(self) -> bool:
-        """Check if the LLM has finished loading (non-blocking)."""
-        return self._ready_event.is_set() and not self._warmup_failed
+        """Check if the LLM has finished loading (non-blocking). False once the router is unloaded."""
+        return self._ready_event.is_set() and not self._warmup_failed and not self._unloaded
+
+    def unload(self) -> None:
+        """Release every backend this router built, through each backend's own ``unload()`` (#1657).
+
+        For the owner of a router it is done with: ``--auto-curate``'s short-lived router, foundry's on a load
+        timeout, and the lane manager's routers at runtime shutdown (``LaneBackendManager.unload_all``), so an
+        in-process model is not still resident when the run loads another. Call it once the router is idle (no call
+        in progress). Calling it twice is harmless. Afterwards the router builds no backend, warms nothing and is
+        never ready, so callers take their fallback.
+
+        It never waits on a model load: the backend a running warmup is loading is left to that warmup, which
+        releases it when its load ends (or fails). A backend whose ``unload()`` raises is logged, and the others are
+        still released. A token counter already taken from this router (``get_token_counter``) holds the llama.cpp
+        model itself and keeps it alive.
+        """
+        with self._backend_lock:
+            self._unloaded = True
+            built = [self._backend, *self._backends.values()]
+            if self._warmups_running and self._backend is not None and self._backend is not LLMRouter._INIT_FAILED:
+                self._deferred_release.append(self._backend)
+            deferred = {id(b) for b in self._deferred_release}
+            self._backend = LLMRouter._INIT_FAILED
+            self._backends.clear()
+        self._release_backends([b for b in built if id(b) not in deferred])
+
+    @staticmethod
+    def _release_backends(backends: list[Any]) -> None:
+        """Call each distinct backend's own ``unload()`` (when it has one); log one that raises and go on (#1657)."""
+        seen: set[int] = set()
+        for backend in backends:
+            if backend is None or backend is LLMRouter._INIT_FAILED or id(backend) in seen:
+                continue
+            seen.add(id(backend))
+            release = getattr(backend, "unload", None)
+            if not callable(release):
+                continue
+            try:
+                release()
+            except Exception as e:
+                warn("LLM backend unload failed (%s): %s", type(backend).__name__, e)
 
     def _get_backend(self) -> Any | None:
         # Fast path: already initialized

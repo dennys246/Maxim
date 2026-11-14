@@ -2970,6 +2970,7 @@ def _validate_swap_profile(profile: str) -> tuple[str, dict[str, Any]]:
     client-side issue.
     """
     from maxim.models.language.config import get_profile, list_llm_profiles, normalize_llm_profile
+    from maxim.models.language.router import LLAMA_CPP_PROVIDER_TYPES, normalize_provider_type
 
     resolved = normalize_llm_profile(profile)
     if not resolved:
@@ -2981,7 +2982,8 @@ def _validate_swap_profile(profile: str) -> tuple[str, dict[str, Any]]:
         raise ValueError(f"Profile '{resolved}' is a cloud provider — cannot run on llama-cpp-server")
 
     backend = profile_data.get("backend", "llama_cpp")
-    if backend not in ("llama_cpp", "llamacpp", "llama"):
+    # The router's spelling table, so a profile the router builds as llama.cpp is not refused here (#1659).
+    if normalize_provider_type(backend) not in LLAMA_CPP_PROVIDER_TYPES:
         raise ValueError(f"Profile '{resolved}' uses {backend} backend — not compatible with llama-cpp-server")
 
     available = list_llm_profiles()
