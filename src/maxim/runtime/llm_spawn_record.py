@@ -301,10 +301,14 @@ def prune_dead_records(port: int, d: Path | None = None) -> list[Path]:
                 removed.append(path)
             except OSError as e:
                 logger.warning("cannot prune the dead LLM spawn record %s: %s", path, e)
-    # A writer that died mid-write leaves `<port>.<pid>.json.tmp` (the pid is the SERVER's), which the `*.json`
-    # glob never sees: drop it once that server is gone (no record is needed for it then).
-    for tmp in sorted(d.glob(f"{int(port)}.*.json.tmp")):
-        parts = tmp.name.split(".")
+    # A writer that died mid-write leaves atomic_io's temp for `<port>.<pid>.json` (the pid is the SERVER's), which
+    # the `*.json` glob never sees: drop it once that server is gone (no record is needed for it then). Its name is
+    # atomic_io's to choose (#1663: unique per write), so both forms are asked of atomic_io, never spelled here.
+    from maxim.utils.atomic_io import orphan_temp_globs, orphan_temp_target
+
+    temps = {t for pattern in orphan_temp_globs(f"{int(port)}.*.json") for t in d.glob(pattern)}
+    for tmp in sorted(temps):
+        parts = (orphan_temp_target(tmp.name) or "").split(".")
         try:
             gone = parts[1].isdigit() and process_identity(int(parts[1])) is None
         except (OSError, ValueError, IndexError):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import threading
 
 import pytest
 
@@ -44,7 +45,7 @@ class TestAtomicWriteBytes:
     def test_no_tmp_file_left_on_success(self, tmp_path) -> None:
         target = tmp_path / "blob.bin"
         atomic_write_bytes(str(target), b"x")
-        assert not (tmp_path / "blob.bin.tmp").exists()
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["blob.bin"]
 
     def test_initial_mode_is_applied(self, tmp_path) -> None:
         if os.name == "nt":  # pragma: no cover — POSIX perms only
@@ -74,7 +75,143 @@ class TestAtomicWriteText:
     def test_no_tmp_file_left_on_success(self, tmp_path) -> None:
         target = tmp_path / "out.txt"
         atomic_write_text(str(target), "x")
-        assert not (tmp_path / "out.txt.tmp").exists()
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["out.txt"]
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+    def test_default_mode_is_the_umask_default_not_0600(self, tmp_path) -> None:
+        """#1663: the unique temp is made by ``os.open``, not ``open()``; without ``initial_mode`` it must keep
+        ``open()``'s 0o666-under-the-umask bits. A ``mkstemp``-style 0600 here would silently narrow every
+        persisted file another user or group reads."""
+        old_umask = os.umask(0o022)
+        try:
+            atomic_write_text(str(tmp_path / "out.txt"), "x")
+            atomic_write_bytes(str(tmp_path / "out.bin"), b"x")
+        finally:
+            os.umask(old_umask)
+        assert stat.S_IMODE(os.stat(tmp_path / "out.txt").st_mode) == 0o644
+        assert stat.S_IMODE(os.stat(tmp_path / "out.bin").st_mode) == 0o644
+
+
+_LONG_A, _SHORT_B = "A" * 50_000, "B" * 20_000
+
+
+class TestConcurrentWritersToOnePath:
+    """#1663: two writers of one path must not share a temp file.
+
+    With the old fixed ``<path>.tmp`` both writers opened the same temp (``O_TRUNC``), so their bytes could
+    interleave in it, and the first ``os.replace`` took it from under the second, which raised
+    ``FileNotFoundError`` (seen in #1645's trial run 5 as a swallowed ``_persist_state_json`` failure). The
+    interleaving is forced, not hoped for: each writer is held at its ``os.replace`` until both have written,
+    which is exactly when the old code had one temp holding both writers' bytes.
+    """
+
+    @pytest.mark.timeout(30)
+    @pytest.mark.parametrize(
+        "write, payloads, installed",
+        [
+            (atomic_write_text, (_LONG_A, _SHORT_B), (_LONG_A.encode(), _SHORT_B.encode())),
+            (atomic_write_bytes, (_LONG_A.encode(), _SHORT_B.encode()), (_LONG_A.encode(), _SHORT_B.encode())),
+            (
+                atomic_write_json,
+                ({"v": _LONG_A}, {"v": _SHORT_B}),
+                tuple(json.dumps({"v": s}, indent=2).encode() for s in (_LONG_A, _SHORT_B)),
+            ),
+        ],
+        ids=["text", "bytes", "json"],
+    )
+    def test_both_writers_install_a_whole_file(self, tmp_path, monkeypatch, write, payloads, installed) -> None:
+        target = str(tmp_path / "state.json")
+        barrier = threading.Barrier(2, timeout=10)
+        real_replace = os.replace
+        temps: list[str] = []
+
+        def _held_replace(src, dst):
+            temps.append(src)
+            barrier.wait()  # both writers have written their temp before either installs it
+            real_replace(src, dst)
+
+        monkeypatch.setattr("maxim.utils.atomic_io.os.replace", _held_replace)
+        errors: list[BaseException] = []
+
+        def _writer(data):
+            try:
+                write(target, data)
+            except BaseException as e:  # collected and asserted on below
+                errors.append(e)
+
+        threads = [threading.Thread(target=_writer, args=(d,)) for d in payloads]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=20)
+        assert errors == [], f"a concurrent writer failed: {errors!r}"
+        assert len(set(temps)) == 2, f"the two writers shared a temp file: {temps}"
+        with open(target, "rb") as f:
+            raw = f.read()
+        assert raw in installed, "the installed file is not one writer's whole content (interleaved or truncated)"
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"], "a temp file was left behind"
+
+
+class TestTempNames:
+    """The temp name is atomic_io's: sweeps ask ``orphan_temp_globs`` / ``orphan_temp_target`` (#1663)."""
+
+    def test_temp_is_unique_hidden_and_beside_the_target(self, tmp_path, monkeypatch) -> None:
+        from maxim.utils.atomic_io import orphan_temp_target
+
+        seen: list[str] = []
+        real_replace = os.replace
+
+        def _spy(src, dst):
+            seen.append(src)
+            real_replace(src, dst)
+
+        monkeypatch.setattr("maxim.utils.atomic_io.os.replace", _spy)
+        target = tmp_path / "out.txt"
+        atomic_write_text(str(target), "1")
+        atomic_write_text(str(target), "2")
+        assert len(set(seen)) == 2
+        for src in seen:
+            assert os.path.dirname(src) == str(tmp_path)
+            assert os.path.basename(src).startswith(".")
+            assert orphan_temp_target(os.path.basename(src)) == "out.txt"
+
+    def test_globs_match_both_forms_and_target_recovers_the_name(self, tmp_path) -> None:
+        from maxim.utils.atomic_io import orphan_temp_globs, orphan_temp_target
+
+        unique = tmp_path / ".8100.42.json.0123456789ab.tmp"
+        legacy = tmp_path / "8100.42.json.tmp"
+        other = tmp_path / "8100.42.json"
+        for p in (unique, legacy, other):
+            p.write_text("{")
+        matched = {p for pattern in orphan_temp_globs("8100.*.json") for p in tmp_path.glob(pattern)}
+        assert matched == {unique, legacy}
+        assert orphan_temp_target(unique.name) == "8100.42.json"
+        assert orphan_temp_target(legacy.name) == "8100.42.json"
+        assert orphan_temp_target("8100.42.json") is None
+        assert orphan_temp_target(".8100.42.json.nothex000000.tmp") is None
+        assert orphan_temp_target(".tmp") is None
+
+    @pytest.mark.skipif(os.name == "nt", reason="atomic_write_json_at needs dir_fd and O_NOFOLLOW")
+    def test_the_strict_writer_names_its_temp_the_same_way(self, tmp_path, monkeypatch) -> None:
+        """#1663 review fold: ``atomic_write_json_at`` builds its temp through the same ``_temp_name``, so a sweep's
+        ``orphan_temp_target`` recognizes it too. A hand-built name could drift from ``_TEMP_RE`` silently."""
+        from maxim.utils.atomic_io import atomic_write_json_at, orphan_temp_target
+
+        seen: list[str] = []
+        real_replace = os.replace
+
+        def _spy(src, dst, **kwargs):
+            seen.append(src)
+            real_replace(src, dst, **kwargs)
+
+        monkeypatch.setattr("maxim.utils.atomic_io.os.replace", _spy)
+        dir_fd = os.open(tmp_path, os.O_RDONLY)
+        try:
+            atomic_write_json_at(dir_fd, "report.json", {"a": 1})
+        finally:
+            os.close(dir_fd)
+        (src,) = seen
+        assert orphan_temp_target(src) == "report.json"
 
 
 class TestPreserveMode:
@@ -269,7 +406,28 @@ class TestFailureCleanup:
         with pytest.raises(OSError, match="simulated replace failure"):
             atomic_write_text(str(target), "x")
 
-        assert not (tmp_path / "out.txt.tmp").exists()
+        assert list(tmp_path.iterdir()) == [], "the temp file was left behind"
+
+    @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit], ids=["KeyboardInterrupt", "SystemExit"])
+    @pytest.mark.parametrize(
+        "write",
+        [lambda p: atomic_write_text(p, "new"), lambda p: atomic_write_bytes(p, b"new")],
+        ids=["text", "bytes"],
+    )
+    def test_an_interrupt_at_replace_leaves_no_temp(self, tmp_path, monkeypatch, interrupt, write) -> None:
+        """#1663 review fold: every write's temp is new, so an orphan is never overwritten later. An interrupt
+        (not an ``Exception``) at the replace must still clean it up, and still propagate unchanged."""
+        target = tmp_path / "out.txt"
+        target.write_text("old")
+
+        def interrupted_replace(*args, **kwargs):
+            raise interrupt()
+
+        monkeypatch.setattr("maxim.utils.atomic_io.os.replace", interrupted_replace)
+        with pytest.raises(interrupt):
+            write(str(target))
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["out.txt"], "the interrupted write left its temp"
+        assert target.read_text() == "old"
 
 
 # ── The strict policy: fsync_strict / append_line_fsync (#1315 item 5) ─────
