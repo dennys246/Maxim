@@ -25,6 +25,9 @@ import argparse
 import logging
 import os
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -536,6 +539,81 @@ def _soft_budget_gb() -> float | None:
         return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Decline memory (#1396, owner decision 2026-11-12): one run asks a question once
+# ─────────────────────────────────────────────────────────────────────────────
+# Module state under a lock, not a contextvar: Python threads do not inherit the caller's context, and preflights run
+# off the main thread (the console's talk build), so a contextvar memory would miss them. Only an armed scope
+# remembers; the CLI arms one per run (cli.py::_main_guarded opens it unarmed, _main_impl arms it after the subcommand
+# dispatch) and per bare-maxim menu choice (cli.py::_run_menu_choice). The library, the console and every subcommand
+# never arm one, so they ask every time.
+_DECLINE_LOCK = threading.RLock()
+_decline_depth = 0  # open scopes
+_decline_armed = False  # the innermost scope remembers
+_declined: set[str] = set()  # profiles the innermost scope's run answered "no" (or let time out) for
+
+
+@contextmanager
+def download_decline_scope(*, armed: bool) -> Iterator[None]:
+    """One run's decline memory: entry saves the outer state and starts empty (armed or not); exit restores it.
+
+    A stack, not a clear: an inner scope (a menu choice inside the CLI's run) neither inherits the outer "no"s nor
+    wipes them, and an exception or Ctrl+C restores the outer state too. One global stack: open and exit scopes on
+    one thread, last in first out (the CLI's two sites, both on the main thread; the scope pin in
+    tests/unit/test_download_decline_memory_1396.py keeps it so). Any thread may ASK inside a scope.
+    """
+    global _decline_depth, _decline_armed, _declined
+    with _DECLINE_LOCK:
+        saved = (_decline_armed, _declined)
+        _decline_depth += 1
+        _decline_armed, _declined = armed, set()
+    try:
+        yield
+    finally:
+        with _DECLINE_LOCK:
+            _decline_depth = max(0, _decline_depth - 1)  # a scope outliving a test reset never goes negative
+            _decline_armed, _declined = saved
+
+
+def arm_download_decline_memory() -> None:
+    """Arm the innermost open :func:`download_decline_scope`: from here, a "no" at the prompt is not asked again.
+
+    With no scope open, a WARNING and no effect: nothing would ever clear the memory.
+    """
+    global _decline_armed
+    with _DECLINE_LOCK:
+        if _decline_depth <= 0:
+            logger.warning("arm_download_decline_memory: no download decline scope is open; nothing remembered")
+            return
+        _decline_armed = True
+
+
+def _decline_memory_token() -> set[str] | None:
+    """The asking scope's set, taken before the prompt: None when no armed scope is open."""
+    with _DECLINE_LOCK:
+        return _declined if _decline_armed else None
+
+
+def _remember_decline(profile_name: str, token: set[str] | None) -> None:
+    """Record a "no" in the scope that ASKED: if that scope exited while the prompt waited (a thread still at the
+    prompt), the answer belongs to no current run and is dropped rather than landing in the outer scope."""
+    with _DECLINE_LOCK:
+        if token is not None and token is _declined:
+            token.add(profile_name)
+
+
+def _declined_earlier(profile_name: str) -> bool:
+    with _DECLINE_LOCK:
+        return _decline_armed and profile_name in _declined
+
+
+def _reset_decline_memory_for_tests() -> None:
+    """Back to no scope open (tests/conftest.py's autouse reset)."""
+    global _decline_depth, _decline_armed, _declined
+    with _DECLINE_LOCK:
+        _decline_depth, _decline_armed, _declined = 0, False, set()
+
+
 def ensure_available(
     profile_name: str,
     *,
@@ -559,6 +637,9 @@ def ensure_available(
         interactive: Override the tty check. ``None`` (default) checks
             ``sys.stdin.isatty()``.
         logger: Logger for warnings; ``print`` for user-facing messages.
+
+    Inside an armed :func:`download_decline_scope` (one CLI run), an answer of "no" or a timeout at the prompt is
+    remembered: a later call for the same profile returns False without asking and prints how to grant it (#1396).
 
     Returns:
         True iff the file is on disk after this call (already-present or
@@ -615,11 +696,22 @@ def ensure_available(
 
     if not auto_flag:
         if is_tty:
+            if _declined_earlier(profile_name):  # an answer this run already gave (#1396): not asked twice
+                print(
+                    f"\n  '{profile_name}' was declined earlier in this run, so it is not asked again. To download it,\n"
+                    f"  from another terminal (a later check in this run, if any, picks the file up):\n"
+                    f"    python -m maxim.models.download --llm {profile_name}\n"
+                    f"  From the next run: --auto-download, or `maxim config set llm.auto_download true`.\n"
+                )
+                return False
             question = (
                 f"\n  Maxim wants to download '{profile_name}' (~{size_gb:.1f} GB) "
                 f"from HuggingFace.\n  Disk: {reason}\n  Proceed? [y/N] (30s timeout) "
             )
+            asking_scope = _decline_memory_token()
             answer = _prompt_yes_no_with_timeout(question, timeout_s=30.0)
+            if not answer:
+                _remember_decline(profile_name, asking_scope)  # a "no" or a timeout; a no-op outside an armed scope
             if answer is None:
                 print(
                     f"\n  Auto-download cancelled (timeout). Run with --auto-download "

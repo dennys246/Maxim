@@ -6,7 +6,7 @@ import sys
 import threading
 from pathlib import Path
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from maxim.cli_parser import _build_parser
@@ -388,7 +388,7 @@ def _bare_maxim_menu() -> int:
             continue
 
         try:
-            _run_menu_sim(action)
+            _run_menu_choice(action)
         except KeyboardInterrupt:
             print("\n")
         if stop_noted():  # a process stop ends the menu: a later sim would refuse (owner decision 2026-11-02)
@@ -508,6 +508,34 @@ def _setup_interactive_display() -> None:
             set_active_display(display)
     except Exception:
         pass
+
+
+def _apply_sim_report_flags(args: Any) -> int | None:
+    """Cross-flag validation of ``--sim-report`` / ``--report-json`` (each needs ``--sim``): 1 on a misuse, else None
+    after exporting ``--report-json``. Moved verbatim out of ``_main_impl`` (rule T) by #1396."""
+    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
+        print("Error: --sim-report requires --sim.", file=sys.stderr)
+        return 1
+    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
+        print("Error: --report-json requires --sim.", file=sys.stderr)
+        return 1
+    # --report-json is read by simulation/orchestrator.py via environment
+    # rather than by threading through start_simulation_mode's signature
+    # (which has 5+ invocation sites).  Set it once here and let the
+    # orchestrator emit when it builds the report.
+    _report_json_arg = getattr(args, "report_json", None)
+    if _report_json_arg:
+        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
+    return None
+
+
+def _run_menu_choice(action: str) -> None:
+    """One bare-``maxim`` menu choice is one run: its own armed download-decline scope (#1396), so a "no" in one choice
+    never refuses the next, and nothing from the CLI's outer scope carries into it."""
+    from maxim.models.download import download_decline_scope
+
+    with download_decline_scope(armed=True):
+        _run_menu_sim(action)
 
 
 def _run_menu_sim(action: str) -> None:
@@ -1385,9 +1413,31 @@ def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
     return gateway
 
 
+def _curate_router_factory(profile: str) -> Callable[[], Any | None]:
+    """The ``--auto-curate`` router, built through :func:`_cli_local_router` only when ``auto_curate`` calls this:
+    after it finds a coverage gap, so full coverage never asks about a missing model (#1396, owner decision
+    2026-11-12). The factory's None is the template fallback; a build or warmup error keeps what was built, as
+    before the move."""
+
+    def build() -> Any | None:
+        router = None
+        try:
+            router = _cli_local_router(profile)
+            if router is None:
+                print("  WARNING: LLM model not available — curation will use template fallback.")
+            elif hasattr(router, "warmup"):
+                router.warmup()
+        except Exception as _llm_err:
+            logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
+        return router
+
+    return build
+
+
 def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
     """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
-    ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup."""
+    ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup, and builds
+    it only once ``auto_curate`` finds a gap (:func:`_curate_router_factory`)."""
     _auto_curate = bool(getattr(args, "auto_curate", False))
     _no_curate = bool(getattr(args, "no_curate", False))
     if _auto_curate and not _no_curate and _sim_entity_ref:
@@ -1410,18 +1460,8 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
             except Exception as _idx_err:
                 logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
 
-            # Reuse the LLM router from --llm if available
-            _curate_llm = None
+            # The --llm router is built (and a missing model asked about) only once a coverage gap is found.
             _curate_profile = str(getattr(args, "language_model", "") or "").strip()
-            if _curate_profile:
-                try:
-                    _curate_llm = _cli_local_router(_curate_profile)
-                    if _curate_llm is None:
-                        print("  WARNING: LLM model not available — curation will use template fallback.")
-                    elif hasattr(_curate_llm, "warmup"):
-                        _curate_llm.warmup()
-                except Exception as _llm_err:
-                    logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
 
             print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
             _curate_report = auto_curate(
@@ -1429,7 +1469,7 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
                 threshold=_curate_threshold,
                 registry=_curate_registry,
                 component_index=_curate_index,
-                llm_router=_curate_llm,
+                llm_router_factory=_curate_router_factory(_curate_profile) if _curate_profile else None,
             )
             if _curate_report.total_promoted > 0:
                 print(
@@ -1757,20 +1797,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     if _foundry_theme:
         return _handle_foundry(args, _foundry_theme)
 
-    # ── Cross-flag validation ───────────────────────────────────────────
-    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
-        print("Error: --sim-report requires --sim.", file=sys.stderr)
-        return 1
-    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
-        print("Error: --report-json requires --sim.", file=sys.stderr)
-        return 1
-    # --report-json is read by simulation/orchestrator.py via environment
-    # rather than by threading through start_simulation_mode's signature
-    # (which has 5+ invocation sites).  Set it once here and let the
-    # orchestrator emit when it builds the report.
-    _report_json_arg = getattr(args, "report_json", None)
-    if _report_json_arg:
-        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
+    # ── The run modes: from here a "no" to a model download is asked once per run (#1396) ──
+    from maxim.models.download import arm_download_decline_memory
+
+    arm_download_decline_memory()
+    _report_flags_rc = _apply_sim_report_flags(args)
+    if _report_flags_rc is not None:
+        return _report_flags_rc
 
     # Scenario generation if requested
     gen_description = getattr(args, "generate_simulation", None)
@@ -2856,9 +2889,11 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
     exception re-raises — we don't want to swallow bugs.
     """
     from maxim.exceptions import LeaderRefusal
+    from maxim.models.download import download_decline_scope
 
     try:
-        return _main_impl(argv)
+        with download_decline_scope(armed=False):  # _main_impl arms it for the run modes (#1396)
+            return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
     except LeaderRefusal as refusal:

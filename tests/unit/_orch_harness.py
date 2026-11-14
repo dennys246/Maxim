@@ -784,10 +784,6 @@ def _wait_for(predicate: Any, what: str) -> None:
         time.sleep(0.02)
 
 
-def _thread(name: str) -> threading.Thread | None:
-    return next((t for t in threading.enumerate() if t.name == name), None)
-
-
 # ── canonical form ────────────────────────────────────────────────────────
 
 _STAMP = re.compile(r"\d{8}_\d{6}")
@@ -1001,9 +997,16 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
 
     orig_next_line = OperatorLines.next_line
 
+    # The run's OWN line reader, recorded on its own thread the first time it asks this run's stdin for a line. Never
+    # looked up by name: an earlier test can leave a ``sim.stdin`` reader alive in the process, and waiting on THAT one
+    # for ``/cancel`` hung the harness for its 30 s timeout under load (#1645 trial run 5, #1654).
+    readers: list[threading.Thread] = []
+
     def _counted_next_line(self: Any) -> str | None:
         """The run's line reader asks for its next line: count it on the harness's stdin (``QueueStdin.reads``)."""
         if isinstance(self._stdin, QueueStdin):
+            if self._stdin is stdin and not readers:
+                readers.append(threading.current_thread())
             self._stdin.note_read()
         return orig_next_line(self)
 
@@ -1019,7 +1022,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         assert isinstance(stdin, QueueStdin)
         before = stdin.reads
         stdin.feed(line)
-        stdin.wait_reads(before + 1, _thread("sim.stdin"))
+        stdin.wait_reads(before + 1, readers[0] if readers else None)
         stdin_feed.append({"line": line, "after_turn": len(turns)})
 
     def _wait_aut_settled(bridge: Any, count_before: int) -> None:
