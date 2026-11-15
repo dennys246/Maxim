@@ -8,8 +8,8 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 72.0,
-      "missing": 1109
+      "percent": 73.0,
+      "missing": 1080
     },
     "maxim/advisor": {
       "percent": 98.9,
