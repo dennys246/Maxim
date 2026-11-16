@@ -1,5 +1,15 @@
 # Exp 63c: carried memory displaces a new one on the cue path, under a scripted stimulus (pre-registered 2026-11-10)
 
+> **Outcome 2026-11-13 (run and verdict): PASS. Ledger T1-16 raised to EARNED 2026-11-13; floor: not measured (a pre-BF2
+> row owes its floor at B3; owner decision 2026-11-16, replacing the strict reading taken 2026-11-13).** Attempt 1 was complete: P0–P3,
+> R1, R2′, R3a (turn 1: 3 carried memories surfaced) and R3′ (8 of 8 turns) hold, S2′ is clean, and R3d found all four cue
+> turns decisive (A 3 v 0, B 3 v 0, C 4 v 0, D 3 v 0; none contested; completion on all four). Both controls stayed armed
+> and were not decisive ([verdict](data/63c_scripted_recall/verdict.json), [rows](data/63c_scripted_recall/rows.jsonl)).
+> Two report fields fall short of §Report (descriptive, never gating): `winner_is_planted_fact` reads only each turn's best
+> pair, while carried phase-1 AUT restatements are also decisive on turns 4, 5 (a 4 v 0 tie with the fact) and 7; and the
+> designer events and entities per turn are not reported. The text below is the frozen pre-registration.
+> [Ledger](../plans/behavioral_graduation_candidates.md).
+
 > **Status: frozen (v5, owner decision 2026-11-10: freeze before the 63c judge port, the forecast labelled
 > simulator-judged). The freeze re-run has run on main d40eb4c0, with the tokenizer fix
 > #1620 merged (#1624): the power replay, the key tables, the blacklist and the judge-free half of the fidelity check
