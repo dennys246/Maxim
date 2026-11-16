@@ -745,12 +745,50 @@ def test_prune_drops_a_partial_record_only_once_its_writer_is_gone(record_dir, f
     _write(fake)
     gone = subprocess.Popen([sys.executable, "-c", "pass"], env=without_maxim_overrides())
     gone.wait(timeout=30)
-    dead_tmp = record_dir / f"{fake.port}.{gone.pid}.json.tmp"
-    live_tmp = record_dir / f"{fake.port}.{fake.pid}.json.tmp"
-    for t in (dead_tmp, live_tmp):
+    # Both temp names atomic_io has used: the unique per-write one (#1663) and the pre-#1663 fixed one, which an
+    # older version may have left on disk.
+    dead_tmp = record_dir / f".{fake.port}.{gone.pid}.json.0123456789ab.tmp"
+    dead_legacy_tmp = record_dir / f"{fake.port}.{gone.pid}.json.tmp"
+    live_tmp = record_dir / f".{fake.port}.{fake.pid}.json.ba9876543210.tmp"
+    live_legacy_tmp = record_dir / f"{fake.port}.{fake.pid}.json.tmp"
+    for t in (dead_tmp, dead_legacy_tmp, live_tmp, live_legacy_tmp):
         t.write_text("{")
-    assert rec.prune_dead_records(fake.port) == [dead_tmp]
-    assert live_tmp.exists()
+    assert sorted(rec.prune_dead_records(fake.port)) == sorted([dead_tmp, dead_legacy_tmp])
+    assert live_tmp.exists() and live_legacy_tmp.exists()
+
+
+@POSIX
+def test_prune_finds_the_temp_a_writer_that_died_mid_write_really_leaves(record_dir, fake_server, monkeypatch):
+    """The sweep must match the name atomic_io actually writes, not a spelling of it (#1663): the temp is made by
+    atomic_io for a writer killed (SIGKILL-like: no cleanup) at the replace, then found by the prune once its
+    server is gone."""
+    import maxim.runtime.llm_spawn_record as rec
+    import maxim.utils.atomic_io as aio
+
+    fake = fake_server()
+    _write(fake)
+    gone = subprocess.Popen([sys.executable, "-c", "pass"], env=without_maxim_overrides())
+    gone.wait(timeout=30)
+    left: list[str] = []
+
+    class _Killed(Exception):
+        """Stands in for SIGKILL at the replace: with ``_remove_temp`` a no-op, no cleanup runs."""
+
+    def _die_at_replace(src: str, dst: str) -> None:
+        left.append(src)
+        raise _Killed
+
+    real_replace = os.replace
+    monkeypatch.setattr(aio, "_remove_temp", lambda tmp_path: None)  # SIGKILL runs no handler
+    monkeypatch.setattr(aio.os, "replace", _die_at_replace)
+    try:
+        with pytest.raises(_Killed):
+            aio.atomic_write_text(str(record_dir / f"{fake.port}.{gone.pid}.json"), "{", initial_mode=0o600)
+    finally:
+        monkeypatch.setattr(aio.os, "replace", real_replace)
+    (tmp,) = left
+    assert os.path.exists(tmp)
+    assert rec.prune_dead_records(fake.port) == [Path(tmp)]
 
 
 # ─── review folds: the macOS branch, run on any POSIX host whose ps has stat and lstart (Executor 5, 7) ───
