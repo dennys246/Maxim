@@ -384,6 +384,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402  (pyyaml: pinned in the unit-tests job's first install, not the guarded one)
 from _lint_git import GitUnavailable, base_ref, changed_files, gh_api, git, must_not_skip, show  # noqa: E402
 from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
+import run_fast_suite as RF  # noqa: E402  (the measuring step's runner; it owns the step's exact run text)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = "src/maxim"
@@ -416,7 +417,26 @@ WORKFLOW_REL = ".github/workflows/test.yml"
 CI_JOB = "unit-tests"
 CI_COV_ARGS = "--cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report="
 CI_LINT_RUN = "run: python scripts/lint_coverage.py"
-CI_CLEAN = "rm -f .coverage coverage.json coverage.xml"
+CI_CLEAN = (
+    "rm -f .coverage .coverage.* coverage.json coverage.xml fast-suite.xml fast-suite.shard*.xml shard*.collect.json"
+)
+# The measuring step as THIS gate trusts it, built from its own literals, independent of the runner (#1645 review):
+# the runner's step text (run_fast_suite.CI_STEP_RUN) and its pytest arguments must EQUAL these (whitespace-flattened),
+# and the workflow step must equal the runner's text. Any change to what is selected or measured (an extra -k,
+# --deselect or --cov=, a dropped flag) therefore needs an edit HERE. tests/unit/test_run_fast_suite.py's stub pytest
+# drives the runner with CI_PYTEST_ARGS from this file, so what each shard receives is pinned against it too.
+CI_PYTEST_ARGS = (
+    'tests/ -x -q -m "not slow" --tb=short --ignore=tests/integration/test_memory_hub.py '
+    f"--require-extras=console,sign --junitxml={JUNIT_XML} {CI_COV_ARGS}"
+)
+CI_STEP_EXPECTED = (
+    f"{CI_CLEAN}\n"
+    f"SUITE='\"$PY\" scripts/run_fast_suite.py --shards 4 -- {CI_PYTEST_ARGS}'\n"
+    'bash scripts/ci_netns.sh "$SUITE"\n'
+)
+RUNNER_REL = "scripts/run_fast_suite.py"
+# The one coverage.py environment name the runner may set (each shard's own data file); config_rules scans it.
+RUNNER_ENV_ALLOW = 'env["COVERAGE_FILE"] = f".coverage.shard{k:02d}"'
 CI_BETWEEN_RUN = "python -m pytest tests/integration/test_memory_hub.py -q"  # the one step allowed in between
 # Re-using a verified measurement (#1640): the decision step, the stamp step, and the exact `if:` strings the job's
 # steps carry. ci_step_rules pins each literal; no other `if:` may appear in the job.
@@ -444,6 +464,10 @@ LEDGER_KINDS = ("pragma", "excluded_statements")
 
 _BANNED_OPTS_RE = re.compile(r"--cov-config\b|--no-cov(?![\w-])|--cov-fail-under\b|--cov-append\b|no:(?:pytest_)?cov\b")
 _BANNED_ENV_RE = re.compile(r"\b(?:COVERAGE|COV_CORE)_[A-Z_]+")
+# pytest's environment knobs that change what runs or which plugins load (pytest docs, "Environment variables"):
+# extra command-line options, plugins to load, and turning plugin autoload off (which drops pytest-cov). Named
+# anywhere in a workflow (an `env:` block, an `export`, a `$GITHUB_ENV` write) they reach every shard (#1645 review).
+_BANNED_PYTEST_ENV_RE = re.compile(r"\bPYTEST_(?:ADDOPTS|PLUGINS|DISABLE_PLUGIN_AUTOLOAD)\b")
 _BANNED_IMPORT_RE = re.compile(
     r"^\s*(?:import|from)\s+(?:coverage|pytest_cov)\b|\bCoverage\.current\b|^\s*import\s+[\w.]+\s*,\s*coverage\b",
     re.MULTILINE,
@@ -1531,6 +1555,22 @@ def exclusion_diff_rules(root: Path, base: str, ex: Exclusions, base_ex: Exclusi
 # ── configuration (S4) ────────────────────────────────────────────────────────
 
 
+def _pinned_step_problems() -> list[str]:
+    """The runner's step text and pytest arguments against this gate's own (#1645 review), compared for EQUALITY after
+    flattening whitespace: an extra argument fails exactly as a dropped one does. An edit to the runner alone fails."""
+    out: list[str] = []
+    for name, theirs, ours in (
+        ("CI_PYTEST_ARGS", RF.CI_PYTEST_ARGS, CI_PYTEST_ARGS),
+        ("CI_STEP_RUN", RF.CI_STEP_RUN, CI_STEP_EXPECTED),
+    ):
+        if RF.flat_run(theirs) != RF.flat_run(ours):
+            out.append(
+                f"run_fast_suite.{name} differs from the gate's own literal (lint_coverage.py: "
+                f"`{RF.flat_run(ours)}`) — a change to what is measured is an edit to this gate"
+            )
+    return out
+
+
 def ci_step_rules(root: Path) -> list[str]:
     """The gate's own CI wiring, read from the PARSED workflow (a comment satisfies nothing): a disabled,
     softened or bypassed step would make every other rule here vacuous."""
@@ -1567,9 +1607,11 @@ def ci_step_rules(root: Path) -> list[str]:
     if "continue-on-error" in job or any("continue-on-error" in s for s in steps):
         out.append(f"{where}: continue-on-error is banned in the job that carries the coverage gate")
     suite = [i for i, s in enumerate(steps) if "--cov" in run(s)]
-    if len(suite) != 1 or CI_COV_ARGS not in flat(steps[suite[0]]) or CI_CLEAN not in flat(steps[suite[0]]):
+    out += [f"{where}: {p}" for p in _pinned_step_problems()]
+    if len(suite) != 1 or flat(steps[suite[0]]) != RF.flat_run(RF.CI_STEP_RUN):
         out.append(
-            f"{where}: needs exactly one measuring step, running `{CI_CLEAN}` and the fast suite with `{CI_COV_ARGS}`"
+            f"{where}: needs exactly one measuring step, whose run is exactly scripts/run_fast_suite.py::CI_STEP_RUN "
+            f"(`{CI_CLEAN}`, then the sharded fast suite inside ci_netns.sh with `{CI_COV_ARGS}`)"
         )
     # The re-use decision and the stamp also run this script (#1640); each is pinned by _reuse_wiring_rules.
     gate = [
@@ -1642,6 +1684,7 @@ def _reuse_wiring_rules(steps: list[dict], suite: int, gate: int, where: str, ru
     for name, value, paths in (
         (COVERAGE_ARTIFACT, CI_UPLOAD_IF, {COVERAGE_JSON, JUNIT_XML, STAMP_JSON}),
         (REUSED_ARTIFACT, CI_POINTER_IF, {REUSED_FROM_JSON}),
+        (SHARDS_ARTIFACT, CI_UPLOAD_IF, SHARDS_PATHS),  # #1645: diagnostics, uploaded after a red suite too
     ):
         full = f"{name}-${{{{ github.run_attempt }}}}"
         found = [i for i in uploads if (steps[i].get("with") or {}).get("name") == full]
@@ -1654,6 +1697,23 @@ def _reuse_wiring_rules(steps: list[dict], suite: int, gate: int, where: str, ru
             need = f"exactly `if: {want[i]}`" if i in want else "no `if:`"
             out.append(f"{where}: step {s.get('name') or s.get('uses')!r} must carry {need} (found {s.get('if')!r})")
     return out
+
+
+def _runner_env_rules(root: Path) -> list[str]:
+    """The sharded runner is part of the measurement (#1645 review S1): it may name exactly one coverage environment
+    variable, once, in :data:`RUNNER_ENV_ALLOW` (each shard's data file). Its option refusals are not scanned here:
+    what it passes each shard is pinned by tests/unit/test_run_fast_suite.py's stub pytest."""
+    try:
+        text = (root / RUNNER_REL).read_text(encoding="utf-8")
+    except OSError as e:
+        return [f"{RUNNER_REL} unreadable ({e}): the measuring step's runner cannot be verified"]
+    names = _BANNED_ENV_RE.findall(text)
+    if names != ["COVERAGE_FILE"] or text.count(RUNNER_ENV_ALLOW) != 1:
+        return [
+            f"{RUNNER_REL}: names {names} — the runner may set only `{RUNNER_ENV_ALLOW}`, once (coverage is "
+            "configured only in pyproject.toml)"
+        ]
+    return []
 
 
 def config_rules(root: Path, ex_paths: list[str]) -> list[str]:
@@ -1695,9 +1755,15 @@ def config_rules(root: Path, ex_paths: list[str]) -> list[str]:
         sources.append((p.relative_to(root).as_posix(), text))
         for m in sorted(set(_BANNED_ENV_RE.findall(text))):
             out.append(f"{p.relative_to(root).as_posix()}: names {m} — coverage is configured only in pyproject.toml")
+        for m in sorted(set(_BANNED_PYTEST_ENV_RE.findall(text))):
+            out.append(
+                f"{p.relative_to(root).as_posix()}: names {m} — it changes the suite's selection or plugins in every "
+                "pytest process (the fast suite's arguments are pinned in the step; #1645)"
+            )
     for name, text in sources:
         for m in sorted(set(_BANNED_OPTS_RE.findall(text))):
             out.append(f"{name}: {m} is banned (it moves or disables the measurement)")
+    out += _runner_env_rules(root)
     for top in ("tests", SCOPE):
         for p in sorted((root / top).rglob("*.py")):
             if _BANNED_IMPORT_RE.search(p.read_text(errors="replace")):
@@ -2025,6 +2091,9 @@ def merge_floors(texts: list[str], committed: Floors | None) -> tuple[dict, list
 RUN_SUITE_STEP = "Run required fast suite"
 MEMORYHUB_STEP = "MemoryHub integration gate"
 COVERAGE_ARTIFACT = "coverage-json"
+# #1645: each shard's log, junit and collection record, for diagnosing a red run (never a measurement input).
+SHARDS_ARTIFACT = "fast-suite-shards"
+SHARDS_PATHS = {"shard*.log", "fast-suite.shard*.xml", "shard*.collect.json"}
 REUSED_ARTIFACT = "coverage-reused-from"
 
 
