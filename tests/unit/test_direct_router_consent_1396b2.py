@@ -125,7 +125,6 @@ def _lanes(profile: str):
     return {"large": LaneConfig(name="large", max_workers=1, model_profile=profile)}
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_rewalk_is_handed_the_builds_profile_not_the_declined_lane_profile(gate, monkeypatch) -> None:
     LB, walks = _preflight_env(monkeypatch, registry={"declined-lane", "build-model"})
     out = LB._ensure_lane_profiles_available(_lanes("declined-lane"), object(), None, profile="build-model")
@@ -133,7 +132,6 @@ def test_the_rewalk_is_handed_the_builds_profile_not_the_declined_lane_profile(g
     assert out["large"].model_profile == "present-model"
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_an_implicit_build_whose_profile_is_declined_still_rewalks(gate, monkeypatch) -> None:
     """v3.1 G3: a build handed no profile keeps today's re-walk (no refusal)."""
     LB, walks = _preflight_env(monkeypatch, registry={"env-model"})
@@ -141,7 +139,6 @@ def test_an_implicit_build_whose_profile_is_declined_still_rewalks(gate, monkeyp
     assert walks == [None] and out["large"].model_profile == "present-model"
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_preflight_refuses_a_named_model_it_could_not_download(gate, monkeypatch) -> None:
     from maxim.models.language.types import LocalModelUnavailable
 
@@ -151,7 +148,6 @@ def test_the_preflight_refuses_a_named_model_it_could_not_download(gate, monkeyp
     assert err.value.profile == P and walks == []  # no re-walk to some other model
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_preflight_reports_the_profiles_it_left_missing(gate, monkeypatch) -> None:
     LB, _ = _preflight_env(monkeypatch, registry={"env-model"})
     declined: set[str] = set()
@@ -159,7 +155,6 @@ def test_the_preflight_reports_the_profiles_it_left_missing(gate, monkeypatch) -
     assert declined == {"env-model"}
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_build_normalizes_an_alias_before_the_preflight_reads_it(monkeypatch) -> None:
     """v3.1 G1: ``mistral-7b`` (the API's default) reached the preflight raw, missed the registry, and was never
     asked for or refused; the router was then built on the missing file."""
@@ -183,7 +178,6 @@ def test_the_build_normalizes_an_alias_before_the_preflight_reads_it(monkeypatch
     assert manager.profile_override == seen["profile"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_an_implicit_build_on_a_declined_env_profile_runs_with_no_llm(gate, monkeypatch, tmp_path) -> None:
     """Review round W3, the COMPOSED outcome: ``MAXIM_LLM_PROFILE`` set, no profile handed to the build, and its model
     declined at the preflight. The re-walk moves the lane, but ``_build_local_backend`` serves the env profile, so the
@@ -220,7 +214,6 @@ def test_an_implicit_build_on_a_declined_env_profile_runs_with_no_llm(gate, monk
 # ── router_model_problem (moved from cli.py) ─────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_profile_this_build_already_declined_is_not_asked_again(gate, tmp_path) -> None:
     from maxim.models.download import router_model_problem
     from maxim.models.language.types import LocalModelUnavailable
@@ -229,7 +222,6 @@ def test_a_profile_this_build_already_declined_is_not_asked_again(gate, tmp_path
     assert gate.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_custom_model_path_still_missing_after_the_registry_file_is_present_is_refused(
     gate, tmp_path, capsys, caplog
 ) -> None:
@@ -245,7 +237,6 @@ def test_a_custom_model_path_still_missing_after_the_registry_file_is_present_is
     assert capsys.readouterr().out == ""  # the library check never prints (review round A4/E5)
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_library_check_never_prints_a_refusal(gate, tmp_path, capsys, monkeypatch) -> None:
     """Review round A4/E5: it runs mid-run for ExecAgent's lazy build and under a live display; only a CLI caller
     prints its own line."""
@@ -257,7 +248,6 @@ def test_the_library_check_never_prints_a_refusal(gate, tmp_path, capsys, monkey
     assert capsys.readouterr().out == ""
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 @pytest.mark.parametrize("provider_type", ["anthropic", "maxim_peer"])
 def test_a_router_with_a_non_local_provider_tail_keeps_serving_while_its_local_file_is_missing(
     gate, tmp_path, monkeypatch, provider_type
@@ -275,7 +265,6 @@ def test_a_router_with_a_non_local_provider_tail_keeps_serving_while_its_local_f
     assert gate.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_router_whose_only_provider_is_local_is_still_checked(gate, tmp_path, monkeypatch) -> None:
     from maxim.models.download import consented_router
 
@@ -289,7 +278,6 @@ def test_a_router_whose_only_provider_is_local_is_still_checked(gate, tmp_path, 
 # ── the seam: build_run_router ───────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_fallback_router_on_a_missing_model_is_asked_for_on_the_main_thread(gate, fallback) -> None:
     from maxim.runtime.lane_backends import build_run_router
 
@@ -298,7 +286,6 @@ def test_a_fallback_router_on_a_missing_model_is_asked_for_on_the_main_thread(ga
     assert not any(r.warmed for r in _Router.built)  # nothing started a load
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_declined_named_model_refuses_the_run(gate, fallback) -> None:
     from maxim.models.language.types import LocalModelUnavailable
     from maxim.runtime.lane_backends import build_run_router
@@ -308,7 +295,6 @@ def test_a_declined_named_model_refuses_the_run(gate, fallback) -> None:
     assert gate.calls == [(P, None)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_off_the_main_thread_the_seam_never_asks(gate, fallback) -> None:
     from maxim.runtime.lane_backends import build_run_router
 
@@ -320,7 +306,6 @@ def test_off_the_main_thread_the_seam_never_asks(gate, fallback) -> None:
     assert gate.calls == [(P, False)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_granted_download_hands_the_router_back(gate, fallback, monkeypatch, tmp_path) -> None:
     from maxim.runtime.lane_backends import build_run_router
 
@@ -334,7 +319,6 @@ def test_a_granted_download_hands_the_router_back(gate, fallback, monkeypatch, t
     assert isinstance(router, _Router) and gate.calls == [(P, None)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_fallback_profile_the_preflight_already_declined_is_not_asked_again(gate, fallback) -> None:
     """A box with no large tier (CPU-only, low VRAM) takes the fallback on every start: one prompt per profile."""
     from maxim.runtime.lane_backends import build_run_router
@@ -344,7 +328,6 @@ def test_a_fallback_profile_the_preflight_already_declined_is_not_asked_again(ga
     assert router is None and gate.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 @pytest.mark.parametrize(
     "case",
     ["cloud-backend", "present-file"],
@@ -360,7 +343,6 @@ def test_a_router_with_nothing_to_download_is_handed_back_untouched(gate, monkey
     assert isinstance(router, _Router) and gate.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_primary_router_on_a_declined_model_is_not_passed_through(gate, monkeypatch, tmp_path) -> None:
     """First design pass, fold 1: the primary router itself can carry the missing model (the manager serves the
     build's profile ahead of the lane's); it gets the same check as the fallback."""
@@ -374,7 +356,6 @@ def test_a_primary_router_on_a_declined_model_is_not_passed_through(gate, monkey
     assert router is None and gate.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_primary_router_on_a_remote_lane_is_not_checked(gate, monkeypatch, tmp_path) -> None:
     """A spawned server, a peer or a cloud lane has no local file here."""
     from maxim.runtime.lane_backends import build_run_router
@@ -390,7 +371,6 @@ def test_a_primary_router_on_a_remote_lane_is_not_checked(gate, monkeypatch, tmp
 # ── the run sites ────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_shared_router_refuses_a_named_model_and_is_none_without_one(gate, fallback) -> None:
     from maxim.models.language.types import LocalModelUnavailable
     from maxim.simulation.orchestrator import _build_shared_router
@@ -401,7 +381,6 @@ def test_the_shared_router_refuses_a_named_model_and_is_none_without_one(gate, f
     assert not any(r.warmed for r in _Router.built)
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_declined_aut_model_refuses_the_run_instead_of_measuring_the_shared_model(gate, fallback) -> None:
     from maxim.models.language.types import LocalModelUnavailable
     from maxim.simulation.orchestrator import _build_aut_router
@@ -412,7 +391,6 @@ def test_a_declined_aut_model_refuses_the_run_instead_of_measuring_the_shared_mo
     assert not any(r.warmed for r in _Router.built)
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_declined_aut_model_refuses_before_anything_warms_and_releases_the_runs_registration(monkeypatch) -> None:
     """Review round E3/W1: the AUT's refusal landed after the shared model had started loading and the sandbox was
     up (a library caller kept both). Now both routers are BUILT first; the refusal comes before any warmup, and the
@@ -438,7 +416,6 @@ def test_a_declined_aut_model_refuses_before_anything_warms_and_releases_the_run
     assert order == ["build shared-model", "build aut-model", "release start"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_run_builds_both_routers_before_the_sandbox_and_warms_the_aut_one_later(monkeypatch) -> None:
     """The order inside ``start_simulation_mode``: ``_build_run_llms`` (both builds, then the shared warmup) before
     the sandbox; the AUT's own warmup where its worker is built, so the load order is unchanged."""
@@ -471,7 +448,6 @@ def test_the_run_builds_both_routers_before_the_sandbox_and_warms_the_aut_one_la
     assert orchestrator._warm_aut_router(aut, shared, "aut") is aut and order[-1] == "warm aut"
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_research_refuses_a_named_model_past_its_broad_except(gate, fallback) -> None:
     from maxim.models.language.types import LocalModelUnavailable
     from maxim.simulation.research_orchestrator import _build_research_llm
@@ -480,7 +456,6 @@ def test_research_refuses_a_named_model_past_its_broad_except(gate, fallback) ->
         _build_research_llm(P)
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_paper_writer_takes_one_plain_router_and_never_asks(gate, fallback, tmp_path, monkeypatch) -> None:
     """Second design pass, fold 4: no full build (process services, a spawned server, the banner, a decision
     record) for a post-benchmark step; a missing model is no paper, not a router that refuses every call."""
@@ -495,7 +470,6 @@ def test_the_paper_writer_takes_one_plain_router_and_never_asks(gate, fallback, 
     assert fallback["primary_calls"] == 0
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_consented_router_never_asks_by_default(gate, monkeypatch, tmp_path) -> None:
     from maxim.models.download import consented_router
     from maxim.models.language.types import LocalModelUnavailable
@@ -507,7 +481,6 @@ def test_consented_router_never_asks_by_default(gate, monkeypatch, tmp_path) -> 
     assert isinstance(router, _Router) and cause is None
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_registry_model_the_gate_did_not_download_has_its_own_cause(gate, monkeypatch, tmp_path) -> None:
     from maxim.models.download import consented_router
     from maxim.models.language.types import LocalModelUnavailable
@@ -520,7 +493,6 @@ def test_a_registry_model_the_gate_did_not_download_has_its_own_cause(gate, monk
 # ── LocalModelUnavailable ────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_refusal_is_also_a_configuration_error() -> None:
     """Owner decision 2026-11-14: ``maxim.run()`` / ``create.router()`` document ``ConfigurationError``, so an
     existing ``except ConfigurationError`` still catches the refusal; the CLI still reads it as a BackendError."""
@@ -534,7 +506,6 @@ def test_the_refusal_is_also_a_configuration_error() -> None:
         raise err
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_each_cause_has_its_own_static_hint_without_the_profile() -> None:
     """Review round E4/W8: a hint per cause, static text chosen by the cause, never the user's profile in it."""
     from maxim.models.language.types import LocalModelUnavailable
@@ -551,7 +522,6 @@ def test_each_cause_has_its_own_static_hint_without_the_profile() -> None:
         LocalModelUnavailable(P, cause="made-up")
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_named_refusal_carries_the_checks_cause(gate, fallback, monkeypatch, tmp_path) -> None:
     from maxim.models.language.types import LocalModelUnavailable
     from maxim.runtime.lane_backends import build_run_router
@@ -586,7 +556,6 @@ def _call_sites(path: Path, target: str, *, attr_ok: bool = True) -> list[tuple[
     return found
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_no_run_site_hand_builds_a_router_outside_the_consent_checks() -> None:
     """Caller grep (CLAUDE.md "a fix ships with a caller"): every ``LLMRouter(...)`` / ``_LlamaCppBackend(...)`` in
     src/ outside models/language/, and in scripts/, is the ONE consented builder (``models/download.py::
@@ -609,7 +578,6 @@ def test_no_run_site_hand_builds_a_router_outside_the_consent_checks() -> None:
     assert found == allowed, sorted(found ^ allowed)
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 @pytest.mark.parametrize(
     "rel, func",
     [
@@ -625,7 +593,6 @@ def test_every_plain_router_build_goes_through_the_one_consented_builder(rel, fu
     assert func in {f for f, _ in _call_sites(path, "consented_router")}, f"{rel}::{func} no longer calls it"
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_robot_runtime_builds_through_the_seam() -> None:
     path = SRC / "embodied_runtime" / "agentic_runtime.py"
     assert {func for func, _ in _call_sites(path, "build_run_router")} == {"AgenticRuntimeMixin._start_agentic_runtime"}
@@ -635,7 +602,6 @@ def test_the_robot_runtime_builds_through_the_seam() -> None:
 # ── the CLI ──────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_every_cli_sim_with_an_llm_flag_hands_the_named_model_to_the_build() -> None:
     """v3 F1: ``--llm X`` reached the build only through ``MAXIM_LLM_PROFILE``, so a declined X read as an implicit
     choice. The bare-``maxim`` menu has no ``--llm``, so its sims pass none."""
@@ -647,7 +613,6 @@ def test_every_cli_sim_with_an_llm_flag_hands_the_named_model_to_the_build() -> 
     assert missing == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_goal_sim_passes_the_llm_flag_as_its_profile(monkeypatch) -> None:
     from maxim import cli
 
@@ -677,7 +642,6 @@ def _agentic(refused: str | None):
     return SimpleNamespace(exec_agent=exec_agent)
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_cli_agentic_path_refuses_when_the_llm_flags_model_is_missing() -> None:
     from maxim import cli
     from maxim.models.language.types import LocalModelUnavailable
@@ -692,7 +656,6 @@ def test_the_cli_agentic_path_refuses_when_the_llm_flags_model_is_missing() -> N
         )
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 @pytest.mark.parametrize("named", [None, "another-model"], ids=["no-llm-flag", "an-exec-agent-override"])
 def test_the_cli_agentic_path_runs_without_the_llm_for_a_model_nobody_named(named) -> None:
     """Second delta round, G5: an llm.json ``agent_profiles.exec_agent`` override is not the ``--llm`` model."""
@@ -708,7 +671,6 @@ def test_the_cli_agentic_path_runs_without_the_llm_for_a_model_nobody_named(name
     assert worker is None
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_a_named_model_refusal_exits_2_with_the_fix_hint(monkeypatch) -> None:
     from maxim import cli
     from maxim.models.language.types import LocalModelUnavailable
@@ -741,7 +703,6 @@ def exec_agent(monkeypatch, tmp_path):
     return agent
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_lazy_library_router_never_asks_and_remembers_the_refusal(gate, exec_agent) -> None:
     assert exec_agent._ensure_router() is None
     assert exec_agent._ensure_router() is None  # the lazy goal path: no rebuild, no second warning
@@ -749,14 +710,12 @@ def test_the_lazy_library_router_never_asks_and_remembers_the_refusal(gate, exec
     assert exec_agent._refused_profile == P
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_cli_ask_is_not_stopped_by_an_earlier_lazy_refusal(gate, exec_agent) -> None:
     exec_agent._ensure_router()
     assert exec_agent._ensure_router(consent="ask") is None
     assert gate.calls == [(P, False), (P, None)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_an_ask_off_the_main_thread_never_prompts(gate, exec_agent) -> None:
     """Review round E2a: ``consent="ask"`` asks only on the main thread; a worker thread's build never prompts."""
     t = threading.Thread(target=lambda: exec_agent._ensure_router(consent="ask"))
@@ -765,7 +724,6 @@ def test_an_ask_off_the_main_thread_never_prompts(gate, exec_agent) -> None:
     assert gate.calls == [(P, False)]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_cli_agentic_path_builds_exec_agents_router_with_the_ask() -> None:
     """Review round E2b: the CLI agentic path is the one ExecAgent build that may ask (OD3, the #1343 fold)."""
     from maxim import cli
@@ -786,7 +744,6 @@ def test_the_cli_agentic_path_builds_exec_agents_router_with_the_ask() -> None:
     assert asked == ["ask"]
 
 
-@pytest.mark.xfail(strict=True, reason="#1396 bullet 2 red gate: flips with the fix")
 def test_the_cli_refusal_names_the_exec_agents_cause() -> None:
     from maxim import cli
     from maxim.models.language.types import LocalModelUnavailable

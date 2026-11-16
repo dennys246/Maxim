@@ -1,7 +1,7 @@
 """#1396 Q2: the download gate remembers a "no" for the rest of the run (owner decision 2026-11-12).
 
 ``models/download.py::ensure_available`` kept no state, so one run could ask the same question twice: ``--sim
-interactive`` asks in ``cli.py::_ensure_router_model`` and again in the sim's preflight
+interactive`` asks in ``models/download.py::router_model_problem`` and again in the sim's preflight
 (``lane_backends._ensure_lane_profiles_available``); ``--auto-curate`` asks, then the preflight does. A "no" (or a
 30 s timeout) is now remembered inside a run: ``download_decline_scope`` (stacked: each scope starts empty and restores
 the outer state on exit), entered unarmed by ``cli.py::_main_guarded``, armed by one ``arm_download_decline_memory()``
@@ -189,9 +189,8 @@ def test_a_call_on_another_thread_inside_the_scope_sees_the_memory(gate) -> None
 
 
 def test_the_composed_sim_path_asks_once_after_a_no(gate) -> None:
-    """The seam #1396 names: ``--sim interactive`` asks in ``_ensure_router_model``, then the sim's own preflight."""
-    from maxim import cli
-    from maxim.models.download import download_decline_scope
+    """The seam #1396 names: ``--sim interactive`` asks in ``router_model_problem``, then the sim's own preflight."""
+    from maxim.models.download import download_decline_scope, router_model_problem
     from maxim.runtime.lane_backends import _ensure_lane_profiles_available
     from maxim.runtime.worker_pool import LaneConfig
 
@@ -200,7 +199,7 @@ def test_the_composed_sim_path_asks_once_after_a_no(gate) -> None:
     )
     lanes = {"large": LaneConfig(name="large", max_workers=1, model_profile=gate.profile)}
     with download_decline_scope(armed=True):
-        assert cli._ensure_router_model(router) is False
+        assert router_model_problem(router) is not None
         out = _ensure_lane_profiles_available(lanes, None, None)
     assert len(gate.questions) == 1
     assert out["large"].model_profile is None  # the preflight's own fallback, unchanged
