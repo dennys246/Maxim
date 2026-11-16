@@ -22,6 +22,9 @@ an empty box: an older suite waited for a draining check that waited for the old
 critical suites, then non-critical draining checks, then the rest, each in queue order. A waiter waits for every
 higher-ranked waiter that fits, and a suite also for every higher-ranked draining check; the top-ranked waiter
 therefore starts the moment it fits, and no slot is idled except to drain. Among the rest, whichever fits goes.
+The same drain covers a heavier suite (#1645): a ``--shards N`` suite ranked ahead of a lighter suite, and critical
+or waiting ``DRAIN_AFTER_S``, holds the lighter one back until the box has room for it (this is a reading of the
+owner's rulings for weights, not a ruling of its own).
 
 Why a script of its own: the state is shared by every session and worktree on the box, and today's callers launch
 ``suite_at_commit.sh`` and ``prepr.sh`` directly, so neither script can see the other sessions' waiters. Backlog M85
@@ -38,6 +41,11 @@ Inputs and how each could lie:
   ``prepr.py``.
 - One run, many processes: a suite is ``suite_at_commit.sh`` plus its pytest child, and prepr runs mypy. A classified
   process with a classified (or claimed) ancestor is counted once, under the top-most.
+- A sharded suite (#1645): ``scripts/run_fast_suite.py --shards N`` runs N pytest processes, so it WEIGHS N against
+  ``MAX_SUITES``, not 1 (its top-most process) and not N + 1 (the runner plus its children). The weight is the
+  largest ``--shards N`` in the counted process's own argv or any descendant's (``suite_at_commit.sh --shards N``
+  passes it down), else 1; a queued waiter's weight is read from the command it will run. A suite heavier than the
+  cap starts only on a box with nothing else counted.
 - What a full suite is: pytest whose positional arguments include a path whose last part is ``tests`` (or ``.``), or
   none at all (``testpaths``). Values of pytest's value-taking flags (``-k tests``) are not positional, and since
   ``ps`` drops quoting, a bare word (``slow`` from ``-m "not slow"``) is not a path either; a path must contain ``/``
@@ -162,6 +170,8 @@ def classify(argv: tuple[str, ...]) -> str | None:
     prog, args = _program(argv)
     if prog == "suite_at_commit.sh":
         return SUITE
+    if prog == "run_fast_suite.py":
+        return None if "--check-map" in args else SUITE  # --check-map is a lint (the lint job's), not a suite
     if prog in ("pytest", "py.test"):
         pos = [a for a in _pytest_positionals(args) if _looks_like_path(a)]
         if not pos or any(os.path.basename(os.path.normpath(a)) in ("tests", ".") for a in pos):
@@ -172,6 +182,23 @@ def classify(argv: tuple[str, ...]) -> str | None:
     if prog == "mypy" and _MYPY_PUBLIC_SIGNATURE <= set(args):
         return CHECK  # run_mypy_public.sh execs mypy, so the wrapper's own name is gone within milliseconds
     return None
+
+
+def weight(argv: tuple[str, ...]) -> int:
+    """How many pytest processes one process's own run is: ``--shards N`` for the sharded runner or the suite script
+    that passes it down, else 1. A malformed value weighs 1 (the runner and the script refuse it before any pytest)."""
+    prog, args = _program(argv)
+    if prog not in ("suite_at_commit.sh", "run_fast_suite.py"):
+        return 1
+    for i, a in enumerate(args):
+        if a == "--shards" and i + 1 < len(args):
+            value = args[i + 1]
+        elif a.startswith("--shards="):
+            value = a.split("=", 1)[1]
+        else:
+            continue
+        return int(value) if value.isdigit() and int(value) >= 1 else 1
+    return 1
 
 
 def read_ps() -> list[Proc]:
@@ -200,12 +227,29 @@ def scoped(procs: list[Proc], only: str | None) -> list[Proc]:
     return [p for p in procs if p.pid == me or only in " ".join(p.argv)]
 
 
-def running(procs: list[Proc], claims: dict[int, str], *, own_pid: int) -> dict[str, list[int]]:
-    """The runs in progress by kind, each counted once: claims first, then argv-classified top-most processes.
+def running(procs: list[Proc], claims: dict[int, str], *, own_pid: int) -> dict[str, dict[int, int]]:
+    """The runs in progress by kind, each counted once (``{pid: weight}``): claims first, then argv-classified top-most
+    processes. A run's weight is the largest :func:`weight` in its own process or any descendant (a sharded suite).
 
     ``own_pid`` (the caller, required so no call site can forget it) and its ancestors are never counted: a waiter
     started inside a run (a test of this script inside a full suite) cannot wait for that run to end."""
     by_pid = {p.pid: p for p in procs}
+    children: dict[int, list[int]] = {}
+    for p in procs:
+        if p.ppid != p.pid:
+            children.setdefault(p.ppid, []).append(p.pid)
+
+    def run_weight(pid: int) -> int:
+        best, todo, seen = 1, [pid], set()
+        while todo:
+            cur = todo.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            if cur in by_pid:
+                best = max(best, weight(by_pid[cur].argv))
+            todo += children.get(cur, [])
+        return best
 
     def ancestors(pid: int):
         seen = set()
@@ -218,24 +262,31 @@ def running(procs: list[Proc], claims: dict[int, str], *, own_pid: int) -> dict[
     mine = {own_pid, *ancestors(own_pid)}
     kinds = {p.pid: (None if p.pid in mine else classify(p.argv)) for p in procs}
     claims = {pid: kind for pid, kind in claims.items() if pid not in mine}  # a waiter nested in a claimed run
-    out: dict[str, list[int]] = {SUITE: [], CHECK: []}
+    out: dict[str, dict[int, int]] = {SUITE: {}, CHECK: {}}
     for pid, kind in claims.items():
-        out[kind].append(pid)
+        out[kind][pid] = run_weight(pid)
     for p in procs:
         kind = kinds[p.pid]
         if kind is None or p.pid in claims:
             continue
         if any(a in claims or kinds.get(a) is not None for a in ancestors(p.pid)):
             continue
-        out[kind].append(p.pid)
+        out[kind][p.pid] = run_weight(p.pid)
     return out
 
 
-def fits(kind: str, now: dict[str, list[int]]) -> bool:
-    suites, checks = len(now[SUITE]), len(now[CHECK])
+def suite_load(now: dict[str, dict[int, int]]) -> int:
+    """The running suites' total weight (a ``--shards N`` suite counts N)."""
+    return sum(now[SUITE].values())
+
+
+def fits(kind: str, now: dict[str, dict[int, int]], need: int = 1) -> bool:
+    """The box rule in weights: a suite of weight ``need`` fits while the load stays within MAX_SUITES (one heavier
+    than the cap only on an otherwise empty box) and no check runs; a check fits only on an empty box."""
+    load, checks = suite_load(now), len(now[CHECK])
     if kind == SUITE:
-        return suites < MAX_SUITES and checks == 0
-    return suites == 0 and checks == 0
+        return checks == 0 and (load + need <= MAX_SUITES or load == 0)
+    return load == 0 and checks == 0
 
 
 @dataclass(frozen=True)
@@ -247,6 +298,7 @@ class Ticket:
     pid: int
     kind: str
     started: str = ""
+    weight: int = 1  # the command's own weight (a ``--shards N`` suite); a ticket written before #1645 reads 1
 
     @property
     def order(self) -> tuple[int, int, int]:
@@ -261,26 +313,39 @@ def _draining(t: Ticket, now_ns: int) -> bool:
     return t.kind == CHECK and (t.critical or now_ns - t.queued_ns >= DRAIN_AFTER_S * 1e9)
 
 
+def _drains_lighter_suites(t: Ticket, me: Ticket, now_ns: int) -> bool:
+    """#1645 review: a heavier suite waiting for room (a ``--shards N`` suite needs an emptier box) drains it of new
+    LIGHTER suites once it is critical or has waited ``DRAIN_AFTER_S``, or a stream of weight-1 suites starves it."""
+    return (
+        me.kind == SUITE
+        and t.kind == SUITE
+        and t.weight > me.weight
+        and (t.critical or now_ns - t.queued_ns >= DRAIN_AFTER_S * 1e9)
+    )
+
+
 def _rank(t: Ticket, now_ns: int) -> tuple[int, int, int]:
     """The single precedence order (module docstring): critical checks, critical suites, draining checks, the rest."""
     draining = _draining(t, now_ns)
     return (0 if t.critical and draining else 1 if t.critical else 2 if draining else 3, t.queued_ns, t.pid)
 
 
-def may_start(me: Ticket, queue: list[Ticket], now: dict[str, list[int]], now_ns: int | None = None) -> bool:
+def may_start(me: Ticket, queue: list[Ticket], now: dict[str, dict[int, int]], now_ns: int | None = None) -> bool:
     """Whether ``me`` starts now: it fits, no waiter ordered ahead of it fits and has precedence, and starting would
     not keep a draining check waiting (the owner's two rulings in the module docstring)."""
-    if not fits(me.kind, now):
+    if not fits(me.kind, now, me.weight):
         return False
     now_ns = time.time_ns() if now_ns is None else now_ns
     mine = _rank(me, now_ns)
     for t in queue:
         if t.pid == me.pid or t is me or _rank(t, now_ns) >= mine:
             continue
-        if fits(t.kind, now):
+        if fits(t.kind, now, t.weight):
             return False  # it goes first; we re-check after it has claimed its slot
         if me.kind == SUITE and _draining(t, now_ns):
             return False  # the box drains for it
+        if _drains_lighter_suites(t, me, now_ns):
+            return False  # the box drains for a heavier suite ranked ahead
     return True
 
 
@@ -319,7 +384,8 @@ def _load_queue(state: Path, procs: list[Proc], prune: bool) -> list[Ticket]:
     for f in sorted((state / "queue").glob("*.json")):
         try:
             d = json.loads(f.read_text())
-            t = Ticket(bool(d["critical"]), int(d["queued_ns"]), int(d["pid"]), str(d["kind"]), str(d["started"]))
+            t = Ticket(bool(d["critical"]), int(d["queued_ns"]), int(d["pid"]), str(d["kind"]), str(d["started"]),
+                       max(1, int(d.get("weight", 1))))  # fmt: skip
         except (OSError, ValueError, KeyError) as e:
             print(f"box_quiet: unreadable ticket {f.name}: {e}", file=sys.stderr)
             if prune:
@@ -363,13 +429,14 @@ def cmd_status(state: Path, only: str | None = None) -> int:
         now = running(procs, _load_claims(state, procs, prune=False), own_pid=os.getpid())
         queue = _load_queue(state, procs, prune=False)
     print(
-        f"suites running: {len(now[SUITE])}/{MAX_SUITES} {now[SUITE]}   checks running: {len(now[CHECK])} {now[CHECK]}"
+        f"suites running: load {suite_load(now)}/{MAX_SUITES} {now[SUITE]} (pid: weight)   "
+        f"checks running: {len(now[CHECK])} {list(now[CHECK])}"
     )
     now_ns = time.time_ns()
     for t in sorted(queue, key=lambda t: t.order):
         waited = (now_ns - t.queued_ns) / 1e9
         flags = ("  CRITICAL" if t.critical else "") + ("  DRAINING" if _draining(t, now_ns) else "")
-        print(f"  queued: {t.kind:5} pid {t.pid}  waited {waited:.0f}s{flags}")
+        print(f"  queued: {t.kind:5} pid {t.pid}  weight {t.weight}  waited {waited:.0f}s{flags}")
     print(f"a suite fits now: {fits(SUITE, now)}   a check fits now: {fits(CHECK, now)}")
     return 0
 
@@ -400,10 +467,11 @@ def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: flo
     child = None
     with Lock(state):
         procs = read_ps()
-        me = Ticket(critical, time.time_ns(), os.getpid(), kind, _started(procs).get(os.getpid(), ""))
+        me = Ticket(critical, time.time_ns(), os.getpid(), kind, _started(procs).get(os.getpid(), ""),
+                    weight(tuple(cmd)))  # fmt: skip
         ticket = state / "queue" / me.name
         _write_atomic(ticket, {"critical": critical, "queued_ns": me.queued_ns, "pid": me.pid, "kind": kind,
-                               "started": me.started})  # fmt: skip
+                               "started": me.started, "weight": me.weight})  # fmt: skip
     announced = False
     try:
         while child is None:
