@@ -23,6 +23,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from scripts import run_fast_suite as RF
+
 ROOT = Path(__file__).resolve().parents[2]
 WF = yaml.safe_load((ROOT / ".github/workflows/test.yml").read_text())
 ACTION = yaml.safe_load((ROOT / ".github/actions/model-cache-setup/action.yml").read_text())
@@ -75,13 +77,20 @@ def test_every_test_run_is_inside_the_loopback_only_network_namespace():
     """The fast suite and both nightly lanes (architecture review: the boundary covered one step). The MemoryHub step
     is the stated exception: the coverage gate pins its exact form (scripts/lint_coverage.py::ci_step_rules)."""
     for job, marker in (
-        ("unit-tests", "--cov"),
         ("slow-tests", '-m "slow"'),
         ("model-cache-tests", "requires_model_cache"),
     ):
         runs = [_run(s) for s in _steps(job) if marker in _run(s) and "pytest" in _run(s)]
         assert len(runs) == 1, (job, runs)
         assert "bash scripts/ci_netns.sh" in runs[0] and '"$PY" -m pytest tests/' in runs[0], job
+    # The fast suite (#1645): the sharded runner, launched INSIDE ci_netns.sh. Its shards are children of the
+    # namespace's innermost shell, so they inherit the namespace; the runner itself opens nothing. The whole run text
+    # is pinned (a dead `ci_netns.sh` string elsewhere in the step cannot satisfy it).
+    runs = [s["run"] for s in _steps("unit-tests") if "--cov" in str(s.get("run", ""))]
+    assert len(runs) == 1 and RF.flat_run(runs[0]) == RF.flat_run(RF.CI_STEP_RUN), runs
+    suite_line = next(ln for ln in RF.CI_STEP_RUN.splitlines() if ln.startswith("SUITE="))
+    assert suite_line.startswith('SUITE=\'"$PY" scripts/run_fast_suite.py --shards ')
+    assert RF.CI_STEP_RUN.rstrip().endswith('bash scripts/ci_netns.sh "$SUITE"')
 
 
 def test_the_netns_script_drops_privilege_and_arms_the_control():
@@ -186,11 +195,23 @@ def test_the_release_gate_runs_in_the_lint_job_and_its_twin_reads_the_fast_suite
     assert _run(lint[0]).strip() == "python3 scripts/lint_release_gates.py"
     steps = _steps("unit-tests")
     twin = [i for i, s in enumerate(steps) if "lint_release_gates.py" in _run(s)]
-    suite = [i for i, s in enumerate(steps) if "--cov" in _run(s) and "pytest" in _run(s)]
+    suite = [i for i, s in enumerate(steps) if "--cov" in _run(s)]
     assert len(twin) == 1 and len(suite) == 1 and suite[0] < twin[0]
     assert set(steps[twin[0]]) == {"name", "run"}
     assert _run(steps[twin[0]]).strip() == "python scripts/lint_release_gates.py --junit fast-suite.xml"
+    # #1645: the sharded runner; it merges the shards' reports into the one fast-suite.xml it is passed
+    assert RF.flat_run(steps[suite[0]]["run"]) == RF.flat_run(RF.CI_STEP_RUN)
     assert _run(steps[suite[0]]).count("--junitxml=fast-suite.xml") == 1
+
+
+def test_the_unit_tests_timeout_is_60_through_the_post_switch_window():
+    """#1645: the switch reverts the 75-minute stopgap (owner decision 3 of the approach note); 60 stays at least
+    until the S9 revert window (the first 20 post-switch runs, docs/agents/ci-testing.md §1) closes. Each shard's own
+    limit sits below it, but counts from the suite step's start, so a hung shard names itself before the job is killed
+    only while the setup before that step takes under 10 min (the approach note's Known limits). An S9 revert restores
+    75 (serial took 40-57 min) and edits this test in the same PR."""
+    assert WF["jobs"]["unit-tests"]["timeout-minutes"] == 60
+    assert RF.SHARD_TIMEOUT_S < 60 * 60
 
 
 MYPY_SCRIPT = ROOT / "scripts/run_mypy_public.sh"
