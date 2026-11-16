@@ -37,7 +37,7 @@ This file tracks decisions that affect public behavior, repo structure, and long
    ([behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md), T1-16), the README results
    table, the experiments index and the 63c prereg's outcome header.
 9. **No evidence exception.** No evidence exception was recorded in `docs/experiments/evidence_exceptions.json`: the evidence gate's pass table already lets an `exp63c_verdict` PASS support EARNED (narrow), so the move needs none, and an exception there would act as a waiver for those verdict bytes rather than a record. The override is recorded here and in the ledger row; a record-only
-   exception kind is a mechanization follow-up.
+   exception kind is a mechanization follow-up: backlog M91 ([outstanding.md](docs/plans/outstanding.md) §Mechanization backlog).
 
 ### Rationale
 
