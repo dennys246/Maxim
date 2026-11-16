@@ -3041,18 +3041,6 @@ def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
             "move back up is a raise that needs new support"
         ),
         ("exp10_verdict", "T1-1"): "T1-1 is SUPERSEDED; no re-date of a superseded row is supported",
-        ("exp63_verdict", "T1-16"): (
-            "T1-16 is STALE since 2026-10-25 (Session R's recall fix replaced the ranker it measured; owner decision, "
-            "the strict option) and exp63 targets only EARNED: a move back up needs a re-run on a rebuilt judge"
-        ),
-        ("exp63b_verdict", "T1-16"): (
-            "T1-16 is STALE until Exp 63b's verdict (#1476), the re-run on the rebuilt judge, and exp63b targets only "
-            "EARNED: NOT SHOWN raises nothing (OD2, owner 2026-11-02)"
-        ),
-        ("exp63c_verdict", "T1-16"): (
-            "T1-16 is STALE (Exp 63b read NOT SHOWN; owner held 1.3.4 for Exp 63c, 2026-11-09) and exp63c targets only "
-            "EARNED: NOT SHOWN raises nothing (OD2, carried into 63c's prereg)"
-        ),
     }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
     skipped = set()

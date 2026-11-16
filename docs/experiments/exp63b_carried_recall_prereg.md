@@ -1,6 +1,7 @@
 # Exp 63b: carried memory takes part in recall on the content-token ranker and the cue path (pre-registered 2026-11-02)
 
-> **Outcome 2026-11-07 (run and verdict): NOT SHOWN; ledger T1-16 stays STALE 2026-10-25 (OD2: no raise).** Attempt 1
+> **Outcome 2026-11-07 (run and verdict): NOT SHOWN; ledger T1-16 stays STALE 2026-10-25 (OD2: no raise).**
+> **Update 2026-11-16: T1-16 EARNED 2026-11-13 (narrow) on [Exp 63c](exp63c_scripted_recall_prereg.md), an owner reading of BF2; see DECISIONS.md 2026-11-16 (BF2-R1).** Attempt 1
 > was complete: P0–P3, R1, R2′, R3a (turn 1: 3 carried memories surfaced) and R3′ (8 of 8 turns) hold, and R3d found no
 > decisive turn. Every shown memory came from the cue path; the carried memories shown after turn 1 held none of the
 > cue's words outside the goal ([verdict](data/63b_carried_recall/verdict.json),

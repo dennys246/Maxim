@@ -1,7 +1,17 @@
 # Exp 63c: carried memory displaces a new one on the cue path, under a scripted stimulus (pre-registered 2026-11-10)
 
-> **Outcome 2026-11-13 (run and verdict): PASS. Ledger T1-16 raised to EARNED 2026-11-13; floor: not measured (a pre-BF2
-> row owes its floor at B3; owner decision 2026-11-16, replacing the strict reading taken 2026-11-13).** Attempt 1 was complete: P0–P3,
+> **Outcome 2026-11-13 (run and verdict): PASS. Ledger T1-16 raised to EARNED 2026-11-13 (narrow), by an owner reading
+> of BF2, not its letter (owner decision 2026-11-16, DECISIONS.md BF2-R1, replacing the strict reading taken 2026-11-13).**
+> T1-16 was STALE, not EARNED, when this ran, and BF2's "Existing EARNED/MAINTAINED rows keep their status" does not
+> literally cover it; the gate that decided PASS, R3d, is new in 63b/63c (Exp 63 never tested it, and 63b met the old
+> row's other gates and read NOT SHOWN); the raise rests on §Attempts' "PASS → T1-16 EARNED (narrow)", frozen
+> 2026-11-10 before any data. floor: not measured, owed at B3 (`bare_llm`, `llm_notes`; a loss moves the row to
+> `PARTIAL (narrow: floor matched)`). This run is the sole evidence: code-under-test, n_ctx and the served GGUF are
+> machine-stamped, and only the AUT's own slot is not established (`aut_model_attribution: not_established`).
+> The 4 of 4 was close to guaranteed by design (each cue reuses its plant's words; the AUT's echo on every cue's
+> non-goal keys was 0); fact B surfaced on turns 1–2 through a phase-1 AUT restatement, and fact D's planted record
+> on control turn 6; completion uses designer-chosen answer keys and is not a selection claim.
+> Attempt 1 was complete: P0–P3,
 > R1, R2′, R3a (turn 1: 3 carried memories surfaced) and R3′ (8 of 8 turns) hold, S2′ is clean, and R3d found all four cue
 > turns decisive (A 3 v 0, B 3 v 0, C 4 v 0, D 3 v 0; none contested; completion on all four). Both controls stayed armed
 > and were not decisive ([verdict](data/63c_scripted_recall/verdict.json), [rows](data/63c_scripted_recall/rows.jsonl)).
