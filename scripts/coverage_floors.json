@@ -182,8 +182,8 @@
   },
   "files": {
     "src/maxim/models/language/router.py": {
-      "percent": 68.6,
-      "missing": 319
+      "percent": 73.7,
+      "missing": 285
     },
     "src/maxim/simulation/orchestrator.py": {
       "percent": 75.7,
