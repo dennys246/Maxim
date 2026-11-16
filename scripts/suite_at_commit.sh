@@ -3,8 +3,13 @@
 # tree cannot invalidate the run and the result names the commit it tested.
 # docs/lessons/development-flow-speed.md ("A fold never invalidates a running suite").
 #
-#   scripts/suite_at_commit.sh [--no-cov] [<commit>]            # default: HEAD
+#   scripts/suite_at_commit.sh [--no-cov] [--shards N] [<commit>]   # default: HEAD, --shards 1
 #   scripts/suite_at_commit.sh "$(git stash create)"  # tracked changes, no commit (and no signature)
+#
+# The fast suite runs through scripts/run_fast_suite.py, CI's runner (#1645). `--shards 1` (the default) is the
+# serial order with no partition, which the rig keeps until its RIG_KNOWN_FAILURES is re-calibrated under sharding;
+# `--shards 4` is CI's partition (4 processes: scripts/box_quiet.py counts it as 4 against the box's cap). A commit
+# from before the runner existed runs the same arguments through pytest directly (serial only).
 #
 # By default the fast suite runs with CI's exact coverage command and is followed by
 # `scripts/lint_coverage.py --local`, so the coverage ratchet's diff-coverage gate and its measurement-free pin rule
@@ -23,12 +28,24 @@ set -euo pipefail
 main() {
 
     cov=1
-    if [ "${1:-}" = "--no-cov" ]; then
-        cov=0
-        shift
-    fi
+    shards=1
+    usage="usage: scripts/suite_at_commit.sh [--no-cov] [--shards N] [<commit>]"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --no-cov) cov=0; shift ;;
+            --shards)
+                case "${2:-}" in
+                    '' | *[!0-9]* | 0) echo "$usage (--shards needs a positive integer)" >&2; exit 2 ;;
+                esac
+                shards="$2"
+                shift 2
+                ;;
+            -*) echo "$usage" >&2; exit 2 ;;
+            *) break ;;
+        esac
+    done
     if [ "$#" -gt 1 ]; then
-        echo "usage: scripts/suite_at_commit.sh [--no-cov] [<commit>]" >&2
+        echo "$usage" >&2
         exit 2
     fi
     here="$(git rev-parse --show-toplevel)"
@@ -81,14 +98,29 @@ import lint_coverage as lc
 if coverage.__version__ != lc.COVERAGE_VERSION:
     sys.exit(f"coverage {coverage.__version__} installed; the ratchet needs {lc.COVERAGE_VERSION} (pip install 'coverage=={lc.COVERAGE_VERSION}' 'pytest-cov==7.0.0'), or pass --no-cov")
 PY
-        # CI's measuring step (lint_coverage.py: CI_CLEAN + CI_COV_ARGS), so the numbers are the gate's own.
-        rm -f .coverage coverage.json coverage.xml
-        python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
-            --junitxml=fast-suite.xml \
-            --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report= || fast=$?
+    fi
+    # CI's clean and measuring arguments (lint_coverage.py: CI_CLEAN + CI_COV_ARGS), so the numbers are the gate's own;
+    # the runner refuses to start over any leftover output. `--no-cov` drops the --cov arguments (the runner's mode).
+    rm -f .coverage .coverage.* coverage.json coverage.xml fast-suite.xml fast-suite.shard*.xml shard*.collect.json
+    args=(tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider
+        --junitxml=fast-suite.xml
+        --cov=src/maxim --cov-branch --cov-report=json:coverage.json --cov-report=)
+    covmode=""
+    [ "$cov" -eq 1 ] || covmode="--no-cov"
+    if [ -f scripts/run_fast_suite.py ]; then
+        # shellcheck disable=SC2086  # $covmode is one word or none
+        python scripts/run_fast_suite.py --shards "$shards" $covmode -- "${args[@]}" || fast=$?
+    elif [ "$shards" -eq 1 ]; then
+        echo "suite at $short: no scripts/run_fast_suite.py at this commit — the same arguments through pytest"
+        pyargs=()
+        for a in "${args[@]}"; do
+            if [ "$cov" -eq 0 ] && [ "${a#--cov}" != "$a" ]; then continue; fi
+            pyargs+=("$a")
+        done
+        python -m pytest "${pyargs[@]}" || fast=$?
     else
-        python -m pytest tests/ -q -m "not slow" --ignore=tests/integration/test_memory_hub.py -p no:cacheprovider \
-            --junitxml=fast-suite.xml || fast=$?
+        echo "suite at $short: no scripts/run_fast_suite.py at this commit: it can run only with --shards 1" >&2
+        exit 2
     fi
     stage fast-suite "$fast"
     # The release gate's runtime twin, as CI's unit-tests job runs it: it reads the report the suite just wrote.
