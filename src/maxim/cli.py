@@ -1600,6 +1600,21 @@ def _declare_run_mode(args: Any) -> None:
         cli_signals.entered_non_sim_mode()
 
 
+def _reuse_bio_pain_bus_for_sim(args: Any, *, pain_bus: Any, hippocampus: Any, nac: Any) -> None:
+    """A ``--sim`` run reuses the bio-stack's PainBus and hippocampus (moved verbatim out of ``_main_impl``, #1264
+    rule T): ``args._sim_pain_bus`` / ``args._sim_hippo`` are what the run and its report read. Logs on the
+    ``maxim`` logger, as ``_main_impl``'s own ``logger`` does."""
+    _sim_pain_bus = pain_bus
+    logging.getLogger("maxim").info(
+        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
+        hippocampus is not None,
+        nac is not None,
+    )
+
+    args._sim_pain_bus = _sim_pain_bus
+    args._sim_hippo = hippocampus
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -2726,15 +2741,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # the double-subscription.  The bio-stack already has
                 # hippocampus + nac subscribers wired.
                 if sim_source is not None:
-                    _sim_pain_bus = _cli_pain_bus
-                    logger.info(
-                        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
-                        _cli_hippocampus is not None,
-                        _cli_nac is not None,
+                    _reuse_bio_pain_bus_for_sim(
+                        args, pain_bus=_cli_pain_bus, hippocampus=_cli_hippocampus, nac=_cli_nac
                     )
-
-                    args._sim_pain_bus = _sim_pain_bus
-                    args._sim_hippo = _cli_hippocampus
 
                 try:
                     run_agentic_loop(
@@ -2757,6 +2766,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         bio_enrichment_pipeline=_cli_bio_enrichment,
                         thought_gate=_cli_thought_gate,
                         stop_event=threading.Event(),  # registered for the run: its proposal wait sees a stop (#1344)
+                        state_home=getattr(args, "_sim_tmpdir", None),  # a --sim run's state goes with its sandbox
                     )
                 finally:
                     if llm_worker:

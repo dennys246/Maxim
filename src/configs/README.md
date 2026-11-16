@@ -13,7 +13,8 @@ Most runtime-editable files live under `data/`:
 - Optional local LLM config: `data/util/llm.json` (override via `$MAXIM_LLM_CONFIG`); includes `contemplation` key for plan quality settings
 - Model artifacts (weights/checkpoints): `data/models/`
 - Agent/credential files (optional): `data/agents/`, `data/credentials/`
-- Agentic runtime state (per-agent): `data/agents/<AGENT_NAME>/runtime/state_<run_id>.json`
+- Agentic runtime state (one file per loop run, under the data home, not `data/`):
+  `<data home>/runtime_state/<AGENT_NAME>/state_<run_id>_<token>.json` (#1264)
 
 ## Templates
 

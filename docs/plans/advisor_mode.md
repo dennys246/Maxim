@@ -122,7 +122,7 @@ ships, **the sandbox is that channel's only guard**:
 | Environment | `MAXIM_ROLE=leader` (proxy, mesh, tunnel), other `MAXIM_*` toggles, `~/.config/maxim/config.json` | the closed builder builds from a closed config: it ignores `MAXIM_*` and the user config file | Maxim's gate |
 | Context (reads) | `runtime/prefetch.py` runs `find` and direct `open()` reads of `os.getcwd()` (captured at loop setup) on every input, outside the registry (#1342) | the closed builder: no prefetch, or prefetch rooted in an empty directory set before setup *(superseded, V1: no loop, so no prefetch)* | Maxim's gate, once item 1 ships |
 | Egress | the LLM; cloud lanes and provider keys; model, encoder, vision, whisper and voice downloads; a second consent-free download in `llama_backend.py`; `transformers`; docker pulls; hivemind; the leader proxy and tunnel | item 10 (offline, a census-backed refusal) plus the closed builder (local LLM only) | Maxim's gate for fetches, once item 10 ships |
-| Disk | the loop's `data/agents/<agent>/runtime/state_*.json` under the CWD; Hippocampus, NAc and session saves; `lane_decisions.jsonl`; `MAXIM_LOG_FILE`; `utils/config.py::save_config`; `sim_reports` | item 7 (ephemeral) | sandbox only |
+| Disk | the loop's `runtime_state/<agent>/state_*.json` under the data home (since #1264); Hippocampus, NAc and session saves; `lane_decisions.jsonl`; `MAXIM_LOG_FILE`; `utils/config.py::save_config`; `sim_reports` | item 7 (ephemeral) | sandbox only |
 | Inbound | `comms/api.py`, the tailed `<home>/cli/*.jsonl`, console `talk()` | item 4 (one framed entry point) | sandbox only |
 
 **AD5, restated (decided):** Maxim's guard holds on its own for the channels marked "Maxim's gate". The sandbox is an

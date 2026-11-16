@@ -12,7 +12,7 @@ import os
 import sys
 from typing import Any
 
-from maxim.utils.paths import AGENT_HOME_PATTERNS
+from maxim.utils.paths import AGENT_HOME_PATTERNS, RUNTIME_STATE_DIR
 
 
 def normalize_epoch_value(value: object) -> int:
@@ -626,6 +626,8 @@ _GLOBAL_PATHS: dict[str, tuple[str, ...]] = {
     "atl": ("util/atl_state.json",),
     # Planning artifacts (directory)
     "planning": ("planning",),
+    # The agent loop's per-run state snapshots (#1264; utils/paths.py::loop_state_dir)
+    "runtime_state": (RUNTIME_STATE_DIR,),
 }
 
 MEMORY_PATHS: dict[str, tuple[str, ...]] = {}

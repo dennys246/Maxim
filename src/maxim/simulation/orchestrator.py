@@ -860,6 +860,25 @@ def _await_llm_ready_or_refuse(llm_router: Any | None, start_provenance: dict[st
     logger.info("LLM ready")
 
 
+def _open_sim_workspace(*, debug: bool) -> tuple[Path, Path, str]:
+    """The sim's workspace and sim logging (moved verbatim out of ``start_simulation_mode``, #1264 rule T).
+
+    ``<data_home>/sim_sandbox`` via ``_prepare_sim_workspace`` — never CWD-relative. Both loops' runtime-state files
+    go under ``sim_tmpdir`` (``state_home=``, #1264), so they stay with the sandbox. (The former CWD-relative
+    ``data/agents/MaximAgent/runtime`` mkdir was dead code, and that CWD-relative state path was ledger D15.)
+    """
+    sim_workspace, sim_tmpdir, log_path = _prepare_sim_workspace()
+
+    # Enable sim logging (always persist to JSONL; terminal traces if --debug)
+    try:
+        from maxim.simulation.sim_logger import enable_sim_logging
+
+        enable_sim_logging(log_path=log_path, debug=debug)
+    except Exception as e:
+        logger.warning("Failed to enable sim logging — sim will run but no JSONL trace: %s", e)
+    return sim_workspace, sim_tmpdir, log_path
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -1048,19 +1067,7 @@ def start_simulation_mode(
     orchestrator_source = ConversationalSource()
 
     # ── Simulation sandbox ───────────────────────────────────────────────
-    # <data_home>/sim_sandbox via _prepare_sim_workspace — never CWD-relative.
-    # (The former CWD-relative data/agents/MaximAgent/runtime mkdir was dead
-    # code: the loop's state_<run_id>.json writer creates its own parents in
-    # atomic_io; that writer's CWD-relative path itself is ledger D15.)
-    sim_workspace, sim_tmpdir, log_path = _prepare_sim_workspace()
-
-    # Enable sim logging (always persist to JSONL; terminal traces if --debug)
-    try:
-        from maxim.simulation.sim_logger import enable_sim_logging
-
-        enable_sim_logging(log_path=log_path, debug=debug)
-    except Exception as e:
-        logger.warning("Failed to enable sim logging — sim will run but no JSONL trace: %s", e)
+    sim_workspace, sim_tmpdir, log_path = _open_sim_workspace(debug=debug)
 
     # Build AUT pain bus + sandbox together. The pain bus MUST exist
     # before the sandbox so PainTriggerLayer can route signals; this
@@ -2183,6 +2190,7 @@ def start_simulation_mode(
                         stop_event=stop_event,
                         target_hz=2.0,
                         percept_source=_aut_percept_source,
+                        state_home=sim_tmpdir,  # the AUT's state file stays in the sim sandbox (#1264)
                         action_sink=bridge.action_sink,
                         pain_bus=aut_pain_bus,
                         imagination_trigger=aut_imagination_trigger,
@@ -2669,6 +2677,7 @@ def start_simulation_mode(
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=orchestrator_source,
+                    state_home=sim_tmpdir,  # the narrator's state file stays in the sim sandbox (#1264)
                     # Bugs ledger D13. THIS loop is the one that needs it: it has
                     # no action_sink and no percept producer between turns, so a
                     # planning turn dropped after a parse failure leaves nothing

@@ -459,17 +459,18 @@ class TestToolRegistryConfinement:
 class TestSpawnSubSimulationSandboxDirs:
     """Verify SpawnSubSimulationTool passes sandbox_dirs to sub-AUT."""
 
-    def test_sandbox_dirs_stored(self):
+    def test_sandbox_dirs_stored(self, tmp_path):
         from maxim.simulation.tools import SpawnSubSimulationTool
 
         tool = SpawnSubSimulationTool(
             llm_router=None,
+            sim_tmpdir=str(tmp_path),
             sandbox_dirs=["/tmp/sandbox"],
         )
         assert tool._sandbox_dirs == ["/tmp/sandbox"]
 
-    def test_sandbox_dirs_default_none(self):
+    def test_sandbox_dirs_default_none(self, tmp_path):
         from maxim.simulation.tools import SpawnSubSimulationTool
 
-        tool = SpawnSubSimulationTool(llm_router=None)
+        tool = SpawnSubSimulationTool(llm_router=None, sim_tmpdir=str(tmp_path))
         assert tool._sandbox_dirs is None

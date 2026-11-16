@@ -1551,8 +1551,8 @@ def _threads_left(before: list[threading.Thread]) -> dict[str, Any]:
 # ``MAXIM_DATA_HOME`` files not pinned, by glob relative to the data home (``*`` matches within ONE path segment,
 # ``_segment_match``), with the reason.
 _DATA_HOME_EXCLUDED = {
-    "agents/*/runtime/*": "#1264: the AUT and narrator loops race on one CWD-relative state_<second>.json (and a "
-    "shared .tmp), so how many state files land, and under which second, is a race. NEUTRALISED, not pinned.",
+    "sim_sandbox/*/runtime_state/*/*": "#1264 (fixed): each loop run's state file, state_<run_id>_<token>.json, "
+    "carries a random token in its name, so the names are not stable across runs. NEUTRALISED, not pinned.",
 }
 
 
