@@ -194,6 +194,9 @@ class FakeBridgeServer:
 class MinecraftAut:
     """Everything one AUT owns — built by :func:`build_minecraft_aut`."""
 
+    # Declared for the type checker: ``_loop_kwargs`` (#1264 ``state_home``) and the workspace/EC readers use it.
+    persistence_dir: str
+
     def __init__(self, **parts: Any) -> None:
         self.__dict__.update(parts)
 
