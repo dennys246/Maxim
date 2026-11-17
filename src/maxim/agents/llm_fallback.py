@@ -260,7 +260,7 @@ def evaluate_unary_math(text: str) -> str | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Standalone Fallback/Simple Answer Functions
+# Standalone Fallback Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 
