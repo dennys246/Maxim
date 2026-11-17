@@ -330,6 +330,7 @@ def _unsupported(monkeypatch) -> None:
 
 def test_engage_refuses_on_an_unsupported_platform_and_changes_nothing(monkeypatch) -> None:
     _unsupported(monkeypatch)
+    monkeypatch.setattr(_offline, "_callbacks", [])  # the module keeps callbacks across resets: do not leak one
     calls: list[str] = []
     _offline.on_engage(lambda: calls.append("ran"))
     env_before = {key: os.environ.get(key) for key, _ in _offline.ENGAGE_ENV}
@@ -362,7 +363,9 @@ def test_is_offline_without_the_variable_is_false_on_an_unsupported_platform(mon
 
 def test_import_works_where_socket_has_no_af_unix() -> None:
     """Windows CPython has no ``socket.AF_UNIX`` (#1687). A child whose socket module lacks it imports the latch and
-    the base of every tool, and allows no family it lacks. Faked here: no Windows CI exists."""
+    the base of every tool, and allows no family it lacks. It fakes only the missing constant (not ``os.name``), so
+    it proves import safety; the refusal is the in-process tests' job. No Windows CI exists, and on Windows the pop
+    is a no-op."""
     import subprocess
 
     src = Path(_offline.__file__).resolve().parents[1]

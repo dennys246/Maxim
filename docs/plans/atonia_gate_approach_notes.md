@@ -526,6 +526,12 @@ The advisor_mode.md guard line is superseded (prefetch root and the census-as-en
      sending;
    - native networking is invisible to the hook, and Windows' `_winapi.CreateProcess` is not listed (§6).
 
+   **POSIX only (#1687, 2026-11-17).** `engage()` raises `OfflineUnsupportedPlatform` off POSIX, before the latch goes
+   up, so nothing reports offline where the refusal set is unverified (multiprocessing's direct
+   `_winapi.CreateProcess`, named-pipe IPC). `maxim.advisor.open()` re-raises it as `AdvisorCompositionError`.
+   Guard: `tests/unit/test_offline_latch_unit.py::test_engage_refuses_on_an_unsupported_platform_and_changes_nothing`,
+   `tests/unit/test_advisor_session.py::test_open_refuses_an_unsupported_platform_before_it_builds_anything`.
+
    Regression guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess`,
    `::test_engaged_latch_refuses_each_channel`, `::test_a_client_pooled_before_engage_cannot_send_after`,
    `::test_no_caller_of_reset_for_tests_outside_tests`, `tests/unit/test_offline_latch_unit.py` and

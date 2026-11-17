@@ -3,7 +3,7 @@
 Offline is a one-way, process-wide latch. :func:`engage` raises it; nothing in production lowers it. The first
 ``engage()`` adds one ``sys.addaudithook`` hook, which, while the latch is up, refuses at the Python level:
 
-* creating a socket of any family other than ``AF_INET``, ``AF_INET6`` and ``AF_UNIX``, and fd adoption
+* creating a socket of any family other than ``AF_INET``, ``AF_INET6`` and ``AF_UNIX`` (where the platform has it), and fd adoption
   WITHOUT a family (``socket.socket(fileno=fd)`` reports ``family=-1``);
 * every ``socket.connect`` / ``connect_ex`` (loopback and ``AF_UNIX`` included: there is no allowed endpoint, V8);
 * every ``socket.sendto`` / ``socket.sendmsg`` to an explicit destination, whatever the family (``AF_UNIX``
@@ -31,9 +31,12 @@ refusals', the self-engage's and the OS sandbox's (§6, AD5).
 
 **POSIX only (#1687).** Importing this module is safe on every platform, but :func:`engage` raises
 :class:`OfflineUnsupportedPlatform` where ``os.name`` is not ``"posix"``, BEFORE the latch goes up: on Windows the
-hook would miss ``_winapi.CreateProcess``, so a latch raised there would refuse less than it claims. A Windows
-process started with ``MAXIM_OFFLINE`` truthy therefore fails at ``import maxim``, and ``maxim.advisor.open()``
-refuses, rather than running online while reporting offline. Windows support is a separate, design-gated change.
+refusal set has never been checked there. ``subprocess.Popen`` raises its audit event on Windows too, but
+multiprocessing's spawn calls ``_winapi.CreateProcess`` directly, and Windows IPC such as named pipes
+(``_winapi.CreateNamedPipe``, multiprocessing.connection's default there) raises no socket event. A Windows process
+started with ``MAXIM_OFFLINE`` truthy therefore fails at ``import maxim``, and ``maxim.advisor.open()`` refuses
+(``AdvisorCompositionError``), rather than report offline on a platform whose refusal set is unverified. Windows
+support is a separate, design-gated change.
 
 This module is a top-level LEAF (not ``maxim/utils/``, so importing it never runs ``maxim.utils``'s package init)
 and stdlib-only (guard:
@@ -118,7 +121,8 @@ def truthy(value: str | None) -> bool:
 
 def is_offline() -> bool:
     """Whether the latch is up. Engages on ANY call that sees ``MAXIM_OFFLINE`` truthy, not only the first read,
-    so a variable raised later still counts."""
+    so a variable raised later still counts. Where :func:`engage` refuses the platform (#1687), every call that sees
+    the variable truthy raises :class:`OfflineUnsupportedPlatform`, since the latch never goes up."""
     if not _engaged and truthy(os.environ.get(OFFLINE_ENV)):
         engage(f"{OFFLINE_ENV} is set")
     return _engaged
@@ -138,7 +142,7 @@ def engage(reason: str) -> None:
         if not _PLATFORM_SUPPORTED:
             raise OfflineUnsupportedPlatform(
                 f"the offline latch is POSIX-only and this platform is os.name={os.name!r}; refused to engage it "
-                f"({reason}) rather than report offline while able to spawn processes (#1687)"
+                f"({reason}) rather than report offline on a platform whose refusal set is unverified (#1687)"
             )
         # The five keys are written, never read first: the observer's env read set is pinned (#1315 item 1,
         # test_advisor_gate.py::test_env_read_set), so the pre-engage values a test needs back are the test
