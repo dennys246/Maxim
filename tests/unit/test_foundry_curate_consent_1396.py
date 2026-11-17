@@ -30,7 +30,7 @@ def fake_router(monkeypatch, tmp_path):
     storage._reset_cache_for_tests()
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: False))
     monkeypatch.setattr("maxim.runtime.llm_server.profile_has_local_file", lambda p: False)
-    record = SimpleNamespace(profile=profile, downloads=[], warmups=0, built=[])
+    record = SimpleNamespace(profile=profile, downloads=[], warmups=0, built=[], unloaded=[])
 
     class FakeRouter:
         def __init__(self, cfg):
@@ -43,8 +43,8 @@ def fake_router(monkeypatch, tmp_path):
         def wait_ready(self, timeout=0.0):
             return True
 
-        def shutdown(self):
-            pass
+        def unload(self):
+            record.unloaded.append(self)
 
     monkeypatch.setattr(
         "maxim.models.language.config.load_llm_config",
