@@ -187,8 +187,8 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
     (`:1503`). The exec agent's WORKSPACE section (`agents/exec_agent.py`) has no roster gate.
   - **The short-question shortcut.** `PromptBuilder.build_prompt` answers time, date, identity and greeting questions
     without the model (`:1102-1137`, via `agents/llm_fallback.py::generate_simple_answer`). It fires on **any**
-    `triggering_input`; the wake-word check (`:1108`) gates only the fallback to `cli_inputs`. **Whether that is
-    intended on a robot is an owner decision** (§Not decided).
+    `triggering_input`; the wake-word check (`:1108`) gates only the fallback to `cli_inputs`. **Decided 2026-11-17:
+    not intended; it is deleted (#1689).** The canned answers survive only in the model-unavailable fallback.
   - **Writes outside the home.** `tools/base.py` resolves relative paths with `base or os.getcwd()` (`:811`), and
     `contained_path` with no `allowed_dirs` returns the path unchanged. The embedded roster must always set
     containment. A test proves it does.
@@ -381,8 +381,6 @@ the robot** before it moves a Maxim claim.
 
 ## Not decided here
 
-- Whether the short-question shortcut firing on any `triggering_input` is intended on a robot (A4). If it isn't, it
-  is a robot-path defect and gets its own issue.
 - Whether A3 is one plan or Overdrive's two (A-pre, A-post), and how it divides with #1361.
 - Whether A2's per-agent key widens #1305 before 1.4.0, or follows it.
 - Whether C5 is drafted now or after the hybrid's v1 evidence.

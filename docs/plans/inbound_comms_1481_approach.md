@@ -101,7 +101,8 @@ message is never shown to the model, and nothing reports that.
     - router default output that is never executed. Router **salvage** of the model's own text
       (`salvaged_from_json`, `fallback_parse`) reaches the success branch, runs, and **is** acknowledged, which is
       correct (D4-1);
-    - the `direct_answer` early return, which runs a `respond` with no LLM call and holds no frames (D4-2);
+    - the `direct_answer` early return, which runs a `respond` with no LLM call and holds no frames (D4-2; the early
+      return was deleted 2026-11-17 by #1689, so this row no longer occurs);
     - a proposal `_drop_stale_proposal` discards;
     - the sim's skipped fallback;
     - timeouts, empty replies and parse failures.

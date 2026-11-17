@@ -16,10 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.llm_context import _load_foundational_context
-from maxim.agents.llm_fallback import (
-    generate_simple_answer,
-    ReasoningCarryover,
-)
+from maxim.agents.llm_fallback import ReasoningCarryover
 from maxim.agents.llm_types import LLMRequest, ModeInfo
 from maxim.agents.prompt_budgeter import (
     PromptBudgeter,
@@ -1126,16 +1123,9 @@ class PromptBuilder:
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M %p")
 
-        # Try simple answers first, unless the request carries held inputs (#1451): a canned reply would answer only
-        # the request, and the held inputs, already marked read, would vanish unshown.
-        if question_text and not request.deferred_inputs:
-            answer = generate_simple_answer(question_text, date_str, time_str)
-            if answer:
-                import json
-
-                escaped_answer = json.dumps(answer)
-                return f'{{"action":{{"tool_name":"respond","params":{{"message":{escaped_answer}}}}},"confidence":0.95,"reasoning":"direct_answer"}}'
-
+        # No canned answer here (#1689): every input with a question reaches the model, whose prompt carries the date
+        # and time. The canned time/date/greeting answers live only in the model-unavailable fallback
+        # (``llm_fallback.generate_llm_fallback``).
         if not request.use_tool_prompting or not request.available_tools:
             if request.deferred_inputs:  # only a planning-liveness loop carries them, and it prompts with tools
                 logger.warning(

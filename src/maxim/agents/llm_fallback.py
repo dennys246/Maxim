@@ -15,6 +15,7 @@ import threading
 import time
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_types import LLMProposal
@@ -415,6 +416,16 @@ def generate_llm_fallback(
         for key, template in question_templates.items():
             if template:
                 fallback_responses[str(key)] = str(template)
+
+    # The model is unavailable: a short time, date, identity or greeting question still gets its canned answer here,
+    # and only here (#1689: the planning path no longer answers before the model). The proposal is labelled a
+    # fallback by the worker and carries ``original_request``, so the planning turn is requeued (D13).
+    now = datetime.now()
+    simple = generate_simple_answer(
+        question.rstrip("?").strip(), now.strftime("%A, %B %d, %Y"), now.strftime("%I:%M %p")
+    )
+    if simple:
+        return {"tool_name": "respond", "params": {"message": simple}}
 
     # Try simple arithmetic before generic question-type templates
     arithmetic_result = evaluate_simple_arithmetic(question)

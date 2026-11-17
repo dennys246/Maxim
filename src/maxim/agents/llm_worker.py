@@ -1174,27 +1174,6 @@ class LLMWorker:
                 logger.debug("Empty prompt for request %s — skipping LLM call", request.request_id)
                 return None
 
-            # Check if this is a pre-built JSON response (simple answer)
-            # These don't need LLM - just parse and return
-            if prompt.startswith('{"action":'):
-                latency_ms = (time.time() - start_time) * 1000
-                try:
-                    response = json.loads(prompt)
-                    return LLMProposal(
-                        request_id=request.request_id,
-                        action=response.get("action"),
-                        reasoning=response.get("reasoning", "direct_answer"),
-                        strategy_used="direct_answer",
-                        confidence=response.get("confidence", 0.95),
-                        mode_goal_achieved=response.get("mode_goal_achieved", False),
-                        citations=[],
-                        latency_ms=latency_ms,
-                        triggering_input=request.triggering_input,
-                        original_request=request,
-                    )
-                except Exception:
-                    pass  # Fall through to LLM if parse fails
-
             # Check for shutdown before LLM call
             if self._stop_event.is_set():
                 return LLMProposal(
