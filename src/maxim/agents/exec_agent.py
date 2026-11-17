@@ -12,7 +12,7 @@ import os
 import threading
 import time
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
@@ -41,6 +41,7 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
+from maxim.models.download import consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
@@ -120,6 +121,10 @@ class ExecAgent(Agent):
         self._llm_profile = llm_profile
         self._quantization = quantization
         self._router: LLMRouter | None = shared_router
+        # The profile whose model the last router build was refused (missing, not downloaded), or None (#1396):
+        # a lazy "never" build does not rebuild and warn again on every goal; an "ask" build still asks.
+        self._refused_profile: str | None = None
+        self._refused_cause: str | None = None  # why (one of LocalModelUnavailable.CAUSES), for the CLI's typed refusal
         self._llm_worker: LLMWorker | None = shared_llm_worker
         self._owns_llm_worker = shared_llm_worker is None  # Only stop if we created it
 
@@ -191,9 +196,18 @@ class ExecAgent(Agent):
                 return value.strip()
         return None
 
-    def _ensure_router(self) -> LLMRouter | None:
+    def _ensure_router(self, *, consent: Literal["ask", "never"] = "never") -> LLMRouter | None:
+        """ExecAgent's router, built once, its local model usable (``models/download.py::consented_router``).
+
+        ``consent="never"`` (the default: library and API agents, built lazily, possibly mid-run or off the main
+        thread) never asks: a missing model downloads only with a standing grant, else there is no router, the refusal
+        is remembered (``_refused_profile``) and the consent check's message says how to grant it. ``consent="ask"``
+        (the CLI agentic path, on the main thread before any warmup) may prompt, and is not stopped by an earlier
+        "never" refusal (#1343, #1396 bullet 2)."""
         if self._router is not None:
             return self._router
+        if consent == "never" and self._refused_profile is not None:
+            return None
         try:
             cfg = load_llm_config()
             profile_override = self._resolve_profile_override(cfg)
@@ -204,7 +218,18 @@ class ExecAgent(Agent):
             return None
         if not cfg.enabled:
             return None
-        self._router = LLMRouter(cfg)
+        on_main = threading.current_thread() is threading.main_thread()
+        router, cause = consented_router(
+            cfg, interactive=None if consent == "ask" and on_main else False, logger=logger
+        )
+        if router is None:
+            self._refused_profile = str(getattr(cfg, "profile", "") or getattr(cfg, "model_base", "")).strip() or "?"
+            self._refused_cause = cause
+            warn("ExecAgent has no language model: %s is not usable (%s)", self._refused_profile, cause)
+            return None
+        self._refused_profile = None
+        self._refused_cause = None
+        self._router = router
         return self._router
 
     def _ensure_llm_worker(self) -> LLMWorker | None:

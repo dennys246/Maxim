@@ -1,0 +1,922 @@
+{
+  "attempts": [
+    {
+      "run_id": "06801a84a33046cdb4e13da7b9415771",
+      "k": 1,
+      "complete": true,
+      "problems": []
+    }
+  ],
+  "experiment": "63c",
+  "within_campaign_leaks": [],
+  "deciding_attempt": "06801a84a33046cdb4e13da7b9415771",
+  "gates": {
+    "N1": 16,
+    "seq_C": 15,
+    "P0": {
+      "pass": true,
+      "N1": 16
+    },
+    "P1": {
+      "first_trace_hippocampus_size": 17,
+      "pass": true
+    },
+    "P2": {
+      "missing": [],
+      "pass": true
+    },
+    "P3": {
+      "changed": {},
+      "new_not_after_seq_C": [],
+      "pass": true
+    },
+    "R1": {
+      "pass": true,
+      "turns": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    "R2prime": {
+      "restore_digest": "bbcc2d9437ec1961ff4bd311b053d86a274bf12794b5b661ad7bbedb832dfbcf",
+      "phase1_saved_digest": "bbcc2d9437ec1961ff4bd311b053d86a274bf12794b5b661ad7bbedb832dfbcf",
+      "pass": true
+    },
+    "R3prime": {
+      "pass": true,
+      "nonconforming": []
+    },
+    "R3a": {
+      "turn": 1,
+      "ids": [
+        "cf632fbe-0b8e-4f6a-afbf-62a80310a736",
+        "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+        "1615963a-cf24-4e49-902a-cf2dc8e705e1"
+      ],
+      "status": "held",
+      "pass": true
+    },
+    "R3d": {
+      "decisive_turns": [
+        3,
+        4,
+        5,
+        7
+      ],
+      "pass": true,
+      "searched_turns": [
+        3,
+        4,
+        5,
+        7
+      ]
+    },
+    "descriptive": {
+      "status": "DESCRIPTIVE (never gating)",
+      "turns": {
+        "1": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 17,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [],
+              "displaced_scores": {},
+              "pairs": []
+            }
+          ],
+          "shown_cue": [
+            [
+              "cf632fbe-0b8e-4f6a-afbf-62a80310a736",
+              true,
+              0,
+              1794558718.68477
+            ],
+            [
+              "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+              true,
+              0,
+              1794558747.7991092
+            ],
+            [
+              "1615963a-cf24-4e49-902a-cf2dc8e705e1",
+              true,
+              0,
+              1794558652.322071
+            ]
+          ],
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 3,
+          "carried_share": 1.0,
+          "cue_nongoal_keys": [
+            "back"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "cf632fbe-0b8e-4f6a-afbf-62a80310a736": 0,
+            "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576": 0,
+            "1615963a-cf24-4e49-902a-cf2dc8e705e1": 0
+          },
+          "cue_added_over_goal": [
+            "1615963a-cf24-4e49-902a-cf2dc8e705e1"
+          ],
+          "distinct_heard_texts": 1,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "2": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 19,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [],
+              "displaced_scores": {},
+              "pairs": []
+            }
+          ],
+          "shown_cue": [
+            [
+              "177d5cfe-6fe0-4538-8148-00b4f0f7998f",
+              false,
+              0,
+              1794558848.57266
+            ],
+            [
+              "24cf8dd3-12cc-48a9-90dc-3f2fec622780",
+              false,
+              0,
+              1794558823.843466
+            ],
+            [
+              "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+              true,
+              0,
+              1794558747.7991092
+            ]
+          ],
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 1,
+          "carried_share": 0.3333333333333333,
+          "cue_nongoal_keys": [
+            "bel",
+            "chapel",
+            "ring",
+            "silver"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "177d5cfe-6fe0-4538-8148-00b4f0f7998f": 0,
+            "24cf8dd3-12cc-48a9-90dc-3f2fec622780": 0,
+            "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576": 0
+          },
+          "cue_added_over_goal": [
+            "177d5cfe-6fe0-4538-8148-00b4f0f7998f"
+          ],
+          "distinct_heard_texts": 1,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "3": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 21,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [
+                "177d5cfe-6fe0-4538-8148-00b4f0f7998f"
+              ],
+              "displaced_scores": {
+                "177d5cfe-6fe0-4538-8148-00b4f0f7998f": 0
+              },
+              "pairs": [
+                [
+                  "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+                  "177d5cfe-6fe0-4538-8148-00b4f0f7998f",
+                  3,
+                  0
+                ]
+              ]
+            }
+          ],
+          "shown_cue": [
+            [
+              "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+              true,
+              3,
+              1794558656.0257962
+            ],
+            [
+              "124440e3-f04b-40aa-bb5a-c93bc3617c78",
+              false,
+              0,
+              1794558868.152493
+            ],
+            [
+              "50ecef98-9aa6-4adc-a473-187992a819af",
+              false,
+              0,
+              1794558852.272618
+            ]
+          ],
+          "decisive": true,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 1,
+          "carried_share": 0.3333333333333333,
+          "cue_nongoal_keys": [
+            "brass",
+            "hang",
+            "ladl"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "5c3c951a-36b0-44d7-bb71-303cfec26b65": 3,
+            "124440e3-f04b-40aa-bb5a-c93bc3617c78": 0,
+            "50ecef98-9aa6-4adc-a473-187992a819af": 0
+          },
+          "cue_added_over_goal": [
+            "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+            "124440e3-f04b-40aa-bb5a-c93bc3617c78",
+            "50ecef98-9aa6-4adc-a473-187992a819af"
+          ],
+          "distinct_heard_texts": 2,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "4": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 23,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [
+                "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                "9ba29a39-92b8-4d8d-be8a-3427f21ad010",
+                "124440e3-f04b-40aa-bb5a-c93bc3617c78"
+              ],
+              "displaced_scores": {
+                "8dce10cb-ebaf-4982-8066-de0fc9ff491f": 0,
+                "9ba29a39-92b8-4d8d-be8a-3427f21ad010": 0,
+                "124440e3-f04b-40aa-bb5a-c93bc3617c78": 0
+              },
+              "pairs": [
+                [
+                  "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+                  "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                  3,
+                  0
+                ],
+                [
+                  "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+                  "9ba29a39-92b8-4d8d-be8a-3427f21ad010",
+                  3,
+                  0
+                ],
+                [
+                  "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+                  "124440e3-f04b-40aa-bb5a-c93bc3617c78",
+                  3,
+                  0
+                ],
+                [
+                  "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+                  "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                  2,
+                  0
+                ],
+                [
+                  "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+                  "9ba29a39-92b8-4d8d-be8a-3427f21ad010",
+                  2,
+                  0
+                ],
+                [
+                  "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+                  "124440e3-f04b-40aa-bb5a-c93bc3617c78",
+                  2,
+                  0
+                ],
+                [
+                  "26f705f9-8594-4ba8-b6f3-2819837a4825",
+                  "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                  2,
+                  0
+                ],
+                [
+                  "26f705f9-8594-4ba8-b6f3-2819837a4825",
+                  "9ba29a39-92b8-4d8d-be8a-3427f21ad010",
+                  2,
+                  0
+                ],
+                [
+                  "26f705f9-8594-4ba8-b6f3-2819837a4825",
+                  "124440e3-f04b-40aa-bb5a-c93bc3617c78",
+                  2,
+                  0
+                ]
+              ]
+            }
+          ],
+          "shown_cue": [
+            [
+              "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+              true,
+              3,
+              1794558667.979257
+            ],
+            [
+              "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576",
+              true,
+              2,
+              1794558747.7991092
+            ],
+            [
+              "26f705f9-8594-4ba8-b6f3-2819837a4825",
+              true,
+              2,
+              1794558678.316521
+            ]
+          ],
+          "decisive": true,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 3,
+          "carried_share": 1.0,
+          "cue_nongoal_keys": [
+            "beneath",
+            "mattress",
+            "straw"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "689a4e75-88bd-4b14-a4a1-5412c4622d6e": 3,
+            "d00f6a06-0eaf-4aa8-b9a4-3e5a9d0cc576": 2,
+            "26f705f9-8594-4ba8-b6f3-2819837a4825": 2
+          },
+          "cue_added_over_goal": [
+            "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+            "26f705f9-8594-4ba8-b6f3-2819837a4825"
+          ],
+          "distinct_heard_texts": 1,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "5": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 25,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [
+                "de81c41f-0005-4761-a92b-e4baa57174d8",
+                "8dce10cb-ebaf-4982-8066-de0fc9ff491f"
+              ],
+              "displaced_scores": {
+                "de81c41f-0005-4761-a92b-e4baa57174d8": 0,
+                "8dce10cb-ebaf-4982-8066-de0fc9ff491f": 0
+              },
+              "pairs": [
+                [
+                  "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+                  "de81c41f-0005-4761-a92b-e4baa57174d8",
+                  4,
+                  0
+                ],
+                [
+                  "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+                  "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                  4,
+                  0
+                ],
+                [
+                  "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+                  "de81c41f-0005-4761-a92b-e4baa57174d8",
+                  4,
+                  0
+                ],
+                [
+                  "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+                  "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                  4,
+                  0
+                ]
+              ]
+            }
+          ],
+          "shown_cue": [
+            [
+              "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+              true,
+              4,
+              1794558682.074086
+            ],
+            [
+              "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+              true,
+              4,
+              1794558699.9786398
+            ],
+            [
+              "da0413ae-553b-4273-915b-d9fb3324f729",
+              false,
+              0,
+              1794558894.933701
+            ]
+          ],
+          "decisive": true,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 2,
+          "carried_share": 0.6666666666666666,
+          "cue_nongoal_keys": [
+            "cel",
+            "hatch",
+            "padlock",
+            "squeak"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "da6550b5-7a3e-4dc7-a84d-aa18f9000473": 4,
+            "25bfd225-b1c6-46c3-8757-4199a8113b1d": 4,
+            "da0413ae-553b-4273-915b-d9fb3324f729": 0
+          },
+          "cue_added_over_goal": [
+            "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+            "25bfd225-b1c6-46c3-8757-4199a8113b1d",
+            "da0413ae-553b-4273-915b-d9fb3324f729"
+          ],
+          "distinct_heard_texts": 1,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "6": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 27,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [],
+              "displaced_scores": {},
+              "pairs": []
+            }
+          ],
+          "shown_cue": [
+            [
+              "24cf8dd3-12cc-48a9-90dc-3f2fec622780",
+              false,
+              0,
+              1794558823.843466
+            ],
+            [
+              "cf632fbe-0b8e-4f6a-afbf-62a80310a736",
+              true,
+              0,
+              1794558718.68477
+            ],
+            [
+              "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+              true,
+              0,
+              1794558703.735351
+            ]
+          ],
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 2,
+          "carried_share": 0.6666666666666666,
+          "cue_nongoal_keys": [
+            "banner",
+            "drap",
+            "purpl"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "24cf8dd3-12cc-48a9-90dc-3f2fec622780": 0,
+            "cf632fbe-0b8e-4f6a-afbf-62a80310a736": 0,
+            "ebb010ac-bb73-44d2-80eb-9afdd74538c3": 0
+          },
+          "cue_added_over_goal": [
+            "ebb010ac-bb73-44d2-80eb-9afdd74538c3"
+          ],
+          "distinct_heard_texts": 3,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "7": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 29,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [
+                "24cf8dd3-12cc-48a9-90dc-3f2fec622780"
+              ],
+              "displaced_scores": {
+                "24cf8dd3-12cc-48a9-90dc-3f2fec622780": 0
+              },
+              "pairs": [
+                [
+                  "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+                  "24cf8dd3-12cc-48a9-90dc-3f2fec622780",
+                  3,
+                  0
+                ],
+                [
+                  "53817f49-e7fd-4951-9949-29a3b365097d",
+                  "24cf8dd3-12cc-48a9-90dc-3f2fec622780",
+                  2,
+                  0
+                ]
+              ]
+            }
+          ],
+          "shown_cue": [
+            [
+              "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+              true,
+              3,
+              1794558703.735351
+            ],
+            [
+              "53817f49-e7fd-4951-9949-29a3b365097d",
+              true,
+              2,
+              1794558714.996741
+            ],
+            [
+              "2d4def68-eb65-4cf8-8be3-ed1eba329d02",
+              false,
+              0,
+              1794558912.92496
+            ]
+          ],
+          "decisive": true,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 2,
+          "carried_share": 0.6666666666666666,
+          "cue_nongoal_keys": [
+            "crevic",
+            "drip",
+            "water"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "ebb010ac-bb73-44d2-80eb-9afdd74538c3": 3,
+            "53817f49-e7fd-4951-9949-29a3b365097d": 2,
+            "2d4def68-eb65-4cf8-8be3-ed1eba329d02": 0
+          },
+          "cue_added_over_goal": [
+            "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+            "53817f49-e7fd-4951-9949-29a3b365097d",
+            "2d4def68-eb65-4cf8-8be3-ed1eba329d02"
+          ],
+          "distinct_heard_texts": 2,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "8": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 31,
+          "late": [],
+          "conforms": true,
+          "orders": [
+            {
+              "displaced": [],
+              "displaced_scores": {},
+              "pairs": []
+            }
+          ],
+          "shown_cue": [
+            [
+              "b5b56ec4-85cc-4b29-bf65-a494fde1be88",
+              false,
+              0,
+              1794558924.357436
+            ],
+            [
+              "1c37dbeb-9393-4f50-9815-ae4775c56ea0",
+              false,
+              0,
+              1794558898.610338
+            ],
+            [
+              "da0413ae-553b-4273-915b-d9fb3324f729",
+              false,
+              0,
+              1794558894.933701
+            ]
+          ],
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 0,
+          "carried_share": 0.0,
+          "cue_nongoal_keys": [
+            "stir"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "b5b56ec4-85cc-4b29-bf65-a494fde1be88": 0,
+            "1c37dbeb-9393-4f50-9815-ae4775c56ea0": 0,
+            "da0413ae-553b-4273-915b-d9fb3324f729": 0
+          },
+          "cue_added_over_goal": [
+            "b5b56ec4-85cc-4b29-bf65-a494fde1be88",
+            "1c37dbeb-9393-4f50-9815-ae4775c56ea0",
+            "da0413ae-553b-4273-915b-d9fb3324f729"
+          ],
+          "distinct_heard_texts": 1,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        }
+      },
+      "new_records_per_input": 2.0,
+      "k": "4 of 4",
+      "cue_turns": {
+        "3": {
+          "decisive": true,
+          "orders": [
+            {
+              "best_pair": [
+                "5c3c951a-36b0-44d7-bb71-303cfec26b65",
+                "177d5cfe-6fe0-4538-8148-00b4f0f7998f",
+                3,
+                0
+              ],
+              "score": "3 v 0"
+            }
+          ],
+          "score": "3 v 0",
+          "contested": false,
+          "uncontested_literal": true,
+          "displaceable_pool": 4,
+          "winner_is_planted_fact": true,
+          "completion": true,
+          "cue_nongoal_keys": [
+            "brass",
+            "hang",
+            "ladl"
+          ],
+          "echo_load": {
+            "brass": 0,
+            "hang": 0,
+            "ladl": 0
+          },
+          "answer_key_load": {
+            "chair": 0,
+            "copper": 0
+          }
+        },
+        "4": {
+          "decisive": true,
+          "orders": [
+            {
+              "best_pair": [
+                "689a4e75-88bd-4b14-a4a1-5412c4622d6e",
+                "8dce10cb-ebaf-4982-8066-de0fc9ff491f",
+                3,
+                0
+              ],
+              "score": "3 v 0"
+            }
+          ],
+          "score": "3 v 0",
+          "contested": false,
+          "uncontested_literal": true,
+          "displaceable_pool": 6,
+          "winner_is_planted_fact": true,
+          "completion": true,
+          "cue_nongoal_keys": [
+            "beneath",
+            "mattress",
+            "straw"
+          ],
+          "echo_load": {
+            "beneath": 0,
+            "mattress": 0,
+            "straw": 0
+          },
+          "answer_key_load": {
+            "knif": 1,
+            "smal": 0
+          }
+        },
+        "5": {
+          "decisive": true,
+          "orders": [
+            {
+              "best_pair": [
+                "da6550b5-7a3e-4dc7-a84d-aa18f9000473",
+                "de81c41f-0005-4761-a92b-e4baa57174d8",
+                4,
+                0
+              ],
+              "score": "4 v 0"
+            }
+          ],
+          "score": "4 v 0",
+          "contested": false,
+          "uncontested_literal": true,
+          "displaceable_pool": 8,
+          "winner_is_planted_fact": true,
+          "completion": true,
+          "cue_nongoal_keys": [
+            "cel",
+            "hatch",
+            "padlock",
+            "squeak"
+          ],
+          "echo_load": {
+            "cel": 0,
+            "hatch": 0,
+            "padlock": 0,
+            "squeak": 0
+          },
+          "answer_key_load": {
+            "chain": 0,
+            "crack": 0
+          }
+        },
+        "7": {
+          "decisive": true,
+          "orders": [
+            {
+              "best_pair": [
+                "ebb010ac-bb73-44d2-80eb-9afdd74538c3",
+                "24cf8dd3-12cc-48a9-90dc-3f2fec622780",
+                3,
+                0
+              ],
+              "score": "3 v 0"
+            }
+          ],
+          "score": "3 v 0",
+          "contested": false,
+          "uncontested_literal": true,
+          "displaceable_pool": 2,
+          "winner_is_planted_fact": true,
+          "completion": true,
+          "cue_nongoal_keys": [
+            "crevic",
+            "drip",
+            "water"
+          ],
+          "echo_load": {
+            "crevic": 0,
+            "drip": 0,
+            "water": 0
+          },
+          "answer_key_load": {
+            "drain": 0,
+            "grat": 0,
+            "north": 0
+          }
+        }
+      },
+      "uncontested": true,
+      "contested_turns": [],
+      "controls": {
+        "2": "armed",
+        "6": "armed"
+      },
+      "distractor_surfaced": true,
+      "hippocampus_size_by_turn": {
+        "1": 17,
+        "2": 19,
+        "3": 21,
+        "4": 23,
+        "5": 25,
+        "6": 27,
+        "7": 29,
+        "8": 31
+      },
+      "imagination_events_by_turn": {
+        "baseline": {
+          "1": 1,
+          "2": 1,
+          "3": 1,
+          "4": 1,
+          "5": 0,
+          "6": 1,
+          "7": 0,
+          "8": 0
+        },
+        "gate": {
+          "1": 1,
+          "2": 1,
+          "3": 1,
+          "4": 1,
+          "5": 1,
+          "6": 0,
+          "7": 0,
+          "8": 1
+        }
+      }
+    },
+    "verdict": "PASS",
+    "not_passed": []
+  },
+  "verdict": "PASS",
+  "apparatus_checked": true,
+  "apparatus": {
+    "markers": [
+      {
+        "k": 1,
+        "ref": "refs/tags/o19/63c/attempt-1-06801a84a33046cdb4e13da7b9415771",
+        "object": "9fe107700a35c59061938c234dcca7223de1628b",
+        "peeled": "9176025aff929f36d9e7f3babb4553305eff5fc9",
+        "tagger_date": 1794558593.0,
+        "run_id": "06801a84a33046cdb4e13da7b9415771"
+      }
+    ],
+    "ruleset": {
+      "id": 24345734,
+      "created_at": "2026-10-01T21:27:48.500-06:00",
+      "updated_at": "2026-10-01T21:27:48.517-06:00",
+      "history_versions": [
+        51650702
+      ]
+    },
+    "rows_history": [
+      {
+        "commit": "4e96025213124b934bbfac1296e5905beb06c205",
+        "committed_at": 1794600727.0
+      }
+    ],
+    "landed": {
+      "06801a84a33046cdb4e13da7b9415771": 1794600727.0
+    },
+    "succession": null
+  },
+  "bound_files": {
+    "docs/experiments/exp63c_scripted_recall_prereg.md": "1fc235fef1bcfeac5ebb1fcec78acafaf3daf157",
+    "docs/experiments/exp63b_carried_recall_prereg.md": "7a10ad556dcc64e9a3c515ab0cd5d190ecbdd868",
+    "scripts/o19_verdict.py": "11647062531c4fd572f1c53a692f39bfae2dc2c1",
+    "scripts/o19_rerun.py": "24501a5d4ac56dad89bcc3ae10195ad9336721ea"
+  },
+  "verdict_commit": "e0e7fd05ac0a46e9f7df5b336f96bc7224fc4240",
+  "verdict_source_sha256": "47fbc5ca53b2da7315e3bae3d1dfe7ec00c0e696cb3dc844de858785d03af976",
+  "record_kind": "verdict",
+  "kind": "exp63c_verdict",
+  "data": "docs/experiments/data/63c_scripted_recall/rows.jsonl",
+  "data_sha256": "598077396a6366a85f89dd27dadb2aaf56a39ba774014a985a8b7b2eff3b954f",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/home/dennys/GitSpot/Maxim/.worktrees/63c-verdict/src/maxim/__init__.py",
+    "executed_git_hash": "e0e7fd05ac0a46e9f7df5b336f96bc7224fc4240",
+    "harness_run_id": "ade12d78214948bb8aee6b78d6676cb2",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "d3d7ee75e50efe13e97c108aaeffb7146f4ae64f9867ed657e6310b1aa3bf53f",
+    "python": "/home/dennys/GitSpot/Maxim/.venv/bin/python",
+    "pythonpath": "/home/dennys/GitSpot/Maxim/.worktrees/63c-verdict/src"
+  },
+  "_format_version": "1.0"
+}

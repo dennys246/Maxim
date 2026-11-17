@@ -2,6 +2,60 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-11-16 — BF2 read for a STALE pre-BF2 row restored by a frozen-prereg re-run whose gate is new (BF2-R1, T1-16 only)
+
+### Decision (owner, 2026-11-16 UTC: "agreed as long as we're completely transparent")
+
+1. **BF2-R1. T1-16 goes to `EARNED 2026-11-13` (narrow) on Exp 63c, with `floor: not measured`.** This is the owner's
+   reading of BF2, not its letter. It replaces the strict reading taken on 2026-11-13.
+2. **What BF2 says** ([baseline_floors.md](docs/plans/baseline_floors.md) §Owner decisions; the 2026-10-10 record
+   below). A NEW `[behavioral]` claim on the LLM path cannot be EARNED unless the full arm beats `bare_llm`, and also
+   `llm_notes` for a cross-session claim. "Existing EARNED/MAINTAINED rows keep their status": each owes its floor at
+   its next trigger re-run once its harness has the floor arm, and a loss then moves it to `PARTIAL (narrow: floor
+   matched)`, not `BROKEN`.
+3. **Why its letter does not cover T1-16.**
+   - T1-16 was EARNED on 2026-10-04, before BF2, but it was STALE from 2026-10-25 to 2026-11-13, after 1.3.4's
+     recall fix replaced the ranker it measured. When Exp 63c ran, the row was STALE, not EARNED, so "keep their
+     status" had no EARNED status to keep.
+   - The criterion that separated PASS from NOT SHOWN is new in 63b and 63c: R3d, a carried memory displacing a new
+     one on the cue's non-goal content keys, on the cue path. Exp 63 never tested it. Exp 63b met the old row's other
+     gates (P0–P3, R2′, R3′, R3a) and still read NOT SHOWN. Read by its letter, 63c's claim is a new LLM-path claim.
+4. **The strict reading (2026-11-13), and why it was replaced (2026-11-16).** The strict reading held 63c's
+   displacement claim to be a new LLM-path claim, which cannot be EARNED before B2/B3. It was replaced because 63c's
+   prereg, frozen with the owner's approval on 2026-11-10 before any data existed, pre-committed the consequence:
+   "PASS → T1-16 EARNED (narrow, the wording above)" ([prereg](docs/experiments/exp63c_scripted_recall_prereg.md)
+   §Attempts).
+5. **Scope: this one row only.** BF2-R1 is NOT a precedent for any other STALE row, and NOT a route for a new claim to
+   earn before its floor. Another case needs its own owner decision.
+6. **The owed floor.** T1-16 owes its floor at B3 (`bare_llm` and `llm_notes`). A loss there moves the row to
+   `PARTIAL (narrow: floor matched)`. Until then the row carries `floor: not measured` in its status prose.
+7. **The evidence.** Exp 63c is the sole evidence. Its code-under-test (9176025a, clean tree), n_ctx (8192 on all four
+   fields) and served GGUF (SHA-256 `3e0039fd…ccf9`, basename match, on every accounted call) are machine-stamped, not
+   operator-attested. Only the AUT's own slot is not established (`aut_model_attribution: not_established`, B0b). The
+   claim needs only that every accounted call was that file (prereg OD-c4/OD-c5), because the ranker is model-free.
+8. **Transparency.** Every surface that shows the row's status states points 3, 4, 6 and 7, and the design caveats under Tradeoffs: the ledger row
+   ([behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md), T1-16), the README results
+   table, the experiments index and the 63c prereg's outcome header.
+9. **No evidence exception.** No evidence exception was recorded in `docs/experiments/evidence_exceptions.json`: the evidence gate's pass table already lets an `exp63c_verdict` PASS support EARNED (narrow), so the move needs none, and an exception there would act as a waiver for those verdict bytes rather than a record. The override is recorded here and in the ledger row; a record-only
+   exception kind is a mechanization follow-up: backlog M91 ([outstanding.md](docs/plans/outstanding.md) §Mechanization backlog).
+
+### Rationale
+
+The weak-evidence rule recommends the strict option by default, and it was taken first. The owner replaced it on the
+ground that the frozen prereg had already stated, before any data, what a PASS would mean for the row. The evidence
+itself is not weak in the rule's sense: the code, model file and context size are machine-stamped, and the run is not
+a typed abort.
+
+### Tradeoffs
+
+The row is EARNED before any floor comparison, on one run with one model and a scripted narrator. Its 4 of 4 was close
+to guaranteed by design, because each cue reuses its plant's words; what was at risk was the live AUT's echo, measured
+at 0 on every cue's non-goal keys. AUT restatements of the facts also won on 3 cues (on turn 5 one tied the planted fact
+at 4 v 0); fact B surfaced on turns 1–2 through a phase-1 AUT restatement, not its planted record, and fact D's
+planted record on control turn 6, before its cue; completion uses designer-chosen answer keys and is not a selection
+claim. B3 can still narrow the row. The narrow qualifier, the floor line and the stated
+caveats carry that cost on every surface.
+
 ## 2026-11-11 — Hybrid arbitration is a 1.5 candidate line: the substrate acts by default, the LLM is called when the substrate is unsure, and a default mode network works at idle
 
 ### Decision (owner, 2026-11-11, direction only; design in [docs/plans/hybrid_arbitration.md](docs/plans/hybrid_arbitration.md))

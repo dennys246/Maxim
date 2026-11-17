@@ -494,9 +494,10 @@ def _calls(fn: ast.AST, name: str) -> list[ast.Call]:
 def test_the_sim_takes_its_code_stamp_before_building_any_router() -> None:
     fn = _start_simulation_mode()
     (capture,) = _calls(fn, "capture_start_provenance")
-    # The run's router builds: the shared one (#1586) and the dual-LLM AUT's (#1538), each in its own helper.
-    routers = _calls(fn, "_build_shared_router") + _calls(fn, "_build_aut_router")
-    assert len(routers) == 2, "start_simulation_mode's router builds moved: re-pin this ordering"
+    # The run's router builds: the shared one (#1586) and the dual-LLM AUT's (#1538), both in one helper since #1396
+    # bullet 2's review round (_build_run_llms: the AUT's refusal lands before any warmup and before the sandbox).
+    routers = _calls(fn, "_build_run_llms")
+    assert len(routers) == 1, "start_simulation_mode's router builds moved: re-pin this ordering"
     assert capture.lineno < min(c.lineno for c in routers)
     assigned = [
         n

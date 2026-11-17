@@ -91,6 +91,9 @@ bare by construction, not the full stack with switches turned off. Subtraction c
     `tabular_q` and `random` in their prereg at their design review and build them in their own harness
     (B1 builds them first for Exp 60; Phase 0's "enters WITH its consuming rung" rule holds).
   - Enforced by: mechanization backlog [M46](outstanding.md), process invariant until it lands.
+  - Read for one row, 2026-11-16: T1-16, STALE when its frozen-prereg re-run passed, restored to EARNED (narrow)
+    with `floor: not measured`; an owner reading, not this rule's letter, and not a precedent
+    ([DECISIONS.md 2026-11-16, BF2-R1](../../DECISIONS.md)).
 
 ## Arms
 
