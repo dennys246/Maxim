@@ -163,52 +163,121 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
-def _ensure_router_model(llm_router: Any) -> bool:
-    """A CLI-built router has a missing model file: ask the consent gate, on the main thread (#1343, #1396).
-
-    ``ExecAgent._ensure_router`` (the agentic path) and :func:`_cli_local_router` (foundry, auto-curate) build their
-    router directly, so ``build_primary_router``'s preflight never ran. This is the one place on those paths that may
-    prompt; the backend's own lazy load never does. True when the router loads no local GGUF (its resolved backend is
-    not llama_cpp: ``load_llm_config`` fills a ``.gguf`` ``model_path`` even for a cloud backend, so the path alone
-    cannot say), its file is present, or the gate reports the profile's registry file on disk after this call. False
-    when a llama.cpp model is missing and was not downloaded; for a profile outside the registry the gate prints how to
-    place the file by hand.
-    """
-    from maxim.models.language.router import LLAMA_CPP_PROVIDER_TYPES, normalize_provider_type
-
-    if normalize_provider_type(getattr(llm_router.cfg, "backend", "") or "llama_cpp") not in LLAMA_CPP_PROVIDER_TYPES:
-        return True  # cloud, transformers, a peer: no local GGUF to load (load_llm_config fills model_path anyway)
-    model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
-    if not model_path or os.path.exists(model_path):
-        return True
-    profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
-    if not profile:
-        print("  Model not found. Run: maxim --list-models to see available models.")
-        return False
-    from maxim.models.download import ensure_available
-
-    log = logging.getLogger(__name__)
-    log.info("Model not found at %s — asking to download %s", model_path, profile)
-    if not ensure_available(profile, logger=log):
-        print("  Model not available. Run: maxim --list-models to see available models.")
-        return False
-    return True
-
-
 def _cli_local_router(profile: str) -> Any | None:
     """The router foundry and auto-curate build from ``--llm`` (#1396): the consent gate asks first, on the main thread.
 
     These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
     missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
     None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
+    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking
+    (``interactive=None``); the library check never prints, so the CLI prints its own line here.
     """
+    from maxim.models.download import consented_router
     from maxim.models.language.config import load_llm_config
-    from maxim.models.language.router import LLMRouter
 
-    router = LLMRouter(load_llm_config(profile_override=profile))
-    if not _ensure_router_model(router):
-        return None
+    router, cause = consented_router(load_llm_config(profile_override=profile), interactive=None)
+    if router is None:
+        _print_model_unavailable(cause)
     return router
+
+
+def _print_model_unavailable(cause: str | None) -> None:
+    """The CLI's line for a router whose model stayed unusable (the library check logs, never prints; #1396)."""
+    from maxim.models.language.types import LocalModelUnavailable
+
+    if cause == LocalModelUnavailable.MODEL_PATH_MISSING:
+        print("  The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json.")
+    else:
+        print("  Model not available. Run: maxim --list-models to see available models.")
+
+
+def _cli_llm_profile(args: Any) -> str | None:
+    """The model ``--llm`` named (``args.language_model``, already normalized by ``cli_utils``), or None without it.
+
+    Handed to the run's router builds as their explicit profile (``start_simulation_mode(llm_profile=)``), so a named
+    model that is missing and not downloaded refuses the run (#1396 bullet 2) instead of reading as an implicit choice
+    through ``MAXIM_LLM_PROFILE``, which other code also sets implicitly."""
+    return str(getattr(args, "language_model", "") or "").strip() or None
+
+
+def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
+    """ExecAgent's router was refused its model: when that model is the one ``--llm`` named, the run refuses, typed
+    (``LocalModelUnavailable``, exit 2; owner decision OD2, #1396). A model the operator never named (an llm.json
+    ``agent_profiles.exec_agent`` override, an implicit default) leaves the run going without the LLM, after the CLI's
+    printed line (the library check only logs)."""
+    from maxim.models.language.config import normalize_llm_profile
+    from maxim.models.language.types import LocalModelUnavailable
+
+    named = normalize_llm_profile(_cli_llm_profile(args))
+    refused = getattr(exec_agent, "_refused_profile", None)
+    if named and refused and normalize_llm_profile(refused) == named:
+        cause = getattr(exec_agent, "_refused_cause", None) or LocalModelUnavailable.NOT_DOWNLOADED
+        raise LocalModelUnavailable(named, cause=cause)
+    if refused:
+        _print_model_unavailable(getattr(exec_agent, "_refused_cause", None))
+
+
+def _cli_agentic_llm_worker(
+    agentic_agent: Any,
+    args: Any,
+    logger: Any,
+    *,
+    embodiment_ref: Any,
+    component_registry: Any,
+) -> Any | None:
+    """The CLI agentic path's LLM worker, on ExecAgent's router (the LLM lives inside ExecAgent, not MaximAgent).
+
+    The router is built with ``consent="ask"``, so the consent gate may prompt here, on the main thread, before any
+    warmup (#1343, #1396). A model that stays missing gives no worker, never a warmed router on a missing file: the
+    ``--llm`` model refuses the run (:func:`_refuse_if_named_model_missing`), any other runs without the LLM. Moved out
+    of ``_main_impl`` (rule T)."""
+    from maxim.agents.llm_worker import LLMWorker
+
+    llm_worker = None
+    llm_router = None
+    # Trigger lazy LLM + router init via ExecAgent
+    if hasattr(agentic_agent, "exec_agent"):
+        agentic_agent.exec_agent._ensure_llm()
+        llm_router = agentic_agent.exec_agent._ensure_router(consent="ask")
+        if llm_router is None:
+            _refuse_if_named_model_missing(args, agentic_agent.exec_agent)
+    if llm_router is not None:
+        if hasattr(llm_router, "warmup"):
+            llm_router.warmup()
+        # In simulation mode, wait for LLM to be fully loaded before starting
+        _is_sim = getattr(args, "sim", None) is not None
+        if _is_sim and hasattr(llm_router, "wait_ready"):
+            logger.info("Waiting for LLM to load (simulation mode)...")
+            if llm_router.wait_ready(timeout=120.0):
+                logger.info("LLM ready")
+            else:
+                logger.warning("LLM failed to load — simulation will use fallback responses")
+                print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
+                print("  Ensure model is downloaded. Run: maxim --list-models")
+        logger.info("LLM router initialized: %s", llm_router)
+        llm_worker = LLMWorker(
+            llm_router,
+            n_ctx=getattr(llm_router, "n_ctx", 4096),
+            token_counter=(llm_router.get_token_counter() if hasattr(llm_router, "get_token_counter") else None),
+        )
+        llm_worker.start()
+        # B3: Enable Acting Coach when embodiment tools are available
+        if embodiment_ref is not None:
+            from maxim.prompts.acting_coach import acting_coach_config_from_env
+
+            llm_worker.acting_coach = acting_coach_config_from_env()
+            llm_worker.is_embodied = True
+
+            # E2: Inject entity context (sensors, affordances, failure
+            # triggers) into the AUT prompt so the agent knows what
+            # physical capabilities it has.
+            if component_registry is not None:
+                try:
+                    _entity_raw = component_registry.get(embodiment_ref)
+                    llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
+                except Exception as _e:
+                    logger.debug("Entity context injection failed: %s", _e)
+    return llm_worker
 
 
 def _handle_clear_memory(scope: str, args: Any, raw_argv: Sequence[str] | None) -> int:
@@ -966,6 +1035,7 @@ def _maybe_run_dm_campaign(yaml_path: Path, args, *, debug: bool, entity_ref: st
         dm_campaign=dm_campaign,
         **_sim_turn_caps(args),
         entity_ref=entity_ref,
+        llm_profile=_cli_llm_profile(args),
     )
     sys.exit(_simulation_result_exit_code(result))
 
@@ -1028,6 +1098,7 @@ def _run_goal_sim(
         entity_ref=entity_ref,
         pre_campaign_turns=pre_campaign_turns,
         generative=_use_generative,
+        llm_profile=_cli_llm_profile(args),
     )
     sys.exit(_simulation_result_exit_code(result))
 
@@ -2136,6 +2207,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 aut_mode=getattr(args, "aut_mode", "llm-primary"),
                 **_sim_turn_caps(args),
                 entity_ref=_sim_entity_ref,
+                llm_profile=_cli_llm_profile(args),
             )
             sys.exit(_simulation_result_exit_code(result))
 
@@ -2258,6 +2330,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 arc_yaml=getattr(args, "arc", None),
                 **_sim_turn_caps(args),
                 entity_ref=_sim_entity_ref,
+                llm_profile=_cli_llm_profile(args),
             )
             sys.exit(_simulation_result_exit_code(result))
 
@@ -2429,7 +2502,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     SafetyConstraints,
                     SupervisionPolicy,
                 )
-                from maxim.agents.llm_worker import LLMWorker
                 from maxim.environment import ReachyEnv
                 from maxim.runtime import (
                     build_decision_engine,
@@ -2643,52 +2715,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         duration_seconds=autonomy_duration,
                     )
 
-                # Set up LLM worker — LLM lives inside ExecAgent, not MaximAgent
-                llm_worker = None
-                llm_router = None
-                # Trigger lazy LLM + router init via ExecAgent
-                if hasattr(agentic_agent, "exec_agent"):
-                    agentic_agent.exec_agent._ensure_llm()
-                    llm_router = agentic_agent.exec_agent._ensure_router()
-                if llm_router is not None:
-                    _ensure_router_model(llm_router)
-                    if hasattr(llm_router, "warmup"):
-                        llm_router.warmup()
-                    # In simulation mode, wait for LLM to be fully loaded before starting
-                    _is_sim = getattr(args, "sim", None) is not None
-                    if _is_sim and hasattr(llm_router, "wait_ready"):
-                        logger.info("Waiting for LLM to load (simulation mode)...")
-                        if llm_router.wait_ready(timeout=120.0):
-                            logger.info("LLM ready")
-                        else:
-                            logger.warning("LLM failed to load — simulation will use fallback responses")
-                            print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
-                            print("  Ensure model is downloaded. Run: maxim --list-models")
-                    logger.info("LLM router initialized: %s", llm_router)
-                    llm_worker = LLMWorker(
-                        llm_router,
-                        n_ctx=getattr(llm_router, "n_ctx", 4096),
-                        token_counter=(
-                            llm_router.get_token_counter() if hasattr(llm_router, "get_token_counter") else None
-                        ),
-                    )
-                    llm_worker.start()
-                    # B3: Enable Acting Coach when embodiment tools are available
-                    if _embodiment_ref is not None:
-                        from maxim.prompts.acting_coach import acting_coach_config_from_env
-
-                        llm_worker.acting_coach = acting_coach_config_from_env()
-                        llm_worker.is_embodied = True
-
-                        # E2: Inject entity context (sensors, affordances, failure
-                        # triggers) into the AUT prompt so the agent knows what
-                        # physical capabilities it has.
-                        if _component_registry is not None:
-                            try:
-                                _entity_raw = _component_registry.get(_embodiment_ref)
-                                llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
-                            except Exception as _e:
-                                logger.debug("Entity context injection failed: %s", _e)
+                llm_worker = _cli_agentic_llm_worker(
+                    agentic_agent, args, logger, embodiment_ref=_embodiment_ref, component_registry=_component_registry
+                )
 
                 # The EFFECTIVE state at launch (the cap AND the persisted toggle/policy), not the cap
                 # alone (#832). A launch snapshot: the live per-turn read is #965 (agent_loop slices).
@@ -2725,6 +2754,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                             response_timeout=120.0,
                             debug=_sim_debug,
                             entity_ref=_sim_entity_ref,
+                            llm_profile=_cli_llm_profile(args),
                         )
                         sys.exit(_simulation_result_exit_code(result))
                     finally:

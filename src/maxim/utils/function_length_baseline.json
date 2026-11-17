@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1236
+      "lines": 1195
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -51,7 +51,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 800
+      "lines": 796
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -159,11 +159,6 @@
       "lines": 205
     },
     {
-      "file": "src/maxim/runtime/lane_backends.py",
-      "qualname": "build_primary_router",
-      "lines": 206
-    },
-    {
       "file": "src/maxim/runtime/leader_proxy.py",
       "qualname": "_ProxyHandler._proxy_request",
       "lines": 324
@@ -206,7 +201,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1900
+      "lines": 1895
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -401,7 +396,8 @@
     "_MaximPeerBackend._stream_response 225 -> 168 (now under the 200 threshold, entry removed) and LLMRouter._try_provider 212 -> 203 on 2026-11-10 (#1370 #1369, rule T): the streamed and the buffered call's HTTPError -> BackendError mappings became the one _MaximPeerBackend._typed_http_failure (which adds the context-overflow classification), chunk decoding moved to _MaximPeerBackend._stream_chunk (which adds the error-chunk and non-object checks), and _try_provider's BackendDown branch body moved to LLMRouter._note_provider_down beside the new _note_context_overflow.",
     "_main_impl tightened 1312 -> 1248 on 2026-11-11 (#1396, rule T): the pre-sim auto-curate block moved to cli.py::_auto_curate_before_sim, carrying its router build's switch to cli.py::_cli_local_router (the consent gate asks before warmup); the agentic call site's rename to _ensure_router_model rides on the same extraction.",
     "_main_impl tightened 1248 -> 1241 on 2026-11-12 (#1396 Q2, rule T): the --sim-report / --report-json cross-flag validation moved verbatim to cli.py::_apply_sim_report_flags, paying for the one arm_download_decline_memory() call that arms the run's download-decline scope after the subcommand dispatch.",
+    "_main_impl tightened 1241 -> 1200, AgenticRuntimeMixin._start_agentic_runtime 800 -> 796 and build_primary_router 206 -> 190 (entry removed: under the threshold) on 2026-11-13 (#1396 bullet 2, rule T): the CLI agentic path's LLM worker setup moved to cli.py::_cli_agentic_llm_worker (acting on the consent check's result, paying for the five --sim sites passing llm_profile), the robot runtime builds through lane_backends.build_run_router instead of a hand-built fallback, and build_primary_router's --cloud-fallback tail, manager, banner and decision record moved verbatim to lane_backends._primary_router_and_manager, paying for the normalized build profile and the preflight's declined set. start_simulation_mode tightened 1910 -> 1905 at the review fold: the shared and the AUT router builds moved together to orchestrator.py::_build_run_llms (both built before either warms or the sandbox is up, so a declined --aut-model refuses before any warmup and before the sandbox), the AUT warmup to orchestrator.py::_warm_aut_router, and the AUT router's peer-config comment into _build_aut_router's docstring.",
     "run_agent_loop tightened 233 -> 230 on 2026-11-16 (#1264, rule T): its run-id default, state-path build and first persist moved to runtime/loop_state.py::start_run_state (shared with loop_setup.build_loop_run), which claims the run's own state file under the data home.",
-    "#1264 fold 3 (2026-11-16, rule T, no exemption): _run_agentic_loop_body 2144 -> 2140 (the loop timing to agent_loop._loop_timing and the teardown persist to agent_loop._persist_final_state, paying for the state_home parameter and its forward to build_loop_run); _main_impl 1241 -> 1236 (the --sim PainBus reuse to cli._reuse_bio_pain_bus_for_sim, paying for the --sim loop's state_home); start_simulation_mode 1910 -> 1900 (the sandbox and sim logging block, with its corrected D15 comment, to orchestrator._open_sim_workspace, paying for the AUT's and narrator's state_home); api.py::run 216 -> 208 (the agent build and its event bridge to api._build_run_agent, paying for the home_dir docstring fix)."
+    "#1264 fold 3 (2026-11-16, rule T, no exemption): _run_agentic_loop_body 2144 -> 2140 (the loop timing to agent_loop._loop_timing and the teardown persist to agent_loop._persist_final_state, paying for the state_home parameter and its forward to build_loop_run); _main_impl 1241 -> 1236 (the --sim PainBus reuse to cli._reuse_bio_pain_bus_for_sim, paying for the --sim loop's state_home); start_simulation_mode 1910 -> 1900 (the sandbox and sim logging block, with its corrected D15 comment, to orchestrator._open_sim_workspace, paying for the AUT's and narrator's state_home); api.py::run 216 -> 208 (the agent build and its event bridge to api._build_run_agent, paying for the home_dir docstring fix). Rebased on #1396 bullet 2 (2026-11-17 merge of main): _main_impl 1200 -> 1195 and start_simulation_mode 1905 -> 1895, the same extractions."
   ]
 }

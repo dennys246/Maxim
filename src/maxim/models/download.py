@@ -772,6 +772,100 @@ def ensure_available(
         return False
 
 
+def router_model_problem(
+    llm_router: Any,
+    *,
+    interactive: bool | None = None,
+    declined: frozenset[str] | set[str] = frozenset(),
+    logger: Any | None = None,
+) -> str | None:
+    """Why a built router's local model is unusable, after asking the consent gate for it, or None when it is usable.
+
+    The one router-level check (#1343, #1396), moved here from ``cli.py`` (#1396 bullet 2) so every router build
+    (:func:`consented_router`, ``runtime/lane_backends.py::build_run_router``) reaches it without importing the CLI.
+    None when the router loads no local GGUF (its resolved backend is not llama_cpp: ``load_llm_config`` fills a
+    ``.gguf`` ``model_path`` even for a cloud backend, so the path alone cannot say), when its file is present, when a
+    provider that loads no local GGUF (a ``--cloud-fallback`` tail, a peer) is among its providers while the local
+    file is missing (the router skips a provider that fails to load, so the run keeps its LLM, as before the check),
+    or when the gate put the profile's file on disk and the router's own ``model_path`` now exists.
+
+    Otherwise the cause, one of ``LocalModelUnavailable.CAUSES``: ``NOT_DOWNLOADED`` (the gate did not put a registry
+    model on disk, or this build's preflight already left that profile missing: a profile in ``declined`` is not asked
+    about again), ``NOT_IN_REGISTRY`` (no registry file to download, so it is placed by hand; the gate is still asked,
+    and says so), ``MODEL_PATH_MISSING`` (the registry file is present, but the router loads its own ``model_path``,
+    from llm.json or the quantization it is built from, which does not exist). ``interactive`` goes to
+    :func:`ensure_available` (``False``: never ask, for a path off the main thread or mid-run). This never prints
+    (#1396 bullet 2 review round): each cause is logged, and a CLI caller prints its own line.
+    """
+    from maxim.models.language.router import LLAMA_CPP_PROVIDER_TYPES, normalize_provider_type
+    from maxim.models.language.types import LocalModelUnavailable as Unavailable
+
+    cfg = getattr(llm_router, "cfg", None)
+    backend = getattr(cfg, "backend", "") or "llama_cpp"
+    if normalize_provider_type(backend) not in LLAMA_CPP_PROVIDER_TYPES:
+        return None  # cloud, transformers, a peer: no local GGUF to load (load_llm_config fills model_path anyway)
+    model_path = str(getattr(cfg, "model_path", "")).strip()
+    if not model_path or os.path.exists(model_path):
+        return None
+    log = logger if logger is not None else logging.getLogger(__name__)
+    if _another_provider_serves(getattr(cfg, "providers", None), backend, LLAMA_CPP_PROVIDER_TYPES):
+        log.info("Local model %s is not on disk; the router's non-local provider serves instead", model_path)
+        return None
+    profile = str(getattr(cfg, "profile", "") or getattr(cfg, "model_base", "")).strip()
+    if not profile:
+        log.warning("The router's model %s is not on disk and names no profile to download", model_path)
+        return Unavailable.NOT_IN_REGISTRY
+    if profile in declined:
+        log.info("Model %s was declined earlier in this build; not asking again", profile)
+        return Unavailable.NOT_DOWNLOADED
+    log.info("Model not found at %s — asking to download %s", model_path, profile)
+    if not ensure_available(profile, interactive=interactive, logger=log):
+        return Unavailable.NOT_DOWNLOADED if profile in llm_models() else Unavailable.NOT_IN_REGISTRY
+    if not os.path.exists(model_path):
+        log.warning(
+            "The router's model_path %s does not exist; point it at the downloaded %s file", model_path, profile
+        )
+        return Unavailable.MODEL_PATH_MISSING
+    return None
+
+
+def _another_provider_serves(providers: Any, backend: str, llama_types: tuple[str, ...]) -> bool:
+    """True when the router's providers include one that loads no local GGUF (a cloud or peer provider), so a missing
+    local file does not leave the router without a model (a ``--cloud-fallback`` tail; #1396 bullet 2 review round)."""
+    from maxim.models.language.router import normalize_provider_type
+
+    if not isinstance(providers, dict):
+        return False
+    for provider_cfg in providers.values():
+        raw = (provider_cfg.get("type") or provider_cfg.get("backend")) if isinstance(provider_cfg, dict) else None
+        if normalize_provider_type(raw or backend) not in llama_types:
+            return True
+    return False
+
+
+def consented_router(
+    llm_config: Any,
+    *,
+    interactive: bool | None = False,
+    declined: frozenset[str] | set[str] = frozenset(),
+    logger: Any | None = None,
+) -> tuple[Any | None, str | None]:
+    """An ``LLMRouter`` on ``llm_config`` whose local model is usable, or why not: ``(router, None)`` / ``(None, cause)``.
+
+    The one place a router is built outside a lane manager (#1396 bullet 2, the review round's D43 fold): the CLI's
+    foundry and ``--auto-curate`` router (``cli.py::_cli_local_router``, which asks at a terminal), ``ExecAgent``,
+    ``runtime/lane_backends.py::build_run_router``'s fallback, the benchmark's paper writer and offline scripts. No
+    lanes, no spawned server, no banner or decision record. ``interactive`` defaults to ``False`` (never ask: a missing
+    model downloads only with a standing grant); a caller on the main thread before any warmup passes ``None``.
+    ``cause`` is one of ``LocalModelUnavailable.CAUSES``, for a caller that refuses the run, typed. Never prints.
+    """
+    from maxim.models.language.router import LLMRouter
+
+    router = LLMRouter(llm_config)
+    cause = router_model_problem(router, interactive=interactive, declined=declined, logger=logger)
+    return (router, None) if cause is None else (None, cause)
+
+
 def download_llm(
     model_name: str = DEFAULT_LLM,
     models_dir: str | Path | None = None,
