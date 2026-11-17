@@ -156,8 +156,9 @@ class AdvisorCompositionError(AdvisorError, ValueError):
     """``maxim.advisor.open()`` refused to build the observer (#1315 item 1, §4.2 "Refusals at open()").
 
     A pinned code-loading variable is set, the model is not an existing regular file, the home or report directory
-    is missing, not writable, a symlink or overlaps the other, a limit is out of range, or the backend failed to
-    load. Nothing was built, so there is no report.
+    is missing, not writable, a symlink or overlaps the other, a limit is out of range, the backend failed to
+    load, or the platform is not POSIX, so the offline latch refused (#1687; ``__cause__`` is the latch's
+    ``OfflineUnsupportedPlatform``). Nothing was built, so there is no report.
     """
 
 

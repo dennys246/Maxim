@@ -36,7 +36,7 @@ from types import MappingProxyType
 from typing import Any, NoReturn
 
 from maxim import __version__
-from maxim._offline import engage
+from maxim._offline import OfflineUnsupportedPlatform, engage
 from maxim.advisor import _refusals
 from maxim.advisor.log import UNKNOWN_EFFECT, AdvisorLog
 from maxim.exceptions import (
@@ -771,7 +771,7 @@ def open_session(
     """Build the observer: ``maxim.advisor.open``. Every input is keyword-only, and nothing else is taken (no
     robot, embodiment, tools or registry). The order is the refusal order (§4.2):
 
-    1. engage the offline latch, before anything is built;
+    1. engage the offline latch, before anything is built (off POSIX it refuses: ``AdvisorCompositionError``, #1687);
     2. refuse a code-loading environment, the limits, a model that is not a regular file, and the directories;
     3. load the backend eagerly (a failure raises; there is no report);
     4. build the dispatch stack, then create the log (after the backend, so a load failure leaves no log).
@@ -781,7 +781,10 @@ def open_session(
     so a swap-and-swap-back inside the load is the stated residual (notes §4 as-built). Anything that fails after
     the directories are open releases what was built (the log gets its close record) and raises.
     """
-    engage("maxim.advisor.open")
+    try:
+        engage("maxim.advisor.open")
+    except OfflineUnsupportedPlatform as e:  # #1687: one refusal family for embedders (``except AdvisorError``)
+        raise AdvisorCompositionError(f"the observer needs the offline latch, which refused this platform: {e}") from e
     _refusals.refuse_code_loading_env()
     _check_limits(max_calls, turn_timeout_s, log_mode, n_ctx, n_gpu_layers)
     if cursor is not None and not isinstance(cursor, str):
