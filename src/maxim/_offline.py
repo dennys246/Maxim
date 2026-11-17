@@ -33,7 +33,8 @@ refusals', the self-engage's and the OS sandbox's (§6, AD5).
 :class:`OfflineUnsupportedPlatform` where ``os.name`` is not ``"posix"``, BEFORE the latch goes up: on Windows the
 refusal set has never been checked there. ``subprocess.Popen`` raises its audit event on Windows too, but
 multiprocessing's spawn calls ``_winapi.CreateProcess`` directly, and Windows IPC such as named pipes
-(``_winapi.CreateNamedPipe``, multiprocessing.connection's default there) raises no socket event. A Windows process
+(``_winapi.CreateNamedPipe``, multiprocessing.connection's default there) raises ``_winapi.*`` audit events, none
+of which the hook names (it reads only ``socket.``, ``os.`` and ``subprocess.`` events). A Windows process
 started with ``MAXIM_OFFLINE`` truthy therefore fails at ``import maxim``, and ``maxim.advisor.open()`` refuses
 (``AdvisorCompositionError``), rather than report offline on a platform whose refusal set is unverified. Windows
 support is a separate, design-gated change.
