@@ -29,6 +29,12 @@ neither do ``send``/``sendall`` on a connection opened before the latch went up,
 is POSIX-only in what it names: Windows' ``_winapi.CreateProcess`` is not listed. Those are the call-site
 refusals', the self-engage's and the OS sandbox's (§6, AD5).
 
+**POSIX only (#1687).** Importing this module is safe on every platform, but :func:`engage` raises
+:class:`OfflineUnsupportedPlatform` where ``os.name`` is not ``"posix"``, BEFORE the latch goes up: on Windows the
+hook would miss ``_winapi.CreateProcess``, so a latch raised there would refuse less than it claims. A Windows
+process started with ``MAXIM_OFFLINE`` truthy therefore fails at ``import maxim``, and ``maxim.advisor.open()``
+refuses, rather than running online while reporting offline. Windows support is a separate, design-gated change.
+
 This module is a top-level LEAF (not ``maxim/utils/``, so importing it never runs ``maxim.utils``'s package init)
 and stdlib-only (guard:
 ``tests/integration/test_offline_latch.py::test_offline_module_is_stdlib_only``), so importing it never runs
@@ -58,7 +64,14 @@ ENGAGE_ENV: tuple[tuple[str, str], ...] = (
     (OFFLINE_ENV, "1"),
 )
 
-_ALLOWED_FAMILIES = frozenset({socket.AF_INET, socket.AF_INET6, socket.AF_UNIX})
+# Whether engage() can hold here (#1687); a module constant so a test can fake a platform.
+_PLATFORM_SUPPORTED = os.name == "posix"
+
+# The families a socket may be CREATED with while engaged. AF_UNIX joins only where the platform has it (Windows
+# CPython does not): a family the platform lacks cannot be created, so leaving it out allows nothing extra.
+_ALLOWED_FAMILIES = frozenset(
+    {socket.AF_INET, socket.AF_INET6} | ({socket.AF_UNIX} if hasattr(socket, "AF_UNIX") else set())
+)
 _LOOKUP_EVENTS = frozenset({"socket.getaddrinfo", "socket.gethostbyname", "socket.gethostbyaddr", "socket.getnameinfo"})
 _SPAWN_EVENTS = frozenset(
     {"os.system", "subprocess.Popen", "os.exec", "os.posix_spawn", "os.spawn", "os.startfile", "os.fork", "os.forkpty"}
@@ -69,6 +82,13 @@ class OfflineRefusal(RuntimeError):
     """An action the offline latch refused. A ``RuntimeError`` and never an ``OSError``, so the narrow
     ``except OSError`` sites that return plausible values (``code_tree.git_out``, ``_find_orphans_ps``,
     ``git_root_refusal``) cannot absorb it (§6 "Engaging the latch")."""
+
+
+class OfflineUnsupportedPlatform(RuntimeError):
+    """:func:`engage` on a platform the latch cannot hold on (#1687; today every non-POSIX one). Raised before the
+    latch goes up, so nothing reports offline. A ``RuntimeError``, never an ``OSError``, for the same reason as
+    :class:`OfflineRefusal`; deliberately NOT an :class:`OfflineRefusal`, which means "an action was refused while
+    offline", and nothing was offline."""
 
 
 class Refusal(NamedTuple):
@@ -109,11 +129,17 @@ def engage(reason: str) -> None:
     (1) write the five ``ENGAGE_ENV`` variables, (2) set the offline flags of libraries ALREADY imported (found
     through ``sys.modules``, never imported here), (3) run the :func:`on_engage` callbacks. A second call is a
     no-op. A callback that raises does not stop the others; the first failure is re-raised after all have run,
-    with the latch already up."""
+    with the latch already up. On a platform the latch cannot hold on, raises :class:`OfflineUnsupportedPlatform`
+    and changes nothing (#1687)."""
     global _engaged, _reason, _hook_added
     with _lock:
         if _engaged:
             return
+        if not _PLATFORM_SUPPORTED:
+            raise OfflineUnsupportedPlatform(
+                f"the offline latch is POSIX-only and this platform is os.name={os.name!r}; refused to engage it "
+                f"({reason}) rather than report offline while able to spawn processes (#1687)"
+            )
         # The five keys are written, never read first: the observer's env read set is pinned (#1315 item 1,
         # test_advisor_gate.py::test_env_read_set), so the pre-engage values a test needs back are the test
         # harness's to keep (tests/conftest.py::_reset_offline_latch snapshots and restores them).
