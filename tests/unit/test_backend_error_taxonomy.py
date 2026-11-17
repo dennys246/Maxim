@@ -20,6 +20,7 @@ from maxim.models.language.types import (
     BackendModelMissing,
     BackendOverloaded,
     BackendTimeout,
+    LocalModelUnavailable,
 )
 
 
@@ -31,6 +32,7 @@ ALL_SUBCLASSES = [
     BackendModelMissing,
     BackendOverloaded,
     BackendTimeout,
+    LocalModelUnavailable,  # build-time, no _try_provider branch (#1396 bullet 2; BackendError's docstring)
 ]
 
 

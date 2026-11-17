@@ -54,7 +54,8 @@ from maxim.models.language.cloud_dispatch import (
 _SYSTEM_PLAIN_TEXT = "You are a helpful assistant. Reply in plain text, concisely."
 
 # The provider types the router builds a ``_LlamaCppBackend`` for, after ``LLMRouter._provider_type``'s
-# normalisation. ``cli.py::_ensure_router_model`` reads the same table to decide whether a router loads a local GGUF.
+# normalisation. ``models/download.py::router_model_problem`` reads the same table to decide whether a router loads a
+# local GGUF.
 LLAMA_CPP_PROVIDER_TYPES: tuple[str, ...] = ("llama", "llama_cpp", "llamacpp")
 
 

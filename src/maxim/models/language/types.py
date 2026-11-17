@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.exceptions import ConfigurationError
+
 # ─────────────────────────── Plan 2 R2b constants ──────────────────────────
 
 INFERENCE_BROKEN_BACKOFF_S: float = 15.0
@@ -116,8 +118,11 @@ class BackendError(Exception):
     parameters with defaults are non-breaking and may be added per
     subclass; adding a *new subclass* requires the matching
     ``LLMRouter._try_provider`` branch in specific-before-general
-    order. Adding a *required* field post-1.0 is a major-version-bump
-    change.
+    order. The one exception is a build-time subclass that no provider
+    raises (``LocalModelUnavailable``, raised while a router is being
+    built, before any provider runs): it has no ``_try_provider``
+    branch, and its docstring says so (#1396 bullet 2). Adding a
+    *required* field post-1.0 is a major-version-bump change.
     """
 
     provider_key: str = ""
@@ -203,6 +208,52 @@ class BackendModelMissing(BackendError):
     ) -> None:
         self.requested_model = requested_model
         super().__init__(provider_key, status=status, fix_hint=fix_hint)
+
+
+class LocalModelUnavailable(BackendError, ConfigurationError):
+    """An explicitly named local model is not on disk and was not downloaded, so the run refuses up front (#1396).
+
+    Raised at router build time, never by a provider, so it has no ``LLMRouter._try_provider`` branch (the build-time
+    exception :class:`BackendError` names): when the caller named the model (``build_primary_router(profile=)``,
+    ``--llm``, ``--aut-model``, research's ``language_model``) and the consent gate
+    (``models/download.py::ensure_available``) did not put its GGUF on disk. A run on some other model than the one
+    asked for would be weak evidence, and a router on the missing file refuses every call. The CLI renders ``fix_hint``
+    and exits 2 (``cli.py::_main_guarded``).
+
+    Also a :class:`~maxim.exceptions.ConfigurationError` (owner decision 2026-11-14): ``maxim.run()``,
+    ``maxim.create.router()`` and the other API entry points document ``ConfigurationError`` for a model they cannot
+    serve, so an existing ``except ConfigurationError`` still catches it.
+
+    ``profile`` is the model and ``cause`` why it is unusable (one of :attr:`CAUSES`); the fix hint is chosen by the
+    cause from static text, and the profile is kept out of it (``fix_hint`` is never user-controllable).
+    """
+
+    NOT_DOWNLOADED = "not_downloaded"  # a registry model the gate did not download (declined, no grant, failed)
+    NOT_IN_REGISTRY = "not_in_registry"  # a profile the download registry has no file for: placed by hand
+    MODEL_PATH_MISSING = "model_path_missing"  # the router's own model_path is not where the registry file landed
+    _FIX_HINTS = {
+        NOT_DOWNLOADED: (
+            "The model is not on disk and was not downloaded. Download it with `python -m maxim.models.download --llm "
+            "<profile>`, or grant downloads with --auto-download or `maxim config set llm.auto_download true`."
+        ),
+        NOT_IN_REGISTRY: (
+            "The model is not in the download registry, so it cannot be downloaded for you. Place its GGUF by hand, "
+            "or register it with `maxim model add`."
+        ),
+        MODEL_PATH_MISSING: (
+            "The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json (or the quantization "
+            "it is built from) to point at the model file."
+        ),
+    }
+    CAUSES = tuple(_FIX_HINTS)
+    fix_hint = _FIX_HINTS[NOT_DOWNLOADED]
+
+    def __init__(self, profile: str, *, cause: str = NOT_DOWNLOADED, fix_hint: str = "") -> None:
+        if cause not in self._FIX_HINTS:
+            raise ValueError(f"unknown LocalModelUnavailable cause {cause!r}; expected one of {self.CAUSES}")
+        self.profile = profile
+        self.cause = cause
+        super().__init__(profile, status=None, fix_hint=fix_hint or self._FIX_HINTS[cause])
 
 
 class BackendInferenceBroken(BackendError):
