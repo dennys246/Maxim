@@ -149,9 +149,11 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   - **For machinery reads: M72**, extended. M72 is the experience-clock plan's wall-clock-read lint, with its §(g)
     allowlist. A3 adds `time_ns` and uuid4 ids and the reads above to its scope, rather than adding a second lint.
     Its test uses an **advancing** fake clock, because a frozen one hides every cadence bug.
-  - **For the prompt, a planted-render test:** plant a sentinel time with unusual seconds and pin `TZ`. Fail if its
-    raw, clock-format or date-format rendering appears in any built prompt or tool result. The retrieval and SCN
-    tests pin `TZ` too.
+  - **For the prompt, a planted-render test:** plant a sentinel time with unusual seconds **in the machinery clock**,
+    never in the perceived-time port (prompts may show the port by design), and pin `TZ`. Fail if its raw,
+    clock-format or date-format rendering appears in any built prompt or tool result. An **offset-and-scale case**
+    shifts the machinery clock's origin and runs it at a non-unit rate, so relative renders ("3 s ago") cannot leak
+    it either (Overdrive correction_1, 2026-11-17). The retrieval and SCN tests pin `TZ` too.
   - **For the prompt, a prompt-module lint:** it bans `datetime.now`, `strftime`, `time.localtime` and
     `datetime.fromtimestamp` outside the port. It starts on:
     - `agents/prompt_builder.py`, `agents/context_pool.py` and `agents/llm_fallback.py`;
@@ -226,6 +228,12 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   - a basis (hybrid §A.1b.5 `basis_seq`), so a thought that went stale while the body moved is detectable.
 - **The cut:** at `models/language/router.py::LLMRouter._complete_text` (`:945`) as a request value, and at the parse
   into `LLMProposal`. The gateway sits above the backend, not as a cancellable `LLMBackend`.
+  - **Model calls outside `think`** that the cut must name (route through it, or refuse on the embedded path):
+    - `planning/adaptive_planner.py::AdaptivePlanner` (built in `runtime/bootstrap.py`), whose LLM decomposition
+      calls `generate_structured`;
+    - `bridges/tool_pain_bridge.py::ToolPainBridge._generate_reflection` (`generate`), on the settle path, so B2
+      meets it too;
+    - `agents/fear_agent.py::FearAgent._analyze_with_llm` (`generate_json`).
 - **The v1 reply type** reserves `cancelled(prefix)` and `truncated` variants and a speech field the host can read
   before the JSON closes (Overdrive reply §3). Otherwise barge-in and first-token latency are designed out. The token
   iterator itself can come later. A4's parser bypass lands here.
@@ -282,7 +290,18 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
 - **Gate:**
   - engineering, with parity: the robot path settles immediately after dispatch;
   - the 1.4.0 function gate (`1323.functions-1000`) and touch-it-shrink-it apply (the function is pinned);
-  - **depends on A3's A-post** (NAc's event time is the wall clock, `decisions/nac.py:1162`).
+  - **depends on #1361** (`experience_clock_decay.md`; corrected per Overdrive correction_1, 2026-11-17):
+    - eligibility traces decay ×0.9 per tick (`NAc.decay_eligibility`, run by
+      `runtime/agent_loop.py::_loop_bio_tick_maintenance`), not per wall second; **S3a** moves that to
+      `advance_experience(dt_us)`;
+    - pending events (`NAc.record_event`'s `time.time()`, the 300 s `temporal_window_seconds` buffer) and the anchor
+      prune in `decay_eligibility` (`time.time()`) read the host clock; **S3b** moves their age and expiry to the
+      experience clock;
+    - after S3b, anchor **similarity** still reads the host calendar (`TemporalSignature.now()` in
+      `NAc.distribute_reward`'s temporal fallback; "host calendar by design" in #1361). For an embedded host that
+      read belongs on the perceived-time port. Asked on #1361, not decided here.
+  - credit is normalised to the eligible total, so step rate changes how credit is **shared** among traces and when
+    a trace expires into the anchor fallback, not how much a lone trace receives.
 - **Line:** with #1150, 1.3.6 or after.
 
 ### B3. Priority and deadline on the request value
