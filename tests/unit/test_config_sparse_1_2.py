@@ -194,14 +194,14 @@ def test_the_report_stamps_provenance_before_the_router_is_built() -> None:
     from tests.unit._orchestrator_source import start_simulation_mode_def
 
     # Every router build the run makes: the shared one (``_build_shared_router``, #1586), and the dual-LLM AUT's
-    # (``_build_aut_router``, #1538).
+    # (``_build_aut_router``, #1538), both inside ``_build_run_llms`` since #1396 bullet 2's review round.
     fn = start_simulation_mode_def()
     calls = {
         name: [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == name]
-        for name in ("capture_start_provenance", "_build_shared_router", "_build_aut_router")
+        for name in ("capture_start_provenance", "_build_run_llms")
     }
-    assert len(calls["capture_start_provenance"]) == 1 and calls["_build_shared_router"] and calls["_build_aut_router"]
-    assert calls["capture_start_provenance"][0] < min(calls["_build_shared_router"] + calls["_build_aut_router"])
+    assert len(calls["capture_start_provenance"]) == 1 and len(calls["_build_run_llms"]) == 1
+    assert calls["capture_start_provenance"][0] < calls["_build_run_llms"][0]
 
 
 def test_null_returns_the_field_to_its_default_value(tmp_path) -> None:

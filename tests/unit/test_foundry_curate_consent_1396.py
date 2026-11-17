@@ -53,9 +53,15 @@ def fake_router(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr("maxim.models.language.router.LLMRouter", FakeRouter)
-    monkeypatch.setattr(
-        "maxim.models.download.download_llm", lambda name, *a, **k: record.downloads.append(name) or True
-    )
+
+    def download_llm(name, *a, **k):
+        # A real download lands where the router loads it; the consent check re-reads the router's own model_path
+        # after the gate (#1396 bullet 2), so the fake writes that file too.
+        record.downloads.append(name)
+        (tmp_path / "missing.gguf").write_text("")
+        return True
+
+    monkeypatch.setattr("maxim.models.download.download_llm", download_llm)
     return record
 
 
@@ -161,7 +167,7 @@ def _profiles_by_backend() -> dict[str, str]:
 
 
 def _with_backend(monkeypatch, tmp_path, profile: str) -> None:
-    """The fake load_llm_config, carrying the profile's real backend (what ``_ensure_router_model`` reads)."""
+    """The fake load_llm_config, carrying the profile's real backend (what ``router_model_problem`` reads)."""
     from maxim.models.language.config import get_profile
 
     backend = (get_profile(profile) or {}).get("backend", "llama_cpp")
@@ -223,7 +229,8 @@ def test_a_decline_at_a_terminal_falls_back_with_no_download(fake_router, monkey
 
 def test_in_cli_only_the_consent_builder_constructs_an_llm_router() -> None:
     """A new ``LLMRouter(...)`` in cli.py would be a router built with no one asking about a missing model: route it
-    through ``_cli_local_router`` (or ``_ensure_router_model`` before its warmup) instead. Import aliases count."""
+    through ``_cli_local_router``, which builds through ``models/download.py::consented_router`` (#1396 bullet 2's
+    review round: the one consented builder), so cli.py constructs none itself. Import aliases count."""
     tree = ast.parse(CLI.read_text(encoding="utf-8"))
     names = {"LLMRouter"} | {
         a.asname
@@ -245,7 +252,15 @@ def test_in_cli_only_the_consent_builder_constructs_an_llm_router() -> None:
             visit(child, name)
 
     visit(tree, "<module>")
-    assert builders == {"_cli_local_router"}, sorted(builders)
+    assert builders == set(), sorted(builders)
+    consented = {
+        func.name
+        for func in ast.walk(tree)
+        if isinstance(func, ast.FunctionDef)
+        for n in ast.walk(func)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "consented_router"
+    }
+    assert consented == {"_cli_local_router"}, sorted(consented)
 
 
 @pytest.mark.parametrize("spelling", ["llamacpp", "Llama-CPP", "llama"])

@@ -93,22 +93,20 @@ def _build_research_llm(language_model: str | None = None) -> Any:
 
     A :class:`~maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
     llama-cpp-server) propagates: a security refusal is not an availability
-    fallback.
+    fallback. So does ``LocalModelUnavailable``: a named ``language_model`` that is
+    missing and not downloaded refuses the run (owner decision OD2, #1396 bullet 2).
     """
+    from maxim.models.language.types import LocalModelUnavailable
+
     research_llm = None
     try:
-        from maxim.models.language.router import LLMRouter, load_llm_config
-        from maxim.runtime.lane_backends import build_primary_router
+        from maxim.runtime.lane_backends import build_run_router
 
-        research_llm, _ = build_primary_router(logger=logger, profile=language_model)
-        if research_llm is None:
-            config = load_llm_config(profile_override=language_model)
-            if config.enabled:
-                research_llm = LLMRouter(config)
+        research_llm, _ = build_run_router(logger=logger, profile=language_model)
         if research_llm is not None:
             research_llm.warmup()
             research_llm.wait_ready(timeout=120.0)
-    except LeaderRefusal:
+    except (LeaderRefusal, LocalModelUnavailable):
         raise
     except Exception as e:
         logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)
