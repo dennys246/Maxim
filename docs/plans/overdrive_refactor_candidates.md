@@ -2,206 +2,292 @@
 
 > **PROPOSED 2026-11-16: a candidates list, not a plan. No code.** It comes from the design exchange with Maxim
 > Overdrive, a game world under the owner's control that embeds Maxim agents. Overdrive's side is on
-> `dennys246/Maxim-Overdrive` `phase1/design-v2` (draft PR #4): its drafts (`docs/maxim_upstream/`) and its
-> reply to Maxim's answers (`docs/design/reviews/maxim_response_1/reply.md`). Each item below enters Maxim only
-> through Maxim's own process (an issue, a plan with a three-lens review, or an experiment with a four-lens design
-> review). Nothing here is patched in from Overdrive, and **game runs never go on Maxim's ledger.**
+> `dennys246/Maxim-Overdrive` `phase1/design-v2` (draft PR #4): its drafts (`docs/maxim_upstream/`) and its reply to
+> Maxim's answers (`docs/design/reviews/maxim_response_1/reply.md`). Each item below enters Maxim only through
+> Maxim's own process (an issue, a plan with a three-lens review, or an experiment with a four-lens design review).
+> Nothing here is patched in from Overdrive, and **game runs never go on Maxim's ledger.**
 >
-> Citations are on `origin/main` **98c6889c** (2026-11-16), each mechanically re-checked against the line's text
-> that day. They are `file::symbol` with a line hint; the symbol is the citation, the line will drift.
+> Citations are on `origin/main` **98c6889c** (2026-11-16). That tree's `src/` is identical to `7db97e21`. They are
+> `file::symbol` with a line hint; the symbol is the citation, the line will drift. A three-lens review (Executor,
+> Architecture, Wire integrity) ran on the first draft, and its findings are folded in.
 
 ## Why this list exists
 
 Overdrive needs a Maxim agent that **a host drives**. The host calls it with world time and a frame, and gets back,
-as values, what the agent wants to do. The agent never runs its own loop, thread, clock, model call or tool. Today
-Maxim's agent owns all of those.
+as values, what the agent wants to do. The agent never runs its own loop, thread, clock, model call, sleep or tool.
+Today Maxim's agent owns all of those.
 
 Most of what that takes is **also a Maxim correctness or research-integrity gain**. Once an agent's state, clock,
 RNG and ids belong to it, a run can be replayed bit for bit with one variable changed. Paired replays shrink the
-confidence intervals the BF2 floors and effect-size pass rules depend on. That gain is the reason the items are
-ranked as they are, and it is what makes them Maxim's work rather than a favour to a game.
+confidence intervals the BF2 floors and effect-size pass rules depend on. That gain is the reason for the ranking,
+and it is what makes these items Maxim's work rather than a favour to a game.
 
 **Two limits on that gain** (Overdrive reply §5):
-- Pairing helps substrate claims. For an LLM arm it ends at the first diverging token.
-- A paired analysis estimates d_z, not d. A prereg that uses replay pairing must say which one it gates on.
+- Pairing helps substrate claims. For an LLM arm it ends at the first diverging token, so the LLM's replies must be
+  recorded and replayed.
+- A paired analysis estimates d_z, not d. A prereg that uses replay pairing says which one it gates on.
 
 ## The tiers
 
-- **Tier A, do on engineering grounds.** Guarded by tests, including a deletion probe. No experiment is owed,
-  because each one either changes no behaviour on a robot or fixes a defect.
-- **Tier B, engineering with parity guards.** Each restructures a hot path. It may land only with a guard proving
-  the robot path is unchanged: a bit-identical state digest on recorded replays, not a behavioural comparison. A
-  behaviour *claim* that the restructure enables waits for its own experiment.
+- **Tier A, do on engineering grounds.** Guarded by tests, each proven by deleting what it guards. No experiment is
+  owed, because each one either fixes a defect or changes no behaviour on a robot.
+- **Tier B, engineering with parity guards.** Each restructures a hot path. It may land only with a guard proving the
+  robot path is unchanged: a bit-identical state digest on recorded *replies*, not a behavioural comparison. A
+  behaviour **claim** the restructure enables waits for its own experiment.
 - **Tier C, test, don't refactor.** Design choices Maxim made without evidence, which an embedded world can finally
-  test. Each needs a prereg.
+  test. Each needs a prereg, plus a transfer check in a Maxim-owned harness (§Cautions).
 
-Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reassign ids when it accepts an item.
+Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reassign them when it accepts an item.
 
 ## Tier A
 
 ### A1. One `AgentHome` object, owned per agent
 
 - **What:** route every store an agent writes through one per-agent home object, so a home can never half-resolve
-  to `~/.maxim`. `AgentFactory` already scopes Hippocampus, NAc, ATL, SCN, EC, AngularGyrus and the cerebellum.
-  About nine families are still process-global:
-  - semantic embeddings (`integration/memory_hub.py:246`, `util/semantic_embeddings.npz`);
-  - the fear and escalation bridges' thresholds;
-  - DN thresholds;
-  - the focus and bounds learners;
-  - energy;
-  - the cost tracker;
-  - provenance and lane decisions;
-  - the nickname registry.
-- **Also on this item:** paths resolved against the working directory, which collide with a host's own `data/`:
+  to `~/.maxim`.
+  - `AgentFactory` already scopes Hippocampus, NAc, ATL, SCN, EC, AngularGyrus and the cerebellum.
+  - **The list to close is the repo's own registry**, `cli_utils.py::_GLOBAL_PATHS` (`:608`), not a hand count. Its
+    global learners include:
+    - semantic embeddings (`util/semantic_embeddings.npz`, also `integration/memory_hub.py:246`);
+    - the pain detector, statistician and significance weights;
+    - the learned bounds (`util/learned_bounds.json`);
+    - short-term memory, the cross-layer graph and the tool index;
+    - planning.
+  - **Writers outside the registry:**
+    - `utils/agent_output.py` (`shared/outputs`, plus the process-global abstraction buffer);
+    - `utils/last_run.py`, `provenance/store.py` and `runtime/probe_cache.py`;
+    - the cost tracker (its filename also stamps `datetime.now()`);
+    - `inference/transcribe_audio.py` (`util/whisper.json`) and `analysis/roy_log.py`.
+  - **Process-global in memory:** `utils/filesystem_policy.py::get_effective_cwd` is a module global, so one agent's
+    mode change moves every agent's working directory.
+- **Paths resolved against the working directory**, which collide with a host's own `data/`:
   - `utils/cloud_audit.py::CloudAuditLogger` (`:49`, `data/logs/cloud_audit.jsonl`);
-  - `utils/response_config.py` (`:65`, `os.getcwd()/data/util`).
-- **Front gate:** rides on the existing `utils/paths.py::resolve_run_dir` and the factory's `persistence_dir`. No
-  new mechanism.
-- **Guard:** two agents in one process never open the same file (a filesystem-trace test), proven by deleting the
-  routing.
-- **Venue:** a plan, merged with the open issue #984 (shared learned state outside any home), which already names
-  the embeddings and escalation thresholds. **Line:** 1.3.x/1.4, on its own clock.
+  - `utils/response_config.py` (`:65`);
+  - `models/language/config.py` (`llm.json` from `cwd/data/util`);
+  - `hardware/config.py` (`robots.yaml`, cwd-only when `data_home()` fails);
+  - `utils/prompts.py` (a fallback, used only if the bundled copy is missing).
+- **Front gate:** rides on `AgentFactory._resolve_persistence_dir` (`runtime/agent_factory.py:770`) and
+  `utils/paths.py::RUN_DIR_KINDS`. Not `resolve_run_dir`: that is a CLI lookup that searches the CWD first and
+  creates nothing ("Not for request data").
+- **Guards:**
+  - `_GLOBAL_PATHS` becomes the checked registry, so a new learner that isn't routed through the home fails.
+  - Two agents in one process never open the same file, shown by a filesystem-trace test.
+- **Venue:** a plan, merged with the open #984 (shared learned state outside any home). **Line:** 1.3.x/1.4, on its
+  own clock.
 
-### A2. Per-agent keyed random substreams
+### A2. Per-agent keyed random substreams, one design with #1305
 
-- **What:** each agent draws from keyed substreams, `random.Random(stable_hash_64(seed, agent_id, stream_name))`, one
-  per consumer (attention, default_network, spatial…). Then adding an NPC or changing one cadence never shifts
-  another stream.
-  - `utils/seeding.py::make_agent_rng` (`:79`) has no caller. It returns one sequential `random.Random`, so its
-    draws depend on cadence, and the substream key is the change.
-  - The ~26 process-global `random` draws move onto it.
+- **What:** each consumer draws from a keyed substream, so adding an NPC or changing one cadence never shifts another
+  stream.
+  - The derivation is `random.Random(stable_hash_64_signed(f"{base_seed}:{agent_id}:{stream}"))` (`utils/seeding.py`
+    has `stable_hash_32` and `stable_hash_64_signed`, both of one string), or a `stream` key added to
+    `make_agent_rng`'s existing derivation (`:79`; no caller, one sequential `Random`).
+  - **This is the same work as the 1.4.0 release gate `1305.owned-rng`** (#1305, `scripts/release_gates.json`). That
+    gate already requires default_network, attention, spatial and `decisions/significance.py` to draw from owned
+    generators seeded from `seeding.py::get_global_seed`. A2 extends it with a per-agent, per-stream key. The robot
+    path derives `base_seed` from `get_global_seed()`, and a host supplies its own. The gate's scope text changes
+    with it.
+  - About 26 stdlib draws sit outside `seeding.py`, plus numpy's legacy global draws (`attention/salience_map.py`,
+    `hardware/simulation/streams.py`). Exempt, and named as such: `models/language/anthropic_backend.py`'s backoff
+    jitter.
 - **The rule that comes with it:** `seeding.py::seed_all` (`:28`) writes `PYTHONHASHSEED` (`:48`) and reseeds the
-  process's global generators. **An embedded path must never call it.** The embedded entry point's import and call
-  closure must say so in a test.
-- **Front gate:** rides on `utils/seeding.py`, with no new dependency (Philox/numpy not needed).
-- **Guard:** two agents, one cadence changed: the other agent's draws are identical. Two processes with different
-  `PYTHONHASHSEED`, per the stable-hash invariant.
-- **Venue:** an issue-sized PR, or part of A3's plan. **Line:** 1.3.x.
+  process's global generators, and **an embedded path never calls it.** Its only `src/` caller is `cli.py:1829`. Every
+  `get_global_seed()` consumer then needs an explicit seed on that path:
+  - `similarity/semantic.py:205` (`_lsh_seed = get_global_seed() or 42`, persisted LSH hyperplanes, which would
+    silently become 42);
+  - `simulation/generative_runner.py`;
+  - `simulation/serving_provenance.py`.
+- **Front gate:** rides on `utils/seeding.py`, with no new dependency.
+- **Guards:**
+  - two agents with one cadence changed, and the other agent's draws are identical;
+  - two processes with different `PYTHONHASHSEED`, per the stable-hash invariant;
+  - #1305's gate test.
+- **Venue:** #1305 (widened). **Line:** 1.4.0 (the gate is a 1.4.0 item).
 
-### A3. Two clocks: a machinery clock and a perceived-time port (changed after Overdrive reply §1)
+### A3. The perceived-time port, plus the host's injection point into the experience clock
 
-- **What:** the clock seam on the step path is **two seams, not one.**
-  - **The machinery clock** drives decay, cadences, eligibility and stamps. On a robot it is the wall clock; an
-    embedded agent gets the host's. Known wall-clock reads on the step path include:
-    - `decisions/nac.py` event recording (`:1162`, plus `time.time_ns()` in the event id at `:1163`);
-    - NAc decay-on-load (`:4324`);
-    - the uuid4 ids (36 code lines in 24 files);
-    - `time.monotonic` stamps saved across a restart.
-  - **The perceived-time port** is the only source of time a prompt may contain. The host supplies it; on a robot it
-    is the wall clock, so robots keep seeing the date the web-search guidance needs. Today the prompt renders exact
-    time in three places:
-    - `agents/prompt_builder.py::build_datetime_section` (`:237`, "Current time"), fed by `datetime.now()` in
-      `PromptBuilder.build_prompt` (`:1125`, added at `:1738`);
+- **What A3 owns:**
+  - the **perceived-time port**;
+  - the **host's injection point** into the existing `runtime/experience_time.py::ExperienceClockDriver`;
+  - a few id and stamp sources the experience-clock plan doesn't cover.
+- **What A3 does not own:** decay timing, eligibility and the temporal windows. Those are
+  `experience_clock_decay.md`'s (#1361, owner decisions 2026-10-17: in-session decay anchored to the driver, and no
+  forgetting while switched off). A3 rides on that plan. On a robot, the machinery clock **is** the driver, not the
+  wall clock. NAc decay-on-load is already opt-in at load (`decisions/nac.py`, about `:4317`), so it is not on the
+  step path.
+- **The perceived-time port.** It is the only source of time a prompt may contain. The host supplies it; on a robot
+  it is the wall clock, so robots keep the date the web-search guidance needs.
+  - **Exact time reaches the model in at least seven places:**
+    - `agents/prompt_builder.py::build_datetime_section` (`:237`), fed by `datetime.now()` in
+      `PromptBuilder.build_prompt` (`:1125`) and added in `PromptBuilder._add_guidance_sections`;
+    - `PromptBuilder._build_engage_prompt`, a second `datetime.now()` (`:2400`) rendered as `CURRENT DATE: … at …`
+      (`:2417`), on the post-search path;
     - `agents/context_pool.py::_entries_to_text` (`:468`);
-    - `context_pool.py::get_context_text` (`:493`), an `HH:MM:SS` stamp on every context entry.
-- **Why two:** host time through one seam makes every NPC read exact world time, which Overdrive's time-sense design
-  forbids. Wall time left in the prompt breaks determinism. So the prompt-reaching reads must be **classified**, not
-  swapped.
-- **The guard (owner-accepted pushback, 2026-11-16): tests and a lint, not a type.** Decay arithmetic needs floats,
-  so a clock type with no `__str__` is defeated by `f"{t.value}"`. Instead:
-  - **A planted-read test:** an advancing fake machinery clock, with a planted wall-clock read that must fail. The
-    clock must advance, because a frozen fake clock hides every cadence bug.
-  - **A planted-render test:** plant a sentinel time with unusual seconds and pin `TZ` (`localtime` depends on it).
-    Fail if its raw, clock-format or date-format rendering appears in any built prompt.
-  - **A prompt-module lint:** bans `datetime.now`, `strftime` and `time.localtime` in the modules that reach a prompt
-    (`agents/prompt_builder.py`, `agents/context_pool.py`, `agents/llm_fallback.py` at first), except through the
-    port.
+    - `agents/context_pool.py::get_context_text` (`:493`), an `HH:MM:SS` stamp on every entry;
+    - `agents/exec_agent.py::_build_llm_context`, workspace-file modification times through `time.localtime`
+      (`:1189`);
+    - `tools/http_fetch.py` (`accessed_at`, in a tool result);
+    - `tools/reachy.py` ("The last sound faded …s ago", robot-only).
+  - **Time also decides what is recalled.** `retrieval/temporal_signal.py` uses `datetime.now()` as the base for
+    "yesterday" and "last Tuesday" (`:101`). `time/temporal_signature.py` and `similarity/signature.py` use
+    `datetime.fromtimestamp`, which depends on TZ, for SCN hour and day features, and those reach the model through
+    `temporal_patterns` and the `[TEMPORAL]` tag (`agents/exec_prompts.py`). These are classified too: the port
+    supplies relative-date resolution.
+- **Machinery reads the experience-clock plan does not list**, which A3 must route or allowlist:
+  - **Tool duration:** `runtime/tool_dispatch.py` measures it on the wall clock (`exec_elapsed`, `:1343`).
+    `_observe_energy_cost` turns it into an NAc valence (`:626`, NEGATIVE above 2.0 s) and an outcome signature
+    (`:631`). So NAc's state, and a valence sign, depend on host speed. **B2's parity guard cannot pass until this
+    is resolved** (see B2).
+  - **The rest:**
+    - NAc event ids from `time.time_ns()` (`decisions/nac.py:1163`) and the event time (`:1162`, in `NAc.record_event`);
+    - the uuid4 ids (36 code lines in 24 files);
+    - Hippocampus consolidation pressure (`memory/hippocampus_consolidation.py:468`);
+    - memory-agent salience decay (`agents/memory_agent.py`, about `:827-834`);
+    - the stale-proposal age (`runtime/agent_loop.py`, about `:458`);
+    - `time.monotonic` stamps saved across a restart.
+- **Guards** (owner-accepted pushback, 2026-11-16: tests and a lint, not a type):
+  - **For machinery reads: M72**, extended. M72 is the experience-clock plan's wall-clock-read lint, with its §(g)
+    allowlist. A3 adds `time_ns` and uuid4 ids and the reads above to its scope, rather than adding a second lint.
+    Its test uses an **advancing** fake clock, because a frozen one hides every cadence bug.
+  - **For the prompt, a planted-render test:** plant a sentinel time with unusual seconds and pin `TZ`. Fail if its
+    raw, clock-format or date-format rendering appears in any built prompt or tool result. The retrieval and SCN
+    tests pin `TZ` too.
+  - **For the prompt, a prompt-module lint:** it bans `datetime.now`, `strftime`, `time.localtime` and
+    `datetime.fromtimestamp` outside the port. It starts on:
+    - `agents/prompt_builder.py`, `agents/context_pool.py` and `agents/llm_fallback.py`;
+    - `agents/exec_agent.py` and `agents/exec_prompts.py`;
+    - `tools/http_fetch.py`.
 - **Also in A3:** the five `x or time.time()` sites, filed as **#1684**.
-- **Front gate:** rides on the existing injectable `ExperienceClockDriver` (`runtime/experience_time.py::ExperienceClockDriver`). The port is
-  the only new surface, and it needs its reason in the plan: no existing seam separates "time the agent uses" from
-  "time the agent is told".
-- **Venue:** a plan (Overdrive's world-clock drafts A-pre/A-post are its input). **Line:** A-pre on its own clock,
-  A-post with 1.3.6. **B1 depends on it.**
+- **Front gate:** the port is the only new surface. The existing seam, `ExperienceClockDriver`, separates experience
+  time from wall time, but not "time the agent uses" from "time the agent is told".
+- **Venue:** a plan coordinated with #1361 (Overdrive's world-clock drafts A-pre/A-post are input). **Line:** A-pre
+  (the port and the prompt guards) on its own clock. A-post (the machinery reads, the injection point) with
+  #1361's slices and 1.3.6.
 
-### A4. Embedded-path leak closure (new after Overdrive reply §4)
+### A4. Embedded-path leak closure
 
-- **What:** the embedded entry point closes every path by which host data or host identity reaches the model, or by
-  which the agent reaches the host:
-  - **Prefetch off structurally.** `runtime/agent_loop.py` calls `ctrl.run_prefetch(cli_text)` on every input
-    (`:1571`). Prefetch scans the working directory (`runtime/prefetch.py`, `get_effective_cwd()` at `:307`) and
-    runs `find` subprocesses (`:582`) into the first prompt. **The offline latch does not close this.**
-    - It refuses the `find` spawn, and `prefetch.py:595` swallows the refusal at debug level, so it fails silently.
-    - The directory scan and file reads are not subprocesses and still reach the prompt.
-    - Overdrive's workers also start with the working directory at the empty agent home (Overdrive reply,
-      2026-11-16). That is defence in depth, not the guard.
-  - **The short-question shortcut is bypassed.**
-    - `PromptBuilder.build_prompt` answers time, date, identity and greeting questions without the model
-      (`:1102-1137`, via `agents/llm_fallback.py::generate_simple_answer`).
-    - It fires on **any** `triggering_input`. The `maxim`/`reachy` wake-word check (`:1108`) only gates the fallback
-      to `cli_inputs`.
-  - **A cancel never reaches the parser.** The parse-failure path (`agents/llm_worker.py`, `:1322`) builds a canned
-    reply from `triggering_input`. A cancelled reply variant (B1) must bypass it.
-  - **No logging takeover.** `api.py` replaces the root logger with `force=True` (`:113`).
+- **First, the front gate it owes** (review SF-2). A host-driven agent is a **new runtime mode**, not a refactor.
+  Before any of this is built, Overdrive's embeddable-agent plan must answer: "why can't the 1.1.4 world seam
+  (`archive/world_seam_1_1_4.md`, shipped as 1.1.4), with Maxim owning the loop, serve Overdrive?" A4 lists what the mode must close
+  if that plan is accepted.
+- **Fix at the root where the robot path has the defect too** (review SF-3, CLAUDE.md "no band-aid fixes"). Each path
+  below says whether the robot behaviour is a defect (fix it for everyone, in tier A) or intended (closed only on the
+  embedded path).
+  - **Prefetch reads the host's working directory.**
+    - `LoopController.run_prefetch` calls `prefetch_for_input(cli_text, cwd=os.getcwd())` (`runtime/loop_controller.py:614`)
+      on each CLI input that isn't a confirmation or retry (`runtime/agent_loop.py:1571`). The prefetcher is built
+      with `base_path=os.getcwd()` (`runtime/loop_setup.py:552`).
+    - So the leak lives in those two `os.getcwd()` calls, not in `get_effective_cwd()`.
+    - Under the offline latch, `discover_files_with_find` swallows the refused `find` at debug level
+      (`runtime/prefetch.py`, about `:595`). **That is a robot-path silent swallow and a defect: fix it at the root.**
+    - Embedded: prefetch off structurally. Overdrive's workers also start with the working directory at the empty agent
+      home, which is defence in depth, not the guard.
+  - **The workspace manifest.** `build_workspace_manifest` puts the working directory's name and tree into the prompt
+    (`agents/prompt_builder.py`, `get_effective_cwd()` at `:1248`), gated only on the roster having file tools
+    (`:1503`). The exec agent's WORKSPACE section (`agents/exec_agent.py`) has no roster gate.
+  - **The short-question shortcut.** `PromptBuilder.build_prompt` answers time, date, identity and greeting questions
+    without the model (`:1102-1137`, via `agents/llm_fallback.py::generate_simple_answer`). It fires on **any**
+    `triggering_input`; the wake-word check (`:1108`) gates only the fallback to `cli_inputs`. **Whether that is
+    intended on a robot is an owner decision** (§Not decided).
+  - **Writes outside the home.** `tools/base.py` resolves relative paths with `base or os.getcwd()` (`:811`), and
+    `contained_path` with no `allowed_dirs` returns the path unchanged. The embedded roster must always set
+    containment. A test proves it does.
+  - **No logging takeover:** `api.py` replaces the root logger with `force=True` (`:113`).
+  - **No blocking:** `agents/exec_agent.py` sleeps inside `_propose_goal` (`time.sleep`, `:1495`). A host-driven step
+    never blocks, so the static ban covers `time.sleep`.
   - **A static import ban** for the embedded closure. The advisor's three dynamic tests (including
     `tests/integration/test_advisor_gate.py::test_no_effect`, `:1261`) miss lazy imports on paths a test never runs,
     such as `runtime/lane_backends.py::_maybe_inject_cloud_fallback` (`:1249`).
-  - **The embedded roster** is capability-based, from Overdrive's embeddable-agent draft (PRs 1–3), with no
-    `build_tool_registry`, `data_home()` or `config_loader`, and no env reads. This is Part 1's roster:
-    engineering-gated. Making capability rosters the **robot** default is a different item (C4).
+  - **The embedded roster** is capability-based, with no `build_tool_registry`, `data_home()` or `config_loader`, and
+    no env reads. This is Part 1's roster, engineering-gated. Making capability rosters the **robot** default is C4.
+  - **A cancel never reaches the parser.** The parse-failure path (`agents/llm_worker.py`, `:1322`, inside
+    `LLMWorker._process_request`) builds a canned reply from `triggering_input`. **This one lands with B1**, which
+    introduces the cancelled variant.
 - **Guard:** one integration test per path, plus the static ban, each proven by deletion.
-- **Venue:** a section of Overdrive's embeddable-agent plan when it comes to Maxim. **Line:** on its own clock.
+- **Venue:** a section of Overdrive's embeddable-agent plan, after its front gate. The robot-path defects are filed as
+  issues. **Line:** on its own clock, except the cancel bypass (with B1).
 
 ### A5. Pickle-free embeddings
 
-- `similarity/semantic.py::EmbeddingStore.load` uses `np.load(..., allow_pickle=True)` (`:662`). Filed as **#1685**.
-- **Line:** 1.3.x.
-
-### A6. Generate-vs-apply for memory writes (new after Overdrive reply §8)
-
-- **What:** the think path proposes memory writes as values. They are applied only at apply/settle, never during
-  generation. A deliberation continuation then never writes to the stores. It carries a basis (hybrid §A.1b.5
-  `basis_seq`), so a thought that went stale while the body moved is detectable.
-- **Includes:** the D53 `outcome_valence` carrier and Overdrive's OD-A16, the refusal-kind promotion (an amendment to
-  `tool_failure_credit.md`, after #1200).
-- **Depends on:** B2's dispatch/settle split. It is listed in tier A because, with settle immediate, it changes no
-  robot behaviour.
-- **Venue:** part of B2's plan.
+`similarity/semantic.py::EmbeddingStore.load` uses `np.load(..., allow_pickle=True)` (`:662`). Filed as **#1685**.
+**Line:** 1.3.x.
 
 ## Tier B
 
 ### B1. The stepped deliberation seam (Overdrive's OD-A10–A15; the hybrid's §A.1b)
 
-- **What:** `think(continuation, input) → request | reply`, an explicit frozen **deliberation continuation**
-  (Overdrive reply §2), not a generator and not the whole agent. One continuation carries:
-  - the deliberation cycle number, the transcript and the bio-enrichment results;
-  - several requests per tick: `runtime/agent_loop.py::_run_deliberation_cycles` (`:521`) makes up to three
-    sequential model calls per tick, feeding reasoning back through bio-enrichment;
-  - the `next_actions` chain (`llm_worker.py:1356`, `agent_loop.py:1858`), which runs later actions with no further
-    call, each one validated by the host when it dispatches.
+- **What:** `think(continuation, input) → request | reply`, with an explicit frozen **deliberation continuation**
+  (Overdrive reply §2): not a generator, and not the whole agent. One continuation carries:
+  - the deliberation cycle, the transcript and the bio-enrichment results.
+    `runtime/agent_loop.py::_run_deliberation_cycles` (`:521`) caps a tick at three model calls, cycle 1 included,
+    feeding reasoning back through bio-enrichment between them;
+  - the `next_actions` chain (`agents/llm_worker.py:1356`, `runtime/agent_loop.py:1858`), which runs later actions with
+    no further call, each one validated by the host when it dispatches;
+  - a basis (hybrid §A.1b.5 `basis_seq`), so a thought that went stale while the body moved is detectable.
 - **The cut:** at `models/language/router.py::LLMRouter._complete_text` (`:945`) as a request value, and at the parse
   into `LLMProposal`. The gateway sits above the backend, not as a cancellable `LLMBackend`.
-- **The reply type in v1** reserves `cancelled(prefix)` and `truncated` variants and a speech field the host can
-  read before the JSON closes (Overdrive reply §3). Otherwise barge-in and first-token latency are designed out. The
-  token iterator itself can come later.
-- **Ride on:** cancel already exists as `utils/cancellation` plus `LLMRouter._complete_text_abandonable` (`:985`).
-  The plan says why that does or doesn't suffice before adding anything.
-- **Gate (owner-accepted pushback, 2026-11-16):**
-  - engineering, with parity guards: a state digest identical under instant and seeded-delayed replies, and parity
-    on recorded Exp 49 and Exp 60 replays;
-  - lands **after the 1.4.0 cut** (M89 forbids hybrid-family `src/` before it);
-  - **one design with hybrid §A.1b;**
-  - sequenced with the agent-loop decomposition slices, so `agent_loop.py` is restructured once, under the
-    touch-it-shrink-it rule.
-- **Line:** 1.5 hybrid line's src phase.
+- **The v1 reply type** reserves `cancelled(prefix)` and `truncated` variants and a speech field the host can read
+  before the JSON closes (Overdrive reply §3). Otherwise barge-in and first-token latency are designed out. The token
+  iterator itself can come later. A4's parser bypass lands here.
+- **Ride on:** cancel already exists, as `utils/cancellation` plus `LLMRouter._complete_text_abandonable` (`:985`). The
+  plan says why that does or doesn't suffice before adding anything.
+- **Gate** (owner-accepted pushback, 2026-11-16):
+  - engineering, with parity guards: a state digest identical under instant and seeded-delayed replies, and parity on
+    recorded replies from Exp 49 and Exp 60;
+  - **lands after the 1.4.0 cut** (M89 forbids hybrid-family `src/` before it), as **one design with hybrid §A.1b**;
+  - sequenced with the agent-loop decomposition slices, so `agent_loop.py` is restructured once.
+- **Line:** the 1.5 hybrid line's src phase.
 
-### B2. Split `execute_and_learn` into dispatch and settle
+### B2. Split `execute_and_learn` into dispatch and settle, as #1150
 
-- **What:** `runtime/tool_dispatch.py::execute_and_learn` fuses dispatch with learning (NAc credit, memory writes,
-  the followup). Split it so credit lands when the outcome is **measured**, not when the action is dispatched.
-- **Scope:** the side doors its own docstring names (`:1290`): `execute_parallel_actions` and the agent-fallback
-  path (#1147). Both go through the same split or are refused on the embedded path.
-- **Why it matters beyond Overdrive:** R4, delayed credit, is the weakest rung on Maxim's ladder. With settle
-  separate, a host can deliver outcomes N ticks late on purpose and sweep N.
-- **Gate:** engineering, with parity:
-  - the robot path settles immediately after dispatch;
-  - guard: a bit-identical digest of NAc, Hippocampus and the followup on recorded replays.
-  - **Depends strictly on A3:** NAc's event recording reads the wall clock (`decisions/nac.py:1162`).
-  - A claim that delayed settle improves credit accuracy is tier C and needs a prereg.
-- **Venue:** a plan, with A6. **Line:** with 1.3.6 or after; it does not touch the arbiter.
+- **What:** `runtime/tool_dispatch.py::execute_and_learn` fuses dispatch with learning. Split it so credit lands when
+  the outcome is **measured**, not when the action is dispatched. **The split is already tracked as #1150** (dispatch,
+  learn and after-effects steps; the function's length-baseline exception names it). B2 is #1150, with a settle step
+  a host can delay.
+- **Scope** (review: Wire integrity):
+  - **Three callers:**
+    - the autonomous path (`runtime/agent_loop.py:2256`);
+    - `LoopController.handle_confirmation` (`runtime/loop_controller.py:388`, SUPERVISED);
+    - `loop_planning.drain_approved` (`runtime/loop_planning.py:186`, PLANNING).
+  - **Four booking paths that settle without it:**
+    - `book_refusal` (`loop_controller.py:423`);
+    - `book_machine_refusal` (`loop_planning.py:253`);
+    - `book_hard_rejection` (`agent_loop.py:2348`);
+    - `book_agent_fallback_failure` (`agent_loop.py:2035`).
+  - **The side doors its docstring names:** `execute_parallel_actions` and the agent-fallback path (#1147).
 
-### B3. Priority and deadline on the request value (changed after Overdrive reply §5)
+  All of these either go through the split or are refused on the embedded path.
+- **The digest the parity guard compares** covers every side effect, not just NAc, Hippocampus and the followup:
+  - `llm_worker.record_outcome`, `context_pool.add_outcome` and the recent outcomes;
+  - `nac.credit_goal`, the pending operant action and the cluster reward;
+  - the energy cost, the plan outcome and the autonomy audit;
+  - the conversation turn and `memory.store_raw`.
 
-- **What was proposed:** a priority queue inside the router in place of `LLMRouter._inference_lock` (created at
+  Anything it leaves out, it names.
+- **Two blockers to resolve in its plan:**
+  - **Tool duration** (A3) is measured on the wall clock and feeds an NAc valence. The digest cannot be bit-identical
+    until a host-supplied measured duration replaces it, or it is excluded and named.
+  - **`environment.step` runs inside dispatch,** which conflicts with a host that owns the step.
+- **A6, generate-vs-apply for memory writes** (moved from tier A by review SF-4). The think path proposes memory
+  writes as values, applied only at settle. It is part of B2, under the same digest guard.
+  - **Includes:** the D53 `outcome_valence` carrier (`docs/bugs/README.md`) and Overdrive's OD-A16, the refusal-kind
+    promotion (an amendment to `tool_failure_credit.md`, after #1200).
+  - **OD-A16 changes credit,** so it fires T1-4's re-run trigger walk (`behavioral_graduation_candidates.md`).
+  - **The `basis_seq` half is hybrid-family** and stays with B1, after 1.4.0.
+- **Why it matters beyond Overdrive:** R4, delayed credit, is the ladder's open gap, and it is unbuilt
+  (`minecraft_benchmark.md` Part II; `roadmap_1_4.md` Phase 5, "the first R4 audit is routing"). R4's credit map is
+  `deferred/three_factor_credit_assignment.md`, on `NAc._eligibility`. With settle separate, a host can deliver
+  outcomes N ticks late on purpose. **Sequence it with R4's routing audit,** and treat any claim that delayed settle
+  improves credit as tier C.
+- **Gate:**
+  - engineering, with parity: the robot path settles immediately after dispatch;
+  - the 1.4.0 function gate (`1323.functions-1000`) and touch-it-shrink-it apply (the function is pinned);
+  - **depends on A3's A-post** (NAc's event time is the wall clock, `decisions/nac.py:1162`).
+- **Line:** with #1150, 1.3.6 or after.
+
+### B3. Priority and deadline on the request value
+
+- **What was proposed:** a priority queue inside the router, in place of `LLMRouter._inference_lock` (created at
   `:186`, acquired at `:1081`).
 - **Withdrawn:** `AgentFactory` builds no router, so routers are shared at the caller's choice, and Maxim's own
   simulation shares one. Instead, priority and a deadline become fields of B1's request value, which the host (or
@@ -212,48 +298,74 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
 
 ## Tier C
 
-| Id | Question | What an embedded world adds | Needs |
-|---|---|---|---|
-| C1 | **One action per call, or an inner tool loop?** Maxim never shows the model a tool result within one call. That was a default; nothing recorded justifies it. | Identical tasks and identical replays, comparing the loop-carried followup with a ReAct-style inner loop | a prereg; pairs with the B2–B4 baselines (Reflexion first) |
-| C2 | **Modelled or observed latency in the hold's waiting cost?** (Overdrive OD-H2, against `learned_hold_window.md`) | On a robot the two are the same. Embedded, observed latency is a property of the host's GPU and time dial. | a prereg; decides v1 or v2 of the hold |
-| C3 | **Escalation-triggered deliberation** in place of the wall-clock `llm_submit_interval` (`runtime/loop_controller.py:157`, 0.5 s) | Latency swept exactly in world time (Overdrive OD-HX2, calibration only) | belongs to the hybrid line's escalation rule |
-| C4 | **Capability rosters as the robot default** | An adversarial-prompt suite; the security gain holds by construction, so the measure is the competence lost | a prereg; the embedded roster is A4, not this |
-| C5 | **Floor-holding** (a fifth hybrid split-out plan, not `learned_hold_window`) | Gaps and overlaps timed exactly | a plan, then a prereg (below) |
+Every row needs a prereg, frozen on Maxim's `main` before data, **plus a transfer check in a Maxim-owned harness or on
+the robot** before it moves a Maxim claim.
 
-**C5's agreed shape** (Overdrive reply §6, with Overdrive's corrected citation, 2026-11-16):
-- **Sequence:** the substrate's default act during the hold is a filler, then an account at about 600–700 ms, then
-  a yield at about 1 s.
-  - The order (an account before a yield) rests on Stivers & Robinson 2006.
-  - The timings rest on Kendrick & Torreira 2015 and on Jefferson 1989's standard maximum silence.
+| Id | Question | What an embedded world adds | Behaviour tier |
+|---|---|---|---|
+| C1 | **One action per call, or an inner tool loop?** Maxim never shows the model a tool result within one call. That was a default; nothing recorded justifies it. Pairs with the B2–B4 baselines (Reflexion first). | Identical tasks and recorded replies: the loop-carried followup against a ReAct-style inner loop | n/a (an architecture choice) |
+| C2 | **Modelled or observed latency in the hold's waiting cost?** (Overdrive OD-H2, against `learned_hold_window.md`) | On a robot the two are the same. Embedded, observed latency is a property of the host's GPU and time dial. | learned (the hold's v2) |
+| C3 | **Escalation-triggered deliberation** in place of the wall-clock `llm_submit_interval` (`runtime/loop_controller.py:157`, 0.5 s). `experience_clock_decay.md` §(g) keeps that interval on the wall clock on purpose, so this is a design change, not a clock fix. | Latency swept exactly in world time (Overdrive OD-HX2, calibration only) | innate prior, to the hybrid line's escalation rule |
+| C4 | **Capability rosters as the robot default** | An adversarial-prompt suite. The security gain holds by construction, so the measure is the competence lost. | invariant (a security rule) |
+| C5 | **Floor-holding** (a fifth hybrid split-out plan, not `learned_hold_window`) | Gaps and overlaps timed exactly | innate prior (below) |
+
+**C5's agreed shape** (Overdrive reply §6, with Overdrive's corrected citations, 2026-11-16):
+- **Sequence:** the substrate's default act during the hold is a filler, then an account at about 600–700 ms, then a
+  yield at about 1 s.
+  - The order (account before yield) rests on Stivers & Robinson 2006.
+  - The timings rest on Kendrick & Torreira 2015 and Jefferson 1989's standard maximum silence.
 - **Fillers:** chosen from predicted delay (Clark & Fox Tree 2002). The delay predictor may be metacognitive: weaker
-  feeling-of-knowing goes with slower answers and more *uh* and *um* (Smith & Clark 1993). Thresholds are
-  parameters (Stivers et al. 2009).
-- **Content-free:** floor-holding acts are never stored or credited. This is the Exp 63b stall-template
-  contamination lesson.
+  feeling-of-knowing goes with slower answers and more *uh* and *um* (Smith & Clark 1993).
+- **Thresholds:** parameters (Stivers et al. 2009). They are an honestly learnable prior, so the plan files a
+  "make it learned" follow-up with its revive trigger (the plans README rule on behaviour tiers).
+- **Content-free:** floor-holding acts are never stored or credited. This is the Exp 63b stall-template contamination
+  lesson.
 - **Embodied:** gaze aversion on Reachy is motion, through `goto_target`.
 - **Status:** it enters as `[engineering]`, innate-prior tier, citing the planning-during-the-other's-turn evidence
-  (Bögels et al. 2015, EEG; Castellucci et al. 2022, intracranial). It is earned behaviourally only by its prereg.
+  (Bögels et al. 2015, EEG; Castellucci et al. 2022, intracranial). It is earned behaviourally only by its prereg and
+  transfer check.
 - **Reuse:** §A.1b's held slot, but not its conflict-scaled hold or HA-1's claim. Addressed speech is the case the
   hybrid plan calls degenerate for the arbiter.
 - **A gap it names:** `sem_interruptibility.md` covers cancels from the LLM or a danger, not a partner interrupting a
   filler. That needs a cancel path.
 
+## Implementer constraints (every item)
+
+- **Touch-it-shrink-it.** These pinned functions are touched:
+  - `execute_and_learn` (B2);
+  - `_run_agentic_loop_body` (A4, around `:1571`);
+  - `LLMWorker._process_request` (A4/B1, around `:1322`);
+  - `_run_deliberation_cycles` (B1).
+
+  Each edit extracts what it touches.
+- **CC3.** B1's continuation and request/reply values, and A6's write-proposal values, are frozen dataclasses that
+  cross a wire. Each declares its forward-compat path in its docstring.
+- **Changelog.** Every `src/` PR adds a `changelog.d/` fragment.
+- **M89.** Hybrid-family slugs (B1, and A6's `basis_seq` half) wait for the 1.4.0 cut. Fragment slugs are chosen with
+  M89 rule (1)'s planned lint in mind.
+
 ## Cautions
 
-- **Overfitting Maxim to the game.** An item Overdrive earns is earned in a game. Before it moves a Maxim claim, every
-  adoption needs a transfer check in a Maxim-owned harness or on the robot (the OD-HX5 pattern). Whether an Overdrive
-  world exposed through a Maxim simulation bridge is an acceptable venue is the hybrid line owner's decision.
-- **Scope pressure.** A1, A2, A5 and most of A3 ride on existing infrastructure. A3's perceived-time port, B1's
-  continuation and A4's static ban each need their reason written in their plan.
+- **Overfitting Maxim to the game.** An item Overdrive earns is earned in a game. Before it moves a claim, every
+  adoption needs a transfer check (the OD-HX5 pattern). Whether an Overdrive world exposed through a Maxim simulation
+  bridge is an acceptable venue for tier C is the hybrid line owner's decision.
+- **Scope pressure.** A1, A2, A5 and A3's machinery half ride on existing infrastructure. These need a reason written
+  in their plan:
+  - A3's perceived-time port;
+  - A4's embedded entry point and its static ban;
+  - B1's continuation;
+  - A6's write-proposal values.
 
 ## Order
 
-1. **A3, A2, A5, #1684.** Replay needs them, and every later experiment gets cheaper and more trustworthy once
-   replay exists. A1 runs in parallel with #984.
-2. **A4,** with Overdrive's embeddable-agent plan.
-3. **B2 + A6,** after A3, with 1.3.6 or after.
-4. **B1 + B3** after the 1.4.0 cut, with hybrid §A.1b and the decomposition slices.
-5. **Tier C:** each only through its own prereg.
+1. **A3 A-pre, A5, #1684,** with **A2 as #1305** (a 1.4.0 gate item). The prompt guards and the seed substreams come
+   first, because replay needs them. **A1** runs in parallel with #984.
+2. **A3 A-post** with #1361's slices and 1.3.6.
+3. **A4,** once Overdrive's embeddable-agent plan passes its front gate. Its robot-path defects are filed and fixed
+   earlier, on their own.
+4. **B2 (#1150) with A6,** after A3 A-post, sequenced with R4's routing audit and the 1.4.0 function gate.
+5. **B1 and B3** after the 1.4.0 cut, with hybrid §A.1b and the decomposition slices. A4's parser bypass lands here.
+6. **Tier C:** each only through its own prereg and transfer check.
 
 ## Filed alongside this list (2026-11-16)
 
@@ -261,12 +373,17 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
 - **#1685:** the semantic embedding store loads with `allow_pickle=True`.
 - **#1686:** `ARCHITECTURE.md:182` claims DM-campaign NPCs have real memory via `AgentFactory`;
   `AgentFactory.create_npc_agent` (`runtime/agent_factory.py:936`) has no `src/` caller.
-- **A draft private security advisory** (per `SECURITY.md`, not a public issue): cloud redaction under `strict` ends
-  a private section at any header-shaped content line, so the rest ships. Proven end to end with both `\n` and
-  U+2028, so U+2028 is not the root cause. The details stay in the advisory until the owner publishes it.
+- **#1687:** on Windows, importing `maxim._offline` raises (there is no `socket.AF_UNIX`), which breaks
+  `maxim.tools.base`. This is a regression on `main` since 1.3.3. Overdrive's workers depend on the latch.
+- **A draft private security advisory** (per `SECURITY.md`, not a public issue): cloud redaction under `strict` ends a
+  private section at any header-shaped content line, so the rest ships. Proven end to end, with both `\n` and U+2028.
+  The details stay in the advisory until the owner publishes it.
 
 ## Not decided here
 
-- Whether A3's plan is one plan or Overdrive's two (A-pre, A-post).
+- Whether the short-question shortcut firing on any `triggering_input` is intended on a robot (A4). If it isn't, it
+  is a robot-path defect and gets its own issue.
+- Whether A3 is one plan or Overdrive's two (A-pre, A-post), and how it divides with #1361.
+- Whether A2's per-agent key widens #1305 before 1.4.0, or follows it.
 - Whether C5 is drafted now or after the hybrid's v1 evidence.
-- The owner's call on the transfer-check venue for tier C.
+- The transfer-check venue for tier C.
