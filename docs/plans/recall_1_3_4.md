@@ -397,9 +397,9 @@ under `access_based` is 3 × `compression_age`, about 3 days. It ships as a rele
 is now by identity, before the limit, and copies of an episode take one place: `docs/agents/bio-memory.md` states the rule.
 The #1476 judge rebuild must also drop a trace's `own_ids` from its pool and replay `copy_key` over saved dicts.
 
-- **#1476: the T1-16 re-run.** T1-16 is STALE since 2026-10-25 (§7). The judge (`o19_verdict.py`'s `EXP63_PATHS`
+- **#1476: the T1-16 re-run.** T1-16 was STALE from 2026-10-25 (§7; update 2026-11-16: EARNED 2026-11-13, narrow, on Exp 63c, an owner reading of BF2; see DECISIONS.md 2026-11-16, BF2-R1). The judge (`o19_verdict.py`'s `EXP63_PATHS`
   and R3′ order) rejects the new `cue` path, so it is rebuilt first, then Exp 63 re-runs on the shipped ranker. Until a
-  stamped re-run lands, **1.3.4 makes no cross-session recall claim** (weak evidence never gates). It is a pure
+  stamped re-run lands, **1.3.4 makes no cross-session recall claim** (weak evidence never gates; landed 2026-11-13: Exp 63c, T1-16 EARNED 2026-11-13, narrow). It is a pure
   re-run, so it needs no design review, but it does need the harness provenance assert and a box with no leader.
 - **#1516: the deferred follow-ups** from §8 and §9: F7 Unicode, F15 raw channels and N11, F6 activation gap,
   spelling variants, Wire 2's tokenizer, ATL formation from user words, and `bounded_words` with a limit under 3.

@@ -232,7 +232,7 @@ break the citation. Each is a record now, not a plan.
 - [oasis_entry_index_v2.md](oasis_entry_index_v2.md): PRs A–C shipped 2026-09-25; the format is frozen under public_format_freeze.
 - [lookback_primitive.md](lookback_primitive.md): DECIDED 2026-09-24 (no new store; #891/#892); R4's look-back design record.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md): superseded by [grounding.md](grounding.md) 2026-10-07 (owner decision G5); kept at its path because `src/`, the CLI help text and `analysis/roy_log.py` cite it. Its paired-data audit entry condition is answered there (the pair became (context, consequence)).
-- [recall_1_3_4.md](recall_1_3_4.md): SHIPPED 2026-10-28 (#1465, #1484, #1515; Session R of 1.3.4); tests cite it. Its §13 lists what remains: the T1-16 re-run #1476, which blocks the recall claim, and the follow-ups #1516.
+- [recall_1_3_4.md](recall_1_3_4.md): SHIPPED 2026-10-28 (#1465, #1484, #1515; Session R of 1.3.4); tests cite it. Its §13 lists what remains: the T1-16 re-run #1476, which blocks the recall claim (done: Exp 63c, T1-16 EARNED 2026-11-13, narrow), and the follow-ups #1516.
 - [lazy_import_lint_1436.md](lazy_import_lint_1436.md): SHIPPED 2026-10-26 (#1480); `scripts/lint_dead_imports.py` and its tests cite it.
 - [minecraft_benchmark.md](minecraft_benchmark.md): Part I COMPLETE (Exp 56); Part II's R0–R3 shipped (R3 an instrument + frozen baseline in 1.3.0), and R4 moved to `roadmap_1_4.md` Phase 5. The ladder's own record; `src/maxim/simulation/minecraft.py` and the R1/R2 probe scripts cite it.
 
