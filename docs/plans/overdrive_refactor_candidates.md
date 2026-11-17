@@ -185,7 +185,7 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   - **The workspace manifest.** `build_workspace_manifest` puts the working directory's name and tree into the prompt
     (`agents/prompt_builder.py`, `get_effective_cwd()` at `:1248`), gated only on the roster having file tools
     (`:1503`). The exec agent's WORKSPACE section (`agents/exec_agent.py`) has no roster gate.
-  - **The short-question shortcut.** `PromptBuilder.build_prompt` answers time, date, identity and greeting questions
+  - **The short-question shortcut.** `PromptBuilder.build_prompt` answered time, date, identity and greeting questions
     without the model (`:1102-1137`, via `agents/llm_fallback.py::generate_simple_answer`). It fires on **any**
     `triggering_input`; the wake-word check (`:1108`) gates only the fallback to `cli_inputs`. **Decided 2026-11-17:
     not intended; it is deleted (#1689).** The canned answers survive only in the model-unavailable fallback.

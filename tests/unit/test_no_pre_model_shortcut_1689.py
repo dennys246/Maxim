@@ -4,7 +4,8 @@
 hand the worker a JSON action disguised as the prompt (``'{"action":...'``), which the worker returned as a
 ``direct_answer`` proposal without calling the model. Keyword matching dropped real requests ("hi, can you look to
 your left" got "Hello! How can I help you?") and the canned reply was credited as a decision. Owner decision
-2026-11-17: delete it. The canned answers now live only in the model-unavailable fallback.
+2026-11-17: delete it, matcher and all (the review showed the fallback, spoken outside a sim on any unparseable
+reply, would have brought the misfires back).
 """
 
 from __future__ import annotations
@@ -93,16 +94,61 @@ def test_the_model_answers_a_short_question(text: str) -> None:
     assert proposal.action == {"tool_name": "respond", "params": {"message": "from the model"}}
 
 
-def test_the_unavailable_model_fallback_still_tells_the_time() -> None:
-    from maxim.agents.llm_fallback import generate_llm_fallback
+@pytest.mark.parametrize("text", SHORTCUT_INPUTS)
+def test_the_fallback_never_keyword_answers(text: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fallback runs on any missing or unparseable model reply, and outside a sim it is spoken as the turn's
+    answer. So it must not bring the deleted keyword answers back: it says it is having trouble (review fold, #1689)."""
+    from maxim.agents import llm_fallback
 
-    action = generate_llm_fallback(_request("maxim, what time is it?"))
+    monkeypatch.setattr(llm_fallback, "get_fallback_responses", lambda: {})  # the shipped default templates
+    action = llm_fallback.generate_llm_fallback(_request(text))
     assert action is not None and action["tool_name"] == "respond"
-    assert action["params"]["message"].startswith("The current time is ")
+    message = action["params"]["message"]
+    for canned in ("The current time is", "Today is", "I'm Maxim, a robot assistant", "How can I help you"):
+        assert canned not in message, f"the fallback keyword-answered {text!r}: {message!r}"
 
 
-def test_the_unavailable_model_fallback_still_tells_the_date() -> None:
-    from maxim.agents.llm_fallback import generate_llm_fallback
+def test_the_matcher_is_gone() -> None:
+    from maxim.agents import llm_fallback, llm_worker
 
-    action = generate_llm_fallback(_request("what's the date"))
-    assert action is not None and action["params"]["message"].startswith("Today is ")
+    for name in ("generate_simple_answer", "matches_phrase", "normalize_phrases"):
+        assert not hasattr(llm_fallback, name) and not hasattr(llm_worker, name), name
+
+
+# ── the no-tool (ANSWER_ONLY) path carries the clock too (review fold) ──────────────────────────────────────────────
+
+
+def test_the_answer_only_prompt_carries_the_date_and_time() -> None:
+    """With no tool prompt, ``build_prompt`` returns ``ANSWER_ONLY|``. That path once relied on the canned answer for
+    "what time is it"; its model call now gets the builder's clock line, before a blank line and the question."""
+    from datetime import datetime
+
+    req = _request("maxim, what time is it?")
+    req.use_tool_prompting = False
+    before = datetime.now().strftime("%A, %B %d, %Y")
+    prompt = _worker(_RecordingLLM())._build_prompt(req)
+    after = datetime.now().strftime("%A, %B %d, %Y")
+    assert prompt.startswith("ANSWER_ONLY|Today is ")
+    clock, sep, question = prompt[len("ANSWER_ONLY|") :].partition("\n\n")
+    assert sep and question == "what time is it"
+    assert (before in clock or after in clock) and "The time is " in clock
+
+
+def test_the_router_puts_the_clock_before_the_question() -> None:
+    from maxim.models.language.router import LLMRouter
+
+    router = LLMRouter.__new__(LLMRouter)  # only generate_json's ANSWER_ONLY dispatch is exercised
+    seen: dict[str, Any] = {}
+
+    def fake_answer_only(backend: Any, question: str, temperature: float, max_tokens: int, **kw: Any) -> dict:
+        seen.update(question=question, **kw)
+        return {"action": None}
+
+    router.enabled = lambda: True  # type: ignore[method-assign]
+    router._get_backend = lambda: object()  # type: ignore[method-assign]
+    router._generate_answer_only = fake_answer_only  # type: ignore[method-assign]
+    router.generate_json("ANSWER_ONLY|Today is Monday. The time is 09:00 AM.\n\nwhat time is it")
+    assert seen["question"] == "what time is it" and seen["context"] == "Today is Monday. The time is 09:00 AM."
+    seen.clear()
+    router.generate_json("ANSWER_ONLY|what time is it")  # a bare payload still works
+    assert seen["question"] == "what time is it" and seen["context"] == ""

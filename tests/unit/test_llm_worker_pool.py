@@ -8,7 +8,6 @@ with legacy internal-thread mode.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -17,15 +16,12 @@ from typing import Any
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass
-class FakeContext:
-    """Minimal StructuredContext stand-in."""
+def FakeContext(cli_inputs: list[str] | None = None) -> Any:
+    """A real ``StructuredContext`` (#1689): a five-field stand-in only worked while the pre-model shortcut answered
+    "maxim hello" before the prompt builder read the context; the builder reads fields it lacked."""
+    from maxim.agents.bus import StructuredContext
 
-    cli_inputs: list[str] = field(default_factory=list)
-    audio_inputs: list = field(default_factory=list)
-    video_observations: list = field(default_factory=list)
-    movement_observations: list = field(default_factory=list)
-    environment_data: dict = field(default_factory=dict)
+    return StructuredContext(timestamp=time.time(), cli_inputs=list(cli_inputs or []))
 
 
 class FakeLLM:
@@ -42,7 +38,11 @@ class FakeLLM:
         self._delay = delay
         self.call_count = 0
 
-    def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024) -> dict[str, Any] | None:
+    def generate_json(
+        self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **_kwargs: Any
+    ) -> dict[str, Any] | None:
+        # The worker passes provider_hint=, request_context=, ... (#1689: without them every call raised TypeError
+        # and fell back, which the pre-model shortcut hid for "maxim hello").
         self.call_count += 1
         if self._delay > 0:
             time.sleep(self._delay)

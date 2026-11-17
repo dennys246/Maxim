@@ -2165,14 +2165,18 @@ Return JSON exactly like:
         # Stage 1: Get plain text answer (easier for small models)
         # Stage 2: Wrap in JSON programmatically
         if prompt.startswith("ANSWER_ONLY|"):
-            question = prompt[len("ANSWER_ONLY|") :].strip()
+            # A clock block, a blank line, then the question (PromptBuilder.build_prompt, #1689); or a bare question.
+            context, sep, question = prompt[len("ANSWER_ONLY|") :].strip().partition("\n\n")
+            if not sep:
+                context, question = "", context
             return self._generate_answer_only(
                 backend,
-                question,
+                question.strip(),
                 temperature,
                 max_tokens,
                 provider_hint=provider_hint,
                 request_context=request_context,
+                context=context.strip(),
             )
 
         # Tool-aware prompt with full context
@@ -2231,8 +2235,10 @@ Return JSON exactly like:
         *,
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
+        context: str = "",
     ) -> dict[str, Any] | None:
-        """Two-stage answer generation: get plain text, then wrap in JSON.
+        """Two-stage answer generation: get plain text, then wrap in JSON. ``context`` (the builder's clock line,
+        #1689) goes before the question.
 
         This approach works better with small local models that struggle
         with JSON formatting instructions.
@@ -2243,7 +2249,8 @@ Return JSON exactly like:
             "Answer the user's question directly and concisely. "
             "Give only the answer, no explanations or preamble."
         )
-        user = f"Question: {question}\nAnswer:"
+        question_line = f"Question: {question}\nAnswer:"
+        user = f"{context}\n\n{question_line}" if context else question_line
         text, usage = self._complete_text(
             system,
             user,

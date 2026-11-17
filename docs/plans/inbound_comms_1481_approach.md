@@ -129,7 +129,7 @@ message is never shown to the model, and nothing reports that.
 **3. Which prompt paths render it.**
 - **Rendered on:** the tool-aware prompt, and the follow-up prompt. The follow-up path bypasses the budgeter (B4), so
   it applies its own rule line and the same token cap.
-- **Not rendered on:** `ANSWER_ONLY`, the simple direct answer (no LLM call), or the empty prompt (A3). Messages
+- **Not rendered on:** `ANSWER_ONLY`, the simple direct answer (no LLM call; deleted by #1689), or the empty prompt (A3). Messages
   stay held.
 - **When nothing is held,** every path emits **nothing**: no header, no blank line, no separator. A unit test
   asserts it, so the goldens stay byte-identical (E1).

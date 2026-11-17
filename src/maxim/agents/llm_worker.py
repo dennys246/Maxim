@@ -59,13 +59,9 @@ from maxim.agents.llm_fallback import (  # noqa: F401
     _SIMPLE_OPS,
     _TRAILING_OP_PATTERN,
     _UNARY_MATH_PATTERNS,
-    _compile_phrase_pattern,
     evaluate_simple_arithmetic,
     evaluate_unary_math,
     generate_llm_fallback,
-    generate_simple_answer,
-    matches_phrase,
-    normalize_phrases,
 )
 from maxim.agents.prompt_builder import (  # noqa: F401
     PLANNING_CORRECTIONS,

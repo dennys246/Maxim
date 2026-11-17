@@ -370,8 +370,9 @@ def test_a_plan_request_shows_its_held_inputs_inside_the_budget() -> None:
     assert "=== New Instructions ===\nUSER GUIDANCE: and its memory" in prompt
 
 
-def test_a_canned_answer_never_swallows_held_inputs() -> None:
-    """ "what time is it" has a canned reply that skips the model; with held inputs the request goes to the model."""
+def test_held_inputs_reach_the_tool_prompt_of_a_short_question() -> None:
+    """A short question with held inputs builds the tool prompt and carries them. (It once guarded the canned reply
+    that skipped the model; #1689 deleted that reply, and ``test_no_pre_model_shortcut_1689.py`` guards its absence.)"""
     prompt = _plan_prompt("what time is it", ["USER GUIDANCE: and its memory"])
     assert prompt.startswith("TOOL_PROMPT|") and "USER GUIDANCE: and its memory" in prompt
 
