@@ -53,7 +53,6 @@ def _on_worker(fn, *args, **kwargs) -> Any:
 # ── the one rule (OD-G) ───────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_consent_interactive_asks_only_on_the_main_thread() -> None:
     from maxim.models.download import consent_interactive
 
@@ -65,7 +64,6 @@ def test_consent_interactive_asks_only_on_the_main_thread() -> None:
     assert _on_worker(consent_interactive, False) is False
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 @pytest.mark.parametrize("value", [True, 1, "yes"])
 def test_consent_interactive_refuses_to_force_a_prompt(value: Any) -> None:
     from maxim.models.download import consent_interactive
@@ -103,19 +101,16 @@ def test_the_preflight_on_the_main_thread_still_asks(preflight) -> None:
     assert preflight.calls == [None]
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_preflight_on_a_worker_thread_never_asks(preflight) -> None:
     _on_worker(preflight.LB._ensure_lane_profiles_available, preflight.lanes, None, None)
     assert preflight.calls == [False]
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_preflight_honours_an_explicit_never_on_the_main_thread(preflight) -> None:
     preflight.LB._ensure_lane_profiles_available(preflight.lanes, None, None, interactive=False)
     assert preflight.calls == [False]
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_build_primary_router_hands_its_interactive_to_the_preflight() -> None:
     tree = ast.parse((SRC / "runtime" / "lane_backends.py").read_text(encoding="utf-8"))
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "build_primary_router")
@@ -174,7 +169,6 @@ def seam(monkeypatch, tmp_path):
     return seen
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_seam_on_a_worker_thread_never_asks_in_either_check(seam) -> None:
     from maxim.runtime.lane_backends import build_run_router
 
@@ -184,7 +178,6 @@ def test_the_seam_on_a_worker_thread_never_asks_in_either_check(seam) -> None:
     assert seam["gate"] and set(seam["gate"]) == {False}
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_seam_honours_an_explicit_never_on_the_main_thread(seam) -> None:
     from maxim.runtime.lane_backends import build_run_router
 
@@ -194,7 +187,6 @@ def test_the_seam_honours_an_explicit_never_on_the_main_thread(seam) -> None:
     assert seam["gate"] and set(seam["gate"]) == {False}
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_seam_records_the_fallback_model_it_refused(seam) -> None:
     """Review round (all three lenses): with no lane router, the ``llm.json`` fallback's missing model is the one the
     run would have served, so the seam records it (and its cause) for a caller that names it."""
@@ -206,7 +198,6 @@ def test_the_seam_records_the_fallback_model_it_refused(seam) -> None:
     assert manager.unusable_models == {"x-1658": LocalModelUnavailable.NOT_DOWNLOADED}
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_seam_records_a_primary_router_whose_model_it_refused(monkeypatch, tmp_path) -> None:
     """The in-process large lane's router fails the seam's check (here its model_path is gone, the registry file is
     present): no router, and the cause is the one the check found, not "not downloaded"."""
@@ -225,7 +216,6 @@ def test_the_seam_records_a_primary_router_whose_model_it_refused(monkeypatch, t
     assert manager.unusable_models == {"p-1658": LocalModelUnavailable.MODEL_PATH_MISSING}
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_manager_carries_only_the_large_lanes_declines_as_its_routers_unusable_models(monkeypatch) -> None:
     """The hand-off at the end of the build: every decline still rides on ``declined_profiles`` (not asked twice), and
     only the large lane's become ``unusable_models``, the router's own (deletion probe: the hand-off went untested)."""
@@ -255,7 +245,6 @@ def test_the_manager_carries_only_the_large_lanes_declines_as_its_routers_unusab
     assert manager.unusable_models == {"big-1658": LocalModelUnavailable.NOT_DOWNLOADED}
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_only_the_large_lanes_preflight_declines_count_as_the_routers_model(monkeypatch) -> None:
     """Executor S1: on a no-GPU box only a small tier resolves, and the large lane has no model; the small lane's
     missing model is not talk's, so naming it would send the operator after a download that does not fix talk."""
@@ -312,7 +301,6 @@ def talk_build(monkeypatch):
     return seen
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_talk_builds_through_the_seam_and_never_asks(tmp_path, talk_build) -> None:
     from maxim.console import handle as H
     from maxim.exceptions import ConfigurationError
@@ -325,7 +313,6 @@ def test_talk_builds_through_the_seam_and_never_asks(tmp_path, talk_build) -> No
     assert kw.get("logger") is H.logger, "the 'does not ask' line belongs in the server log, not on its stdout (D5)"
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_talk_with_no_model_names_it_and_the_grant_and_never_says_declined(tmp_path, talk_build) -> None:
     from maxim.exceptions import ConfigurationError
 
@@ -339,7 +326,6 @@ def test_talk_with_no_model_names_it_and_the_grant_and_never_says_declined(tmp_p
     assert "declin" not in msg.lower(), "talk never asked, so nobody declined"
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_talk_names_the_fallback_model_the_seam_refused(tmp_path, seam) -> None:
     """Review round (all three lenses): no lane router and the ``llm.json`` fallback's model missing used to end in
     'configure one first'; the real seam now hands talk that model, so the error names it and the grant."""
@@ -353,7 +339,6 @@ def test_talk_names_the_fallback_model_the_seam_refused(tmp_path, seam) -> None:
     assert set(seam["gate"]) == {False}, "talk asked"
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_talk_gives_each_model_its_own_fix() -> None:
     """Executor N1: several models, each with its own command; a cause other than 'not downloaded' gets its own
     static fix, not the download command."""
@@ -377,7 +362,6 @@ def test_talk_with_no_router_and_nothing_missing_keeps_the_configure_message(tmp
         _handle(tmp_path)._ensure_talk_loop()
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_talk_on_a_smaller_model_logs_which_one_is_missing_and_the_grant(tmp_path, talk_build, monkeypatch, caplog):
     from maxim.console import handle as H
 
@@ -454,7 +438,6 @@ def _thread_checks(source: str) -> list[str]:
     return [scope for node, scope in nodes if isinstance(node, ast.Call) and _callee(node) in thread_rule]
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_only_consent_interactive_decides_by_thread_at_a_consent_site() -> None:
     """A file that calls a consent gate or builds a router never asks ``threading.main_thread()`` itself (an aliased
     import included): the one rule is ``models/download.py::consent_interactive`` (OD-G). Other uses of
@@ -494,7 +477,6 @@ def _forced_prompts(source: str) -> list[str]:
     return out
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_no_gate_call_outside_its_module_forces_a_prompt() -> None:
     """Outside ``models/download.py`` no gate call (an aliased import included) passes ``interactive=True``, any other
     literal, an expression such as ``sys.stdin.isatty()``, or a ``**kwargs`` that could carry one: each skips the rule
@@ -537,14 +519,12 @@ def test_the_gates_own_default_asks_on_the_main_thread(gate_at_a_terminal) -> No
     assert len(gate_at_a_terminal.asked) == 1
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_the_gates_own_default_never_asks_off_the_main_thread(gate_at_a_terminal) -> None:
     """Review round S2: the invariant lives in the gate, not only in its callers' pins."""
     assert _on_worker(gate_at_a_terminal.D.ensure_available, "g-1658") is False
     assert gate_at_a_terminal.asked == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_a_coroutine_on_the_main_threads_event_loop_is_never_asked() -> None:
     """Executor N2: under ``uvicorn.run`` an ``async def`` route runs on the main thread's loop; it is a request, not
     the startup."""
@@ -592,7 +572,6 @@ def _build_references() -> list[tuple[str, str, ast.AST, ast.Call | None]]:
     return refs
 
 
-@pytest.mark.xfail(strict=True, reason="#1658: red before the fix")
 def test_every_router_build_is_classified_as_may_ask_or_never_asks() -> None:
     """Lexical, not a reachability proof: a caller of an allow-listed wrapper (``create.router``, ``api.run``) is not
     seen here, and a wrapper run on a worker thread (the console's campaign → the orchestrator) is governed by the

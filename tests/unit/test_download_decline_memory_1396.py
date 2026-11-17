@@ -55,6 +55,14 @@ def _ask(rec) -> bool:
     return ensure_available(rec.profile)
 
 
+def _ask_forced(rec) -> bool:
+    """For another thread: since #1658 the gate's default never asks off the main thread, so a test of the memory
+    across threads forces the ask (``interactive=True``), as a caller that owns its terminal could."""
+    from maxim.models.download import ensure_available
+
+    return ensure_available(rec.profile, interactive=True)
+
+
 @pytest.mark.parametrize("answer", [False, None], ids=["no", "timeout"])
 def test_an_answer_at_the_prompt_is_asked_once_per_armed_scope(gate, capsys, answer) -> None:
     from maxim.models.download import download_decline_scope
@@ -176,13 +184,14 @@ def test_a_yes_whose_download_fails_asks_again(gate, monkeypatch) -> None:
 
 
 def test_a_call_on_another_thread_inside_the_scope_sees_the_memory(gate) -> None:
-    """Module state, not a contextvar: Python threads do not inherit the caller's context, and preflights run off
-    the main thread (the reason the note rejects a contextvar)."""
+    """Module state, not a contextvar: Python threads do not inherit the caller's context, and a gate may be reached
+    off the main thread (the reason the note rejects a contextvar). The worker forces the ask, so it reaches the memory
+    rather than skipping the prompt by the thread rule (#1658)."""
     from maxim.models.download import download_decline_scope
 
     with download_decline_scope(armed=True):
         _ask(gate)
-        t = threading.Thread(target=_ask, args=(gate,))
+        t = threading.Thread(target=_ask_forced, args=(gate,))
         t.start()
         t.join(5)
     assert len(gate.questions) == 1
@@ -316,7 +325,7 @@ def test_a_no_answered_after_its_scope_exited_is_dropped(gate, monkeypatch) -> N
     monkeypatch.setattr(download, "_prompt_yes_no_with_timeout", slow)
     with download_decline_scope(armed=True):
         with download_decline_scope(armed=True):
-            t = threading.Thread(target=_ask, args=(gate,))
+            t = threading.Thread(target=_ask_forced, args=(gate,))
             t.start()
             assert asked.wait(5)
         release.set()
