@@ -152,3 +152,22 @@ def test_the_router_puts_the_clock_before_the_question() -> None:
     seen.clear()
     router.generate_json("ANSWER_ONLY|what time is it")  # a bare payload still works
     assert seen["question"] == "what time is it" and seen["context"] == ""
+
+
+def test_the_answer_only_model_call_puts_the_clock_line_before_the_question() -> None:
+    """The real ``_generate_answer_only`` sends the model the clock line, a blank line, then the question."""
+    from maxim.models.language.router import LLMRouter
+
+    router = LLMRouter.__new__(LLMRouter)  # only _generate_answer_only runs; the model call is faked
+    users: list[str] = []
+
+    def fake_complete_text(system: str, user: str, **kw: Any) -> tuple[str, dict]:
+        users.append(user)
+        return "Answer: nine o'clock", {}
+
+    router._complete_text = fake_complete_text  # type: ignore[method-assign]
+    out = router._generate_answer_only(object(), "what time is it", 0.0, 64, context="Today is Monday.")
+    assert users[-1] == "Today is Monday.\n\nQuestion: what time is it\nAnswer:"
+    assert out is not None and out["action"]["params"]["message"] == "nine o'clock"
+    router._generate_answer_only(object(), "what time is it", 0.0, 64)
+    assert users[-1] == "Question: what time is it\nAnswer:"  # no context, no leading blank line
