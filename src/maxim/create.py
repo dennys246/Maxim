@@ -434,7 +434,7 @@ def router(model: str = "mistral-7b") -> Any:
         ConfigurationError: no LLM backend could be built for ``model``. The message names what is missing: the
             provider key (e.g. ``ANTHROPIC_API_KEY``) for a cloud profile, or a configured local profile (#1338).
         LocalModelUnavailable: ``model`` is a local model that is not on disk and was not downloaded (the consent
-            gate asks at a terminal; elsewhere only a standing grant downloads it). A ``ConfigurationError`` too, so
+            gate asks at a terminal on the main thread; elsewhere only a standing grant downloads it, #1658). A ``ConfigurationError`` too, so
             the clause above catches it; its ``fix_hint`` says how to get the model (#1396).
 
     Example::
