@@ -59,6 +59,7 @@ def _cfg(tmp_path: Path, profile: str = P, *, backend: str = "llama_cpp", presen
 class _Manager:
     def __init__(self, kind: str = "local", declined: frozenset[str] = frozenset()) -> None:
         self.kind, self.declined_profiles = kind, declined
+        self.unusable_models: dict[str, str] = {}  # the seam records its refusal here (#1658)
 
     def get_lane_kind(self, lane: str) -> str:
         return self.kind

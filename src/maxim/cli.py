@@ -169,13 +169,14 @@ def _cli_local_router(profile: str) -> Any | None:
     These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
     missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
     None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
-    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking
-    (``interactive=None``); the library check never prints, so the CLI prints its own line here.
+    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking as
+    ``consent_interactive()`` allows (the main thread only, #1658); the library check never prints, so the CLI prints
+    its own line here.
     """
-    from maxim.models.download import consented_router
+    from maxim.models.download import consent_interactive, consented_router
     from maxim.models.language.config import load_llm_config
 
-    router, cause = consented_router(load_llm_config(profile_override=profile), interactive=None)
+    router, cause = consented_router(load_llm_config(profile_override=profile), interactive=consent_interactive())
     if router is None:
         _print_model_unavailable(cause)
     return router
