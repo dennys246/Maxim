@@ -463,24 +463,24 @@ class TestExtendSimulationTool:
 
 
 class TestSpawnSubSimulationTool:
-    def test_spawn_requires_goal(self):
+    def test_spawn_requires_goal(self, tmp_path):
         from maxim.simulation.tools import SpawnSubSimulationTool
 
-        tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event())
+        tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event(), sim_tmpdir=str(tmp_path))
         result = tool.run(goal="")
         assert not result.success
 
-    def test_teardown_idempotent(self):
+    def test_teardown_idempotent(self, tmp_path):
         """Teardown when nothing is active doesn't crash."""
         from maxim.simulation.tools import SpawnSubSimulationTool
 
-        tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event())
+        tool = SpawnSubSimulationTool(llm_router=None, stop_event=threading.Event(), sim_tmpdir=str(tmp_path))
         assert tool.active_sub_bridge is None
         tool._teardown_sub()  # Should not raise
         assert tool.active_sub_bridge is None
 
     @pytest.mark.slow
-    def test_spawn_creates_sub_bridge(self):
+    def test_spawn_creates_sub_bridge(self, tmp_path):
         """Spawn creates a sub-bridge (slow: bootstraps AUT)."""
         from maxim.simulation.tools import SpawnSubSimulationTool
 
@@ -489,7 +489,7 @@ class TestSpawnSubSimulationTool:
             llm_router=None,
             stop_event=stop,
             parent_bridge=None,
-            sim_tmpdir=".",
+            sim_tmpdir=str(tmp_path),
         )
 
         result = tool.run(goal="test something")

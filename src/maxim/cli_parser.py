@@ -686,7 +686,8 @@ def _add_memory_args(parser: argparse.ArgumentParser) -> None:
             "hippo, nac, ec, scn, atl, angular_gyrus, cerebellum, memory_hub "
             "(nac and ec are a pair — clearing either clears both). "
             "Global learners: focus, bounds, escalation, fear, threshold, pain, statistician, significance, "
-            "short_term, cross_layer, semantic, tool_index. Also: planning. Use 'all' (default) for everything; "
+            "short_term, cross_layer, semantic, tool_index. Also: planning, runtime_state (the loop's per-run "
+            "state snapshots). Use 'all' (default) for everything; "
             "sim_reports/ (run archives) is never cleared. Can specify multiple comma-separated types."
         ),
     )
