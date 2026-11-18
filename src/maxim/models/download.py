@@ -29,7 +29,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -542,11 +542,13 @@ def _soft_budget_gb() -> float | None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Decline memory (#1396, owner decision 2026-11-12): one run asks a question once
 # ─────────────────────────────────────────────────────────────────────────────
-# Module state under a lock, not a contextvar: Python threads do not inherit the caller's context, and preflights run
-# off the main thread (the console's talk build), so a contextvar memory would miss them. Only an armed scope
+# Module state under a lock, not a contextvar: Python threads do not inherit the caller's context, and the scope is
+# opened on the main thread while gates may be reached from others. Since #1658 only the main thread asks
+# (consent_interactive), so only its answers are remembered; a gate that does not ask neither reads nor writes the
+# memory. Only an armed scope
 # remembers; the CLI arms one per run (cli.py::_main_guarded opens it unarmed, _main_impl arms it after the subcommand
-# dispatch) and per bare-maxim menu choice (cli.py::_run_menu_choice). The library, the console and every subcommand
-# never arm one, so they ask every time.
+# dispatch) and per bare-maxim menu choice (cli.py::_run_menu_choice). The library and every subcommand never arm one,
+# so they ask every time; the console's talk never asks.
 _DECLINE_LOCK = threading.RLock()
 _decline_depth = 0  # open scopes
 _decline_armed = False  # the innermost scope remembers
@@ -634,8 +636,10 @@ def ensure_available(
         auto: Override the env-derived auto-download flag. ``True`` skips
             the prompt unconditionally; ``None`` (default) reads
             ``MAXIM_AUTO_DOWNLOAD_MODELS`` via :func:`_auto_download_enabled`.
-        interactive: Override the tty check. ``None`` (default) checks
-            ``sys.stdin.isatty()``.
+        interactive: Override the tty check. ``None`` (default) asks only where
+            :func:`consent_interactive` allows (the main thread, no running
+            event loop), and then checks ``sys.stdin.isatty()``; elsewhere it
+            never asks (#1658). ``False`` never asks; ``True`` forces the ask.
         logger: Logger for warnings; ``print`` for user-facing messages.
 
     Inside an armed :func:`download_decline_scope` (one CLI run), an answer of "no" or a timeout at the prompt is
@@ -691,6 +695,8 @@ def ensure_available(
         print("  raise MAXIM_DATA_BUDGET_GB and retry.\n")
         return False
 
+    if interactive is None:
+        interactive = consent_interactive()  # the default asks only where the rule allows (#1658 review round)
     auto_flag = _auto_download_enabled() if auto is None else bool(auto)
     is_tty = (sys.stdin.isatty() if interactive is None else bool(interactive)) if sys.stdin else False
 
@@ -772,6 +778,34 @@ def ensure_available(
         return False
 
 
+def consent_interactive(interactive: Literal[False] | None = None) -> Literal[False] | None:
+    """Whether a consent gate may ask at a terminal: the one rule (#1658, owner decision OD-G).
+
+    ``False``: never. ``None`` (the default): ask (where stdin is a terminal) only on the main thread outside a running
+    event loop, the operator's own startup; anywhere else never, because a prompt there (a console talk request, the
+    robot's wake-word rebuild, a campaign worker, an ``async def`` route on uvicorn's main-thread loop) blocks on a
+    terminal nobody may be watching and can read a line typed for something else as consent. There the gate logs how
+    to grant the download instead. Anything else raises ``TypeError``: no caller forces a prompt
+    (``ensure_available(interactive=True)`` would ask even when stdin is not a terminal). :func:`ensure_available`
+    applies this to its own default, and the preflight in ``build_primary_router``, ``build_run_router``'s check,
+    ``ExecAgent`` and the CLI's local router decide here; a pin test refuses a consent site that asks
+    ``threading.main_thread()`` itself.
+    """
+    import asyncio
+
+    if interactive is False:
+        return False
+    if interactive is not None:
+        raise TypeError(f"interactive must be False or None, not {interactive!r}")
+    if threading.current_thread() is not threading.main_thread():
+        return False
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return None  # the main thread, no loop running: the operator's startup
+    return False  # a coroutine on the main thread's loop (uvicorn's): a request, not the startup
+
+
 def router_model_problem(
     llm_router: Any,
     *,
@@ -818,7 +852,7 @@ def router_model_problem(
     if profile in declined:
         log.info("Model %s was declined earlier in this build; not asking again", profile)
         return Unavailable.NOT_DOWNLOADED
-    log.info("Model not found at %s — asking to download %s", model_path, profile)
+    log.info("Model not found at %s — checking the download gate for %s", model_path, profile)
     if not ensure_available(profile, interactive=interactive, logger=log):
         return Unavailable.NOT_DOWNLOADED if profile in llm_models() else Unavailable.NOT_IN_REGISTRY
     if not os.path.exists(model_path):
@@ -856,7 +890,7 @@ def consented_router(
     foundry and ``--auto-curate`` router (``cli.py::_cli_local_router``, which asks at a terminal), ``ExecAgent``,
     ``runtime/lane_backends.py::build_run_router``'s fallback, the benchmark's paper writer and offline scripts. No
     lanes, no spawned server, no banner or decision record. ``interactive`` defaults to ``False`` (never ask: a missing
-    model downloads only with a standing grant); a caller on the main thread before any warmup passes ``None``.
+    model downloads only with a standing grant); a caller that may ask passes :func:`consent_interactive`'s answer.
     ``cause`` is one of ``LocalModelUnavailable.CAUSES``, for a caller that refuses the run, typed. Never prints.
     """
     from maxim.models.language.router import LLMRouter

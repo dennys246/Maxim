@@ -245,8 +245,8 @@ def main(argv: list[str] | None = None) -> int:
             encoder = make_fresh_encoder(aut)
             pump = MinecraftSyncPump(aut, interval_s=0.25)
             pump.start()
-            # run_agentic_loop writes CWD-relative state files — point them at
-            # the seed's throwaway dir, not the repo (executor NIT).
+            # A scratch CWD for the loop's remaining CWD-relative writes (the state
+            # file is in the AUT's own home since #1264) — not the repo (executor NIT).
             prev_cwd = os.getcwd()
             os.chdir(persistence_dir)
             record: dict = {

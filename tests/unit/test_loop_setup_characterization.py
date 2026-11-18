@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import threading
 from pathlib import Path
@@ -84,7 +83,9 @@ class _Hub:
         return object.__getattribute__(self, name)
 
     def on_session_start(self, *, owner: Any, live: bool = False, deadline_s: float | None = None) -> Any:
-        state_files = list(Path("data").glob("agents/*/runtime/state_*.json"))
+        from maxim.utils.paths import data_home
+
+        state_files = list(data_home().glob("runtime_state/*/state_*.json"))
         self._events.append(f"hub.on_session_start(persisted={bool(state_files)})")
         if self._start_fails:
             raise RuntimeError("hub start failed")
@@ -152,7 +153,8 @@ def _run(
     overrides: Any = None,
     **kwargs: Any,
 ) -> _Run:
-    """Run the real loop in ``tmp_path`` (the state file is CWD-relative); return what setup built."""
+    """Run the real loop in ``tmp_path``, with the data home (where the state file lands, #1264) at
+    ``tmp_path / "home"``; return what setup built."""
     from maxim.agents.context_pool import ContextPool
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime import agent_loop as AL
@@ -162,7 +164,11 @@ def _run(
     from maxim.runtime.state import RuntimeState
     from maxim.tools.registry import ToolRegistry
 
+    from maxim.utils.paths import _reset_caches
+
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(_data_home(tmp_path)))
+    _reset_caches()
     events = [] if events is None else events
     ctrls: list[Any] = []
     pools: list[Any] = []
@@ -215,8 +221,12 @@ def _run(
     return _Run(ctrl=ctrls[0] if ctrls else None, pools=pools, events=events, executor=executor, state=state)
 
 
+def _data_home(tmp_path: Path) -> Path:
+    return tmp_path / "home"
+
+
 def _state_files(tmp_path: Path) -> list[Path]:
-    return sorted(tmp_path.glob("data/agents/*/runtime/state_*.json"))
+    return sorted(_data_home(tmp_path).glob("runtime_state/*/state_*.json"))
 
 
 # ── the simulation adapter ───────────────────────────────────────────────────
@@ -289,19 +299,146 @@ def test_no_adapter_and_no_percept_source_is_a_null_adapter_run(monkeypatch, tmp
 def test_the_state_is_persisted_under_the_given_run_id(monkeypatch, tmp_path):
     run = _run(monkeypatch, tmp_path, agent=_Agent("Probe Agent!"), run_id="r-42")
     [path] = _state_files(tmp_path)
-    assert path.relative_to(tmp_path) == Path("data/agents/Probe_Agent/runtime/state_r-42.json")
+    rel = path.relative_to(_data_home(tmp_path))
+    assert rel.parent == Path("runtime_state/Probe_Agent")
+    assert re.fullmatch(r"state_r-42_[0-9a-f]{12}\.json", rel.name), rel.name
     payload = json.loads(path.read_text())
     assert payload["run_id"] == "r-42" and payload["agent_name"] == "Probe_Agent"
     assert run.ctrl.run_id == "r-42"
-    assert run.ctrl.state_path == os.path.join("data", "agents", "Probe_Agent", "runtime", "state_r-42.json")
+    assert run.ctrl.state_path == str(path)  # the controller holds the run's claimed path, not a second one
 
 
 def test_a_missing_run_id_is_a_timestamp(monkeypatch, tmp_path):
     run = _run(monkeypatch, tmp_path, run_id=None)
     [path] = _state_files(tmp_path)
-    assert re.fullmatch(r"state_\d{4}-\d{2}-\d{2}_\d{6}\.json", path.name)
-    assert path.name == f"state_{run.ctrl.run_id}.json"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{6}", run.ctrl.run_id)  # run ids are unchanged (#1264)
+    assert re.fullmatch(rf"state_{run.ctrl.run_id}_[0-9a-f]{{12}}\.json", path.name)
     assert json.loads(path.read_text())["run_id"] == run.ctrl.run_id
+
+
+# ── #1264: one state file per loop run, under the data home ──────────────────
+
+
+def test_two_loops_with_one_run_id_keep_two_state_files_under_the_data_home_1264(monkeypatch, tmp_path):
+    """RED on the pre-fix loop: the state file was ``data/agents/<name>/runtime/state_<run_id>.json`` under the
+    CWD, so two loops of one agent class started in the same second (one default run id) wrote ONE file, the
+    later overwriting the earlier (the AUT and narrator of a sim). Each run now keeps its own file in the data
+    home, and nothing lands under the working directory."""
+    first = _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id="2026-11-16_120000")
+    second = _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id="2026-11-16_120000")
+
+    assert not (tmp_path / "data").exists(), "the state file must not be CWD-relative (D15)"
+    files = _state_files(tmp_path)
+    assert len(files) == 2, files  # neither run's state was overwritten
+    assert {str(p) for p in files} == {first.ctrl.state_path, second.ctrl.state_path}
+    for path in files:
+        payload = json.loads(path.read_text())
+        assert payload["run_id"] == "2026-11-16_120000" and payload["agent_name"] == "MaximAgent"
+        assert payload["_format_version"] == "1.0"
+
+
+def test_a_state_path_two_runs_still_share_fails_loudly_1264(monkeypatch, tmp_path):
+    """If two runs still resolve to one file (here: the unique token forced equal), the second run fails at its
+    claim with a typed ``StatePathCollision`` before it writes, and the first run's state is left intact."""
+    from maxim.runtime import loop_state
+    from maxim.runtime.loop_state import StatePathCollision
+
+    monkeypatch.setattr(loop_state, "_state_token", lambda: "0" * 12)
+    _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id="r-1264")
+    [path] = _state_files(tmp_path)
+    before = path.read_bytes()
+    with pytest.raises(StatePathCollision, match="already belongs to another loop run"):
+        _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id="r-1264")
+    assert _state_files(tmp_path) == [path]
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    ("run_id", "segment"),
+    [
+        ("../escape", "___escape"),
+        ("a/b", "a_b"),
+        ("a\\b", "a_b"),
+        ("demo 1", "demo_1"),
+        ("2026-11-16T12:00:00", "2026-11-16T12_00_00"),
+        (".hidden", "_hidden"),
+        ("..", "__"),
+        ("a..b", "a__b"),
+    ],
+)
+def test_a_run_id_is_sanitised_in_the_filename_only_1264(monkeypatch, tmp_path, run_id, segment):
+    """``../``, a separator, a space or a ``:`` in the run id never puts the state file outside its runtime directory:
+    the FILENAME segment maps them to ``_`` (as ``safe_agent_name`` does), and the raw run id is the one in the meta."""
+    run = _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id=run_id)
+    [path] = _state_files(tmp_path)
+    assert path.parent == _data_home(tmp_path) / "runtime_state" / "MaximAgent"
+    assert re.fullmatch(rf"state_{re.escape(segment)}_[0-9a-f]{{12}}\.json", path.name), path.name
+    payload = json.loads(path.read_text())
+    assert payload["run_id"] == run_id  # the raw id, unchanged
+    assert run.ctrl.run_id == run_id
+    assert [p for p in tmp_path.rglob("state_*") if p != path] == []
+
+
+@pytest.mark.parametrize(
+    "run_id", ["2026-11-16_120000", "20261116_120000", "sim_turn_007", "talk_3f2a9c", "r-42", "a.b", "0123abcdef"]
+)
+def test_the_run_ids_maxim_produces_name_a_state_file_1264(monkeypatch, tmp_path, run_id):
+    from maxim.runtime.loop_state import loop_state_path
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(_data_home(tmp_path)))
+    _reset_caches()
+    path = Path(loop_state_path("MaximAgent", run_id))
+    assert path.parent == _data_home(tmp_path) / "runtime_state" / "MaximAgent"
+    assert path.name.startswith(f"state_{run_id}_")
+
+
+def test_state_home_puts_the_state_file_in_the_given_root_only_1264(monkeypatch, tmp_path):
+    """``run_agentic_loop(state_home=...)`` (a sim's sandbox, a harness's per-agent home): the state file goes under
+    that data-home-shaped root and nowhere else; the data home is untouched, and nothing outlives the call."""
+    from maxim.runtime.loop_state import loop_state_path
+
+    home = tmp_path / "aut_home"
+    run = _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id="r-1264", state_home=home)
+    [path] = sorted(home.glob("runtime_state/*/state_*.json"))
+    assert run.ctrl.state_path == str(path)
+    assert json.loads(path.read_text())["run_id"] == "r-1264"
+    assert _state_files(tmp_path) == []  # the data home holds none
+    assert Path(loop_state_path("MaximAgent", "after")).is_relative_to(_data_home(tmp_path))  # no root: data home
+
+
+def _state_home_args(rel: str) -> list[str | None]:
+    """Per ``run_agentic_loop(...)`` call in ``src/maxim/<rel>``, in source order: its ``state_home=`` argument as
+    source text, or None when it passes none (the data home)."""
+    import ast
+
+    src = (Path(__file__).resolve().parents[2] / "src" / "maxim" / rel).read_text(encoding="utf-8")
+    found: list[tuple[int, str | None]] = []
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Call):
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name == "run_agentic_loop":
+                kw = {k.arg: ast.unparse(k.value) for k in node.keywords if k.arg}
+                found.append((node.lineno, kw.get("state_home")))
+    return [arg for _, arg in sorted(found)]
+
+
+@pytest.mark.parametrize(
+    ("rel", "expected"),
+    [
+        # sandboxed callers: the state file goes with the sandbox (owner decision 2026-11-16)
+        ("cli.py", ["getattr(args, '_sim_tmpdir', None)"]),
+        ("simulation/orchestrator.py", ["sim_tmpdir", "sim_tmpdir"]),  # the AUT, then the narrator
+        ("simulation/tools.py", ["self._sim_tmpdir"]),  # the sub-AUT: its parent sim's sandbox
+        ("simulation/interactive.py", ["run_tmpdir"]),
+        # the data home (minecraft_harness passes it through _loop_kwargs, pinned in test_minecraft_harness)
+        ("console/handle.py", [None]),
+        ("api.py", [None]),  # home_dir is not passed: D15's other half, a separate owner decision
+        ("embodied_runtime/agentic_runtime.py", [None]),
+    ],
+)
+def test_each_loop_caller_passes_the_state_home_it_owns_1264(rel, expected):
+    assert _state_home_args(rel) == expected
 
 
 # ── defaults and the controller's wiring ─────────────────────────────────────
@@ -746,3 +883,62 @@ def test_an_override_config_error_stops_the_run_before_the_bio_session(monkeypat
     # #1438 PR 0: the session was claimed first, so the error ends it on the abnormal path; no DN start, no bio handles
     assert events == ["hub.on_session_start(persisted=False)", "context_pool", "ctrl"]
     assert hub.ended == ["lightweight"]
+
+
+# ── #1264: only a collision aborts; any other claim failure is reported and the run goes on ──
+
+
+def test_a_claim_that_fails_with_another_oserror_is_reported_and_the_run_goes_on_1264(monkeypatch, tmp_path, caplog):
+    """A data home the loop cannot write (here: ``runtime_state`` is a FILE, so its directory cannot be made) is NOT
+    a collision: the claim is reported in the Stage-1 form and the run starts, as before #1264; the persists that
+    follow fail and are reported too."""
+    home = _data_home(tmp_path)
+    home.mkdir(parents=True)
+    (home / "runtime_state").write_text("not a directory")
+    with caplog.at_level(logging.WARNING):
+        run = _run(monkeypatch, tmp_path, agent=_Agent("MaximAgent"), run_id="r-1264")
+    assert run.ctrl is not None and run.ctrl.run_id == "r-1264"  # the run started
+    assert "loop_state.py:claim_state_path" in caplog.text
+    assert (home / "runtime_state").read_text() == "not a directory"
+
+
+def test_an_empty_placeholder_is_removed_when_the_first_persist_fails_1264(monkeypatch, tmp_path, caplog):
+    from maxim.runtime import loop_state
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(_data_home(tmp_path)))
+    _reset_caches()
+
+    class _Unsavable:
+        def save_json(self, path: str, *, meta: Any = None) -> None:
+            raise OSError("disk full")
+
+    with caplog.at_level(logging.WARNING):
+        run_id, path = loop_state.start_run_state(_Unsavable(), "MaximAgent", "r-1264")
+    assert run_id == "r-1264"
+    assert not Path(path).exists()  # no empty, unversioned state file left behind
+    assert "removed the empty state-file placeholder" in caplog.text
+
+
+def test_state_path_collision_is_a_file_exists_error_naming_the_path_1264(monkeypatch, tmp_path):
+    import errno
+
+    from maxim.runtime import loop_state
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(_data_home(tmp_path)))
+    _reset_caches()
+    monkeypatch.setattr(loop_state, "_state_token", lambda: "0" * 12)
+    first = loop_state.claim_state_path("MaximAgent", "r")
+    with pytest.raises(loop_state.StatePathCollision) as info:
+        loop_state.claim_state_path("MaximAgent", "r")
+    assert isinstance(info.value, FileExistsError)
+    assert info.value.errno == errno.EEXIST and info.value.filename == first
+
+
+def test_a_controller_built_on_its_own_has_no_state_path_1264():
+    from maxim.agents.autonomy import AutonomyController
+    from maxim.runtime.loop_controller import LoopController
+
+    ctrl = LoopController(None, None, None, None, None, None, autonomy_controller=AutonomyController())
+    assert ctrl.state_path is None

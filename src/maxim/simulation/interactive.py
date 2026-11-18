@@ -391,6 +391,7 @@ def _run_scenario_turn(  # noqa: PLR0913
             executor,
             max_steps=0,  # Unlimited — stopped by grace period or stop_event
             run_id=f"sim_turn_{turn:03d}",
+            state_home=run_tmpdir,  # the turn's state file stays in its sandbox, removed with it (#1264)
             stop_event=stop,
             percept_source=source,
             action_sink=sink,

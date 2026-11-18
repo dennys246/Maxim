@@ -275,6 +275,24 @@ def agent_data(agent_id: str) -> Path:
     return p
 
 
+# The agent loop's per-run state snapshots (#1264): their OWN root, outside ``agents/`` (which holds created-agent
+# homes, ``maxim.create.agent`` / ``load.agent`` / ``resolve_run_dir``'s "agent" kind) and outside every agent home.
+# ``--clear-memory`` clears it as a global path (``cli_utils._GLOBAL_PATHS["runtime_state"]``).
+RUNTIME_STATE_DIR = "runtime_state"
+
+
+def loop_state_dir(agent_name: str, *, root: str | os.PathLike[str] | None = None) -> Path:
+    """A loop's runtime-state directory — ``<root or data_home()>/runtime_state/<agent_name>/`` (#1264).
+
+    ``agent_name`` is ``runtime/tool_dispatch.safe_agent_name(agent)`` (already one safe path segment). ``root`` is a
+    data-home-shaped root a caller puts the state under instead of the data home (a sim's sandbox, a harness AUT's
+    own home). Creates nothing: ``runtime/loop_state.claim_state_path`` makes the directory and the file, so a
+    failure to create them is reported there, by the loop.
+    """
+    base = Path(root) if root is not None else data_home()
+    return base / RUNTIME_STATE_DIR / agent_name
+
+
 def benchmarks_dir() -> Path:
     """Benchmark output — ``~/.maxim/benchmarks/``."""
     p = data_home() / "benchmarks"

@@ -107,10 +107,9 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
 
 NEUTRALISED, NOT PINNED (the harness takes them out of the trace, so a fix does not change the golden):
 
-  - #1264: the AUT and narrator loops race on one CWD-relative ``state_<second>.json`` (each write has its
-    own temp since #1663; the last writer wins the one file). How many state files land, under which
-    second, is the race itself, so the data-home file
-    set excludes ``agents/*/runtime/`` (``_DATA_HOME_EXCLUDED``).
+  - #1264 (fixed): the AUT and narrator loops raced on one CWD-relative ``state_<second>.json``. Each
+    run now has its own ``<sim_tmpdir>/runtime_state/<name>/state_<run_id>_<token>.json``; the token is
+    random, so the data-home file set excludes ``sim_sandbox/*/runtime_state/`` (``_DATA_HOME_EXCLUDED``).
   - #1265: the report's ``lane_breakdown`` and latency percentiles read the process-global lane
     ``MetricsRegistry``, never session-scoped. The harness hands each run a fresh registry
     (``_GlobalState``), so an earlier sim's (or test's) metrics cannot leak in; a run reading only its

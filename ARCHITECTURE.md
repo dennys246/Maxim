@@ -207,7 +207,7 @@ User data now lives at `~/.maxim/` by default (resolved via `utils/paths.py`). L
 - `data/audio/`: `reachy_audio_<YYYY-MM-DD_HHMMSS>.wav` and optional `audio/chunks/*.wav`
 - `data/transcript/`: `reachy_transcript_<YYYY-MM-DD_HHMMSS>.jsonl`
 - `data/training/`: `motor_training_set.jsonl` (trainable samples + user marks)
-- `data/agents/<STATE_NAME>/runtime/`: `state_<run_id>.json` (agentic runtime state snapshots; defaults to `agent_name` unless an agent sets `state_name`)
+- `~/.maxim/runtime_state/<STATE_NAME>/`: `state_<run_id>_<token>.json` (agentic runtime state snapshots, one per loop run, #1264; `<STATE_NAME>` defaults to `agent_name` unless an agent sets `state_name`; a sim's or harness's runs keep theirs in its sandbox)
 - `data/models/MotorCortex/`: MotorCortex checkpoint + training artifacts
 - `data/planning/`: Plan JSONs, active plan pointer (internal state, configurable via `LongHorizonConfig.plan_persistence_path`)
 - `data/util/llm.json`: local LLM config (created on install with SmolLM 1.7B as default)
