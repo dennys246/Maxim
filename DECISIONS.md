@@ -2,6 +2,66 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-11-16 — The loop's runtime-state file is one per run, in its own root (#1264, D15's CWD-relative half)
+
+### Decision (owner, 2026-11-16: option A on #1264, then the three-lens review's decisions the same day)
+
+- **Its own root.** `utils/paths.py::loop_state_dir(agent_name, *, root=None)` is
+  `<root or data_home()>/runtime_state/<agent_name>/` (`paths.RUNTIME_STATE_DIR`), outside `agents/`: a loop run
+  creates no `agents/<name>/` directory, so `maxim.load.agent` and `resolve_run_dir` never see it as a created agent.
+  The data home is `data_home()` (`MAXIM_DATA_HOME`, else `~/.maxim`), the root the D15/D16 decision below names as
+  `home_dir`'s default ("Root for API-owned memory, data, and agent persistence", `api.py::_api_home`). Never the
+  working directory. `--clear-memory` clears it (`cli_utils._GLOBAL_PATHS["runtime_state"]`).
+- **One builder.** `runtime/loop_state.py::loop_state_path` names every run's file,
+  `state_<run id segment>_<token>.json`: the run's own identity (the directory is `tool_dispatch.safe_agent_name`)
+  plus a 48-bit random token, so two loops never share a file by sharing a class name and a wall-clock second (a
+  sim's AUT and narrator are both `MaximAgent`).
+- **Sanitised, never refused.** Only the filename segment of the run id is sanitised, as `safe_agent_name` does:
+  a character outside `[A-Za-z0-9._-]` becomes `_`, and a run of dots or a leading dot becomes underscores. The raw
+  run id stays in the file's meta and everywhere else; run ids are unchanged (the timestamp default stays), because
+  the hippocampus and the bio-integration records persist them.
+- **Only a collision aborts.** `loop_state.claim_state_path` reserves the file by exclusive create before the first
+  write. A file already there raises `StatePathCollision` (a `FileExistsError`, `errno` EEXIST, `filename` the path)
+  out of the run's setup, so a run never overwrites another's state. That path is a BACKSTOP: with a random token it
+  is not expected. Any other `OSError` while claiming (permissions, a full or read-only disk, a directory that cannot
+  be made) is reported in the Stage-1 form (`log_swallowed_exception(site=...)`) and the run goes on, as before
+  #1264; its persists then fail and are reported by `_persist_state_json`. A placeholder still empty after a failed
+  first persist is removed (and logged). The claim sits outside `_persist_state_json`'s best-effort handler.
+- **Back in the sandbox.** `run_agentic_loop(state_home=...)` is a data-home-shaped root for the state file, threaded
+  as an explicit parameter (wrapper -> `_run_agentic_loop_body` -> `build_loop_run` -> `start_run_state(root=)` ->
+  `loop_state_path(root=)`); nothing else moves with it. The callers with a sandbox pass it, so the file goes with
+  the sandbox as before: the CLI `--sim` loop (`args._sim_tmpdir`), the orchestrator's AUT and narrator
+  (`sim_tmpdir`), the `spawn_sub_simulation` tool's sub-AUT (its parent sim's `sim_tmpdir`), the interactive sim
+  (each turn's sandbox) and the Minecraft harness (each AUT's `persistence_dir`, `minecraft_harness._loop_kwargs`). The console
+  handle, `maxim.run()` and the Reachy runtime keep the data home. Not `MAXIM_DATA_HOME`, which would move every
+  other store too.
+- The pinned functions this touched paid under rule T by extraction (`_run_agentic_loop_body`, `cli._main_impl`,
+  `orchestrator.start_simulation_mode`, `api.run`); no touch exemption. `LoopController` takes the run's claimed path
+  (`state_path=`) and, built on its own, has none.
+
+### Reason
+
+- Two loops in one process wrote one CWD-relative `state_<second>.json`; one write was lost, and a run's state
+  scattered `data/` trees wherever the process was started (#1264; the D15 row of `docs/bugs/README.md`).
+
+### Rejected
+
+- B, an agent-id filename that stays CWD-relative: the Minecraft harness's two AUTs could still collide.
+- C, a unique default run id: it changes persisted ids.
+- `<data home>/agents/<name>/runtime/` (this change's first draft): a loop run then minted a created-agent-shaped
+  directory that `resolve_run_dir` finds.
+- Refusing a run id that is not one path segment (`InvalidRunId`, the first fold): a valid caller-chosen id such as
+  `demo 1` or an ISO timestamp would stop a run over a diagnostics file.
+- A context variable carrying `state_home` past the pinned loop body (the second fold): hidden state; rule T is paid
+  by extraction instead.
+
+### Tradeoffs
+
+- `maxim.run(home_dir=...)` with a home other than the data home still writes this file under the data home: the
+  loop is not told `home_dir`. That is D15's remaining `home_dir`-ownership half, still open (a separate owner
+  decision).
+- Old CWD `data/agents/*/runtime/` files are not migrated; nothing in Maxim reads them.
+
 ## 2026-11-16 — BF2 read for a STALE pre-BF2 row restored by a frozen-prereg re-run whose gate is new (BF2-R1, T1-16 only)
 
 ### Decision (owner, 2026-11-16 UTC: "agreed as long as we're completely transparent")

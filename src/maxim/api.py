@@ -672,6 +672,22 @@ def _build_run_executor(
     return _api_instance.executor, _api_instance
 
 
+def _build_run_agent(model: str, effective_home: str) -> Any:
+    """``run()``'s agent, its user event subscriptions bridged to its bus (moved verbatim out of ``run``, #1264
+    rule T)."""
+    from maxim.agents.maxim_agent import MaximAgent
+
+    agent = MaximAgent(
+        llm_profile=model,
+        memory_persistence_path=os.path.join(effective_home, "memory"),
+        data_folder=os.path.join(effective_home, "data"),
+    )
+    # Bridge user event subscriptions to the agent's bus
+    if hasattr(agent, "_bus"):
+        _bridge_event_subscriptions(agent._bus)
+    return agent
+
+
 def run(
     model: str = _API_DEFAULT_MODEL,
     *,
@@ -711,9 +727,9 @@ def run(
             disconnect cannot be confirmed, it retains the registration and
             raises ``HardwareError``.
         home_dir: Root for API-owned memory, data, and agent persistence
-            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``). Runtime step snapshots still use the
-            CWD-relative ``data/agents/`` path; complete ownership is tracked
-            for 1.1.x under D15.
+            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``). The loop's runtime-state file
+            goes under the data home's ``runtime_state/`` (#1264), not under ``home_dir``: that half of D15 is
+            still open.
         verbosity: Logging verbosity (0-3).
         learning: Enable bio-learning (episodic memory, causal learning,
             pain attribution).  Default ``True``.  Pass ``False`` to run
@@ -770,7 +786,6 @@ def run(
 
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
         from maxim.agents.llm_worker import LLMWorker
-        from maxim.agents.maxim_agent import MaximAgent
         from maxim.runtime.agent_loop import run_agentic_loop
         from maxim.runtime.bootstrap import (
             build_decision_engine,
@@ -810,14 +825,7 @@ def run(
         llm_worker.start()
 
         # ── Agent pipeline ───────────────────────────────────────────────────
-        agent = MaximAgent(
-            llm_profile=model,
-            memory_persistence_path=os.path.join(effective_home, "memory"),
-            data_folder=os.path.join(effective_home, "data"),
-        )
-        # Bridge user event subscriptions to the agent's bus
-        if hasattr(agent, "_bus"):
-            _bridge_event_subscriptions(agent._bus)
+        agent = _build_run_agent(model, effective_home)
 
         env = build_environment(root=effective_home)
         state = build_state()

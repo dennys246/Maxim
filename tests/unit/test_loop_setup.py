@@ -75,7 +75,11 @@ def _build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **overrides: Any) ->
     from maxim.runtime.state import RuntimeState
     from maxim.tools.registry import ToolRegistry
 
-    monkeypatch.chdir(tmp_path)  # the first persist is CWD-relative
+    from maxim.utils.paths import _reset_caches
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))  # the first persist lands in the data home (#1264)
+    _reset_caches()
     kwargs: dict[str, Any] = dict(
         agent=SimpleNamespace(name="unit"),
         environment=None,
@@ -106,6 +110,7 @@ def _build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **overrides: Any) ->
         aut_mode="substrate-primary",
         planning_liveness=False,
         sim_adapter=None,
+        state_home=None,
     )
     kwargs.update(overrides)
     if "session" not in kwargs:  # #1438 PR 0: run_agentic_loop's bio_session hands setup the claimed session
@@ -620,8 +625,16 @@ def test_run_agentic_loop_is_a_wrapper_that_forwards_every_argument_to_the_body(
     )  # the wrapper hands both to the body: the bio_session (#1438 PR 0) and the held inbound comms (#1481)
     # Keyword-only parameters only the wrapper reads (its own bio_session): never forwarded to the body.
     wrapper_only: frozenset[str] = frozenset({"end_bound"})  # #1536: a per-handle stop's bound on the session end
+    # Parameters the wrapper defaults and the body REQUIRES (its one caller always passes them): #1264 ``state_home``.
+    # Same name, kind and annotation; only the default differs, so forgetting the forward is a TypeError.
+    required_in_body: frozenset[str] = frozenset({"state_home"})
+    for name in required_in_body:
+        assert body_params[name].default is inspect.Parameter.empty, name
+        assert body_params[name].replace(default=wrapper_sig.parameters[name].default) == wrapper_sig.parameters[name]
     wrapper_params = {p: v for p, v in wrapper_sig.parameters.items() if p not in wrapper_only}
-    assert {p: v for p, v in body_params.items() if p not in body_only} == wrapper_params
+    assert {p: v for p, v in body_params.items() if p not in body_only | required_in_body} == {
+        p: v for p, v in wrapper_params.items() if p not in required_in_body
+    }
     tree = ast.parse(Path(agent_loop.__file__).read_text())
     [fn] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_agentic_loop"]
     calls = [

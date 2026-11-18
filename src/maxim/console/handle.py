@@ -106,6 +106,51 @@ def _describe_silent_turn(turn: dict[str, Any]) -> str:
 TALK_CONVERSATIONAL_TOOLS: frozenset[str] = frozenset({"respond", "speak", "read_file", "glob", "sense_tools"})
 
 
+def _build_talk_router() -> Any:
+    """The talk loop's router: the run seam, never asking to download (#1658, owner decisions OD-B, OD-C, OD-F).
+
+    A talk build runs on a server request thread (``console/server.py::post_run``) or in a script driving the handle;
+    neither is the operator's startup, so it never prompts on the server's stdin (``interactive=False``). The models
+    the router talk would get could not use (``LaneBackendManager.unusable_models``: the large lane's preflight
+    declines and the seam's own refusal, never another lane's) are named with how to fix each: in the error when no
+    router is left, in the log when another model serves. Raises ``ConfigurationError`` when there is no router."""
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.lane_backends import build_run_router
+
+    router, manager = build_run_router(interactive=False, logger=logger)
+    unusable = dict(manager.unusable_models) if manager is not None else {}
+    if router is None:
+        if unusable:
+            raise ConfigurationError(f"No LLM for talk: {_unusable_models(unusable)}")
+        raise ConfigurationError(
+            "No LLM backend available for talk — configure one first (maxim doctor, or the console's setup page)."
+        )
+    if unusable:
+        logger.info("Talk's own model is not usable, so another model serves talk: %s", _unusable_models(unusable))
+    return router
+
+
+def _unusable_models(models: dict[str, str]) -> str:
+    """Each model talk could not use, with its own fix; never "declined", since talk never asked (#1658).
+
+    The text is static apart from the profile ids, and each cause's fix is ``LocalModelUnavailable``'s static hint."""
+    from maxim.models.language.types import LocalModelUnavailable as Unavailable
+
+    parts = []
+    for profile in sorted(models):
+        # An unknown cause reads as "not downloaded" rather than raise ValueError while the error is being reported.
+        cause = models[profile] if models[profile] in Unavailable.CAUSES else Unavailable.NOT_DOWNLOADED
+        if cause == Unavailable.NOT_DOWNLOADED:
+            parts.append(
+                f"{profile} is not downloaded, and talk does not ask to download a model. Allow downloads with "
+                f"`maxim config set llm.auto_download true`, or download it: "
+                f"`python -m maxim.models.download --llm {profile}`."
+            )
+        else:
+            parts.append(f"{profile} is not usable: {Unavailable(profile, cause=cause).fix_hint}")
+    return " ".join(parts)
+
+
 def talk_autonomy(registry: Any) -> Any:
     """The AutonomyController a Talk turn runs under: AUTONOMOUS, with every tool in ``registry`` that is not
     conversational hard-forbidden (deny-by-default over the CURRENT registry). Since #1412 the loop wires its forbid
@@ -403,20 +448,12 @@ class MaximHandle:
                 return self._talk_bridge  # another caller won the race
 
             from maxim.agents.llm_worker import LLMWorker
-            from maxim.runtime.lane_backends import build_primary_router
 
             workspace = self._workspace
             workspace.mkdir(parents=True, exist_ok=True)
 
             generation = config_generation()  # read BEFORE the build: a write during it rebuilds next time
-            router, _lane_manager = build_primary_router()
-            if router is None:
-                from maxim.exceptions import ConfigurationError
-
-                raise ConfigurationError(
-                    "No LLM backend available for talk — configure one first "
-                    "(maxim doctor, or the console's setup page)."
-                )
+            router = _build_talk_router()
             worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
             worker.start()
             try:

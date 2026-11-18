@@ -86,6 +86,7 @@ class LoopController:
         evaluators: list[Evaluator] | None = None,
         max_steps: int = 0,
         run_id: str | None = None,
+        state_path: str | None = None,
         stop_event: Any | None = None,
         on_step: Any | None = None,
         on_event: Any | None = None,
@@ -129,13 +130,9 @@ class LoopController:
 
         # ── Agent identity & persistence ─────────────────────────────────
         self.agent_name = _safe_agent_name(agent)
-        self.state_path = os.path.join(
-            "data",
-            "agents",
-            self.agent_name,
-            "runtime",
-            f"state_{self.run_id}.json",
-        )
+        # The run's claimed state file (``loop_setup.build_loop_run`` passes it, #1264). A controller built on its own
+        # has none: the controller never writes it, so it computes no path it would not use.
+        self.state_path: str | None = state_path
 
         # ── Transient loop state (typed — replaces local variables) ──────
         # Backing field for the pending_proposal property below; planning-

@@ -169,13 +169,14 @@ def _cli_local_router(profile: str) -> Any | None:
     These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
     missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
     None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
-    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking
-    (``interactive=None``); the library check never prints, so the CLI prints its own line here.
+    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking as
+    ``consent_interactive()`` allows (the main thread only, #1658); the library check never prints, so the CLI prints
+    its own line here.
     """
-    from maxim.models.download import consented_router
+    from maxim.models.download import consent_interactive, consented_router
     from maxim.models.language.config import load_llm_config
 
-    router, cause = consented_router(load_llm_config(profile_override=profile), interactive=None)
+    router, cause = consented_router(load_llm_config(profile_override=profile), interactive=consent_interactive())
     if router is None:
         _print_model_unavailable(cause)
     return router
@@ -1484,11 +1485,18 @@ def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
     return gateway
 
 
-def _curate_router_factory(profile: str) -> Callable[[], Any | None]:
+_LOCAL_ROUTER_READY_TIMEOUT_S = 120.0  # foundry and --auto-curate wait this long for a warmed router
+
+
+def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any | None]:
     """The ``--auto-curate`` router, built through :func:`_cli_local_router` only when ``auto_curate`` calls this:
     after it finds a coverage gap, so full coverage never asks about a missing model (#1396, owner decision
     2026-11-12). The factory's None is the template fallback; a build or warmup error keeps what was built, as
-    before the move."""
+    before the move.
+
+    Every router it builds is appended to ``built`` before warmup, and the caller unloads it once curation ends
+    (#1657), so the curation model is not still resident while the sim loads its own. It waits for the warmed router
+    like foundry does; one that is not ready in time is not handed to the runners (template fallback)."""
 
     def build() -> Any | None:
         router = None
@@ -1496,8 +1504,12 @@ def _curate_router_factory(profile: str) -> Callable[[], Any | None]:
             router = _cli_local_router(profile)
             if router is None:
                 print("  WARNING: LLM model not available — curation will use template fallback.")
-            elif hasattr(router, "warmup"):
-                router.warmup()
+                return None
+            built.append(router)
+            router.warmup()
+            if not router.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
+                print("  WARNING: LLM failed to load — curation will use template fallback.")
+                return None
         except Exception as _llm_err:
             logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
         return router
@@ -1535,13 +1547,20 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
             _curate_profile = str(getattr(args, "language_model", "") or "").strip()
 
             print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
-            _curate_report = auto_curate(
-                genre=_curate_genre,
-                threshold=_curate_threshold,
-                registry=_curate_registry,
-                component_index=_curate_index,
-                llm_router_factory=_curate_router_factory(_curate_profile) if _curate_profile else None,
-            )
+            _curate_built: list[Any] = []
+            try:
+                _curate_report = auto_curate(
+                    genre=_curate_genre,
+                    threshold=_curate_threshold,
+                    registry=_curate_registry,
+                    component_index=_curate_index,
+                    llm_router_factory=(
+                        _curate_router_factory(_curate_profile, _curate_built) if _curate_profile else None
+                    ),
+                )
+            finally:
+                for _router in _curate_built:  # this function owns the curation router (#1657)
+                    _router.unload()
             if _curate_report.total_promoted > 0:
                 print(
                     f"  Curated: {_curate_report.total_promoted} promoted, "
@@ -1575,14 +1594,12 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
             _foundry_llm = _cli_local_router(_foundry_profile)
             if _foundry_llm is None:
                 print("  WARNING: LLM model not available — foundry will use template fallback.")
-            elif hasattr(_foundry_llm, "warmup"):
+            else:
                 _foundry_llm.warmup()
-            if _foundry_llm is not None and hasattr(_foundry_llm, "wait_ready"):
                 print(f"  Waiting for LLM ({_foundry_profile}) to load...")
-                if not _foundry_llm.wait_ready(timeout=120.0):
+                if not _foundry_llm.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
                     print("  WARNING: LLM failed to load — foundry will use template fallback.")
-                    if hasattr(_foundry_llm, "shutdown"):
-                        _foundry_llm.shutdown()
+                    _foundry_llm.unload()  # was a hasattr("shutdown") call LLMRouter never answered (#1657)
                     _foundry_llm = None
                 else:
                     print(f"  LLM ready: {_foundry_profile}")
@@ -1669,6 +1686,21 @@ def _declare_run_mode(args: Any) -> None:
         cli_signals.entered_sim_mode()
     else:
         cli_signals.entered_non_sim_mode()
+
+
+def _reuse_bio_pain_bus_for_sim(args: Any, *, pain_bus: Any, hippocampus: Any, nac: Any) -> None:
+    """A ``--sim`` run reuses the bio-stack's PainBus and hippocampus (moved verbatim out of ``_main_impl``, #1264
+    rule T): ``args._sim_pain_bus`` / ``args._sim_hippo`` are what the run and its report read. Logs on the
+    ``maxim`` logger, as ``_main_impl``'s own ``logger`` does."""
+    _sim_pain_bus = pain_bus
+    logging.getLogger("maxim").info(
+        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
+        hippocampus is not None,
+        nac is not None,
+    )
+
+    args._sim_pain_bus = _sim_pain_bus
+    args._sim_hippo = hippocampus
 
 
 def _main_impl(argv: Sequence[str] | None = None) -> int:
@@ -2756,15 +2788,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # the double-subscription.  The bio-stack already has
                 # hippocampus + nac subscribers wired.
                 if sim_source is not None:
-                    _sim_pain_bus = _cli_pain_bus
-                    logger.info(
-                        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
-                        _cli_hippocampus is not None,
-                        _cli_nac is not None,
+                    _reuse_bio_pain_bus_for_sim(
+                        args, pain_bus=_cli_pain_bus, hippocampus=_cli_hippocampus, nac=_cli_nac
                     )
-
-                    args._sim_pain_bus = _sim_pain_bus
-                    args._sim_hippo = _cli_hippocampus
 
                 try:
                     run_agentic_loop(
@@ -2787,6 +2813,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         bio_enrichment_pipeline=_cli_bio_enrichment,
                         thought_gate=_cli_thought_gate,
                         stop_event=threading.Event(),  # registered for the run: its proposal wait sees a stop (#1344)
+                        state_home=getattr(args, "_sim_tmpdir", None),  # a --sim run's state goes with its sandbox
                     )
                 finally:
                     if llm_worker:

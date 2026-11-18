@@ -25,7 +25,7 @@ import socket
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from maxim.models.language.types import RESOLVED_KEY_MARKER
@@ -857,6 +857,10 @@ class LaneBackendManager:
         # The profiles its build's preflight left missing (refused, failed or declined), set by build_primary_router:
         # a later consent check in the same build reads it so the operator is not asked twice (#1396 bullet 2).
         self.declined_profiles: frozenset[str] = frozenset()
+        # The models the router this build returns could not use, profile -> LocalModelUnavailable cause: the large
+        # lane's preflight declines and the run seam's own refusal (build_run_router). A caller that never asks (the
+        # console's talk) names exactly these, so it never points at another lane's model (#1658 review round).
+        self.unusable_models: dict[str, str] = {}
         self._backends: dict[str, Any] = {}
         self._cloud_lanes: set[str] = set()
         self._peer_owned = peer_owned
@@ -1867,6 +1871,8 @@ def _ensure_lane_profiles_available(
     *,
     profile: str | None = None,
     declined_out: set[str] | None = None,
+    interactive: Literal[False] | None = None,
+    large_declined_out: set[str] | None = None,
 ) -> dict[str, Any]:
     """Make sure each local lane's GGUF is on disk; auto-download if missing.
 
@@ -1879,12 +1885,19 @@ def _ensure_lane_profiles_available(
     ``profile`` is the build's own (``build_primary_router(profile=)``, normalized there). When it is the lane profile
     that stays missing, the caller named that model, so the build refuses, typed (``LocalModelUnavailable``), rather
     than re-walk to another model (owner decision OD2, #1396 bullet 2). Each profile that stays missing is added to
-    ``declined_out``, so a later check in the same build does not ask again.
+    ``declined_out``, so a later check in the same build does not ask again; the large lane's (the router the build
+    returns) also to ``large_declined_out``.
+
+    The gate asks only as :func:`maxim.models.download.consent_interactive` allows: on the main thread, unless the
+    caller passes ``interactive=False`` (#1658: it asked on any thread, so a console talk request sat on the server's
+    stdin).
 
     No-op for cloud lanes, remote lanes, and lanes with no profile.
     """
+    from maxim.models.download import consent_interactive
     from maxim.models.language.types import LocalModelUnavailable
 
+    asks = consent_interactive(interactive)  # resolved on the calling thread, before any lane is looked at
     try:
         from maxim.models.download import ensure_available, llm_models
         from maxim.models.language.config import get_profile
@@ -1924,11 +1937,13 @@ def _ensure_lane_profiles_available(
                 lane_name,
                 lane_profile,
             )
-        ok = ensure_available(lane_profile, logger=logger)
+        ok = ensure_available(lane_profile, interactive=asks, logger=logger)
         if ok:
             continue
         if declined_out is not None:
             declined_out.add(lane_profile)
+        if large_declined_out is not None and lane_name == "large":
+            large_declined_out.add(lane_profile)
         if profile is not None and lane_profile == profile:
             raise LocalModelUnavailable(profile)  # the caller named it: no re-walk to another model (OD2)
 
@@ -2232,6 +2247,7 @@ def build_primary_router(
     *,
     logger: Any | None = None,
     profile: str | None = None,
+    interactive: Literal[False] | None = None,
 ) -> tuple[Any | None, "LaneBackendManager"]:
     """Build the infer-lane LLMRouter + its owning LaneBackendManager.
 
@@ -2251,6 +2267,7 @@ def build_primary_router(
     ``profile`` is the model this build serves, for a caller with its own (the dual-LLM AUT, ``maxim.create``). It
     wins over ``MAXIM_LLM_PROFILE`` everywhere that variable steers the build, and the manager keeps it for the lanes
     it builds later. Pass it here, never by writing the env var around the call (#1538).
+    ``interactive=False``: the preflight never asks to download (#1658); the default asks on the main thread only.
 
     Returns (None, manager) if the large tier resolves to nothing — e.g. the
     tier has no profile AND no remote URL, the backend build fails, or the
@@ -2383,8 +2400,15 @@ def build_primary_router(
     # we re-walk the tier table with the missing profile filtered out so
     # the lane lands on the next-smaller model the user already has.
     _declined: set[str] = set()
+    _large_declined: set[str] = set()  # of those, the large lane's: the router's own model (#1658 review round)
     lane_configs = _ensure_lane_profiles_available(
-        lane_configs, capabilities, logger, profile=profile, declined_out=_declined
+        lane_configs,
+        capabilities,
+        logger,
+        profile=profile,
+        declined_out=_declined,
+        interactive=interactive,
+        large_declined_out=_large_declined,
     )
 
     # Health-check any user-supplied remote_url before wiring a lane to it.
@@ -2416,6 +2440,7 @@ def build_primary_router(
         _auto_spawn_sources=_auto_spawn_sources,
         _llm_json_func_config=_llm_json_func_config,
         declined=_declined,
+        large_declined=_large_declined,
     )
 
 
@@ -2424,18 +2449,22 @@ def build_run_router(
     *,
     logger: Any | None = None,
     profile: str | None = None,
+    interactive: Literal[False] | None = None,
 ) -> tuple[Any | None, "LaneBackendManager | None"]:
     """A run's router: :func:`build_primary_router`, else the ``load_llm_config`` fallback, with its model usable.
 
-    The one composition the run sites share (the sim's shared and AUT routers, research, the robot runtime), so none
+    The one composition the run sites share (the sim's shared and AUT routers, research, the robot runtime, the
+    console's talk), so none
     hand-builds the fallback (#1396 bullet 2). Whichever router it holds passes the consent check before it is returned
     and before anything warms it: the fallback is built by ``models/download.py::consented_router`` (the one consented
     builder); a primary router is checked (``router_model_problem``) only when its large lane runs in-process (a
     spawned server, a peer or a cloud lane has no local file here). A router whose providers include a cloud or peer
-    tail (``--cloud-fallback``) keeps serving from it while its local file is missing. The check asks only on the main
-    thread and never again for a profile this build's preflight already left missing
-    (``LaneBackendManager.declined_profiles``). The preflight inside :func:`build_primary_router` is not this check: it
-    asks wherever stdin is a terminal, on any thread (a filed residual).
+    tail (``--cloud-fallback``) keeps serving from it while its local file is missing. This check and the preflight
+    inside :func:`build_primary_router` get one answer, resolved here once by
+    :func:`maxim.models.download.consent_interactive`: ask only on the main thread, never with ``interactive=False``
+    (#1658). Neither asks again for a profile the preflight already left missing
+    (``LaneBackendManager.declined_profiles``). A model it refuses is recorded with its cause on
+    ``LaneBackendManager.unusable_models``, beside the large lane's preflight declines.
 
     When the check fails: with ``profile`` (the caller named the model) the run refuses, typed
     (``LocalModelUnavailable``, carrying the check's cause; owner decision OD2), and ``build_primary_router``'s
@@ -2443,29 +2472,40 @@ def build_run_router(
     the caller's own no-LLM path. An implicit build whose profile comes from ``MAXIM_LLM_PROFILE`` and is declined
     lands here too, with no LLM: the manager serves that env profile, not the preflight's re-walk (a filed residual).
     """
-    from maxim.models.download import consented_router, router_model_problem
+    from maxim.models.download import consent_interactive, consented_router, router_model_problem
     from maxim.models.language.router import load_llm_config
     from maxim.models.language.types import LocalModelUnavailable
 
+    interactive = consent_interactive(interactive)  # once, on this thread, for both checks (#1658)
     named = _normalized_build_profile(profile)  # build_primary_router and load_llm_config each resolve it themselves
-    router, manager = build_primary_router(capabilities=capabilities, logger=logger, profile=profile)
-    interactive = None if threading.current_thread() is threading.main_thread() else False
+    router, manager = build_primary_router(
+        capabilities=capabilities, logger=logger, profile=profile, interactive=interactive
+    )
     declined = manager.declined_profiles if manager is not None else frozenset()
     if router is None:
         llm_config = load_llm_config(profile_override=profile)
         if not llm_config.enabled:
             return None, manager
+        checked = _config_profile(llm_config)
         router, cause = consented_router(llm_config, interactive=interactive, declined=declined, logger=logger)
     elif manager is not None and manager.get_lane_kind("large") == "local":
+        checked = _config_profile(getattr(router, "cfg", None))
         cause = router_model_problem(router, interactive=interactive, declined=declined, logger=logger)
         router = router if cause is None else None
     else:
         return router, manager
     if router is not None:
         return router, manager
+    if manager is not None and checked:  # the refused model, for a caller that names it (talk; #1658 review round)
+        manager.unusable_models.setdefault(checked, cause or LocalModelUnavailable.NOT_DOWNLOADED)
     if named is not None:
         raise LocalModelUnavailable(named, cause=cause or LocalModelUnavailable.NOT_DOWNLOADED)
     return None, manager
+
+
+def _config_profile(cfg: Any) -> str:
+    """The profile a router config loads (its ``profile``, else its ``model_base``), or ``""``."""
+    return str(getattr(cfg, "profile", "") or getattr(cfg, "model_base", "") or "").strip()
 
 
 def _normalized_build_profile(profile: str | None) -> str | None:
@@ -2489,6 +2529,7 @@ def _primary_router_and_manager(
     _auto_spawn_sources: dict[str, str],
     _llm_json_func_config: dict,
     declined: set[str],
+    large_declined: set[str],
 ) -> tuple[Any | None, "LaneBackendManager"]:
     """``build_primary_router``'s last step: the ``--cloud-fallback`` tail, the manager on the final lanes, its banner
     and decision record, and the large tier's router. ``declined`` (the profiles the preflight left missing) rides on the manager, so a later
@@ -2511,6 +2552,9 @@ def _primary_router_and_manager(
         profile_override=profile,
     )
     manager.declined_profiles = frozenset(declined)
+    from maxim.models.language.types import LocalModelUnavailable
+
+    manager.unusable_models = dict.fromkeys(sorted(large_declined), LocalModelUnavailable.NOT_DOWNLOADED)
 
     if logger is not None:
         logger.info("Lane assignments: %s", manager.describe())
@@ -3078,6 +3122,7 @@ def _validate_swap_profile(profile: str) -> tuple[str, dict[str, Any]]:
     client-side issue.
     """
     from maxim.models.language.config import get_profile, list_llm_profiles, normalize_llm_profile
+    from maxim.models.language.router import LLAMA_CPP_PROVIDER_TYPES, normalize_provider_type
 
     resolved = normalize_llm_profile(profile)
     if not resolved:
@@ -3089,7 +3134,8 @@ def _validate_swap_profile(profile: str) -> tuple[str, dict[str, Any]]:
         raise ValueError(f"Profile '{resolved}' is a cloud provider — cannot run on llama-cpp-server")
 
     backend = profile_data.get("backend", "llama_cpp")
-    if backend not in ("llama_cpp", "llamacpp", "llama"):
+    # The router's spelling table, so a profile the router builds as llama.cpp is not refused here (#1659).
+    if normalize_provider_type(backend) not in LLAMA_CPP_PROVIDER_TYPES:
         raise ValueError(f"Profile '{resolved}' uses {backend} backend — not compatible with llama-cpp-server")
 
     available = list_llm_profiles()

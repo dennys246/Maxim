@@ -13,10 +13,12 @@ Design notes, load-bearing:
   ``run_agentic_loop`` threads share no BIO state — separate
   ``persistence_dir`` (never a shared ``~/.maxim``), separate percept
   source/sink, separate bio-stack. (`AgentPool.run_turn` is explicitly not
-  the full loop; this is.) Known shared residue, diagnostics only: the
-  loop's CWD-relative ``data/agents/<name>/runtime/state_*.json`` — both
-  AUTs are MaximAgents with second-resolution run ids, so those overlap;
-  run the harness from a scratch CWD (the CLI and the test both do).
+  the full loop; this is.) The loop's runtime-state snapshot (diagnostics
+  only) is one file per run in the AUT's own home (``_loop_kwargs`` passes
+  ``state_home=persistence_dir``):
+  ``<persistence_dir>/runtime_state/<name>/state_<run_id>_<token>.json``
+  (#1264), so the two AUTs never overlap there and neither writes the
+  operator's data home.
 * **Substrate-primary, no LLM in the action path**: the loop builds its own
   ``SensorEncoder`` from ``memory_hub.ec`` and proposes via
   ``propose_via_substrate`` — the world channel's A4-gained encode IS the
@@ -191,6 +193,9 @@ class FakeBridgeServer:
 
 class MinecraftAut:
     """Everything one AUT owns — built by :func:`build_minecraft_aut`."""
+
+    # Declared for the type checker: ``_loop_kwargs`` (#1264 ``state_home``) and the workspace/EC readers use it.
+    persistence_dir: str
 
     def __init__(self, **parts: Any) -> None:
         self.__dict__.update(parts)
@@ -379,6 +384,8 @@ def _loop_kwargs(
         # THE GATE'S SECOND HALF: a benchmark session must take the FULL
         # close, or the consolidation being measured never persists.
         "consolidation": "full",
+        # #1264: the run's state file stays in this AUT's own home (never the operator's data home, never shared).
+        "state_home": aut.persistence_dir,
     }
     if substrate_telemetry is not None:
         kwargs["substrate_telemetry"] = substrate_telemetry

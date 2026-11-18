@@ -429,7 +429,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
     clock.install()
     aut = None
     try:
-        os.chdir(workdir)  # the loop's CWD-relative data/agents/<name>/runtime/ state files land here
+        os.chdir(workdir)  # a scratch CWD (the loop's state file is under the data home since #1264)
         world = _ScriptedWorld(clock, submerged=spec["submerged"])
         home = workdir / AGENT_ID
         aut = build_minecraft_aut(agent_id=AGENT_ID, bridge_port=0, persistence_dir=str(home), client=world)
