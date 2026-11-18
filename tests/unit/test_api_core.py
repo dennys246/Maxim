@@ -265,6 +265,25 @@ def test_run_delivers_goal_through_runtime_input_mailbox(tmp_path, mocked_run_ru
     assert len(mocked_run_runtime.loop_calls) == 1
 
 
+def test_run_keeps_loop_state_under_home_dir(tmp_path, mocked_run_runtime):
+    """#1264 / D15 (owner 2026-11-18): ``home_dir`` owns the loop's runtime-state file too, so ``run`` hands the
+    loop ``state_home=<home_dir>`` and the file lands at ``<home_dir>/runtime_state/<name>/``."""
+    home = tmp_path / "api_home"
+    mocked_run_runtime.api.run(model="test-profile", goal="look around", home_dir=str(home), learning=False)
+
+    assert [call["state_home"] for call in mocked_run_runtime.loop_calls] == [str(home)]
+
+
+def test_run_without_home_dir_keeps_loop_state_under_the_data_home(tmp_path, monkeypatch, mocked_run_runtime):
+    """No ``home_dir``: the state root is the data home (``MAXIM_DATA_HOME``), never the working directory."""
+    data_home = tmp_path / "data_home"
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(data_home))
+    monkeypatch.chdir(tmp_path)
+    mocked_run_runtime.api.run(model="test-profile", goal="look around", learning=False)
+
+    assert [call["state_home"] for call in mocked_run_runtime.loop_calls] == [str(data_home)]
+
+
 def test_run_rejects_robot_in_headless_mode(tmp_path, mocked_run_runtime):
     """Contradictory hardware options fail loudly instead of ignoring robot."""
     from maxim.exceptions import ConfigurationError
