@@ -8,7 +8,6 @@ with legacy internal-thread mode.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -17,15 +16,12 @@ from typing import Any
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass
-class FakeContext:
-    """Minimal StructuredContext stand-in."""
+def FakeContext(cli_inputs: list[str] | None = None) -> Any:
+    """A real ``StructuredContext`` (#1689): a five-field stand-in only worked while the pre-model shortcut answered
+    "maxim hello" before the prompt builder read the context; the builder reads fields it lacked."""
+    from maxim.agents.bus import StructuredContext
 
-    cli_inputs: list[str] = field(default_factory=list)
-    audio_inputs: list = field(default_factory=list)
-    video_observations: list = field(default_factory=list)
-    movement_observations: list = field(default_factory=list)
-    environment_data: dict = field(default_factory=dict)
+    return StructuredContext(timestamp=time.time(), cli_inputs=list(cli_inputs or []))
 
 
 class FakeLLM:
@@ -42,7 +38,11 @@ class FakeLLM:
         self._delay = delay
         self.call_count = 0
 
-    def generate_json(self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024) -> dict[str, Any] | None:
+    def generate_json(
+        self, prompt: str, temperature: float = 0.3, max_tokens: int = 1024, **_kwargs: Any
+    ) -> dict[str, Any] | None:
+        # The worker passes provider_hint=, request_context=, ... (#1689: without them every call raised TypeError
+        # and fell back, which the pre-model shortcut hid for "maxim hello").
         self.call_count += 1
         if self._delay > 0:
             time.sleep(self._delay)
@@ -108,7 +108,8 @@ class TestLLMWorkerPoolMode:
         """submit_context routes through pool, get_latest_proposal returns result."""
         from maxim.agents.llm_worker import LLMWorker
 
-        worker = LLMWorker(llm=FakeLLM(), stale_threshold_s=10.0)
+        fake = FakeLLM()
+        worker = LLMWorker(llm=fake, stale_threshold_s=10.0)
         worker.start()
         try:
             assert _submit_test_context(worker) is True
@@ -124,6 +125,8 @@ class TestLLMWorkerPoolMode:
             assert proposal is not None
             assert proposal.action is not None
             assert proposal.action["tool_name"] == "respond"
+            # The model answered, not the fallback (#1689: the shortcut used to answer "maxim hello" without it)
+            assert fake.call_count >= 1 and proposal.action["params"]["message"] == "Hello"
         finally:
             worker.stop()
 
@@ -385,11 +388,12 @@ class TestLLMWorkerPriority:
         call_order = []
 
         class OrderTrackingLLM:
-            def generate_json(self, prompt, temperature=0.3, max_tokens=1024):
-                # Extract which request this is from the prompt
-                if "high" in prompt.lower():
+            def generate_json(self, prompt, temperature=0.3, max_tokens=1024, **_kwargs):
+                # Which request this is, by a marker no prompt boilerplate carries. (#1689: without **_kwargs every
+                # call raised TypeError and fell back, and the old `if len(call_order) >= 2` let that pass.)
+                if "zqhighmark" in prompt.lower():
                     call_order.append("high")
-                elif "low" in prompt.lower():
+                elif "zqlowmark" in prompt.lower():
                     call_order.append("low")
                 else:
                     call_order.append("unknown")
@@ -414,8 +418,8 @@ class TestLLMWorkerPriority:
         # Submit low priority first, then high priority (before pool starts)
         # Lane.submit works even before pool.start (it registers jobs and queues them)
         try:
-            _submit_test_context(worker, triggering_input="maxim low priority test", priority=0)
-            _submit_test_context(worker, triggering_input="maxim high priority test", priority=10)
+            _submit_test_context(worker, triggering_input="maxim zqlowmark priority test", priority=0)
+            _submit_test_context(worker, triggering_input="maxim zqhighmark priority test", priority=10)
 
             # Now start pool - dispatcher will process by priority
             pool.start()
@@ -423,9 +427,8 @@ class TestLLMWorkerPriority:
             # Wait for both to process
             time.sleep(3.0)
 
-            # High priority should have been dequeued first
-            if len(call_order) >= 2:
-                assert call_order[0] == "high", f"Expected high priority first, got: {call_order}"
+            # Both reached the model, and high priority was dequeued first
+            assert call_order == ["high", "low"], f"Expected the model called high then low, got: {call_order}"
         finally:
             worker.stop()
             pool.stop()
@@ -609,13 +612,11 @@ class TestSessionIdPlumbing:
         ``request_context`` dict in that method includes
         ``"session_id": self._session_id``.
 
-        A pool-path integration test would be ideal, but the pool
-        path's ``_build_prompt`` short-circuits trivial inputs like
-        "maxim hello" through the ``{"action": ...}`` pre-built JSON
-        shortcut (llm_worker.py:917), never reaching the LLM — so the
-        existing ``test_submit_and_get_proposal`` ALSO never actually
-        calls the FakeLLM. Instead we lock the dict shape via source
-        inspection to catch silent regressions in the dict-build site.
+        This guard predates #1689: the pool path then answered trivial
+        inputs like "maxim hello" with a pre-built JSON shortcut that
+        never reached the LLM, so the dict shape is locked via source
+        inspection. Since #1689 ``test_submit_and_get_proposal`` does
+        reach the FakeLLM; this source guard stays as a cheap check.
         The equivalent end-to-end coverage lives in
         ``test_session_id_threaded_into_generate_json_direct_dict``
         below, which DOES exercise the LLM code path end-to-end.

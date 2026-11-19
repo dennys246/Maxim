@@ -16,10 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.llm_context import _load_foundational_context
-from maxim.agents.llm_fallback import (
-    generate_simple_answer,
-    ReasoningCarryover,
-)
+from maxim.agents.llm_fallback import ReasoningCarryover
 from maxim.agents.llm_types import LLMRequest, ModeInfo
 from maxim.agents.prompt_budgeter import (
     PromptBudgeter,
@@ -1126,16 +1123,8 @@ class PromptBuilder:
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M %p")
 
-        # Try simple answers first, unless the request carries held inputs (#1451): a canned reply would answer only
-        # the request, and the held inputs, already marked read, would vanish unshown.
-        if question_text and not request.deferred_inputs:
-            answer = generate_simple_answer(question_text, date_str, time_str)
-            if answer:
-                import json
-
-                escaped_answer = json.dumps(answer)
-                return f'{{"action":{{"tool_name":"respond","params":{{"message":{escaped_answer}}}}},"confidence":0.95,"reasoning":"direct_answer"}}'
-
+        # No canned answer here (#1689): every input with a question reaches the model. Both prompts carry the date and
+        # time: the tool-aware one in its datetime section, ANSWER_ONLY as the block before its first blank line.
         if not request.use_tool_prompting or not request.available_tools:
             if request.deferred_inputs:  # only a planning-liveness loop carries them, and it prompts with tools
                 logger.warning(
@@ -1144,7 +1133,8 @@ class PromptBuilder:
                     [d[:80] for d in request.deferred_inputs],
                 )
             if question_text:
-                return f"""ANSWER_ONLY|{question_text}"""
+                # The router splits the payload at its FIRST blank line: this builder's clock line, then the question.
+                return f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
             return ""
 
         return self._build_tool_aware_prompt(request, question_text, date_str, time_str)

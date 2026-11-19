@@ -1,15 +1,15 @@
-"""Fallback behavior and simple answer generation for the LLM worker.
+"""Fallback behavior for the LLM worker.
 
 Contains:
 - Regex patterns and static methods for arithmetic/math evaluation
 - ReasoningCarryover buffer for decision+outcome tracking
 - FallbackBehavior class for when LLM is unavailable
-- Standalone functions for fallback/simple answer generation (delegated from LLMWorker)
+- Standalone fallback generation for a missing or unparseable model reply (delegated from LLMWorker). The
+  pre-model canned answers (``generate_simple_answer``) were deleted by #1689: a keyword match is not a decision.
 """
 
 from __future__ import annotations
 
-import functools
 import re
 import threading
 import time
@@ -24,13 +24,6 @@ if TYPE_CHECKING:
     from maxim.agents.bus import Percept
 
 logger = logging.getLogger(__name__)
-
-
-# Performance: Cache compiled regex patterns for phrase matching
-@functools.lru_cache(maxsize=256)
-def _compile_phrase_pattern(phrase: str) -> re.Pattern:
-    """Compile and cache regex pattern for phrase matching."""
-    return re.compile(rf"\b{re.escape(phrase)}\b")
 
 
 # Simple arithmetic: "number operator number" (supports negatives, decimals, 'x' for multiply)
@@ -144,22 +137,6 @@ class ReasoningCarryover:
 # ─────────────────────────────────────────────────────────────────────────────
 # Static Math Helpers
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def matches_phrase(text: str, phrase: str) -> bool:
-    phrase = phrase.strip()
-    if not phrase:
-        return False
-    # Use cached compiled pattern for performance
-    compiled = _compile_phrase_pattern(phrase)
-    return compiled.search(text) is not None
-
-
-def normalize_phrases(value: Any, default: list[str]) -> list[str]:
-    if not isinstance(value, list):
-        return default
-    normalized = [str(item).strip() for item in value if item]
-    return normalized or default
 
 
 def evaluate_simple_arithmetic(text: str) -> str | None:
@@ -283,84 +260,8 @@ def evaluate_unary_math(text: str) -> str | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Standalone Fallback/Simple Answer Functions
+# Standalone Fallback Functions
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def generate_simple_answer(question: str, date_str: str, time_str: str) -> str | None:
-    """Generate answers for simple factual questions without LLM.
-
-    Returns the answer string, or None if LLM is needed.
-    Only matches SHORT, simple questions - complex questions with
-    greetings or other phrases embedded should go to the LLM.
-    """
-    q = question.lower().strip()
-
-    # Skip simple answers if the question is too long or complex
-    word_count = len(q.split())
-    if word_count > 8:
-        return None
-    fallback_config = get_fallback_responses()
-    if not isinstance(fallback_config, dict):
-        fallback_config = {}
-    simple_answers = fallback_config.get("simple_answers")
-    if not isinstance(simple_answers, dict):
-        simple_answers = {}
-
-    time_default = ["what time", "what's the time", "current time", "time is it"]
-    date_default = [
-        "what date",
-        "what's the date",
-        "what day",
-        "today's date",
-        "current date",
-    ]
-    identity_default = ["who are you", "what are you", "your name"]
-    greeting_default = ["hello", "hi", "hey", "greetings"]
-    wellbeing_default = ["how are you"]
-
-    time_phrases = normalize_phrases(simple_answers.get("time_phrases"), time_default)
-    date_phrases = normalize_phrases(simple_answers.get("date_phrases"), date_default)
-    identity_phrases = normalize_phrases(simple_answers.get("identity_phrases"), identity_default)
-    greeting_phrases = normalize_phrases(simple_answers.get("greeting_phrases"), greeting_default)
-    wellbeing_phrases = normalize_phrases(simple_answers.get("wellbeing_phrases"), wellbeing_default)
-
-    # Time questions
-    if any(matches_phrase(q, phrase) for phrase in time_phrases):
-        return f"The current time is {time_str}."
-
-    # Date questions
-    if any(matches_phrase(q, phrase) for phrase in date_phrases):
-        return f"Today is {date_str}."
-
-    # Combined date/time
-    if "date and time" in q or "time and date" in q:
-        return f"It's {time_str} on {date_str}."
-
-    # Identity questions
-    if any(matches_phrase(q, phrase) for phrase in identity_phrases):
-        return "I'm Maxim, a robot assistant designed to understand reality and help people."
-
-    # Greeting responses
-    if any(matches_phrase(q, phrase) for phrase in greeting_phrases):
-        return "Hello! How can I help you?"
-
-    # How are you
-    if any(matches_phrase(q, phrase) for phrase in wellbeing_phrases):
-        return "I'm functioning well, thank you for asking. How can I assist you?"
-
-    # Simple arithmetic (e.g., "what is 1+1", "calculate 5*3")
-    arithmetic_result = evaluate_simple_arithmetic(q)
-    if arithmetic_result:
-        return arithmetic_result
-
-    # Unary math (e.g., "square root of 25", "5 cubed")
-    unary_result = evaluate_unary_math(q)
-    if unary_result:
-        return unary_result
-
-    # Can't answer directly - need LLM
-    return None
 
 
 def generate_llm_fallback(
