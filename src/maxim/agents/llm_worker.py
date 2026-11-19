@@ -256,6 +256,18 @@ def _record_inbound_rendered(request: LLMRequest, prompt: str) -> None:
         request.inbound_feed.note_rendered(rendered)
 
 
+def _sim_log_raw_response(response: Any) -> None:
+    """Trace the parsed reply's tool for sim debugging (moved verbatim out of ``LLMWorker._process_request``, #1691)."""
+    try:
+        from maxim.simulation.sim_logger import sim_log
+
+        _action = response.get("action") if isinstance(response, dict) else None
+        _tool = _action.get("tool_name") if isinstance(_action, dict) else None
+        sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
+    except Exception:
+        pass
+
+
 def _sim_log_proposal_built(proposal: LLMProposal, request: LLMRequest) -> None:
     try:
         from maxim.simulation.sim_logger import sim_log
@@ -1248,6 +1260,7 @@ class LLMWorker:
                     },
                     reasoning="llm_timeout",
                     strategy_used="fallback",
+                    degraded=True,
                     confidence=0.7,
                     mode_goal_achieved=False,
                     citations=[],
@@ -1284,15 +1297,7 @@ class LLMWorker:
                 mode_name=request.mode.name if request.mode else "unknown",
             )
 
-            # Trace for simulation debugging
-            try:
-                from maxim.simulation.sim_logger import sim_log
-
-                _action = response.get("action") if isinstance(response, dict) else None
-                _tool = _action.get("tool_name") if isinstance(_action, dict) else None
-                sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
-            except Exception:
-                pass
+            _sim_log_raw_response(response)  # trace for simulation debugging
 
             if not response or not isinstance(response, dict):
                 # LLM failed - generate a fallback response for the user.
@@ -1305,6 +1310,7 @@ class LLMWorker:
                         action=fallback,
                         reasoning="llm_fallback",
                         strategy_used="fallback",
+                        degraded=True,
                         confidence=0.7,
                         mode_goal_achieved=False,
                         citations=[],

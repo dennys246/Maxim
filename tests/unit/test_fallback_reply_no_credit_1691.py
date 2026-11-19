@@ -76,7 +76,27 @@ class _SilentLLM:
         return None
 
 
-def _fallback_proposal() -> Any:
+class _TimedOutLLM:
+    """What the worker's model call returns when it runs out of time."""
+
+    def generate_json(self, prompt: str, *_a: Any, **_k: Any) -> dict[str, Any]:
+        return {"_timeout": True, "_timeout_s": 1.0}
+
+
+class _SpoofingLLM:
+    """A model that writes ``"strategy": "fallback"`` into a real decision (Architecture lens, DO-NOT-MERGE)."""
+
+    def generate_json(self, prompt: str, *_a: Any, **_k: Any) -> dict[str, Any]:
+        return {
+            "action": {"tool_name": "respond", "params": {"message": "a real answer"}},
+            "reasoning": GOAL,
+            "strategy": "fallback",
+            "confidence": 0.9,
+            "mode_goal_achieved": False,
+        }
+
+
+def _worker_proposal(llm: Any) -> Any:
     from maxim.agents.bus import StructuredContext
     from maxim.agents.llm_types import LLMRequest, ModeInfo
     from maxim.agents.llm_worker import LLMWorker
@@ -94,13 +114,19 @@ def _fallback_proposal() -> Any:
         triggering_input="can you look to your left",
         deliberation_available=False,
     )
-    worker = LLMWorker(llm=_SilentLLM(), n_ctx=8192)
+    worker = LLMWorker(llm=llm, n_ctx=8192)
     worker.start()
     try:
         proposal = worker._process_request(request)
     finally:
         worker.stop()
-    assert proposal is not None and proposal.strategy_used == "fallback", proposal
+    assert proposal is not None and proposal.action is not None, proposal
+    return proposal
+
+
+def _fallback_proposal() -> Any:
+    proposal = _worker_proposal(_SilentLLM())
+    assert proposal.degraded is True and proposal.strategy_used == "fallback", proposal
     assert proposal.reasoning == "llm_fallback" and proposal.action["tool_name"] == "respond"
     # Outside a sim nothing drops it: it is executed as the turn's action.
     assert NullSimulationAdapter().should_skip_fallback_proposal(proposal) is False
@@ -192,10 +218,9 @@ def test_the_same_action_from_a_decision_still_books() -> None:
     assert got["plan_outcomes"] == 1
 
 
-@pytest.mark.parametrize("reasoning", ["llm_fallback", "llm_timeout", "LLM unavailable, using fallback behavior"])
-def test_every_fallback_producer_is_recognised(reasoning: str) -> None:
-    assert tool_dispatch.is_fallback_proposal(SimpleNamespace(strategy_used="fallback", reasoning=reasoning))
-    assert not tool_dispatch.is_fallback_proposal(SimpleNamespace(strategy_used=None, reasoning=reasoning))
+def test_only_the_degraded_flag_marks_a_fallback() -> None:
+    assert tool_dispatch.is_fallback_proposal(SimpleNamespace(degraded=True))
+    assert not tool_dispatch.is_fallback_proposal(SimpleNamespace(strategy_used="fallback", reasoning="llm_fallback"))
     assert not tool_dispatch.is_fallback_proposal(None)
 
 
@@ -213,3 +238,30 @@ def test_the_skip_is_logged_once_per_run(caplog: pytest.LogCaptureFixture) -> No
         _run(proposal, run_id=run_id)
     skips = [r for r in caplog.records if "without NAc credit" in r.getMessage()]
     assert len(skips) == 1, [r.getMessage() for r in skips]
+
+
+def test_a_timeout_fallback_books_no_learning() -> None:
+    proposal = _worker_proposal(_TimedOutLLM())
+    assert proposal.reasoning == "llm_timeout" and proposal.degraded is True, proposal
+    got = _run(proposal)
+    assert len(got["said"]) == 1 and got["changed"] == [] and got["plan_outcomes"] == 0, got
+
+
+def test_a_model_cannot_claim_to_be_a_fallback() -> None:
+    """The label is the worker's, never the model's: ``"strategy": "fallback"`` in a parsed reply still books."""
+    proposal = _worker_proposal(_SpoofingLLM())
+    assert proposal.strategy_used == "fallback" and proposal.degraded is False, proposal
+    got = _run(proposal)
+    assert "_links" in got["changed"] and "_goal_reward_bias" in got["changed"], got["changed"]
+    assert got["plan_outcomes"] == 1
+
+
+def test_a_planning_queued_fallback_is_read_through_its_source() -> None:
+    from maxim.agents.autonomy import Proposal
+
+    fallback = _fallback_proposal()
+    queued = Proposal(id="p1691", action=fallback.action, reasoning=fallback.reasoning, confidence=0.7, source=fallback)
+    assert tool_dispatch.is_fallback_proposal(queued)
+    assert not tool_dispatch.is_fallback_proposal(
+        Proposal(id="p2", action=fallback.action, reasoning="x", confidence=0.7)
+    )

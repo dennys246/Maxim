@@ -6,7 +6,7 @@
     {
       "file": "src/maxim/agents/llm_worker.py",
       "qualname": "LLMWorker._process_request",
-      "lines": 231
+      "lines": 225
     },
     {
       "file": "src/maxim/api.py",

@@ -34,7 +34,9 @@ _SPECULATIVE: contextvars.ContextVar[bool] = contextvars.ContextVar("maxim_specu
 
 @contextlib.contextmanager
 def speculative_calls() -> Iterator[None]:
-    """Run the enclosed ``execute`` calls as speculative: no NAc credit for either outcome (#1200 TF9)."""
+    """Run the enclosed ``execute`` calls as ones the agent did not choose: no NAc credit for either outcome.
+
+    Callers: speculative prefetch (#1200 TF9) and a fallback reply (``tool_dispatch.execute_and_learn``, #1691)."""
     token = _SPECULATIVE.set(True)
     try:
         yield

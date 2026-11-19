@@ -621,37 +621,43 @@ def _learning_nac(nac: Any | None, refused: ToolErrorKind | None) -> Any | None:
     return None
 
 
-_FALLBACK_SKIP_LOGGED: set[str] = set()  # run ids whose first fallback skip was logged (#1691)
+_fallback_skip_logged_for = [""]  # the last run id whose fallback skip was logged: one slot, no growth (#1691)
 
 
 def is_fallback_proposal(proposal: Any) -> bool:
-    """True for a degraded-mode reply no decision produced: ``strategy_used == "fallback"``, which the worker sets on a
-    missing or unparseable model reply (``reasoning="llm_fallback"``) and on a timeout (``"llm_timeout"``), and
-    ``FallbackBehavior.get_fallback_proposal`` sets when no model is available (#1691)."""
-    return getattr(proposal, "strategy_used", None) == "fallback"
+    """True for a degraded-mode reply no decision produced (#1691): ``LLMProposal.degraded``, which only the
+    fallback builders set (the worker's timeout and parse-failure branches; ``FallbackBehavior.get_fallback_proposal``,
+    which has no shipped caller today). Never ``strategy_used``: the parsed proposal copies that from the model's
+    own JSON, so a model could write ``"strategy": "fallback"`` and escape credit. A PLANNING-queued
+    ``autonomy.Proposal`` is read through its ``source``."""
+    if getattr(proposal, "degraded", False) is True:
+        return True
+    return getattr(getattr(proposal, "source", None), "degraded", False) is True
 
 
-def _fallback_context(proposal: Any) -> contextlib.AbstractContextManager[None]:
-    """``executor.speculative_calls()`` for a fallback proposal, else a no-op: the executor's tool-pain bridge then
-    books neither valence for it, as for any call the agent did not choose (#1200 TF9, #1691)."""
-    if not is_fallback_proposal(proposal):
+def _fallback_context(fallback: bool) -> contextlib.AbstractContextManager[None]:
+    """``executor.speculative_calls()`` for a fallback, else a no-op: the executor's tool-pain bridge then books
+    neither valence for it, as for any call the agent did not choose (#1200 TF9, #1691)."""
+    if not fallback:
         return contextlib.nullcontext()
     from maxim.runtime.executor import speculative_calls
 
     return speculative_calls()
 
 
-def _credit_nac(nac: Any | None, proposal: Any, run_id: str) -> Any | None:
-    """The NAc a dispatched action may credit: None for a fallback proposal (#1691), else *nac*.
+def _credit_nac(nac: Any | None, fallback: bool, proposal: Any, run_id: str) -> Any | None:
+    """The NAc a dispatched action may credit: None for a fallback (#1691), else *nac*.
 
-    A fallback reply runs, so the user hears it, but it teaches nothing: like a gate refusal (``_learning_nac``)
-    it keeps the outcome window, the carryover and the context pool, and books no causal link, goal credit,
-    cluster reward, energy cost or plan outcome; ``_fallback_context`` keeps the executor's bridge from booking it. The behaviour tier is engineering degraded-mode output, neither an
-    innate prior nor learned. The skip is logged once per run."""
-    if nac is None or not is_fallback_proposal(proposal):
+    A fallback reply runs, so the user hears it, but earns no credit: like a gate refusal (``_learning_nac``) it
+    keeps the outcome window, the carryover and the context pool, and books no causal link, goal credit, cluster
+    reward, energy cost or plan outcome; ``_fallback_context`` keeps the executor's bridge from booking it. Kept on
+    purpose, as for a gate refusal (owner decision 2026-10-31): the Hippocampus episode and ``memory.store_raw``
+    record what happened (intent goal ``llm_fallback``), with no valence. The behaviour tier is engineering
+    degraded-mode output. The skip is logged once per run."""
+    if nac is None or not fallback:
         return nac
-    if run_id not in _FALLBACK_SKIP_LOGGED:
-        _FALLBACK_SKIP_LOGGED.add(run_id)
+    if _fallback_skip_logged_for[0] != run_id:
+        _fallback_skip_logged_for[0] = run_id
         _loop_logger.info(
             "fallback reply (%s) executed without NAc credit; later skips this run are not logged (#1691)",
             getattr(proposal, "reasoning", "") or "fallback",
@@ -659,9 +665,9 @@ def _credit_nac(nac: Any | None, proposal: Any, run_id: str) -> Any | None:
     return None
 
 
-def _retry_write_file_overwrite(executor: Any, action: dict[str, Any], result: Any) -> tuple[Any, bool]:
-    """Re-run a ``write_file`` that hit "already exists" with ``overwrite=True`` (moved verbatim out of
-    ``execute_and_learn``, #1691 touch-it-shrink-it); returns the new result and its success."""
+def _retry_write_file_overwrite(executor: Any, action: dict[str, Any], result: Any, fallback: bool) -> tuple[Any, bool]:
+    """Re-run a ``write_file`` that hit "already exists" with ``overwrite=True`` (moved out of ``execute_and_learn``,
+    #1691 touch-it-shrink-it); returns the new result and its success. A fallback's retry books nothing either."""
     raw_params = action.get("params")
     safe_params = raw_params if isinstance(raw_params, dict) else {}
     _loop_logger.info(
@@ -672,7 +678,8 @@ def _retry_write_file_overwrite(executor: Any, action: dict[str, Any], result: A
     retry_params = dict(safe_params)
     retry_params["overwrite"] = True
     retry_action["params"] = retry_params
-    result = executor.execute(retry_action)
+    with _fallback_context(fallback):
+        result = executor.execute(retry_action)
     success = getattr(result, "success", True)
     if success:
         _loop_logger.info("Auto-recovery succeeded for write_file")
@@ -1382,7 +1389,8 @@ def execute_and_learn(
     result_str: str | None = None
     queued_followup: ActionFollowup | None = None
     raised: str | None = None
-    nac = _credit_nac(nac, proposal, run_id)  # a fallback reply runs but teaches nothing (#1691)
+    fallback = is_fallback_proposal(proposal)  # a fallback reply runs but earns no credit (#1691)
+    nac = _credit_nac(nac, fallback, proposal, run_id)
     # Dormant since 2026-10-07 (#1179, runtime/preemption.py): never true, wire_preemption has no caller
     if hasattr(agent, "_execution_tracker") and agent._execution_tracker:
         goal_desc = proposal.reasoning or ""
@@ -1405,7 +1413,7 @@ def execute_and_learn(
                 f"Executing: {action.get('tool_name')} "
                 f"by {agent_name} params={list((action.get('params') or {}).keys())}",
             )
-        with _fallback_context(proposal):  # the executor's own bridge books no credit for a fallback (#1691)
+        with _fallback_context(fallback):  # the executor's own bridge books no credit for a fallback (#1691)
             result = executor.execute(action)
         exec_elapsed = time.time() - exec_start
         success = getattr(result, "success", True)
@@ -1434,7 +1442,7 @@ def execute_and_learn(
             and action.get("tool_name") == "write_file"
             and "already exists" in str(getattr(result, "error", "")).lower()
         ):
-            result, success = _retry_write_file_overwrite(executor, action, result)
+            result, success = _retry_write_file_overwrite(executor, action, result, fallback)
 
         # If this was a timeout retry prompt, store state for user response
         if action.get("_timeout_retry") and success:
@@ -1534,8 +1542,7 @@ def execute_and_learn(
         # books a positive CausalLink that competes with the tool's
         # learned aversion (the PlanHistoryBridge records under the
         # same tool event signature).
-        # A gate refusal books no plan outcome, nor does a fallback reply (#1691: ``nac`` is None for one).
-        if memory_hub is not None and gate_refusal_of(result) is None and not is_fallback_proposal(proposal):
+        if memory_hub is not None and gate_refusal_of(result) is None and not fallback:  # no plan outcome (#1691)
             _record_plan_outcome(
                 memory_hub=memory_hub,
                 goal=proposal.reasoning or "",
