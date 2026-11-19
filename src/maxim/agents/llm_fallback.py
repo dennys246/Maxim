@@ -432,6 +432,7 @@ class FallbackBehavior:
             action=action,
             reasoning="LLM unavailable, using fallback behavior",
             strategy_used="fallback",
+            degraded=True,
             confidence=0.5 if action else 0.0,
             mode_goal_achieved=False,
             citations=[],

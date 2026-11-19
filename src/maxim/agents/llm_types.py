@@ -288,6 +288,12 @@ class LLMProposal:
     inbound_rendered_ids: tuple[int, ...] = field(default=(), compare=False)
     inbound_feed: Any | None = field(default=None, compare=False)
 
+    # Degraded-mode reply (#1691): set ONLY by the fallback builders (the worker's timeout and parse-failure
+    # branches, ``FallbackBehavior.get_fallback_proposal``), never from the model's JSON. ``strategy_used`` cannot
+    # carry this: the parsed proposal copies it from the model's own ``"strategy"`` key. Dispatch runs a degraded
+    # reply but books no learning from it (``tool_dispatch.is_fallback_proposal``). Runtime-ephemeral.
+    degraded: bool = field(default=False, compare=False)
+
     # PFC deliberation: whether the LLM is ready to act.
     # True (default) = one-shot / backward compatible.
     # False = LLM wants more context; cycle feeds reasoning back through
