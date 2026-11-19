@@ -14,9 +14,6 @@ from maxim.agents.llm_fallback import (
     ReasoningEntry,
     evaluate_simple_arithmetic,
     evaluate_unary_math,
-    generate_simple_answer,
-    matches_phrase,
-    normalize_phrases,
 )
 from maxim.agents.llm_types import LLMProposal
 
@@ -25,79 +22,6 @@ from maxim.agents.llm_types import LLMProposal
 def _mock_fallback_responses(monkeypatch):
     """Mock get_fallback_responses to return an empty dict by default."""
     monkeypatch.setattr("maxim.agents.llm_fallback.get_fallback_responses", lambda: {})
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# matches_phrase
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestMatchesPhrase:
-    def test_exact_word(self):
-        assert matches_phrase("hello world", "hello") is True
-
-    def test_word_boundary(self):
-        assert matches_phrase("say hello there", "hello") is True
-
-    def test_partial_word_no_match(self):
-        assert matches_phrase("helloworld", "hello") is False
-
-    def test_no_match(self):
-        assert matches_phrase("goodbye world", "hello") is False
-
-    def test_empty_phrase_returns_false(self):
-        assert matches_phrase("anything", "") is False
-
-    def test_whitespace_only_phrase_returns_false(self):
-        assert matches_phrase("anything", "   ") is False
-
-    def test_phrase_with_multiple_words(self):
-        assert matches_phrase("what time is it", "what time") is True
-
-    def test_case_sensitive(self):
-        # regex is case-sensitive by default
-        assert matches_phrase("Hello world", "hello") is False
-
-    def test_special_regex_chars_escaped(self):
-        # re.escape handles special chars; \b requires word-boundary so
-        # "$5.00" won't match via \b ($ is non-word char). Test that
-        # the phrase "5.00" matches correctly and "5.00" doesn't match "5000".
-        assert matches_phrase("cost is 5.00 total", "5.00") is True
-        assert matches_phrase("cost is 5000", "5.00") is False
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# normalize_phrases
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestNormalizePhrases:
-    def test_non_list_returns_default(self):
-        default = ["a", "b"]
-        assert normalize_phrases("not a list", default) == default
-        assert normalize_phrases(42, default) == default
-        assert normalize_phrases(None, default) == default
-
-    def test_valid_list_strips_items(self):
-        result = normalize_phrases(["  hello ", " world  "], [])
-        assert result == ["hello", "world"]
-
-    def test_empty_items_filtered(self):
-        # Empty/falsy items are filtered by the `if item` guard
-        result = normalize_phrases(["good", "", None, "day"], ["default"])
-        assert result == ["good", "day"]
-
-    def test_all_empty_returns_default(self):
-        result = normalize_phrases(["", None, 0], ["fallback"])
-        assert result == ["fallback"]
-
-    def test_empty_list_returns_default(self):
-        result = normalize_phrases([], ["fallback"])
-        assert result == ["fallback"]
-
-    def test_numeric_items_converted_to_str(self):
-        result = normalize_phrases([123, 4.5], [])
-        assert result == ["123", "4.5"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -359,100 +283,6 @@ class TestReasoningCarryover:
 
         assert not errors
         assert len(rc) == 100  # 4 threads * 50 = 200, capped to 100
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# generate_simple_answer
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestGenerateSimpleAnswer:
-    def test_time_question(self):
-        result = generate_simple_answer("what time is it", "2026-01-01", "10:30 AM")
-        assert result == "The current time is 10:30 AM."
-
-    def test_date_question(self):
-        result = generate_simple_answer("what date is it", "2026-01-01", "10:30 AM")
-        assert result == "Today is 2026-01-01."
-
-    def test_what_day(self):
-        result = generate_simple_answer("what day is it", "Monday", "10:30 AM")
-        assert result == "Today is Monday."
-
-    def test_identity_question(self):
-        result = generate_simple_answer("who are you", "2026-01-01", "10:30 AM")
-        assert "Maxim" in result
-
-    def test_greeting(self):
-        result = generate_simple_answer("hello", "2026-01-01", "10:30 AM")
-        assert result == "Hello! How can I help you?"
-
-    def test_greeting_hi(self):
-        result = generate_simple_answer("hi", "2026-01-01", "10:30 AM")
-        assert result == "Hello! How can I help you?"
-
-    def test_wellbeing(self):
-        result = generate_simple_answer("how are you", "2026-01-01", "10:30 AM")
-        assert "functioning well" in result
-
-    def test_arithmetic_fallback(self):
-        result = generate_simple_answer("what is 2 + 3", "2026-01-01", "10:30 AM")
-        assert result == "2 + 3 = 5"
-
-    def test_unary_math_fallback(self):
-        result = generate_simple_answer("sqrt 16", "2026-01-01", "10:30 AM")
-        assert result == "√16 = 4"
-
-    def test_too_long_question_returns_none(self):
-        long_q = "this is a very long question with many words in it"
-        result = generate_simple_answer(long_q, "2026-01-01", "10:30 AM")
-        assert result is None
-
-    def test_exactly_eight_words_accepted(self):
-        q = "one two three four five six seven eight"
-        # No pattern match, but not rejected for length
-        result = generate_simple_answer(q, "2026-01-01", "10:30 AM")
-        # Should return None because no pattern matches, not because of length
-        assert result is None
-
-    def test_nine_words_rejected(self):
-        q = "one two three four five six seven eight nine"
-        result = generate_simple_answer(q, "2026-01-01", "10:30 AM")
-        assert result is None
-
-    def test_unknown_question_returns_none(self):
-        result = generate_simple_answer("explain gravity", "2026-01-01", "10:30 AM")
-        assert result is None
-
-    def test_date_and_time_combined(self):
-        result = generate_simple_answer("date and time", "2026-01-01", "10:30 AM")
-        assert result == "It's 10:30 AM on 2026-01-01."
-
-    def test_time_and_date_combined(self):
-        result = generate_simple_answer("time and date", "2026-01-01", "10:30 AM")
-        assert result == "It's 10:30 AM on 2026-01-01."
-
-    def test_with_custom_fallback_responses(self, monkeypatch):
-        """Test that custom phrases from get_fallback_responses are used."""
-        monkeypatch.setattr(
-            "maxim.agents.llm_fallback.get_fallback_responses",
-            lambda: {
-                "simple_answers": {
-                    "greeting_phrases": ["yo", "sup"],
-                }
-            },
-        )
-        # "yo" should now work as a greeting
-        result = generate_simple_answer("yo", "2026-01-01", "10:30 AM")
-        assert result == "Hello! How can I help you?"
-
-        # "hello" still works because it's in the default
-        # (custom only overrides greeting_phrases, defaults apply to others)
-        result2 = generate_simple_answer("hello", "2026-01-01", "10:30 AM")
-        # "hello" is NOT in the custom list, so it won't match greeting_phrases
-        # but it might match other patterns... let's check
-        # Actually, custom greeting_phrases replaces the default, so "hello" won't match
-        assert result2 is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

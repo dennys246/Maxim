@@ -82,6 +82,9 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   - The derivation is `random.Random(stable_hash_64_signed(f"{base_seed}:{agent_id}:{stream}"))` (`utils/seeding.py`
     has `stable_hash_32` and `stable_hash_64_signed`, both of one string), or a `stream` key added to
     `make_agent_rng`'s existing derivation (`:79`; no caller, one sequential `Random`).
+  - **Overdrive adopts this derivation over its host-side handout (2026-11-17), on two conditions,** settled in
+    #1305's scope: `agent_id` is the host's **persisted** NPC key, never an ordinal, so streams survive saves and
+    roster edits; and a host's `base_seed` comes from its log root.
   - **This is the same work as the 1.4.0 release gate `1305.owned-rng`** (#1305, `scripts/release_gates.json`). That
     gate already requires default_network, attention, spatial and `decisions/significance.py` to draw from owned
     generators seeded from `seeding.py::get_global_seed`. A2 extends it with a per-agent, per-stream key. The robot
@@ -151,9 +154,15 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
     Its test uses an **advancing** fake clock, because a frozen one hides every cadence bug.
   - **For the prompt, a planted-render test:** plant a sentinel time with unusual seconds **in the machinery clock**,
     never in the perceived-time port (prompts may show the port by design), and pin `TZ`. Fail if its raw,
-    clock-format or date-format rendering appears in any built prompt or tool result. An **offset-and-scale case**
-    shifts the machinery clock's origin and runs it at a non-unit rate, so relative renders ("3 s ago") cannot leak
-    it either (Overdrive correction_1, 2026-11-17). The retrieval and SCN tests pin `TZ` too.
+    clock-format or date-format rendering appears in any built prompt or tool result. Two levels (Overdrive
+    correction_1 and its follow-up, 2026-11-17; their review TB-S1):
+    - **end to end: origin offset only.** Shifting the machinery clock's origin changes no time difference, so
+      nothing a prompt renders may change. A scaled clock is not tested here: it legitimately changes decay and
+      recall, so the test could not tell a leak from physics;
+    - **at render level, on a frozen store: offset and scale,** so relative renders ("3 s ago") cannot leak the
+      machinery clock either.
+
+    The retrieval and SCN tests pin `TZ` too.
   - **For the prompt, a prompt-module lint:** it bans `datetime.now`, `strftime`, `time.localtime` and
     `datetime.fromtimestamp` outside the port. It starts on:
     - `agents/prompt_builder.py`, `agents/context_pool.py` and `agents/llm_fallback.py`;
@@ -172,6 +181,24 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   Before any of this is built, Overdrive's embeddable-agent plan must answer: "why can't the 1.1.4 world seam
   (`archive/world_seam_1_1_4.md`, shipped as 1.1.4), with Maxim owning the loop, serve Overdrive?" A4 lists what the mode must close
   if that plan is accepted.
+  - **Overdrive's answer (2026-11-17; front gate ACCEPTED by the owner 2026-11-19).** The seam runs
+    `run_agentic_loop` on its own thread on loop-timing cadence and acts through a bridge. Five requirements:
+    - **time:** the world runs on an integer tick with a time dial; a wall-cadence loop drifts at any dial but 1×,
+      and its prompt renders the host clock (`PromptBuilder.build_prompt`'s `datetime.now()`);
+    - **replay:** a loop on its own wall-timed thread orders actions by scheduling;
+    - **one door:** every NPC action enters as a validated intent at one gate, in canonical log order; a bridge
+      the loop calls when it chooses is a second door;
+    - **trust:** players' words are untrusted, behind a host-driven worker process; a loop that owns its tools,
+      environment and home in the host process cannot sit behind it;
+    - **scale:** one owned loop per agent (thread, router lock) shares no host model gateway or scheduler.
+  - **Maxim's reading:** "time" alone would not settle it, since A3's port plus `ExperienceClockDriver` fix the
+    prompt clock inside the seam. Replay, one door and trust are structural. Overdrive may build one unreplayed
+    prototype NPC through a bridge to test latency, cost and feel; it stays outside their replayable core and makes
+    no claim.
+  - **Owner decision 2026-11-19: the front gate passes** on replay, one door and trust. Scale is the weakest of the
+    five (a shared gateway could be added to the seam), and is not needed for the verdict. Passing the front gate
+    accepts the case for a new runtime mode, not a design: Overdrive's embeddable-agent plan still gets its own review
+    round before any Maxim `src/` lands for it.
 - **Fix at the root where the robot path has the defect too** (review SF-3, CLAUDE.md "no band-aid fixes"). Each path
   below says whether the robot behaviour is a defect (fix it for everyone, in tier A) or intended (closed only on the
   embedded path).
@@ -187,10 +214,10 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   - **The workspace manifest.** `build_workspace_manifest` puts the working directory's name and tree into the prompt
     (`agents/prompt_builder.py`, `get_effective_cwd()` at `:1248`), gated only on the roster having file tools
     (`:1503`). The exec agent's WORKSPACE section (`agents/exec_agent.py`) has no roster gate.
-  - **The short-question shortcut.** `PromptBuilder.build_prompt` answers time, date, identity and greeting questions
-    without the model (`:1102-1137`, via `agents/llm_fallback.py::generate_simple_answer`). It fires on **any**
-    `triggering_input`; the wake-word check (`:1108`) gates only the fallback to `cli_inputs`. **Whether that is
-    intended on a robot is an owner decision** (§Not decided).
+  - **The short-question shortcut.** `PromptBuilder.build_prompt` answered time, date, identity and greeting questions
+    without the model (`:1102-1137`, via `agents/llm_fallback.py::generate_simple_answer`). It fired on **any**
+    `triggering_input`; the wake-word check (`:1108`) gates only the fallback to `cli_inputs`. **Decided 2026-11-17:
+    not intended; it is deleted, fallback included (#1689).**
   - **Writes outside the home.** `tools/base.py` resolves relative paths with `base or os.getcwd()` (`:811`), and
     `contained_path` with no `allowed_dirs` returns the path unchanged. The embedded roster must always set
     containment. A test proves it does.
@@ -380,7 +407,7 @@ the robot** before it moves a Maxim claim.
 1. **A3 A-pre, A5, #1684,** with **A2 as #1305** (a 1.4.0 gate item). The prompt guards and the seed substreams come
    first, because replay needs them. **A1** runs in parallel with #984.
 2. **A3 A-post** with #1361's slices and 1.3.6.
-3. **A4,** once Overdrive's embeddable-agent plan passes its front gate. Its robot-path defects are filed and fixed
+3. **A4:** the front gate passed (owner, 2026-11-19); built once Overdrive's embeddable-agent plan passes review. Its robot-path defects are filed and fixed
    earlier, on their own.
 4. **B2 (#1150) with A6,** after A3 A-post, sequenced with R4's routing audit and the 1.4.0 function gate.
 5. **B1 and B3** after the 1.4.0 cut, with hybrid §A.1b and the decomposition slices. A4's parser bypass lands here.
@@ -400,8 +427,6 @@ the robot** before it moves a Maxim claim.
 
 ## Not decided here
 
-- Whether the short-question shortcut firing on any `triggering_input` is intended on a robot (A4). If it isn't, it
-  is a robot-path defect and gets its own issue.
 - Whether A3 is one plan or Overdrive's two (A-pre, A-post), and how it divides with #1361.
 - Whether A2's per-agent key widens #1305 before 1.4.0, or follows it.
 - Whether C5 is drafted now or after the hybrid's v1 evidence.
