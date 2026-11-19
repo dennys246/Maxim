@@ -1180,3 +1180,30 @@ def test_an_agent_without_a_hub_still_saves_its_nac(tmp_path):
     nac = SimpleNamespace(config=SimpleNamespace(persistence_path=str(tmp_path / "nac.json")), save=saved.append)
     AgentInstance(agent_id="no_hub", role=None, config=None, memory_hub=None, nac=nac).shutdown()
     assert saved == [str(tmp_path / "nac.json")]
+
+
+# ── run(auto_curate=True)'s pre-startup curation (moved out of run, #1264 rule T) ────────────────────────────────
+
+
+def test_auto_curate_before_run_curates_the_requested_genre(monkeypatch):
+    import maxim.simulation.foundry as foundry
+    from maxim import api
+
+    seen = []
+    monkeypatch.setattr(foundry, "auto_curate", lambda genre: seen.append(genre))
+    api._auto_curate_before_run("survival")
+    assert seen == ["survival"]
+
+
+def test_auto_curate_before_run_warns_and_lets_the_run_go_on(monkeypatch, caplog, capsys):
+    import maxim.simulation.foundry as foundry
+    from maxim import api
+
+    def boom(genre):
+        raise RuntimeError("no scenarios")
+
+    monkeypatch.setattr(foundry, "auto_curate", boom)
+    with caplog.at_level("WARNING", logger="maxim.api"):
+        api._auto_curate_before_run("survival")  # must not raise
+    assert any("Auto-curation failed: no scenarios" in r.getMessage() for r in caplog.records)
+    assert "WARNING: Auto-curation failed (no scenarios)" in capsys.readouterr().err
