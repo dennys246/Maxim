@@ -628,8 +628,9 @@ def is_fallback_proposal(proposal: Any) -> bool:
     """True for a degraded-mode reply no decision produced (#1691): ``LLMProposal.degraded``, which only the
     fallback builders set (the worker's timeout and parse-failure branches; ``FallbackBehavior.get_fallback_proposal``,
     which has no shipped caller today). Never ``strategy_used``: the parsed proposal copies that from the model's
-    own JSON, so a model could write ``"strategy": "fallback"`` and escape credit. A PLANNING-queued
-    ``autonomy.Proposal`` is read through its ``source``."""
+    own JSON, so a model could write ``"strategy": "fallback"`` and escape credit. The loop's own paths pass the
+    ``LLMProposal`` itself (``loop_planning._drain_one`` unwraps ``source``); reading an ``autonomy.Proposal``'s
+    ``source`` here only defends a caller outside the loop."""
     if getattr(proposal, "degraded", False) is True:
         return True
     return getattr(getattr(proposal, "source", None), "degraded", False) is True
