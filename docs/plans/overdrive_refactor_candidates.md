@@ -88,8 +88,10 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
   - **This is the same work as the 1.4.0 release gate `1305.owned-rng`** (#1305, `scripts/release_gates.json`). That
     gate already requires default_network, attention, spatial and `decisions/significance.py` to draw from owned
     generators seeded from `seeding.py::get_global_seed`. A2 extends it with a per-agent, per-stream key. The robot
-    path derives `base_seed` from `get_global_seed()`, and a host supplies its own. The gate's scope text changes
-    with it.
+    path derives `base_seed` from `get_global_seed()`, and a host supplies its own. Release-gate item scopes are
+    immutable (`scripts/lint_release_gates.py`, shrink-only history), so the per-agent key enters as a **new** gate
+    item, not an edit of `1305.owned-rng`'s scope; whether it lands before 1.4.0 is an owner decision (plan review
+    of Overdrive's embeddable-agent plan v3, 2026-11-19).
   - About 26 stdlib draws sit outside `seeding.py`, plus numpy's legacy global draws (`attention/salience_map.py`,
     `hardware/simulation/streams.py`). Exempt, and named as such: `models/language/anthropic_backend.py`'s backoff
     jitter.
