@@ -29,7 +29,8 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
-from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section
+from maxim.utils.cloud_redaction import tool_result_header
+from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section, render_headed_section
 
 if TYPE_CHECKING:
     pass
@@ -45,6 +46,19 @@ logger = logging.getLogger(__name__)
 # the dynamic segment into the ``user`` message. See
 # docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 1.
 PROMPT_SEGMENT_DELIMITER = "\x1e"
+
+# The headers of the private sections (the ones utils/cloud_redaction.py::_SECTION_RULES redact). Each is added
+# header-separate (``PromptBudgeter.add(header=...)``), so its body can neither cut nor forge it
+# (tests/unit/test_cloud_redaction_headers.py pins every add site).
+CONVERSATION_HEADER = "=== Conversation History ==="
+CONTEXT_POOL_HEADER = "=== Context ==="
+SPEECH_HEADER = "=== Recent Speech ==="
+RECENT_OUTCOMES_HEADER = "=== Recent Action Outcomes ==="
+BIO_ENRICHMENT_HEADER = "=== What your experience tells you about this situation ==="
+DELIBERATION_HEADER = "=== Your inner deliberation (private — not speech) ==="
+PRIOR_REASONING_HEADER = "=== Your prior reasoning ==="
+RELEVANT_MEMORIES_HEADER = "=== Relevant Memories ==="
+INBOUND_HEADER = "=== Inbound Messages (held until you act on them) ==="
 
 
 # Static block injected when sim mode is active. Extracted to a module
@@ -485,8 +499,25 @@ def has_file_tools(request: LLMRequest) -> bool:
 def build_workspace_manifest(
     mode_name: str = "passive", cwd: str | None = None, *, tools: set[str] | frozenset[str] | None = None
 ) -> str:
-    """Build a file manifest that adapts to the operational mode. File names are data; the RULES / PLAN FIRST lines
-    are builder text, gated on ``tools`` (#1042), so the section goes in as source="data"."""
+    """Build a file manifest that adapts to the operational mode, as one text (``build_workspace_manifest_sections``
+    joined the way the budgeter joins sections)."""
+    parts = build_workspace_manifest_sections(mode_name, cwd, tools=tools)
+    return "\n\n".join(render_headed_section(header, body) for header, body in parts)
+
+
+def _header_safe(name: str) -> str:
+    """A name shown inside a header line: line breaks become spaces, so the header stays one line."""
+    from maxim.utils.content_safety import normalize_line_breaks
+
+    return normalize_line_breaks(name).replace("\n", " ")
+
+
+def build_workspace_manifest_sections(
+    mode_name: str = "passive", cwd: str | None = None, *, tools: set[str] | frozenset[str] | None = None
+) -> list[tuple[str, str]]:
+    """The file manifest as (header, body) sections, adapted to the operational mode. File names are data; the
+    RULES / PLAN FIRST lines are builder text, gated on ``tools`` (#1042), so the sections go in as source="data",
+    each header-separate (they are private: utils/cloud_redaction.py ``workspace_manifest``)."""
     import os
     from maxim.utils.filesystem_policy import (
         get_effective_cwd,
@@ -497,13 +528,14 @@ def build_workspace_manifest(
     if cwd is None:
         cwd = get_effective_cwd()
     workspace = get_workspace_path(cwd)
-    cwd_name = os.path.basename(cwd) or cwd
+    cwd_name = _header_safe(os.path.basename(cwd) or cwd)
+    parts: list[tuple[str, str]] = []
     sections: list[str] = []
 
     if mode_name == "singularity":
         cwd_entries = scan_cwd_tree(cwd, max_depth=2, max_entries=30)
         n_entries = len(cwd_entries)
-        sections.append(f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ===")
+        header = f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ==="
         sections.append("You have FULL read/write access to all files below.")
         sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
         sections.extend(cwd_entries)
@@ -522,11 +554,12 @@ def build_workspace_manifest(
             )
         if "\n" in (gated := gate_on_roster("\n".join(rules), tools)):  # a header with no rule left is dropped
             sections.append("\n" + gated)
+        parts.append((header, "\n".join(sections)))
     else:
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             n_files = len(ws_entries)
-            sections.append(f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ===")
+            header = f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ==="
             sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
             sections.extend(ws_entries[:15])
             if n_files > 15:
@@ -544,17 +577,17 @@ def build_workspace_manifest(
                 )
             if "\n" in (gated := gate_on_roster("\n".join(rules), tools)):
                 sections.append(gated)
+            parts.append((header, "\n".join(sections)))
 
         cwd_entries = scan_cwd_tree(cwd, max_depth=1, max_entries=10)
         if cwd_entries:
-            sections.append(f"\n=== CWD Context (read-only: {cwd_name}) ===")
             if mode_name == "active":
-                sections.append("You can READ these files and SUGGEST edits (requires approval).")
+                cwd_lines = ["You can READ these files and SUGGEST edits (requires approval)."]
             else:
-                sections.append("You can READ these files. CWD edits must be proposed as plans.")
-            sections.extend(cwd_entries)
+                cwd_lines = ["You can READ these files. CWD edits must be proposed as plans."]
+            parts.append((f"=== CWD Context (read-only: {cwd_name}) ===", "\n".join(cwd_lines + cwd_entries)))
 
-    return "\n".join(sections) if sections else ""
+    return parts
 
 
 def _tool_name_re(name: str) -> re.Pattern[str]:
@@ -1093,7 +1126,11 @@ class PromptBuilder:
             deferred = _deferred_section(request)
             correction = build_followup_retry_correction(request)
             inbound = self._inbound_text(request)  # #1481: the follow-up bypasses the budgeter, so it states its rule
-            inbound = framed_section(inbound, wording=INBOUND_WORDING) if inbound else ""
+            inbound = (
+                render_headed_section(INBOUND_HEADER, framed_section(inbound, wording=INBOUND_WORDING))
+                if inbound
+                else ""
+            )
             return "\n\n".join(part for part in (prompt, deferred, inbound, correction) if part)
 
         # Check for pending user input
@@ -1256,6 +1293,7 @@ class PromptBuilder:
             SectionPriority.IMPORTANT,
             source="data",
             frame_wording=INBOUND_WORDING,
+            header=INBOUND_HEADER,
         )
         # #1451: a re-plan carries every input held behind the answer it set aside. CRITICAL: the operator's words
         # are why the request exists, and they are already marked read.
@@ -1296,7 +1334,8 @@ class PromptBuilder:
         (owner decision 2026-10-28). A message that does not fit stays held for the next prompt; a first message larger
         than the cap is truncated to fit, never skipped (delta1 N5). The alias sits in the frame header (``tool=``), so
         a body line cannot impersonate the sender (delta B3). Records each frame's nonce on the request; the worker
-        keeps the ids whose frame reaches the text sent whole. Empty when nothing is held, so the prompt is unchanged."""
+        keeps the ids whose frame reaches the text sent whole. Empty when nothing is held, so the prompt is unchanged.
+        The section's BODY: its header (``INBOUND_HEADER``) is rendered apart, and counted in the cap here."""
         import secrets
 
         feed = request.inbound_feed
@@ -1307,15 +1346,15 @@ class PromptBuilder:
             return ""
         cap = max(1, self._n_ctx // 10)
         counter = self._token_counter
-        lines = ["=== Inbound Messages (held until you act on them) ==="]
-        used = counter.count_tokens(lines[0])
+        lines: list[str] = []
+        used = counter.count_tokens(INBOUND_HEADER)
         for entry in entries:
             nonce = secrets.token_hex(4)
             label = f"comms:{entry.channel}:{entry.alias}"
             frame = frame_tool_output(label, entry.content, external=True, nonce=nonce)
             tokens = counter.count_tokens(frame)
             if used + tokens > cap:
-                if len(lines) > 1:
+                if lines:
                     break
                 keep = max(1, int(len(entry.content) * (cap - used) / max(tokens, 1)) - 40)
                 while True:  # shrink until the frame fits (the estimate can overshoot: code review E-NIT3)
@@ -1329,7 +1368,7 @@ class PromptBuilder:
             lines.append(frame)
             used += tokens
             request.inbound_frame_ids[nonce] = entry.id
-        return "\n".join(lines) if len(lines) > 1 else ""
+        return "\n".join(lines)
 
     # ── _build_tool_aware_prompt section helpers ──────────────────────────
 
@@ -1490,21 +1529,24 @@ class PromptBuilder:
         # file tool — an embodied DM/cradle AUT, a sandboxed console agent —
         # gets neither: the manifest is a per-turn cache invalidator (it
         # re-scans the tree) and both are pure noise to a body in a world.
-        workspace_manifest = (
-            build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd, tools=set(request.available_tools))
+        manifest_parts = (
+            build_workspace_manifest_sections(
+                mode_name=mode_name, cwd=effective_cwd, tools=set(request.available_tools)
+            )
             if has_file_tools(request)
-            else ""
+            else []
         )
-        if workspace_manifest:
-            is_singularity = mode_name == "singularity"
+        is_singularity = mode_name == "singularity"
+        for manifest_header, manifest_body in manifest_parts:
             budgeter.add(
                 "workspace_manifest",
-                workspace_manifest,
+                manifest_body,
                 SectionPriority.CRITICAL,
                 truncatable=is_singularity,
                 min_tokens=80 if is_singularity else 0,
                 truncate_fn=((lambda c, m: _truncate_manifest(c, m, counter)) if is_singularity else None),
                 source="data",
+                header=manifest_header,
             )
 
         if is_rt and "internet_search" in request.available_tools:  # a hint names only a tool the agent has
@@ -1755,23 +1797,25 @@ class PromptBuilder:
             conv_text = _compact_conversation(request.conversation_history_text, max_conv_turns)
             budgeter.add(
                 "conversation",
-                "=== Conversation History ===\n" + conv_text,
+                conv_text,
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
                 source="data",
+                header=CONVERSATION_HEADER,
             )
 
         if request.context_pool_text:
             budgeter.add(
                 "context_pool",
-                "=== Context ===\n" + request.context_pool_text,
+                request.context_pool_text,
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
                 source="data",
+                header=CONTEXT_POOL_HEADER,
             )
 
         if request.protocol_context:
@@ -1782,7 +1826,7 @@ class PromptBuilder:
                 source="data",
             )
 
-        carryover_text = self._reasoning_carryover.get_prompt_text()
+        carryover_text = self._reasoning_carryover.get_prompt_body()
         if carryover_text:
             budgeter.add(
                 "reasoning_carryover",
@@ -1792,6 +1836,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: _truncate_reasoning_carryover(c, m, counter),
                 source="data",
+                header=ReasoningCarryover.PROMPT_HEADER,
             )
 
         if request.prefetch_context:
@@ -1863,10 +1908,10 @@ class PromptBuilder:
                 budgeter.add("observation", obs_text, SectionPriority.IMPORTANT, source="data")
 
         if context.detected_speech:
-            speech_lines = ["=== Recent Speech ==="]
-            for speech in context.detected_speech[-3:]:
-                speech_lines.append(f'- "{speech[:100]}"')
-            budgeter.add("speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE, source="data")
+            speech_lines = [f'- "{speech[:100]}"' for speech in context.detected_speech[-3:]]
+            budgeter.add(
+                "speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE, source="data", header=SPEECH_HEADER
+            )
 
         if request.agent_states:
             state_lines = ["=== Agent States ==="]
@@ -1878,13 +1923,19 @@ class PromptBuilder:
             budgeter.add("agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE, source="data")
 
         if request.recent_outcomes:
-            outcome_lines = ["=== Recent Action Outcomes ==="]
+            outcome_lines: list[str] = []
             for outcome in request.recent_outcomes[-3:]:
                 tool = outcome.get("tool", "?")
                 success = "succeeded" if outcome.get("success") else "failed"
                 result = outcome.get("result", "")[:50] if outcome.get("result") else ""
                 outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
-            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT, source="data")
+            budgeter.add(
+                "recent_outcomes",
+                "\n".join(outcome_lines),
+                SectionPriority.IMPORTANT,
+                source="data",
+                header=RECENT_OUTCOMES_HEADER,
+            )
 
         # Body state (interoception — always present when embodied)
         if context.body_state:
@@ -1898,12 +1949,13 @@ class PromptBuilder:
         if context.bio_enrichment_context and not has_transcript:
             budgeter.add(
                 "bio_enrichment",
-                f"=== What your experience tells you about this situation ===\n{context.bio_enrichment_context}",
+                context.bio_enrichment_context,
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 15 - 1)]),
                 source="data",
+                header=BIO_ENRICHMENT_HEADER,
             )
 
         # Auto-sense: passive perception of surroundings + body state.
@@ -1943,11 +1995,11 @@ class PromptBuilder:
         if max_tokens < 50:
             return
 
-        lines = ["=== Your inner deliberation (private — not speech) ==="]
+        lines: list[str] = []
         for i, entry in enumerate(transcript, 1):
             lines.append(f"\n[Cycle {i}]")
             lines.append(_whole_frames(entry))  # per item (rule 2): the loop stores cut enrichment text here
-        text = "\n".join(lines)
+        text = "\n".join(lines)  # the body: starts with "\n[Cycle 1]", so parts[0] below is "" (no header)
 
         def _truncate_transcript(content: str, max_tok: int) -> str:
             """Drop oldest cycle entries first."""
@@ -1955,7 +2007,7 @@ class PromptBuilder:
             if len(parts) <= 2:
                 return content[: max_tok * 4]  # rough char approx
             while len(parts) > 2 and counter.count_tokens(content) > max_tok:
-                parts.pop(1)  # drop oldest (index 1 — index 0 is header)
+                parts.pop(1)  # drop oldest (index 1 — index 0 is the empty text before the first cycle)
                 content = parts[0] + "\n[Cycle " + "\n[Cycle ".join(parts[1:])
             return content
 
@@ -1967,6 +2019,7 @@ class PromptBuilder:
             min_tokens=50,
             truncate_fn=_truncate_transcript,
             source="data",
+            header=DELIBERATION_HEADER,
         )
 
     @staticmethod
@@ -1991,13 +2044,13 @@ class PromptBuilder:
         thoughts = getattr(context, "working_memory_thoughts", None)
         if not thoughts:
             return
-        lines = ["=== Your prior reasoning ==="]
+        lines: list[str] = []
         for thought in thoughts[-6:]:  # Last 6 entries (covers 2 full 3-cycle deliberations)
             # Per item (rule 2): a thought cut through a recalled frame loses the partial frame, not its neighbours.
             thought = _whole_frames(thought[:200])
             if thought.strip():
                 lines.append(f"- {thought}")
-        if len(lines) == 1:
+        if not lines:
             return
         budgeter.add(
             "working_memory_thoughts",
@@ -2005,8 +2058,9 @@ class PromptBuilder:
             SectionPriority.IMPORTANT,
             truncatable=True,
             min_tokens=30,
-            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 20 - 1)]),
             source="data",
+            header=PRIOR_REASONING_HEADER,
         )
 
     @staticmethod
@@ -2019,7 +2073,7 @@ class PromptBuilder:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
         Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845)."""
         if context.relevant_memories:
-            mem_lines = ["=== Relevant Memories ==="]
+            mem_lines: list[str] = []
             for mem in context.relevant_memories[:8]:
                 content = mem.get("content", {})
                 source = mem.get("source", "episodic")
@@ -2049,8 +2103,9 @@ class PromptBuilder:
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=50,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 20 - 1)]),
                 source="data",
+                header=RELEVANT_MEMORIES_HEADER,
             )
 
         if context.concept_context:
@@ -2291,6 +2346,10 @@ class PromptBuilder:
         ran = f"'{tool_name}'" if tool_name else "your last tool"
         source = tool_name or "your last tool"
         is_batched = tool_name == "batched_exploration"  # never keyed on result text (#823: a page could forge it)
+        # The result is a section of its own, headed by its tool's sensitivity (utils/cloud_redaction.py
+        # ``tool_result_header``): an unknown tool, a batch or an unparseable follow-up ("") counts as private.
+        results = result if is_batched else f"Results from {source}:\n{result}"
+        result_section = render_headed_section(tool_result_header(tool_name), results)
 
         if is_batched:
             batched_instructions = gate_on_roster(
@@ -2312,7 +2371,7 @@ You now have complete context from the batched exploration. Based on ALL the res
 
 Original request: "{query}"
 
-{result}
+{result_section}
 
 {batched_instructions}
 
@@ -2323,8 +2382,7 @@ Respond with JSON:
 
 Original request: "{query}"
 
-Results from {source}:
-{result}
+{result_section}
 
 === Instructions ===
 Based on these results, determine your next action:

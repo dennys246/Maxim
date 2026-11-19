@@ -489,3 +489,57 @@ def framed_section(text: str, *, wording: str = TOOL_OUTPUT_WORDING) -> str:
     if rule not in text and _FRAME_MARKER.search(text):
         text = f"{rule}\n{text}"
     return text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Section boundaries
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Every line break ``str.splitlines`` honours besides ``\n``. CRLF first, so it becomes ONE break.
+_EXTRA_LINE_BREAKS = re.compile("\r\n|[\r\x0b\x0c\x1c\x1d\x1e\x85  ]")
+_SECTION_HEADER_LINE = re.compile(r"^=== .* ===$")
+# Lines the cloud redaction filter treats as section boundaries although they are not ``=== X ===`` headers: the
+# router's closing instructions (``models/language/router.py``) and the standalone exec prompt's unbounded markers.
+PLAIN_BOUNDARY_LINES: frozenset[str] = frozenset(
+    {
+        "Respond with ONLY a valid JSON object. No text before or after the JSON.",
+        "IMPORTANT: Follow the PLANNING MODE format exactly as shown above.",
+        "RELEVANT MEMORIES:",
+        "RECENT CLI INPUTS:",
+    }
+)
+# Shown before a body line that would otherwise read as a section boundary.
+BOUNDARY_LINE_PREFIX = "| "
+
+
+def is_section_boundary_line(line: str) -> bool:
+    """Whether ``line`` can end or start a prompt section: a ``=== X ===`` header or a plain boundary line, compared
+    after ``str.strip``. The one predicate both the section renderer and the cloud redaction filter use."""
+    stripped = line.strip()
+    return bool(_SECTION_HEADER_LINE.match(stripped)) or stripped in PLAIN_BOUNDARY_LINES
+
+
+def normalize_line_breaks(text: str) -> str:
+    """``text`` with every line break turned into ``\n``, so ``split("\n")`` sees the lines any reader would."""
+    return _EXTRA_LINE_BREAKS.sub("\n", text)
+
+
+def neutralize_section_body(text: str) -> str:
+    """A section body that cannot carry a section boundary: line breaks normalized, and every body line that would
+    read as a boundary prefixed with ``BOUNDARY_LINE_PREFIX``. Idempotent."""
+    lines = normalize_line_breaks(text).split("\n")
+    return "\n".join(BOUNDARY_LINE_PREFIX + line if is_section_boundary_line(line) else line for line in lines)
+
+
+def check_section_header(header: str) -> str:
+    """``header`` if it is one ``=== X ===`` line; raises ``ValueError`` otherwise (a header is the builder's, never
+    data, so a malformed one is a caller bug)."""
+    if normalize_line_breaks(header) != header or "\n" in header or not _SECTION_HEADER_LINE.match(header):
+        raise ValueError(f"section header must be a single '=== X ===' line, not {header!r}")
+    return header
+
+
+def render_headed_section(header: str, body: str) -> str:
+    """A section rendered by identity: its header line, then its body neutralized, so nothing in the body can end,
+    displace or forge the section. ``body`` is used as given otherwise (frame it before calling)."""
+    return f"{check_section_header(header)}\n{neutralize_section_body(body)}"

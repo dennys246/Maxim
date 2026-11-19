@@ -90,6 +90,9 @@ class ReasoningCarryover:
     so the model can reason about its own prior decisions.
     """
 
+    # The section's header. The prompt builder adds the body header-separate (a private section).
+    PROMPT_HEADER = "=== Recent Decisions (Working Memory) ==="
+
     def __init__(self, max_entries: int = 5) -> None:
         self._max_entries = max_entries
         self._entries: list[ReasoningEntry] = []
@@ -114,15 +117,15 @@ class ReasoningCarryover:
             if len(self._entries) > self._max_entries:
                 self._entries = self._entries[-self._max_entries :]
 
-    def get_prompt_text(self) -> str:
-        """Format entries as prompt text for injection."""
+    def get_prompt_body(self) -> str:
+        """The entries, one line each, without the header ("" when there are none)."""
         with self._lock:
-            if not self._entries:
-                return ""
-            lines = ["=== Recent Decisions (Working Memory) ==="]
-            for entry in self._entries:
-                lines.append(entry.to_prompt_line())
-            return "\n".join(lines)
+            return "\n".join(entry.to_prompt_line() for entry in self._entries)
+
+    def get_prompt_text(self) -> str:
+        """Format entries as prompt text for injection: ``PROMPT_HEADER``, then the body."""
+        body = self.get_prompt_body()
+        return f"{self.PROMPT_HEADER}\n{body}" if body else ""
 
     def clear(self) -> None:
         """Wipe the buffer."""

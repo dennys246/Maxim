@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from maxim.utils.content_safety import PLAIN_BOUNDARY_LINES, is_section_boundary_line
+
 
 class DataSensitivity(Enum):
     PUBLIC = "public"
@@ -38,6 +40,14 @@ MAXIM_COMMAND_SENSITIVITY: dict[str, DataSensitivity] = {
 }
 
 
+def tool_result_header(tool_name: str) -> str:
+    """The header a follow-up prompt puts above a tool's result. It names the tool's sensitivity
+    (``TOOL_SENSITIVITY``), so the filter redacts the result by the class its tool belongs to. A tool missing from
+    the table (or "" for an unparseable follow-up) is private: the filter fails closed."""
+    sensitivity = TOOL_SENSITIVITY.get(tool_name, DataSensitivity.PRIVATE)
+    return f"=== Tool Result ({sensitivity.value}) ==="
+
+
 @dataclass(slots=True)
 class RedactionPolicy:
     name: str
@@ -65,41 +75,45 @@ class RedactionResult:
 # a sensitive section header, the structural test fails and forces a
 # rule update here — pattern-based redaction with no header pin is a
 # silent no-op waiting to happen.
-_SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
-    (re.compile(r"^=== Conversation History ===$"), "conversation_history", DataSensitivity.PRIVATE, True),
-    (re.compile(r"^=== Recent Action Outcomes ===$"), "tool_outputs", DataSensitivity.PRIVATE, True),
-    (re.compile(r"^=== Recent Speech ===$"), "speech_transcripts", DataSensitivity.PRIVATE, True),
-    # workspace_manifest: legacy static header + the two live
-    # parameterized headers from build_workspace_manifest.
-    (re.compile(r"^=== Workspace Manifest ===$"), "workspace_manifest", DataSensitivity.PRIVATE, True),
+#
+# A redacted section runs from its header to the next line that is a KNOWN boundary (``_ends_section``: a rule
+# header, a header in ``_KNOWN_HEADER_LITERALS`` / ``_KNOWN_HEADER_PATTERNS``, or a plain boundary line such as the
+# router's closing instruction), or to the end of the text. An unknown ``=== X ===`` line never ends it: that errs
+# toward over-redaction. Every producer of a rule's section renders it by identity
+# (``PromptBudgeter.add(header=...)`` or ``content_safety.render_headed_section``), so its body cannot carry a
+# boundary line; the renderer and this filter share ``content_safety.is_section_boundary_line``.
+_SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity]] = [
+    (re.compile(r"^=== Conversation History ===$"), "conversation_history", DataSensitivity.PRIVATE),
+    (re.compile(r"^=== Recent Action Outcomes ===$"), "tool_outputs", DataSensitivity.PRIVATE),
+    (re.compile(r"^=== Recent Speech ===$"), "speech_transcripts", DataSensitivity.PRIVATE),
+    # workspace_manifest: legacy static header + the live parameterized
+    # headers from build_workspace_manifest_sections (the CWD listing is
+    # the same file-listing class as the workspace one).
+    (re.compile(r"^=== Workspace Manifest ===$"), "workspace_manifest", DataSensitivity.PRIVATE),
     (
         re.compile(r"^=== PROJECT DIRECTORY \(\d+ entries, CWD: .*\) ===$"),
         "workspace_manifest",
         DataSensitivity.PRIVATE,
-        True,
     ),
-    (
-        re.compile(r"^=== EXISTING WORKSPACE \(\d+ files?\) ===$"),
-        "workspace_manifest",
-        DataSensitivity.PRIVATE,
-        True,
-    ),
-    (re.compile(r"^=== Context ===$"), "context_pool", DataSensitivity.PRIVATE, True),
+    (re.compile(r"^=== EXISTING WORKSPACE \(\d+ files?\) ===$"), "workspace_manifest", DataSensitivity.PRIVATE),
+    (re.compile(r"^=== CWD Context \(read-only: .*\) ===$"), "workspace_manifest", DataSensitivity.PRIVATE),
+    (re.compile(r"^=== Context ===$"), "context_pool", DataSensitivity.PRIVATE),
     # memory_contents: live PromptBuilder header, the bio-enrichment
     # section (whose EnrichmentResult.memories lines are the same
     # hippocampus recall content — half-redacting memories while their
     # sibling section ships them was the review round's cross-confirmed
     # gap), + legacy exec_agent prompt marker (still emitted by the
     # standalone-agent path).
-    (re.compile(r"^=== Relevant Memories ===$"), "memory_contents", DataSensitivity.PRIVATE, True),
+    (re.compile(r"^=== Relevant Memories ===$"), "memory_contents", DataSensitivity.PRIVATE),
     (
         re.compile(r"^=== What your experience tells you about this situation ===$"),
         "memory_contents",
         DataSensitivity.PRIVATE,
-        True,
     ),
-    (re.compile(r"^RELEVANT MEMORIES:$"), "memory_contents", DataSensitivity.PRIVATE, False),
-    (re.compile(r"^RECENT CLI INPUTS:$"), "cli_inputs", DataSensitivity.PRIVATE, False),
+    # The standalone exec prompt (agents/exec_agent.py::_build_llm_context) is an f-string with no known boundary
+    # after these markers, so they run to the end of its text.
+    (re.compile(r"^RELEVANT MEMORIES:$"), "memory_contents", DataSensitivity.PRIVATE),
+    (re.compile(r"^RECENT CLI INPUTS:$"), "cli_inputs", DataSensitivity.PRIVATE),
     # inner_deliberation: the header itself classifies the section as
     # private, and the content is the LLM's own verbatim reasoning —
     # the exact leak class the hivemind bundle scrub closes on the
@@ -108,11 +122,10 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
         re.compile(r"^=== Your inner deliberation \(private — not speech\) ===$"),
         "inner_deliberation",
         DataSensitivity.PRIVATE,
-        True,
     ),
-    (re.compile(r"^=== Your prior reasoning ===$"), "inner_deliberation", DataSensitivity.PRIVATE, True),
-    # ReasoningCarryover (llm_fallback.py::get_prompt_text — NOT a
-    # PromptBuilder header): each line is `- {tool}: {reasoning[:80]}
+    (re.compile(r"^=== Your prior reasoning ===$"), "inner_deliberation", DataSensitivity.PRIVATE),
+    # ReasoningCarryover (llm_fallback.py::ReasoningCarryover.PROMPT_HEADER —
+    # NOT a PromptBuilder header): each line is `- {tool}: {reasoning[:80]}
     # [OK|FAIL: {result_summary[:100]}]` — the LLM's own reasoning plus
     # raw tool output, i.e. inner_deliberation + tool_outputs content
     # under a header neither rule matched (found post-review while
@@ -121,13 +134,115 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
         re.compile(r"^=== Recent Decisions \(Working Memory\) ===$"),
         "inner_deliberation",
         DataSensitivity.PRIVATE,
-        True,
     ),
+    # Other people's messages held for the agent (#1481): SMS, voice, the command API.
+    (
+        re.compile(r"^=== Inbound Messages \(held until you act on them\) ===$"),
+        "inbound_messages",
+        DataSensitivity.PRIVATE,
+    ),
+    # A follow-up prompt's tool result (tool_result_header), redacted by its tool's sensitivity. The public header is
+    # a rule too, so it is a known boundary; _should_redact keeps it.
+    *((re.compile(rf"^=== Tool Result \({level.value}\) ===$"), "tool_outputs", level) for level in DataSensitivity),
 ]
 
-_HEADER_PATTERN = re.compile(r"^=== .* ===$")
+# Every other header a producer emits into a prompt that reaches the filter, pinned against the producers' source by
+# tests/unit/test_cloud_redaction_headers.py. Each one ends a redacted section; a parameterized one is a pattern.
+_KNOWN_HEADER_LITERALS: frozenset[str] = frozenset(
+    f"=== {name} ==="
+    for name in (
+        "Acting Coach",
+        "Active Concepts",
+        "Active Protocols",
+        "Additional Tools",
+        "Agent States",
+        "Available Motor Programs",
+        "Available Tools",
+        "BASH SCRIPTING BEST PRACTICES",
+        "BATCHED EXPLORATION RESULTS",
+        "BATCHED TOOL CALLS",
+        "Body Needs",
+        "Body State (pain-relevant)",
+        "Body State",
+        "Body Tool Discipline",
+        "Body Utterances",
+        "Budget Context (USD)",
+        "CORRECT FORMAT",
+        "CORRECT FORMAT EXAMPLE 1",
+        "CORRECT FORMAT EXAMPLE 2",
+        "CURRENT DATE/TIME (IMPORTANT)",
+        "Causal Predictions (learned from experience)",
+        "Correction",
+        "Current Observation",
+        "DOCKER BEST PRACTICES",
+        "END BATCHED RESULTS",
+        "FILE WORKSPACE",
+        "FILE WORKSPACE REMINDER",
+        "File Operation Rules",
+        "GLOB PATTERN GUIDE",
+        "HTML/CSS BEST PRACTICES",
+        "Historical Context",
+        "Instructions",
+        "JAVASCRIPT BEST PRACTICES",
+        "JSON BEST PRACTICES",
+        "Learned Associations (from experience)",
+        "Learned Experience (from your past actions)",
+        "MARKDOWN & RESEARCH DOCUMENT GUIDELINES",
+        "New Instructions",
+        "OPERATIONAL STATE",
+        "PYTHON BEST PRACTICES",
+        "Physical Exploration",
+        "Planning Rule",
+        "Predicted Outcomes (from forward models)",
+        "RESEARCH DOCUMENT STRUCTURE",
+        "Recent Observations",
+        "SQL BEST PRACTICES",
+        "Scene",
+        "Semantic Knowledge",
+        "Substrate associations from prior experience",
+        "Tool Parameters",
+        "Tool Selection",
+        "Tools You've Hallucinated",
+        "Tools known but not in current location",
+        "User Request",
+        "WRONG (DO NOT DO THIS)",
+        "What you perceive right now",
+        "YAML BEST PRACTICES",
+        "Your Tools",
+    )
+)
+_KNOWN_HEADER_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"^=== Entity: .* ===$"),
+    re.compile(r"^=== DISCOVERY PLAN \(topics: .*\) ===$"),
+    re.compile(r"^=== FILE DISCOVERY \(topic: .*\) ===$"),
+    re.compile(r"^=== Statistical Patterns \(\d+ active\) ===$"),
+)
+
 _PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/)[^ \n\t\r]+")
 _SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
+
+
+def _rule_for(line: str) -> tuple[str, DataSensitivity] | None:
+    """The (category, sensitivity) of the private section ``line`` opens, or None."""
+    stripped = line.strip()
+    for pattern, category, sensitivity in _SECTION_RULES:
+        if pattern.match(stripped):
+            return category, sensitivity
+    return None
+
+
+def _ends_section(line: str) -> bool:
+    """Whether ``line`` is a known section boundary. Only a line ``is_section_boundary_line`` accepts can be one, so
+    a neutralized body line never is."""
+    if not is_section_boundary_line(line):
+        return False
+    stripped = line.strip()
+    return (
+        stripped in _KNOWN_HEADER_LITERALS
+        or stripped in PLAIN_BOUNDARY_LINES
+        or any(p.match(stripped) for p in _KNOWN_HEADER_PATTERNS)
+        or _rule_for(stripped) is not None
+    )
 
 
 class CloudRedactionFilter:
@@ -202,31 +317,26 @@ class CloudRedactionFilter:
         return True
 
     def _redact_sections(self, text: str) -> tuple[str, set[str]]:
-        lines = text.splitlines()
+        """Replace each redacted section, from its header up to the next known boundary, with one marker.
+
+        Lines are split on ``\\n`` only: the renderer turns every other line break in a private body into ``\\n``,
+        and a line that still holds one is a single line here too, never a boundary.
+        """
+        lines = text.split("\n")
         redacted_categories: set[str] = set()
         out: list[str] = []
         i = 0
         while i < len(lines):
-            line = lines[i]
-            matched = None
-            for pattern, category, sensitivity, bounded in _SECTION_RULES:
-                if pattern.match(line.strip()):
-                    matched = (category, sensitivity, bounded)
-                    break
-            if matched:
-                category, sensitivity, bounded = matched
-                if self._should_redact(sensitivity):
-                    redacted_categories.add(category)
-                    out.append(f"[REDACTED: {category}]")
+            matched = _rule_for(lines[i])
+            if matched is not None and self._should_redact(matched[1]):
+                category = matched[0]
+                redacted_categories.add(category)
+                out.append(f"[REDACTED: {category}]")
+                i += 1
+                while i < len(lines) and not _ends_section(lines[i]):
                     i += 1
-                    if bounded:
-                        while i < len(lines) and not _HEADER_PATTERN.match(lines[i].strip()):
-                            i += 1
-                    else:
-                        while i < len(lines) and lines[i].strip():
-                            i += 1
-                    continue
-            out.append(line)
+                continue
+            out.append(lines[i])
             i += 1
         return "\n".join(out), redacted_categories
 
@@ -243,12 +353,10 @@ class CloudRedactionFilter:
 
     def _infer_sent_categories(self, original: str, redacted: set[str]) -> set[str]:
         sent: set[str] = set()
-        for line in original.splitlines():
-            for pattern, category, _, _ in _SECTION_RULES:
-                if category in redacted:
-                    continue
-                if pattern.match(line.strip()):
-                    sent.add(category)
+        for line in original.split("\n"):
+            matched = _rule_for(line)
+            if matched is not None and matched[0] not in redacted:
+                sent.add(matched[0])
         # Always include core context as sent
         sent.add("system_context")
         return sent
@@ -261,4 +369,5 @@ __all__ = [
     "DataSensitivity",
     "TOOL_SENSITIVITY",
     "MAXIM_COMMAND_SENSITIVITY",
+    "tool_result_header",
 ]
