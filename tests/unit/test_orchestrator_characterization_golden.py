@@ -96,6 +96,10 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
     ``planning_failed``). The checkpoint now gives counts and points at ``observe_actions``, and the nudges name
     only ``send_message``; the stall arm's two injected texts changed, and the fixture was regenerated for it in
     its own commit.
+  - #1689 (FIXED): the AUT answered a short identity or greeting probe ("Hello, who are you?", "A stranger asks
+    your name.") with a canned reply before its model, booked as ``plan:direct_answer:success``. Every arm now
+    shows the AUT's model answering ("I heard: ..."), and the stdin arm's operator text reaches that model. The
+    fixture was regenerated for it, on Linux (the Windows trace differs by path separator).
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
@@ -289,9 +293,9 @@ def test_operator_commands_reach_their_targets(tmp_path_factory: pytest.TempPath
     ]
     paused = t["turns"][0]["paused_aut_actions"]
     assert [a["tool"] for a in paused] == ["respond"]
-    # The AUT's no-LLM direct answer to a greeting (``agents/llm_fallback.py``): the operator's "hello" reached it.
-    # (Until #1260 the respond's follow-up was an AUT LLM call carrying the text, which this read instead.)
-    assert paused[0]["args"] == {"message": "Hello! How can I help you?"}
+    # The fake AUT model echoes its request, so the operator's paused text reached the AUT's MODEL. (Until #1689 a
+    # canned no-model answer to the greeting stood here; until #1260 the respond's follow-up carried the text.)
+    assert paused[0]["args"] == {"message": "I heard: hello from the operator"}
     assert t["result"]["finish_reason"] == "cancel"
     assert t["result"]["total_actions"] == 3
 
