@@ -5,5 +5,7 @@
   client, the Maxim app included, failed with "Connection refused" until a manual `POST /api/media/acquire`.
   - A release another client made is left alone.
   - When the state before the connect is unknown, or a re-acquire can't be confirmed, the controller logs a WARNING
-    naming that endpoint and retries on the next disconnect after a reconnect.
+    naming that endpoint.
+  - An unconfirmed re-acquire is retried at the next disconnect after a reconnect, provided that reconnect can read
+    the daemon's status. If it can't, the controller drops the claim and logs another WARNING rather than guess.
   - Scripts that build their own SDK handle with `no_media`, outside the controller, still leak the release (#1712).
