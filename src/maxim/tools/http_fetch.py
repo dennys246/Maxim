@@ -280,8 +280,7 @@ def _fetch_page(url: str, *, timeout_s: float, max_bytes: int, public_only: bool
 
     remaining = _remaining_s(deadline_at, timeout_s)
     if remaining <= 0:
-        endpoint = _http._EXTERNAL_PUBLIC_ENDPOINT if public_only else _http._EXTERNAL_ENDPOINT
-        raise _http.HTTPTimeout(endpoint, fix_hint="the request budget was spent on robots.txt")
+        raise _http.HTTPTimeout("http_fetch", fix_hint="the request budget was spent on robots.txt")
     return _http.fetch_url(
         url,
         method="GET",
@@ -354,9 +353,10 @@ class HttpFetchTool(Tool):
 
         Does not interrupt a thread blocked inside ``http.fetch_url``;
         the underlying request still completes (or times out) before
-        the cancel flag is observed. For hard interruption, the upstream
-        timeout policy (``TimeoutPolicy(connect_s, read_s, pool_s)``)
-        is the load-bearing mechanism.
+        the cancel flag is observed. What bounds that request is the
+        call's whole-request deadline (``fetch_url(deadline_s=)``, #1715),
+        not the per-read ``TimeoutPolicy``: a slow server is refused at
+        about the budget, except while DNS resolves.
         """
         self._cancelled.set()
 

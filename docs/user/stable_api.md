@@ -219,7 +219,7 @@ For finer-grained cancellation **inside** a verb (e.g. aborting an in-flight too
 
 | Tool | Cancel semantics |
 |---|---|
-| `HttpFetchTool` | Sets a flag; the next `execute()` safety-check returns a "cancelled" error before issuing the network call. Does not interrupt a thread already inside the underlying HTTP request. What bounds that request is its whole-request deadline (`fetch_url(deadline_s=)`, #1715): the per-read timeout plus 2 s, shared by the robots.txt hops and the page. It is soft only for the DNS lookup, which is not timed. |
+| `HttpFetchTool` | Sets a flag; the next `execute()` safety-check returns a "cancelled" error before issuing the network call. Does not interrupt a thread already inside the underlying HTTP request. What bounds that request is its whole-request deadline (`fetch_url(deadline_s=)`, #1715): the per-read timeout plus 2 s, shared by the robots.txt hops and the page. Two things are not bounded: the DNS lookup, and HTTPS through an `https://` proxy when `block_private_ips` is off. |
 | `InternetSearchTool` | Same shape as `HttpFetchTool`. |
 
 Other tools inherit the default no-op `cancel()` and require their `timeout` setting to bound runtime.

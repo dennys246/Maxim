@@ -37,7 +37,9 @@ thread, client or endpoint.
   - `start_tls` returns a wrapped stream.
   - `close` and `get_extra_info` delegate.
   - With the contextvar `None` it is a pure pass-through, so every existing caller is byte-for-byte unchanged.
-- **Every backend the `_external*` clients use returns `_DeadlineStream`s:**
+- **Every backend the `_external*` clients use returns `_DeadlineStream`s** (the registry knows them by name,
+  `_DEADLINE_ENDPOINTS`). Other clients, the LLM and peer endpoints and the OpenAI SDK's, are not changed, except
+  that their address-checking backend subclasses the deadline backend, which passes through when no deadline is set:
   - `_AddressCheckingBackend.connect_tcp` wraps what it returns and clamps its connect timeout the same way.
   - The unrestricted `_external` (policy `"any"`) client stays a plain `httpx.Client(trust_env=...)`, so the
     `SSL_CERT_FILE`/`SSL_CERT_DIR`/netrc handling it has today is kept. After it is built, its default
@@ -77,7 +79,9 @@ thread, client or endpoint.
   The robots.txt hops and the main fetch each pass the *remaining* budget, so six robots redirects cannot multiply
   it. Once the budget is spent, the call refuses the way an unreadable robots.txt does today (fail closed).
 - **`internet_search`:** both sites, `deadline_s = timeout_s + 2.0`. Its hosts are fixed, but its
-  `stable_api.md` row claims the same shape.
+  `stable_api.md` row claims the same shape. Each request gets its own deadline, so a tool call that makes both
+  requests can take about twice the budget, and the optional `duckduckgo_search` package path is not bounded by
+  this. Bounding the whole tool call is left for later; it needs no new mechanism.
 - **`stable_api.md`:** the `HttpFetchTool` and `InternetSearchTool` rows say "whole-request deadline (soft only
   for DNS)".
 

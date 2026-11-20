@@ -120,8 +120,9 @@ def _timed_refusal(url: str, **kw) -> tuple[float, BaseException]:
 @pytest.mark.timeout(20)
 @pytest.mark.parametrize("behaviour", [_body_drip, _header_drip, _continue_flood], ids=["body", "headers", "100"])
 @pytest.mark.parametrize("policy", ["any", "private"])
-def test_a_drip_is_refused_at_the_deadline(serve, behaviour, policy):
-    elapsed, exc = _timed_refusal(serve(behaviour), address_policy=policy)
+@pytest.mark.parametrize("max_bytes", [None, 1000], ids=["whole", "capped"])  # capped: the tools' streamed path
+def test_a_drip_is_refused_at_the_deadline(serve, behaviour, policy, max_bytes):
+    elapsed, exc = _timed_refusal(serve(behaviour), address_policy=policy, max_bytes=max_bytes)
     assert DEADLINE_S * 0.9 <= elapsed <= REFUSED_WITHIN_S, elapsed
     assert "deadline" in (exc.fix_hint or "").lower()
 
@@ -163,7 +164,11 @@ def test_a_meaningless_deadline_is_refused(value):
 
 
 def test_every_external_client_transport_carries_the_deadline_backend():
-    """A future ``_external*`` client or mount without the wrapper would silently ignore ``deadline_s``."""
+    """A future ``_external*`` client or mount without the wrapper would silently ignore ``deadline_s``.
+
+    This reads the attribute the code assigns. If httpcore renamed ``_network_backend``, the assignment would make a
+    dead attribute and this would still pass; the real-socket drip tests above are what fail then, so they are not
+    redundant with it."""
     http._ensure_external_endpoint()
     names = [http._EXTERNAL_ENDPOINT, http._EXTERNAL_PUBLIC_ENDPOINT, *http._EXTERNAL_POLICY_ENDPOINTS.values()]
     for name in names:
@@ -213,3 +218,85 @@ def test_the_page_fetch_gets_the_remainder_and_a_spent_budget_never_connects(mon
     with pytest.raises(http.HTTPTimeout):
         http_fetch._fetch_page("https://e.x/", timeout_s=3.0, max_bytes=10, public_only=True, deadline_at=50.0)
     assert len(given) == 1
+
+
+# ── review-round folds (Executor, Architecture, Wire integrity, 2026-11-20) ──────────────────────────────────────
+
+
+def _tls_drip(conn: socket.socket, stop: threading.Event) -> None:
+    """A TLS record header, then its body a byte at a time: the handshake never completes."""
+    _drip(conn, b"\x16\x03\x03\x00\x30" + b"z" * 40, 0.1, stop)
+
+
+@pytest.mark.timeout(20)
+@pytest.mark.parametrize("policy", ["any", "private"])
+def test_a_tls_handshake_drip_is_refused_at_the_deadline(serve, policy):
+    url = serve(_tls_drip).replace("http://", "https://")
+    elapsed, exc = _timed_refusal(url, address_policy=policy)
+    assert elapsed <= REFUSED_WITHIN_S, elapsed
+    assert "deadline" in (exc.fix_hint or "").lower()
+
+
+@pytest.mark.timeout(30)
+def test_a_pool_wait_is_cut_to_the_deadline_and_says_so(serve):
+    """Every pooled connection busy: the wait is not stream I/O, so fetch_url clamps it, and labels it the deadline."""
+    url = serve(_stall)
+    busy = http.TimeoutPolicy(connect_s=5.0, read_s=4.0, pool_s=4.0)
+
+    def hold() -> None:
+        with pytest.raises(http.HTTPError):
+            http.fetch_url(url, timeout=busy)
+
+    holders = [threading.Thread(target=hold, daemon=True) for _ in range(http.DEFAULT_POOL_PER_ENDPOINT)]
+    for t in holders:
+        t.start()
+    time.sleep(0.5)
+    t0 = time.monotonic()
+    with pytest.raises(http.HTTPTimeout) as exc:
+        http.fetch_url(url, timeout=busy, deadline_s=DEADLINE_S)
+    assert time.monotonic() - t0 <= REFUSED_WITHIN_S
+    assert "deadline" in (exc.value.fix_hint or "").lower()
+    for t in holders:
+        t.join(timeout=10)
+
+
+def _fast_then_drip(conn: socket.socket, stop: threading.Event) -> None:
+    conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")  # keep-alive: the connection stays pooled
+    if conn.recv(65536):
+        _body_drip(conn, stop)
+
+
+@pytest.mark.timeout(20)
+def test_a_pooled_connection_opened_without_a_deadline_is_bounded_when_reused_with_one(serve):
+    url = serve(_fast_then_drip)
+    assert http.fetch_url(url, timeout=_policy()).content == b"ok"
+    elapsed, exc = _timed_refusal(url)
+    assert elapsed <= REFUSED_WITHIN_S, elapsed
+    assert "deadline" in (exc.fix_hint or "").lower()
+
+
+def test_proxy_mounts_carry_the_deadline_backend(monkeypatch):
+    """With an env proxy, the external clients' proxy transports are bounded too (NO_PROXY entries are ``None``)."""
+    from maxim import _offline
+
+    if _offline.is_offline():
+        pytest.skip("offline: every client is strict, with no proxy mounts")
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "example.org")
+    http._ensure_external_endpoint()
+    names = [http._EXTERNAL_ENDPOINT, http._EXTERNAL_POLICY_ENDPOINTS["public"]]
+    saved = {n: http._registry._clients.pop(n, None) for n in names}
+    try:
+        for name in names:
+            client = http._registry.get_client(name)
+            mounts = [t for t in client._mounts.values() if t is not None]
+            assert mounts, name  # the env proxy produced at least one proxy transport
+            for t in mounts:
+                assert isinstance(t._pool._network_backend, http._DeadlineBackend), name
+            client.close()
+    finally:
+        for name, client in saved.items():
+            http._registry._clients.pop(name, None)
+            if client is not None:
+                http._registry._clients[name] = client
