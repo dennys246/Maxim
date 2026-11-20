@@ -303,3 +303,84 @@ def test_proxy_mounts_carry_the_deadline_backend(monkeypatch):
             http._registry._clients.pop(name, None)
             if client is not None:
                 http._registry._clients[name] = client
+
+
+# The stream and backend wrappers directly: a spent budget never reaches the inner call, and an inner timeout that
+# ends with the budget spent is re-raised as the deadline's own, while one with budget left stays ordinary.
+
+
+class _InnerStream:
+    def __init__(self, fail: type[Exception] | None = None, sleep_s: float = 0.0) -> None:
+        self.calls = 0
+        self._fail = fail
+        self._sleep_s = sleep_s
+
+    def _act(self) -> None:
+        self.calls += 1
+        time.sleep(self._sleep_s)
+        if self._fail is not None:
+            raise self._fail("inner timed out")
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        self._act()
+        return b""
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self._act()
+
+
+@pytest.fixture
+def deadline_in():
+    def set_(seconds: float):
+        return http._REQUEST_DEADLINE.set(time.monotonic() + seconds)
+
+    tokens = []
+    yield lambda s: tokens.append(set_(s))
+    for token in reversed(tokens):
+        http._REQUEST_DEADLINE.reset(token)
+
+
+@pytest.mark.parametrize(("op", "marker"), [("read", "_DeadlineReadExceeded"), ("write", "_DeadlineWriteExceeded")])
+def test_a_spent_budget_never_calls_the_inner_stream(deadline_in, op, marker):
+    inner = _InnerStream()
+    deadline_in(-1.0)
+    with pytest.raises(getattr(http, marker)):
+        getattr(http._DeadlineStream(inner), op)(b"x" if op == "write" else 10, 5.0)
+    assert inner.calls == 0
+
+
+def test_a_write_timeout_that_spends_the_budget_is_the_deadlines(deadline_in):
+    import httpcore
+
+    deadline_in(0.05)
+    with pytest.raises(http._DeadlineWriteExceeded) as info:
+        http._DeadlineStream(_InnerStream(httpcore.WriteTimeout, sleep_s=0.1)).write(b"x", 5.0)
+    assert isinstance(info.value.__cause__, httpcore.WriteTimeout)
+
+
+def test_a_write_timeout_with_budget_left_stays_ordinary(deadline_in):
+    import httpcore
+
+    deadline_in(30.0)
+    with pytest.raises(httpcore.WriteTimeout) as info:
+        http._DeadlineStream(_InnerStream(httpcore.WriteTimeout)).write(b"x", 5.0)
+    assert not isinstance(info.value, http._DeadlineExceeded)
+
+
+@pytest.mark.parametrize(("budget_s", "marked"), [(0.05, True), (30.0, False)])
+def test_a_connect_timeout_is_the_deadlines_only_when_the_budget_is_spent(monkeypatch, deadline_in, budget_s, marked):
+    import httpcore
+
+    seen = []
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        seen.append(timeout)
+        time.sleep(0.1)
+        raise httpcore.ConnectTimeout("inner connect timed out")
+
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", connect_tcp)
+    deadline_in(budget_s)
+    with pytest.raises(httpcore.ConnectTimeout) as info:
+        http._DeadlineBackend().connect_tcp("127.0.0.1", 9, timeout=5.0)
+    assert isinstance(info.value, http._DeadlineConnectExceeded) is marked
+    assert seen[0] <= budget_s  # the dial got at most what was left
