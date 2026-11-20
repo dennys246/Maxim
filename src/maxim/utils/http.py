@@ -1169,6 +1169,16 @@ def _loggable_url(url: str) -> str:
 
 def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
     if isinstance(exc, httpx.TimeoutException) and isinstance(exc.__cause__, _DeadlineExceeded):
+        if isinstance(exc.__cause__, _DeadlinePoolExceeded):
+            # Local contention, not a slow server: count it as the pool branch below would (#1715 delta review).
+            _metrics.record_pool_exhausted(endpoint)
+            return HTTPTimeout(
+                endpoint,
+                fix_hint=(
+                    f"No free connection for endpoint '{endpoint}' before the whole request's deadline: "
+                    "too many requests at once"
+                ),
+            )
         return HTTPTimeout(
             endpoint,
             fix_hint=_DEADLINE_FIX_HINT,

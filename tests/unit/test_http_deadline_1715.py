@@ -255,7 +255,9 @@ def test_a_pool_wait_is_cut_to_the_deadline_and_says_so(serve):
     with pytest.raises(http.HTTPTimeout) as exc:
         http.fetch_url(url, timeout=busy, deadline_s=DEADLINE_S)
     assert time.monotonic() - t0 <= REFUSED_WITHIN_S
-    assert "deadline" in (exc.value.fix_hint or "").lower()
+    hint = (exc.value.fix_hint or "").lower()
+    assert "deadline" in hint and "no free connection" in hint  # local contention, not "the server was too slow"
+    assert http.metrics_snapshot()["pool_exhausted_total"].get(http._EXTERNAL_ENDPOINT, 0) >= 1
     for t in holders:
         t.join(timeout=10)
 
