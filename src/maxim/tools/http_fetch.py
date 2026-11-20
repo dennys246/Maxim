@@ -65,20 +65,39 @@ def _robots_origin(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc.rsplit('@', 1)[-1]}"
 
 
-def _fetch_robots_txt(origin: str, timeout_s: float = 5.0, *, public_only: bool = True) -> set[str] | None:
+# The whole-request slack each fetch gets over its per-read timeout, as its old pool bound had (#1715).
+_DEADLINE_SLACK_S = 2.0
+
+
+def _remaining_s(deadline_at: float | None, timeout_s: float) -> float:
+    """What is left of the tool call's one budget (``deadline_at``, monotonic), or a fresh one without it."""
+    if deadline_at is None:
+        return timeout_s + _DEADLINE_SLACK_S
+    return deadline_at - time.monotonic()
+
+
+def _fetch_robots_txt(
+    origin: str, timeout_s: float = 5.0, *, public_only: bool = True, deadline_at: float | None = None
+) -> set[str] | None:
     """Fetch and parse ``origin``'s robots.txt: the disallowed paths, or ``None`` when it could not be read.
 
     RFC 9309, with fail-closed as the owner decided (#967, 2026-10-14):
     - a 4xx other than 429 means there is no robots.txt, so no restrictions (an empty set), 401/403 included;
     - a 5xx, a 429, a timeout or a network failure means it could not be read (``None``), which refuses the fetch;
     - a redirect is followed, up to five hops, each through ``fetch_url`` with the same ``public_only``; a redirect
-      without a ``Location`` or one hop too many is unreadable.
+      without a ``Location`` or one hop too many is unreadable;
+    - every hop takes what is left of ONE whole-request budget (``deadline_at``, #1715), so a slow server cannot
+      multiply it across hops; a spent budget is unreadable too.
     """
     from maxim.utils import http as _http
 
     url = f"{origin}/robots.txt"
     try:
         for _hop in range(_ROBOTS_MAX_REDIRECTS + 1):
+            remaining = _remaining_s(deadline_at, timeout_s)
+            if remaining <= 0:
+                logger.debug("robots.txt at %s could not be read: the request budget is spent", origin)
+                return None
             resp = _http.fetch_url(
                 url,
                 method="GET",
@@ -86,6 +105,7 @@ def _fetch_robots_txt(origin: str, timeout_s: float = 5.0, *, public_only: bool 
                 timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, pool_s=timeout_s + 1.0),
                 max_bytes=512_000,  # the robots.txt host is chosen by the model's URL (#825)
                 public_only=public_only,  # ...so is every address it connects to, redirects included (#824)
+                deadline_s=remaining,  # a drip cannot hold it past the budget (#1715)
             )
             if not 300 <= resp.status < 400:
                 break
@@ -119,7 +139,9 @@ def _fetch_robots_txt(origin: str, timeout_s: float = 5.0, *, public_only: bool 
     return disallowed
 
 
-def check_robots_txt(url: str, timeout_s: float = 5.0, *, public_only: bool = True) -> tuple[bool, str | None]:
+def check_robots_txt(
+    url: str, timeout_s: float = 5.0, *, public_only: bool = True, deadline_at: float | None = None
+) -> tuple[bool, str | None]:
     """Check if URL is allowed by robots.txt. Returns (allowed, reason).
 
     FAILS CLOSED (#967): a robots.txt that cannot be read refuses the fetch, and is not cached, so the next
@@ -130,7 +152,7 @@ def check_robots_txt(url: str, timeout_s: float = 5.0, *, public_only: bool = Tr
     path = urlsplit(url).path or "/"
     disallowed = _robots_cache.get_disallowed(origin)
     if disallowed is None:
-        disallowed = _fetch_robots_txt(origin, timeout_s, public_only=public_only)
+        disallowed = _fetch_robots_txt(origin, timeout_s, public_only=public_only, deadline_at=deadline_at)
         if disallowed is None:
             return False, f"robots.txt for {origin} could not be read; the fetch is refused until it can be"
         _robots_cache.set_disallowed(origin, disallowed)
@@ -247,6 +269,36 @@ def _is_textual(content_type: str) -> bool:
     """Whether a Content-Type is text the fetch tool can meaningfully decode (#825)."""
     media = content_type.split(";")[0].strip().lower()
     return media.startswith(_TEXTUAL_TYPES) or media.endswith(("+xml", "+json"))
+
+
+def _fetch_page(url: str, *, timeout_s: float, max_bytes: int, public_only: bool, deadline_at: float) -> Any:
+    """``HttpFetchTool``'s page fetch, inside what is left of the call's one budget (#1715).
+
+    A spent budget raises ``HTTPTimeout`` without connecting, which the tool reports as a timeout.
+    """
+    from maxim.utils import http as _http
+
+    remaining = _remaining_s(deadline_at, timeout_s)
+    if remaining <= 0:
+        endpoint = _http._EXTERNAL_PUBLIC_ENDPOINT if public_only else _http._EXTERNAL_ENDPOINT
+        raise _http.HTTPTimeout(endpoint, fix_hint="the request budget was spent on robots.txt")
+    return _http.fetch_url(
+        url,
+        method="GET",
+        headers={
+            "User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        },
+        timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, pool_s=timeout_s + _DEADLINE_SLACK_S),
+        # Streamed and capped (#825): the body beyond max_bytes is never downloaded.
+        max_bytes=max_bytes,
+        # The policy's private-IP check resolves the host SEPARATELY, so a rebinding host could pass it and connect
+        # privately; this checks the address dialled (#824).
+        public_only=public_only,
+        # A server that drips its headers or body cannot hold the call past the budget (#1715).
+        deadline_s=remaining,
+    )
 
 
 class HttpFetchTool(Tool):
@@ -373,10 +425,11 @@ class HttpFetchTool(Tool):
                 metadata={"rate_limited": True},
             )
 
-        # Check robots.txt
+        # One whole-request budget for the robots.txt hops and the page (#1715)
+        deadline_at = time.monotonic() + timeout_s + _DEADLINE_SLACK_S
         if check_robots:
             robots_allowed, robots_reason = check_robots_txt(
-                url, timeout_s=timeout_s, public_only=policy.block_private_ips
+                url, timeout_s=timeout_s, public_only=policy.block_private_ips, deadline_at=deadline_at
             )
             if not robots_allowed:
                 return ToolResult(
@@ -396,20 +449,12 @@ class HttpFetchTool(Tool):
 
             self._request_times.append(now)
 
-            response = _http.fetch_url(
+            response = _fetch_page(
                 url,
-                method="GET",
-                headers={
-                    "User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                },
-                timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, pool_s=timeout_s + 2.0),
-                # Streamed and capped (#825): the body beyond max_bytes is never downloaded.
+                timeout_s=timeout_s,
                 max_bytes=max_bytes,
-                # The policy's private-IP check above resolves the host SEPARATELY, so a rebinding
-                # host could pass it and connect privately; this checks the address dialled (#824).
                 public_only=policy.block_private_ips,
+                deadline_at=deadline_at,
             )
 
             # Check content type

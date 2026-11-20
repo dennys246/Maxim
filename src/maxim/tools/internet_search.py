@@ -193,6 +193,7 @@ def _search_duckduckgo(
             headers={"User-Agent": "Maxim/1.0 (Research Assistant; +https://github.com/maxim)"},
             timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, pool_s=timeout_s + 2.0),
             max_bytes=2_000_000,  # untrusted remote; bounds the download (#825)
+            deadline_s=timeout_s + 2.0,  # and the whole request: a drip cannot hold it (#1715)
         )
         data = response.json()
 
@@ -308,6 +309,7 @@ def _search_duckduckgo_lite(
         headers=headers,
         timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, pool_s=timeout_s + 2.0),
         max_bytes=2_000_000,  # untrusted remote; bounds the download (#825)
+        deadline_s=timeout_s + 2.0,  # and the whole request: a drip cannot hold it (#1715)
     )
     if response.status != 200:
         raise RuntimeError(f"DuckDuckGo HTML search returned HTTP {response.status}")
