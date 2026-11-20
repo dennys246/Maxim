@@ -75,7 +75,7 @@ def _status(method: str, url: str, *, key: str | None = None, body: dict | None 
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     try:
         resp = http.fetch_url(
-            url, method=method, headers=headers, json=body, timeout=http.TimeoutPolicy(connect_s=2, read_s=5, total_s=6)
+            url, method=method, headers=headers, json=body, timeout=http.TimeoutPolicy(connect_s=2, read_s=5, pool_s=6)
         )
         return resp.status, resp.json()
     except http.HTTPError as e:

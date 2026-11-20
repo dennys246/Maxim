@@ -83,7 +83,7 @@ def _fetch_robots_txt(origin: str, timeout_s: float = 5.0, *, public_only: bool 
                 url,
                 method="GET",
                 headers={"User-Agent": "Maxim/1.0 (Research Assistant)"},
-                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, total_s=timeout_s + 1.0),
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=timeout_s, pool_s=timeout_s + 1.0),
                 max_bytes=512_000,  # the robots.txt host is chosen by the model's URL (#825)
                 public_only=public_only,  # ...so is every address it connects to, redirects included (#824)
             )
@@ -303,7 +303,7 @@ class HttpFetchTool(Tool):
         Does not interrupt a thread blocked inside ``http.fetch_url``;
         the underlying request still completes (or times out) before
         the cancel flag is observed. For hard interruption, the upstream
-        timeout policy (``TimeoutPolicy(connect_s, read_s, total_s)``)
+        timeout policy (``TimeoutPolicy(connect_s, read_s, pool_s)``)
         is the load-bearing mechanism.
         """
         self._cancelled.set()
@@ -404,7 +404,7 @@ class HttpFetchTool(Tool):
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language": "en-US,en;q=0.5",
                 },
-                timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, total_s=timeout_s + 2.0),
+                timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=timeout_s, pool_s=timeout_s + 2.0),
                 # Streamed and capped (#825): the body beyond max_bytes is never downloaded.
                 max_bytes=max_bytes,
                 # The policy's private-IP check above resolves the host SEPARATELY, so a rebinding

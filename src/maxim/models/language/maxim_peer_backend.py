@@ -268,7 +268,7 @@ def _probe_once(url: str, api_key: str | None, timeout_s: float):
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 2.0),
                 read_s=timeout_s,
-                total_s=timeout_s + 1.0,
+                pool_s=timeout_s + 1.0,
             ),
         )
     except _http.HTTPAuthError as e:
@@ -328,7 +328,7 @@ def _probe_stage2_readiness(
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 2.0),
                 read_s=timeout_s,
-                total_s=timeout_s + 1.0,
+                pool_s=timeout_s + 1.0,
             ),
         )
     except _http.HTTPAuthError as e:
@@ -483,7 +483,7 @@ class _MaximPeerBackend:
                 address_policy=base_url_address_policy(
                     base, bool(self._provider_cfg().get("allow_local_endpoints", True))
                 ),
-                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, pool_s=4.0),
             )
             return json.loads(resp.content or b"{}")
         except Exception as e:  # noqa: BLE001 — every probe here is best effort; a down leader is routine
@@ -833,13 +833,13 @@ class _MaximPeerBackend:
     def _get_timeout_policy(self) -> TimeoutPolicy:
         cfg = self._provider_cfg()
         try:
-            total = float(cfg.get("timeout_s", 300.0))
+            read_timeout = float(cfg.get("timeout_s", 300.0))  # a per-read bound, not a whole-request one (#1715)
         except (TypeError, ValueError):
-            total = 300.0
+            read_timeout = 300.0
         return TimeoutPolicy(
             connect_s=3.0,
-            read_s=total,
-            total_s=total + 60.0,
+            read_s=read_timeout,
+            pool_s=read_timeout + 60.0,
         )
 
     def _ensure_endpoint_registered(self) -> bool:

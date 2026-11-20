@@ -152,14 +152,14 @@ If a new Cloudflare 403 appears, it's almost certainly NOT a User-Agent issue â€
 `TimeoutPolicy` has three layered timeouts:
 
 ```python
-TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=60.0)
+TimeoutPolicy(connect_s=3.0, read_s=30.0, pool_s=60.0)
 ```
 
 - `connect_s` bounds the TCP handshake (the DNS lookup before it is not timed)
 - `read_s` bounds each socket read and each write, not the whole body
-- `total_s` bounds only the wait for a pooled connection; it is not a whole-request deadline, and httpx has none (#1706)
+- `pool_s` bounds only the wait for a pooled connection; it is not a whole-request deadline, and httpx has none (#1706). It was named `total_s` until #1715.
 
-Slow leader under load, or long-running inference? Raise `read_s`. Slow tunnel? Raise `connect_s`. Raise `total_s`
+Slow leader under load, or long-running inference? Raise `read_s`. Slow tunnel? Raise `connect_s`. Raise `pool_s`
 only when requests queue for one of the endpoint's pooled connections. The three factories available: `TimeoutPolicy()` (default 3/30/60), `TimeoutPolicy.fast()` (1/2/5), `TimeoutPolicy.long()` (5/120/600). Endpoints register with their own policy; call sites can override per-request via the `timeout=` kwarg.
 
 ### Header sanitizer rejections

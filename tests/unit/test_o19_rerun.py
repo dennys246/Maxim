@@ -1301,7 +1301,7 @@ def test_the_served_reader_waits_out_a_completion_and_records_why_a_read_failed(
     url, timeout, headers = calls[0]
     assert url == f"http://127.0.0.1:{v.SIM_PORT}/v1/models" and headers == {"Authorization": "Bearer k"}
     # campaigns 1-2's completions took up to 24 s and the narrator and the AUT share the server
-    assert timeout.read_s >= 48 and timeout.total_s >= 48
+    assert timeout.read_s >= 48 and timeout.pool_s >= 48
 
 
 def test_the_served_reader_tries_each_key_on_the_host(monkeypatch) -> None:

@@ -161,9 +161,10 @@ class TimeoutPolicy:
     ``connect_s`` bounds the TCP handshake; the DNS lookup before it is not
     timed (neither httpcore's nor the address-policy backend's
     ``getaddrinfo``). ``read_s`` bounds each socket read and each write
-    (httpx's ``read`` and ``write``), not the whole body. ``total_s`` bounds
+    (httpx's ``read`` and ``write``), not the whole body. ``pool_s`` bounds
     only the wait for a pooled connection (httpx's ``pool``); it is NOT a
-    whole-request deadline, and nothing in httpx is (#1706). A request can
+    whole-request deadline, and nothing in httpx is (#1706). It was named
+    ``total_s`` until #1715, which read as a whole-request bound. A request can
     take a lookup, a connect and several reads, each up to its own bound. A
     caller that needs a hard bound on a response's age times the call itself
     and refuses a late result. Use the provided factory helpers for common
@@ -172,25 +173,25 @@ class TimeoutPolicy:
 
     connect_s: float = 3.0
     read_s: float = 30.0
-    total_s: float = 60.0
+    pool_s: float = 60.0
 
     def to_httpx(self) -> httpx.Timeout:
         return httpx.Timeout(
             connect=self.connect_s,
             read=self.read_s,
             write=self.read_s,
-            pool=self.total_s,
+            pool=self.pool_s,
         )
 
     @classmethod
     def fast(cls) -> TimeoutPolicy:
         """Short budget — use for probes + health checks."""
-        return cls(connect_s=1.0, read_s=2.0, total_s=5.0)
+        return cls(connect_s=1.0, read_s=2.0, pool_s=5.0)
 
     @classmethod
     def long(cls) -> TimeoutPolicy:
         """Extended budget — use for inference + large downloads."""
-        return cls(connect_s=5.0, read_s=120.0, total_s=600.0)
+        return cls(connect_s=5.0, read_s=120.0, pool_s=600.0)
 
 
 @dataclass(frozen=True)

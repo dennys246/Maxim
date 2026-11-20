@@ -957,7 +957,7 @@ class ReachyMiniController(RobotController):
         try:
             resp = maxim_http.fetch_url(
                 f"http://{host}:8000/api/state/full?{_STATE_FULL_QUERY}",
-                timeout=maxim_http.TimeoutPolicy(connect_s=deadline, read_s=deadline, total_s=deadline),
+                timeout=maxim_http.TimeoutPolicy(connect_s=deadline, read_s=deadline, pool_s=deadline),
                 address_policy="private",
             )
         except Exception as e:  # noqa: BLE001 - any transport failure is a missing reference

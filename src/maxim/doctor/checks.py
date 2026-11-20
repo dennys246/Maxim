@@ -2200,7 +2200,7 @@ def check_loopback_lane_auth() -> CheckResult:
                 url.rstrip("/") + "/models",
                 method="GET",
                 headers={"Authorization": f"Bearer {key}"} if key else None,
-                timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0),
+                timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=3.0, pool_s=4.0),
             )
         except _http.HTTPAuthError:
             rejected.append((tier, url))
@@ -2243,7 +2243,7 @@ def _accepted_server_key(port: int) -> tuple[str | None, str | None, str]:
     keys = candidate_server_keys()
     if not keys:
         return None, None, "none-configured"
-    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0)
+    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, pool_s=4.0)
     for name, key in keys.items():
         try:
             _http.fetch_url(
@@ -2311,7 +2311,7 @@ def check_key_auth_smoke(port: int = 8100) -> CheckResult:
             retry_id="key-auth",
         )
     url = f"http://127.0.0.1:{port}/v1/models"
-    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, total_s=4.0)
+    fast = _http.TimeoutPolicy(connect_s=1.0, read_s=3.0, pool_s=4.0)
     # Test with bogus key — should get 401 if auth is enforced
     try:
         _http.fetch_url(
@@ -2478,7 +2478,7 @@ def check_inference_coherence(port: int = 8100) -> CheckResult:
             method="POST",
             headers={"Content-Type": "application/json", **_server_auth_headers(port)},  # keyed since #1314
             json=payload,
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=30.0, total_s=32.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=30.0, pool_s=32.0),
         )
         data = resp.json()
         dt_ms = (time.time() - t0) * 1000
@@ -2551,7 +2551,7 @@ def check_peer_url_reachable(url: str) -> CheckResult:
         _http.fetch_url(
             models_url,
             method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
         )
         dt_ms = (time.time() - t0) * 1000
     except _http.HTTPAuthError:
@@ -2636,7 +2636,7 @@ def check_peer_auth(url: str, key: str | None) -> CheckResult:
             models_url,
             method="GET",
             headers={"Authorization": f"Bearer {key}"},
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
         )
     except _http.HTTPAuthError:
         return CheckResult(
@@ -2685,7 +2685,7 @@ def check_peer_model(url: str, key: str | None, expected_model: str | None = Non
             models_url,
             method="GET",
             headers=headers,
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
         )
         data = resp.json()
         model_ids = [m.get("id", "") for m in data.get("data", [])]
@@ -2730,7 +2730,7 @@ def check_peer_latency(url: str, key: str | None) -> CheckResult:
     if key:
         headers["Authorization"] = f"Bearer {key}"
     timings: list[float] = []
-    fast = _http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0)
+    fast = _http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0)
     for probe_idx in range(5):
         try:
             t0 = time.time()

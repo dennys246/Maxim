@@ -567,7 +567,7 @@ def _request_with_retry(
                 timeout=_http.TimeoutPolicy(
                     connect_s=min(timeout, 3.0),
                     read_s=timeout,
-                    total_s=timeout + 1.0,
+                    pool_s=timeout + 1.0,
                 ),
             )
             return resp.content
@@ -605,7 +605,7 @@ def _check_proxy_ping(base_url: str, key: str | None = None, *, verbose: bool = 
             endpoint,
             method="GET",
             headers=headers,
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, total_s=6.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, pool_s=6.0),
         )
         return resp.json()
     except _http.HTTPError as e:
@@ -797,7 +797,7 @@ def _cmd_llm_status(argv: list[str]) -> int:
             f"{base}/v1/debug/status",
             method="GET",
             headers={"Authorization": f"Bearer {key}"} if key else {},
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
         )
         data = resp.json()
     except Exception as e:
@@ -921,7 +921,7 @@ def _cmd_version(argv: list[str]) -> int:
             endpoint,
             method="GET",
             headers=headers,
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
         )
         data = resp.json()
     except Exception as e:
@@ -996,7 +996,7 @@ def _cmd_logs(argv: list[str]) -> int:
                 endpoint,
                 method="GET",
                 headers=headers,
-                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
             )
             return resp.json()
         except _http.HTTPError as e:
@@ -1167,7 +1167,7 @@ def _cmd_deps(argv: list[str]) -> int:
             endpoint,
             method="GET",
             headers=headers,
-            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, pool_s=33.0),
         )
         data = resp.json()
     except _http.HTTPError as e:

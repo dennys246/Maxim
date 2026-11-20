@@ -1120,7 +1120,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 probe,
                 method="GET",
                 headers=headers,
-                timeout=_http.TimeoutPolicy(connect_s=0.8, read_s=1.5, total_s=2.0),
+                timeout=_http.TimeoutPolicy(connect_s=0.8, read_s=1.5, pool_s=2.0),
             )
             return resp.status == 200
         except _http.HTTPAuthError:
@@ -2825,7 +2825,7 @@ def _port_refuses_unauthenticated(port: int) -> bool:
         _http.fetch_url(
             f"http://127.0.0.1:{port}/v1/debug/ping",
             method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, pool_s=4.0),
         )
     except _http.HTTPAuthError as e:
         return e.status == 401

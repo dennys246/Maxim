@@ -186,7 +186,7 @@ def fetch_leader_debug_status(
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 1.0),
                 read_s=timeout_s,
-                total_s=timeout_s + 0.5,
+                pool_s=timeout_s + 0.5,
             ),
         )
         return resp.json()

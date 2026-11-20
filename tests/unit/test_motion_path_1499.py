@@ -878,7 +878,7 @@ def test_the_fresh_read_is_private_and_bounded(daemon):
     assert kw["address_policy"] == "private"
     policy = kw["timeout"]
     deadline = reachy_controller.FRESH_READ_DEADLINE_S
-    assert (policy.connect_s, policy.read_s, policy.total_s) == pytest.approx((deadline, deadline, deadline))
+    assert (policy.connect_s, policy.read_s, policy.pool_s) == pytest.approx((deadline, deadline, deadline))
 
 
 def test_a_failed_read_between_chunks_is_retried_once(daemon):
