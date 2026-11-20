@@ -45,7 +45,7 @@ import zlib
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from urllib.parse import urlsplit
 
 import httpcore
@@ -702,7 +702,14 @@ class _DeadlineBackend(httpcore.SyncBackend):
     one). The unrestricted clients and every proxy transport use it directly; the address-checking backends
     subclass it, so each checked dial is clamped and wrapped too."""
 
-    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):  # type: ignore[no-untyped-def]
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[Any] | None = None,
+    ) -> httpcore.NetworkStream:
         bounded = _clamped(timeout, _DeadlineConnectExceeded)
         try:
             stream = super().connect_tcp(host, port, bounded, local_address, socket_options)
