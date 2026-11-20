@@ -65,9 +65,11 @@ ANTENNA_LIMIT_RAD = math.radians(90.0)
 # bounded, the motor thread included (it logs and drops the command). The
 # lifecycle (wake, sleep) waits without a bound; the stop fence bounds it.
 MOTION_LOCK_WAIT_S = 25.0
-# The fresh readback's overall deadline (R1). Provisional; measured on the rig
-# before release (§12 item 3). Tunnel: an auto-tunnel or a manual one
-# (connection_mode localhost_only). The reads between chunks and after the last
+# The fresh readback's overall deadline (R1): the most a reference may age. Each
+# httpx phase may use all of it (#1706); the check after the read enforces it.
+# Provisional; measured on the rig before release (§12 item 3), and to be
+# re-measured on the robot under #1706 before any change to the number.
+# Tunnel: an auto-tunnel or a manual one (connection_mode localhost_only). The reads between chunks and after the last
 # chunk get one retry (owner, 2026-10-29); the first read of a move never does.
 FRESH_READ_DEADLINE_S = 0.1
 FRESH_READ_DEADLINE_TUNNEL_S = 0.3
@@ -929,9 +931,20 @@ class ReachyMiniController(RobotController):
         """``GET /api/state/full`` from the daemon this controller connected to; JSON or ``MotionRefused``.
 
         Through ``maxim_http.fetch_url`` (the ``_daemon_status`` pattern) with a
-        private address policy and a short per-phase timeout whose phases sum to
-        the deadline. The deadline is checked again on return. One read, no
-        retry: ``_fresh_readback(retry=True)`` owns the single retry.
+        private address policy. The deadline is the whole read's budget (#1706):
+        httpx has no whole-request timeout, so every phase it does time (the pool
+        wait, the connect, each write and each socket read) may use the whole
+        deadline, and the elapsed-time check on return is what bounds the
+        reference's age: a read that succeeds is never older than the deadline.
+
+        A read that FAILS can block for longer, because the phases run one after
+        another: about 3-4x the deadline before the first byte (pool, connect,
+        write, read; ~0.3-0.4 s on the LAN, ~0.9-1.2 s tunnelled, doubled by
+        ``_fresh_readback(retry=True)``), plus an untimed DNS lookup when the host
+        is a name, and a body trickled out in small pieces is bounded only by
+        each piece. Every such read is refused on return. Before #1706 each
+        phase got a third of the deadline (~1x before the first byte). One read,
+        no retry: ``_fresh_readback(retry=True)`` owns the single retry.
         """
         from maxim.utils import http as maxim_http
 
@@ -940,12 +953,11 @@ class ReachyMiniController(RobotController):
             raise MotionRefused("reference", "no daemon host to read the pose from")
         tunnelled = self._tunnel or self._connection_mode == "localhost_only"
         deadline = FRESH_READ_DEADLINE_TUNNEL_S if tunnelled else FRESH_READ_DEADLINE_S
-        phase = deadline / 3.0
         started = time.monotonic()
         try:
             resp = maxim_http.fetch_url(
                 f"http://{host}:8000/api/state/full?{_STATE_FULL_QUERY}",
-                timeout=maxim_http.TimeoutPolicy(connect_s=phase, read_s=phase, total_s=phase),
+                timeout=maxim_http.TimeoutPolicy(connect_s=deadline, read_s=deadline, total_s=deadline),
                 address_policy="private",
             )
         except Exception as e:  # noqa: BLE001 - any transport failure is a missing reference
