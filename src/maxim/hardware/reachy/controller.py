@@ -297,6 +297,8 @@ class ReachyMiniController(RobotController):
         self._automatic_body_yaw = False
         self._tunnel_proc: subprocess.Popen | None = None
         self._mini: Any = None  # ReachyMini SDK instance
+        # True only when THIS connect released the daemon's media (#1704): disconnect re-acquires it.
+        self._media_released_by_connect = False
         self._video_stream: ReachyVideoStream | None = None
         self._audio_stream: ReachyAudioStream | None = None
         # The host connect() actually resolved + spoke to (mDNS-resolved IP,
@@ -587,6 +589,7 @@ class ReachyMiniController(RobotController):
                 # daemon from rotating the body behind the runtime.
                 automatic_body_yaw=False,
             )
+            self._media_released_by_connect = self._connect_released_media(status)
             self._assert_auto_yaw_off()
             self._probe_state_shape()
             self._clear_latch_after_connect()
@@ -665,6 +668,41 @@ class ReachyMiniController(RobotController):
         """
         self._stop(by_sleep=True)
 
+    def _connect_released_media(self, status: dict | None) -> bool:
+        """Whether the connect that just built ``self._mini`` released the daemon's media (#1704).
+
+        SDK 1.8.3's ``no_media`` connect calls ``release_media()``, which is daemon-wide, and only the SDK's
+        ``__exit__`` re-acquires. This controller owns the re-acquire only for a release it caused: the SDK
+        handle reports ``media_released`` now, and the daemon reported ``media_released: false`` before the
+        connect. A release someone else made stays theirs; an unknown pre-connect state is reported, never
+        guessed.
+        """
+        if getattr(self._mini, "media_released", None) is not True:
+            return False
+        before = status.get("media_released") if isinstance(status, dict) else None
+        if before is False:
+            return True
+        if before is None:
+            logger.warning(
+                "The daemon's media is released after this connect, but its state before the connect is "
+                "unknown (no /api/daemon/status read): this controller will not re-acquire it on disconnect. "
+                "If no other client released it, POST /api/media/acquire to restore the camera (#1704)."
+            )
+        return False
+
+    def _reacquire_media(self) -> None:
+        """Re-acquire the daemon's media this controller's connect released (#1704), as the SDK's ``__exit__`` does."""
+        self._media_released_by_connect = False
+        try:
+            self._mini.acquire_media()
+        except Exception as e:  # noqa: BLE001 - any SDK/transport failure leaves the camera released: say so
+            logger.warning("acquire_media() raised during disconnect: %s", e)
+        if getattr(self._mini, "media_released", None) is not False:
+            logger.warning(
+                "The daemon's media is still released after disconnect: every later camera client will fail "
+                "to connect until POST /api/media/acquire (#1704)."
+            )
+
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
         # Latch (nothing new starts; connect clears it unless a sleep set it) and the stop
@@ -675,6 +713,8 @@ class ReachyMiniController(RobotController):
         self._stop_ssh_tunnel()
         if self._mini is None:
             return
+        if self._media_released_by_connect:
+            self._reacquire_media()
 
         try:
             # Stop streams

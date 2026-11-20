@@ -66,7 +66,6 @@ def test_a_failed_first_read_refuses_to_start(sweep, daemon):
     assert daemon.gotos() == []
 
 
-@pytest.mark.xfail(strict=True, reason="#1705 red gate: a string SystemExit exits 1")
 def test_a_failed_connect_exits_2_and_says_why(sweep, monkeypatch, capsys):
     """#1705: exit 2 is 'could not start'; 1 is reserved for inconclusive or a body that moved (plan §13)."""
     from maxim.hardware.reachy.controller import ReachyMiniController
