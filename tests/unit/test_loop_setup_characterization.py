@@ -433,7 +433,8 @@ def _state_home_args(rel: str) -> list[str | None]:
         ("simulation/interactive.py", ["run_tmpdir"]),
         # the data home (minecraft_harness passes it through _loop_kwargs, pinned in test_minecraft_harness)
         ("console/handle.py", [None]),
-        ("api.py", [None]),  # home_dir is not passed: D15's other half, a separate owner decision
+        # home_dir, else the data home (_api_home): D15's home_dir half, owner decision 2026-11-18
+        ("api.py", ["effective_home"]),
         ("embodied_runtime/agentic_runtime.py", [None]),
     ],
 )
