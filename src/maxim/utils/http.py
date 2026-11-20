@@ -158,9 +158,16 @@ class HTTPRateLimited(HTTPError):
 class TimeoutPolicy:
     """Layered timeouts — named fields, no single ``timeout`` kwarg.
 
-    ``connect_s`` bounds DNS + TCP handshake. ``read_s`` bounds per-chunk
-    read latency. ``total_s`` is the pool acquisition + total request
-    budget. Use the provided factory helpers for common cases.
+    ``connect_s`` bounds the TCP handshake; the DNS lookup before it is not
+    timed (neither httpcore's nor the address-policy backend's
+    ``getaddrinfo``). ``read_s`` bounds each socket read and each write
+    (httpx's ``read`` and ``write``), not the whole body. ``total_s`` bounds
+    only the wait for a pooled connection (httpx's ``pool``); it is NOT a
+    whole-request deadline, and nothing in httpx is (#1706). A request can
+    take a lookup, a connect and several reads, each up to its own bound. A
+    caller that needs a hard bound on a response's age times the call itself
+    and refuses a late result. Use the provided factory helpers for common
+    cases.
     """
 
     connect_s: float = 3.0

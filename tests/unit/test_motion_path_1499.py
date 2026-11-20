@@ -865,7 +865,11 @@ def test_a_tunnelled_read_gets_the_tunnel_deadline(daemon, monkeypatch, tunnel, 
 
 
 def test_the_fresh_read_is_private_and_bounded(daemon):
-    """R1: the read is pinned to a private address and to a per-phase timeout that sums to the deadline."""
+    """R1: the read is pinned to a private address, and each phase's timeout is the whole deadline.
+
+    #1706: each phase may use the whole deadline (they are no longer a third each); the timeouts httpx
+    actually applies, against a real socket, are pinned in tests/unit/test_readback_budget_1706.py.
+    """
     import maxim.hardware.reachy.controller as reachy_controller
 
     ctl = controller(daemon)
@@ -873,8 +877,8 @@ def test_the_fresh_read_is_private_and_bounded(daemon):
     kw = daemon.last_fetch_kwargs
     assert kw["address_policy"] == "private"
     policy = kw["timeout"]
-    phases = policy.connect_s + policy.read_s + policy.total_s
-    assert phases == pytest.approx(reachy_controller.FRESH_READ_DEADLINE_S)
+    deadline = reachy_controller.FRESH_READ_DEADLINE_S
+    assert (policy.connect_s, policy.read_s, policy.total_s) == pytest.approx((deadline, deadline, deadline))
 
 
 def test_a_failed_read_between_chunks_is_retried_once(daemon):
