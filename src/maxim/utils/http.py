@@ -1170,7 +1170,8 @@ def _loggable_url(url: str) -> str:
 def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
     if isinstance(exc, httpx.TimeoutException) and isinstance(exc.__cause__, _DeadlineExceeded):
         if isinstance(exc.__cause__, _DeadlinePoolExceeded):
-            # Local contention, not a slow server: count it as the pool branch below would (#1715 delta review).
+            # Local contention, not a slow server: count it as pool exhaustion (#1715 delta review). The PoolTimeout
+            # branch below never runs, because PoolTimeout is a TimeoutException (pre-existing; follow-up on #1715).
             _metrics.record_pool_exhausted(endpoint)
             return HTTPTimeout(
                 endpoint,
