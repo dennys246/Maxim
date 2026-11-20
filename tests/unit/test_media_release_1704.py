@@ -36,19 +36,22 @@ def _sdk_mini(*, released_by_connect: bool, acquire_works: bool = True) -> Magic
     return mini
 
 
-def _connect(monkeypatch, mini: MagicMock, status: dict | None) -> ReachyMiniController:
+def _connect(
+    monkeypatch, mini: MagicMock, status: dict | None, *, c: ReachyMiniController | None = None, expect: bool = True
+) -> ReachyMiniController:
     monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: status))
     monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
     # connect's one REST readback (GET /api/state/full) is not what these tests are about: no network.
     monkeypatch.setattr(ReachyMiniController, "_probe_state_shape", lambda self: None)
     mod = MagicMock()
     mod.ReachyMini.return_value = mini
-    c = ReachyMiniController(host="10.42.0.1", connection_mode="network", media_backend="no_media")
+    if c is None:
+        c = ReachyMiniController(host="10.42.0.1", connection_mode="network", media_backend="no_media")
     with (
         patch.dict(sys.modules, {"reachy_mini": mod}),
         patch.object(ReachyMiniController, "_port_open", return_value=True),
     ):
-        assert c.connect(timeout=2.0) is True
+        assert c.connect(timeout=2.0) is expect
     return c
 
 
@@ -92,3 +95,84 @@ def test_a_failed_reacquire_is_reported_and_the_disconnect_still_completes(monke
     assert mini.acquire_media.call_count == 1
     assert c._mini is None
     assert any("/api/media/acquire" in r.getMessage() for r in caplog.records)
+
+
+# ── review-round folds (Executor, Architecture, Wire integrity, 2026-11-19) ───────────────────────────────
+
+
+def test_the_reacquire_runs_before_the_ssh_tunnel_stops(monkeypatch):
+    """Under tunnel=True the SDK client's host is the tunnel's 127.0.0.1 end: acquire first, then the tunnel."""
+    order: list[str] = []
+    mini = _sdk_mini(released_by_connect=True)
+    mini.acquire_media.side_effect = lambda: (order.append("acquire"), setattr(mini, "media_released", False))
+    c = _connect(monkeypatch, mini, {"state": "running", "media_released": False})
+    monkeypatch.setattr(c, "_stop_ssh_tunnel", lambda: order.append("tunnel_stop"))
+    c.disconnect()
+    assert order == ["acquire", "tunnel_stop"]
+
+
+def test_an_acquire_that_raises_is_reported_and_ownership_carries_over(monkeypatch, caplog):
+    """A dead link (the soft-reconnect path) can raise inside acquire_media after its POST: report, keep owning."""
+    mini = _sdk_mini(released_by_connect=True)
+    mini.acquire_media.side_effect = TimeoutError("get_status timed out")
+    c = _connect(monkeypatch, mini, {"state": "running", "media_released": False})
+    with caplog.at_level(logging.WARNING, logger="maxim.hardware.reachy.controller"):
+        c.disconnect()
+    assert c._mini is None
+    assert c._media_released_by_connect is True
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("acquire_media() raised" in m for m in messages)
+    assert any("could not be confirmed" in m for m in messages)
+
+
+def test_a_failed_reacquire_is_retried_by_the_next_disconnect_after_a_reconnect(monkeypatch):
+    """acquire fails on a dead link → reconnect (the daemon still reports released) → the final disconnect acquires."""
+    first = _sdk_mini(released_by_connect=True, acquire_works=False)
+    c = _connect(monkeypatch, first, {"state": "running", "media_released": False})
+    c.disconnect()
+    assert first.acquire_media.call_count == 1
+    second = _sdk_mini(released_by_connect=True)
+    _connect(monkeypatch, second, {"state": "running", "media_released": True}, c=c)
+    c.disconnect()
+    assert second.acquire_media.call_count == 1
+    assert second.media_released is False
+    assert c._media_released_by_connect is False
+
+
+def test_a_connect_that_fails_after_the_release_undoes_it(monkeypatch):
+    mini = _sdk_mini(released_by_connect=True)
+    monkeypatch.setattr(
+        ReachyMiniController, "_assert_auto_yaw_off", lambda self: (_ for _ in ()).throw(RuntimeError("ws dropped"))
+    )
+    _connect(monkeypatch, mini, {"state": "running", "media_released": False}, expect=False)
+    assert mini.acquire_media.call_count == 1
+    assert mini.media_released is False
+
+
+def test_the_real_sdk_acquire_does_not_release_again_under_no_media():
+    """Bound to the installed SDK (skips without it): acquire_media() rebuilds the media manager through
+    _configure_mediamanager("no_media") while _media_released is still True, so it must not release again.
+    The fix relies on that; an SDK bump that changes it fails here."""
+    import types
+
+    import pytest
+
+    sdk = pytest.importorskip("reachy_mini.reachy_mini")
+    mini = sdk.ReachyMini.__new__(sdk.ReachyMini)
+    mini.client = MagicMock()
+    mini.client.acquire_media.return_value = True
+    mini.client.get_status.return_value = types.SimpleNamespace(
+        no_media=False, camera_specs_name="", version="1.8.3", media_released=True, wlan_ip=None
+    )
+    mini._media_released = True
+    mini._media_backend = "no_media"
+    mini._log_level = "WARNING"
+    mini.connection_mode = "network"
+    mini._daemon_http_url = "http://127.0.0.1:8000"
+    mini.logger = logging.getLogger("reachy_mini_test")
+    mini.media_manager = MagicMock()
+    mini._warn_if_daemon_version_mismatch = lambda status: None
+    mini.acquire_media()
+    assert mini.client.acquire_media.call_count == 1
+    assert mini.client.release_media.call_count == 0
+    assert mini.media_released is False

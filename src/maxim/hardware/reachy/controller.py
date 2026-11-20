@@ -648,6 +648,9 @@ class ReachyMiniController(RobotController):
 
         except Exception as e:
             logger.error("Failed to connect to Reachy Mini: %s", e)
+            # A connect that fails after its SDK handle released the media undoes the release (#1704).
+            if self._mini is not None and self._media_released_by_connect:
+                self._reacquire_media()
             self._stop_ssh_tunnel()
             self._update_state(
                 connection_state=RobotConnectionState.ERROR,
@@ -675,13 +678,17 @@ class ReachyMiniController(RobotController):
         ``__exit__`` re-acquires. This controller owns the re-acquire only for a release it caused: the SDK
         handle reports ``media_released`` now, and the daemon reported ``media_released: false`` before the
         connect. A release someone else made stays theirs; an unknown pre-connect state is reported, never
-        guessed.
+        guessed. A release of this controller's whose re-acquire was never confirmed (a dead link on
+        ``reconnect()``) carries over, so the daemon's ``media_released: true`` before this connect is still
+        ours to undo.
         """
         if getattr(self._mini, "media_released", None) is not True:
             return False
         before = status.get("media_released") if isinstance(status, dict) else None
-        if before is False:
+        if before is False or (before is True and self._media_released_by_connect):
             return True
+        if before is True:
+            logger.info("The daemon's media was released before this connect by another client: left to it (#1704).")
         if before is None:
             logger.warning(
                 "The daemon's media is released after this connect, but its state before the connect is "
@@ -691,17 +698,25 @@ class ReachyMiniController(RobotController):
         return False
 
     def _reacquire_media(self) -> None:
-        """Re-acquire the daemon's media this controller's connect released (#1704), as the SDK's ``__exit__`` does."""
-        self._media_released_by_connect = False
+        """Re-acquire the daemon's media this controller's connect released (#1704), as the SDK's ``__exit__`` does.
+
+        The SDK's ``acquire_media()`` POSTs ``/api/media/acquire`` (10 s timeout) and then rebuilds its media
+        manager (a ``get_status`` of up to 5 s), so on a dead link this can block a disconnect for ~15 s, once.
+        Ownership is cleared only when the SDK confirms the re-acquire; otherwise it carries over to the next
+        connect (``_connect_released_media``), so a failed attempt on ``reconnect()`` is retried, not lost.
+        """
         try:
             self._mini.acquire_media()
-        except Exception as e:  # noqa: BLE001 - any SDK/transport failure leaves the camera released: say so
+        except Exception as e:  # noqa: BLE001 - any SDK/transport failure: report it; ownership carries over
             logger.warning("acquire_media() raised during disconnect: %s", e)
-        if getattr(self._mini, "media_released", None) is not False:
-            logger.warning(
-                "The daemon's media is still released after disconnect: every later camera client will fail "
-                "to connect until POST /api/media/acquire (#1704)."
-            )
+        if getattr(self._mini, "media_released", None) is False:
+            self._media_released_by_connect = False
+            return
+        logger.warning(
+            "The daemon's media could not be confirmed re-acquired on disconnect: if GET /api/daemon/status "
+            "shows media_released: true, every later camera client fails to connect until "
+            "POST /api/media/acquire (#1704)."
+        )
 
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
@@ -710,11 +725,12 @@ class ReachyMiniController(RobotController):
         self._stop(by_sleep=False)
         self._unsettled = None  # a reconnect starts from a fresh read (§12 item 18)
         self._auto_yaw_asserted = False
+        # Before the tunnel stops: under tunnel=True the SDK client's host is the tunnel's 127.0.0.1 end (#1704).
+        if self._mini is not None and self._media_released_by_connect:
+            self._reacquire_media()
         self._stop_ssh_tunnel()
         if self._mini is None:
             return
-        if self._media_released_by_connect:
-            self._reacquire_media()
 
         try:
             # Stop streams
@@ -723,7 +739,9 @@ class ReachyMiniController(RobotController):
             if self._audio_stream:
                 self._audio_stream.stop()
 
-            # SDK doesn't have explicit disconnect, just release reference
+            # Drop the handle. Not mirrored from the SDK's __exit__: media_manager.close() (the media
+            # lifecycle owner closes it, after stopping the speaker, #1435) and client.disconnect()
+            # (the WS client closes in ReachyMini.__del__, once no other holder keeps the handle: #1712).
             self._mini = None
             self._video_stream = None
             self._audio_stream = None

@@ -121,6 +121,7 @@ def _controller(mini: _Mini):
 
     ctl = ReachyMiniController.__new__(ReachyMiniController)
     ctl._mini = mini
+    ctl._media_released_by_connect = False  # __init__'s default (#1704): __new__ skips it
     ctl._motion_lock = threading.RLock()
     ctl._last_commanded = {}
     ctl._automatic_body_yaw = False
