@@ -265,6 +265,25 @@ def test_run_delivers_goal_through_runtime_input_mailbox(tmp_path, mocked_run_ru
     assert len(mocked_run_runtime.loop_calls) == 1
 
 
+def test_run_keeps_loop_state_under_home_dir(tmp_path, mocked_run_runtime):
+    """#1264 / D15 (owner 2026-11-18): ``home_dir`` owns the loop's runtime-state file too, so ``run`` hands the
+    loop ``state_home=<home_dir>`` and the file lands at ``<home_dir>/runtime_state/<name>/``."""
+    home = tmp_path / "api_home"
+    mocked_run_runtime.api.run(model="test-profile", goal="look around", home_dir=str(home), learning=False)
+
+    assert [call["state_home"] for call in mocked_run_runtime.loop_calls] == [str(home)]
+
+
+def test_run_without_home_dir_keeps_loop_state_under_the_data_home(tmp_path, monkeypatch, mocked_run_runtime):
+    """No ``home_dir``: the state root is the data home (``MAXIM_DATA_HOME``), never the working directory."""
+    data_home = tmp_path / "data_home"
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(data_home))
+    monkeypatch.chdir(tmp_path)
+    mocked_run_runtime.api.run(model="test-profile", goal="look around", learning=False)
+
+    assert [call["state_home"] for call in mocked_run_runtime.loop_calls] == [str(data_home)]
+
+
 def test_run_rejects_robot_in_headless_mode(tmp_path, mocked_run_runtime):
     """Contradictory hardware options fail loudly instead of ignoring robot."""
     from maxim.exceptions import ConfigurationError
@@ -1161,3 +1180,30 @@ def test_an_agent_without_a_hub_still_saves_its_nac(tmp_path):
     nac = SimpleNamespace(config=SimpleNamespace(persistence_path=str(tmp_path / "nac.json")), save=saved.append)
     AgentInstance(agent_id="no_hub", role=None, config=None, memory_hub=None, nac=nac).shutdown()
     assert saved == [str(tmp_path / "nac.json")]
+
+
+# ── run(auto_curate=True)'s pre-startup curation (moved out of run, #1264 rule T) ────────────────────────────────
+
+
+def test_auto_curate_before_run_curates_the_requested_genre(monkeypatch):
+    import maxim.simulation.foundry as foundry
+    from maxim import api
+
+    seen = []
+    monkeypatch.setattr(foundry, "auto_curate", lambda genre: seen.append(genre))
+    api._auto_curate_before_run("survival")
+    assert seen == ["survival"]
+
+
+def test_auto_curate_before_run_warns_and_lets_the_run_go_on(monkeypatch, caplog, capsys):
+    import maxim.simulation.foundry as foundry
+    from maxim import api
+
+    def boom(genre):
+        raise RuntimeError("no scenarios")
+
+    monkeypatch.setattr(foundry, "auto_curate", boom)
+    with caplog.at_level("WARNING", logger="maxim.api"):
+        api._auto_curate_before_run("survival")  # must not raise
+    assert any("Auto-curation failed: no scenarios" in r.getMessage() for r in caplog.records)
+    assert "WARNING: Auto-curation failed (no scenarios)" in capsys.readouterr().err
