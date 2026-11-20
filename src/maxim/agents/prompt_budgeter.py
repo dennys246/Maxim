@@ -9,7 +9,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any, Callable, Literal
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,15 @@ _STABLE_BUDGET_FRACTION = 0.7
 # (a tool result, a memory, an input, its own roster), which is never rewritten. Required on every ``add``: a new
 # section cannot skip the decision.
 SectionSource = Literal["builder", "data"]
+
+
+class _Unset(Enum):
+    """``PromptBudgeter.add``'s ``header`` when the caller did not pass one."""
+
+    UNSET = "unset"
+
+
+_UNSET = _Unset.UNSET
 
 
 class SectionPriority(IntEnum):
@@ -117,7 +126,7 @@ class PromptBudgeter:
         *,
         source: SectionSource,
         frame_wording: str | None = None,
-        header: str | None = None,
+        header: str | None | Literal[_Unset.UNSET] = _UNSET,
     ) -> None:
         """Add a section to the budget. Empty content is silently ignored.
 
@@ -131,22 +140,30 @@ class PromptBudgeter:
 
         ``frame_wording`` names what this section's frames hold (#1481); None is the tool-output default.
 
-        ``header`` (a ``=== X ===`` line, ``source="data"`` only) renders the section by identity: ``content`` is the
+        ``header`` is required with ``source="data"`` (``header=None`` says the section has none), so a new data
+        section cannot skip the decision. A ``=== X ===`` line renders the section by identity: ``content`` is the
         body, and every rewrite (frame cleanup, truncation) acts on the body, which is neutralized
-        (``content_safety.neutralize_section_body``) so it cannot carry a section boundary. The header line is
-        therefore always the section's first line. Every private section (the ones
-        ``utils/cloud_redaction.py::_SECTION_RULES`` redact) is added this way.
+        (``content_safety.neutralize_section_body``) so it holds neither a section boundary nor a blank line. The
+        header line is therefore always the section's first line. Every private section (the ones
+        ``utils/cloud_redaction.py::_SECTION_RULES`` redact) is added this way. Every data section also loses any
+        ``\x1e`` (the prompt segment delimiter, ``prompt_builder.PROMPT_SEGMENT_DELIMITER``) to a line break.
         """
         if phase_scoped and not cacheable:
             raise ValueError(f"prompt section {name!r}: phase_scoped=True requires cacheable=True")
         if source not in ("builder", "data"):
             raise ValueError(f"prompt section {name!r}: source must be 'builder' or 'data', not {source!r}")
+        if header is _UNSET:
+            if source == "data":
+                raise TypeError(f"prompt section {name!r}: a source='data' section passes header= (None for none)")
+            header = None
         if header is not None:
             from maxim.utils.content_safety import check_section_header, neutralize_section_body
 
             if source != "data":
                 raise ValueError(f"prompt section {name!r}: a header-separate section is source='data'")
             check_section_header(header)
+        if source == "data" and content:
+            content = content.replace("\x1e", "\n")  # never the segment delimiter, cacheable or not
         if source == "builder" and self._builder_gate is not None and content:
             content = self._builder_gate(content)
         if content and "TOOL_OUTPUT" in content:
@@ -406,7 +423,7 @@ def _truncate_conversation(content: str, max_tokens: int, counter: Any) -> str:
 def _truncate_context_pool(content: str, max_tokens: int, counter: Any) -> str:
     """Drop oldest lines from the front of the context pool."""
     lines = content.split("\n")
-    for start in range(1, len(lines)):
+    for start in range(len(lines)):  # the body only: its header is the budgeter's, never offered here
         candidate = "\n".join(lines[start:])
         if counter.count_tokens(candidate) <= max_tokens:
             return candidate
@@ -439,8 +456,9 @@ def _truncate_reasoning_carryover(content: str, max_tokens: int, counter: Any) -
             header_lines.append(line)
 
     header = "\n".join(header_lines)
+    lead = header + "\n" if header_lines else ""  # a header-separate body has no header line to keep
     for start in range(1, len(entry_lines)):
-        candidate = header + "\n" + "\n".join(entry_lines[start:])
+        candidate = lead + "\n".join(entry_lines[start:])
         if counter.count_tokens(candidate) <= max_tokens:
             return candidate
     return header

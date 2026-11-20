@@ -133,6 +133,16 @@ def _add_calls(tree: ast.AST):
             yield node.args[0].value, {kw.arg: kw.value for kw in node.keywords}
 
 
+def _constant_header(node: ast.expr | None) -> str | None:
+    """The value of a ``header=`` argument that names a constant (``CONVERSATION_HEADER``,
+    ``ReasoningCarryover.PROMPT_HEADER``), or None for anything else."""
+    if isinstance(node, ast.Name) and node.id.isupper():
+        return getattr(prompt_builder_mod, node.id)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return getattr(getattr(prompt_builder_mod, node.value.id), node.attr)
+    return None
+
+
 def _string_lines(source: str) -> set[str]:
     """Every line of every string literal in ``source``. An f-string's value fields become ``1`` and a conditional
     one (a plural ``s``) becomes empty."""
@@ -185,12 +195,14 @@ class TestSectionRulesPinnedToPromptBuilder:
         tree = ast.parse(Path(prompt_builder_mod.__file__).read_text(encoding="utf-8"))
         seen: set[str] = set()
         for name, kws in _add_calls(tree):
-            if "header" in kws:
+            header = kws.get("header")
+            given = header is not None and not (isinstance(header, ast.Constant) and header.value is None)
+            if given:
                 assert name in _SENSITIVE_SECTION_NAMES, f"{name!r} is added header-separate but is not pinned here"
             if name not in _SENSITIVE_SECTION_NAMES:
                 continue
             seen.add(name)
-            assert "header" in kws, f"private section {name!r} is added without header= (its header is in its body)"
+            assert given, f"private section {name!r} is added without header= (its header is in its body)"
             src = kws.get("source")
             assert isinstance(src, ast.Constant) and src.value == "data", f"{name!r} must be source='data'"
             cacheable = kws.get("cacheable")
@@ -198,9 +210,9 @@ class TestSectionRulesPinnedToPromptBuilder:
                 f"section {name!r} is redaction-matched but tagged cacheable=True — "
                 f"it would move into the system message where _redact_sections never runs"
             )
-            header = kws["header"]
-            if isinstance(header, ast.Name) and header.id.isupper():  # a module constant: check its value
-                assert _rules_match(getattr(prompt_builder_mod, header.id)), f"{name!r}: {header.id} matches no rule"
+            value = _constant_header(header)
+            if value is not None:  # a loop variable (the manifest) is pinned by its own test below
+                assert _rules_match(value), f"{name!r}: its header {value!r} matches no rule"
         assert seen == set(_SENSITIVE_SECTION_NAMES), (
             f"budgeter.add sites not found for: {set(_SENSITIVE_SECTION_NAMES) - seen} — "
             f"section renamed? update _SENSITIVE_SECTION_NAMES and _SECTION_RULES together"
@@ -248,6 +260,26 @@ class TestSectionRulesPinnedToPromptBuilder:
             assert header_shaped or pattern.pattern[1:-1] in PLAIN_BOUNDARY_LINES, pattern.pattern
         for line in samples:
             assert is_section_boundary_line(line), line
+
+
+class TestToolSensitivity:
+    def test_every_registered_tool_is_classified(self) -> None:
+        """A new tool must be classified on purpose: unlisted names are private (fail closed), which would silently
+        redact a tool that should ship, or ship nothing a reviewer chose."""
+        from maxim.modes.definitions import REGISTERED_TOOL_NAMES
+        from maxim.utils.cloud_redaction import TOOL_SENSITIVITY
+
+        missing = sorted(set(REGISTERED_TOOL_NAMES) - set(TOOL_SENSITIVITY))
+        assert not missing, f"tools with no TOOL_SENSITIVITY entry: {missing}"
+        for name in ("batched_exploration", "web_search"):
+            assert name in TOOL_SENSITIVITY
+
+    def test_an_unlisted_tool_is_private(self) -> None:
+        from maxim.utils.cloud_redaction import tool_result_header
+
+        assert tool_result_header("sense_left_gripper") == "=== Tool Result (private) ==="
+        assert tool_result_header("") == "=== Tool Result (private) ==="
+        assert tool_result_header("internet_search") == "=== Tool Result (public) ==="
 
 
 class TestRedactionBehaviorOnLiveFormat:

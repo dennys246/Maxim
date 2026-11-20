@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from maxim.utils.content_safety import PLAIN_BOUNDARY_LINES, is_section_boundary_line
+from maxim.utils.content_safety import PLAIN_BOUNDARY_LINES, is_blank_line, is_section_boundary_line
 
 
 class DataSensitivity(Enum):
@@ -17,17 +20,105 @@ class DataSensitivity(Enum):
     SECRET = "secret"
 
 
+_PUBLIC, _INTERNAL, _PRIVATE, _SECRET = (
+    DataSensitivity.PUBLIC,
+    DataSensitivity.INTERNAL,
+    DataSensitivity.PRIVATE,
+    DataSensitivity.SECRET,
+)
+
+# What each tool's result is, for the follow-up prompt (``tool_result_header``). Every registered tool
+# (modes/definitions.py::REGISTERED_TOOL_NAMES) has an entry, pinned by tests/unit/test_cloud_redaction_headers.py, so
+# a new tool is classified on purpose; a name not here (a tool generated per entity at run time) is private.
+# PUBLIC: content from the open web. INTERNAL: the agent's own state and simulated/embodied actions. PRIVATE: files,
+# memories, perception of people and sound, messages, the agent's own reasoning. SECRET: command execution.
 TOOL_SENSITIVITY: dict[str, DataSensitivity] = {
-    "internet_search": DataSensitivity.PUBLIC,
-    "http_fetch": DataSensitivity.PUBLIC,
-    "read_file": DataSensitivity.PRIVATE,
-    "write_file": DataSensitivity.PRIVATE,
-    "list_directory": DataSensitivity.PRIVATE,
-    "glob": DataSensitivity.PRIVATE,
-    "bash": DataSensitivity.SECRET,
-    "execute_file": DataSensitivity.SECRET,
-    "maxim_command": DataSensitivity.INTERNAL,
-    "respond": DataSensitivity.INTERNAL,
+    # the open web
+    "internet_search": _PUBLIC,
+    "web_search": _PUBLIC,
+    "http_fetch": _PUBLIC,
+    # files, code and the workspace
+    "read_file": _PRIVATE,
+    "write_file": _PRIVATE,
+    "edit_file": _PRIVATE,
+    "list_directory": _PRIVATE,
+    "glob": _PRIVATE,
+    "search_code": _PRIVATE,
+    "git_diff": _PRIVATE,
+    "git_commit": _PRIVATE,
+    "read_data_file": _PRIVATE,
+    "read_sandbox_file": _PRIVATE,
+    "write_sandbox_file": _PRIVATE,
+    "list_sandbox": _PRIVATE,
+    "create_sandbox_script": _PRIVATE,
+    "read_other_output": _PRIVATE,
+    "list_other_outputs": _PRIVATE,
+    "write_shared_output": _PRIVATE,
+    "request_directory_change": _PRIVATE,
+    "batched_exploration": _PRIVATE,
+    # command execution
+    "bash": _SECRET,
+    "execute_file": _SECRET,
+    "execute_sandbox_script": _SECRET,
+    "run_tests": _SECRET,
+    # messages and people
+    "send_message": _PRIVATE,
+    "call_user": _PRIVATE,
+    "sense_presence": _PRIVATE,
+    "focus_on_sound": _PRIVATE,
+    # memories and the agent's own reasoning
+    "memory_recall": _PRIVATE,
+    "similarity_search": _PRIVATE,
+    "concept_query": _PRIVATE,
+    "causal_links": _PRIVATE,
+    "temporal_patterns": _PRIVATE,
+    "think": _PRIVATE,
+    # the agent's own state, controls and replies
+    "respond": _INTERNAL,
+    "maxim_command": _INTERNAL,
+    "mode_switch": _INTERNAL,
+    "autonomy_level": _INTERNAL,
+    "display_mode": _INTERNAL,
+    "internet_access_toggle": _INTERNAL,
+    "energy_status": _INTERNAL,
+    "system_stats": _INTERNAL,
+    "explain": _INTERNAL,
+    "math": _INTERNAL,
+    "sleep": _INTERNAL,
+    "pain_history": _INTERNAL,
+    "sense_tools": _INTERNAL,
+    "focus_interests": _INTERNAL,
+    "novelty_track": _INTERNAL,
+    "predict_outcome": _INTERNAL,
+    # embodied and simulated actions and worlds
+    "move": _INTERNAL,
+    "sense": _INTERNAL,
+    "say": _INTERNAL,
+    "speak": _INTERNAL,
+    "track_target": _INTERNAL,
+    "examine": _INTERNAL,
+    "choose": _INTERNAL,
+    "actor": _INTERNAL,
+    "request_interaction": _INTERNAL,
+    "set_entity_sensor": _INTERNAL,
+    "inject_pain": _INTERNAL,
+    "damage_component": _INTERNAL,
+    "inspect_aut": _INTERNAL,
+    "observe_actions": _INTERNAL,
+    "design_entity": _INTERNAL,
+    "browse_components": _INTERNAL,
+    "browse_encounters": _INTERNAL,
+    "set_scene": _INTERNAL,
+    "scene_summary": _INTERNAL,
+    "generate_scenario": _INTERNAL,
+    "emit_campaign": _INTERNAL,
+    "extend_simulation": _INTERNAL,
+    "finish_simulation": _INTERNAL,
+    "spawn_sub_simulation": _INTERNAL,
+    "check_completion": _INTERNAL,
+    "query_experiments": _INTERNAL,
+    "record_experiment": _INTERNAL,
+    "analyze_results": _INTERNAL,
 }
 
 MAXIM_COMMAND_SENSITIVITY: dict[str, DataSensitivity] = {
@@ -65,6 +156,30 @@ class RedactionResult:
     policy: str
 
 
+# What the LLM router actually sent in each successful cloud call made under ``record_dispatches`` (the caller's
+# context, carried into the router's worker thread by ``contextvars.copy_context``). A caller that must know whether
+# a section reached the model (the inbound acknowledgement) reads it instead of the prompt it built.
+_DISPATCHES: ContextVar[list[RedactionResult] | None] = ContextVar("maxim_redaction_dispatches", default=None)
+
+
+@contextmanager
+def record_dispatches() -> Iterator[list[RedactionResult]]:
+    """Collect the redaction result of every successful cloud call made in this context (a local call adds none)."""
+    sink: list[RedactionResult] = []
+    token = _DISPATCHES.set(sink)
+    try:
+        yield sink
+    finally:
+        _DISPATCHES.reset(token)
+
+
+def note_dispatch(result: RedactionResult | None) -> None:
+    """Record what a successful call sent (the router calls it; ``None`` is a call that was not redacted)."""
+    sink = _DISPATCHES.get()
+    if sink is not None and result is not None:
+        sink.append(result)
+
+
 # Section rules are pinned against the headers PromptBuilder ACTUALLY
 # emits (tests/unit/test_cloud_redaction_headers.py) — the 2026-08-12
 # privacy audit found the previous rule set had silently drifted from
@@ -76,12 +191,13 @@ class RedactionResult:
 # rule update here — pattern-based redaction with no header pin is a
 # silent no-op waiting to happen.
 #
-# A redacted section runs from its header to the next line that is a KNOWN boundary (``_ends_section``: a rule
-# header, a header in ``_KNOWN_HEADER_LITERALS`` / ``_KNOWN_HEADER_PATTERNS``, or a plain boundary line such as the
-# router's closing instruction), or to the end of the text. An unknown ``=== X ===`` line never ends it: that errs
-# toward over-redaction. Every producer of a rule's section renders it by identity
-# (``PromptBudgeter.add(header=...)`` or ``content_safety.render_headed_section``), so its body cannot carry a
-# boundary line; the renderer and this filter share ``content_safety.is_section_boundary_line``.
+# A redacted ``=== X ===`` section runs from its header to the first blank line (sections are joined by one) or the
+# next KNOWN boundary (``_ends_section``: a rule header, a header in ``_KNOWN_HEADER_LITERALS`` /
+# ``_KNOWN_HEADER_PATTERNS``, or a plain boundary line such as the router's closing instruction), whichever comes
+# first, or to the end of the text. An unknown ``=== X ===`` line never ends it: that errs toward over-redaction.
+# Every producer of these sections renders them by identity (``PromptBudgeter.add(header=...)`` or
+# ``content_safety.render_headed_section``), so a body holds neither a blank line nor a boundary line; the renderer
+# and this filter share ``content_safety.is_blank_line`` and ``is_section_boundary_line``.
 _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity]] = [
     (re.compile(r"^=== Conversation History ===$"), "conversation_history", DataSensitivity.PRIVATE),
     (re.compile(r"^=== Recent Action Outcomes ===$"), "tool_outputs", DataSensitivity.PRIVATE),
@@ -110,8 +226,8 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity]] = [
         "memory_contents",
         DataSensitivity.PRIVATE,
     ),
-    # The standalone exec prompt (agents/exec_agent.py::_build_llm_context) is an f-string with no known boundary
-    # after these markers, so they run to the end of its text.
+    # The standalone exec prompt's markers (agents/exec_agent.py::_build_llm_context, an f-string that does not
+    # neutralize what it interpolates). A blank line does not end them; a known boundary or the end of the text does.
     (re.compile(r"^RELEVANT MEMORIES:$"), "memory_contents", DataSensitivity.PRIVATE),
     (re.compile(r"^RECENT CLI INPUTS:$"), "cli_inputs", DataSensitivity.PRIVATE),
     # inner_deliberation: the header itself classifies the section as
@@ -231,6 +347,12 @@ def _rule_for(line: str) -> tuple[str, DataSensitivity] | None:
     return None
 
 
+def _ends_at_blank(header_line: str) -> bool:
+    """Whether the section ``header_line`` opens ends at its first blank line: every ``=== X ===`` section is
+    rendered by identity, the exec prompt's plain markers are not (their text may hold blank lines)."""
+    return header_line.strip() not in PLAIN_BOUNDARY_LINES
+
+
 def _ends_section(line: str) -> bool:
     """Whether ``line`` is a known section boundary. Only a line ``is_section_boundary_line`` accepts can be one, so
     a neutralized body line never is."""
@@ -317,7 +439,7 @@ class CloudRedactionFilter:
         return True
 
     def _redact_sections(self, text: str) -> tuple[str, set[str]]:
-        """Replace each redacted section, from its header up to the next known boundary, with one marker.
+        """Replace each redacted section, from its header up to its end (``_SECTION_RULES``), with one marker.
 
         Lines are split on ``\\n`` only: the renderer turns every other line break in a private body into ``\\n``,
         and a line that still holds one is a single line here too, never a boundary.
@@ -332,8 +454,9 @@ class CloudRedactionFilter:
                 category = matched[0]
                 redacted_categories.add(category)
                 out.append(f"[REDACTED: {category}]")
+                at_blank = _ends_at_blank(lines[i])
                 i += 1
-                while i < len(lines) and not _ends_section(lines[i]):
+                while i < len(lines) and not (_ends_section(lines[i]) or (at_blank and is_blank_line(lines[i]))):
                     i += 1
                 continue
             out.append(lines[i])
@@ -369,5 +492,7 @@ __all__ = [
     "DataSensitivity",
     "TOOL_SENSITIVITY",
     "MAXIM_COMMAND_SENSITIVITY",
+    "note_dispatch",
+    "record_dispatches",
     "tool_result_header",
 ]

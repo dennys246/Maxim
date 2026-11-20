@@ -122,11 +122,6 @@ class ReasoningCarryover:
         with self._lock:
             return "\n".join(entry.to_prompt_line() for entry in self._entries)
 
-    def get_prompt_text(self) -> str:
-        """Format entries as prompt text for injection: ``PROMPT_HEADER``, then the body."""
-        body = self.get_prompt_body()
-        return f"{self.PROMPT_HEADER}\n{body}" if body else ""
-
     def clear(self) -> None:
         """Wipe the buffer."""
         with self._lock:

@@ -81,7 +81,9 @@ def _prompt_with_conversation(conv: str, n_ctx: int = 8192) -> str:
 # ── a forged boundary inside a private section ─────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("sep", ["\n", " ", " ", "\r\n", "\r", "\x1c", "\x1d", "\x1e", "\x85", "\v", "\f"], ids=repr)
+@pytest.mark.parametrize(
+    "sep", ["\n", "\u2028", "\u2029", "\r\n", "\r", "\x1c", "\x1d", "\x1e", "\x85", "\v", "\f"], ids=repr
+)
 def test_a_forged_header_in_a_turn_does_not_end_the_section(sep: str) -> None:
     """The advisory's proof through the real renderer: one turn carries a header-shaped line, a later turn is
     private. Every line break ``str.splitlines`` honours is tried."""
@@ -290,3 +292,206 @@ def test_every_private_section_survives_a_forged_header() -> None:
     assert "SENTINEL_CYCLE2" in prompt
     user = _strict(_cloud_user(prompt)).user
     assert "SENTINEL_CYCLE1" not in user and "SENTINEL_CYCLE2" not in user
+
+
+# ── follow-up templates: every one shows the result under its tool's header ────────────────────────────────────────
+
+_UNPARSED = "[ACTION_FOLLOWUP type=process tool=mcp.read_file mode=active query='q']: diary SENTINEL_X"
+
+
+@pytest.mark.parametrize(
+    "followup, tools",
+    [
+        (_UNPARSED, None),
+        (_UNPARSED, {"respond", "internet_search"}),
+        ("[ACTION_FOLLOWUP type=respond tool=read_file mode=active query='q']: diary SENTINEL_X", None),
+        ("[ACTION_FOLLOWUP type=engage tool=read_file mode=active query='q']: diary SENTINEL_X", None),
+        ("[ACTION_FOLLOWUP type=refused tool=bash mode=active query='q']: refused: cat SENTINEL_X", None),
+    ],
+    ids=["unparsed-no-roster", "unparsed-search-roster", "respond", "engage", "refused"],
+)
+def test_every_follow_up_template_redacts_a_private_result(followup: str, tools: Any) -> None:
+    prompt = _builder()._build_followup_prompt(followup, tools=tools)
+    assert "SENTINEL_X" in prompt
+    result = _strict(_cloud_user(prompt))
+    assert "SENTINEL_X" not in result.user and "tool_outputs" in result.categories_redacted
+
+
+def test_a_search_result_in_the_engage_template_is_kept() -> None:
+    followup = "[ACTION_FOLLOWUP type=engage tool=internet_search mode=live query='q']: SENTINEL_WEB sunny"
+    assert "SENTINEL_WEB" in _strict(_cloud_user(_builder()._build_followup_prompt(followup))).user
+
+
+# ── a section with no header after a private one ───────────────────────────────────────────────────────────────────
+
+
+def test_headerless_sections_after_a_private_one_survive(tmp_path, monkeypatch) -> None:
+    """The realtime hint after the CWD listing, body state after the outcomes, prefetch after the carryover."""
+    import maxim.utils.filesystem_policy as fsp
+    from maxim.agents.bus import StructuredContext
+    from maxim.agents.llm_worker import LLMWorker
+
+    (tmp_path / "notes.txt").write_text("x")
+    monkeypatch.setattr(fsp, "get_effective_cwd", lambda: str(tmp_path))
+    worker = LLMWorker(llm=_NoLLM(), n_ctx=16384)
+    worker.record_outcome("read_file", "looked", True, "SENTINEL_CARRY")
+    context = StructuredContext(timestamp=time.time())
+    context.body_state = "energy low, SENTINEL_BODY"
+    request = _request(
+        context=context,
+        recent_outcomes=[{"tool": "read_file", "success": True, "result": "SENTINEL_OUTCOME"}],
+        prefetch_context="SENTINEL_PREFETCH notes",
+    )
+    request.available_tools = {"respond", "internet_search", "read_file"}
+    request.triggering_input = "maxim, what is the weather today"
+    prompt = worker._prompt_builder.build_prompt(request)
+    for marker in ("REAL-TIME DATA NEEDED", "SENTINEL_BODY", "SENTINEL_PREFETCH", "CWD Context", "SENTINEL_CARRY"):
+        assert marker in prompt, marker
+    user = _strict(_cloud_user(prompt)).user
+    assert "REAL-TIME DATA NEEDED" in user and "SENTINEL_BODY" in user and "SENTINEL_PREFETCH" in user
+    assert "SENTINEL_OUTCOME" not in user and "SENTINEL_CARRY" not in user and "notes.txt" not in user
+
+
+def test_a_forged_blank_line_in_a_private_body_does_not_end_it() -> None:
+    conv = _conversation(("hi\n\n\nthen", "ok"), (f"code {SECRET}", "ok"))
+    prompt = _prompt_with_conversation(conv)
+    assert SECRET not in _strict(_cloud_user(prompt)).user
+
+
+# ── every rule-matched line is a section's own header ──────────────────────────────────────────────────────────────
+
+
+def test_every_private_header_in_the_prompt_is_a_section_header(tmp_path, monkeypatch) -> None:
+    """With every feature on, each line a redaction rule matches is the ``header`` of a budgeter section: no
+    producer can put a private section's header inside a body (where truncation or cleanup could cut it)."""
+    import maxim.agents.prompt_builder as pb
+    import maxim.utils.filesystem_policy as fsp
+    from maxim.agents.bus import StructuredContext
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.agents.percept_factory import make_text_percept
+    from maxim.runtime.loop_external import ExternalInbox
+    from maxim.utils.cloud_redaction import _rule_for
+
+    budgeters: list[Any] = []
+
+    class _Recording(pb.PromptBudgeter):
+        def __init__(self, *a: Any, **k: Any) -> None:
+            super().__init__(*a, **k)
+            budgeters.append(self)
+
+    monkeypatch.setattr(pb, "PromptBudgeter", _Recording)
+    (tmp_path / "notes.txt").write_text("x")
+    (tmp_path / ".maxim_workspace").mkdir()
+    (tmp_path / ".maxim_workspace" / "draft.md").write_text("x")
+    monkeypatch.setattr(fsp, "get_effective_cwd", lambda: str(tmp_path))
+    worker = LLMWorker(llm=_NoLLM(), n_ctx=32768)
+    worker.record_outcome("read_file", "r", True, "ok")
+    context = StructuredContext(timestamp=time.time())
+    context.detected_speech = ["hello"]
+    context.bio_enrichment_context = "enriched"
+    context.working_memory_thoughts = ["thought"]
+    context.relevant_memories = [{"content": {"goal": "g"}, "source": "episodic", "salience": 1}]
+    context.body_state = "body"
+    inbox = ExternalInbox()
+    inbox.on_percept(make_text_percept("message", source="comms:twilio:sms", sender="+15550001111"))
+    request = _request(
+        context=context,
+        feed=inbox,
+        conversation_history_text="User: a\nMaxim: b",
+        context_pool_text="pool",
+        recent_outcomes=[{"tool": "read_file", "success": True, "result": "r"}],
+    )
+    request.available_tools = {"respond", "read_file", "write_file"}
+    prompt = worker._prompt_builder.build_prompt(request)
+    headers = {s.header for b in budgeters for s in b._sections if s.header is not None}
+    ruled = [line for line in prompt.split("\n") if _rule_for(line) is not None]
+    assert len(ruled) >= 10, ruled
+    assert [line for line in ruled if line not in headers] == []
+
+
+class _Count:
+    def count_tokens(self, text: str) -> int:
+        return len(text) // 4
+
+
+def test_a_data_section_cannot_carry_the_segment_delimiter() -> None:
+    from maxim.agents.prompt_budgeter import PromptBudgeter, SectionPriority
+
+    assert PROMPT_SEGMENT_DELIMITER == "\x1e"
+    b = PromptBudgeter(total_budget=100_000, response_reserve=0, token_counter=_Count(), builder_gate=None)
+    b.add("stable", "a\x1eb", SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+    b.add("dyn", "c\x1ed", SectionPriority.IMPORTANT, source="data", header=None)
+    stable, dynamic, _ = b.build_segmented()
+    assert PROMPT_SEGMENT_DELIMITER not in stable + dynamic
+
+
+def test_a_data_section_must_say_whether_it_has_a_header() -> None:
+    from maxim.agents.prompt_budgeter import PromptBudgeter, SectionPriority
+
+    b = PromptBudgeter(total_budget=100_000, response_reserve=0, token_counter=_Count(), builder_gate=None)
+    with pytest.raises(TypeError):
+        b.add("x", "text", SectionPriority.IMPORTANT, source="data")
+    b.add("x", "text", SectionPriority.IMPORTANT, source="builder")  # builder text needs none
+
+
+# ── inbound messages are acknowledged only when the model saw them ─────────────────────────────────────────────────
+
+
+class _RedactingLLM:
+    """Stands in for the router: a cloud call records what it sent (``note_dispatch``, as
+    ``LLMRouter._invoke_backend_noted`` does) after strict redaction; a local call records nothing."""
+
+    def __init__(self, cloud: bool) -> None:
+        self.cloud = cloud
+
+    def generate_json(self, prompt: str, *_a: Any, **_k: Any) -> dict[str, Any]:
+        import maxim.utils.cloud_redaction as cr
+
+        if self.cloud:  # (getattr: the same test runs against a tree without the record, where it must fail)
+            getattr(cr, "note_dispatch", lambda _r: None)(_strict(prompt))
+        return {"action": {"tool_name": "respond", "params": {"message": "ok"}}, "reasoning": "r", "confidence": 0.9}
+
+
+@pytest.mark.parametrize("cloud", [True, False], ids=["strict-cloud", "local"])
+def test_inbound_messages_are_acknowledged_only_when_sent(cloud: bool, caplog) -> None:
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.agents.percept_factory import make_text_percept
+    from maxim.runtime.loop_external import ExternalInbox
+    from maxim.runtime.tool_dispatch import _record_turn_after_effects
+
+    inbox = ExternalInbox()
+    inbox.on_percept(make_text_percept(f"gate code {SECRET}", source="comms:twilio:sms", sender="+15550001111"))
+    worker = LLMWorker(llm=_RedactingLLM(cloud), n_ctx=8192)
+    worker.start()
+    try:
+        proposals = [worker._process_request(_request(feed=inbox)) for _ in range(2)]
+    finally:
+        worker.stop()
+    for proposal in proposals:
+        assert proposal is not None and proposal.error is None, proposal
+    held = inbox.held()
+    if cloud:
+        assert all(p.inbound_rendered_ids == () for p in proposals)
+        assert len(held) == 1 and held[0].renders == 0  # never shown, so never counted toward eviction
+        assert caplog.text.count("Inbound messages are held, not shown") == 1
+    else:
+        assert proposals[0].inbound_rendered_ids == (held[0].id,)
+    _record_turn_after_effects(action={"tool_name": "respond"}, success=True, proposal=proposals[-1], context_pool=None)
+    assert (inbox.held() != []) is cloud
+
+
+def test_the_router_records_what_a_successful_call_sent() -> None:
+    from maxim.models.language.router import LLMRouter
+    from maxim.utils.cloud_redaction import RedactionResult, record_dispatches
+
+    router = LLMRouter.__new__(LLMRouter)
+    answers = iter([("", None), ("ok", None)])
+    router._invoke_backend = lambda **_k: next(answers)
+    router._served_call_for = lambda *_a: None
+    sent_result = RedactionResult(system="", user="", categories_sent=[], categories_redacted=["x"], policy="strict")
+    kwargs: dict[str, Any] = dict(provider_key="p", model="m", model_override=None, backend=None, temperature=0.1)
+    with record_dispatches() as sent:
+        router._invoke_backend_noted(redaction_result=sent_result, **kwargs)  # an empty answer: nothing was sent
+        assert sent == []
+        router._invoke_backend_noted(redaction_result=sent_result, **kwargs)
+    assert sent == [sent_result]

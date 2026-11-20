@@ -1,4 +1,4 @@
-- **Cloud redaction renders private sections by identity**: a private prompt section's header is passed apart from
-  its body, so the cloud redaction filter removes the whole section under the `strict` and `standard` policies, and
-  a tool's result in the follow-up prompt is redacted according to that tool's sensitivity. Held inbound messages
-  are now a private section too.
+- **Cloud redaction renders private sections by identity**: each private prompt section's header is passed apart from
+  its body, and the body is shown in one neutral form on every backend (a line that reads like a section boundary
+  is prefixed with `| `). Tool results in follow-up prompts carry a header that names the tool's sensitivity, and
+  held inbound messages are acknowledged only once the model has been sent them.

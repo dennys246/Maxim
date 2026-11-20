@@ -495,11 +495,12 @@ def framed_section(text: str, *, wording: str = TOOL_OUTPUT_WORDING) -> str:
 # Section boundaries
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Every line break ``str.splitlines`` honours besides ``\n``. CRLF first, so it becomes ONE break.
-_EXTRA_LINE_BREAKS = re.compile("\r\n|[\r\x0b\x0c\x1c\x1d\x1e\x85  ]")
+# Every line break ``str.splitlines`` honours besides ``\n``. CRLF first, so it becomes ONE break. ``\x1e`` is also the
+# prompt segment delimiter (prompt_builder.PROMPT_SEGMENT_DELIMITER), so a normalized body can never carry one.
+_EXTRA_LINE_BREAKS = re.compile("\r\n|[\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 _SECTION_HEADER_LINE = re.compile(r"^=== .* ===$")
 # Lines the cloud redaction filter treats as section boundaries although they are not ``=== X ===`` headers: the
-# router's closing instructions (``models/language/router.py``) and the standalone exec prompt's unbounded markers.
+# router's closing instructions (``models/language/router.py``) and the standalone exec prompt's markers.
 PLAIN_BOUNDARY_LINES: frozenset[str] = frozenset(
     {
         "Respond with ONLY a valid JSON object. No text before or after the JSON.",
@@ -510,6 +511,8 @@ PLAIN_BOUNDARY_LINES: frozenset[str] = frozenset(
 )
 # Shown before a body line that would otherwise read as a section boundary.
 BOUNDARY_LINE_PREFIX = "| "
+# What a blank body line becomes: sections are joined by a blank line, so a body never holds one.
+BLANK_LINE_MARK = "|"
 
 
 def is_section_boundary_line(line: str) -> bool:
@@ -519,16 +522,29 @@ def is_section_boundary_line(line: str) -> bool:
     return bool(_SECTION_HEADER_LINE.match(stripped)) or stripped in PLAIN_BOUNDARY_LINES
 
 
+def is_blank_line(line: str) -> bool:
+    """Whether ``line`` is blank (empty after ``str.strip``): the separator between two prompt sections. Shared by
+    the renderer and the cloud redaction filter, like ``is_section_boundary_line``."""
+    return not line.strip()
+
+
 def normalize_line_breaks(text: str) -> str:
     """``text`` with every line break turned into ``\n``, so ``split("\n")`` sees the lines any reader would."""
     return _EXTRA_LINE_BREAKS.sub("\n", text)
 
 
 def neutralize_section_body(text: str) -> str:
-    """A section body that cannot carry a section boundary: line breaks normalized, and every body line that would
-    read as a boundary prefixed with ``BOUNDARY_LINE_PREFIX``. Idempotent."""
+    """A section body that cannot carry a section boundary: line breaks normalized, every body line that would read
+    as a boundary prefixed with ``BOUNDARY_LINE_PREFIX``, and every blank line marked (``BLANK_LINE_MARK``), so the
+    body ends only where the section does. Idempotent."""
     lines = normalize_line_breaks(text).split("\n")
-    return "\n".join(BOUNDARY_LINE_PREFIX + line if is_section_boundary_line(line) else line for line in lines)
+    return "\n".join(_neutral_line(line) for line in lines)
+
+
+def _neutral_line(line: str) -> str:
+    if is_section_boundary_line(line):
+        return BOUNDARY_LINE_PREFIX + line
+    return BLANK_LINE_MARK + line if is_blank_line(line) else line
 
 
 def check_section_header(header: str) -> str:

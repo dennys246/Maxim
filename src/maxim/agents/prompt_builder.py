@@ -496,15 +496,6 @@ def has_file_tools(request: LLMRequest) -> bool:
     return any(name in FILE_TOOL_NAMES for name in request.available_tools)
 
 
-def build_workspace_manifest(
-    mode_name: str = "passive", cwd: str | None = None, *, tools: set[str] | frozenset[str] | None = None
-) -> str:
-    """Build a file manifest that adapts to the operational mode, as one text (``build_workspace_manifest_sections``
-    joined the way the budgeter joins sections)."""
-    parts = build_workspace_manifest_sections(mode_name, cwd, tools=tools)
-    return "\n\n".join(render_headed_section(header, body) for header, body in parts)
-
-
 def _header_safe(name: str) -> str:
     """A name shown inside a header line: line breaks become spaces, so the header stays one line."""
     from maxim.utils.content_safety import normalize_line_breaks
@@ -1297,7 +1288,7 @@ class PromptBuilder:
         )
         # #1451: a re-plan carries every input held behind the answer it set aside. CRITICAL: the operator's words
         # are why the request exists, and they are already marked read.
-        budgeter.add("held_inputs", _deferred_section(request), SectionPriority.CRITICAL, source="data")
+        budgeter.add("held_inputs", _deferred_section(request), SectionPriority.CRITICAL, source="data", header=None)
         self._add_deliberation_transcript_section(budgeter, request.context, response_reserve)
         self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context, tools=set(request.available_tools))
@@ -1397,6 +1388,7 @@ class PromptBuilder:
                 f'=== User Request ===\n"{_defanged(question_text)}"',
                 SectionPriority.MANDATORY,
                 source="data",
+                header=None,
             )
 
     def _add_critical_sections(
@@ -1427,6 +1419,7 @@ class PromptBuilder:
                 build_modification_section(request.pending_modification),
                 SectionPriority.CRITICAL,
                 source="data",
+                header=None,
             )
         budgeter.add(
             "identity",
@@ -1463,6 +1456,7 @@ class PromptBuilder:
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                 source="data",
+                header=None,
             )
             if background:
                 bg_section = build_tools_section_filtered(request, background, mode_name)
@@ -1479,6 +1473,7 @@ class PromptBuilder:
                     min_tokens=50,
                     truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                     source="data",
+                    header=None,
                 )
         else:
             # Unfiltered manifest (autonomous modes incl. cradle). The scene
@@ -1503,6 +1498,7 @@ class PromptBuilder:
                 cacheable=True,
                 phase_scoped=True,
                 source="data",
+                header=None,
             )
 
         # EXPERIMENTAL — hallucination-hint section (empty when feature off
@@ -1514,6 +1510,7 @@ class PromptBuilder:
                 failed_section,
                 SectionPriority.CRITICAL,
                 source="data",
+                header=None,
             )
         planning_correction = build_planning_correction(request)
         if planning_correction:  # a retry after the model's own mistake (narrator reliability)
@@ -1627,6 +1624,7 @@ class PromptBuilder:
                 coach_text,
                 SectionPriority.CRITICAL,
                 source="data",
+                header=None,
             )
 
     @staticmethod
@@ -1654,6 +1652,7 @@ class PromptBuilder:
                 SectionPriority.IMPORTANT,
                 cacheable=True,
                 source="data",
+                header=None,
             )
 
     @staticmethod
@@ -1698,6 +1697,7 @@ class PromptBuilder:
                 text,
                 SectionPriority.IMPORTANT,
                 source="data",
+                header=None,
             )
 
     @staticmethod
@@ -1736,6 +1736,7 @@ class PromptBuilder:
                 text,
                 SectionPriority.IMPORTANT,
                 source="data",
+                header=None,
             )
 
     def _add_guidance_sections(
@@ -1824,6 +1825,7 @@ class PromptBuilder:
                 "=== Active Protocols ===\n" + request.protocol_context,
                 SectionPriority.IMPORTANT,
                 source="data",
+                header=None,
             )
 
         carryover_text = self._reasoning_carryover.get_prompt_body()
@@ -1864,6 +1866,7 @@ class PromptBuilder:
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
                 source="data",
+                header=None,
             )
 
         # Coding guidelines: prefer the user's question text, fall back to
@@ -1883,7 +1886,12 @@ class PromptBuilder:
         # Foundational (Constitution/AGENTS, session-cached) and the mode's
         # static context_prompt are session-stable → cacheable prefix.
         budgeter.add(
-            "foundational", _load_foundational_context(), SectionPriority.IMPORTANT, cacheable=True, source="data"
+            "foundational",
+            _load_foundational_context(),
+            SectionPriority.IMPORTANT,
+            cacheable=True,
+            source="data",
+            header=None,
         )
         if request.mode.context_prompt:
             budgeter.add(
@@ -1905,7 +1913,7 @@ class PromptBuilder:
         if context.current_percept:
             obs_text = build_observation_section(context.current_percept)
             if obs_text:
-                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT, source="data")
+                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT, source="data", header=None)
 
         if context.detected_speech:
             speech_lines = [f'- "{speech[:100]}"' for speech in context.detected_speech[-3:]]
@@ -1920,7 +1928,9 @@ class PromptBuilder:
                 agent_state = state.get("state", "unknown")
                 goal = state.get("goal", "")
                 state_lines.append(f"- {agent_name}: {agent_state}" + (f" (goal: {goal})" if goal else ""))
-            budgeter.add("agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE, source="data")
+            budgeter.add(
+                "agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE, source="data", header=None
+            )
 
         if request.recent_outcomes:
             outcome_lines: list[str] = []
@@ -1939,7 +1949,7 @@ class PromptBuilder:
 
         # Body state (interoception — always present when embodied)
         if context.body_state:
-            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL, source="data")
+            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL, source="data", header=None)
 
         # Bio-enrichment (L1): focused bio-system associations for current percept.
         # Suppressed when a deliberation transcript is present — the current
@@ -1970,6 +1980,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
                 source="data",
+                header=None,
             )
 
     def _add_deliberation_transcript_section(
@@ -2064,6 +2075,44 @@ class PromptBuilder:
         )
 
     @staticmethod
+    def _add_relevant_memories_section(budgeter: PromptBudgeter, context: Any) -> None:
+        """Episodic recalls, a private section (header-separate). Dormant with ``_add_memory_sections``."""
+        if not context.relevant_memories:
+            return
+        mem_lines: list[str] = []
+        for mem in context.relevant_memories[:8]:
+            content = mem.get("content", {})
+            source = mem.get("source", "episodic")
+            salience = mem.get("salience", 0.0)
+            parts = []
+            if content.get("goal"):
+                parts.append(f"goal: {content['goal']}")
+            if content.get("action"):
+                parts.append(f"action: {content['action']}")
+            if content.get("success") is not None:
+                parts.append("succeeded" if content["success"] else "failed")
+            if content.get("transcript"):
+                parts.append(f'"{content["transcript"][:80]}"')
+            summary = ", ".join(parts) if parts else str(content)[:80]
+            mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
+            if mem.get("predictions"):
+                for pred in mem["predictions"][:2]:
+                    pred_tool = pred.get("tool", "?")
+                    pred_success = pred.get("success", "?")
+                    pred_conf = pred.get("confidence", 0)
+                    mem_lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
+        budgeter.add(
+            "relevant_memories",
+            "\n".join(mem_lines),
+            SectionPriority.IMPORTANT,
+            truncatable=True,
+            min_tokens=50,
+            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 20 - 1)]),
+            source="data",
+            header=RELEVANT_MEMORIES_HEADER,
+        )
+
+    @staticmethod
     def _add_memory_sections(
         budgeter: PromptBudgeter,
         context: Any,
@@ -2072,41 +2121,7 @@ class PromptBuilder:
     ) -> None:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
         Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845)."""
-        if context.relevant_memories:
-            mem_lines: list[str] = []
-            for mem in context.relevant_memories[:8]:
-                content = mem.get("content", {})
-                source = mem.get("source", "episodic")
-                salience = mem.get("salience", 0.0)
-                parts = []
-                if content.get("goal"):
-                    parts.append(f"goal: {content['goal']}")
-                if content.get("action"):
-                    parts.append(f"action: {content['action']}")
-                if content.get("success") is not None:
-                    parts.append("succeeded" if content["success"] else "failed")
-                if content.get("transcript"):
-                    parts.append(f'"{content["transcript"][:80]}"')
-                summary = ", ".join(parts) if parts else str(content)[:80]
-                mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
-                if mem.get("predictions"):
-                    for pred in mem["predictions"][:2]:
-                        pred_tool = pred.get("tool", "?")
-                        pred_success = pred.get("success", "?")
-                        pred_conf = pred.get("confidence", 0)
-                        mem_lines.append(
-                            f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})"
-                        )
-            budgeter.add(
-                "relevant_memories",
-                "\n".join(mem_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=50,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 20 - 1)]),
-                source="data",
-                header=RELEVANT_MEMORIES_HEADER,
-            )
+        PromptBuilder._add_relevant_memories_section(budgeter, context)
 
         if context.concept_context:
             concept_lines = ["=== Active Concepts ==="]
@@ -2126,6 +2141,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
                 source="data",
+                header=None,
             )
 
         if context.knowledge_context:
@@ -2146,6 +2162,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
                 source="data",
+                header=None,
             )
 
         if context.causal_context:
@@ -2166,6 +2183,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
                 source="data",
+                header=None,
             )
 
         if context.valence_context:
@@ -2189,6 +2207,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
                 source="data",
+                header=None,
             )
 
         if context.motor_programs:
@@ -2236,6 +2255,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=_truncate_motor_programs,
                 source="data",
+                header=None,
             )
 
         if context.statistical_context and context.active_pattern_count > 0:
@@ -2263,7 +2283,9 @@ class PromptBuilder:
             if "internet_search" in tools:
                 stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
             # Data (the patterns) with builder lines gated inline above.
-            budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE, source="data")
+            budgeter.add(
+                "statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE, source="data", header=None
+            )
 
     def _build_followup_prompt(self, followup_input: str, *, tools: set[str] | None = None) -> str:
         """Build a prompt to handle action followups based on followup_type. With ``tools`` (the agent's roster,
@@ -2307,13 +2329,10 @@ class PromptBuilder:
                 logger.warning(
                     f"Could not parse followup input format, using fallback. Input starts with: {followup_input[:100]}"
                 )
-                followup_type = "engage"
-                tool_name = "internet_search"
-                mode_name = "live"
+                # Not known to be a search: "your last tool", whose result is private (cloud_redaction fails closed).
+                followup_type, tool_name, mode_name = "process", "", "live"
                 original_query = ""
                 result = followup_input
-                if tools is not None and "internet_search" not in tools:
-                    followup_type, tool_name = "process", ""  # not a search: "your last tool"
 
         # The query is the user's own words: it never carries a frame marker (Session R, N3).
         original_query = _defanged(original_query)
@@ -2323,33 +2342,33 @@ class PromptBuilder:
 
         if "<<TOOL_OUTPUT id=" in result:  # only where there IS a frame (not the legacy branches)
             result = f"{TOOL_OUTPUT_RULE}\n{result}"
+        # Every template shows the result as a section of its own, headed by its tool's sensitivity
+        # (utils/cloud_redaction.py ``tool_result_header``: an unknown tool, or "" for "your last tool", is private).
+        section = render_headed_section(tool_result_header(tool_name), result)
 
         if followup_type == "refused":
-            return self._build_refused_prompt(tool_name, original_query, result, tools=tools)
+            return self._build_refused_prompt(tool_name, original_query, section, tools=tools)
         if followup_type == "process" or not respond_ok:
-            return self._build_process_prompt(tool_name, original_query, result, tools=tools)
+            return self._build_process_prompt(tool_name, original_query, section, tools=tools)
         elif followup_type == "respond":
-            return self._build_respond_prompt(tool_name, original_query, result)
+            return self._build_respond_prompt(tool_name, original_query, section)
         elif followup_type == "engage":
-            return self._build_engage_prompt(tool_name, original_query, result, mode_name)
+            return self._build_engage_prompt(tool_name, original_query, section, mode_name)
         else:
-            return self._build_respond_prompt(tool_name, original_query, result)
+            return self._build_respond_prompt(tool_name, original_query, section)
 
     def _build_process_prompt(
-        self, tool_name: str, query: str, result: str, *, tools: set[str] | frozenset[str] | None = None
+        self, tool_name: str, query: str, section: str, *, tools: set[str] | frozenset[str] | None = None
     ) -> str:
-        """The "choose your next tool" follow-up. With ``tools`` (#1042): its instructions name only those tools and
-        it ends with the agent's own tool list; ``tool_name`` "" is an unparseable follow-up ("your last tool")."""
+        """The "choose your next tool" follow-up, around the result's rendered ``section``. With ``tools`` (#1042): its
+        instructions name only those tools and it ends with the agent's own tool list; ``tool_name`` "" is an
+        unparseable follow-up ("your last tool")."""
         respond_ok = tools is None or "respond" in tools
         done = "use 'respond' to inform the user" if respond_ok else "say so with one of your tools (listed below)"
         done_batched = "Use 'respond'" if respond_ok else "Say so with one of your tools (listed below)"
         ran = f"'{tool_name}'" if tool_name else "your last tool"
         source = tool_name or "your last tool"
         is_batched = tool_name == "batched_exploration"  # never keyed on result text (#823: a page could forge it)
-        # The result is a section of its own, headed by its tool's sensitivity (utils/cloud_redaction.py
-        # ``tool_result_header``): an unknown tool, a batch or an unparseable follow-up ("") counts as private.
-        results = result if is_batched else f"Results from {source}:\n{result}"
-        result_section = render_headed_section(tool_result_header(tool_name), results)
 
         if is_batched:
             batched_instructions = gate_on_roster(
@@ -2371,7 +2390,7 @@ You now have complete context from the batched exploration. Based on ALL the res
 
 Original request: "{query}"
 
-{result_section}
+{section}
 
 {batched_instructions}
 
@@ -2382,7 +2401,8 @@ Respond with JSON:
 
 Original request: "{query}"
 
-{result_section}
+Results from {source}:
+{section}
 
 === Instructions ===
 Based on these results, determine your next action:
@@ -2397,7 +2417,7 @@ Respond with JSON:
         return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
 
     def _build_refused_prompt(
-        self, tool_name: str, query: str, result: str, *, tools: set[str] | frozenset[str] | None = None
+        self, tool_name: str, query: str, section: str, *, tools: set[str] | frozenset[str] | None = None
     ) -> str:
         """The follow-up after a hard rejection (#1413): the tool did NOT run, and the instruction to choose another
         way is stated here, outside the tool-output frame (a framed instruction is data the model is told to ignore).
@@ -2414,7 +2434,7 @@ Respond with JSON:
 Original request: "{query}"
 
 The refusal:
-{result}
+{section}
 
 === Instructions ===
 Do not propose {refused} again. Either choose one of your allowed tools that can answer the request, or {reply}.
@@ -2424,13 +2444,13 @@ Respond with JSON:
         own = build_own_tools_section(tools) if tools is not None else ""
         return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
 
-    def _build_respond_prompt(self, tool_name: str, query: str, result: str) -> str:
+    def _build_respond_prompt(self, tool_name: str, query: str, section: str) -> str:
         prompt = f"""You completed an internet search. Synthesize the results into a helpful response.
 
 Original user request: "{query}"
 
 Search Results:
-{result}
+{section}
 
 === Instructions ===
 Extract the most relevant information from the search results and answer the user's question clearly.
@@ -2444,7 +2464,7 @@ Your response (use tool_name "respond"):"""
 
         return f"TOOL_PROMPT|{prompt}"
 
-    def _build_engage_prompt(self, tool_name: str, query: str, result: str, mode_name: str) -> str:
+    def _build_engage_prompt(self, tool_name: str, query: str, section: str, mode_name: str) -> str:
         now = datetime.now()
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M %p")
@@ -2468,7 +2488,7 @@ CURRENT DATE: {date_str} at {time_str}
 Original user request: "{query}"
 
 Search Results:
-{result}
+{section}
 
 === Instructions ===
 1. Extract the relevant information from the search results above

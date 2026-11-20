@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic, log_structured
 from maxim.models.language import call_accounting
 from maxim.models.language.cost_tracker import CostTracker
-from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult
+from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
 
 # Internal imports — only symbols actually used by LLMRouter
@@ -1170,9 +1170,11 @@ class LLMRouter:
 
     def _invoke_backend_noted(self, **kwargs: Any) -> tuple[str, dict[str, Any] | None]:
         """:meth:`_invoke_backend`, and on a non-empty answer the dispatch's served call, built from this attempt's
-        own provider, model, backend and temperature (baseline floors B0)."""
+        own provider, model, backend and temperature (baseline floors B0), and what the attempt sent
+        (``cloud_redaction.note_dispatch``: a caller under ``record_dispatches`` learns which sections were redacted)."""
         text, usage = self._invoke_backend(**kwargs)
         if text:
+            note_dispatch(kwargs["redaction_result"])
             self._dispatch_served = self._served_call_for(
                 kwargs["provider_key"],
                 kwargs["model_override"] or kwargs["model"],
