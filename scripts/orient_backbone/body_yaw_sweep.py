@@ -90,9 +90,11 @@ def _robot_controller(host: str, media_backend: str) -> Iterator[tuple[Any, tupl
     # The sweep needs a media backend with the camera: look_at_image needs its intrinsics. The turn check does not.
     ctl = ReachyMiniController(host=host, connection_mode="network", media_backend=media_backend)
     if not ctl.connect(timeout=15.0):
-        raise SystemExit(
-            f"[FAIL] ReachyMiniController.connect() returned False (curl http://{host}:8000/api/daemon/status)"
-        )
+        # Exit 2 is "could not start" (plan §13); a string SystemExit would exit 1, which means
+        # inconclusive or a body that moved (#1705).
+        print(f"[FAIL] ReachyMiniController.connect() returned False (curl http://{host}:8000/api/daemon/status)")
+        ctl.disconnect()  # a connect that failed after its SDK handle existed still undoes its media release (#1704)
+        raise SystemExit(2)
     try:
         camera = getattr(getattr(ctl.mini, "media_manager", None), "camera", None)
         yield ctl, (tuple(camera.resolution) if camera is not None else None)

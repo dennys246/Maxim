@@ -149,6 +149,7 @@ def _make_controller(**bias) -> tuple[ReachyMiniController, _BiasedFakeMini]:
     ctl = ReachyMiniController.__new__(ReachyMiniController)
     fake = _BiasedFakeMini(**bias)
     ctl._mini = fake
+    ctl._media_released_by_connect = False  # __init__'s default (#1704): __new__ skips it
     ctl._motion_lock = threading.RLock()
     ctl._last_commanded = {}
     ctl._automatic_body_yaw = False
