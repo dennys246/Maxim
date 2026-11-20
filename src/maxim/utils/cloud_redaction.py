@@ -347,6 +347,11 @@ def _rule_for(line: str) -> tuple[str, DataSensitivity] | None:
     return None
 
 
+def has_private_section(text: str) -> bool:
+    """Whether ``text`` holds a line that opens a private section (any rule, whatever the policy)."""
+    return any(_rule_for(line) is not None for line in text.split("\n"))
+
+
 def _ends_at_blank(header_line: str) -> bool:
     """Whether the section ``header_line`` opens ends at its first blank line: every ``=== X ===`` section is
     rendered by identity, the exec prompt's plain markers are not (their text may hold blank lines)."""
@@ -492,6 +497,7 @@ __all__ = [
     "DataSensitivity",
     "TOOL_SENSITIVITY",
     "MAXIM_COMMAND_SENSITIVITY",
+    "has_private_section",
     "note_dispatch",
     "record_dispatches",
     "tool_result_header",

@@ -47,6 +47,14 @@ logger = logging.getLogger(__name__)
 # docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 1.
 PROMPT_SEGMENT_DELIMITER = "\x1e"
 
+
+def _no_segment_delimiter(text: str) -> str:
+    """``text`` with every segment delimiter a line break. Only the tool prompt's own join of its stable and dynamic
+    segments emits one (exactly one), so this runs on every other assembled prompt and on both segments before that
+    join: a held input, a query or a tool result cannot move text into the system message."""
+    return text.replace(PROMPT_SEGMENT_DELIMITER, "\n")
+
+
 # The headers of the private sections (the ones utils/cloud_redaction.py::_SECTION_RULES redact). Each is added
 # header-separate (``PromptBudgeter.add(header=...)``), so its body can neither cut nor forge it
 # (tests/unit/test_cloud_redaction_headers.py pins every add site).
@@ -1122,7 +1130,8 @@ class PromptBuilder:
                 if inbound
                 else ""
             )
-            return "\n\n".join(part for part in (prompt, deferred, inbound, correction) if part)
+            parts = (prompt, deferred, inbound, correction)
+            return _no_segment_delimiter("\n\n".join(part for part in parts if part))
 
         # Check for pending user input
         user_question = ""
@@ -1162,7 +1171,8 @@ class PromptBuilder:
                 )
             if question_text:
                 # The router splits the payload at its FIRST blank line: this builder's clock line, then the question.
-                return f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
+                answer_only = f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
+                return _no_segment_delimiter(answer_only)
             return ""
 
         return self._build_tool_aware_prompt(request, question_text, date_str, time_str)
@@ -1318,6 +1328,7 @@ class PromptBuilder:
                     [d[:80] for d in request.deferred_inputs],
                 )
 
+        stable_text, dynamic_text = _no_segment_delimiter(stable_text), _no_segment_delimiter(dynamic_text)
         return f"TOOL_PROMPT|{stable_text}{PROMPT_SEGMENT_DELIMITER}{dynamic_text}"
 
     def _inbound_text(self, request: LLMRequest) -> str:

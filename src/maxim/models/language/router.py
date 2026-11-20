@@ -157,6 +157,34 @@ def _neutralize_stray_frame_markers(text: str) -> str:
     return text
 
 
+_segment_split_refused = 0  # tool prompts sent whole to the user message (logged once, then counted)
+
+
+def _split_prompt_segments(tool_prompt: str) -> tuple[str, str]:
+    """``(stable_prefix, dynamic)`` of a tool prompt: PromptBuilder emits ``<stable>\\x1e<dynamic>`` with exactly one
+    delimiter, and the stable prefix goes into the system message, which the cloud redaction filter does not section.
+    Fails closed: a prompt with more than one delimiter, or whose prefix holds a private section's header, is all
+    dynamic (every delimiter a line break), so all of it passes through the section redaction."""
+    global _segment_split_refused
+    from maxim.agents.prompt_builder import PROMPT_SEGMENT_DELIMITER
+    from maxim.utils.cloud_redaction import has_private_section
+
+    count = tool_prompt.count(PROMPT_SEGMENT_DELIMITER)
+    if count == 0:
+        return "", tool_prompt
+    stable, dynamic = tool_prompt.split(PROMPT_SEGMENT_DELIMITER, 1)
+    if count == 1 and not has_private_section(stable):
+        return stable, dynamic
+    _segment_split_refused += 1
+    if _segment_split_refused == 1:
+        logger.warning(
+            "A tool prompt carried %d segment delimiter(s) or a private section in its cacheable prefix: sent whole as "
+            "the user message. Further ones counted in maxim.models.language.router._segment_split_refused",
+            count,
+        )
+    return "", tool_prompt.replace(PROMPT_SEGMENT_DELIMITER, "\n")
+
+
 class LLMRouter:
     """
     Small, swappable transcript → action router.
@@ -2424,11 +2452,7 @@ Return JSON exactly like:
         # into the user message. Payloads without the delimiter (followup
         # prompts, legacy callers) carry no stable prefix — everything stays in
         # the user message exactly as before.
-        from maxim.agents.prompt_builder import PROMPT_SEGMENT_DELIMITER
-
-        stable_prefix = ""
-        if PROMPT_SEGMENT_DELIMITER in tool_prompt:
-            stable_prefix, tool_prompt = tool_prompt.split(PROMPT_SEGMENT_DELIMITER, 1)
+        stable_prefix, tool_prompt = _split_prompt_segments(tool_prompt)
 
         if is_planning_mode:
             # PLANNING MODE: Allow proposal text followed by JSON

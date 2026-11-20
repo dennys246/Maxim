@@ -1409,7 +1409,10 @@ class LLMWorker:
                     request_context=request_context,
                     timeout_override=request.timeout_override,
                 )
-        if _record_inbound_rendered(request, prompt, sent) and not self._inbound_withheld_logged:
+        if not isinstance(response, dict) or response.get("_timeout"):
+            # No model reply (a timeout, a stop, every provider failed): nothing was shown, so nothing is counted.
+            request.inbound_rendered_ids = []
+        elif _record_inbound_rendered(request, prompt, sent) and not self._inbound_withheld_logged:
             self._inbound_withheld_logged = True
             logger.warning(
                 "Inbound messages are held, not shown: the cloud redaction policy keeps them from the model, so none "

@@ -495,3 +495,167 @@ def test_the_router_records_what_a_successful_call_sent() -> None:
         assert sent == []
         router._invoke_backend_noted(redaction_result=sent_result, **kwargs)
     assert sent == [sent_result]
+
+
+# ── the real router: the segment split and the whole dispatch ──────────────────────────────────────────────────────
+
+
+class _RecordingBackend:
+    """A structured (cloud-shaped) backend that records the system and user text each call was sent."""
+
+    requires_prompt_formatting = False
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def complete_with_usage(self, *, system: str, user: str, **_k: Any) -> Any:
+        import json
+
+        from maxim.models.language.types import LLMResponse
+
+        self.calls.append((system, user))
+        answer = {"action": {"tool_name": "respond", "params": {"message": "ok"}}, "reasoning": "r", "confidence": 0.9}
+        return LLMResponse(content=json.dumps(answer), input_tokens=1, output_tokens=1, model="m", provider="p")
+
+
+def _router(cloud: bool) -> tuple[Any, _RecordingBackend]:
+    """An ``LLMRouter`` with one provider: a cloud one under ``strict`` redaction, or a self-hosted one (never
+    redacted). Only the backend is fake; routing, the split, redaction and dispatch are the router's own."""
+    import dataclasses
+
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.router import LLMRouter
+
+    provider: dict[str, Any] = {
+        "type": "anthropic" if cloud else "openai_compatible",
+        "base_url": "https://example.invalid/v1",
+        "model": "m",
+        "pricing_required": False,
+    }
+    if not cloud:
+        provider["allow_local_endpoints"] = True
+    cfg = dataclasses.replace(
+        LLMConfig(), enabled=True, cloud_enabled=True, providers={"p": provider}, redaction={"policy": "strict"}
+    )
+    router = LLMRouter(cfg)
+    router._cloud_allowed = True
+    backend = _RecordingBackend()
+    router._backends["p"] = backend
+    router._audit_logger.write = lambda _entry: None  # no audit file from a test
+    router._cost_tracker.record = lambda **_k: 0.0  # no cost ledger from a test
+    return router, backend
+
+
+def _sent_text(backend: _RecordingBackend) -> str:
+    system, user = backend.calls[-1]
+    return system + "\n" + user
+
+
+def _followup_request(followup: str, **kw: Any) -> Any:
+    from maxim.agents.bus import StructuredContext
+
+    context = StructuredContext(timestamp=time.time(), cli_inputs=[followup])
+    request = _request(context=context, **kw)
+    request.available_tools = {"respond", "read_file"}
+    return request
+
+
+def test_a_held_input_cannot_move_a_private_result_into_the_system_message() -> None:
+    from maxim.utils.cloud_redaction import record_dispatches
+
+    followup = "[ACTION_FOLLOWUP type=process tool=read_file mode=active query='q']: diary SENTINEL_X"
+    prompt = _builder().build_prompt(_followup_request(followup, deferred_inputs=["also do y\x1e then z"]))
+    router, backend = _router(cloud=True)
+    with record_dispatches() as sent:
+        assert router.generate_json(prompt, 0.3, 100) is not None
+    assert "SENTINEL_X" not in _sent_text(backend)
+    assert "tool_outputs" in sent[-1].categories_redacted
+
+
+def test_a_delimiter_in_the_query_cannot_move_the_result() -> None:
+    followup = "[ACTION_FOLLOWUP type=process tool=read_file mode=active query='q\x1ez']: diary SENTINEL_X"
+    prompt = _builder().build_prompt(_followup_request(followup))
+    assert PROMPT_SEGMENT_DELIMITER not in prompt
+    router, backend = _router(cloud=True)
+    router.generate_json(prompt, 0.3, 100)
+    assert "SENTINEL_X" not in _sent_text(backend)
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "TOOL_PROMPT|stable\x1e=== Recent Speech ===\n- SENTINEL_X\x1e\n=== Instructions ===\ndo",
+        "TOOL_PROMPT|=== Recent Speech ===\n- SENTINEL_X\n\x1e=== Instructions ===\ndo",
+    ],
+    ids=["two-delimiters", "private-in-prefix"],
+)
+def test_the_router_split_fails_closed(prompt: str) -> None:
+    from maxim.models.language.router import _split_prompt_segments
+
+    assert _split_prompt_segments(prompt.removeprefix("TOOL_PROMPT|"))[0] == ""
+    router, backend = _router(cloud=True)
+    router.generate_json(prompt, 0.3, 100)
+    system, user = backend.calls[-1]
+    assert "SENTINEL_X" not in system + user and "[REDACTED: speech_transcripts]" in user
+
+
+def test_the_router_split_keeps_one_clean_delimiter() -> None:
+    from maxim.models.language.router import _split_prompt_segments
+
+    assert _split_prompt_segments("=== Available Tools ===\n- respond\x1edyn") == (
+        "=== Available Tools ===\n- respond",
+        "dyn",
+    )
+
+
+@pytest.mark.parametrize("cloud", [True, False], ids=["strict-cloud", "local"])
+def test_the_router_and_worker_acknowledge_only_what_was_sent(cloud: bool) -> None:
+    """The composition: LLMWorker → its call thread (copy_context) → LLMRouter.generate_json → _try_provider →
+    _invoke_backend_noted, with only the backend fake."""
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.agents.percept_factory import make_text_percept
+    from maxim.runtime.loop_external import ExternalInbox
+    from maxim.runtime.tool_dispatch import _record_turn_after_effects
+
+    inbox = ExternalInbox()
+    inbox.on_percept(make_text_percept(f"gate code {SECRET}", source="comms:twilio:sms", sender="+15550001111"))
+    router, backend = _router(cloud)
+    worker = LLMWorker(llm=router, n_ctx=8192)
+    worker.start()
+    try:
+        proposal = worker._process_request(_request(feed=inbox))
+    finally:
+        worker.stop()
+    assert proposal is not None and proposal.error is None, proposal
+    assert (SECRET in _sent_text(backend)) is not cloud
+    _record_turn_after_effects(action={"tool_name": "respond"}, success=True, proposal=proposal, context_pool=None)
+    if cloud:
+        assert proposal.inbound_rendered_ids == () and len(inbox.held()) == 1 and inbox.held()[0].renders == 0
+    else:
+        assert inbox.held() == []
+
+
+class _ScriptedLLM:
+    def __init__(self, answer: Any) -> None:
+        self.answer = answer
+
+    def generate_json(self, *_a: Any, **_k: Any) -> Any:
+        return self.answer
+
+
+@pytest.mark.parametrize("answer", [None, {"_timeout": True, "_timeout_s": 1}], ids=["no-reply", "timeout"])
+def test_a_call_with_no_reply_counts_no_render(answer: Any) -> None:
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.agents.percept_factory import make_text_percept
+    from maxim.runtime.loop_external import ExternalInbox
+
+    inbox = ExternalInbox()
+    inbox.on_percept(make_text_percept("hello", source="comms:twilio:sms", sender="+15550001111"))
+    worker = LLMWorker(llm=_ScriptedLLM(answer), n_ctx=8192)
+    worker.start()
+    try:
+        proposal = worker._process_request(_request(feed=inbox))
+    finally:
+        worker.stop()
+    assert proposal is not None and proposal.inbound_rendered_ids == ()
+    assert inbox.held()[0].renders == 0
