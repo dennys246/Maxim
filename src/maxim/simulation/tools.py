@@ -1511,7 +1511,6 @@ class SpawnSubSimulationTool(Tool):
         import threading
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
         from maxim.agents.llm_worker import LLMWorker
-        from maxim.agents.exec_agent import agent_router
         from maxim.agents.maxim_agent import MaximAgent
         from maxim.environment.filesystem_env import FileSystemEnv
         from maxim.runtime.agent_loop import run_agentic_loop
@@ -1549,7 +1548,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent(shared_router=agent_router(self._llm_router))  # the sub-AUT's router (#1228)
+        sub_agent = MaximAgent(shared_router=self._llm_router)  # the sub-AUT's router (#1228)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(

@@ -5,7 +5,11 @@
   manifest and the campaign runners generate the world and stay on the narrator's model.
 - **`--aut-model` whose router cannot be built refuses the run** (#1228): a build that returns no router or raises
   now raises `maxim.models.language.types.AutRouterUnavailable` (the CLI exits 2) instead of falling back to the
-  shared router, so a two-model run never silently becomes a one-model run.
+  shared router, so a two-model run never silently becomes a one-model run. The AUT's router is built even when the
+  run has no narrator LLM (that build used to be skipped, leaving the AUT with no LLM). The CLI prints a backend
+  error's fix hint once (it printed it twice), and `str()` of the refusal carries the build's cause.
+- **The robot runtime's FearAgent states that it reviews by pattern only** (#1228 review): it read an attribute the
+  agent never has, so it always ran without an LLM; an LLM review waits on owner decision #1728.
 - **The sim report's cost counts the AUT's model** (#1228): `cost_usd`, `total_input_tokens` and
   `total_output_tokens` are the whole run's (the narrator's router plus, in a two-model run, the AUT's; before, a
   two-model run counted the narrator's only), split into the new `narrator_cost_usd` / `narrator_input_tokens` /

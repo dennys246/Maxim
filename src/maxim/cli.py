@@ -221,9 +221,10 @@ def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
 def _cli_agentic_agent(args: Any, memory_path: str) -> Any:
     """The CLI agentic path's ``MaximAgent``, on the ``--llm`` profile (moved out of ``_main_impl``, rule T, #1228).
 
-    ``shared_router=None`` on purpose: this path's router is built by ExecAgent itself, with ``consent="ask"`` on the
-    main thread (:func:`_cli_agentic_llm_worker`), so the CLI hands the agent no router."""
+    ``shared_router=BUILD_OWN`` on purpose: this path's router is built by ExecAgent itself, with ``consent="ask"`` on
+    the main thread (:func:`_cli_agentic_llm_worker`), so the CLI hands the agent no router."""
     from maxim.agents import MaximAgent
+    from maxim.agents.exec_agent import BUILD_OWN
 
     # Get LLM profile
     llm_profile = str(getattr(args, "language_model", "") or "").strip()
@@ -237,7 +238,7 @@ def _cli_agentic_agent(args: Any, memory_path: str) -> Any:
         data_folder=args.home_dir,
         enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
         reset_on_startup=bool(getattr(args, "reset", False)),
-        shared_router=None,
+        shared_router=BUILD_OWN,
     )
 
 
@@ -3014,7 +3015,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             # subclass-level fix_hint surfaces as a loud AttributeError
             # instead of silently using a generic fallback string.
             user_warn(
-                f"{type(e).__name__}: {e}",
+                e.problem,  # str(e) already ends with the fix hint, which fix= prints on its own line (#1228)
                 fix=e.fix_hint,
                 source="backend",
                 event="backend_error_uncaught",

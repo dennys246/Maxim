@@ -636,7 +636,9 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
     """The AUT's own router for a dual-LLM run (``aut_model``), else the shared ``llm_router``. With ``aut_model``
     set, a build that returns no router or raises refuses the run, typed (``AutRouterUnavailable``; owner decision B,
     #1228): a two-model run never silently becomes a one-model run (it used to fall back to the shared router, and
-    every "the AUT ran on X" statement then named the narrator's model). The build is handed ``aut_model`` (``build_primary_router(profile=)``) and the
+    every "the AUT ran on X" statement then named the narrator's model). The AUT's router is built whether or not
+    the run has a shared one: ``--aut-model`` with no narrator LLM (``llm_router`` None) still builds it, or refuses
+    (before #1228 the build was skipped and the AUT silently had no LLM). The build is handed ``aut_model`` (``build_primary_router(profile=)``) and the
     process's ``MAXIM_LLM_PROFILE`` stays the operator's: written around the build, it named the AUT's model for
     every other thread while the build ran, and stayed after a build that raised (#1538).
 
@@ -678,13 +680,12 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
 
 
 def _aut_maxim_agent(aut_router: Any) -> Any:
-    """The AUT's ``MaximAgent``, its ExecAgent on the AUT's router (``NO_ROUTER`` when the run has no LLM, so it never
-    builds one of its own; #1228), with the user's event subscriptions bridged to its bus (moved out of
+    """The AUT's ``MaximAgent``, its ExecAgent on the AUT's router (None when the run has no LLM: it then builds none;
+    #1228), with the user's event subscriptions bridged to its bus (moved out of
     ``start_simulation_mode``, rule T)."""
-    from maxim.agents.exec_agent import agent_router
     from maxim.agents.maxim_agent import MaximAgent
 
-    aut_agent = MaximAgent(shared_router=agent_router(aut_router))
+    aut_agent = MaximAgent(shared_router=aut_router)
 
     # Bridge user event subscriptions to the AUT agent's bus
     if hasattr(aut_agent, "_bus"):
@@ -1066,7 +1067,6 @@ def start_simulation_mode(
 
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
     from maxim.agents.llm_worker import LLMWorker
-    from maxim.agents.exec_agent import agent_router
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.runtime.agent_loop import run_agentic_loop
     from maxim.runtime.bootstrap import (
@@ -1704,7 +1704,7 @@ def start_simulation_mode(
 
     # Orchestrator bio-stack + executor constructed below via AgentFactory
     # after the orch tool registry is built (the factory needs it).
-    orch_agent = MaximAgent(shared_router=agent_router(llm_router))
+    orch_agent = MaximAgent(shared_router=llm_router)
 
     # True when a human drives the conversation (no specific goal).
     # Stall detector and probing are disabled in this mode.

@@ -1,7 +1,8 @@
 """#1228 fold batch: who hands an agent its router, and what a run that cannot build the AUT's router does.
 
-- ``MaximAgent(shared_router=)`` is a REQUIRED keyword (a forgotten router is a TypeError, never a silent private
-  build), and ``exec_agent.NO_ROUTER`` means "no LLM, build none".
+- ``MaximAgent(shared_router=)`` and ``ExecAgent(shared_router=)`` are REQUIRED keywords (a forgotten router is a
+  TypeError, never a silent private build). ``None`` means "no LLM, build none"; only ``exec_agent.BUILD_OWN`` (the
+  CLI's consent-asking path) builds one lazily, so a router variable that happens to be None builds nothing.
 - The console's talk agent and a spawned sub-simulation's agent are handed their runtime's router (owner decision A:
   the sub-AUT is an agent under test, so all of it runs on the router the orchestrator hands it).
 - ``ExecAgent.adopt_router`` is the robot runtime's late hand-off; an ``agent_profiles.exec_agent`` override a handed
@@ -50,29 +51,59 @@ def test_maxim_agent_requires_its_router_choice() -> None:
         MaximAgent()  # type: ignore[call-arg]
 
 
-def test_no_router_builds_no_router_and_no_private_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``NO_ROUTER`` (a run without an LLM): ExecAgent never reaches ``load_llm_config`` or a ChatLLMAgent."""
-    import maxim.agents.exec_agent as EA
-    from maxim.agents.maxim_agent import MaximAgent
+def test_exec_agent_requires_its_router_choice() -> None:
+    from maxim.agents.bus import AgentBus
+    from maxim.agents.exec_agent import ExecAgent
 
-    built: list[str] = []  # recorded, not raised: _ensure_router catches a config error and returns None
+    with pytest.raises(TypeError, match="shared_router"):
+        ExecAgent(AgentBus(), MagicMock(name="memory"))  # type: ignore[call-arg]
+
+
+def _record_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Spy every way ExecAgent could build an LLM of its own; recorded, not raised (``_ensure_router`` catches a
+    config error and returns None, which would hide a raise)."""
+    import maxim.agents.exec_agent as EA
+
+    built: list[str] = []
 
     def _must_not_build(name: str) -> Any:
         def _build(*_a: Any, **_k: Any) -> Any:
             built.append(name)
-            raise AssertionError(f"an agent handed NO_ROUTER reached {name}")
+            raise AssertionError(f"an agent handed None reached {name}")
 
         return _build
 
-    monkeypatch.setattr(EA, "load_llm_config", _must_not_build("load_llm_config"))
-    monkeypatch.setattr(EA, "consented_router", _must_not_build("consented_router"))
-    monkeypatch.setattr(EA, "ChatLLMAgent", _must_not_build("ChatLLMAgent"))
-    agent = MaximAgent(shared_router=EA.NO_ROUTER)
+    for name in ("load_llm_config", "consented_router", "ChatLLMAgent"):
+        monkeypatch.setattr(EA, name, _must_not_build(name))
+    EA._configured_override.cache_clear()
+    monkeypatch.setattr(EA, "_configured_override", lambda: None)
+    return built
+
+
+def test_none_builds_no_router_and_no_private_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``shared_router=None`` (a run without an LLM, or a router variable that happens to be None): ExecAgent never
+    reaches ``load_llm_config``, ``consented_router`` or a ChatLLMAgent, also after ``adopt_router(None, ...)``."""
+    from maxim.agents.maxim_agent import MaximAgent
+
+    built = _record_builds(monkeypatch)
+    agent = MaximAgent(shared_router=None)
     assert agent.exec_agent._ensure_router() is None
     assert agent.exec_agent._ensure_router(consent="ask") is None
     assert agent.exec_agent._ensure_llm() is None
+    agent.exec_agent.adopt_router(None, MagicMock(name="worker"))  # adopting None never re-enables a lazy build
+    assert agent.exec_agent._ensure_router() is None
+    assert agent.exec_agent._ensure_llm() is None
     assert built == []
-    assert EA.agent_router(None) is EA.NO_ROUTER
+
+
+def test_only_build_own_builds_lazily(monkeypatch: pytest.MonkeyPatch) -> None:
+    import maxim.agents.exec_agent as EA
+    from maxim.agents.maxim_agent import MaximAgent
+
+    built = _record_builds(monkeypatch)
+    agent = MaximAgent(shared_router=EA.BUILD_OWN)
+    assert agent.exec_agent._ensure_router() is None  # the build was attempted (and refused by the spy)
+    assert built == ["load_llm_config"]
 
 
 def test_a_handed_router_is_the_exec_agents(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -83,16 +114,14 @@ def test_a_handed_router_is_the_exec_agents(monkeypatch: pytest.MonkeyPatch) -> 
     router = _Router("mine")
     agent = MaximAgent(shared_router=router)
     assert agent.exec_agent._ensure_router() is router
-    assert EA.agent_router(router) is router
 
 
 def test_adopt_router_hands_a_late_router_and_worker() -> None:
     """The robot runtime builds its LLM after its agent (``agentic_runtime``): adopt it, and the worker is not the
     agent's to stop. A router the agent already holds is kept."""
-    import maxim.agents.exec_agent as EA
     from maxim.agents.maxim_agent import MaximAgent
 
-    agent = MaximAgent(shared_router=EA.NO_ROUTER)
+    agent = MaximAgent(shared_router=None)
     late, worker = _Router("late"), MagicMock(name="worker")
     agent.exec_agent.adopt_router(late, worker)
     assert agent.exec_agent._ensure_router() is late
@@ -108,13 +137,24 @@ def test_a_bypassed_exec_agent_override_is_warned_once(
     from maxim.agents.maxim_agent import MaximAgent
 
     monkeypatch.setattr(EA, "_BYPASSED_OVERRIDES_WARNED", set())
-    monkeypatch.setattr(EA, "load_llm_config", lambda *a, **k: SimpleNamespace(agent_profiles={"exec_agent": "big"}))
-    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
-        MaximAgent(shared_router=_Router("small"))
-        MaximAgent(shared_router=_Router("small"))
-        MaximAgent(shared_router=_Router("big"))  # the override's own profile: nothing bypassed
+    reads: list[int] = []
+
+    def _cfg(*_a: Any, **_k: Any) -> Any:
+        reads.append(1)
+        return SimpleNamespace(agent_profiles={"exec_agent": "big"})
+
+    monkeypatch.setattr(EA, "load_llm_config", _cfg)
+    EA._configured_override.cache_clear()
+    try:
+        with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+            MaximAgent(shared_router=_Router("small"))
+            MaximAgent(shared_router=_Router("small"))
+            MaximAgent(shared_router=_Router("big"))  # the override's own profile: nothing bypassed
+    finally:
+        EA._configured_override.cache_clear()
     warned = [r for r in caplog.records if "agent_profiles.exec_agent" in r.getMessage()]
     assert len(warned) == 1, [r.getMessage() for r in warned]
+    assert len(reads) == 1  # the config is read once per process, not per constructor
 
 
 # ── the console's talk agent ─────────────────────────────────────────────────
@@ -225,6 +265,10 @@ def test_an_aut_router_that_cannot_be_built_refuses_the_run(build: str, monkeypa
     with pytest.raises(AutRouterUnavailable) as exc:
         orch._build_aut_router("aut-model", shared, warm=False)
     assert exc.value.profile == "aut-model"
+    # str() carries the build's cause (benchmarks record str(e) as RunResult.error), and the fix hint once.
+    cause = "peer unreachable" if build == "raises" else "returned no router"
+    assert cause in str(exc.value) and cause in exc.value.problem
+    assert exc.value.fix_hint not in exc.value.problem and str(exc.value).count(exc.value.fix_hint) == 1
     with pytest.raises(AutRouterUnavailable):  # also with no shared LLM: the named model is still not served
         orch._build_aut_router("aut-model", None, warm=False)
 
@@ -247,6 +291,8 @@ def test_the_aut_router_build_passes_a_missing_model_through_and_shares_without_
     built = _Router("aut")
     monkeypatch.setattr(LB, "build_run_router", lambda **_k: (built, None))
     assert orch._build_aut_router("aut-model", shared, warm=False) is built
+    # No narrator LLM: the named AUT model is still built (it used to be skipped, leaving the AUT with none).
+    assert orch._build_aut_router("aut-model", None, warm=False) is built
 
 
 def test_the_run_releases_its_serving_registration_when_the_aut_build_refuses(
@@ -300,3 +346,26 @@ def test_the_report_fields_carry_the_split() -> None:
     names = {f.name for f in fields(SimulationReport)}
     for role in ("narrator", "aut"):
         assert {f"{role}_cost_usd", f"{role}_input_tokens", f"{role}_output_tokens"} <= names
+
+
+@pytest.mark.parametrize("which", ["aut", "local"])
+def test_the_cli_prints_a_backend_errors_fix_hint_once(which: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``str(e)`` ends with the fix hint, and the CLI's ``fix=`` line prints it: the message is ``e.problem``, so the
+    hint appears once (it appeared twice, for ``LocalModelUnavailable`` too)."""
+    from maxim import cli
+    from maxim.models.language.types import AutRouterUnavailable, LocalModelUnavailable
+
+    err = AutRouterUnavailable("aut-model", reason="peer down") if which == "aut" else LocalModelUnavailable("m")
+
+    def _raise(_argv: Any) -> int:
+        raise err
+
+    warned: list[tuple[str, Any]] = []
+    monkeypatch.setattr(cli, "_main_impl", _raise)
+    monkeypatch.setattr("maxim.utils.logging.user_warn", lambda msg, **kw: warned.append((msg, kw.get("fix"))))
+    assert cli._main_guarded([]) == 2
+    [(msg, fix)] = warned
+    assert fix == err.fix_hint and err.fix_hint not in msg
+    assert type(err).__name__ in msg
+    if which == "aut":
+        assert "peer down" in msg

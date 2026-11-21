@@ -340,6 +340,29 @@ class AgenticRuntimeMixin:
             self._tool_pain_bridge = None
         return executor
 
+    def _robot_fear_gate(self, executor: Any) -> tuple[Any, Any]:
+        """The robot's FearAgent and ``executor`` wrapped by it (moved out of ``_start_agentic_runtime``, rule T, #1228
+        review); ``(None, executor)`` when the wiring fails, as before."""
+        # Create FearAgent for safety gating (both DN movement and tool calls)
+        fear_agent = None
+        try:
+            from maxim.agents.fear_agent import FearAgent
+            from maxim.runtime.fear_gate import FearGatedExecutor
+
+            # Pattern-only review, stated: the old getattr(agent, "_llm", None) read an attribute MaximAgent never has,
+            # so the robot's review has always run without an LLM. An LLM review on every robot tool call changes
+            # latency on hardware, so it waits on owner decision #1728 (#1228 review).
+            fear_agent = FearAgent(llm=None)
+            self.log.info("robot FearAgent: pattern-only review; LLM review awaits owner decision #1728")
+            self._fear_agent = fear_agent
+
+            # Wrap executor with FearAgent gating (independent of DefaultNetwork)
+            executor = FearGatedExecutor(executor, fear_agent)
+            self.log.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
+        except Exception as e:
+            warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
+        return fear_agent, executor
+
     @staticmethod
     def _share_llm_with_exec_agent(agent: Any, llm_router: Any, llm_worker: Any) -> None:
         """Hand the runtime's late-built LLM to the agent's ExecAgent (``ExecAgent.adopt_router``, #1228; it used to set
@@ -368,7 +391,6 @@ class AgenticRuntimeMixin:
         try:
             from maxim.agents import MaximAgent
             from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
-            from maxim.agents.exec_agent import NO_ROUTER
             from maxim.agents.llm_worker import LLMWorker
             from maxim.environment import ReachyEnv
             from maxim.runtime import (
@@ -419,7 +441,7 @@ class AgenticRuntimeMixin:
             interests=list(getattr(self, "interests", []) or []),
             data_folder=str(getattr(self, "home_dir", "data") or "data"),
             capture_manager=capture_manager,
-            shared_router=NO_ROUTER,
+            shared_router=None,
         )
         env = ReachyEnv(repo_root=os.getcwd(), data_dir=str(getattr(self, "home_dir", "data") or "data"))
         state = build_state(max_steps=1_000_000)
@@ -937,22 +959,7 @@ class AgenticRuntimeMixin:
 
         self._share_llm_with_exec_agent(agent, llm_router, llm_worker)
 
-        # Create FearAgent for safety gating (both DN movement and tool calls)
-        fear_agent = None
-        try:
-            from maxim.agents.fear_agent import FearAgent
-            from maxim.runtime.fear_gate import FearGatedExecutor
-
-            # Use LLM router if available for deeper code analysis
-            llm_for_fear = getattr(agent, "_llm", None)
-            fear_agent = FearAgent(llm=llm_for_fear)
-            self._fear_agent = fear_agent
-
-            # Wrap executor with FearAgent gating (independent of DefaultNetwork)
-            executor = FearGatedExecutor(executor, fear_agent)
-            self.log.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
-        except Exception as e:
-            warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
+        fear_agent, executor = self._robot_fear_gate(executor)
 
         # Build Default Network for reactive behaviors.
         # PainBus is already constructed inside build_bio_stack (Wave 3) —

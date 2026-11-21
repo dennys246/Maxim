@@ -135,13 +135,22 @@ class BackendError(Exception):
         *,
         status: int | None = None,
         fix_hint: str = "",
+        detail: str = "",
     ) -> None:
         self.provider_key = provider_key
         self.status = status
         if fix_hint:
             self.fix_hint = fix_hint
+        self.detail = detail  # what went wrong, beyond the class (a raiser's cause; never the fix hint, #1228)
         self.response: Any | None = None  # attached by the router on body-bearing errors
-        super().__init__(f"{type(self).__name__}[{provider_key}]: {self.fix_hint}")
+        super().__init__(f"{self.problem}: {self.fix_hint}")
+
+    @property
+    def problem(self) -> str:
+        """The error without its fix hint: ``Class[provider_key]`` and the detail, if any. ``str(e)`` is this plus the
+        fix hint; a renderer that prints the hint on its own line prints this, so the hint appears once (#1228)."""
+        head = f"{type(self).__name__}[{self.provider_key}]"
+        return f"{head} {self.detail}" if self.detail else head
 
 
 class BackendOverloaded(BackendError):
@@ -276,8 +285,8 @@ class AutRouterUnavailable(BackendError, ConfigurationError):
 
     def __init__(self, profile: str, *, reason: str = "") -> None:
         self.profile = profile
-        self.reason = reason  # why the build failed (logged by the raiser; kept out of fix_hint, which is static)
-        super().__init__(profile, status=None)
+        self.reason = reason  # why the build failed; in str(e) through ``detail``, never in the static fix_hint
+        super().__init__(profile, status=None, detail=f"({reason})" if reason else "")
 
 
 class BackendInferenceBroken(BackendError):

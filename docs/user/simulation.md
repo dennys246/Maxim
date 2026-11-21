@@ -255,8 +255,10 @@ After a run, open `~/.maxim/sim_reports/{session_id}/report.json`. The key field
 | `pain_events_count` | Pain signals fired through PainBus | 0 unless pain triggers hit |
 | `fear_blocks_count` | FearAgent block events | 0 for cooperative scenarios |
 | `learn_events_count` | Substrate learning events (tier promotions, weight updates) | 10–100 |
-| `cost_usd` | Total LLM API spend (exact, not estimated) | $0.00 local; $0.05–$0.50 cloud |
-| `total_input_tokens` | Input tokens sent to LLM provider | 10k–200k cloud |
+| `cost_usd` | Total LLM API spend for the whole run (exact, not estimated): the narrator's router plus, in a two-model run (`--aut-model`), the AUT's own router (before #1228, a two-model run counted the narrator's only) | $0.00 local; $0.05–$0.50 cloud |
+| `total_input_tokens` / `total_output_tokens` | Input / output tokens for the whole run, counted the same way | 10k–200k cloud |
+| `narrator_cost_usd`, `narrator_input_tokens`, `narrator_output_tokens` | The narrator's router's share of the totals | equals the totals in a one-model run |
+| `aut_cost_usd`, `aut_input_tokens`, `aut_output_tokens` | The AUT's own router's share (two-model runs only) | 0 in a one-model run, where the AUT shares the narrator's router |
 | `finish_reason` | How the session ended | `max_turns`, `cancel`, `completed`, `error` |
 | `llm_finish_status` | Orchestrator's verdict on the goal | `completed`, `failed`, `inconclusive`, `blocked`, `stuck`, `aborted` |
 
