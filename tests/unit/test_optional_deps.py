@@ -6,7 +6,10 @@ twilio) gives clear, actionable error messages instead of raw ImportErrors.
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -365,3 +368,84 @@ def test_import_refused_classifies_by_cause(exc, import_name, refused):
     from maxim.utils.optional_deps import import_refused
 
     assert import_refused(exc, import_name) is refused
+
+
+# ── #1647: a module owned by an extra imports without it; only USING the extra's surface needs it ─────────────────
+# The fresh-import sweep (tests/integration/test_fresh_import_sweep.py, nightly) imports every module first in a bare
+# interpreter. ``motor_cortex`` raised a plain ImportError at import when keras was absent, so the slow lane (which
+# does not install ``training``) was red from 2026-11-01. The keras-derived classes are now built on first access and
+# a missing keras surfaces there, as the typed error, with the ``training`` hint.
+
+_MOTOR = "maxim.models.movement.motor_cortex"
+_SRC = str(Path(__file__).resolve().parents[2] / "src")
+
+
+def _run_child(code: str, *, hide_keras: bool) -> subprocess.CompletedProcess[str]:
+    prelude = "import sys\nsys.path.insert(0, sys.argv[1])\n"
+    if hide_keras:
+        prelude += "sys.modules['keras'] = None\nsys.modules['tensorflow'] = None\n"
+    return subprocess.run(  # noqa: S603 -- our own interpreter, our own script
+        [sys.executable, "-I", "-c", prelude + code, _SRC],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+
+def test_motor_cortex_imports_without_keras_and_refuses_typed_on_use():
+    proc = _run_child(
+        "import importlib, json, os\n"
+        f"m = importlib.import_module({_MOTOR!r})\n"
+        "out = {'tf_env_set': 'TF_GPU_ALLOCATOR' in os.environ, 'resolve': m._resolve_input_shape(None)}\n"
+        "from maxim.utils.optional_deps import OptionalDependencyError\n"
+        "for name in ('LayerScale', 'MotorCortex', 'motor_cortex', 'load_motor_model'):\n"
+        "    try:\n"
+        f"        exec(f'from {_MOTOR} import {{name}}')\n"
+        "        obj = getattr(m, name)\n"
+        "        out[name] = 'ok' if name == 'load_motor_model' else 'no error'\n"
+        "    except OptionalDependencyError as e:\n"
+        "        out[name] = [e.import_name, e.extra]\n"
+        "try:\n"
+        "    m.no_such_name\n"
+        "except AttributeError:\n"
+        "    out['missing'] = 'AttributeError'\n"
+        "print(json.dumps(out))\n",
+        hide_keras=True,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out["resolve"] == [None, None, 3]
+    assert out["tf_env_set"] is False, "the TF env defaults belong to building the model, not to importing the module"
+    for name in ("LayerScale", "MotorCortex", "motor_cortex"):
+        assert out[name] == ["keras", "training"], (name, out[name])
+    assert out["load_motor_model"] == "ok"
+    assert out["missing"] == "AttributeError"
+
+
+def test_motor_cortex_builds_its_keras_classes_once_with_their_own_names():
+    """The with-keras half, against a stand-in keras (the real one costs minutes of TensorFlow start-up): the classes
+    subclass keras's, are built once, keep the module-level names a checkpoint records, and the alias holds."""
+    proc = _run_child(
+        "import json, types\n"
+        "keras = types.ModuleType('keras')\n"
+        "keras.layers = types.SimpleNamespace(Layer=type('Layer', (), {}))\n"
+        "keras.Model = type('Model', (), {})\n"
+        "sys.modules['keras'] = keras\n"
+        f"import {_MOTOR} as m\n"
+        f"from {_MOTOR} import LayerScale, MotorCortex, motor_cortex\n"
+        "print(json.dumps({\n"
+        "  'layer': issubclass(LayerScale, keras.layers.Layer), 'model': issubclass(MotorCortex, keras.Model),\n"
+        "  'alias': motor_cortex is MotorCortex, 'cached': m.MotorCortex is MotorCortex,\n"
+        "  'names': [LayerScale.__qualname__, MotorCortex.__qualname__, LayerScale.__module__],\n"
+        "}))\n",
+        hide_keras=False,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out == {
+        "layer": True,
+        "model": True,
+        "alias": True,
+        "cached": True,
+        "names": ["LayerScale", "MotorCortex", _MOTOR],
+    }
