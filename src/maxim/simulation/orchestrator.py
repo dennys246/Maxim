@@ -673,6 +673,21 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
     return aut_router
 
 
+def _build_aut_agent(aut_router: Any) -> Any:
+    """The AUT's MaximAgent on the AUT's router (its ExecAgent never builds a second, owner decision V29), its user
+    event subscriptions bridged to its bus (moved out of ``start_simulation_mode`` with the edit, rule T)."""
+    from maxim.agents.maxim_agent import MaximAgent
+
+    aut_agent = MaximAgent(llm_router=aut_router)
+
+    # Bridge user event subscriptions to the AUT agent's bus
+    if hasattr(aut_agent, "_bus"):
+        from maxim.api import _bridge_event_subscriptions
+
+        _bridge_event_subscriptions(aut_agent._bus)
+    return aut_agent
+
+
 def _warm_aut_router(aut_router: Any, llm_router: Any, aut_model: str | None) -> Any:
     """Warm the AUT's own router and wait for its load (a shared AUT router is the shared one, already warming).
 
@@ -1211,13 +1226,7 @@ def start_simulation_mode(
     _inject_registered_tools(aut_registry)
 
     aut_decision_engine = build_decision_engine()
-    aut_agent = MaximAgent()
-
-    # Bridge user event subscriptions to the AUT agent's bus
-    if hasattr(aut_agent, "_bus"):
-        from maxim.api import _bridge_event_subscriptions
-
-        _bridge_event_subscriptions(aut_agent._bus)
+    aut_agent = _build_aut_agent(aut_router)
 
     # AUT runs AUTONOMOUS — no human confirmation prompts (SUPERVISED would
     # deadlock because stdin is captured by the orchestrator's reader thread).
@@ -1671,7 +1680,7 @@ def start_simulation_mode(
 
     # Orchestrator bio-stack + executor constructed below via AgentFactory
     # after the orch tool registry is built (the factory needs it).
-    orch_agent = MaximAgent()
+    orch_agent = MaximAgent(llm_router=llm_router)  # the orchestrator's own router, never a second (V29)
 
     # True when a human drives the conversation (no specific goal).
     # Stall detector and probing are disabled in this mode.

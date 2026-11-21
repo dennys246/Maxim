@@ -430,7 +430,7 @@ def drive_loop(
 
         workspace = workdir / "workspace"
         workspace.mkdir(parents=True, exist_ok=True)
-        agent = MaximAgent()
+        agent = MaximAgent(llm_router=None)
         agent.wire_memory_hub(bio.memory_hub)
         state = RuntimeState()
         state.data["mode"] = "active"

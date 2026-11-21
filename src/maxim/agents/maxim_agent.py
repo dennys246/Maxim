@@ -23,6 +23,8 @@ from maxim.agents.exec_agent import ExecAgent
 from maxim.agents.agentic_goal_agent import AgenticGoalAgent
 
 if TYPE_CHECKING:
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.models.language.router import LLMRouter
     from maxim.runtime.capture import CaptureManager
 
 
@@ -45,6 +47,13 @@ class MaximAgent(Agent):
     4. ExecAgent → proposes ProposedGoal based on context + LLM
     5. AgenticGoalAgent → accepts/rejects goal, executes via tools
     6. ToolResult → fed back to MemoryAgent for outcome tracking
+
+    The run's LLM (owner decision V29, #1315 item 10b): ``llm_router`` is required, keyword-only, so every builder
+    says which router the ExecAgent uses; the ExecAgent never builds a second one of its own (a second model load, and
+    a second router build the offline latch would refuse where nothing reports it). ``None`` means the run has no
+    router yet: it is shared later with :meth:`share_run_llm` (the robot runtime, which builds its LLM after the agent),
+    built by the ExecAgent only when its owner asks (the CLI agentic path's ``_ensure_router(consent="ask")``), or the
+    run has no LLM (the minecraft harness).
     """
 
     agent_name = "maxim"
@@ -55,6 +64,8 @@ class MaximAgent(Agent):
     def __init__(
         self,
         *,
+        llm_router: LLMRouter | None,
+        llm_worker: LLMWorker | None = None,
         name: str | None = None,
         enabled: bool = True,
         interests: list[int] | None = None,
@@ -111,6 +122,8 @@ class MaximAgent(Agent):
             llm_profile=llm_profile,
             quantization=quantization,
             agent_id=agent_id,
+            shared_router=llm_router,
+            shared_llm_worker=llm_worker,
         )
 
         # Wire WorkingMemorySet: Exec owns it, MemoryAgent writes to it (0.8).
@@ -262,6 +275,16 @@ class MaximAgent(Agent):
                 hub._concept_grounder._collector = collector
             if hub.nac:
                 hub.nac._collector = collector
+
+    def share_run_llm(self, llm_router: LLMRouter | None, llm_worker: LLMWorker | None = None) -> None:
+        """Hand the ExecAgent the run's router and worker when they are built after the agent (owner decision V29):
+        it then never builds its own. One already set is kept; a shared worker is not the ExecAgent's to stop."""
+        exec_agent = self.exec_agent
+        if exec_agent._router is None:
+            exec_agent._router = llm_router
+        if exec_agent._llm_worker is None and llm_worker is not None:
+            exec_agent._llm_worker = llm_worker
+            exec_agent._owns_llm_worker = False
 
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""

@@ -714,12 +714,14 @@ def _auto_curate_before_run(curate_genre: str) -> None:
         print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
 
 
-def _build_run_agent(model: str, effective_home: str) -> Any:
+def _build_run_agent(model: str, effective_home: str, router: Any, llm_worker: Any) -> Any:
     """``run()``'s agent, its user event subscriptions bridged to its bus (moved verbatim out of ``run``, #1264
-    rule T)."""
+    rule T). Its ExecAgent uses the run's ``router`` and ``llm_worker``, never a second of its own (V29)."""
     from maxim.agents.maxim_agent import MaximAgent
 
     agent = MaximAgent(
+        llm_router=router,
+        llm_worker=llm_worker,
         llm_profile=model,
         memory_persistence_path=os.path.join(effective_home, "memory"),
         data_folder=os.path.join(effective_home, "data"),
@@ -844,7 +846,7 @@ def run(
         llm_worker.start()
 
         # ── Agent pipeline ───────────────────────────────────────────────────
-        agent = _build_run_agent(model, effective_home)
+        agent = _build_run_agent(model, effective_home, router, llm_worker)
 
         env = build_environment(root=effective_home)
         state = build_state()

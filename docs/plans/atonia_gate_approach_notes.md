@@ -1301,9 +1301,14 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > consented-router call sites re-raise `SECURITY_REFUSALS` (`cli.py::_curate_router_factory` and
 > `_auto_curate_before_sim`, `_handle_foundry`); `_early_leader_boot` re-raises an offline refusal (moved here from
 > 10c); the benchmark paper writer names a refused router and records it as degraded; the warmup thread's refusal
-> clause sits on main's `_warm_default_backend` (#1657). For 10c: `ExecAgent`'s plan-generation catch-all
-> (unreachable offline today: a router with an out-of-process lane refuses at build). Separately, `write_paper` always
-> fails today on `ExperimentLog(nickname=)` (#1680, online too).
+> clause sits on main's `_warm_default_backend` (#1657). Delta round 4's wire lens found `ExecAgent._propose_goal`'s
+> catch-all swallowing a refusal from the agent's own lazy router build; on a closer read that path has no caller in
+> `src/` or `scripts/` today (`MaximAgent.on_start` is never called, `deliberate()` has none), and the owner chose to fix
+> the root cause anyway: **V29** (2026-11-21) every `MaximAgent` takes the run's router (`llm_router=`, required,
+> keyword-only; `share_run_llm` for the robot runtime, which builds its LLM after the agent), and an ExecAgent never
+> builds a router, worker router or `ChatLLMAgent` of its own; `_propose_goal` re-raises `SECURITY_REFUSALS` and the
+> proposal worker ends on one, said once. Separately, `write_paper` always fails today on `ExperimentLog(nickname=)`
+> (#1680, online too).
 >
 > Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`

@@ -1006,10 +1006,11 @@ class BenchmarkRunner:
             # (#1396 bullet 2): no paper rather than a router that refuses every call.
             try:
                 router, cause = consented_router(load_llm_config(), logger=logger)
-            except SECURITY_REFUSALS as refusal:  # said as what it is, and in the run's offline block (#1315 item 10b)
+            except SECURITY_REFUSALS as refusal:  # said as what it is; offline, also in the run's offline block (#1315)
                 from maxim import _offline
 
-                _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
+                if isinstance(refusal, _offline.OfflineRefusal):
+                    _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
                 logger.warning("No paper: the paper writer's router was refused (%s)", refusal)
                 return None
             except Exception:

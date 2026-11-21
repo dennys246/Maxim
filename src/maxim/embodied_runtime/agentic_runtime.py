@@ -406,6 +406,7 @@ class AgenticRuntimeMixin:
 
         _t_mem = time.time()
         agent = MaximAgent(
+            llm_router=None,  # built below, then shared (share_run_llm, owner decision V29)
             interests=list(getattr(self, "interests", []) or []),
             data_folder=str(getattr(self, "home_dir", "data") or "data"),
             capture_manager=capture_manager,
@@ -925,14 +926,9 @@ class AgenticRuntimeMixin:
         self.log.info("Bootstrap: LLM worker ready (%.1fms)", (time.time() - _t_llm) * 1000)
 
         # Share LLM backend with ExecAgent to avoid loading a second model
-        # (cleanup #3: double LLM load fix)
-        if llm_worker is not None and hasattr(agent, "exec_agent"):
-            exec_agent = agent.exec_agent
-            if exec_agent._router is None:
-                exec_agent._router = llm_router
-            if exec_agent._llm_worker is None:
-                exec_agent._llm_worker = llm_worker
-                exec_agent._owns_llm_worker = False
+        # (cleanup #3: double LLM load fix; one seam since V29)
+        if llm_worker is not None:
+            agent.share_run_llm(llm_router, llm_worker)
 
         # Create FearAgent for safety gating (both DN movement and tool calls)
         fear_agent = None

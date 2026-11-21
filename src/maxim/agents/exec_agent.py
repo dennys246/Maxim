@@ -41,6 +41,7 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.models.download import consent_interactive, consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
@@ -203,7 +204,9 @@ class ExecAgent(Agent):
         thread) never asks: a missing model downloads only with a standing grant, else there is no router, the refusal
         is remembered (``_refused_profile``) and the consent check's message says how to grant it. ``consent="ask"``
         (the CLI agentic path, on the main thread before any warmup) may prompt, and is not stopped by an earlier
-        "never" refusal (#1343, #1396 bullet 2)."""
+        "never" refusal (#1343, #1396 bullet 2). The proposal path never calls it (owner decision V29): an ExecAgent
+        uses the run's router (``MaximAgent(llm_router=)``, ``MaximAgent.share_run_llm``) and builds one only when its
+        owner asks."""
         if self._router is not None:
             return self._router
         if consent == "never" and self._refused_profile is not None:
@@ -231,9 +234,10 @@ class ExecAgent(Agent):
         return self._router
 
     def _ensure_llm_worker(self) -> LLMWorker | None:
+        """A worker over the run's router (``self._router``); never a router of its own (owner decision V29)."""
         if self._llm_worker is not None:
             return self._llm_worker
-        router = self._ensure_router()
+        router = self._router
         if router is None:
             return None
         try:
@@ -487,7 +491,7 @@ class ExecAgent(Agent):
                 request_context={"agent": self.agent_name, "lane": "large"},
             )
         else:
-            llm = self._ensure_llm()
+            llm = self._llm  # one its owner built (the CLI agentic path's _ensure_llm); never built here (V29)
             if llm is not None:
                 return llm.generate_json(user, system_prompt=system, temperature=0.2, max_tokens=max_tokens)
         return None
@@ -1306,7 +1310,7 @@ Based on this context, what goal should be proposed?"""
 
         try:
             llm_worker = self._ensure_llm_worker()
-            router = self._router or self._ensure_router()
+            router = self._router  # the run's (MaximAgent(llm_router=), share_run_llm): never one of its own (V29)
             response, thinking_cfg = self._invoke_llm_for_goal(ctx, llm_worker, router)
 
             if not response or not isinstance(response, dict) or not response.get("goal_description"):
@@ -1330,6 +1334,8 @@ Based on this context, what goal should be proposed?"""
             )
             return goal
 
+        except SECURITY_REFUSALS:
+            raise  # a refusal is not a "language model error" (#1315 item 10b); the worker loop ends on it
         except Exception as e:
             warn("Language model error during plan generation: %s", e)
             return None
@@ -1553,7 +1559,7 @@ Based on this context, what goal should be proposed?"""
                 thinking=thinking_cfg,
             )
         else:
-            llm = self._ensure_llm()
+            llm = self._llm  # one its owner built (the CLI agentic path's _ensure_llm); never built here (V29)
             if llm is None:
                 return None, thinking_cfg
             response = llm.generate_json(prompt, temperature=0.2)
@@ -1744,7 +1750,13 @@ Based on this context, what goal should be proposed?"""
 
             # Build context and propose
             ctx = self._memory.build_context()
-            proposal = self._propose_goal(ctx)
+            try:
+                proposal = self._propose_goal(ctx)
+            except SECURITY_REFUSALS as refusal:
+                # The run's router was refused (#1315 item 10b): said once, by name, and the worker ends, rather than
+                # a dead thread or a "language model error" every turn. The run's own loop meets the same refusal.
+                warn("ExecAgent stops proposing: %s", refusal)
+                return
 
             if proposal:
                 with self._proposal_lock:

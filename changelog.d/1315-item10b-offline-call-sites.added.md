@@ -19,3 +19,7 @@
   with a model offline cannot run refuse (exit 2) instead of falling back to templates, and a leader boot refused
   offline says so instead of reporting a port conflict. A model named by `maxim.run(model=)`, `--aut-model` or
   research's `language_model` counts as chosen: offline it is refused by name, never swapped.
+- **One router per run** (owner decision V29): `MaximAgent` takes the run's router (`llm_router=`, required), so its
+  ExecAgent never builds a second router or loads a second model of its own; the robot runtime, which builds its LLM
+  after the agent, hands it over with `MaximAgent.share_run_llm`. An ExecAgent whose router is refused stops proposing
+  and says why once, instead of logging a language-model error every turn.

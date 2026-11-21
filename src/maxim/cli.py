@@ -218,6 +218,28 @@ def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
         _print_model_unavailable(getattr(exec_agent, "_refused_cause", None))
 
 
+def _build_cli_agentic_agent(args: Any, memory_path: str) -> Any:
+    """The CLI agentic path's MaximAgent (moved out of ``_main_impl`` with the edit, rule T). ``llm_router=None``: this
+    agent builds the run's router itself, on the main thread, in :func:`_cli_agentic_llm_worker` (owner decision
+    V29)."""
+    from maxim.agents import MaximAgent
+
+    # Get LLM profile
+    llm_profile = str(getattr(args, "language_model", "") or "").strip()
+    if not llm_profile:
+        llm_profile = "mistral-7b-instruct-v0.2"
+
+    # Create the agentic agent
+    return MaximAgent(
+        llm_router=None,
+        llm_profile=llm_profile,
+        memory_persistence_path=memory_path,
+        data_folder=args.home_dir,
+        enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
+        reset_on_startup=bool(getattr(args, "reset", False)),
+    )
+
+
 def _cli_agentic_llm_worker(
     agentic_agent: Any,
     args: Any,
@@ -2524,7 +2546,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if not _gpu_available():
                     _configure_cpu_fallback_model(logger, args.home_dir)
 
-                from maxim.agents import MaximAgent
                 from maxim.agents.autonomy import (
                     AutonomyController,
                     AutonomyLevel,
@@ -2561,19 +2582,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if memory_path is None:
                     memory_path = os.path.join(args.home_dir, "memory", "memories.json")
 
-                # Get LLM profile
-                llm_profile = str(getattr(args, "language_model", "") or "").strip()
-                if not llm_profile:
-                    llm_profile = "mistral-7b-instruct-v0.2"
-
-                # Create the agentic agent
-                agentic_agent = MaximAgent(
-                    llm_profile=llm_profile,
-                    memory_persistence_path=memory_path,
-                    data_folder=args.home_dir,
-                    enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
-                    reset_on_startup=bool(getattr(args, "reset", False)),
-                )
+                agentic_agent = _build_cli_agentic_agent(args, memory_path)
 
                 # Set up ResponseOutput for LLM responses; spoken replies through local speakers, or a refusal (#1437)
                 from pathlib import Path

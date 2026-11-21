@@ -1545,7 +1545,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent()
+        sub_agent = MaximAgent(llm_router=self._llm_router)  # the parent sim's router, never a second (V29)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(

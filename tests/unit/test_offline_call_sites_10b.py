@@ -695,3 +695,123 @@ def test_a_refused_paper_router_is_named_and_recorded_as_degraded(
     assert runner.write_paper(report, tmp_path) is None
     assert [d.site for d in _offline.degraded()] == ["benchmark.paper"]
     assert "lanes that are not in-process" in _offline.degraded()[0].reason
+
+
+def test_a_leader_refused_paper_router_is_not_recorded_as_offline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Delta round 4 NIT: an online LeaderRefusal names the refusal but books no offline 'degraded' entry."""
+    from maxim.exceptions import LeaderRefusal
+    from maxim.models import download
+    from maxim.models.language import router as router_mod
+    from maxim.simulation import benchmark as bm
+    from maxim.simulation import research_tools
+
+    def refuse(*_a: object, **_k: object) -> None:
+        raise LeaderRefusal("no mesh key")
+
+    monkeypatch.setattr(download, "consented_router", refuse)
+    monkeypatch.setattr(router_mod, "load_llm_config", lambda: None)
+    monkeypatch.setattr(research_tools, "ExperimentLog", MagicMock())
+    report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
+    report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
+    assert object.__new__(bm.BenchmarkRunner).write_paper(report, tmp_path) is None
+    assert not _offline.degraded()
+
+
+# Owner decision V29 (2026-11-21): every MaximAgent takes the run's router, so its ExecAgent never builds a second one
+# (a duplicate model load, and a router build the latch refuses where nothing reports it).
+
+
+def test_a_maxim_agent_must_say_which_router_it_uses() -> None:
+    from maxim.agents.maxim_agent import MaximAgent
+
+    with pytest.raises(TypeError, match="llm_router"):
+        MaximAgent()  # type: ignore[call-arg]
+
+
+def test_the_run_builders_hand_their_router_to_the_exec_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import api
+    from maxim.simulation import orchestrator
+
+    router, worker = MagicMock(name="router"), MagicMock(name="worker")
+    agent = api._build_run_agent("phi-2", "/tmp/maxim-v29-home", router, worker)
+    assert agent.exec_agent._router is router and agent.exec_agent._llm_worker is worker
+    assert agent.exec_agent._owns_llm_worker is False  # api.run stops its own worker
+    aut_router = MagicMock(name="aut")
+    assert orchestrator._build_aut_agent(aut_router).exec_agent._router is aut_router
+
+
+def test_share_run_llm_hands_over_once_and_never_owns_the_worker() -> None:
+    from maxim.agents.maxim_agent import MaximAgent
+
+    agent = MaximAgent(llm_router=None)
+    first, worker = MagicMock(name="first"), MagicMock(name="worker")
+    agent.share_run_llm(first, worker)
+    agent.share_run_llm(MagicMock(name="second"), MagicMock(name="other"))
+    assert agent.exec_agent._router is first and agent.exec_agent._llm_worker is worker
+    assert agent.exec_agent._owns_llm_worker is False
+
+
+def test_an_exec_agent_with_no_run_router_builds_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.agents.exec_agent import ExecAgent
+    from maxim.agents.maxim_agent import MaximAgent
+
+    builds: list[str] = []  # recorded, not raised: _propose_goal's own catch-all would swallow an AssertionError
+    monkeypatch.setattr(ExecAgent, "_ensure_router", lambda self, **_k: builds.append("router"))
+    monkeypatch.setattr(ExecAgent, "_ensure_llm", lambda self: builds.append("llm"))
+    exec_agent = MaximAgent(llm_router=None).exec_agent
+    exec_agent._run_pre_deliberation = lambda _ctx: ""  # type: ignore[method-assign]
+    seen: list[object] = []
+    monkeypatch.setattr(exec_agent, "_invoke_llm_for_goal", lambda c, w, r: (seen.append((w, r)), (None, None))[1])
+    assert exec_agent._propose_goal(exec_agent._memory.build_context()) is None
+    assert seen == [(None, None)]  # reached the call: no worker, no router
+    assert builds == []
+
+
+def test_a_refused_run_router_ends_the_proposal_worker_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.agents import exec_agent as exec_mod
+    from maxim.agents.maxim_agent import MaximAgent
+
+    exec_agent = MaximAgent(llm_router=MagicMock()).exec_agent
+
+    def refused(_ctx: object) -> None:
+        raise _offline.OfflineRefusal("router[dispatch] refused: lane-large")
+
+    monkeypatch.setattr(exec_agent, "_propose_goal", refused)
+    said: list[str] = []
+    monkeypatch.setattr(exec_mod, "warn", lambda msg, *a: said.append(msg % a))
+    exec_agent._work_available.set()
+    worker = threading.Thread(target=exec_agent._worker_loop, daemon=True)
+    worker.start()
+    worker.join(5.0)
+    assert not worker.is_alive()  # ended, not spinning or dead on a traceback
+    assert said == ["ExecAgent stops proposing: router[dispatch] refused: lane-large"]
+
+
+def test_propose_goal_keeps_a_refusal_typed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.agents.maxim_agent import MaximAgent
+
+    exec_agent = MaximAgent(llm_router=MagicMock()).exec_agent
+    exec_agent._run_pre_deliberation = lambda _ctx: ""  # type: ignore[method-assign]
+
+    def refused(*_a: object) -> None:
+        raise _offline.OfflineRefusal("router[dispatch] refused")
+
+    monkeypatch.setattr(exec_agent, "_invoke_llm_for_goal", refused)
+    with pytest.raises(_offline.OfflineRefusal):  # not "Language model error during plan generation"
+        exec_agent._propose_goal(exec_agent._memory.build_context())
+
+
+def test_the_goal_and_contemplation_calls_never_build_their_own_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.agents.exec_agent import ExecAgent
+    from maxim.agents.maxim_agent import MaximAgent
+
+    def built(*_a: object, **_k: object) -> None:
+        raise AssertionError("the ExecAgent built an LLM of its own")
+
+    monkeypatch.setattr(ExecAgent, "_ensure_llm", built)
+    exec_agent = MaximAgent(llm_router=None).exec_agent
+    response, _thinking = exec_agent._invoke_llm_for_goal(exec_agent._memory.build_context(), None, None)
+    assert response is None
+    assert exec_agent._contemplation_llm_call(system="s", user="u", max_tokens=8) is None

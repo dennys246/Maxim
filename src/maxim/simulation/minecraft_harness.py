@@ -412,7 +412,7 @@ def run_minecraft_aut(
 
     workspace = Path(aut.persistence_dir) / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-    agent = MaximAgent()
+    agent = MaximAgent(llm_router=None)  # a substrate-driven AUT: no LLM, and its ExecAgent builds none (V29)
     if aut.bio.memory_hub is not None:
         agent.wire_memory_hub(aut.bio.memory_hub)
     state = RuntimeState()
