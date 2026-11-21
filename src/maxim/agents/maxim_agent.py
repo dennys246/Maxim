@@ -398,6 +398,10 @@ class MaximAgent(Agent):
         )
         self._bus.publish(tr)
 
+    def refuse_tool_call(self, tool_call_id: str, reason: str) -> bool:
+        """The loop refused the goal agent's pending tool call (#1414); see ``AgenticGoalAgent.refuse_tool_call``."""
+        return self.goal.refuse_tool_call(tool_call_id, reason)
+
     def report_tool_result(
         self,
         tool_call_id: str,
