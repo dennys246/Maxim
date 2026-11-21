@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import re
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PLANNING MODE APPROVAL DETECTION
 # ─────────────────────────────────────────────────────────────────────────────
-# Keywords for approval detection (case-insensitive)
-_APPROVAL_YES = frozenset(
+# #1185: this parses a HUMAN's answer to a plan-approval prompt, so it is a safety gate and fails closed.
+# Approval needs the WHOLE reply (lowercased, punctuation stripped, whitespace collapsed) to be one of
+# ``_APPROVE_PHRASES``; an approval word inside a longer reply never approves. A rejection or negation word
+# anywhere means the reply is never approval: a short one without an approval word rejects, one that also
+# carries an approval word is contradictory and comes out "unknown" (the caller re-asks). The old parser
+# tested a word-set intersection for YES words first, so "stop, don't run it" (the token "run"), "not ok" and
+# "no good" approved, and it read ``set.pop()``, so mixed replies flipped with PYTHONHASHSEED.
+_APPROVE_PHRASES = frozenset(
     {
         "yes",
         "y",
@@ -17,29 +25,20 @@ _APPROVAL_YES = frozenset(
         "okay",
         "approve",
         "approved",
-        "go",
+        "lgtm",
         "go ahead",
         "do it",
         "proceed",
-        "execute",
-        "run",
         "confirm",
         "confirmed",
         "accept",
         "accepted",
         "sounds good",
         "looks good",
-        "that works",
-        "perfect",
-        "great",
-        "good",
-        "fine",
-        "correct",
-        "right",
+        "yes please",
     }
 )
-
-_APPROVAL_NO = frozenset(
+_REJECT_PHRASES = frozenset(
     {
         "no",
         "n",
@@ -53,80 +52,141 @@ _APPROVAL_NO = frozenset(
         "deny",
         "denied",
         "don't",
-        "dont",
         "do not",
         "never",
-        "negative",
+        "not now",
+        "not yet",
+    }
+)
+# Single words that carry approval anywhere in a reply: used only to detect a CONTRADICTION with a negation.
+# They never approve on their own; only a whole ``_APPROVE_PHRASES`` match does. Verbs naming the action
+# ("run", "execute") are not assent, so "don't run it" is a rejection, not a contradiction.
+_APPROVAL_WORDS = frozenset(
+    {
+        "yes",
+        "y",
+        "yeah",
+        "yep",
+        "yup",
+        "sure",
+        "ok",
+        "okay",
+        "approve",
+        "approved",
+        "lgtm",
+        "go",
+        "proceed",
+        "confirm",
+        "confirmed",
+        "accept",
+        "accepted",
+        "good",
+        "fine",
+        "great",
+        "perfect",
+        "correct",
+        "right",
+    }
+)
+# Words that negate or refuse anywhere in a reply (any "...n't" contraction counts too, see ``_is_negation``).
+_NEGATION_WORDS = frozenset(
+    {
+        "no",
+        "n",
+        "nope",
+        "nah",
+        "not",
+        "stop",
+        "cancel",
+        "abort",
+        "reject",
+        "rejected",
+        "deny",
+        "denied",
+        "dont",
+        "never",
+        "wait",
+        "hold",
         "wrong",
         "incorrect",
         "bad",
-        "not that",
     }
 )
+# A reply this short with a negation and no approval word is a rejection; a longer one is a modification
+# request (the plan is dropped and the LLM sees the text), which also never executes the plan.
+_SHORT_REJECT_MAX_WORDS = 4
+
+_MODIFY_INDICATORS = (
+    "but",
+    "instead",
+    "change",
+    "modify",
+    "update",
+    "different",
+    "actually",
+    "rather",
+    "how about",
+    "what if",
+    "can you",
+    "could you",
+    "would you",
+    "please",
+    "also",
+    "add",
+    "remove",
+)
+
+
+def _normalize(text: str) -> list[str]:
+    """Lowercase words with surrounding punctuation stripped; apostrophes kept inside a word ("don't")."""
+    text = text.lower().replace("\u2019", "'").replace("\u2018", "'")
+    words = []
+    for raw in re.split(r"[^\w']+", text):
+        word = raw.strip("'")
+        if word:
+            words.append(word)
+    return words
+
+
+def _is_negation(word: str) -> bool:
+    return word in _NEGATION_WORDS or word.endswith("n't")
 
 
 def detect_approval_intent(text: str) -> tuple[str, str | None]:
     """
-    Detect user intent from text: approval, rejection, or modification.
+    Detect a human's intent from their answer to a plan-approval prompt. Fails closed (#1185): ambiguous input
+    is never "approve".
 
     Returns:
         Tuple of (intent, modification_text):
-        - ("approve", None) - user approved the plan
-        - ("reject", None) - user rejected the plan
-        - ("modify", "new instructions") - user wants to modify the plan
-        - ("unknown", None) - could not determine intent
+        - ("approve", None) - the whole reply is an approval phrase
+        - ("reject", None) - the whole reply is a rejection phrase, or a short negated reply with no approval word
+        - ("modify", text) - a longer reply asking for changes (the plan is dropped, never executed)
+        - ("unknown", None) - could not determine intent, or the reply contradicts itself; the caller re-asks
     """
-    if not text:
+    words = _normalize(text or "")
+    if not words:
         return ("unknown", None)
-
-    text_lower = text.lower().strip()
-    text_words = set(text_lower.split())
-
-    # Check for exact match or word-level match for approval
-    if text_lower in _APPROVAL_YES or text_words & _APPROVAL_YES:
-        # But make sure it's not a modification (has other content)
-        # Short responses like "yes" are approval, but "yes but change X" is modify
-        if len(text_lower) < 20 or text_lower in _APPROVAL_YES:
-            return ("approve", None)
-
-    # Check for rejection
-    if text_lower in _APPROVAL_NO or text_words & _APPROVAL_NO:
-        if len(text_lower) < 20 or text_lower in _APPROVAL_NO:
-            return ("reject", None)
-
-    # Check for modification indicators
-    modify_indicators = [
-        "but",
-        "instead",
-        "change",
-        "modify",
-        "update",
-        "different",
-        "actually",
-        "rather",
-        "how about",
-        "what if",
-        "can you",
-        "could you",
-        "would you",
-        "please",
-        "also",
-        "add",
-        "remove",
-    ]
-    for indicator in modify_indicators:
-        if indicator in text_lower:
-            return ("modify", text)
-
-    # If text is short and starts with approval/rejection word
-    first_word = text_words.pop() if text_words else ""
-    if first_word in _APPROVAL_YES:
+    phrase = " ".join(words)
+    if phrase in _APPROVE_PHRASES:
         return ("approve", None)
-    if first_word in _APPROVAL_NO:
+    if phrase in _REJECT_PHRASES:
         return ("reject", None)
 
-    # Default: treat longer unknown text as modification request
-    if len(text_lower) > 10:
+    has_negation = any(_is_negation(w) for w in words)
+    has_approval_word = any(w in _APPROVAL_WORDS for w in words)
+    if has_negation and has_approval_word:
+        return ("unknown", None)  # contradictory ("ok but don't run it", "not ok", "yes no"): re-ask
+    if has_negation:
+        if len(words) <= _SHORT_REJECT_MAX_WORDS:
+            return ("reject", None)
         return ("modify", text)
 
+    padded = f" {phrase} "
+    if any(f" {indicator} " in padded for indicator in _MODIFY_INDICATORS):
+        return ("modify", text)
+    if has_approval_word:
+        return ("unknown", None)  # an approval word in a reply that is not an approval phrase: re-ask
+    if len(phrase) > 10:
+        return ("modify", text)
     return ("unknown", None)
