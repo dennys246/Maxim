@@ -113,11 +113,11 @@ Every finding is folded below. §11 maps each one to its home. The owner re-deci
 **R1. The reference for every check is a fresh daemon readback (O3); the stash fills unspecified head axes only.**
 - **The read** (Wire D5; Architecture N2; Executor N2, N3).
   - `_fresh_readback()` calls `GET /api/state/full?use_pose_matrix=true&with_head_pose=true&with_body_yaw=true&with_antenna_positions=true&with_control_mode=true`. It goes to the host and port the controller connected to, through `maxim_http.fetch_url`: the existing pattern of `ReachyMiniController._daemon_status` and the REST DoA reader, so this adds no new endpoint registration.
-    - It passes `address_policy="private"` and an explicit short `TimeoutPolicy`, whose pool, connect and read phases each have a bound and sum to the deadline.
+    - It passes `address_policy="private"` and an explicit short `TimeoutPolicy` in which the pool, connect and read phases may each use the whole deadline (#1706). They first split it into thirds, which left the read about 33 ms under a 100 ms deadline, because `total_s` maps to httpx's pool wait, not the whole request.
     - The default goes through the shared `_external` endpoint (a pool of 10, `TimeoutPolicy.long()`), which the DoA polling and the web tools also use. Pool waits there would show up as spurious `reference` refusals (Wire scoped NIT).
   - **The parser is tolerant of the version** (the shape varies, F12). It accepts the 4×4 matrix at `head_pose` (or `head_pose.m`), and `body_yaw` at the top level or one level down. Anything else is a missing field.
   - **A contract test at the SDK floor and latest**, in the R2 reachy cell, runs against the real daemon app, so the parser is pinned to a real response.
-  - **An explicit overall deadline.** `TimeoutPolicy` is per phase, so the call is bounded by a total deadline: 100 ms on the LAN, 300 ms in tunnel mode, both measured on the rig before release. There are no retries inside it.
+  - **An explicit overall deadline.** `TimeoutPolicy` is per phase and httpx has no whole-request timeout, so the elapsed-time check after the read bounds the reference's age at a total deadline: 100 ms on the LAN, 300 ms in tunnel mode, both measured on the rig before release. There are no retries inside it.
   - A transport error, a non-200 status, a missing field, a non-finite value, or a `control_mode` other than `enabled` raises `MotionRefused(kind="reference")`.
   - At connect, one probe read validates the shape. On a mismatch the controller logs one ERROR naming the SDK version, and `maxim doctor` reports it.
 - **What the readback supplies:** the body used to compose a head-only move (F2), the start of every rate delta (R4), and the start of every path check (R5).
@@ -682,7 +682,33 @@ The sweep needs the SDK's media backend with the camera (`look_at_image` needs i
 does not. On the Mac, GStreamer failed for `measure_antennas.py` (2026-11-01). If the sweep's connect fails or
 reports no camera there, run it from a box where the SDK's media works. The controller's fresh read has a 100 ms
 deadline, and the watcher's 5 Hz reads (plus the turn check's 10 Hz) compete for the daemon. A refusal that names
-the deadline is contention, not a motion fault: re-run it.
+the deadline is contention, not a motion fault: re-run it. (Before #1706, most such refusals came from the read's
+~33 ms share of that deadline, not from contention.)
+
+**Results (2026-11-19, owner at the robot).** Wireless Reachy Mini, daemon and SDK both 1.8.3. Run 1 used the Mac
+main checkout; run 2 used big-mac-mini at `9176025a` (no diff to `scripts/orient_backbone/` or
+`src/maxim/hardware/` against main `f0b1cea4`). Both checkouts imported their own `src/` maxim 1.3.3, which the
+operator checked by hand: this record is operator-attested, not stamped.
+
+- **Run 1, the control: PASS.** Script: body peak 28.2°, return to +0.7°, exit 0. Watcher: whole-run gap 28.1°,
+  then back to ~0. One mid-turn read missed (the ~33 ms budget, #1706).
+- **Run 2, the sweep: PASS by the rule, for holds up to ~56° only.** Watcher: PASS, hold gap 0.8°, 52 samples at
+  ≥ 55°, largest head-to-body yaw 57.7°. Script: reached left +56.0°, right −56.1°, largest |body yaw| 0.8°,
+  outcomes `{'partial': 39, 'reference': 1}`, exit 0. Every hold step and the return to centre came back
+  `partial` (the head stops at ~56° against the ±65° clamp; it ended at −6.9° yaw). So 56–65° is untested until the
+  owner answers whether ~56° is a mechanical limit or a gap between clamp and calibration (#1707). It ran
+  from big-mac-mini because the Mac venv's GStreamer wheels do not load (`gstreamer_bundle` 1.28.3 against the other
+  `gstreamer_*` 1.28.5 is the first suspect). It ran only after a manual `POST /api/media/acquire`, because run 1's
+  `no_media` connect left the daemon's media released (#1704). The could-not-start exits on the way read 1, not 2 (#1705).
+- **Run 3, the app run: BLOCKED on the embodied run, not a FAIL, and an LLM backend would not unblock it.**
+  `maxim_reachy_app` 0.4.6 does not track at idle. `run()` builds a `MaximHandle` and waits; `MaximHandle.__init__`
+  starts only the memory workers; MotionTracking lives in the Default Network, which starts only inside a loop run
+  (`runtime/loop_setup.py::_start_default_network`). Talk cannot drive the test either: its tools are
+  `TALK_CONVERSATIONAL_TOOLS` and `talk_autonomy()` forbids the rest, its `action_sink` is a `SimulationBridge`, and
+  it passes no `default_network`. Run 3 waits for a loop run on the robot with the Default Network active, the
+  `embody()` lifecycle that pulse's `app.py` stands in for today (#1708). The Talk 500 seen on the way ("No LLM backend
+  available for talk") is separate: `lanes.large.remote_url` points at the rig leader on 8099/8100, and nothing was
+  listening there.
 
 ## 14. PR 1 build notes (2026-10-29, for the code review)
 

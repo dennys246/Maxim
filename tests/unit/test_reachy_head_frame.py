@@ -128,6 +128,7 @@ def controller() -> tuple[ReachyMiniController, _FakeMini]:
     ctl = ReachyMiniController.__new__(ReachyMiniController)
     fake = _FakeMini()
     ctl._mini = fake
+    ctl._media_released_by_connect = False  # __init__'s default (#1704): __new__ skips it
     ctl._motion_lock = threading.RLock()  # normally set by __init__ (2026-08-07 safety fold)
     ctl._last_commanded = {}  # normally set by __init__ (F1 retained-axes fix, 2026-08-08)
     ctl._automatic_body_yaw = False

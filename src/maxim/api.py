@@ -672,6 +672,17 @@ def _build_run_executor(
     return _api_instance.executor, _api_instance
 
 
+def _auto_curate_before_run(curate_genre: str) -> None:
+    """Pre-startup auto-curation for ``run(auto_curate=True)``; a failure warns and the run goes on."""
+    try:
+        from maxim.simulation.foundry import auto_curate as _auto_curate
+
+        _auto_curate(genre=curate_genre)
+    except Exception as e:
+        logger.warning("Auto-curation failed: %s", e)
+        print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
+
+
 def _build_run_agent(model: str, effective_home: str) -> Any:
     """``run()``'s agent, its user event subscriptions bridged to its bus (moved verbatim out of ``run``, #1264
     rule T)."""
@@ -727,9 +738,8 @@ def run(
             disconnect cannot be confirmed, it retains the registration and
             raises ``HardwareError``.
         home_dir: Root for API-owned memory, data, and agent persistence
-            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``). The loop's runtime-state file
-            goes under the data home's ``runtime_state/`` (#1264), not under ``home_dir``: that half of D15 is
-            still open.
+            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``), including the loop's
+            runtime-state file, ``<home_dir>/runtime_state/`` (#1264).
         verbosity: Logging verbosity (0-3).
         learning: Enable bio-learning (episodic memory, causal learning,
             pain attribution).  Default ``True``.  Pass ``False`` to run
@@ -798,15 +808,8 @@ def run(
 
         configure(verbosity=verbosity)
 
-        # Pre-startup auto-curation
         if auto_curate:
-            try:
-                from maxim.simulation.foundry import auto_curate as _auto_curate
-
-                _auto_curate(genre=curate_genre)
-            except Exception as e:
-                logger.warning("Auto-curation failed: %s", e)
-                print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
+            _auto_curate_before_run(curate_genre)
 
         effective_home = _api_home(home_dir)
         os.makedirs(effective_home, exist_ok=True)
@@ -884,6 +887,7 @@ def run(
             hippocampus=_headless_hippocampus,
             memory_hub=_headless_memory_hub,
             pain_bus=_headless_pain_bus,
+            state_home=effective_home,  # #1264: home_dir owns the run's state file (D15)
         )
     except KeyboardInterrupt:
         logger.info("Agent loop interrupted by user.")

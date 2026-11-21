@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+import math
 import socket
 import os
 import re
@@ -44,7 +45,7 @@ import zlib
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from urllib.parse import urlsplit
 
 import httpcore
@@ -158,32 +159,43 @@ class HTTPRateLimited(HTTPError):
 class TimeoutPolicy:
     """Layered timeouts — named fields, no single ``timeout`` kwarg.
 
-    ``connect_s`` bounds DNS + TCP handshake. ``read_s`` bounds per-chunk
-    read latency. ``total_s`` is the pool acquisition + total request
-    budget. Use the provided factory helpers for common cases.
+    ``connect_s`` bounds the TCP handshake; the DNS lookup before it is not
+    timed (neither httpcore's nor the address-policy backend's
+    ``getaddrinfo``). ``read_s`` bounds each socket read and each write
+    (httpx's ``read`` and ``write``), not the whole body. ``pool_s`` bounds
+    only the wait for a pooled connection (httpx's ``pool``); it is NOT a
+    whole-request deadline, and nothing in httpx is (#1706). It was named
+    ``total_s`` until #1715, which read as a whole-request bound. A request can
+    take a lookup, a connect and several reads, each up to its own bound. A
+    caller that needs a hard bound on a response's age times the call itself
+    and refuses a late result; ``fetch_url(deadline_s=)`` does that for a
+    whole request (#1715). Use the provided factory helpers for common
+    cases.
+
+    Runtime-only: never persisted and never sent, so CC3 does not apply.
     """
 
     connect_s: float = 3.0
     read_s: float = 30.0
-    total_s: float = 60.0
+    pool_s: float = 60.0
 
     def to_httpx(self) -> httpx.Timeout:
         return httpx.Timeout(
             connect=self.connect_s,
             read=self.read_s,
             write=self.read_s,
-            pool=self.total_s,
+            pool=self.pool_s,
         )
 
     @classmethod
     def fast(cls) -> TimeoutPolicy:
         """Short budget — use for probes + health checks."""
-        return cls(connect_s=1.0, read_s=2.0, total_s=5.0)
+        return cls(connect_s=1.0, read_s=2.0, pool_s=5.0)
 
     @classmethod
     def long(cls) -> TimeoutPolicy:
         """Extended budget — use for inference + large downloads."""
-        return cls(connect_s=5.0, read_s=120.0, total_s=600.0)
+        return cls(connect_s=5.0, read_s=120.0, pool_s=600.0)
 
 
 @dataclass(frozen=True)
@@ -509,6 +521,11 @@ class _EndpointRegistry:
                         base_url=ep.base_url or "",
                         strict=ep.strict_address_check,
                     )
+                if name in _DEADLINE_ENDPOINTS:
+                    # fetch_url(deadline_s=) (#1715): only fetch_url's clients take the deadline backend on every
+                    # transport, proxy mounts included. A plain client keeps httpx's own trust_env handling
+                    # (proxies, SSL_CERT_FILE, netrc); only its transports' network backend is swapped.
+                    _install_deadline_backend(self._clients[name])
             return self._clients[name]
 
     def close_all(self) -> None:
@@ -582,7 +599,140 @@ class PublicAddressRefused(AddressRefused):
     """A private-only (cleartext LAN) connection whose host resolved to a public address (#921)."""
 
 
-class _AddressCheckingBackend(httpcore.SyncBackend):
+# ─────────────────────────── Whole-request deadline (#1715) ─────────────
+#
+# httpx times the pool wait, the connect and each socket read and write, never the whole request, so a server that
+# drips its body or headers (or streams `100 Continue` forever) can hold a call indefinitely. ``fetch_url(deadline_s=)``
+# sets an absolute monotonic instant here; every stream the ``_external*`` clients open (``_DEADLINE_ENDPOINTS``) clamps
+# each read, write, TLS handshake and connect to what remains of it. The address-checking backends subclass the
+# deadline backend, so every checked client's streams are wrapped too, as a pass-through: only fetch_url sets the
+# deadline. With none set the wrapper passes through.
+# Design and its three adversarial passes: docs/plans/http_deadline_1715.md.
+
+_REQUEST_DEADLINE: ContextVar[float | None] = ContextVar("maxim_http_request_deadline", default=None)
+
+
+class _DeadlineExceeded:
+    """Marks an httpcore timeout raised because the whole-request deadline ran out (not a phase timeout).
+
+    httpx re-raises httpcore errors as its own classes and keeps the original only as ``__cause__``, which is
+    where ``_classify_httpx_error`` looks for this marker."""
+
+
+class _DeadlineReadExceeded(_DeadlineExceeded, httpcore.ReadTimeout):
+    pass
+
+
+class _DeadlineWriteExceeded(_DeadlineExceeded, httpcore.WriteTimeout):
+    pass
+
+
+class _DeadlineConnectExceeded(_DeadlineExceeded, httpcore.ConnectTimeout):
+    pass
+
+
+class _DeadlinePoolExceeded(_DeadlineExceeded, httpcore.PoolTimeout):
+    pass
+
+
+_DEADLINE_FIX_HINT = "The whole request passed its deadline: the server was too slow to answer in time"
+
+
+def _deadline_remaining() -> float | None:
+    deadline = _REQUEST_DEADLINE.get()
+    return None if deadline is None else deadline - time.monotonic()
+
+
+def _clamped(timeout: float | None, exceeded: type[Exception]) -> float | None:
+    """``timeout`` cut to the remaining deadline; raises ``exceeded`` when none remains; unchanged without one."""
+    remaining = _deadline_remaining()
+    if remaining is None:
+        return timeout
+    if remaining <= 0:
+        raise exceeded("the whole request passed its deadline")
+    return remaining if timeout is None else min(timeout, remaining)
+
+
+def _spent() -> bool:
+    remaining = _deadline_remaining()
+    return remaining is not None and remaining <= 0.001
+
+
+class _DeadlineStream(httpcore.NetworkStream):
+    """A network stream whose every read, write and TLS handshake is bounded by the request's deadline."""
+
+    def __init__(self, inner: httpcore.NetworkStream) -> None:
+        self._inner = inner
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        try:
+            return self._inner.read(max_bytes, _clamped(timeout, _DeadlineReadExceeded))
+        except httpcore.ReadTimeout as e:
+            if _spent() and not isinstance(e, _DeadlineExceeded):
+                raise _DeadlineReadExceeded("the whole request passed its deadline") from e
+            raise
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        try:
+            self._inner.write(buffer, _clamped(timeout, _DeadlineWriteExceeded))
+        except httpcore.WriteTimeout as e:
+            if _spent() and not isinstance(e, _DeadlineExceeded):
+                raise _DeadlineWriteExceeded("the whole request passed its deadline") from e
+            raise
+
+    def start_tls(self, ssl_context: Any, server_hostname: str | None = None, timeout: float | None = None) -> Any:
+        # An https:// proxy's TLS-in-TLS stream loops raw recvs inside one call: the documented residual.
+        try:
+            inner = self._inner.start_tls(ssl_context, server_hostname, _clamped(timeout, _DeadlineConnectExceeded))
+        except httpcore.ConnectTimeout as e:
+            if _spent() and not isinstance(e, _DeadlineExceeded):
+                raise _DeadlineConnectExceeded("the whole request passed its deadline") from e
+            raise
+        return _DeadlineStream(inner)
+
+    def close(self) -> None:
+        self._inner.close()
+
+    def get_extra_info(self, info: str) -> Any:
+        return self._inner.get_extra_info(info)
+
+
+class _DeadlineBackend(httpcore.SyncBackend):
+    """The sync backend, with every connection's streams bounded by the request's deadline (a pass-through without
+    one). The unrestricted clients and every proxy transport use it directly; the address-checking backends
+    subclass it, so each checked dial is clamped and wrapped too."""
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[Any] | None = None,
+    ) -> httpcore.NetworkStream:
+        bounded = _clamped(timeout, _DeadlineConnectExceeded)
+        try:
+            stream = super().connect_tcp(host, port, bounded, local_address, socket_options)
+        except httpcore.ConnectTimeout as e:
+            if _spent() and not isinstance(e, _DeadlineExceeded):
+                raise _DeadlineConnectExceeded("the whole request passed its deadline") from e
+            raise
+        return _DeadlineStream(stream)
+
+
+def _install_deadline_backend(client: httpx.Client) -> httpx.Client:
+    """Give ``client``'s default transport and every proxy mount the deadline backend. A ``None`` mount is a
+    NO_PROXY pattern, which uses the default transport."""
+    for transport in (client._transport, *client._mounts.values()):  # noqa: SLF001
+        if transport is None:
+            continue
+        pool = transport._pool  # noqa: SLF001 - as _checked_transport
+        if not isinstance(pool._network_backend, _DeadlineBackend):  # noqa: SLF001
+            pool._network_backend = _DeadlineBackend()  # noqa: SLF001
+    return client
+
+
+class _AddressCheckingBackend(_DeadlineBackend):
     """Resolve the host ONCE, at connect time, refuse unless EVERY address passes the policy, and
     dial the address that was checked.
 
@@ -786,6 +936,9 @@ _EXTERNAL_POLICY_ENDPOINTS: dict[str, str] = {
 }
 """``fetch_url(address_policy=...)`` for OPERATOR-configured URLs (a peer's probe, #921): the policy is
 checked on the address dialled; an env proxy that applies to the URL wins, with one warning."""
+
+_DEADLINE_ENDPOINTS = frozenset({_EXTERNAL_ENDPOINT, _EXTERNAL_PUBLIC_ENDPOINT, *_EXTERNAL_POLICY_ENDPOINTS.values()})
+"""The endpoints ``fetch_url`` uses: their clients take the deadline backend on every transport (#1715)."""
 
 _external_registered = False
 _external_lock = threading.Lock()
@@ -1022,6 +1175,22 @@ def _loggable_url(url: str) -> str:
 
 
 def _classify_httpx_error(endpoint: str, exc: BaseException) -> HTTPError:
+    if isinstance(exc, httpx.TimeoutException) and isinstance(exc.__cause__, _DeadlineExceeded):
+        if isinstance(exc.__cause__, _DeadlinePoolExceeded):
+            # Local contention, not a slow server: count it as pool exhaustion (#1715 delta review). The PoolTimeout
+            # branch below never runs, because PoolTimeout is a TimeoutException (pre-existing; follow-up on #1715).
+            _metrics.record_pool_exhausted(endpoint)
+            return HTTPTimeout(
+                endpoint,
+                fix_hint=(
+                    f"No free connection for endpoint '{endpoint}' before the whole request's deadline: "
+                    "too many requests at once"
+                ),
+            )
+        return HTTPTimeout(
+            endpoint,
+            fix_hint=_DEADLINE_FIX_HINT,
+        )
     if isinstance(exc, httpx.TimeoutException):
         return HTTPTimeout(
             endpoint,
@@ -1218,6 +1387,47 @@ def _read_capped(resp: httpx.Response, max_bytes: int, chunk_size: int = 1 << 16
     return b"".join(chunks), False
 
 
+def _send_and_read(
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    headers: Mapping[str, str],
+    json: Any,
+    content: bytes | None,
+    timeout: httpx.Timeout,
+    max_bytes: int | None,
+    deadline_s: float | None,
+) -> tuple[httpx.Response, bytes, bool]:
+    """``fetch_url``'s request and body read: ``(response, body, truncated)``.
+
+    Under ``deadline_s`` the request runs with the whole-request deadline set (``_REQUEST_DEADLINE``, read by every
+    stream ``_DeadlineBackend`` opens) and the pool wait clamped to it, because the pool wait is not stream I/O.
+    The deadline is reset on every exit, so it never reaches another call on this thread.
+    """
+    token = None
+    if deadline_s is not None:
+        pool = deadline_s if timeout.pool is None else min(timeout.pool, deadline_s)
+        timeout = httpx.Timeout(connect=timeout.connect, read=timeout.read, write=timeout.write, pool=pool)
+        token = _REQUEST_DEADLINE.set(time.monotonic() + deadline_s)
+    try:
+        if max_bytes is None:
+            resp = client.request(method, url, headers=headers, json=json, content=content, timeout=timeout)
+            return resp, resp.content, False
+        # Read inside the stream context: the body is only valid while it is open.
+        with client.stream(method, url, headers=headers, json=json, content=content, timeout=timeout) as resp:
+            body, truncated = _read_capped(resp, max_bytes)
+        return resp, body, truncated
+    except httpx.PoolTimeout as e:
+        # The pool wait was clamped above; a wait the deadline cut short is the deadline's, not the pool's.
+        if token is not None and _spent() and not isinstance(e.__cause__, _DeadlineExceeded):
+            raise httpx.PoolTimeout(str(e)) from _DeadlinePoolExceeded("the whole request passed its deadline")
+        raise
+    finally:
+        if token is not None:
+            _REQUEST_DEADLINE.reset(token)
+
+
 def fetch_url(
     url: str,
     *,
@@ -1230,6 +1440,7 @@ def fetch_url(
     max_bytes: int | None = None,
     public_only: bool = False,
     address_policy: AddressPolicy = "any",
+    deadline_s: float | None = None,
 ) -> Response:
     """One-off fetch of a full URL via the shared ``_external`` endpoint.
 
@@ -1248,9 +1459,18 @@ def fetch_url(
 
     ``address_policy`` (#921): for an OPERATOR-configured URL (a peer probe) -- "public" / "private"
     checked on the address dialled; an env proxy that applies to the URL wins, with one warning.
+
+    ``deadline_s`` (#1715): a bound on the WHOLE request, which no ``TimeoutPolicy`` field gives. Every socket read,
+    write, TLS handshake and connect, and the pool wait, is cut to what remains of it, so a server that drips its
+    body or headers is refused (``HTTPTimeout``) at about ``deadline_s``. The DNS lookup is not timed, and an
+    ``https://`` proxy's TLS-in-TLS stream is a documented residual (docs/plans/http_deadline_1715.md).
     """
     if max_bytes is not None and (not isinstance(max_bytes, int) or max_bytes < 0):
         raise ValueError(f"max_bytes must be a non-negative int, got {max_bytes!r}")
+    if deadline_s is not None and not (
+        isinstance(deadline_s, (int, float)) and math.isfinite(deadline_s) and deadline_s > 0
+    ):
+        raise ValueError(f"deadline_s must be a finite number of seconds above 0, got {deadline_s!r}")
     _ensure_external_endpoint()
     if public_only:
         endpoint_name = _EXTERNAL_PUBLIC_ENDPOINT
@@ -1270,29 +1490,18 @@ def fetch_url(
     timeout_obj = _resolve_timeout(ep, timeout)
 
     t0 = time.monotonic()
-    truncated = False
     try:
-        if max_bytes is None:
-            resp = client.request(
-                method.upper(),
-                url,
-                headers=final_headers,
-                json=json,
-                content=content,
-                timeout=timeout_obj,
-            )
-            body = resp.content
-        else:
-            # Read inside the stream context: the body is only valid while it is open.
-            with client.stream(
-                method.upper(),
-                url,
-                headers=final_headers,
-                json=json,
-                content=content,
-                timeout=timeout_obj,
-            ) as resp:
-                body, truncated = _read_capped(resp, max_bytes)
+        resp, body, truncated = _send_and_read(
+            client,
+            method.upper(),
+            url,
+            headers=final_headers,
+            json=json,
+            content=content,
+            timeout=timeout_obj,
+            max_bytes=max_bytes,
+            deadline_s=deadline_s,
+        )
     except httpx.HTTPError as e:
         elapsed_ms = (time.monotonic() - t0) * 1000
         _metrics.record_request(endpoint_name, "error", elapsed_ms)

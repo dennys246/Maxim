@@ -891,7 +891,7 @@ def rig_check(rcon: Any, proxy_url: str | None) -> dict[str, Any]:
         from maxim.tunnel.keys import read_key
         from maxim.utils.net import is_loopback_url
 
-        policy = http.TimeoutPolicy(connect_s=1.0, read_s=2.0, total_s=3.0)
+        policy = http.TimeoutPolicy(connect_s=1.0, read_s=2.0, pool_s=3.0)
         # The proxy's debug routes need the key, loopback included (2026-10-14); send this box's key only to a
         # loopback proxy, never to a remote URL.
         key = read_key() if is_loopback_url(proxy_url) else None

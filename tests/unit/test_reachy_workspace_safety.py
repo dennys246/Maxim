@@ -117,6 +117,7 @@ def _make_controller(body_yaw: float = 0.0, head_world_yaw: float = 0.0):
     ctl = ReachyMiniController.__new__(ReachyMiniController)
     fake = _FakeMini(body_yaw=body_yaw, head_world_yaw=head_world_yaw)
     ctl._mini = fake
+    ctl._media_released_by_connect = False  # __init__'s default (#1704): __new__ skips it
     ctl._motion_lock = threading.RLock()
     ctl._last_commanded = {}  # normally set by __init__ (F1 retained-axes fix, 2026-08-08)
     ctl._automatic_body_yaw = False

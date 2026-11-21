@@ -11,7 +11,9 @@ This file tracks decisions that affect public behavior, repo structure, and long
   creates no `agents/<name>/` directory, so `maxim.load.agent` and `resolve_run_dir` never see it as a created agent.
   The data home is `data_home()` (`MAXIM_DATA_HOME`, else `~/.maxim`), the root the D15/D16 decision below names as
   `home_dir`'s default ("Root for API-owned memory, data, and agent persistence", `api.py::_api_home`). Never the
-  working directory. `--clear-memory` clears it (`cli_utils._GLOBAL_PATHS["runtime_state"]`).
+  working directory (a relative `home_dir` resolves against it, as every store under that home does).
+  `--clear-memory` clears it in the data home, and in a home named with `--home-dir`
+  (`cli_utils._GLOBAL_PATHS["runtime_state"]`).
 - **One builder.** `runtime/loop_state.py::loop_state_path` names every run's file,
   `state_<run id segment>_<token>.json`: the run's own identity (the directory is `tool_dispatch.safe_agent_name`)
   plus a 48-bit random token, so two loops never share a file by sharing a class name and a wall-clock second (a
@@ -58,8 +60,10 @@ This file tracks decisions that affect public behavior, repo structure, and long
 ### Tradeoffs
 
 - `maxim.run(home_dir=...)` with a home other than the data home still writes this file under the data home: the
-  loop is not told `home_dir`. That is D15's remaining `home_dir`-ownership half, still open (a separate owner
-  decision).
+  loop is not told `home_dir`. (Superseded by the owner decision of 2026-11-18: `api.run` passes
+  `state_home=<home_dir or data home>`, so a `home_dir` run's state file is `<home_dir>/runtime_state/<name>/`,
+  cleared by `--clear-memory --home-dir <home_dir>`. D15's complete `home_dir` ownership stays open for the
+  process-wide stores that remain in the data home.)
 - Old CWD `data/agents/*/runtime/` files are not migrated; nothing in Maxim reads them.
 
 ## 2026-11-16 — BF2 read for a STALE pre-BF2 row restored by a frozen-prereg re-run whose gate is new (BF2-R1, T1-16 only)

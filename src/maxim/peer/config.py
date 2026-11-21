@@ -198,7 +198,7 @@ def register_leader_endpoint(base_url: str) -> None:
             base_url=base_url.rstrip("/"),
             default_headers={"User-Agent": _http.DEFAULT_USER_AGENT},
             auth_provider=_leader_auth,
-            timeouts=_http.TimeoutPolicy(connect_s=3.0, read_s=60.0, total_s=120.0),
+            timeouts=_http.TimeoutPolicy(connect_s=3.0, read_s=60.0, pool_s=120.0),
             max_pool_connections=_http.DEFAULT_POOL_PER_ENDPOINT,
             internal=True,
         )

@@ -79,17 +79,21 @@ Items keep `OD-` ids where Overdrive's drafts already named them. Maxim may reas
 
 - **What:** each consumer draws from a keyed substream, so adding an NPC or changing one cadence never shifts another
   stream.
-  - The derivation is `random.Random(stable_hash_64_signed(f"{base_seed}:{agent_id}:{stream}"))` (`utils/seeding.py`
-    has `stable_hash_32` and `stable_hash_64_signed`, both of one string), or a `stream` key added to
-    `make_agent_rng`'s existing derivation (`:79`; no caller, one sequential `Random`).
+  - **The derivation (owner decision 2026-11-19):** a `stream` argument added to `utils/seeding.py::make_agent_rng`,
+    keeping its existing `sha256(f"{base_seed}:{agent_id}")` derivation with the stream joined by `:`, so a stream
+    created today as `agent_id="npc_key:stream"` keeps its seed. `:` is forbidden in NPC keys and stream names (the
+    join is ambiguous otherwise, and escaping later would break that survival). The `stable_hash_64_signed`
+    alternative is dropped: it gives different seeds.
   - **Overdrive adopts this derivation over its host-side handout (2026-11-17), on two conditions,** settled in
     #1305's scope: `agent_id` is the host's **persisted** NPC key, never an ordinal, so streams survive saves and
     roster edits; and a host's `base_seed` comes from its log root.
   - **This is the same work as the 1.4.0 release gate `1305.owned-rng`** (#1305, `scripts/release_gates.json`). That
     gate already requires default_network, attention, spatial and `decisions/significance.py` to draw from owned
     generators seeded from `seeding.py::get_global_seed`. A2 extends it with a per-agent, per-stream key. The robot
-    path derives `base_seed` from `get_global_seed()`, and a host supplies its own. The gate's scope text changes
-    with it.
+    path derives `base_seed` from `get_global_seed()`, and a host supplies its own. Release-gate item scopes are
+    immutable (`scripts/lint_release_gates.py`, shrink-only history), so the per-agent key enters as a **new** gate
+    item, not an edit of `1305.owned-rng`'s scope (plan review of Overdrive's embeddable-agent plan v3, 2026-11-19).
+    **Owner decision 2026-11-19: it lands after the 1.4.0 cut**, so it adds no 1.4.0 gate item.
   - About 26 stdlib draws sit outside `seeding.py`, plus numpy's legacy global draws (`attention/salience_map.py`,
     `hardware/simulation/streams.py`). Exempt, and named as such: `models/language/anthropic_backend.py`'s backoff
     jitter.
@@ -404,7 +408,8 @@ the robot** before it moves a Maxim claim.
 
 ## Order
 
-1. **A3 A-pre, A5, #1684,** with **A2 as #1305** (a 1.4.0 gate item). The prompt guards and the seed substreams come
+1. **A3 A-pre, A5, #1684,** with **A2 with #1305** (A2's per-agent key after the 1.4.0 cut, a new gate item; owner
+   decision 2026-11-19). The prompt guards and the seed substreams come
    first, because replay needs them. **A1** runs in parallel with #984.
 2. **A3 A-post** with #1361's slices and 1.3.6.
 3. **A4:** the front gate passed (owner, 2026-11-19); built once Overdrive's embeddable-agent plan passes review. Its robot-path defects are filed and fixed
@@ -428,6 +433,19 @@ the robot** before it moves a Maxim claim.
 ## Not decided here
 
 - Whether A3 is one plan or Overdrive's two (A-pre, A-post), and how it divides with #1361.
-- Whether A2's per-agent key widens #1305 before 1.4.0, or follows it.
+- ~~Whether A2's per-agent key widens #1305 before 1.4.0, or follows it.~~ **Decided 2026-11-19: it follows it**,
+  after the 1.4.0 cut, as a new release-gate item (A2).
+- **Also decided 2026-11-19, from the plan review of Overdrive's v3:** event similarity stays on the host calendar,
+  as #1361 S3b has it (OD-A20 noted, not adopted); and a host `save()` does not take `MaximHandle.stop()`'s
+  contract: consolidation is its own bounded host call.
+- **Decided 2026-11-19, from the delta review of Overdrive's v4 (PR #7):**
+  - **Tracked rights, embedded:** danger tracks only, delivered through `step` (hybrid §A.1b.5, `thalamic_relay.md`
+    TR6); a non-danger track (a guest's speech) counts only when a plan rung names it.
+  - **G2b:** #1361 does not widen its fixture to several traces sharing one receipt; OD-EA12 is Overdrive's test
+    against S3b.
+  - **Stream derivation:** see A2 (`make_agent_rng` with a `:`-joined stream; `:` forbidden in keys and streams).
+  - **Bounded consolidate:** world time decides when; the compute is bounded in deterministic units (which steps,
+    how many items), with the wall clock only a logged typed abort. Whether retention scoring moves off
+    `time.time()` reopens #1361 Q5 and stays with #1361.
 - Whether C5 is drafted now or after the hybrid's v1 evidence.
 - The transfer-check venue for tier C.

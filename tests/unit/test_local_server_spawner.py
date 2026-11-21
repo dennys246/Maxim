@@ -107,6 +107,18 @@ class TestApiKey:
         assert "--api_key" not in s._build_cmd()
 
 
+def _launch_kwargs(mock_popen: MagicMock) -> dict:
+    """The kwargs of the ONE server launch among the patched ``Popen``'s calls (#1714).
+
+    ``call_args`` is the LAST call, and it is not always the launch: after it, ``write_spawn_record`` reads the
+    process's start time, which on macOS (no ``/proc``) runs ``ps`` through the same patched ``Popen``. Picking the
+    launch by its argv, and asserting there is exactly one, holds on every platform.
+    """
+    launches = [c for c in mock_popen.call_args_list if c.args and "llama_cpp.server" in c.args[0]]
+    assert len(launches) == 1, f"expected one server launch, got {mock_popen.call_args_list}"
+    return launches[0].kwargs
+
+
 class TestTunnelEcho:
     def test_echo_off_by_default_streams_to_devnull(self, tmp_path, monkeypatch):
         monkeypatch.delenv("MAXIM_TUNNEL_ECHO", raising=False)
@@ -121,7 +133,7 @@ class TestTunnelEcho:
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
-        kwargs = mock_popen.call_args.kwargs
+        kwargs = _launch_kwargs(mock_popen)
         assert kwargs.get("stdout") == _sp.DEVNULL
         assert kwargs.get("stderr") == _sp.DEVNULL
 
@@ -141,7 +153,7 @@ class TestTunnelEcho:
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
-        kwargs = mock_popen.call_args.kwargs
+        kwargs = _launch_kwargs(mock_popen)
         # None → inherits parent's stdout/stderr
         assert kwargs.get("stdout") is None
         assert kwargs.get("stderr") is None
@@ -162,7 +174,7 @@ class TestSignalIsolation:
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
-        kwargs = mock_popen.call_args.kwargs
+        kwargs = _launch_kwargs(mock_popen)
         assert kwargs.get("start_new_session") is True
 
 

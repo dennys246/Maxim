@@ -400,7 +400,7 @@ def download_file(
             tmp_path,
             progress_hook=_progress_hook,
             # Large models can take 10+ minutes over slow links — generous budget.
-            timeout=_http.TimeoutPolicy(connect_s=10.0, read_s=300.0, total_s=3600.0),
+            timeout=_http.TimeoutPolicy(connect_s=10.0, read_s=300.0, pool_s=3600.0),
         )
     except BaseException as e:
         # BaseException catches KeyboardInterrupt (which Exception doesn't)
