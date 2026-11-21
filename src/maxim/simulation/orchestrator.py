@@ -659,7 +659,7 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
     that slot held no router and built none. The scene manifest and the campaign runners (generative, DM, fixture)
     generate the world, so they stay on the narrator's ``llm_router`` (owner decision D, recorded in
     ``docs/plans/baseline_floors_b0.md``)."""
-    from maxim.models.language.types import AutRouterUnavailable, LocalModelUnavailable
+    from maxim.models.language.types import AutRouterUnavailable, BackendError, LocalModelUnavailable
     from maxim.runtime.lane_backends import build_run_router
 
     if aut_model is None:
@@ -670,7 +670,8 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
         raise
     except Exception as e:
         logger.error("AUT router for '%s' could not be built: %s; the run refuses (#1228)", aut_model, e)
-        raise AutRouterUnavailable(aut_model, reason=f"{type(e).__name__}: {e}") from e
+        cause = e.problem if isinstance(e, BackendError) else f"{type(e).__name__}: {e}"  # one fix hint, not two
+        raise AutRouterUnavailable(aut_model, reason=cause) from e
     if aut_router is None:
         logger.error("AUT router for '%s' could not be built (no router); the run refuses (#1228)", aut_model)
         raise AutRouterUnavailable(aut_model, reason="the build returned no router")

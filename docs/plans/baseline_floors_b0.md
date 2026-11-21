@@ -17,7 +17,7 @@
 **Not established by B0:** which model served the AUT. Every record stamps
 `aut_model_attribution: "not_established"`, and no comparison may claim the AUT's model from a B0 record.
 In particular, `aut_router_serial`'s entries are the AUT **worker's** router calls, not the AUT's: until #1228
-(fixed by PR fix/1228-1225-aut-router-and-bio-flags, pending merge) its FearAgent and imagination designer ran on the narrator's router (its ExecAgent
+(fixed by #TBD) its FearAgent and imagination designer ran on the narrator's router (its ExecAgent
 goal-proposal slot is dormant and held none); since #1228 they hold the AUT's, but calls still cannot be
 attributed to a role (#1227), so B0 still makes no AUT claim. Also not
 established: `top_p`/`top_k`/repeat penalty (server defaults), and whether a sub-sim ran the arm its row
@@ -36,7 +36,7 @@ claims (`arm_effective`, which enters with M46 / B4).
 - **Calls cannot be attributed to a role yet.** `RequestContext.agent` is unreliable (#1227). Router objects
   are reliable, but when B0 was designed the AUT's FearAgent, imagination designers and scene manifest ran on the
   narrator's router, and its ExecAgent slot would have built a private router with the narrator's profile (#1228,
-  fixed by PR fix/1228-1225-aut-router-and-bio-flags (pending merge): the FearAgent and designer now hold the AUT's router; the scene manifest stays the
+  fixed by #TBD: the FearAgent and designer now hold the AUT's router; the scene manifest stays the
   narrator's, below); calls made on the narrator's router are invisible to any per-router check. Hence the split.
 
 ## Fields, sources, and how each could lie
@@ -84,13 +84,13 @@ list extended for every new key).
   mock; they gain the keys so their shape matches. A harness row is in-process (no router, no call fields)
   only by its `harness_family`, never by missing keys.
 
-## B0b — AUT attribution (after #1227; #1228 fixed by PR fix/1228-1225-aut-router-and-bio-flags (pending merge))
+## B0b — AUT attribution (after #1227; #1228 fixed by #TBD)
 
 What the passes established, so B0b does not relearn it:
 
 - Attribute at the **call site**, not after the fact: a role tag bound around each AUT dispatch in a field
   the request dict cannot override (#1227), counted per (role tag, serial) in the same accumulator.
-- #1228 (fixed by PR fix/1228-1225-aut-router-and-bio-flags, pending merge) wires every AUT-side LLM slot to `aut_router`: the FearAgent gate, the imagination
+- #1228 (fixed by #TBD) wires every AUT-side LLM slot to `aut_router`: the FearAgent gate, the imagination
   designer, the AUT's LLM worker, a spawned sub-simulation's agent (owner decision A) and the ExecAgent's (dormant)
   slot. A run that names `--aut-model` and cannot build that router refuses, typed (`AutRouterUnavailable`,
   owner decision B), and the report's cost totals include the AUT router's calls, split by role (owner decision C).

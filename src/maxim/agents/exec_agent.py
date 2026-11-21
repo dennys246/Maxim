@@ -6,7 +6,6 @@ Uses LLM to propose goals aligned with the root goal:
 
 from __future__ import annotations
 
-import functools
 import json
 import logging
 import os
@@ -82,15 +81,30 @@ def _override_in(cfg: Any) -> str | None:
     return None
 
 
-@functools.lru_cache(maxsize=1)
+# (config_generation, override) of the last read, or None: re-read only when the config moved (#1228).
+_OVERRIDE_READ: tuple[int, str | None] | None = None
+# Set once the "handed None: no goal proposals" WARNING has been logged in this process (#1228).
+_NO_ROUTER_START_WARNED = False
+
+
 def _configured_override() -> str | None:
-    """The process's ``agent_profiles.exec_agent`` override, read once (the bypass warning's input, #1228): a
-    constructor handed a router does not reload the config. None when there is none or the config is unreadable."""
+    """The process's ``agent_profiles.exec_agent`` override (the bypass warning's input, #1228), read once per config
+    generation: a constructor handed a router does not reload the config, and a config write
+    (``config_writer`` → ``invalidate_config_cache``) is seen by the next one, as in a long-lived ``maxim serve``.
+    None when there is none or the config is unreadable."""
+    global _OVERRIDE_READ
+    from maxim.runtime.config_loader import config_generation
+
+    generation = config_generation()
+    if _OVERRIDE_READ is not None and _OVERRIDE_READ[0] == generation:
+        return _OVERRIDE_READ[1]
     try:
-        return _override_in(load_llm_config())
+        override = _override_in(load_llm_config())
     except Exception as e:  # an unreadable config is load_llm_config's to report on the build path
         logger.debug("ExecAgent: could not read the config to check the exec_agent override: %s", e)
-        return None
+        override = None
+    _OVERRIDE_READ = (generation, override)
+    return override
 
 
 class ExecAgent(Agent):
@@ -232,7 +246,7 @@ class ExecAgent(Agent):
                 return None
         return self._llm
 
-    def adopt_router(self, router: LLMRouter, worker: LLMWorker | None = None) -> None:
+    def adopt_router(self, router: LLMRouter | None, worker: LLMWorker | None = None) -> None:
         """Run on ``router`` (and ``worker``) that this agent's runtime built after the agent: the robot runtime builds
         its LLM after its ``MaximAgent`` (#1228; it used to set ``_router`` from outside). A router or worker this
         agent already holds is kept; an adopted worker is not this agent's to stop."""
@@ -1909,7 +1923,16 @@ Based on this context, what goal should be proposed?"""
         return None
 
     def on_start(self, **kwargs: Any) -> None:
-        """Start the background worker."""
+        """Start the background worker (the only production starter of goal proposals). An agent handed
+        ``shared_router=None`` proposes no goals; that is said once per process, naming ``BUILD_OWN``, because None
+        meant the lazy build before #1228."""
+        global _NO_ROUTER_START_WARNED
+        if self._router is None and not self._builds_own and not _NO_ROUTER_START_WARNED:
+            _NO_ROUTER_START_WARNED = True
+            logger.warning(
+                "ExecAgent started with shared_router=None: it has no LLM and proposes no goals. None meant a lazy "
+                "router build before #1228; pass maxim.agents.exec_agent.BUILD_OWN for that behaviour"
+            )
         if self._worker is None or not self._worker.is_alive():
             self._stop_event.clear()
             self._worker = threading.Thread(target=self._worker_loop, daemon=True)

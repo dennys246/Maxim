@@ -75,7 +75,6 @@ def _record_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     for name in ("load_llm_config", "consented_router", "ChatLLMAgent"):
         monkeypatch.setattr(EA, name, _must_not_build(name))
-    EA._configured_override.cache_clear()
     monkeypatch.setattr(EA, "_configured_override", lambda: None)
     return built
 
@@ -144,17 +143,75 @@ def test_a_bypassed_exec_agent_override_is_warned_once(
         return SimpleNamespace(agent_profiles={"exec_agent": "big"})
 
     monkeypatch.setattr(EA, "load_llm_config", _cfg)
-    EA._configured_override.cache_clear()
-    try:
-        with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
-            MaximAgent(shared_router=_Router("small"))
-            MaximAgent(shared_router=_Router("small"))
-            MaximAgent(shared_router=_Router("big"))  # the override's own profile: nothing bypassed
-    finally:
-        EA._configured_override.cache_clear()
+    monkeypatch.setattr(EA, "_OVERRIDE_READ", None)
+    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+        MaximAgent(shared_router=_Router("small"))
+        MaximAgent(shared_router=_Router("small"))
+        MaximAgent(shared_router=_Router("big"))  # the override's own profile: nothing bypassed
     warned = [r for r in caplog.records if "agent_profiles.exec_agent" in r.getMessage()]
     assert len(warned) == 1, [r.getMessage() for r in warned]
-    assert len(reads) == 1  # the config is read once per process, not per constructor
+    assert len(reads) == 1  # read once per config generation, not per constructor
+
+
+def test_a_config_write_reaches_the_override_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A long-lived process (``maxim serve``) that edits ``agent_profiles.exec_agent`` between two agents: the write's
+    ``invalidate_config_cache`` moves the generation, so the next constructor sees the new override."""
+    import maxim.agents.exec_agent as EA
+    from maxim.agents.maxim_agent import MaximAgent
+    from maxim.runtime.config_loader import invalidate_config_cache
+
+    monkeypatch.setattr(EA, "_BYPASSED_OVERRIDES_WARNED", set())
+    monkeypatch.setattr(EA, "_OVERRIDE_READ", None)
+    current = {"exec_agent": "small"}
+    monkeypatch.setattr(EA, "load_llm_config", lambda *a, **k: SimpleNamespace(agent_profiles=dict(current)))
+    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+        MaximAgent(shared_router=_Router("small"))  # the override's own profile: nothing bypassed
+        current["exec_agent"] = "big"
+        invalidate_config_cache()  # what config_writer does after every write
+        MaximAgent(shared_router=_Router("small"))
+    warned = [r for r in caplog.records if "agent_profiles.exec_agent" in r.getMessage()]
+    assert len(warned) == 1 and "'big'" in warned[0].getMessage(), [r.getMessage() for r in warned]
+
+
+def test_starting_an_agent_handed_none_warns_once_naming_build_own(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``shared_router=None`` meant the lazy build on 1.3.3; now it means no LLM. ``ExecAgent.on_start`` (the only
+    production starter of goal proposals) says so once per process, naming ``BUILD_OWN``."""
+    import maxim.agents.exec_agent as EA
+    from maxim.agents.maxim_agent import MaximAgent
+
+    monkeypatch.setattr(EA, "_NO_ROUTER_START_WARNED", False)
+    agents = [MaximAgent(shared_router=None), MaximAgent(shared_router=None), MaximAgent(shared_router=_Router("r"))]
+    try:
+        with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+            for agent in agents:
+                agent.exec_agent.on_start()
+    finally:
+        for agent in agents:
+            agent.exec_agent.on_stop()
+    warned = [r.getMessage() for r in caplog.records if "shared_router=None" in r.getMessage()]
+    assert len(warned) == 1 and "BUILD_OWN" in warned[0], warned
+
+
+def test_a_nested_backend_errors_fix_hint_is_not_repeated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An inner ``BackendError`` enters the refusal as its ``problem`` (no fix hint), so ``str()`` carries one hint."""
+    import maxim.runtime.lane_backends as LB
+    from maxim.models.language.types import AutRouterUnavailable, BackendDown
+    from maxim.simulation import orchestrator as orch
+
+    inner = BackendDown("peer-lane")
+
+    def _down(**_k: Any) -> Any:
+        raise inner
+
+    monkeypatch.setattr(LB, "build_run_router", _down)
+    with pytest.raises(AutRouterUnavailable) as exc:
+        orch._build_aut_router("aut-model", _Router("shared"), warm=False)
+    assert inner.problem in str(exc.value)
+    assert inner.fix_hint not in str(exc.value)
 
 
 # ── the console's talk agent ─────────────────────────────────────────────────

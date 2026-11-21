@@ -12,6 +12,7 @@ import pytest
 
 from maxim.models.language.types import (
     INFERENCE_BROKEN_BACKOFF_S,
+    AutRouterUnavailable,
     BackendAuthFailed,
     BackendContextOverflow,
     BackendDown,
@@ -21,7 +22,6 @@ from maxim.models.language.types import (
     BackendOverloaded,
     BackendTimeout,
     LocalModelUnavailable,
-    AutRouterUnavailable,
 )
 
 
