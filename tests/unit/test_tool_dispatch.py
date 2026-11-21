@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from maxim.decisions.causal_link import Valence
 from maxim.runtime.loop_state import safe_agent_name
 from maxim.runtime.tool_dispatch import record_outcome
@@ -65,7 +65,10 @@ class TestSafeAgentName:
             def state_name(self):
                 raise TypeError("unreadable name")
 
-        assert safe_agent_name(Broken()) == "Broken"
+        with patch("maxim.runtime.loop_state.log_swallowed_exception") as report:
+            assert safe_agent_name(Broken()) == "Broken"
+        [call] = report.call_args_list  # the swallow is reported, once, under its operation name
+        assert isinstance(call.args[0], TypeError) and call.kwargs == {"operation": "get_agent_name"}
 
     def test_none_attrs_uses_class(self):
         agent = MagicMock()

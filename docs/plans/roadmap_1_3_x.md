@@ -1255,8 +1255,9 @@ they are ready, and the gate takes the next free number when it is done, still o
 - **B2's code prerequisites are exit items** (owner decision 2026-10-17). The loop slices already make these cuts:
   - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports — **met**: slice 6
     moved it into `runtime/loop_intake.py`, and the PR after it moved `safe_agent_name` and `tool_to_run` from
-    `tool_dispatch` to the bio-free `loop_state`, so the leaf's import closure loads no bio module (guard:
-    `tests/unit/test_loop_intake_bio_free.py`);
+    `tool_dispatch` to the bio-free `loop_state`, so the leaf's import closure loads none of B2's denied bio packages
+    (guard: `tests/unit/test_loop_intake_bio_free.py`). B2 itself takes no `runtime.*` import (baseline_floors.md
+    §B2), so its first PR still pulls a shared form of the fallback out of `loop_intake`;
   - `tool_dispatch.execute_and_learn` becomes importable without bio modules (#1150), and callable with `nac`,
     `hippocampus` and `memory_hub` set to `None`;
   - the `runtime` and `agents` package `__init__`s become lazy.

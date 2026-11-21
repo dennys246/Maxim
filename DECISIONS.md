@@ -15,7 +15,7 @@ This file tracks decisions that affect public behavior, repo structure, and long
   `--clear-memory` clears it in the data home, and in a home named with `--home-dir`
   (`cli_utils._GLOBAL_PATHS["runtime_state"]`).
 - **One builder.** `runtime/loop_state.py::loop_state_path` names every run's file,
-  `state_<run id segment>_<token>.json`: the run's own identity (the directory is `tool_dispatch.safe_agent_name`)
+  `state_<run id segment>_<token>.json`: the run's own identity (the directory is `loop_state.safe_agent_name`, in `tool_dispatch` until B2 prerequisite 1 moved it)
   plus a 48-bit random token, so two loops never share a file by sharing a class name and a wall-clock second (a
   sim's AUT and narrator are both `MaximAgent`).
 - **Sanitised, never refused.** Only the filename segment of the run id is sanitised, as `safe_agent_name` does:

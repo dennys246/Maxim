@@ -5,7 +5,9 @@ Slice 6 moved it, with the rest of §2, into ``runtime/loop_intake.py``. Its OWN
 the PR right after slice 6 (owner decision 2026-11-21) neither does its import closure: ``loop_controller`` imported
 ``safe_agent_name`` and ``tool_to_run`` from ``tool_dispatch`` (whose bio imports are #1150, B2's prerequisite 2), and
 both helpers moved verbatim to the bio-free ``loop_state``. Both checks below are now green; the closure check was a
-strict red gate until that move.
+strict red gate until that move. What this gives B2: the roadmap's prerequisite as worded. B2 itself takes no
+``runtime.*`` import (baseline_floors.md §B2), so its first PR still pulls the shared form of the fallback out of this
+runtime leaf.
 """
 
 from __future__ import annotations
@@ -17,11 +19,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 LEAF = REPO / "src" / "maxim" / "runtime" / "loop_intake.py"
-BIO = ("maxim.memory", "maxim.decisions", "maxim.integration", "maxim.similarity", "maxim.hivemind")
+# B2's bio denylist: baseline_floors.md §Guards (``LAYER_RULES["baselines"]``) minus ``runtime`` and ``agents``, which B2
+# itself may not import but this runtime leaf necessarily does; plus ``similarity`` and ``hivemind``.
+BIO = (
+    "maxim.memory",
+    "maxim.decisions",
+    "maxim.embodiment",
+    "maxim.harm",
+    "maxim.default_network",
+    "maxim.salience",
+    "maxim.imagination",
+    "maxim.integration",
+    "maxim.reactions",
+    "maxim.proprioception",
+    "maxim.similarity",
+    "maxim.hivemind",
+)
 
 
 def _imported_modules(path: Path) -> set[str]:

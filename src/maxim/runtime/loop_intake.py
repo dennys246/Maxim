@@ -27,7 +27,9 @@ was a constant local of the body read only here, so it is a module constant. The
 imports") is met: this module's own imports name no bio package, and its import closure loads none since
 ``loop_controller`` imports ``safe_agent_name`` and ``tool_to_run`` from the bio-free ``loop_state`` instead of
 ``tool_dispatch`` (whose bio imports are #1150). Guard:
-``tests/unit/test_loop_intake_bio_free.py::test_importing_the_intake_leaf_loads_no_bio_module`` (a fresh interpreter).
+``tests/unit/test_loop_intake_bio_free.py::test_importing_the_intake_leaf_loads_no_bio_module`` (a fresh interpreter,
+against B2's bio denylist). That is the roadmap's prerequisite as worded; B2 itself takes no ``runtime.*`` import
+(baseline_floors.md §B2), so its first PR still pulls a shared form of the fallback out of this module.
 
 Characterization: ``tests/unit/test_loop_intake_characterization.py`` (written before the move, through the public
 ``run_agentic_loop``, and kept green by it).
