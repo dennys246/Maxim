@@ -22,8 +22,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 LEAF = REPO / "src" / "maxim" / "runtime" / "loop_intake.py"
-# B2's bio denylist: baseline_floors.md §Guards (``LAYER_RULES["baselines"]``) minus ``runtime`` and ``agents``, which B2
-# itself may not import but this runtime leaf necessarily does; plus ``similarity`` and ``hivemind``.
+# B2's bio denylist: baseline_floors.md §Guards' PLANNED ``utils/audit.py::LAYER_RULES["baselines"]`` (not in the code
+# yet) minus ``runtime`` and ``agents``, which B2 itself may not import but this runtime leaf necessarily does; plus
+# ``similarity`` and ``hivemind``. When B2 adds that rule, derive this tuple from it so the two lists cannot drift.
 BIO = (
     "maxim.memory",
     "maxim.decisions",
