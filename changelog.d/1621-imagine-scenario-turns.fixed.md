@@ -19,7 +19,10 @@
     delivery. Only a null `metadata` reads as `{}`; any other non-mapping `metadata` is skipped and named.
   - In both modes the loader raises `ValueError` for a file whose top level is not a mapping, whose `percepts` is
     not a list, or that is not YAML. `load_scenario` also raises a `ValueError` naming the file, rather than an
-    untyped `AttributeError` or `TypeError`, for `expectations` that are not a list of mappings (null reads as
-    none), an expectation's `params`, or a `scoring` section that is not a mapping, and a non-numeric
-    `estimated_duration_s`. Strict mode also refuses a percept-level `phase:` key (the old `imagine`
+    untyped `AttributeError` or `TypeError` or a silent empty value, for `expectations` that are not a list of
+    mappings, an expectation's `params`, a `benchmark` or `suite` section or its `scoring` that is not a mapping
+    (`[]` and `""` included), and a non-numeric `estimated_duration_s`. Only null reads as absent, in every one of
+    these.
+  - `CampaignUnloadable` and `KeyFileUnusable` (with its `tunnel.keys` subclasses) now survive pickle and copy;
+    their keyword-only `__init__` used to make the round trip raise `TypeError`. Strict mode also refuses a percept-level `phase:` key (the old `imagine`
     format); the lenient mode warns that the key is ignored.

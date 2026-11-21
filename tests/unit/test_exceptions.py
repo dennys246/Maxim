@@ -194,3 +194,49 @@ class TestCatchAllMaximError:
         for error in errors:
             with pytest.raises(MaximError):
                 raise error
+
+
+class TestKeywordOnlyExceptionsRoundTrip:
+    """Exceptions whose ``__init__`` takes keyword-only fields pickle and copy faithfully (#1621 delta review):
+    the default ``BaseException.__reduce__`` calls ``cls(*args)``, which a keyword-only ``__init__`` refuses with a
+    ``TypeError``, so such an error could not cross a process boundary or be copied."""
+
+    @staticmethod
+    def _cases() -> list[BaseException]:
+        from pathlib import Path
+
+        from maxim.exceptions import CampaignUnloadable, KeyFileUnusable
+        from maxim.tunnel.keys import LeaderKeyError, LeaderKeyMissing, LocalServerKeyError
+
+        key = Path("/tmp/k")
+        return [
+            CampaignUnloadable(campaign="c.yaml", reason="c.yaml: percept 1 has no cli_input line"),
+            KeyFileUnusable(path=key, reason="mode 0644", fix_hint="chmod 600"),
+            LeaderKeyError(path=key, reason="empty"),  # a subclass with its own keyword-only __init__
+            LeaderKeyMissing(path=key),  # narrows the signature to path= only
+            LocalServerKeyError(path=key, reason="empty"),  # rewrites message and args after __init__
+        ]
+
+    @pytest.mark.parametrize("how", ["pickle", "copy", "deepcopy"])
+    def test_round_trip_keeps_type_message_and_fields(self, how: str) -> None:
+        import copy
+        import pickle
+
+        rebuild = {
+            "pickle": lambda e: pickle.loads(pickle.dumps(e)),
+            "copy": copy.copy,
+            "deepcopy": copy.deepcopy,
+        }[how]
+        for error in self._cases():
+            again = rebuild(error)
+            assert type(again) is type(error)
+            assert str(again) == str(error) and again.args == error.args
+            assert again.__dict__ == error.__dict__
+
+    def test_campaign_unloadable_names_its_path_once(self) -> None:
+        from maxim.exceptions import CampaignUnloadable
+
+        named = CampaignUnloadable(campaign="c.yaml", reason="c.yaml: bad")
+        assert str(named).count("c.yaml") == 1
+        unnamed = CampaignUnloadable(campaign="c.yaml", reason="percept 0 is not a mapping")
+        assert str(unnamed).count("c.yaml") == 1

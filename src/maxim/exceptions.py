@@ -46,6 +46,17 @@ class MaximError(Exception):
         return self.message
 
 
+def _rebuild_with_state(cls: type[BaseException], args: tuple[Any, ...], state: dict[str, Any]) -> BaseException:
+    """Rebuild an exception whose ``__init__`` takes keyword-only fields, for pickle and copy: ``cls.__new__`` plus
+    its ``args`` and attribute ``state``, without calling ``__init__`` (a subclass may narrow its signature, as
+    ``tunnel.keys.LeaderKeyMissing`` does). Used by the ``__reduce__`` of :class:`KeyFileUnusable` and
+    :class:`CampaignUnloadable`."""
+    obj = cls.__new__(cls, *args)
+    obj.args = args
+    obj.__dict__.update(state)
+    return obj
+
+
 class KeyFileUnusable(MaximError, RuntimeError):
     """A key file exists but cannot be used, so it is refused rather than read as absent or overwritten.
 
@@ -61,6 +72,10 @@ class KeyFileUnusable(MaximError, RuntimeError):
         self.reason = reason
         self.fix_hint = fix_hint
         super().__init__(message or f"key file unusable ({reason}): {path}")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fields (and subclasses that narrow them): rebuilt from state, so pickle and copy round-trip.
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
 
 
 class StopStillPending(MaximError, RuntimeError):
@@ -526,7 +541,13 @@ class CampaignUnloadable(MaximError, ValueError):
     def __init__(self, *, campaign: str, reason: str) -> None:
         self.campaign = campaign
         self.reason = reason
-        super().__init__(f"research campaign {campaign} cannot be loaded: {reason}")
+        # The loader's reason already names the file; name it here only when it does not, so it prints once.
+        where = "" if campaign in reason else f" {campaign}"
+        super().__init__(f"research campaign{where} cannot be loaded: {reason}")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fields: rebuilt from state, so pickle and copy round-trip.
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
 
 
 class ComponentNotFoundError(ConfigurationError):

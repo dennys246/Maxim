@@ -178,6 +178,11 @@ def test_the_repo_pain_scenario_is_refused_by_imagine(no_model_checks: None, mon
         ("expectations:\n  - type: x\n    params: 3\npercepts:\n  - cli_input: a\n", "params is not a mapping"),
         ("benchmark:\n  scoring: [a]\npercepts:\n  - cli_input: a\n", "benchmark.scoring is not a mapping"),
         ("estimated_duration_s: [1]\npercepts:\n  - cli_input: a\n", "estimated_duration_s"),
+        ("expectations:\n  - type: x\n    params: []\npercepts:\n  - cli_input: a\n", "params is not a mapping"),
+        ("benchmark:\n  scoring: []\npercepts:\n  - cli_input: a\n", "benchmark.scoring is not a mapping"),
+        ("benchmark:\n  scoring: ''\npercepts:\n  - cli_input: a\n", "benchmark.scoring is not a mapping"),
+        ("benchmark: [1]\npercepts:\n  - cli_input: a\n", "benchmark is not a mapping"),
+        ("suite: abc\npercepts:\n  - cli_input: a\n", "suite is not a mapping"),
     ],
     ids=[
         "list_top_level",
@@ -188,6 +193,11 @@ def test_the_repo_pain_scenario_is_refused_by_imagine(no_model_checks: None, mon
         "params_not_mapping",
         "scoring_not_mapping",
         "duration_not_number",
+        "params_empty_list",
+        "scoring_empty_list",
+        "scoring_empty_string",
+        "benchmark_list",
+        "suite_string",
     ],
 )
 def test_a_malformed_file_raises_value_error_in_both_modes(tmp_path: Path, body: str, match: str, strict: bool) -> None:
@@ -206,9 +216,30 @@ def test_every_dm_campaign_is_a_typed_refusal_naming_its_path(campaign: Path, st
         load_campaign_turns(str(campaign), strict=strict)
 
 
-def test_null_expectations_read_as_none(tmp_path: Path) -> None:
-    path = _scenario(tmp_path, "expectations: null\npercepts:\n  - cli_input: a\n")
+def test_null_sections_read_as_absent(tmp_path: Path) -> None:
+    """Only null means absent, for every section the loader reads (``expectations``, ``params``, ``benchmark``,
+    ``scoring``, ``estimated_duration_s``)."""
+    from maxim.simulation.scenario_source import load_scenario
+
+    path = _scenario(
+        tmp_path,
+        """\
+        expectations:
+          - type: action_count_range
+            params: null
+        benchmark:
+          scoring: null
+        suite: null
+        estimated_duration_s: null
+        percepts:
+          - cli_input: a
+        """,
+    )
     assert [t["text"] for t in load_campaign_turns(path, strict=True)] == ["a"]
+    scenario = load_scenario(Path(path))
+    assert scenario.estimated_duration_s == 0.0 and scenario.expectations[0].params == {}
+    empty = _scenario(tmp_path, "expectations: null\npercepts:\n  - cli_input: a\n")
+    assert [t["text"] for t in load_campaign_turns(empty, strict=True)] == ["a"]
 
 
 # --- the lenient mode: skip and name, by the strict mode's test ---------------------------------------------------

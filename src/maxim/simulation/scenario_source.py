@@ -117,10 +117,7 @@ def _check_expectation_tool(path: Path, exp: Expectation) -> None:
 def _check_scoring(path: Path, section: str, body: dict[str, Any]) -> None:
     """Each scoring threshold uses only the operators ``BenchmarkRunner._check_thresholds`` knows, and at least one:
     an unknown key (``pas:``) or an empty threshold used to count as applied while checking nothing (#1395)."""
-    scoring = body.get("scoring") or {}
-    if not isinstance(scoring, dict):
-        raise ValueError(f"Scenario {path}: {section}.scoring is not a mapping (got {type(scoring).__name__})")
-    for metric, threshold in scoring.items():
+    for metric, threshold in _mapping_or_empty(path, f"{section}.scoring", body.get("scoring")).items():
         if not isinstance(threshold, dict) or not threshold:
             raise ValueError(
                 f"Scenario {path}: {section}.scoring.{metric} has no threshold ({sorted(THRESHOLD_OPERATORS)})"
@@ -147,7 +144,20 @@ def _expectation_items(path: Path, raw: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
+def _mapping_or_empty(path: Path, what: str, value: Any) -> dict[str, Any]:
+    """``value`` as a mapping: null (or absent) reads as empty, any other non-mapping (``[]``, ``""``, ``0``) raises a
+    ``ValueError`` naming the file, never loads silently as empty (#1621)."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Scenario {path}: {what} is not a mapping (got {type(value).__name__})")
+    return value
+
+
 def _duration_s(path: Path, value: Any) -> float:
+    """``estimated_duration_s`` as a float: null reads as absent (the field's default, 0.0)."""
+    if value is None:
+        return 0.0
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
@@ -191,9 +201,10 @@ def load_scenario(path: Path) -> ScenarioDefinition:
             "params",
         }
         extra_params = {k: v for k, v in exp_raw.items() if k not in known_keys}
-        if not isinstance(exp_raw.get("params") or {}, dict):
-            raise ValueError(f"Scenario {path}: expectation {exp_type!r}'s params is not a mapping")
-        params = {**(exp_raw.get("params") or {}), **extra_params}
+        params = {
+            **_mapping_or_empty(path, f"expectation {exp_type!r}'s params", exp_raw.get("params")),
+            **extra_params,
+        }
 
         expectations.append(
             Expectation(
@@ -213,7 +224,7 @@ def load_scenario(path: Path) -> ScenarioDefinition:
         _check_expectation_tool(path, expectations[-1])
 
     for section in ("benchmark", "suite"):
-        _check_scoring(path, section, ((raw.get(section) or {}) if isinstance(raw.get(section), dict) else {}))
+        _check_scoring(path, section, _mapping_or_empty(path, section, raw.get(section)))
 
     percepts = raw.get("percepts", [])
     if not percepts:
