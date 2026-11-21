@@ -22,7 +22,7 @@
     untyped `AttributeError` or `TypeError` or a silent empty value, for `expectations` that are not a list of
     mappings, an expectation's `params`, a `benchmark` or `suite` section or its `scoring` that is not a mapping
     (`[]` and `""` included), and a non-numeric `estimated_duration_s`. Only null reads as absent, in every one of
-    these.
+    these. Strict mode also refuses a percept-level `phase:` key (the old `imagine` format); the lenient mode
+    warns that the key is ignored.
   - `CampaignUnloadable` and `KeyFileUnusable` (with its `tunnel.keys` subclasses) now survive pickle and copy;
-    their keyword-only `__init__` used to make the round trip raise `TypeError`. Strict mode also refuses a percept-level `phase:` key (the old `imagine`
-    format); the lenient mode warns that the key is ignored.
+    their keyword-only `__init__` used to make the round trip raise `TypeError`.

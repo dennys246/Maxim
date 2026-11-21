@@ -541,9 +541,11 @@ class CampaignUnloadable(MaximError, ValueError):
     def __init__(self, *, campaign: str, reason: str) -> None:
         self.campaign = campaign
         self.reason = reason
-        # The loader's reason already names the file; name it here only when it does not, so it prints once.
-        where = "" if campaign in reason else f" {campaign}"
-        super().__init__(f"research campaign{where} cannot be loaded: {reason}")
+        # Name the campaign exactly once: always here, and never again from load_scenario's own
+        # "Scenario <path>: " prefix (it formats Path(campaign), so a raw substring test misses "./x.yaml").
+        prefix = f"Scenario {Path(campaign)}: "
+        detail = reason[len(prefix) :] if reason.startswith(prefix) else reason
+        super().__init__(f"research campaign {campaign} cannot be loaded: {detail}")
 
     def __reduce__(self) -> tuple[Any, ...]:
         # Keyword-only fields: rebuilt from state, so pickle and copy round-trip.

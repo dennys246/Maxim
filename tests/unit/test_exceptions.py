@@ -236,7 +236,13 @@ class TestKeywordOnlyExceptionsRoundTrip:
     def test_campaign_unloadable_names_its_path_once(self) -> None:
         from maxim.exceptions import CampaignUnloadable
 
-        named = CampaignUnloadable(campaign="c.yaml", reason="c.yaml: bad")
-        assert str(named).count("c.yaml") == 1
+        named = CampaignUnloadable(campaign="c.yaml", reason="Scenario c.yaml: bad")
+        assert str(named).count("c.yaml") == 1 and str(named).endswith(": bad")
         unnamed = CampaignUnloadable(campaign="c.yaml", reason="percept 0 is not a mapping")
         assert str(unnamed).count("c.yaml") == 1
+        # load_scenario formats Path(campaign), which drops "./": still printed once.
+        dotted = CampaignUnloadable(campaign="./x.yaml", reason="Scenario x.yaml: bad")
+        assert str(dotted) == "research campaign ./x.yaml cannot be loaded: bad"
+        # A short name that happens to occur inside the reason is still named.
+        short = CampaignUnloadable(campaign="a", reason="percept 0 has a bad value")
+        assert str(short).startswith("research campaign a cannot be loaded:")
