@@ -1592,9 +1592,7 @@ def _run_agentic_loop_body(
 
             # Planning mode: check if this input is approval/rejection/modify
             if ctrl.handle_plan_approval(cli_text, book_refusal=_book_refusal):
-                if ctrl.pending_proposal is None and ctrl.pending_plan_proposal is None:
-                    # Plan was rejected — don't send to LLM
-                    cli_input = None
+                cli_input = None  # the answer to the plan (approved, rejected or re-asked), never a new turn (#1185)
 
         hard_stop_reason = check_hard_stop(transcript, hard_override)
         if hard_stop_reason:

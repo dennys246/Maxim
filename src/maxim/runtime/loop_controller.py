@@ -376,9 +376,12 @@ class LoopController:
         if pc is None:
             return False
 
-        response = cli_text.lower().strip()
+        from maxim.runtime.approval import detect_approval_intent
 
-        if response in ("yes", "y", "ok", "sure", "proceed", "confirm"):
+        # One vocabulary for every gating prompt (#1185): only a plain yes/no answers; an ambiguous reply re-asks.
+        intent, _ = detect_approval_intent(cli_text)
+
+        if intent == "approve":
             logger.info("User confirmed action: %s", pc.tool_name)
             log_agentic("agent_loop", "user_confirmed", {"tool": pc.tool_name, "approved": True})
             try:
@@ -404,7 +407,7 @@ class LoopController:
                 self._clear_confirmation_prompt()
             return True
 
-        elif response in ("no", "n", "cancel", "reject", "abort"):
+        elif intent == "reject":
             logger.info("User rejected action: %s", pc.tool_name)
             log_agentic("agent_loop", "user_confirmed", {"tool": pc.tool_name, "approved": False})
             self.autonomy_controller.log_action(
@@ -428,6 +431,12 @@ class LoopController:
             self.clear_pending_user_input()
             self.pending_proposal = None
             self._clear_confirmation_prompt()
+            return True
+
+        elif intent == "unknown":
+            self._reask(
+                "confirmation_reask", pc.tool_name, f"Confirm {pc.tool_name}? Type 'yes' or 'no', or describe changes."
+            )
             return True
 
         else:
@@ -462,10 +471,13 @@ class LoopController:
         if tr is None:
             return False
 
+        from maxim.runtime.approval import classify_yes_no
+
         response = cli_text.lower().strip()
+        answer = classify_yes_no(cli_text)  # the same yes/no vocabulary as every gating prompt (#1185)
         self.set_timeout_retry(None)
 
-        if response in ("no", "n", "cancel", "skip"):
+        if answer == "no":
             from maxim.simulation.sim_logger import display_status
 
             logger.info("User declined timeout retry")
@@ -476,7 +488,7 @@ class LoopController:
             return True
 
         new_timeout_s = None
-        if response in ("yes", "y", "ok", "sure"):
+        if answer == "yes":
             new_timeout_s = tr.timeout_s * 2
         else:
             try:
@@ -507,8 +519,12 @@ class LoopController:
     def handle_plan_approval(self, cli_text: str, *, book_refusal: Callable[..., None]) -> bool:
         """Process user input when a plan proposal is awaiting approval.
 
-        Returns True if the input was consumed. A rejection is booked through ``book_refusal``
-        (``LoopRun.book_refusal``, the run's recorder), so it is required.
+        Returns True if the input was consumed: an approval, a rejection or a re-ask is the answer to the plan,
+        never a new turn for the LLM, so the caller drops it (#1185). A modification returns False: the plan is
+        dropped and the text reaches the LLM as the user's turn, with the dropped plan in
+        ``state.data["pending_modification"]`` (the shape ``handle_confirmation`` writes and the §6 submit
+        reads). A rejection is booked through ``book_refusal`` (``LoopRun.book_refusal``, the run's recorder),
+        so it is required.
         """
         from maxim.runtime.approval import detect_approval_intent
 
@@ -536,6 +552,7 @@ class LoopController:
             self.pending_proposal = self.pending_plan_proposal
             self.pending_plan_proposal = None
             self.state.data.pop("pending_plan_text", None)
+            self.clear_pending_user_input()
             return True
 
         elif intent == "reject":
@@ -554,6 +571,7 @@ class LoopController:
 
             self.pending_plan_proposal = None
             self.state.data.pop("pending_plan_text", None)
+            self.clear_pending_user_input()
             return True
 
         elif intent == "modify":
@@ -565,23 +583,50 @@ class LoopController:
                     "modification": modification[:100] if modification else None,
                 },
             )
-            self.state.data["plan_modification_context"] = {
-                "original_plan": self.pending_plan_proposal.plan_text,
-                "original_action": self.pending_plan_proposal.action,
+            plan = self.pending_plan_proposal
+            self.state.data["pending_modification"] = {
+                "original_action": plan.action or {},
+                "original_reasoning": plan.reasoning or plan.plan_text or "",
+                "original_tool_name": (plan.action or {}).get("tool_name") or "unknown",
                 "user_modification": modification,
+                "timestamp": time.time(),
             }
             self.pending_plan_proposal = None
             self.state.data.pop("pending_plan_text", None)
             # cli_input stays set so it gets sent to LLM
             return False  # Don't consume — let LLM see the modification text
 
-        else:  # unknown
-            logger.info("Could not determine approval intent, asking for clarification")
-            self.state.data["pending_plan_text"] = (
-                f"[Awaiting approval] {self.pending_plan_proposal.plan_text}\n\n"
-                "Please respond with 'yes' to approve, 'no' to cancel, or describe changes."
+        else:  # unknown: the plan stays pending, the reply is consumed, and the question is asked again
+            tool = (self.pending_plan_proposal.action or {}).get("tool_name") or "unknown"
+            self._reask(
+                "plan_awaiting_approval",
+                tool,
+                f"[Awaiting approval] {self.pending_plan_proposal.plan_text}\n"
+                "Type 'yes' to approve, 'no' to cancel, or describe changes.",
             )
-            return True  # Consume unknown input
+            return True
+
+    def _reask(self, event: str, tool_name: str, prompt: str) -> None:
+        """Ask a gating question again after an answer that was neither a plain yes nor a plain no (#1185).
+
+        The reply is consumed (the pending input slot is cleared, the caller drops it), the pending item stays
+        parked, and the question goes back on the surfaces the original prompt used: the abstraction stream
+        (``event``, flagged ``reask``), the status line and the input panel's prompt."""
+        from maxim.simulation.sim_logger import display_status
+
+        logger.info("Could not read a yes or no for %s, asking again", tool_name)
+        log_agentic("agent_loop", event, {"tool": tool_name, "reask": True})
+        self.clear_pending_user_input()
+        display_status(prompt)
+        try:
+            from maxim.simulation.sim_logger import get_active_display
+
+            display = get_active_display()
+            if display is not None:
+                display.set_prompt("Type 'yes' or 'no'\n\n> ")
+                display.set_urgent(True)
+        except Exception:
+            log_swallowed_exception()  # a display that cannot show the prompt must not stop the loop (#1134)
 
     # ── Phase: Store user input in state and memory ──────────────────────
 

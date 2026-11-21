@@ -231,36 +231,33 @@ class SimulationAdapter:
         actually wired (no producer ever set ``_bridge`` on a percept
         source); the dead branch was removed during the CC8 fold round.
         """
-        try:
-            from maxim.simulation.bridge import SimulationBridge
+        from maxim.simulation.bridge import SimulationBridge
 
-            if isinstance(self.percept_source, SimulationBridge):
-                return self.percept_source.response_policy.resolve_confirmation(confirmation)
-        except Exception:
-            pass
+        # A failing response policy raises (#1723): it used to fall through to the "yes" below, so any
+        # error in the bridge's policy approved the action.
+        if isinstance(self.percept_source, SimulationBridge):
+            return self.percept_source.response_policy.resolve_confirmation(confirmation)
         # Default: auto-approve in sim mode
         return "yes"
 
     def resolve_plan_approval(self, plan_text: str | None) -> str | None:
         """Auto-resolve plan approval prompts."""
-        try:
-            from maxim.simulation.bridge import SimulationBridge
+        from maxim.simulation.bridge import SimulationBridge
 
-            if isinstance(self.percept_source, SimulationBridge):
-                return self.percept_source.response_policy.resolve_plan_approval(plan_text)
-        except Exception:
-            pass
+        # A failing response policy raises (#1723): it used to fall through to the "yes" below, so any
+        # error in the bridge's policy approved the action.
+        if isinstance(self.percept_source, SimulationBridge):
+            return self.percept_source.response_policy.resolve_plan_approval(plan_text)
         return "yes"
 
     def resolve_timeout_retry(self, timeout_s: float) -> str | None:
         """Auto-resolve timeout retry prompts."""
-        try:
-            from maxim.simulation.bridge import SimulationBridge
+        from maxim.simulation.bridge import SimulationBridge
 
-            if isinstance(self.percept_source, SimulationBridge):
-                return self.percept_source.response_policy.resolve_timeout_retry(timeout_s)
-        except Exception:
-            pass
+        # A failing response policy raises (#1723): it used to fall through to the "yes" below, so any
+        # error in the bridge's policy approved the action.
+        if isinstance(self.percept_source, SimulationBridge):
+            return self.percept_source.response_policy.resolve_timeout_retry(timeout_s)
         return "yes"
 
 
