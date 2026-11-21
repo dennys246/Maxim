@@ -114,29 +114,16 @@ def _build_research_llm(language_model: str | None = None) -> Any:
 
 
 def _load_campaign_turns(campaign: str | None) -> list[dict]:
-    """The researcher's campaign turns from the campaign YAML (empty with none, or when it fails to load)."""
+    """The researcher's campaign turns from the campaign YAML (empty with none, or when it fails to load), read by
+    the one scripted-turn loader, ``experiment.load_campaign_turns`` (#1621), not a parser of its own."""
     from maxim.simulation.sim_logger import display_status
 
     campaign_turns: list[dict] = []
     if campaign:
         try:
-            from maxim.simulation.scenario_source import load_scenario
-            from pathlib import Path as _Path
+            from maxim.simulation.experiment import load_campaign_turns
 
-            scenario = load_scenario(_Path(campaign))
-            for p in scenario.percepts:
-                text = p.get("cli_input", "")
-                if text:
-                    campaign_turns.append(
-                        {
-                            "text": text.strip(),
-                            "phase": p.get("metadata", {}).get("phase", ""),
-                            "role": p.get("metadata", {}).get("experiment_role", ""),
-                            "tag": p.get("metadata", {}).get("scenario_tag", ""),
-                            "salience": p.get("salience", 0.8),
-                            "novelty": p.get("novelty", 0.7),
-                        }
-                    )
+            campaign_turns = load_campaign_turns(campaign)
             display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
         except Exception as e:
             logger.warning("Failed to load campaign YAML: %s", e)

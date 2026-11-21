@@ -982,14 +982,13 @@ def imagine(
     # Load pre-campaign turns from YAML scenario if provided
     pre_campaign_turns = None
     if scenario:
-        from maxim.simulation.scenario_source import load_scenario
-        from pathlib import Path as _Path
+        # The one scripted-turn loader (#1621): a hand parser here read ``text`` while scenarios carry ``cli_input``,
+        # so every turn reached the agent empty, silently.
+        from maxim.simulation.experiment import load_campaign_turns
 
-        scenario_def = load_scenario(_Path(scenario))
-        pre_campaign_turns = [
-            {"text": p.get("text", ""), "phase": p.get("phase", ""), "salience": p.get("salience", 0.8)}
-            for p in scenario_def.percepts
-        ]
+        pre_campaign_turns = load_campaign_turns(str(scenario))
+        if not pre_campaign_turns:
+            raise ValueError(f"{scenario}: no percept carries a cli_input line, so the scenario has no turn to deliver")
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
