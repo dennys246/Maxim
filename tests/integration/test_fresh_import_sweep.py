@@ -45,29 +45,50 @@ EXTRA_OWNED: dict[str, str] = {
     "maxim.models.movement.motor_cortex": "training",
 }
 
-# The child reports each failure as data, so the verdict below can attribute it. ``missing`` is the module that was
-# not found: the deepest ``ImportError.name`` along the ``__cause__`` chain (``require_optional_dependency("keras")``
-# with keras installed and tensorflow absent names ``tensorflow``, not ``keras``), else
-# ``OptionalDependencyError.import_name``. A hand-written ``ImportError("...")`` names none, so it attributes to nothing.
+# The child reports each failure as data, so the verdict below can attribute it. ``missing`` is the one dependency
+# the failure is attributed to, or ``None`` when it attributes to nothing (and so can never be an extra's refusal).
+# The rule, applied to the chain of the top error and its ``__cause__`` (else its unsuppressed ``__context__``),
+# walked once per link (a seen-set: ``e.__cause__ = e`` must not hang the child):
+#   1. Any link that is not an ImportError -> ``None``. The import failed on something else (a typed refusal
+#      wrapping an AttributeError, or a defect masked in ``__context__`` by a fallback import of an absent name).
+#   2. The top error must be the canonical refusal, ``OptionalDependencyError`` (by type name and module: the child
+#      must not import ``maxim.utils.optional_deps`` itself, or every module after it is no longer imported first),
+#      or a stdlib ImportError carrying its own ``.name``. A hand-written ``raise ImportError("...")`` names nothing
+#      and is refused even when chained to a real missing module: CLAUDE.md's optional-deps rule bans that shape in
+#      src/maxim, and ``require_optional_dependency`` is the refusal to use.
+#   3. Then the DEEPEST ``.name`` in the chain wins, else the typed refusal's ``import_name``. Decision: the deepest
+#      link is what was actually not found. ``require_optional_dependency("keras")`` with keras installed and
+#      tensorflow absent raises ``OptionalDependencyError(keras)`` from ``ModuleNotFoundError(tensorflow)``: the
+#      extra is partly absent, and it is tensorflow that is missing. The same rule attributes an installed name raised
+#      from a missing own name (contrived) to the missing one; that is pinned by a test, not an accident.
 _CHILD = (
     "import importlib, json, sys\n"
     "sys.path.insert(0, sys.argv[1])\n"
+    "def attribute(exc):\n"
+    "    chain, seen, link = [], set(), exc\n"
+    "    while link is not None and id(link) not in seen:\n"
+    "        seen.add(id(link))\n"
+    "        chain.append(link)\n"
+    "        link = link.__cause__ if link.__cause__ is not None else (\n"
+    "            None if link.__suppress_context__ else link.__context__)\n"
+    "    if not all(isinstance(e, ImportError) for e in chain):\n"
+    "        return None\n"
+    "    typed = type(exc).__name__ == 'OptionalDependencyError' and (\n"
+    "        type(exc).__module__ == 'maxim.utils.optional_deps')\n"
+    "    if not (typed or exc.name):\n"
+    "        return None\n"
+    "    named = [e.name for e in chain if e.name]\n"
+    "    return named[-1] if named else getattr(exc, 'import_name', None)\n"
     "fails = {}\n"
     "for name in json.loads(sys.argv[2]):\n"
     "    try:\n"
     "        importlib.import_module(name)\n"
     "    except Exception as exc:\n"
-    "        missing, link = None, exc\n"
-    "        while link is not None:\n"
-    "            if isinstance(link, ImportError) and link.name:\n"
-    "                missing = link.name\n"
-    "            link = link.__cause__\n"
-    "        missing = missing or getattr(exc, 'import_name', None)\n"
     "        fails[name] = {\n"
     "            'text': f'{type(exc).__name__}: {exc}'[:300],\n"
     "            'is_import_error': isinstance(exc, ImportError),\n"
     "            'type_module': type(exc).__module__,\n"
-    "            'missing': missing,\n"
+    "            'missing': attribute(exc),\n"
     "        }\n"
     "print(json.dumps(fails))\n"
 )
@@ -90,12 +111,14 @@ def sweep_verdict(
     *,
     installed: Callable[[str], bool] = _installed,
     owned: dict[str, str] = EXTRA_OWNED,
+    own_names_of: Callable[[str], tuple[str, ...]] = extra_import_names,
 ) -> str | None:
     """Why ``module``'s fresh import is a defect, or ``None`` when it is acceptable. Pure, so the rule is testable.
 
     An unlisted module must import. A listed module must import when every import name of its extra is installed.
-    When the extra is absent (even partly), the one acceptable failure is an ImportError attributed to one of the
-    extra's import names that is NOT installed here. Anything else is a defect like any other: an error raised by an
+    When the extra is absent (even partly), the one acceptable failure is an ImportError attributed (``_CHILD``'s
+    rule: no non-ImportError in the chain, a typed or named top error, the deepest name wins) to one of the extra's
+    import names that is NOT installed here. Anything else is a defect like any other: an error raised by an
     installed package of the extra (``from keras.layers import Layr``, a keras ``ValueError`` at class definition)
     proves that package is present, so it cannot be the extra's absence. ``utils/optional_deps.py::import_refused``
     is not used: its blanket ImportError/OSError branch cannot say WHICH dependency refused."""
@@ -104,7 +127,7 @@ def sweep_verdict(
     extra = owned.get(module)
     if extra is None:
         return f"{module}: {failure['text']}"
-    own_names = extra_import_names(extra)
+    own_names = own_names_of(extra)
     if all(installed(n) for n in own_names):
         return f"{module}: fails with its extra [{extra}] installed: {failure['text']}"
     missing = _top(failure["missing"])
@@ -326,44 +349,85 @@ def test_the_declaration_check_sees_each_module_level_form(tmp_path: Path, sourc
     assert _module_level_dependencies(probe) == expected
 
 
-def test_the_child_reports_what_the_verdict_attributes(tmp_path: Path) -> None:
-    """The child's report, on real failures: a hand-written ImportError names nothing, a missing module names
-    itself, the typed refusal names its import name, and a refusal caused by a deeper missing module names that."""
+_ODE = "from maxim.utils.optional_deps import OptionalDependencyError\n"
+# module -> (source, the child's attribution, accepted as the stand-in extra's refusal). The stand-in extra's import
+# names are the zz_* names below (none installed) plus ``json`` (installed), so the verdict runs on real reports.
+_CHILD_CASES: dict[str, tuple[str, str | None, bool]] = {
+    "missing": ("import zz_absent_1647\n", "zz_absent_1647", True),
+    "typed": (
+        "from maxim.utils.optional_deps import require_optional_dependency\n"
+        "require_optional_dependency('zz_absent_1647', extra='training')\n",
+        "zz_absent_1647",
+        True,
+    ),
+    # keras installed, tensorflow absent: the deepest name in the chain is the one not found
+    "chained": (
+        _ODE + "try:\n    import zz_inner_1647\n"
+        "except ImportError as e:\n    raise OptionalDependencyError('zz_outer_1647', cause=e) from e\n",
+        "zz_inner_1647",
+        True,
+    ),
+    # contrived: an INSTALLED own name raised from a missing own one; the deepest (missing) name wins, by decision
+    "installed_from_missing": (
+        "try:\n    import zz_inner_1647\n"
+        "except ImportError as e:\n    raise ModuleNotFoundError('json?', name='json') from e\n",
+        "zz_inner_1647",
+        True,
+    ),
+    "plain": ("raise ImportError('needs keras')\n", None, False),
+    # S1: a hand-written ImportError chained to a real missing own name is still not the canonical refusal
+    "plain_chained": (
+        "try:\n    import zz_absent_1647\nexcept ImportError as e:\n    raise ImportError('needs zz') from e\n",
+        None,
+        False,
+    ),
+    # N2: a typed refusal wrapping a non-ImportError
+    "typed_wraps_defect": (
+        _ODE + "try:\n    {}.missing_attr\n"
+        "except AttributeError as e:\n    raise OptionalDependencyError('zz_absent_1647', cause=e) from e\n",
+        None,
+        False,
+    ),
+    # N2: a defect masked in __context__ by a fallback import of an absent own name
+    "masked_by_fallback": (
+        "try:\n    {}.missing_attr\nexcept AttributeError:\n    import zz_absent_1647\n",
+        None,
+        False,
+    ),
+    # N1: a cause cycle must not hang the child
+    "cause_cycle": (
+        "e = ModuleNotFoundError('x', name='zz_absent_1647')\ne.__cause__ = e\nraise e\n",
+        "zz_absent_1647",
+        True,
+    ),
+}
+
+
+def test_the_child_attributes_each_shape_and_the_verdict_follows(tmp_path: Path) -> None:
+    """The child's report on REAL failures, then the verdict on that report, for a stand-in listed module of a
+    stand-in extra: what is accepted is exactly a canonical or named refusal of an absent own name."""
     pkg = tmp_path / "zz1647"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
-    (pkg / "plain.py").write_text("raise ImportError('needs keras')\n")
-    (pkg / "missing.py").write_text("import zz_not_installed_1647\n")
-    (pkg / "typed.py").write_text(
-        "from maxim.utils.optional_deps import require_optional_dependency\n"
-        "require_optional_dependency('zz_not_installed_1647', extra='training')\n"
-    )
-    # The package is present but ITS dependency is not (keras without tensorflow): the deepest name in the chain.
-    (pkg / "chained.py").write_text(
-        "from maxim.utils.optional_deps import OptionalDependencyError\n"
-        "try:\n    import zz_inner_1647\n"
-        "except ImportError as e:\n    raise OptionalDependencyError('zz_outer_1647', cause=e) from e\n"
-    )
-    env = _child_env(tmp_path)
+    for name, (source, _, _) in _CHILD_CASES.items():
+        (pkg / f"{name}.py").write_text(source)
+    modules = [f"zz1647.{name}" for name in _CHILD_CASES]
     child = _CHILD.replace("sys.path.insert(0, sys.argv[1])\n", f"sys.path[:0] = [sys.argv[1], {str(SRC)!r}]\n")
     proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
-        [
-            sys.executable,
-            "-I",
-            "-c",
-            child,
-            str(tmp_path),
-            json.dumps(["zz1647.plain", "zz1647.missing", "zz1647.typed", "zz1647.chained"]),
-        ],
+        [sys.executable, "-I", "-c", child, str(tmp_path), json.dumps(modules)],
         capture_output=True,
         text=True,
-        env=env,
-        timeout=120,
+        env=_child_env(tmp_path),
+        timeout=60,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     fails = json.loads(proc.stdout.strip().splitlines()[-1])
-    assert fails["zz1647.plain"]["missing"] is None
-    assert fails["zz1647.missing"]["missing"] == "zz_not_installed_1647"
-    assert fails["zz1647.typed"]["missing"] == "zz_not_installed_1647"
-    assert fails["zz1647.chained"]["missing"] == "zz_inner_1647"
-    assert all(f["is_import_error"] for f in fails.values())
+    assert set(fails) == set(modules), "every case must fail to import"
+    own = ("zz_absent_1647", "zz_inner_1647", "zz_outer_1647", "json")
+    for name, (_, attributed, accepted) in _CHILD_CASES.items():
+        report = fails[f"zz1647.{name}"]
+        assert report["missing"] == attributed, (name, report)
+        verdict = sweep_verdict(
+            f"zz1647.{name}", report, owned={f"zz1647.{name}": "standin"}, own_names_of=lambda _e: own
+        )
+        assert (verdict is None) is accepted, (name, verdict)
