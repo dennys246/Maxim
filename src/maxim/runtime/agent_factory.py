@@ -66,6 +66,8 @@ class AgentConfig:
     personality: str | None = None  # System prompt overlay
     remembers: bool = True  # Enable hippocampus
     learns: bool = True  # Enable NAc
+    # with_bio_stack=True builds BOTH (build_bio_stack has no flag for either), so turning one off beside it is
+    # refused in __post_init__ (AgentConfigContradiction, #1225) rather than undone by create_full_agent.
 
     # F2: Full agent construction config (used by create_full_agent)
     with_bio_stack: bool = False  # Construct BioStack (pain_bus + reaction_bus etc.)
@@ -117,6 +119,16 @@ class AgentConfig:
         require_agent_id(self.agent_id, where="AgentConfig.agent_id")
         if self.on_corrupt not in ("warn", "raise"):
             raise ValueError(f"AgentConfig.on_corrupt must be 'warn' or 'raise', got {self.on_corrupt!r}")
+        undone = tuple(name for name in ("remembers", "learns") if self.with_bio_stack and not getattr(self, name))
+        if undone:
+            from maxim.exceptions import AgentConfigContradiction
+
+            raise AgentConfigContradiction(
+                f"AgentConfig {self.agent_id!r}: with_bio_stack=True builds a Hippocampus and a NAc, so "
+                f"{' and '.join(f'{n}=False' for n in undone)} cannot be honoured beside it (#1225). Drop "
+                "with_bio_stack for a lightweight agent, or keep both flags True.",
+                fields=undone,
+            )
 
 
 # ---------------------------------------------------------------------------

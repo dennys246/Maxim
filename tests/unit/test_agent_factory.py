@@ -413,6 +413,22 @@ class TestCreateFullAgent:
         assert instance.nac is not None
         assert instance.memory_hub is not None
 
+    @pytest.mark.parametrize(
+        ("remembers", "learns", "fields"),
+        [(False, True, ("remembers",)), (True, False, ("learns",)), (False, False, ("remembers", "learns"))],
+    )
+    def test_bio_stack_refuses_a_flag_it_would_undo(self, factory, remembers, learns, fields):
+        """#1225: with_bio_stack=True builds a Hippocampus and a NAc whatever remembers/learns say, so a config
+        that turns either off beside it is refused where it is built, never undone in silence by create_full_agent."""
+        from maxim.exceptions import AgentConfigContradiction
+
+        with pytest.raises(AgentConfigContradiction) as exc:
+            AgentConfig(agent_id="contradiction", with_bio_stack=True, remembers=remembers, learns=learns, policy=None)
+        assert exc.value.fields == fields
+        assert isinstance(exc.value, ValueError)
+        # The flags alone (no bio stack) stay a valid lightweight agent.
+        AgentConfig(agent_id="no_bio_flags", remembers=remembers, learns=learns, policy=None)
+
     def test_full_agent_without_bio_stack(self, factory):
         """Bio-stack is NOT constructed when with_bio_stack=False."""
         cfg = AgentConfig(agent_id="no_bio", policy=None)
