@@ -144,6 +144,7 @@ def _run(
     surfaced: list[str] | None = None,
     goal: str = "",
     on_event: Any = None,
+    transport_streak: int = 0,
 ) -> SimpleNamespace:
     import maxim.simulation.sim_logger as sim_logger
     import maxim.utils.structured_logging as sl
@@ -170,6 +171,7 @@ def _run(
         self.llm_submit_interval = 1e12  # §6 never submits: §2 sees only the scripted proposals
         if surfaced is not None:
             self.last_surfaced_tools.extend(surfaced)
+        self.planning_transport_failure_streak = transport_streak  # earlier worker-transport failures, if any
         obs.ctrl = self
 
     monkeypatch.setattr(LoopController, "__init__", _init)
@@ -478,3 +480,30 @@ def test_a_raising_on_event_is_reported_and_the_proposal_still_runs(monkeypatch,
     obs = _run(monkeypatch, tmp_path, {0: _proposal()}, steps=3, on_event=_boom)
     assert obs.executed == [{"n": 1}]
     assert any("on_event:inference_end" in r.getMessage() for r in caplog.records)
+
+
+# ── what §2 carries from pass to pass, and resets ────────────────────────────
+
+
+def test_the_fallback_count_is_carried_across_passes_and_reset_by_a_real_proposal(monkeypatch, tmp_path, caplog):
+    """Without an action sink nothing resets the count after a drop, so it climbs across passes (1, 2), a real
+    proposal resets it, and the next drop counts from 1 again. Logged on the agent loop's own logger."""
+    caplog.set_level(logging.INFO, logger="maxim.runtime.agent_loop")
+    fallback = {"reasoning": "llm_fallback"}
+    script = {0: _proposal(**fallback), 2: _proposal(**fallback), 3: _proposal(), 4: _proposal(**fallback)}
+    obs = _run(monkeypatch, tmp_path, script, steps=6, sink=False)
+    skips = [r for r in caplog.records if r.getMessage().startswith("Sim mode: skipping fallback proposal")]
+    assert [r.getMessage() for r in skips] == [
+        f"Sim mode: skipping fallback proposal ({n} consecutive)" for n in (1, 2, 1)
+    ]
+    assert {r.name for r in skips} == {"maxim.runtime.agent_loop"}
+    assert obs.executed == [{"n": 1}]
+
+
+def test_any_proposal_resets_the_worker_transport_streak(monkeypatch, tmp_path):
+    """A proposal proves the worker answered, so §2 resets the transport-failure streak even for a proposal it
+    then drops; with nothing returned, the streak stands."""
+    obs = _run(monkeypatch, tmp_path, {}, steps=2, transport_streak=2)
+    assert obs.ctrl.planning_transport_failure_streak == 2
+    obs = _run(monkeypatch, tmp_path / "dropped", {0: _proposal(age_s=100.0)}, steps=2, transport_streak=2)
+    assert obs.ctrl.planning_transport_failure_streak == 0
