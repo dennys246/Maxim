@@ -689,11 +689,10 @@ class LoopController:
         """Process user input when a plan proposal is awaiting approval.
 
         Returns True when the input answered the plan (the caller drops it, as the next turn it is not, #1185).
-        A modification returns False: the plan is dropped and the text reaches the LLM as the person's turn, with
-        the dropped plan in ``state.data["pending_modification"]`` (the shape ``handle_confirmation`` writes and the
-        §6 submit reads). It is not consumed the way the confirmation path consumes one: nothing then wakes the
-        loop or triggers the submit for a ``pending_modification`` alone (#1185 delta round, reported). A
-        rejection is booked through ``book_refusal``
+        A modification is consumed too, as on the confirmation path: the plan is dropped and the text reaches the
+        LLM once, as ``state.data["pending_modification"]`` (the shape ``handle_confirmation`` writes), which
+        ``settle_pending_modification`` wakes the loop for and the §6 submit reads (or, in a mode with no LLM
+        submit, reports and clears). A rejection is booked through ``book_refusal``
         (``LoopRun.book_refusal``, the run's recorder), so it is required.
 
         An approval executes the plan exactly once, here (#1185 Surface, owner decision 2026-11-21), through
@@ -775,7 +774,8 @@ class LoopController:
                 "timestamp": time.time(),
             }
             self.pending_plan_proposal = None
-            return False  # the text is the person's next turn; ``pending_modification`` carries the dropped plan
+            self.clear_pending_user_input()
+            return True  # consumed: the LLM reads it once, as ``pending_modification`` (settle_pending_modification)
 
         else:  # unknown: the plan stays pending, the reply is consumed, and the question is asked again
             tool = (self.pending_plan_proposal.action or {}).get("tool_name") or "unknown"
@@ -810,6 +810,33 @@ class LoopController:
                 display.set_urgent(True)
         except Exception:
             log_swallowed_exception()  # a display that cannot show the prompt must not stop the loop (#1134)
+
+    def settle_pending_modification(self, *, llm_reads_it: bool) -> bool:
+        """A change the person asked for at a confirmation or plan prompt (``state.data["pending_modification"]``,
+        #1185): True when it should wake the loop.
+
+        Only the §6 LLM submit reads it (once: it pops it into the request, beside the original action, the shape
+        ``prompt_builder.build_modification_section`` renders). Where that submit runs (``llm_reads_it``: an LLM
+        worker, not substrate-primary) it wakes the loop until then. Anywhere else nothing would ever read it, so it
+        must not idle-wake the loop forever: the person is told plainly that this mode cannot apply a change, and it
+        is cleared."""
+        mod = self.state.data.get("pending_modification")
+        if not mod:
+            return False
+        if llm_reads_it:
+            return True
+        from maxim.simulation.sim_logger import display_status
+
+        self.state.data.pop("pending_modification", None)
+        tool = str(mod.get("original_tool_name") or "unknown")
+        log_agentic(
+            "agent_loop",
+            "modification_unsupported",
+            {"tool": tool, "modification": str(mod.get("user_modification") or "")[:100]},
+            level="WARNING",
+        )
+        display_status(f"This mode can't apply a change to the proposed action ({tool}); the action was not run.")
+        return False
 
     # ── Phase: Store user input in state and memory ──────────────────────
 

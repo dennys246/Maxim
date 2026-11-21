@@ -44,6 +44,7 @@ from maxim.runtime.loop_controller import (
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import (
+    context_addresses_the_llm,
     perceive,
     percept_enrichment_context,
     percept_text,
@@ -2669,19 +2670,8 @@ def _run_agentic_loop_body(
                                         # Mark voice inputs without wake word as processed
                                         processed_cli_inputs.append(cli_input)
 
-                        # Check for speech with maxim keyword
-                        if context.detected_speech:
-                            for speech in context.detected_speech:
-                                if speech and "maxim" in speech.lower():
-                                    has_meaningful_input = True
-                                    break
-
-                        # Check for maxim keyword in current percept
-                        if context.current_percept and context.current_percept.has_maxim_keyword:
-                            has_meaningful_input = True
-
-                        # Check for hard override commands
-                        if context.current_percept and context.current_percept.hard_override:
+                        # Speech or a percept naming the agent, a hard override, or a requested change (#1185)
+                        if context_addresses_the_llm(context, state):
                             has_meaningful_input = True
 
                         # Check for pending action followup (tools that need LLM processing)

@@ -17,8 +17,11 @@ Owner decisions (2026-10-08, and 2026-10-09 after the review):
   execution: the critical safety constraints and the pause (``approval_blocker``, the non-level half of
   ``can_execute_action``) and the supervision policy's hard denials (``SupervisionPolicy.hard_deny``: forbidden
   prefixes, categories and tools; owner decision S7). A blocked entry is refused (``blocked``) and not executed.
-  The policy's "needs approval" checks (the ``allowed_tools`` list, confidence, ``requires_confirmation``, the
-  sandbox/CWD rules) are what the approval satisfies (owner decision 2026-10-09). **The pause check is narrow:**
+  Then ``AutonomyController.approved_plan_denial`` (#1185 owner decision A, 2026-11-21, which replaced the
+  2026-10-09 rule that an approval satisfied every "needs approval" check): the approval satisfies only the level
+  and ``requires_confirmation``; the ``allowed_tools`` list, confidence and the sandbox/CWD rules still apply, and
+  an entry they refuse is refused (``not_permitted``). The same step serves a plan approved at the plan-approval
+  prompt (``execute_approved_plan``). **The pause check is narrow:**
   while the controller is paused the loop's gate idles and this drain does not run at all, so the check catches
   only a pause landing after this tick's gate (later in the tick, or during the drain). Approved entries do not
   expire, and a later ``resume()`` would run them; that is #1185's.
@@ -188,11 +191,10 @@ def execute_approved_plan(
     """Execute an approved plan once (#1185 Surface, owner decisions 2026-11-21): a person's "yes" at the
     plan-approval prompt, or the sim response policy's.
 
-    The drain's per-entry step (``_drain_one``: ``approved_action_blocker``, then one
-    ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in), after one more
-    check (decision A): the approval lifts the PLANNING level gate only, so ``approved_plan_denial`` (the
-    supervision policy's ``allowed_tools``, confidence and sandbox/CWD rules) may still refuse it. A refused plan is
-    refused typed (``blocked`` / ``not_permitted``) and booked as a machine refusal (no NAc). ``None`` when refused.
+    The drain's per-entry step (``_drain_one``: ``approved_action_blocker``, then ``approved_plan_denial``, then
+    one ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in). A refused plan
+    is refused typed (``blocked`` / ``not_permitted``) and booked as a machine refusal (no NAc). ``None`` when
+    refused.
     """
     proposal = _plan_record(plan, status="approved", approved_by=approved_by)
     refuser = _Refuser(
@@ -202,12 +204,6 @@ def execute_approved_plan(
         state=state,
         sim=sim,
     )
-    action = plan.action
-    if action and autonomy_controller.approved_action_blocker(action) is None:
-        denial = autonomy_controller.approved_plan_denial(action, confidence=plan.confidence)
-        if denial is not None:
-            refuser.refuse(proposal, reason=NOT_PERMITTED, detail=denial)
-            return None
     return _drain_one(
         proposal,
         autonomy_controller=autonomy_controller,
@@ -265,7 +261,13 @@ def _drain_one(
     observation: Any,
     refuser: _Refuser,
 ) -> ExecutionOutcome | None:
-    """One drained entry: refuse it (typed) or execute it. ``None`` when it was refused."""
+    """One approved entry, drained or approved at the plan prompt: refuse it (typed) or execute it. ``None`` when it
+    was refused.
+
+    One rule for every human approval (#1185, owner decision A, extended to the drain 2026-11-21): the approval
+    lifts the PLANNING level gate only. ``approved_action_blocker`` (the pause, the critical safety constraints, the
+    policy's hard denials) refuses ``blocked``; ``approved_plan_denial`` (the policy's ``allowed_tools``,
+    confidence and sandbox/CWD rules, the confirmation satisfied) refuses ``not_permitted``."""
     action = proposal.action
     if not action:
         refuser.refuse(proposal, reason=NO_ACTION, detail="the approved proposal carries no action")
@@ -273,6 +275,10 @@ def _drain_one(
     blocker = autonomy_controller.approved_action_blocker(action)
     if blocker is not None:
         refuser.refuse(proposal, reason=BLOCKED, detail=blocker)
+        return None
+    denial = autonomy_controller.approved_plan_denial(action, confidence=proposal.confidence)
+    if denial is not None:
+        refuser.refuse(proposal, reason=NOT_PERMITTED, detail=denial)
         return None
     return execute_and_learn(
         action=action,

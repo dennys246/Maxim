@@ -192,6 +192,25 @@ def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
     return UserInput(transcript, hard_override, cli_input or None, is_agentic_voice_input, text, own_capture_id)
 
 
+def context_addresses_the_llm(context: Any, state: Any) -> bool:
+    """Whether the tick's context gives the LLM something to answer, beyond new CLI input and a follow-up (moved out
+    of ``_run_agentic_loop_body``'s §6 meaningful-input checks, rule T for #1185).
+
+    - Check for speech with maxim keyword: any ``detected_speech`` naming "maxim".
+    - Check for maxim keyword in current percept (``has_maxim_keyword``).
+    - Check for hard override commands (``hard_override``).
+    - A change the person asked for at a confirmation or plan prompt (``state.data["pending_modification"]``,
+      #1185): it was consumed as the answer, not sent as a turn, so it must trigger the submit that reads it.
+    """
+    for speech in context.detected_speech or ():
+        if speech and "maxim" in speech.lower():
+            return True
+    percept = context.current_percept
+    if percept and (percept.has_maxim_keyword or percept.hard_override):
+        return True
+    return bool(state.data.get("pending_modification"))
+
+
 def percept_enrichment_context(state: Any, imagination_results: Any, user_input: UserInput) -> Any:
     """§1.2's ``EnrichmentContext``: the goal, the entity refs ImaginationTrigger resolved this tick, the turn's words
     and the record they became."""

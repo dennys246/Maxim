@@ -293,9 +293,10 @@ class SupervisionPolicy:
     def hard_deny(self, action: dict[str, Any]) -> str | None:
         """The policy's HARD denials, or ``None`` (#1085, owner decisions S7 and 2026-10-09): the forbidden
         prefixes, the forbidden categories and the forbidden tools. An approval does not lift these (it lifts only
-        the level), so a drained PLANNING approval is checked against them; ``can_execute`` calls this first. Its
-        other checks (the ``allowed_tools`` list, confidence, ``requires_confirmation``, the sandbox/CWD write and
-        execute rules) mean "needs approval", which an approval satisfies."""
+        the level), so a drained PLANNING approval is checked against them; ``can_execute`` calls this first. Of
+        its other checks an approval satisfies only ``requires_confirmation``; the ``allowed_tools`` list,
+        confidence and the sandbox/CWD write and execute rules still apply to it (#1185 owner decision A,
+        ``AutonomyController.approved_plan_denial``)."""
         tool_name = str(action.get("tool_name", "") or "")
 
         # Check forbidden prefixes
@@ -686,14 +687,14 @@ class AutonomyController:
 
         Approval lifts only the level: the pause and the critical safety constraints (``approval_blocker``) and the
         supervision policy's hard denials (``SupervisionPolicy.hard_deny``: forbidden prefixes, categories and
-        tools) still refuse. The drain (``loop_planning.drain_approved``) checks this; ``can_execute_action`` is
-        untouched by it.
+        tools) still refuse. Every approved entry (the drain's and the plan prompt's, ``loop_planning._drain_one``)
+        checks this, then ``approved_plan_denial``; ``can_execute_action`` is untouched by it.
         """
         return self.approval_blocker(action) or self.supervision_policy.hard_deny(action)
 
     def approved_plan_denial(self, action: dict[str, Any], *, confidence: float | None) -> str | None:
-        """Why a plan a person APPROVED at the plan-approval prompt may still not run, beyond
-        ``approved_action_blocker``, or ``None`` (#1185, owner decision A, 2026-11-21).
+        """Why an action a person APPROVED (a drained PLANNING entry, or a plan approved at the plan-approval prompt)
+        may still not run, beyond ``approved_action_blocker``, or ``None`` (#1185, owner decision A, 2026-11-21).
 
         The approval lifts the PLANNING level gate only, and counts as the SUPERVISED confirmation (no second
         prompt). So at PLANNING and SUPERVISED the supervision policy's other checks still apply (the

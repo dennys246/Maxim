@@ -204,18 +204,26 @@ def test_an_approved_blocked_action_is_refused_typed_and_not_executed(monkeypatc
 
 
 # Red on main (#1085): §5 hand-rolls the dispatch -- an approved tool outside allowed_tools runs without parity
-def test_an_approved_tool_outside_allowed_tools_executes_with_parity(monkeypatch, tmp_path):
-    """Owner decision 2026-10-09: ``allowed_tools`` is a "needs approval" check, not a hard denial, so an approved
-    tool outside a non-empty list RUNS, and learns as it would autonomously."""
-    auto = run_once(monkeypatch, tmp_path / "auto", params={"x": 1})
-    monkeypatch.undo()
-    approved = run_once(
-        monkeypatch, tmp_path / "approved", params={"x": 1}, level="planning", policy={"allowed_tools": {"other"}}
-    )
-    assert [e["_tool"] for e in approved.executed] == [TOOL]
-    assert _refusals(approved) == []
-    assert [credit_view(kw, approved) for kw in approved.outcomes] == [credit_view(kw, auto) for kw in auto.outcomes]
-    assert approved.plan_outcomes == auto.plan_outcomes
+@pytest.mark.parametrize(
+    ("policy", "tool", "params"),
+    [
+        ({"allowed_tools": {"other"}}, TOOL, {"x": 1}),
+        ({"min_confidence_autonomous": 0.95}, TOOL, {"x": 1}),
+        ({}, "write_file", {"path": "/definitely/outside/the/workspace.txt", "content": "x"}),
+    ],
+    ids=["allowed_tools", "confidence", "cwd_write"],
+)
+def test_a_drained_approval_the_policy_refuses_is_not_permitted(monkeypatch, tmp_path, policy, tool, params):
+    """#1185 owner decision A, extended to the drain (2026-11-21), replacing the 2026-10-09 rule that an approval
+    satisfied every "needs approval" check: an approval lifts the PLANNING level gate only, so the policy's
+    ``allowed_tools`` list, confidence threshold and sandbox/CWD rules still refuse a drained entry, typed
+    ``not_permitted``, booked as a machine refusal (no NAc)."""
+    obs = run_once(monkeypatch, tmp_path, tool=tool, params=params, level="planning", policy=policy or None)
+    assert obs.executed == []
+    assert [d["reason"] for d in _refusals(obs)] == ["not_permitted"]
+    assert obs.nac_observations == []
+    [booked] = [kw for kw in obs.all_outcomes if kw["tool_name"] == tool]
+    assert booked["success"] is False and booked.get("nac") is None
 
 
 # ── (d) a machine refusal books no NAc ───────────────────────────────────────────────────────────────
@@ -266,7 +274,13 @@ def test_an_approved_write_file_is_not_retried_with_overwrite(monkeypatch, tmp_p
     """A GUARD, green on ``main`` (§5 hand-rolls ONE ``executor.execute``): routing §5 through
     ``execute_and_learn`` must not bring the autonomous path's overwrite retry with it."""
     obs = run_once(
-        monkeypatch, tmp_path, tool="write_file", params=dict(_WRITE), fail_unless_overwrite=True, level="planning"
+        monkeypatch,
+        tmp_path,
+        tool="write_file",
+        params=dict(_WRITE),
+        fail_unless_overwrite=True,
+        level="planning",
+        policy={"cwd_write_requires_approval": False},  # #1185 decision A: else the CWD-write rule refuses it
     )
     assert obs.executed == [{"_tool": "write_file", **_WRITE}]
     assert [(kw["success"], kw["error"]) for kw in obs.outcomes] == [(False, "File already exists: a.txt")]

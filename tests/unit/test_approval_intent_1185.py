@@ -256,7 +256,7 @@ def test_a_plan_modification_reaches_the_next_submit() -> None:
     """The modify branch wrote ``plan_modification_context``, which nothing read. It now writes
     ``pending_modification``, the shape ``handle_confirmation`` writes and the §6 submit pops into the prompt."""
     ctrl = _plan_controller()
-    assert _answer(ctrl, "write the file to the other folder") is False  # the person's next turn
+    assert _answer(ctrl, "write the file to the other folder") is True  # consumed: the LLM reads it once
     mod = ctrl.state.data["pending_modification"]
     assert mod["user_modification"] == "write the file to the other folder"
     assert mod["original_tool_name"] == "bash"

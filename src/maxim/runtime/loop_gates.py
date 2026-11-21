@@ -164,8 +164,13 @@ def pre_tick_gate(
     #   - Pending next_actions chain (multi-step plan in progress)
     #   - First iteration (startup — run initial cycle once)
     #   - Carried live percept / awaited LLM job / substrate tick due (see _loop_is_idle)
+    # A change the person asked for (#1185): wakes the loop where the LLM submit reads it, else it is told and cleared
+    _has_modification = ctrl.settle_pending_modification(
+        llm_reads_it=llm_worker is not None and aut_mode != "substrate-primary"
+    )
     _has_pending_input = bool(
-        state.data.get("pending_cli_input")
+        _has_modification
+        or state.data.get("pending_cli_input")
         or state.data.get("pending_voice_input")
         or state.data.get("pending_loop_reply")  # loop_perception.LOOP_REPLY_SLOT: the loop's own reply
         or state.data.get("pending_deferred_input")  # loop_perception.DEFERRED_INPUT_SLOT: waited behind that reply

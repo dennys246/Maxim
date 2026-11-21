@@ -35,7 +35,7 @@ def _proposal(pid: str, tool: str | None = "probe", **kw: Any) -> Proposal:
         id=pid,
         action={"tool_name": tool, "params": {}} if tool is not None else None,
         reasoning="r",
-        confidence=0.7,
+        confidence=0.9,  # above the default policy's 0.8: an approval no longer lifts the threshold (#1185 A)
         **kw,
     )
 
@@ -166,7 +166,7 @@ def test_a_proposal_with_no_source_is_its_own_record():
 
     _drain(ctrl, _eal, [])
     [kw] = calls
-    assert kw["proposal"] is p and kw["human_involved"] is True and kw["confidence"] == 0.7
+    assert kw["proposal"] is p and kw["human_involved"] is True and kw["confidence"] == 0.9
     assert kw["observation"] == {"tick": 1}
 
 
