@@ -48,6 +48,12 @@ SCORE_SCHEME = "weighted-per-scenario-v1"
 logger = logging.getLogger(__name__)
 
 
+#: ``BenchmarkRunner.write_paper``'s causes beside ``LocalModelUnavailable.CAUSES``: the LLM is switched off in
+#: llm.json, or the router returned no text for any paper section (a failed call returns "", #1680).
+PAPER_LLM_DISABLED = "llm_disabled"
+PAPER_NO_TEXT = "no_text"
+
+
 # ── Data classes ─────────────────────────────────────────────────────
 
 
@@ -933,15 +939,17 @@ class BenchmarkRunner:
 
     # ── Phase 7: Research protocol integration ───────────────────
 
-    def write_paper(self, report: BenchmarkReport, output_dir: Path) -> Path | None:
+    def write_paper(self, report: BenchmarkReport, output_dir: Path) -> tuple[Path | None, str | None]:
         """Generate a comparative research paper from benchmark results.
 
         Uses the existing WriterAgent pipeline from the research protocol.
         Converts benchmark metrics into experiment log entries.
 
-        Returns the paper path, or None when no LLM is usable (no router, or every section's LLM call failed).
-        Any other failure raises: a broad except here once turned a constructor ``TypeError`` into a None that
-        the CLI reported as "LLM unavailable", so the paper step never worked and nothing said why (#1680).
+        Returns ``(paper_path, None)``, or ``(None, cause)`` when no LLM is usable, the ``consented_router`` idiom:
+        ``cause`` is :data:`PAPER_LLM_DISABLED`, one of ``LocalModelUnavailable.CAUSES``, or :data:`PAPER_NO_TEXT`
+        (the router returned no text for any section). Any other failure raises: a broad except here once turned a
+        constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so the paper step never worked
+        and nothing said why (#1680).
         """
         from maxim.mesh.bus import LocalMessageBus
         from maxim.models.download import consented_router
@@ -949,8 +957,19 @@ class BenchmarkRunner:
         from maxim.simulation.research_agents import WriterAgent
         from maxim.simulation.research_tools import ExperimentLog
 
-        exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")
+        # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
+        # (#1396 bullet 2): no paper rather than a router that refuses every call. Built first, so a run with no
+        # usable LLM leaves no experiment log behind.
+        cfg = load_llm_config()
+        if not cfg.enabled:
+            logger.warning("No LLM available for paper generation: the LLM is disabled in llm.json")
+            return None, PAPER_LLM_DISABLED
+        router, cause = consented_router(cfg, logger=logger)
+        if router is None:
+            logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
+            return None, cause
 
+        exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")
         for model, mr in report.results.items():
             metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
             exp_log.record(
@@ -961,17 +980,6 @@ class BenchmarkRunner:
                 tags=["benchmark", model],
                 metrics=mr.metrics,
             )
-
-        # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
-        # (#1396 bullet 2): no paper rather than a router that refuses every call.
-        try:
-            router, cause = consented_router(load_llm_config(), logger=logger)
-        except Exception as e:
-            logger.warning("No LLM available for paper generation: %s", e)
-            return None
-        if router is None:
-            logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
-            return None
 
         writer = WriterAgent(
             llm=router,
@@ -987,13 +995,11 @@ class BenchmarkRunner:
             f"Include methodology, per-model results, and ranking analysis."
         )
 
-        draft = writer.run(goal)  # saves the draft to output_dir / "paper.md"
-        if not draft.sections:
-            logger.warning("No paper generated: the LLM returned no text for any section (see the Writer warnings)")
-            return None
-        paper_path = output_dir / "paper.md"
-        logger.info("Benchmark paper generated: %s", paper_path)
-        return paper_path
+        draft = writer.run(goal)  # saves output_dir / "paper.md" when any section came back
+        if draft.output_path is None:
+            return None, PAPER_NO_TEXT
+        logger.info("Benchmark paper generated: %s", draft.output_path)
+        return draft.output_path, None
 
     # ── Phase 9: Tier 3 embodiment hooks ─────────────────────────
 

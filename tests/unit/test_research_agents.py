@@ -178,8 +178,41 @@ class TestWriterAgent:
     def test_run_without_llm(self, experiment_log, bus, session_dir):
         writer = WriterAgent(llm=None, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
         draft = writer.run("test")
-        # Sections should be empty strings (no LLM to generate)
-        assert all(s == "" for s in draft.sections.values()) or len(draft.sections) == 0
+        # No LLM, no section: no paper saved, announced or sent to the reviewer (#1680)
+        assert draft.sections == {} and draft.output_path is None
+        assert not (session_dir / "paper.md").exists()
+        assert bus.get_history(msg_type=MeshMessageType.PAPER_DRAFT) == []
+
+    def test_no_text_from_any_section_is_no_paper(self, experiment_log, bus, session_dir):
+        """The real router returns "" on a failed dispatch; a draft with no section must not read as the paper."""
+        llm = MagicMock()
+        llm._complete_text.return_value = ("", None)
+        writer = WriterAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+        draft = writer.run("test")
+        assert draft.output_path is None and not (session_dir / "paper.md").exists()
+        assert bus.get_history(msg_type=MeshMessageType.PAPER_DRAFT) == []
+        writer.revise(ReviewResult(verdict="revise", section_feedback={"methods": "more"}))
+        assert writer.draft.output_path is None and not (session_dir / "paper.md").exists()
+
+    def test_a_partial_draft_is_saved_and_names_its_missing_sections(self, experiment_log, bus, session_dir, caplog):
+        llm = MagicMock()
+        llm._complete_text.side_effect = [("Methods text.", None)] + [("", None)] * (len(PAPER_SECTIONS) - 1)
+        writer = WriterAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+        with caplog.at_level("WARNING", logger="maxim.simulation.research_agents"):
+            draft = writer.run("test")
+        assert draft.output_path == session_dir / "paper.md" and draft.output_path.exists()
+        assert "sections missing" in caplog.text and "'results'" in caplog.text
+
+    def test_a_backend_error_is_no_section_but_a_code_defect_raises(self, experiment_log, bus, session_dir):
+        from maxim.models.language.types import BackendError
+
+        llm = MagicMock()
+        llm._complete_text.side_effect = BackendError("server 500")
+        writer = WriterAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+        assert writer.run("test").output_path is None
+        llm._complete_text.side_effect = TypeError("unexpected keyword argument")
+        with pytest.raises(TypeError):
+            writer.run("test")
 
     def test_revise_increments_revision(self, mock_llm, experiment_log, bus, session_dir):
         writer = WriterAgent(llm=mock_llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)

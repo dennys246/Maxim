@@ -463,7 +463,8 @@ def test_the_paper_writer_takes_one_plain_router_and_never_asks(gate, fallback, 
     from maxim.simulation.benchmark import BenchmarkRunner
 
     report = SimpleNamespace(results={}, suite="s", runs_per_model=1, models=[])
-    assert BenchmarkRunner.write_paper(object.__new__(BenchmarkRunner), report, tmp_path) is None
+    paper, cause = BenchmarkRunner.write_paper(object.__new__(BenchmarkRunner), report, tmp_path)
+    assert paper is None and cause is not None
     assert gate.calls == [(P, False)]
     assert fallback["primary_calls"] == 0
 

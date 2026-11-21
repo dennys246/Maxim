@@ -1239,9 +1239,10 @@ def test_aggregation_records_how_many_thresholds_were_checked(tmp_path, scoring,
 
 
 class _StubProseLLM:
-    """Stands in for the LLM only: the WriterAgent's one call is ``_complete_text``."""
+    """Stands in for the LLM only: the WriterAgent's one call is ``_complete_text``. ``text`` is what each call
+    returns ("" is what the real router returns on a failed dispatch), or an exception it raises."""
 
-    def __init__(self, text: str = "Stub prose.") -> None:
+    def __init__(self, text="Stub prose.") -> None:
         self.text = text
         self.calls = 0
 
@@ -1249,7 +1250,7 @@ class _StubProseLLM:
         self.calls += 1
         if isinstance(self.text, BaseException):
             raise self.text
-        return self.text, {}
+        return self.text, None
 
 
 def _paper_report() -> BenchmarkReport:
@@ -1258,17 +1259,20 @@ def _paper_report() -> BenchmarkReport:
 
 
 class TestWritePaper:
-    """The real ``write_paper`` path (real ExperimentLog, WriterAgent, PaperDraft), with only the router stubbed."""
+    """The real ``write_paper`` path (real config load, ExperimentLog, WriterAgent, PaperDraft), with only the
+    router stubbed."""
 
-    def _runner(self, monkeypatch, llm):
-        monkeypatch.setattr("maxim.models.download.consented_router", lambda cfg, logger=None: (llm, None))
+    def _runner(self, monkeypatch, llm, cause=None):
+        monkeypatch.setattr(
+            "maxim.models.download.consented_router", lambda cfg, logger=None: (llm, None if llm else cause)
+        )
         return object.__new__(BenchmarkRunner)
 
     def test_writes_a_paper_from_the_benchmark_results(self, monkeypatch, tmp_path):
         llm = _StubProseLLM()
-        path = self._runner(monkeypatch, llm).write_paper(_paper_report(), tmp_path)
+        path, cause = self._runner(monkeypatch, llm).write_paper(_paper_report(), tmp_path)
 
-        assert path == tmp_path / "paper.md"
+        assert (path, cause) == (tmp_path / "paper.md", None)
         assert "Stub prose." in path.read_text(encoding="utf-8")
         assert llm.calls > 0
         # The benchmark results reached the experiment log the writer read, under the benchmark's nickname.
@@ -1276,7 +1280,7 @@ class TestWritePaper:
         assert "benchmark.hippo.exp_001" in entries and "actions=3.00" in entries
 
     def test_a_defect_in_the_paper_path_raises_instead_of_reading_as_no_llm(self, monkeypatch, tmp_path):
-        """#1680's TypeError was caught by a broad except and returned None, which the CLI reports as "LLM
+        """#1680's TypeError was caught by a broad except and returned None, which the CLI reported as "LLM
         unavailable". None means only that no LLM is usable; anything else must surface."""
 
         def _broken(*a, **k):
@@ -1286,8 +1290,67 @@ class TestWritePaper:
         with pytest.raises(TypeError):
             self._runner(monkeypatch, _StubProseLLM()).write_paper(_paper_report(), tmp_path)
 
-    def test_no_section_written_is_no_paper(self, monkeypatch, tmp_path):
-        """Every section's LLM call failing (WriterAgent swallows each one) must not report an empty paper as saved."""
-        llm = _StubProseLLM(RuntimeError("server 500"))
-        assert self._runner(monkeypatch, llm).write_paper(_paper_report(), tmp_path) is None
+    def test_a_defect_building_the_router_raises(self, monkeypatch, tmp_path):
+        def _broken(*a, **k):
+            raise TypeError("LLMRouter.__init__() got an unexpected keyword argument")
+
+        monkeypatch.setattr("maxim.models.download.consented_router", _broken)
+        with pytest.raises(TypeError):
+            object.__new__(BenchmarkRunner).write_paper(_paper_report(), tmp_path)
+
+    def test_a_defect_in_the_llm_call_raises(self, monkeypatch, tmp_path):
+        with pytest.raises(AttributeError):
+            self._runner(monkeypatch, _StubProseLLM(AttributeError("x"))).write_paper(_paper_report(), tmp_path)
+
+    def test_an_unusable_model_returns_its_cause_and_leaves_nothing_behind(self, monkeypatch, tmp_path):
+        from maxim.models.language.types import LocalModelUnavailable
+
+        runner = self._runner(monkeypatch, None, LocalModelUnavailable.NOT_DOWNLOADED)
+        assert runner.write_paper(_paper_report(), tmp_path) == (None, LocalModelUnavailable.NOT_DOWNLOADED)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_disabled_llm_is_no_paper_without_building_a_router(self, monkeypatch, tmp_path):
+        from types import SimpleNamespace
+
+        from maxim.simulation.benchmark import PAPER_LLM_DISABLED
+
+        monkeypatch.setattr("maxim.models.language.router.load_llm_config", lambda: SimpleNamespace(enabled=False))
+        runner = self._runner(monkeypatch, _StubProseLLM())
+        monkeypatch.setattr("maxim.models.download.consented_router", lambda *a, **k: pytest.fail("router built"))
+        assert runner.write_paper(_paper_report(), tmp_path) == (None, PAPER_LLM_DISABLED)
+        assert list(tmp_path.iterdir()) == []
+
+    @pytest.mark.parametrize("text", ["", "backend"], ids=["empty-text", "backend-error"])
+    def test_no_section_written_is_no_paper(self, monkeypatch, tmp_path, text):
+        """Every section's call failing (the router returns "" or raises a BackendError) is no paper, and no
+        empty paper.md on disk for a caller to report."""
+        from maxim.models.language.types import BackendError
+        from maxim.simulation.benchmark import PAPER_NO_TEXT
+
+        llm = _StubProseLLM(BackendError("server 500") if text == "backend" else "")
+        assert self._runner(monkeypatch, llm).write_paper(_paper_report(), tmp_path) == (None, PAPER_NO_TEXT)
         assert llm.calls > 0
+        assert not (tmp_path / "paper.md").exists()
+
+
+class TestWriteBenchmarkPaperCli:
+    """``cli.py::_write_benchmark_paper`` prints the cause ``write_paper`` returns, not one generic line."""
+
+    @pytest.mark.parametrize(
+        ("result", "expected"),
+        [
+            (("PATH", None), "Paper saved: PATH"),
+            ((None, "llm_disabled"), "LLM is disabled"),
+            ((None, "no_text"), "returned no text"),
+            ((None, "model_path_missing"), "model_path does not exist"),
+            ((None, "not_downloaded"), "maxim --list-models"),
+        ],
+    )
+    def test_prints_the_cause(self, capsys, result, expected):
+        from types import SimpleNamespace
+
+        from maxim.cli import _write_benchmark_paper
+
+        _write_benchmark_paper(SimpleNamespace(write_paper=lambda r, d: result), None, None)
+        out = capsys.readouterr().out
+        assert expected in out and "LLM unavailable" not in out

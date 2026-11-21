@@ -16,7 +16,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1195
+      "lines": 1185
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -201,7 +201,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1895
+      "lines": 1877
     },
     {
       "file": "src/maxim/simulation/report.py",

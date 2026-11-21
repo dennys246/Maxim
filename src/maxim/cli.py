@@ -192,6 +192,23 @@ def _print_model_unavailable(cause: str | None) -> None:
         print("  Model not available. Run: maxim --list-models to see available models.")
 
 
+def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
+    """``--write-paper``: the benchmark's comparative paper, or the line saying why there is none (#1680)."""
+    from maxim.simulation.benchmark import PAPER_LLM_DISABLED, PAPER_NO_TEXT
+
+    print("  Generating comparative paper...")
+    paper_path, cause = runner.write_paper(report, report_dir)
+    if paper_path is not None:
+        print(f"  Paper saved: {paper_path}\n")
+    elif cause == PAPER_LLM_DISABLED:
+        print("  No paper: the LLM is disabled in ~/.maxim/config/llm.json.\n")
+    elif cause == PAPER_NO_TEXT:
+        print("  No paper: the LLM returned no text for any section (see the Writer warnings in the log).\n")
+    else:
+        print("  No paper: the LLM is not usable.")
+        _print_model_unavailable(cause)
+
+
 def _cli_llm_profile(args: Any) -> str | None:
     """The model ``--llm`` named (``args.language_model``, already normalized by ``cli_utils``), or None without it.
 
@@ -1969,12 +1986,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         print(f"\n  Report saved: {report_dir}\n")
 
         if getattr(args, "write_paper", False):
-            print("  Generating comparative paper...")
-            paper_path = runner.write_paper(report, report_dir)
-            if paper_path:
-                print(f"  Paper saved: {paper_path}\n")
-            else:
-                print("  Paper generation failed (LLM unavailable)\n")
+            _write_benchmark_paper(runner, report, report_dir)
 
         all_passed = all(mr.passed for mr in report.results.values())
         sys.exit(0 if all_passed else 1)
@@ -2269,12 +2281,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
             # Optional: generate comparative paper
             if getattr(args, "write_paper", False):
-                print("  Generating comparative paper...")
-                paper_path = runner.write_paper(report, report_dir)
-                if paper_path:
-                    print(f"  Paper saved: {paper_path}\n")
-                else:
-                    print("  Paper generation failed (LLM unavailable)\n")
+                _write_benchmark_paper(runner, report, report_dir)
 
             # Exit with 0 if all models passed, 1 if any failed
             all_passed = all(mr.passed for mr in report.results.values())
