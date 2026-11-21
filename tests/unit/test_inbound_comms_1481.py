@@ -89,6 +89,7 @@ def _run_inbound_loop(
     bio_enrichment_pipeline: Any = None,
     autonomy: Any = None,
     observe_input: bool = False,
+    operator_slot: str = "pending_cli_input",
 ) -> tuple[Any, list[dict[str, Any]], list[Any]]:
     """The real loop, driven the way production drives it: an idle loop never calls ``observe``; inbound comms arrive
     on the bus from another thread (the webhook's), and the operator's input arrives in ``state.data
@@ -160,7 +161,7 @@ def _run_inbound_loop(
         held["submits_before_cli"] = len(submits)
         if observe_input:  # the tick's observation carries the words as a transcript (what deliberation reads)
             held["obs"] = {"transcript": CLI_TEXT}
-        state.data["pending_cli_input"] = CLI_TEXT
+        state.data[operator_slot] = CLI_TEXT  # "pending_voice_input": the robot's room-mic channel (#1519)
         deadline = time.monotonic() + until_s
         while time.monotonic() < deadline:
             if llm.prompts and (not held["inbox"].held() or llm.answer is None):

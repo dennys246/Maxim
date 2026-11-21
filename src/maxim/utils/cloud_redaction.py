@@ -130,35 +130,35 @@ _HEADER_PATTERN = re.compile(r"^=== .* ===$")
 # left every framed body unclosed (#1519). Frame bodies have their own marker lookalikes defanged, so only a real
 # closer reads this way.
 _PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/(?!TOOL_OUTPUT id=[0-9a-f]+>>))[^ \n\t\r]+")
-# A WHOLE opener, as ``frame_tool_output`` writes it: a tail-cut one (no ``>>``) is not a frame (#1519).
-_FRAME_OPENER = re.compile(r"<<TOOL_OUTPUT id=([0-9a-f]+) tool=[\w-]+ source=[^\n]*?>>")
 _SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
 
 
+def _is_section_header(line: str) -> bool:
+    stripped = line.strip()
+    return bool(_HEADER_PATTERN.match(stripped)) or any(p.match(stripped) for p, _, _, _ in _SECTION_RULES)
+
+
 def _frame_body_lines(lines: list[str]) -> list[bool]:
-    """Which lines sit inside a COMPLETE untrusted-content frame (#1519): after a whole opener, up to and including
-    its own closer, which must come later. Such a line is framed external text, so it is body whatever it says: a
-    framed ``=== Notes ===`` or blank line never ends a PRIVATE section early, and a framed private-shaped header is
-    not itself redacted. Fail-closed: an opener whose closer never comes (a cut) marks nothing, so every header after
-    it is still found and redacted."""
+    """Which lines sit inside a COMPLETE untrusted-content frame (#1519), by the one pairing rule
+    (``content_safety.frame_spans``): the lines after an opener's line, through its own closer's. Such a line is
+    framed external text, so it is body whatever it says: a framed blank line never ends a PRIVATE section early, and
+    a framed private-shaped header is not itself redacted. Fail-closed: an opener whose closer never comes (a cut),
+    one repeated before its closer, and a pair whose span crosses a section header (this filter's own headers too:
+    an opener forged in unframed text with a live id) mark nothing, so every header is still found and redacted."""
+    from maxim.utils.content_safety import frame_spans
+
+    text = "\n".join(lines)
+    starts: list[int] = []
+    offset = 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
     inside = [False] * len(lines)
-    i = 0
-    while i < len(lines):
-        opener = _FRAME_OPENER.search(lines[i])
-        if opener is None:
-            i += 1
-            continue
-        closer = f"<</TOOL_OUTPUT id={opener.group(1)}>>"
-        if closer in lines[i][opener.end() :]:
-            i += 1
-            continue
-        end = next((k for k in range(i + 1, len(lines)) if closer in lines[k]), None)
-        if end is None:
-            i += 1
-            continue
-        for k in range(i + 1, end + 1):
-            inside[k] = True
-        i = end + 1
+    spans, _, _ = frame_spans(text, is_header=_is_section_header)
+    for start, end in spans:
+        for k, line_start in enumerate(starts):
+            if start < line_start <= end:
+                inside[k] = True
     return inside
 
 

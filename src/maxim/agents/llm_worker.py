@@ -1026,6 +1026,7 @@ class LLMWorker:
         recent_outcomes: list[dict[str, Any]] | None = None,
         use_tool_prompting: bool = False,
         triggering_input: str = "",
+        triggering_input_source: str = "",
         conversation_history_text: str = "",
         pending_modification: dict[str, Any] | None = None,
         prefetch_context: str = "",
@@ -1057,6 +1058,7 @@ class LLMWorker:
             recent_outcomes: List of recent action outcomes for learning
             use_tool_prompting: Whether to use full tool-aware prompts
             triggering_input: The user input that triggered this request
+            triggering_input_source: Where it came from ("CLI", "voice"; "" unknown): a voice input is labelled (#1519)
             conversation_history_text: Formatted conversation history for context
         """
         request = LLMRequest(
@@ -1074,6 +1076,7 @@ class LLMWorker:
             recent_outcomes=recent_outcomes or [],
             use_tool_prompting=use_tool_prompting,
             triggering_input=triggering_input,
+            triggering_input_source=triggering_input_source,
             conversation_history_text=conversation_history_text,
             pending_modification=pending_modification,
             prefetch_context=prefetch_context,

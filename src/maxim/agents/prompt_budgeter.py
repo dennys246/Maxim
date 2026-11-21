@@ -438,7 +438,12 @@ def _truncate_manifest(content: str, max_tokens: int, counter: Any) -> str:
         if counter.count_tokens(framed) <= max_tokens:
             return framed
         names.pop()
-    return _truncate_unframed_manifest((head.rstrip("\n") + tail).strip("\n"), max_tokens, counter)
+    rest = (head.rstrip("\n") + tail).strip("\n")
+    from maxim.utils.content_safety import TOOL_OUTPUT_RULE, frame_spans
+
+    if not frame_spans(rest)[0]:  # the frame rule the budgeter stated above the listing has no frame left under it
+        rest = "\n".join(line for line in rest.split("\n") if line != TOOL_OUTPUT_RULE)
+    return _truncate_unframed_manifest(rest, max_tokens, counter)
 
 
 def _truncate_unframed_manifest(content: str, max_tokens: int, counter: Any) -> str:

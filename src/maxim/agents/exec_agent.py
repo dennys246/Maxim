@@ -54,6 +54,23 @@ from maxim.utils.structured_logging import log_structured
 from maxim.memory.text import Provenance, frame_external, stored_percept_text
 
 
+def _voice_command_text(percept: Any) -> str:
+    """The Dormant prompt's "Voice command" line, consistent with the live loop (#1519, owner decision 2026-11-21):
+    a room-mic voice command is LABELLED (heard on the room mic, unverified speaker) and defanged, not framed, so
+    voice still commands; a comms percept's transcript (a phone caller) is framed external like any comms text."""
+    from maxim.utils.content_safety import defang_frame_markers
+
+    text = str(percept.raw_transcript_text or "").strip()
+    if not text:
+        return "(none)"
+    source = percept.source if isinstance(percept.source, str) else ""
+    if source.startswith("comms:"):
+        return stored_percept_text(source, text, limit=2000, keep_lines=True)
+    return (
+        f"[heard on the room microphone: unverified speaker, not typed by the operator] {defang_frame_markers(text)[0]}"
+    )
+
+
 class ExecAgent(Agent):
     """
     Proposes goals based on structured context from MemoryAgent.
@@ -1098,7 +1115,7 @@ class ExecAgent(Agent):
 - Source: {p.source}
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
-- Voice command: {stored_percept_text(p.source, p.raw_transcript_text, limit=2000, keep_lines=True) or "(none)"}
+- Voice command: {_voice_command_text(p)}
 - Message: {stored_percept_text(p.source, p.content, limit=2000, keep_lines=True) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""

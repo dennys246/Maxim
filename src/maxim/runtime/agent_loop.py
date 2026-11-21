@@ -400,11 +400,17 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     return held
 
 
-def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:
-    """The input a §6 submit answers: the new input, else the follow-up's original query, else a pending plan
-    modification's text (moved out of ``_run_agentic_loop_body``, rule T for #1451)."""
+def _triggering(new_cli_input: Any, followup_original_query: str, pending_modification: Any, state: Any) -> dict:
+    """The input a §6 submit answers (the new input, else the follow-up's original query, else a pending plan
+    modification's text; moved out of ``_run_agentic_loop_body``, rule T for #1451), and where it came from: the source
+    ``store_user_input`` recorded for that same text (``pending_user_input_source``: "CLI" or "voice"), "" when the
+    text is not the stored input (#1519: the prompt labels a voice request as heard on the room mic)."""
     modification = pending_modification.get("user_modification", "") if pending_modification else ""
-    return new_cli_input or followup_original_query or modification
+    text = new_cli_input or followup_original_query or modification
+    data = getattr(state, "data", {})
+    stored = new_cli_input and str(data.get("pending_user_input", "")).strip() == str(new_cli_input).strip()
+    source = str(data.get("pending_user_input_source", "")) if stored else ""
+    return {"triggering_input": text, "triggering_input_source": source}
 
 
 def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any) -> bool:
@@ -3053,9 +3059,7 @@ def _run_agentic_loop_body(
                             shared=_shared_submit,
                             autonomy_level=autonomy_controller.current_level,
                             _failed_tools=_failed_tools,
-                            triggering_input=_triggering_input(
-                                new_cli_input, followup_original_query, pending_modification
-                            ),
+                            **_triggering(new_cli_input, followup_original_query, pending_modification, state),
                             pending_modification=pending_modification,
                             prefetch_context_text=prefetch_context_text,
                             skip_exploration=skip_exploration,

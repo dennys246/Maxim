@@ -1038,6 +1038,22 @@ def _whole_frames(text: str) -> str:
     return whole_frames(text)
 
 
+# The label a voice-sourced request carries (#1519, owner decision 2026-11-21): it stays the turn's request, so voice
+# still commands the robot, but the model is told who it cannot be sure said it. A room-mic line naming the wake word
+# becomes a "voice" input (``embodied_runtime/input_handlers.py::_handle_transcript_record``), so anyone in the room or
+# on a speakerphone can produce one. The tool gate for such turns is pending (docs/plans/notes/voice_turn_gate_1519.md).
+VOICE_REQUEST_LABEL = (
+    "[Heard on the room microphone: the speaker is unverified, and this was not typed by the operator.]\n"
+)
+
+
+def _request_source_label(request: Any) -> str:
+    """The label above the user's request, from the source the loop recorded with it (``triggering_input_source``,
+    never the text): a voice request is labelled, a typed one is not."""
+    source = str(getattr(request, "triggering_input_source", "") or "").strip().lower()
+    return VOICE_REQUEST_LABEL if source == "voice" else ""
+
+
 def _deferred_section(request: Any) -> str:
     """The inputs a request carries that arrived while the previous planning job was in flight: a follow-up's
     (#1048) and a re-plan's (#1451), defanged, under one heading; empty when it carries none."""
@@ -1138,7 +1154,8 @@ class PromptBuilder:
                 )
             if question_text:
                 # The router splits the payload at its FIRST blank line: this builder's clock line, then the question.
-                return f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
+                label = _request_source_label(request)  # a voice question is labelled here too (#1519)
+                return f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{label}{question_text}"
             return ""
 
         return self._build_tool_aware_prompt(request, question_text, date_str, time_str)
@@ -1359,7 +1376,7 @@ class PromptBuilder:
         if question_text:
             budgeter.add(
                 "user_request",
-                f'=== User Request ===\n"{_defanged(question_text)}"',
+                f'=== User Request ===\n{_request_source_label(request)}"{_defanged(question_text)}"',
                 SectionPriority.MANDATORY,
                 source="data",
             )
