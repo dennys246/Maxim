@@ -63,13 +63,19 @@ class WMEntry:
     provenance: Provenance = Provenance.EXTERNAL
 
     def prompt_text(self, limit: int = 100) -> str:
-        """This entry as one line a prompt may show ("" when it says nothing), by its provenance (#1519). An outcome
-        shows its tool and status as the agent's own bookkeeping, and its error text and goal framed (tool and goal
-        text can carry outside words). Any other entry shows its ``text``/``content`` (or the string itself) by
-        ``provenance``: the operator's words defanged, outside text framed, the agent's own kept whole-framed."""
+        """This entry as text a prompt may show ("" when it says nothing), by its provenance (#1519), cut to ``limit``.
+        An OUTCOME shows its tool and status as the agent's own bookkeeping, and its error text and goal framed (tool
+        and goal text can carry outside words); only an OUTCOME reads its keys that way, so another entry's
+        ``action`` key is never shown as trusted structure. Any other entry shows its ``text``, ``content`` or a
+        THOUGHT's ``enrichment`` (or the string itself) by ``provenance``: the operator's words defanged, outside
+        text framed, the agent's own cut with no partial frame left."""
         content = self.content
         if isinstance(content, dict):
-            tool = content.get("tool_name") or content.get("action", "")
+            tool = (
+                (content.get("tool_name") or content.get("action", ""))
+                if self.kind is WorkingMemoryKind.OUTCOME
+                else ""
+            )
             if tool:
                 status = "succeeded"
                 if not content.get("success", True):
@@ -79,7 +85,7 @@ class WMEntry:
                     status = f"failed: {error}" if error else "failed"
                 goal = shown_text(str(content.get("goal") or ""), Provenance.EXTERNAL, label="goal", limit=limit)
                 return f"{tool} {status}" + (f" (goal: {goal})" if goal else "")
-            text = content.get("text") or content.get("content") or ""
+            text = content.get("text") or content.get("content") or content.get("enrichment") or ""
             source = content.get("source")
         elif isinstance(content, str):
             text, source = content, None

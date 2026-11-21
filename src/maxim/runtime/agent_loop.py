@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
+from maxim.memory.text import Provenance
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
@@ -89,7 +90,6 @@ logger = logging.getLogger(__name__)
 _WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to failing)\)$")
 
 
-from maxim.memory.text import Provenance
 from maxim.runtime.loop_state import (
     loop_liveness_scope,
     operational_mode,
@@ -693,10 +693,7 @@ def _run_deliberation_cycles(
             from maxim.agents.working_memory import WorkingMemoryKind
 
             thought_entries = working_memory.by_kind({WorkingMemoryKind.THOUGHT}, limit=6)
-            context.working_memory_thoughts = [
-                str(e.content.get("enrichment", ""))[:200] if isinstance(e.content, dict) else str(e.content)[:200]
-                for e in thought_entries
-            ]
+            context.working_memory_thoughts = [e.prompt_text(limit=200) for e in thought_entries]  # #1519
 
         # 5. Re-submit to LLM and wait
         if not submit_fn(context):

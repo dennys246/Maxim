@@ -130,29 +130,46 @@ _HEADER_PATTERN = re.compile(r"^=== .* ===$")
 # left every framed body unclosed (#1519). Frame bodies have their own marker lookalikes defanged, so only a real
 # closer reads this way.
 _PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/(?!TOOL_OUTPUT id=[0-9a-f]+>>))[^ \n\t\r]+")
-_FRAME_OPENER = re.compile(r"<<TOOL_OUTPUT id=([0-9a-f]+) ")
+# A WHOLE opener, as ``frame_tool_output`` writes it: a tail-cut one (no ``>>``) is not a frame (#1519).
+_FRAME_OPENER = re.compile(r"<<TOOL_OUTPUT id=([0-9a-f]+) tool=[\w-]+ source=[^\n]*?>>")
 _SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
 
 
-def _section_end(lines: list[str], i: int, *, bounded: bool) -> int:
-    """The index past a redacted section's body starting at ``i``: the next header (``bounded``) or blank line.
-    A line inside an untrusted-content frame is body whatever it says (#1519): a framed ``=== Notes ===`` or a blank
-    line in a message must not end a PRIVATE section early and send the rest of it."""
-    open_id: str | None = None
+def _frame_body_lines(lines: list[str]) -> list[bool]:
+    """Which lines sit inside a COMPLETE untrusted-content frame (#1519): after a whole opener, up to and including
+    its own closer, which must come later. Such a line is framed external text, so it is body whatever it says: a
+    framed ``=== Notes ===`` or blank line never ends a PRIVATE section early, and a framed private-shaped header is
+    not itself redacted. Fail-closed: an opener whose closer never comes (a cut) marks nothing, so every header after
+    it is still found and redacted."""
+    inside = [False] * len(lines)
+    i = 0
     while i < len(lines):
-        line = lines[i]
-        if open_id is not None:
-            if f"<</TOOL_OUTPUT id={open_id}>>" in line:
-                open_id = None
+        opener = _FRAME_OPENER.search(lines[i])
+        if opener is None:
             i += 1
             continue
-        if bounded and _HEADER_PATTERN.match(line.strip()):
-            break
-        if not bounded and not line.strip():
-            break
-        opener = _FRAME_OPENER.search(line)
-        if opener and f"<</TOOL_OUTPUT id={opener.group(1)}>>" not in line[opener.end() :]:
-            open_id = opener.group(1)
+        closer = f"<</TOOL_OUTPUT id={opener.group(1)}>>"
+        if closer in lines[i][opener.end() :]:
+            i += 1
+            continue
+        end = next((k for k in range(i + 1, len(lines)) if closer in lines[k]), None)
+        if end is None:
+            i += 1
+            continue
+        for k in range(i + 1, end + 1):
+            inside[k] = True
+        i = end + 1
+    return inside
+
+
+def _section_end(lines: list[str], i: int, *, bounded: bool, inside: list[bool]) -> int:
+    """The index past a redacted section's body starting at ``i``: the next header (``bounded``) or blank line that
+    is not inside a complete frame (``_frame_body_lines``)."""
+    while i < len(lines):
+        if not inside[i]:
+            stripped = lines[i].strip()
+            if (bounded and _HEADER_PATTERN.match(stripped)) or (not bounded and not stripped):
+                break
         i += 1
     return i
 
@@ -233,28 +250,22 @@ class CloudRedactionFilter:
         redacted_categories: set[str] = set()
         out: list[str] = []
         i = 0
-        open_id: str | None = None  # inside a frame, a line is body, never a section header (#1519)
+        inside = _frame_body_lines(lines)  # a line inside a complete frame is body, never a header (#1519)
         while i < len(lines):
             line = lines[i]
             matched = None
-            if open_id is not None:
-                if f"<</TOOL_OUTPUT id={open_id}>>" in line:
-                    open_id = None
-            else:
+            if not inside[i]:
                 for pattern, category, sensitivity, bounded in _SECTION_RULES:
                     if pattern.match(line.strip()):
                         matched = (category, sensitivity, bounded)
                         break
-                opener = _FRAME_OPENER.search(line)
-                if not matched and opener and f"<</TOOL_OUTPUT id={opener.group(1)}>>" not in line[opener.end() :]:
-                    open_id = opener.group(1)
             if matched:
                 category, sensitivity, bounded = matched
                 if self._should_redact(sensitivity):
                     redacted_categories.add(category)
                     out.append(f"[REDACTED: {category}]")
                     i += 1
-                    i = _section_end(lines, i, bounded=bounded)
+                    i = _section_end(lines, i, bounded=bounded, inside=inside)
                     continue
             out.append(line)
             i += 1

@@ -459,6 +459,7 @@ def defang_frame_markers(text: str, *, unbalanced_only: bool = False) -> tuple[s
     last-resort pass over a whole prompt (``unbalanced_only=True``: balanced frames keep working). The words
     "tool output" elsewhere in the text are untouched, so a user asking about tool output keeps their sentence.
     """
+    text = _ZERO_WIDTH.sub("", text)  # first, on both paths (#1519): ``<\u200b<TOOL_OUTPUT`` would slip past
     if unbalanced_only:
         openers, closers = _unbalanced_markers(text)
         bad = sorted(openers + closers, key=lambda m: m.start())
@@ -472,8 +473,7 @@ def defang_frame_markers(text: str, *, unbalanced_only: bool = False) -> tuple[s
             prev = m.end()
         out.append(text[prev:])
         return "".join(out), len(bad)
-    # Zero-width characters go first, here at the root (#1519): ``<\u200b<TOOL_OUTPUT`` would otherwise slip past.
-    return _MARKER_LIKE.subn(lambda g: f"<<{g.group(1)}t-o", _ZERO_WIDTH.sub("", text))
+    return _MARKER_LIKE.subn(lambda g: f"<<{g.group(1)}t-o", text)
 
 
 def framed_section(text: str, *, wording: str = TOOL_OUTPUT_WORDING) -> str:

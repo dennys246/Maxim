@@ -30,7 +30,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
-from maxim.memory.text import frame_external
+from maxim.memory.text import frame_external, whole_frames
 from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section
 
 if TYPE_CHECKING:
@@ -1033,18 +1033,9 @@ def cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
 
 def _whole_frames(text: str) -> str:
     """``text`` without any partial untrusted-content frame (Session R, rule 2): the loop stores enrichment text cut to
-    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare."""
-    if "TOOL_OUTPUT" not in text:
-        return text
-    from maxim.utils.content_safety import drop_unbalanced_frames
-
-    kept, dropped = drop_unbalanced_frames(text)
-    # A tail cut leaves the label of the frame it dropped ("(goal: ", "earlier input: "): drop that too (#1519).
-    return _DANGLING_LABEL.sub("", kept) if dropped else kept
-
-
-# The labels enrichment writes before a frame, as a tail cut can leave them (``_whole_frames``).
-_DANGLING_LABEL = re.compile(r"\s*(?:\(goal:|earlier input:|→|Related concepts:)\s*$")
+    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare. The
+    label a dropped frame leaves goes too (``memory/text.py::whole_frames``, #1519)."""
+    return whole_frames(text)
 
 
 def _deferred_section(request: Any) -> str:

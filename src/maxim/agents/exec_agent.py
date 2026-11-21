@@ -1122,7 +1122,12 @@ class ExecAgent(Agent):
         for out in ctx.recent_outcomes[-3:]:
             if not isinstance(out, dict):
                 continue
-            status = "OK" if out.get("success") else f"FAILED: {frame_external('tool_error', str(out.get('error')))}"
+            error = out.get("error")
+            status = (
+                "OK"
+                if out.get("success")
+                else (f"FAILED: {frame_external('tool_error', str(error))}" if error else "FAILED")
+            )
             outcome_lines.append(f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}")
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 

@@ -403,15 +403,16 @@ def bounded_words(text: str, limit: int = RECALLED_WORDS_MAX_CHARS) -> str:
 
 # ── Stored text shown to a model, by provenance (#1519) ─────────────────────────────────────────────────────────────
 
-# The sources whose words are the OPERATOR's own: trusted, shown defanged, never framed (owner decisions 2026-11-21):
-# ``cli`` (typed input; a sim's narrator also arrives as ``cli`` and stays operator, by D5) and ``voice`` (the local
-# push-to-talk mic). NOT ``transcript``: room-mic audio that anyone in the room or on a speakerphone can produce, so
-# it is external and framed. Not ``speech``: no producer publishes it as a percept source (``speech`` is a comms
-# channel, so ``comms:speech``), and an unknown source fails closed. This is a TRUST list, kept apart from
-# ``runtime/loop_perception.py::ADDRESSED_SOURCES`` (D5: what is always enriched), so widening one never widens the
-# other. No ``comms:*`` source is ever in it (SMS, voice calls and the command API are outside parties: #1481, owner
-# decision 2026-10-28).
-OPERATOR_SOURCES: frozenset[str] = frozenset({"cli", "voice"})
+# The sources whose words are the OPERATOR's own: trusted, shown defanged, never framed (owner decision 2026-11-21,
+# corrected the same day): ``cli`` only, typed input (a sim's narrator also arrives as ``cli`` and stays operator, by
+# D5). NOT ``voice``: ``embodied_runtime/input_handlers.py::_handle_transcript_record`` forwards any room-mic Whisper
+# line naming the wake word as ``pending_voice_input``, which ``loop_perception`` publishes as ``source="voice"``, so
+# anyone in the room or on a speakerphone can produce it. NOT ``transcript`` (room-mic audio) for the same reason. Not
+# ``speech``: no producer publishes it as a percept source (``speech`` is a comms channel, so ``comms:speech``), and an
+# unknown source fails closed. This is a TRUST list, kept apart from ``runtime/loop_perception.py::ADDRESSED_SOURCES``
+# (D5: what is always enriched), so widening one never widens the other. No ``comms:*`` source is ever in it (SMS,
+# voice calls and the command API are outside parties: #1481, owner decision 2026-10-28).
+OPERATOR_SOURCES: frozenset[str] = frozenset({"cli"})
 
 
 class Provenance(str, Enum):
@@ -447,15 +448,30 @@ def _bounded_lines(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
 
+# The labels enrichment writes before a frame (``(goal: ``, ``earlier input: ``, ``→ ``, ``Related concepts: ``), as a
+# tail cut that drops the frame leaves them dangling (#1519).
+_DANGLING_LABEL = re.compile(r"\s*(?:\(goal:|earlier input:|→|Related concepts:)\s*$")
+
+
+def whole_frames(text: str) -> str:
+    """``text`` cut somewhere, with any partial untrusted-content frame dropped (Session R, rule 2) and the label a
+    dropped frame leaves at the end dropped with it (#1519). Text holding no frame marker is returned as it is."""
+    if "TOOL_OUTPUT" not in text:
+        return text
+    from maxim.utils.content_safety import drop_unbalanced_frames
+
+    kept, dropped = drop_unbalanced_frames(text)
+    return _DANGLING_LABEL.sub("", kept) if dropped else kept
+
+
 def shown_text(text: str, provenance: Provenance, *, label: str, limit: int, keep_lines: bool = False) -> str:
     """``text`` as a prompt may show it, by its provenance, bounded after normalization; "" for empty text.
     ``OPERATOR``: defanged in place (a pasted marker cannot open or close a frame). ``EXTERNAL``: framed
     (``frame_external``). ``INTERNAL``: cut, and any frame the cut broke dropped, so no frame body shows bare."""
-    from maxim.utils.content_safety import defang_frame_markers, drop_unbalanced_frames
+    from maxim.utils.content_safety import defang_frame_markers
 
     if provenance is Provenance.INTERNAL:
-        cut = str(text or "")[:limit]
-        return drop_unbalanced_frames(cut)[0] if "TOOL_OUTPUT" in cut else cut
+        return whole_frames(str(text or "")[:limit])
     body = _bounded_lines(str(text or ""), limit) if keep_lines else bounded_words(str(text or ""), limit)
     if not body:
         return ""
@@ -491,6 +507,7 @@ __all__ = [
     "Provenance",
     "provenance_of",
     "frame_external",
+    "whole_frames",
     "shown_text",
     "stored_percept_text",
 ]
