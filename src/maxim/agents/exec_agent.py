@@ -722,7 +722,10 @@ class ExecAgent(Agent):
 
         # Build CycleContext from available signals
         rpe_raw = 0.0
-        nac = self._nac
+        # A refused goal (#1414) made no contemplation observation (``_on_goal_completed`` skips it), so
+        # ``nac.last_rpe`` belongs to whatever NAc observed last, not to this goal: its surprise is 0.0 (no
+        # prediction was tested), never a stranger's (delta review, 2026-11-21).
+        nac = None if getattr(completed, "refused", False) else self._nac
         if nac is not None:
             try:
                 # Real Rescorla-Wagner prediction error, taken from the causal
@@ -755,8 +758,8 @@ class ExecAgent(Agent):
             # D56 (b), INVESTIGATED 2026-09-02 and NOT changed here — the
             # ledger's "producer-side only" reading does not survive contact.
             # `GoalCompleted` carries `success: bool` (plus, since #1414, a `refused` flag, which is not a tier), and its
-            # SOLE publisher (`agentic_goal_agent._complete_goal`) also takes
-            # only a bool, so there is no tier anywhere upstream to route. The
+            # SOLE publisher (`agentic_goal_agent._complete_goal`) takes the same
+            # bool (and `refused`), so there is no tier anywhere upstream to route. The
             # fix is not a producer edit; it is a design call about whether "a
             # goal completed neutrally" is even meaningful — a goal was
             # achieved or it was not, unlike a tool action, which can be

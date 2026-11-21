@@ -402,7 +402,7 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
-    "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _report_fallback_result closes the goal agent's tool call, paying for the two report lines added to the executed and raised branches."
+    "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch."
   ],
   "touch_exemptions": [
     {

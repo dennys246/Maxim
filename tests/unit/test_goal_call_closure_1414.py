@@ -354,3 +354,49 @@ def test_the_real_loop_proposes_a_goal_call_once(monkeypatch: pytest.MonkeyPatch
     assert done[0].refused is (branch == "refused")
     if branch == "raised":
         assert done[0].error == "the executor broke"
+
+
+@pytest.mark.parametrize("refused", [True, False], ids=["refused", "ran"])
+def test_a_refused_goals_staging_never_borrows_another_events_surprise(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, refused: bool
+) -> None:
+    """A refused goal made no contemplation observation, so NAc's ``last_rpe`` is some other event's surprise: staging
+    scores the refused goal at 0.0, while a goal that ran keeps the real RPE (delta review, 2026-11-21)."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from maxim.agents import exec_agent
+    from maxim.agents.bus import GoalCompleted
+
+    seen: list[float] = []
+
+    class _Stop(Exception):
+        pass
+
+    def _capture(**kw: Any) -> Any:
+        seen.append(kw["rpe_raw"])
+        raise _Stop
+
+    monkeypatch.setattr(exec_agent, "CycleContext", _capture)
+    me = SimpleNamespace(_weight_learner=MagicMock(), _staging_dir=str(tmp_path), _nac=SimpleNamespace(last_rpe=0.7))
+    with pytest.raises(_Stop):
+        exec_agent.ExecAgent._evaluate_staging(me, GoalCompleted(goal_id="g", success=False, refused=refused))
+    assert seen == [0.0 if refused else 0.7]
+
+
+def test_a_subscriber_contract_error_does_not_strand_the_goal() -> None:
+    """A subscriber whose contract error re-raises out of ``publish`` (``EncodingContractError``) used to leave the goal
+    set with no pending call: never completed, nothing proposed again. The goal is cleared regardless."""
+    from maxim.agents.bus import GoalCompleted
+    from maxim.memory.encoding import EncodingContractError
+
+    goal_agent = _goal_agent_with_pending_call()
+
+    def _breaks(_: Any) -> None:
+        raise EncodingContractError("a broken contract")
+
+    goal_agent._bus.subscribe(GoalCompleted, _breaks)
+    intent = goal_agent.propose_intent(state=None, memory=None)
+    with pytest.raises(EncodingContractError):
+        goal_agent.close_tool_call(intent["tool_call_id"], True, "out", None)
+    assert goal_agent._current_goal is None and goal_agent._pending_tool_call is None

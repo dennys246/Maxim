@@ -184,14 +184,11 @@ class AgenticGoalAgent(Agent):
         calls and book one failure up to three times (owner decision 2026-11-21: direct close; the bus producer
         belongs to every dispatcher at once, #1727). A refused call is :meth:`refuse_tool_call`'s.
         """
-        if self._current_goal is None or self._pending_tool_call is None:
-            return False
-
-        if tool_call_id != self._pending_tool_call.id:
+        goal, pending = self._current_goal, self._pending_tool_call  # one read of each, as in refuse_tool_call
+        if goal is None or pending is None or tool_call_id != pending.id:
             return False
 
         self._pending_tool_call = None
-        goal = self._current_goal
 
         # Find the sub-goal that was executing (if any)
         current_sub: SubGoal | None = None
@@ -276,9 +273,13 @@ class AgenticGoalAgent(Agent):
             },
         )
 
-        self._bus.publish(completed)
-        self._current_goal = None
-        self._pending_tool_call = None
+        try:
+            self._bus.publish(completed)
+        finally:
+            # Cleared even when a subscriber's contract error re-raises out of publish (``EncodingContractError``),
+            # or the goal would be stuck: no pending call, never completed, and nothing proposed again (#1414 review).
+            self._current_goal = None
+            self._pending_tool_call = None
 
         if self._memory:
             self._memory.set_active_goal(None, None)
@@ -354,7 +355,9 @@ class AgenticGoalAgent(Agent):
         ``ProposedGoal.handle_sub_goal_refusal`` (only SKIP goes on); a refused call with no sub-goal ends the goal.
         Returns False when ``tool_call_id`` is not the pending call (already closed).
         """
-        goal, pending = self._current_goal, self._pending_tool_call  # one read of each: ExecAgent's thread writes them
+        # One read of each: ExecAgent's worker thread writes both (``_on_proposed_goal``) and nothing locks them, so
+        # this narrows a goal swap mid-close but does not exclude it (``_complete_goal`` re-reads the goal).
+        goal, pending = self._current_goal, self._pending_tool_call
         if pending is None or pending.id != tool_call_id:
             return False
         self._pending_tool_call = None
