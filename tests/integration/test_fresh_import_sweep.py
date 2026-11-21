@@ -45,10 +45,6 @@ EXTRA_OWNED: dict[str, str] = {
     "maxim.models.movement.motor_cortex": "training",
 }
 
-# Import names an extra brings in through its own requirements and that its modules import directly. ``pydantic``
-# arrives with ``fastapi``; console/schemas.py imports it at module level.
-IMPORTED_THROUGH: dict[str, tuple[str, ...]] = {"console": ("pydantic",)}
-
 # The child reports each failure as data, so the verdict below can attribute it: ``missing`` is the dependency an
 # ImportError names (``OptionalDependencyError.import_name``, else ``ImportError.name``; a hand-written
 # ``ImportError("...")`` names none, so it attributes to nothing).
@@ -104,7 +100,7 @@ def sweep_verdict(
     own_names = extra_import_names(extra)
     if all(installed(n) for n in own_names):
         return f"{module}: fails with its extra [{extra}] installed: {failure['text']}"
-    names = {_top(n) for n in own_names + IMPORTED_THROUGH.get(extra, ())}
+    names = {_top(n) for n in own_names}
     if failure["is_import_error"]:
         if _top(failure["missing"]) in names:
             return None
@@ -192,8 +188,8 @@ def test_an_unlisted_module_must_import_bare() -> None:
 def test_a_listed_module_passes_on_its_extras_typed_refusal() -> None:
     refusal = _failure("OptionalDependencyError: motor_cortex: required dependency 'keras'", missing="keras")
     assert sweep_verdict(_MOTOR, refusal, installed=_NOTHING_INSTALLED) is None
-    transitive = _failure("ModuleNotFoundError: No module named 'pydantic'", missing="pydantic")
-    assert sweep_verdict("maxim.console.schemas", transitive, installed=_NOTHING_INSTALLED) is None
+    declared = _failure("ModuleNotFoundError: No module named 'pydantic'", missing="pydantic")
+    assert sweep_verdict("maxim.console.schemas", declared, installed=_NOTHING_INSTALLED) is None
     own_error = _failure("RuntimeError: ...", missing=None, is_import_error=False, type_module="tensorflow.errors")
     assert sweep_verdict(_MOTOR, own_error, installed=_NOTHING_INSTALLED) is None
 
@@ -220,8 +216,85 @@ def test_a_listed_module_must_import_when_its_extra_is_installed() -> None:
 
 def test_extra_owned_names_real_extras() -> None:
     extras = _optional_dependencies()
-    unknown = {e for e in [*EXTRA_OWNED.values(), *IMPORTED_THROUGH] if e not in extras}
-    assert not unknown, f"EXTRA_OWNED / IMPORTED_THROUGH name extras pyproject does not declare: {unknown}"
+    unknown = {e for e in EXTRA_OWNED.values() if e not in extras}
+    assert not unknown, f"EXTRA_OWNED names extras pyproject does not declare: {unknown}"
+
+
+# A requirement of [project.dependencies] whose distribution name is not its import name.
+_CORE_DIST_IMPORT_NAMES = {"pyyaml": "yaml"}
+
+
+def _core_import_names() -> set[str]:
+    import re
+    import tomllib
+
+    deps = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["dependencies"]
+    names = set()
+    for requirement in deps:
+        match = re.match(r"[A-Za-z0-9._-]+", requirement)
+        if match:
+            dist = re.sub(r"[-.]", "_", match.group(0).lower())
+            names.add(_CORE_DIST_IMPORT_NAMES.get(dist, dist))
+    return names
+
+
+def _module_level_dependencies(path: Path) -> set[str]:
+    """The top-level names ``path`` needs at import: its module-level ``import`` / ``from`` statements (inside a
+    module-level ``try``/``if`` too, never inside a function or class) and the first argument of a module-level
+    ``require_optional_dependency("...")``."""
+    import ast
+
+    found: set[str] = set()
+
+    def visit(nodes: list[ast.stmt]) -> None:
+        for node in nodes:
+            if isinstance(node, ast.Import):
+                found.update(_top(alias.name) for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                found.add(_top(node.module))
+            elif isinstance(node, (ast.Try, ast.If)):
+                visit(node.body)
+                visit(node.orelse)
+                for handler in getattr(node, "handlers", ()):
+                    visit(handler.body)
+                visit(getattr(node, "finalbody", []))
+            if isinstance(node, (ast.Assign, ast.Expr)):
+                call = node.value
+                if (
+                    isinstance(call, ast.Call)
+                    and getattr(call.func, "id", None) == "require_optional_dependency"
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                ):
+                    found.add(_top(call.args[0].value))
+
+    visit(ast.parse(path.read_text()).body)
+    return found
+
+
+def test_each_extra_owned_module_imports_only_what_its_extra_declares() -> None:
+    """The declaration the verdict relies on: every third-party name an extra-owned module needs at import is a
+    DIRECT requirement of its extra (or of core). A name that arrives only transitively (pydantic through fastapi,
+    until #1647 declared it) vanishes when the upstream drops it, and the sweep could not attribute its refusal."""
+    core = _core_import_names()
+    undeclared = {}
+    for module, extra in EXTRA_OWNED.items():
+        path = SRC / (module.replace(".", "/") + ".py")
+        needed = _module_level_dependencies(path) - set(sys.stdlib_module_names) - {"maxim", "__future__"}
+        missing = needed - set(extra_import_names(extra)) - core
+        if missing:
+            undeclared[module] = sorted(missing)
+    assert not undeclared, f"extra-owned modules import names their extra does not declare: {undeclared}"
+
+
+def test_the_declaration_check_sees_module_level_imports_only(tmp_path: Path) -> None:
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import os\nfrom pydantic import BaseModel\ntry:\n    import uvicorn.main\nexcept ImportError:\n    pass\n"
+        "keras = require_optional_dependency('keras', feature='x')\n"
+        "def f():\n    import cv2\n"
+    )
+    assert _module_level_dependencies(probe) == {"os", "pydantic", "uvicorn", "keras"}
 
 
 def test_the_child_reports_what_the_verdict_attributes(tmp_path: Path) -> None:
