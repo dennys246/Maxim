@@ -13,11 +13,11 @@ The capture is class-level and in-process, so the runner must build the AUT in T
 
 Everything after ``--`` is forwarded verbatim to the runner as its argv.
 
-Not the default runner under ``--aut-mode llm-primary``: ``scripts/benchmark_exp42_preference.py`` runs each sim as a
-``maxim --sim`` subprocess with ``MAXIM_AUTO_SPAWN_LLM_SERVER=0``, so a patch here never reaches the child's AUT and
-an llm-primary AUT has no backend (``docs/plans/archive/exp44_substrate_counterfactual_harness.md``, "Wiring
-reality"). The Exp 44 vehicle is a direct run with the in-process hook (``orchestrator.py``'s
-``MAXIM_EXP44_CAPTURE_LOG``)::
+For an llm-primary capture, do not use the default ``--runner``: ``scripts/benchmark_exp42_preference.py`` runs
+each sim as a ``maxim --sim`` subprocess with ``MAXIM_AUTO_SPAWN_LLM_SERVER=0``, so a patch here never reaches the
+child's AUT and an llm-primary AUT has no backend
+(``docs/plans/archive/exp44_substrate_counterfactual_harness.md``, "Wiring reality"). The Exp 44 vehicle is a direct
+run with the in-process hook (``orchestrator.py``'s ``MAXIM_EXP44_CAPTURE_LOG``)::
 
     MAXIM_EXP44_CAPTURE_LOG=data/exp44/paired_prompts.jsonl \
         maxim --sim cradle_pref_a --embodiment bodies/infant_humanoid_chilled \

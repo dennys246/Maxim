@@ -65,7 +65,9 @@ _DEFAULT_SIM_MODE = "generative"
 
 
 def _resolve_sim_mode(args: argparse.Namespace) -> None:
-    """Ensure args.sim_mode is always set (default: "generative")."""
+    """Ensure args.sim_mode is always set (default: "generative"), recording in ``sim_mode_explicit`` whether it was
+    passed (the research refusal refuses any explicit value but ``research``, #1680)."""
+    args.sim_mode_explicit = getattr(args, "sim_mode", None) not in (None, "")
     if not hasattr(args, "sim_mode") or getattr(args, "sim_mode", None) in (None, ""):
         args.sim_mode = _DEFAULT_SIM_MODE
 

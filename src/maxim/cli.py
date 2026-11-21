@@ -1132,20 +1132,21 @@ def _run_goal_sim(
     sys.exit(_simulation_result_exit_code(result))
 
 
-#: The goal-string sim's options (``_run_goal_sim`` and the embodiment it is handed) that the research protocol does
-#: not take: ``start_research_mode`` runs its own sim call, so each of these, passed explicitly with ``--research``
-#: under llm-primary (or ``--sim research``), would be dropped without a word (#1680). ``--sim-max-turns`` is not
-#: here: it is forwarded (``start_research_mode(max_turns=)``). ``sim_mode``'s default is SUPPRESS, so it is checked
-#: on its own in :func:`_research_refusal`. ``tests/unit/test_cli_research_options_1680.py`` pins that every option
-#: ``_run_goal_sim`` reads is either forwarded or listed here.
+#: The goal-string sim's options (``_run_goal_sim``, the embodiment it is handed, and the curation run before it) that
+#: the research protocol does not take: ``start_research_mode`` runs its own sim call, so each of these, passed
+#: explicitly with ``--research`` under llm-primary (or ``--sim research``), would be dropped without a word (#1680).
+#: Not here: ``--sim-max-turns`` (forwarded as ``max_turns``), ``--no-sim-env`` (research always runs
+#: ``no_sim_env=True``) and ``--sim-mode`` (checked on its own: only ``research``, what it runs, is accepted).
+#: ``tests/unit/test_cli_research_options_1680.py`` pins that every option the goal-sim path reads is either
+#: forwarded by :func:`_run_research_from_cli` or listed here.
 _RESEARCH_DROPPED_OPTIONS = frozenset(
     {
         "embodiment",
         "no_embodiment",
         "deep_embodiment",
+        "auto_curate",
         "sim_run_full_turns",
         "continuous",
-        "no_sim_env",
         "sandbox_image",
         "sandbox_network",
         "resume_sim",
@@ -1154,27 +1155,68 @@ _RESEARCH_DROPPED_OPTIONS = frozenset(
 )
 
 
+def _non_default_options(args: Any, dests: Callable[[str], bool]) -> list[str]:
+    """The parsed options whose dest ``dests`` selects and whose value differs from the parser's default, as the
+    first option string of each (``--dm``), in parser order. ``--sim-script``'s whitelist and the research refusal
+    both read it."""
+    parser = _build_parser()
+    defaults = vars(parser.parse_args([]))
+    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
+    return [
+        flags.get(dest, dest)
+        for dest, default in defaults.items()
+        if dests(dest) and getattr(args, dest, default) != default
+    ]
+
+
+def _runs_research_protocol(args: Any) -> bool:
+    """Whether this invocation dispatches to ``start_research_mode``: ``--sim research``, or a goal-string ``--sim``
+    with ``--research`` under llm-primary (under substrate-primary ``--research`` is substrate telemetry)."""
+    sim = getattr(args, "sim", None)
+    if sim is None:
+        return False
+    kind = _sim_value_kind(str(sim))
+    if kind == "research":
+        return True
+    return (
+        kind == "goal"
+        and bool(getattr(args, "research", False))
+        and getattr(args, "aut_mode", "llm-primary") != "substrate-primary"
+    )
+
+
 def _research_refusal(args: Any) -> CliOptionsRefused | None:
     """The refusal for explicit options the research protocol would drop (None = it honours every one given)."""
     from maxim.exceptions import CliOptionsRefused
 
-    parser = _build_parser()
-    defaults = vars(parser.parse_args([]))
-    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
-    dropped = [
-        flags.get(dest, dest)
-        for dest in defaults
-        if dest in _RESEARCH_DROPPED_OPTIONS and getattr(args, dest, defaults[dest]) != defaults[dest]
-    ]
-    if getattr(args, "sim_mode", None) not in (None, "generative"):  # the research protocol runs mode="research"
+    dropped = _non_default_options(args, _RESEARCH_DROPPED_OPTIONS.__contains__)
+    # sim_mode's parsed default is SUPPRESS and normalize_args fills "generative", so its explicitness is recorded
+    # there (``sim_mode_explicit``); un-normalized args carry the attribute only when it was passed.
+    explicit_mode = getattr(args, "sim_mode_explicit", hasattr(args, "sim_mode"))
+    if explicit_mode and getattr(args, "sim_mode", None) != "research":  # the protocol always runs mode="research"
         dropped.append("--sim-mode")
-    if not dropped:
+    reasons = []
+    if dropped:
+        reasons.append(f"{', '.join(dropped)}: its sim call does not take them, so they would be dropped")
+    if getattr(args, "campaign", None) and getattr(args, "sim_max_turns", None) is not None:
+        dropped.append("--sim-max-turns")
+        reasons.append("--sim-max-turns with --campaign: every campaign line is delivered whatever the cap")
+    if not reasons:
         return None
     return CliOptionsRefused(
-        f"{', '.join(dropped)} cannot run with the research protocol (--research under llm-primary, or --sim "
-        "research): its sim call does not take them, so they would be dropped",
+        "cannot run with the research protocol (--research under llm-primary, or --sim research): "
+        + "; ".join(reasons),
         fix_hint=f"Drop {', '.join(dropped)}, or run the sim without --research.",
     )
+
+
+def _refuse_dropped_research_options(args: Any) -> None:
+    """Raise the research refusal (``CliOptionsRefused``, exit 2) before anything runs for this invocation: before
+    curation writes components and before the older ``--sim-mode`` guard exits 1 for a goal string (#1680)."""
+    if _runs_research_protocol(args):
+        refusal = _research_refusal(args)
+        if refusal is not None:
+            raise refusal
 
 
 def _run_research_from_cli(args: Any, goal: str, *, debug_raw: Any) -> NoReturn:
@@ -1191,9 +1233,35 @@ def _run_research_from_cli(args: Any, goal: str, *, debug_raw: Any) -> NoReturn:
         aut_model=getattr(args, "aut_model", None),
         debug=bool(debug_raw),
         sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-        max_turns=_sim_turn_caps(args)["max_turns"],
+        max_turns=int(getattr(args, "sim_max_turns", None) or 50),  # _sim_turn_caps's default
     )
     sys.exit(_research_result_exit_code(result))
+
+
+def _validate_sim_only_flags(args: Any) -> None:
+    """Refuse simulation-only flags without a sim to take them, before any sim path runs: the research protocol's
+    dropped options first (``CliOptionsRefused``, exit 2; before curation and the ``--sim-mode`` guard, #1680), then
+    ``--goal``, ``--sim-mode`` and ``--resume-sim`` without ``--sim agent``/``--sim research`` (exit 1). Moved out of
+    ``_main_impl`` (rule T)."""
+    _refuse_dropped_research_options(args)
+    sim_path = getattr(args, "sim", None)
+    _sim_mode = str(sim_path).strip().lower() if sim_path is not None else ""
+    _is_sim_mode = _sim_mode in ("agent", "research")
+    if not _is_sim_mode:
+        if getattr(args, "sim_goal", None) is not None:
+            print("Error: --goal / --sim-goal requires --sim agent or --sim research.")
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
+            print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
+            sys.exit(1)
+        if getattr(args, "sim_mode", None) not in (None, "generative") and not _runs_research_protocol(args):
+            print("Error: --sim-mode requires --sim agent (simulation mode).")
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode research')
+            sys.exit(1)
+        if getattr(args, "resume_sim", None) is not None and sim_path is None:
+            print("Error: --resume-sim requires --sim (simulation mode).")
+            print('  Usage: maxim --sim "test goal" --resume-sim SESSION_ID')
+            print('         maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
+            sys.exit(1)
 
 
 def _sim_value_kind(value: str) -> str:
@@ -1240,18 +1308,7 @@ _SIM_SCRIPT_NORMALIZED = frozenset({"audio"})
 def _sim_script_unexpected_options(args: Any) -> list[str]:
     """The options outside :data:`_SIM_SCRIPT_ALLOWED` whose value differs from the parser's default, as the first
     option string of each (``--dm``), in parser order."""
-    from maxim.cli_parser import _build_parser
-
-    parser = _build_parser()
-    defaults = vars(parser.parse_args([]))
-    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
-    return [
-        flags.get(dest, dest)
-        for dest, default in defaults.items()
-        if dest not in _SIM_SCRIPT_ALLOWED
-        and dest not in _SIM_SCRIPT_NORMALIZED
-        and getattr(args, dest, default) != default
-    ]
+    return _non_default_options(args, lambda dest: dest not in _SIM_SCRIPT_ALLOWED | _SIM_SCRIPT_NORMALIZED)
 
 
 def _sim_script_refusal(args: Any) -> str | None:
@@ -2063,25 +2120,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         all_passed = all(mr.passed for mr in report.results.values())
         sys.exit(0 if all_passed else 1)
 
-    # Validate simulation-only flags aren't used without --sim agent/research
+    _validate_sim_only_flags(args)
     sim_path = getattr(args, "sim", None)
-    _sim_mode = str(sim_path).strip().lower() if sim_path is not None else ""
-    _is_sim_mode = _sim_mode in ("agent", "research")
-    if not _is_sim_mode:
-        if getattr(args, "sim_goal", None) is not None:
-            print("Error: --goal / --sim-goal requires --sim agent or --sim research.")
-            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
-            print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
-            sys.exit(1)
-        if getattr(args, "sim_mode", None) not in (None, "generative"):
-            print("Error: --sim-mode requires --sim agent (simulation mode).")
-            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode research')
-            sys.exit(1)
-        if getattr(args, "resume_sim", None) is not None and sim_path is None:
-            print("Error: --resume-sim requires --sim (simulation mode).")
-            print('  Usage: maxim --sim "test goal" --resume-sim SESSION_ID')
-            print('         maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
-            sys.exit(1)
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:

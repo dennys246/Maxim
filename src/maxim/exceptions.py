@@ -518,6 +518,8 @@ class CliOptionsRefused(ConfigurationError):
     ``fix_hint`` names the options to drop. The CLI prints both and exits 2.
     """
 
+    # TODO(#1680): adopt _rebuild_with_state after #1621 merges: the keyword-only fix_hint does not survive pickle
+    # (tests/unit/test_cli_research_options_1680.py::test_the_refusal_round_trips_through_pickle, strict xfail).
     def __init__(self, message: str, *, fix_hint: str) -> None:
         super().__init__(message)
         self.fix_hint = fix_hint
@@ -721,6 +723,8 @@ __all__ = [
     # Configuration
     "ConfigurationError",
     "ConfigDirUnreadable",
+    "UserProfilesInvalid",
+    "CliOptionsRefused",
     "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",
