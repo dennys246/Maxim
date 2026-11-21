@@ -278,7 +278,7 @@ class HTTPEndpoint:
     base_url: str | None
     default_headers: Mapping[str, str] # set ONCE at registration
     auth_provider: Callable[[], str | None] | None  # late-bound bearer token
-    timeouts: TimeoutPolicy            # connect/read/total
+    timeouts: TimeoutPolicy            # connect/read/pool (pool_s; renamed from total_s in #1715)
     max_pool_connections: int = DEFAULT_POOL_PER_ENDPOINT  # 10
     internal: bool = True              # gates X-Maxim-* propagation
 

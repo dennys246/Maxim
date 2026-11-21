@@ -498,7 +498,7 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
             ping_url,
             method="GET",
             headers=extra_headers,
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, total_s=6.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=5.0, pool_s=6.0),
         )
         ping_data = ping_resp.json()
         if ping_data.get("service") == "LeaderProxy":
@@ -531,7 +531,7 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
             models_url,
             method="GET",
             headers=extra_headers,
-            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=10.0, total_s=12.0),
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=10.0, pool_s=12.0),
         )
         data = resp.json()
     except _http.HTTPAuthError as e:
@@ -588,7 +588,7 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
             method="POST",
             headers={**extra_headers, "Content-Type": "application/json"},
             json=payload,
-            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=60.0, total_s=65.0),
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=60.0, pool_s=65.0),
         )
         data = chat_resp.json()
         dt = (time.time() - t0) * 1000

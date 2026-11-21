@@ -207,7 +207,7 @@ def install_on_target(
             method="POST",
             headers=headers,
             json={"extras": extras, "packages": packages},
-            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, pool_s=33.0),
         )
         data = resp.json()
     except _http.HTTPError as e:
@@ -263,7 +263,7 @@ def install_on_target(
                 poll_endpoint,
                 method="GET",
                 headers=poll_headers,
-                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, pool_s=12.0),
             )
             poll_data = poll_resp.json()
         except Exception:

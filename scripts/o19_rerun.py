@@ -301,7 +301,7 @@ def take_lock(exp: str):
 # llama_cpp.server answers /v1/models under the same model lock as a completion, so a read made mid-generation
 # waits for it. Campaigns 1-2 read with the backend's 4 s discovery budget and 26 of 36 reads came back null; their
 # completions took up to 24 s, and the narrator and the AUT share the server, so a read may wait for two.
-SERVED_READ_TIMEOUT = {"connect_s": 2.0, "read_s": 60.0, "total_s": 60.0}
+SERVED_READ_TIMEOUT = {"connect_s": 2.0, "read_s": 60.0, "pool_s": 60.0}
 
 
 def check_argv_parses(exp: str) -> None:

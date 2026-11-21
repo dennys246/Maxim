@@ -1,7 +1,7 @@
 """#1706: the fresh readback's budget is the deadline, not a third of it.
 
 ``_get_state_full`` used to split ``FRESH_READ_DEADLINE_S`` into equal thirds and pass them as
-``TimeoutPolicy(connect_s=, read_s=, total_s=)``. ``total_s`` maps to httpx's POOL wait, which a fresh
+``TimeoutPolicy(connect_s=, read_s=, total_s=)``. ``total_s`` (renamed ``pool_s`` by #1715) maps to httpx's POOL wait, which a fresh
 connection to the daemon never spends, so the connect and the read each got a third of the deadline: on the
 robot (2026-11-19) a 35-43 ms idle read from the Mac timed out under a "100 ms" deadline.
 

@@ -80,7 +80,7 @@ def probe_keyless(port: int, *, connect_s: float = 0.5, read_s: float = 2.0) -> 
         _http.fetch_url(
             f"http://127.0.0.1:{port}/v1/models",
             method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=connect_s, read_s=read_s, total_s=connect_s + read_s),
+            timeout=_http.TimeoutPolicy(connect_s=connect_s, read_s=read_s, pool_s=connect_s + read_s),
         )
     except _http.HTTPAuthError as e:
         status = getattr(e, "status", 401)
@@ -221,7 +221,7 @@ def _n_ctx_from_models(port: int, api_key: str | None) -> int | None:
             f"http://127.0.0.1:{port}/v1/models",
             method="GET",
             headers=headers,
-            timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=2.0, total_s=3.0),
+            timeout=_http.TimeoutPolicy(connect_s=1.0, read_s=2.0, pool_s=3.0),
         ).json()
     except (_http.HTTPError, ValueError) as e:
         logger.debug("n_ctx probe: /v1/models on :%d gave nothing (%s)", port, type(e).__name__)
@@ -572,7 +572,7 @@ class LocalServerSpawner:
                 f"http://127.0.0.1:{self._port}/v1/models",
                 method="GET",
                 headers=headers,
-                timeout=_http.TimeoutPolicy(connect_s=0.5, read_s=1.0, total_s=1.5),
+                timeout=_http.TimeoutPolicy(connect_s=0.5, read_s=1.0, pool_s=1.5),
             )
             return resp.status == 200
         except _http.HTTPAuthError:

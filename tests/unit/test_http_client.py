@@ -408,3 +408,16 @@ class TestLoggableUrl:
 
         assert _loggable_url("https://example.com/page#token=abc") == "https://example.com/page?…"
         assert _loggable_url("https://example.com/docs/page") == "https://example.com/docs/page"
+
+
+class TestTimeoutPolicyNames:
+    """#1715: the pool timeout is ``pool_s``. It was ``total_s``, which callers read as a whole-request bound."""
+
+    def test_pool_s_is_httpx_pool_and_read_s_is_read_and_write(self):
+        t = http.TimeoutPolicy(connect_s=1.0, read_s=2.0, pool_s=3.0).to_httpx()
+        assert (t.connect, t.read, t.write, t.pool) == (1.0, 2.0, 2.0, 3.0)
+
+    def test_the_old_total_s_name_is_refused(self):
+        with pytest.raises(TypeError):
+            http.TimeoutPolicy(connect_s=1.0, read_s=2.0, total_s=3.0)  # type: ignore[call-arg]
+        assert not hasattr(http.TimeoutPolicy(), "total_s")
