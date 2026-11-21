@@ -120,14 +120,16 @@ root)
         UNSET=(-u MAXIM_EXPECT_NO_DOCKER)
         SETS=()
     fi
-    # $SG is one token (--groups=<gids> or --clear-groups or --init-groups).
+    # $SG is one token (--groups=<gids> or --clear-groups or --init-groups). One of the two arrays is always
+    # empty, and bash before 4.4 calls an empty array unbound under set -u, so each expands as ${A[@]+"${A[@]}"}
+    # (#1714: the tests run this script on whatever bash the box has, macOS's 3.2 included).
     exec setpriv --reuid="$R" --regid="$G" $SG --no-new-privs \
-        env "${UNSET[@]}" CI_NETNS_PHASE=user MAXIM_EXPECT_NETNS=1 "${SETS[@]}" bash "$NETNS_SELF"
+        env ${UNSET[@]+"${UNSET[@]}"} CI_NETNS_PHASE=user MAXIM_EXPECT_NETNS=1 ${SETS[@]+"${SETS[@]}"} bash "$NETNS_SELF"
     ;;
 user)
     lost=""
     IFS=, read -ra names <<< "$MAXIM_NETNS_ENV_NAMES"
-    for n in "${names[@]}"; do [ -n "${!n+x}" ] || lost="$lost $n"; done
+    for n in ${names[@]+"${names[@]}"}; do [ -n "${!n+x}" ] || lost="$lost $n"; done
     if [ -n "$lost" ]; then
         echo "ci_netns: the caller's environment did not reach the namespace; lost:$lost" >&2
         exit 3
