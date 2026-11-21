@@ -529,6 +529,12 @@ The advisor_mode.md guard line is superseded (prefetch root and the census-as-en
      sending;
    - native networking is invisible to the hook, and Windows' `_winapi.CreateProcess` is not listed (§6).
 
+   **POSIX only (#1687, 2026-11-17).** `engage()` raises `OfflineUnsupportedPlatform` off POSIX, before the latch goes
+   up, so nothing reports offline where the refusal set is unverified (multiprocessing's direct
+   `_winapi.CreateProcess`, named-pipe IPC). `maxim.advisor.open()` re-raises it as `AdvisorCompositionError`.
+   Guard: `tests/unit/test_offline_latch_unit.py::test_engage_refuses_on_an_unsupported_platform_and_changes_nothing`,
+   `tests/unit/test_advisor_session.py::test_open_refuses_an_unsupported_platform_before_it_builds_anything`.
+
    Regression guard: `tests/integration/test_offline_latch.py::test_no_effect_subprocess`,
    `::test_engaged_latch_refuses_each_channel`, `::test_a_client_pooled_before_engage_cannot_send_after`,
    `::test_no_caller_of_reset_for_tests_outside_tests`, `tests/unit/test_offline_latch_unit.py` and
@@ -1289,6 +1295,15 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > have never applied (`LLMConfig` has no `_raw`), so V28's tier-pin half is inert until it is fixed (an owner
 > decision: turning tiers on changes routing); **#1602** `agentic_runtime._apply_llm_backend_fallback` duplicates
 > the CPU-fallback default without V28's marker (fails closed). Also for 10c: `write_paper` reads refused models.
+> Re-sync with main (2026-11-20/21, [10a's merge review](reviews/item10a/merge-main-2026-11-20.md), delta round 4
+> [here](reviews/item10b/delta4.md)): main's #1538 hands a named model to the build as `profile=`, not through the env,
+> so a build's own profile now counts as pinned (V25 refuses it by name offline, not `LocalModelUnavailable`); main's
+> consented-router call sites re-raise `SECURITY_REFUSALS` (`cli.py::_curate_router_factory` and
+> `_auto_curate_before_sim`, `_handle_foundry`); `_early_leader_boot` re-raises an offline refusal (moved here from
+> 10c); the benchmark paper writer names a refused router and records it as degraded; the warmup thread's refusal
+> clause sits on main's `_warm_default_backend` (#1657). For 10c: `ExecAgent`'s plan-generation catch-all
+> (unreachable offline today: a router with an out-of-process lane refuses at build). Separately, `write_paper` always
+> fails today on `ExperimentLog(nickname=)` (#1680, online too).
 >
 > Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`

@@ -421,7 +421,7 @@ def test_a_pinned_missing_profile_refuses_and_an_auto_one_re_walks(monkeypatch: 
     monkeypatch.setattr(
         lane_models,
         "detect_tiers",
-        lambda caps, profile_available: {
+        lambda caps, profile_available, profile=None: {
             "medium": LaneConfig(name="medium", max_workers=1, model_profile="smollm-1.7b-instruct")
         },
     )
@@ -432,6 +432,10 @@ def test_a_pinned_missing_profile_refuses_and_an_auto_one_re_walks(monkeypatch: 
     assert out["medium"].model_profile == "smollm-1.7b-instruct"
     assert [d.site for d in _offline.degraded()] == ["lanes.model_profile"]
     assert "smollm-1.7b-instruct" in _offline.degraded()[0].reason
+    # the build's own profile (api.run(model=), --aut-model, research's language_model; #1538 hands it to the build,
+    # not the env) is pinned: refused by name before any consent prompt, not LocalModelUnavailable's "not downloaded"
+    with pytest.raises(_offline.OfflineRefusal, match="phi-2"):
+        lane_backends._ensure_lane_profiles_available(dict(lanes), caps, None, profile="phi-2")
     monkeypatch.setenv("MAXIM_LLM_PROFILE", "phi-2")
     with pytest.raises(_offline.OfflineRefusal, match="phi-2"):  # pinned (--llm): refused by name, never swapped
         lane_backends._ensure_lane_profiles_available(dict(lanes), caps, None)
@@ -538,7 +542,7 @@ def test_an_operator_profile_survives_the_cpu_fallback(monkeypatch: pytest.Monke
     assert lane_backends._MAXIMS_OWN_PROFILES == set() and lane_backends._profile_is_pinned("phi-2", "medium")
 
 
-def test_warmup_never_leaves_wait_ready_blocking_on_a_refusal() -> None:
+def test_warmup_never_leaves_wait_ready_blocking_on_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
     """Delta round 1: a remembered refusal raised inside the warmup thread still sets the ready event."""
     from maxim.models.language.router import LLMRouter
 
@@ -547,13 +551,23 @@ def test_warmup_never_leaves_wait_ready_blocking_on_a_refusal() -> None:
     router._ready_event = threading.Event()
     router._warmup_failed = False
     router._providers = {}
+    router._backend_lock = threading.Lock()  # #1657's unload bookkeeping
+    router._unloaded = False
+    router._warmups_running = 0
+    router._deferred_release = []
+    router._release_backends = lambda _deferred: None
     backend = MagicMock()
     backend.warmup.side_effect = _offline.OfflineRefusal("remembered")
     router._get_backend = lambda: backend
     router.enabled = lambda: True
+    from maxim.models.language import router as router_mod
+
+    said: list[str] = []
+    monkeypatch.setattr(router_mod, "warn", lambda msg, *a: said.append(msg % a))
     _offline.engage("test")
     assert router.warmup() is True
     assert router._ready_event.wait(5.0) and router._warmup_failed
+    assert said == ["LLM warmup refused: remembered"]  # named a refusal, not "LLM warmup failed"
 
 
 def test_benchmark_exit_code_and_api_scores_leave_a_refused_model_out() -> None:
@@ -599,3 +613,85 @@ def test_api_benchmark_does_not_score_a_refused_model(monkeypatch: pytest.Monkey
     suite.write_text("scenarios: []\n")
     result = api.benchmark(["claude", "phi-2"], suite=str(suite))
     assert set(result.scores) == {"phi-2"}
+
+
+# The merge with main (2026-11-20 wire review): main's consented-router call sites in cli.py kept broad handlers that
+# turned an offline refusal into a template fallback, a warning, or a misread boot failure.
+
+
+def _refusing_router(_profile: str) -> None:
+    _offline.refuse("router[build]", "lanes that are not in-process: local")
+
+
+def test_the_curate_router_factory_keeps_the_offline_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import cli
+
+    monkeypatch.setattr(cli, "_cli_local_router", _refusing_router)
+    _offline.engage("test")
+    built: list[object] = []
+    with pytest.raises(_offline.OfflineRefusal):  # not logged at DEBUG and handed back as the template fallback
+        cli._curate_router_factory("claude-sonnet-4-6", built)()
+    assert built == []
+
+
+def test_auto_curation_refused_offline_stops_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import cli
+    from maxim.simulation import foundry
+
+    def curate(**kw: object) -> None:
+        kw["llm_router_factory"]()  # type: ignore[operator]
+
+    monkeypatch.setattr(cli, "_cli_local_router", _refusing_router)
+    monkeypatch.setattr(foundry, "auto_curate", curate)
+    args = types.SimpleNamespace(auto_curate=True, no_curate=False, language_model="claude-sonnet-4-6")
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):  # not "WARNING: Auto-curation failed" and on into the sim
+        cli._auto_curate_before_sim(args, "entity")
+
+
+def test_a_foundry_refused_offline_never_reports_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import cli
+    from maxim.simulation import foundry
+
+    monkeypatch.setattr(cli, "_cli_local_router", _refusing_router)
+    monkeypatch.setattr(foundry, "FoundryRunner", MagicMock(side_effect=AssertionError("ran on templates")))
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):  # cli.main exits 2, not a template run that returns 0
+        cli._handle_foundry(types.SimpleNamespace(language_model="claude-sonnet-4-6"), "castle")
+
+
+def test_an_early_leader_boot_refused_offline_is_not_a_port_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import cli
+    from maxim.runtime import leader_mode
+
+    def claim(_host: str) -> None:
+        _offline.refuse("socket", "bind 127.0.0.1:8100")
+
+    monkeypatch.setattr(
+        leader_mode, "detect_role", lambda: types.SimpleNamespace(role="leader", bind_host="127.0.0.1", reason="t")
+    )
+    monkeypatch.setattr(leader_mode, "claim_leader_services", claim)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal, match="8100"):
+        cli._early_leader_boot()
+
+
+def test_a_refused_paper_router_is_named_and_recorded_as_degraded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from maxim.models import download
+    from maxim.models.language import router as router_mod
+    from maxim.simulation import benchmark as bm
+
+    monkeypatch.setattr(download, "consented_router", lambda *_a, **_k: _refusing_router("default"))
+    monkeypatch.setattr(router_mod, "load_llm_config", lambda: None)
+    from maxim.simulation import research_tools
+
+    monkeypatch.setattr(research_tools, "ExperimentLog", MagicMock())  # its nickname= bug is #1680's, not this test's
+    report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
+    report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
+    _offline.engage("test")
+    runner = object.__new__(bm.BenchmarkRunner)
+    assert runner.write_paper(report, tmp_path) is None
+    assert [d.site for d in _offline.degraded()] == ["benchmark.paper"]
+    assert "lanes that are not in-process" in _offline.degraded()[0].reason

@@ -190,7 +190,7 @@ def _key_creation_lock(path: Path, refusal: Callable[[Path, str], KeyFileUnusabl
     """The per-file lock every creator and rotator in this module holds, so an ensure never writes over a key another
     process has just created. ``peer key set``, the peer connect writer and the config-loader migration write the
     mesh key without it (atomically, so never half a file); routing them through it is #1402's follow-up."""
-    from maxim.utils.process_lock import LockContended, file_lock
+    from maxim.utils.process_lock import LockContended, LockUnavailable, file_lock
 
     try:
         with file_lock(path.with_name(path.name + ".lock"), timeout_s=_LOCAL_KEY_LOCK_TIMEOUT_S):
@@ -202,6 +202,17 @@ def _key_creation_lock(path: Path, refusal: Callable[[Path, str], KeyFileUnusabl
             path=path,
             reason="another process holds the key-creation lock",
             fix_hint="Another maxim process is creating or rotating this key; retry once it finishes.",
+        ) from e
+    except LockUnavailable as e:
+        # The filesystem cannot lock at all (#1408): say so at once, never "another process", and never write the
+        # key unlocked. Only file_lock's acquisition raises this; an OSError from the body passes through.
+        reason = f"its filesystem cannot take the key-creation lock ({e.strerror or 'lock refused'})"
+        if refusal is not None:
+            raise refusal(path, reason) from e
+        raise KeyFileUnusable(
+            path=path,
+            reason=reason,
+            fix_hint="Keep ~/.maxim on a local filesystem that supports file locks (not NFS without a lock daemon).",
         ) from e
 
 

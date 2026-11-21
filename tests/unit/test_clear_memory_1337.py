@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._child_env import without_maxim_overrides
+
 REPO_SRC = Path(__file__).resolve().parents[2] / "src"
 
 
@@ -55,7 +57,7 @@ def _populate(data_home: Path, monkeypatch) -> None:
 
 
 def _clear(data_home: Path, cwd: Path, *argv: str) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    env = without_maxim_overrides()
     env.update(MAXIM_DATA_HOME=str(data_home), MAXIM_ROLE="solo", PYTHONPATH=str(REPO_SRC), HOME=str(cwd))
     return subprocess.run(
         [sys.executable, "-m", "maxim", "--clear-memory", *argv],
@@ -121,6 +123,23 @@ def test_clear_memory_without_yes_off_a_terminal_refuses_and_deletes_nothing(tmp
 
 
 # ── The one definition of an agent's state ─────────────────────────────────────────────────────
+
+
+def test_clear_memory_all_removes_the_loop_runtime_state_1264(tmp_path: Path, monkeypatch) -> None:
+    """The loop's state files live in their own root, ``<data home>/runtime_state/`` (#1264): ``--clear-memory all``
+    removes it, the way it removes every other learned store."""
+    from maxim.cli_utils import clear_memory
+    from maxim.runtime.loop_state import claim_state_path
+    from maxim.utils.paths import _reset_caches, loop_state_dir
+
+    data_home = tmp_path / "home"
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(data_home))
+    _reset_caches()
+    path = Path(claim_state_path("MaximAgent", "r-1264"))
+    assert path.is_file() and path.parent == loop_state_dir("MaximAgent") == data_home / "runtime_state" / "MaximAgent"
+
+    assert clear_memory("all")["runtime_state"] is True
+    assert not (data_home / "runtime_state").exists()
 
 
 def test_the_clear_types_cover_exactly_what_an_agent_home_persists() -> None:

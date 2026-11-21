@@ -6,4 +6,5 @@
   model in-process. Set it with `maxim config set llm.offline true` (there is no env alias). A `config.json` that
   cannot be parsed now refuses startup, because whether it means offline cannot be known. `maxim doctor` shows each
   check that offline refuses as a "refused (offline)" row. `maxim config downgrade` warns that a build without the
-  key runs online.
+  key runs online. Offline, a claimed leader's tunnel spawn and a dual-LLM run's AUT router build refuse rather than
+  fall back (a "tunnel did not start" warning, or the AUT silently running on the shared model).

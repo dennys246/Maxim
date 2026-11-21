@@ -218,6 +218,7 @@ def _snapshot() -> dict:
 def _run_interactive(work: Path) -> dict:
     """One interactive run with both TTY entry points faked. Every global it touches is restored in the
     ``finally`` before this returns (``test_the_interactive_run_restores_its_globals``)."""
+    from tests._child_env import drop_maxim_overrides
     from tests.unit._orch_harness import FakeRouter, _GlobalState, assert_this_checkout
 
     assert_this_checkout()
@@ -257,8 +258,7 @@ def _run_interactive(work: Path) -> dict:
     state = _GlobalState()
     prev_display = SL.get_active_display()
     try:
-        for key in [k for k in os.environ if k.startswith("MAXIM_")]:
-            del os.environ[key]
+        drop_maxim_overrides(os.environ)  # keeps conftest's isolation vars (tests/_child_env.py)
         os.environ.update(MAXIM_SIM_HARD_ABORT="0", MAXIM_DATA_HOME=str(work / "data"))
         _reset_caches()
         os.chdir(work)

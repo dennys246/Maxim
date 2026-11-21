@@ -14,6 +14,7 @@ os.environ.pop("MAXIM_OFFLINE", None)
 import atexit
 import functools
 import os
+import re
 import shutil
 import signal
 import sys
@@ -40,6 +41,17 @@ _TEST_HOME.mkdir(parents=True)
 os.environ["HOME"] = str(_TEST_HOME)
 os.environ["XDG_CONFIG_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-config")
 os.environ["XDG_CACHE_HOME"] = str(_TEST_ISOLATION_ROOT / "xdg-cache")
+# /etc is not under HOME: a leader dev box's real /etc/cloudflared/config.yml made every role-dependent test resolve
+# "leader" (2026-11-05). utils/paths.py::cloudflared_system_dir is the one reader; exported, so subprocesses inherit it,
+# and its in-process default is pointed here too (below, after the first maxim import), so a test that strips every
+# MAXIM_* (in any spelling) still never reads /etc (guard: tests/unit/test_cloudflared_system_dir_isolation.py).
+_TEST_CLOUDFLARED_SYSTEM_DIR = _TEST_ISOLATION_ROOT / "etc-cloudflared"
+os.environ["MAXIM_CLOUDFLARED_SYSTEM_DIR"] = str(_TEST_CLOUDFLARED_SYSTEM_DIR)
+# The LLM spawn records follow the PASSWD home, not HOME (a port is box-wide, #1344 PR 3b), so redirecting HOME does
+# not isolate them: export the override the same way, and rebind the reader's default below (guard:
+# tests/unit/test_llm_spawn_record_dir_isolation.py).
+_TEST_LLM_SPAWN_RECORD_DIR = _TEST_ISOLATION_ROOT / "llm-spawn-records"
+os.environ["MAXIM_LLM_SPAWN_RECORD_DIR"] = str(_TEST_LLM_SPAWN_RECORD_DIR)
 
 _MODEL_TESTS_ENABLED = os.environ.get("MAXIM_RUN_MODEL_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
 if _MODEL_TESTS_ENABLED:
@@ -59,6 +71,12 @@ else:
 # ~/.config/maxim/profiles.yml, which must be the isolated one, never the developer's (guard:
 # tests/unit/test_conftest_isolation_order.py).
 from maxim.memory.encoding import EncodingSignals  # noqa: E402
+import maxim.utils.paths as _maxim_paths  # noqa: E402
+
+# The in-process half of the cloudflared isolation (above): with MAXIM_CLOUDFLARED_SYSTEM_DIR stripped, the reader
+# falls back to this default, so it must be the isolation dir in the test process, never /etc (delta review S1).
+_maxim_paths._DEFAULT_CLOUDFLARED_SYSTEM_DIR = _TEST_CLOUDFLARED_SYSTEM_DIR
+_maxim_paths._DEFAULT_LLM_SPAWN_RECORD_DIR = _TEST_LLM_SPAWN_RECORD_DIR
 
 # profiles.yml merges on the first profile lookup, not at import (#1315 step 0a). Merge the ISOLATED (empty) one here,
 # once, so the suite's profile tables never depend on which test looks a profile up first, or under whose
@@ -322,15 +340,16 @@ _SESSION_SIGINT_HANDLER = signal.getsignal(signal.SIGINT)
 def _clear_stop_request():
     """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield.
 
-    Also the CLI's signal state (#1344): the noted-signal and ever-claimed flags reset, a signal-armed watchdog is
-    forgotten (`cli_signals._reset_for_tests`), and a test that left a SIGINT handler installed fails here instead of
-    making a later Ctrl+C yield."""
+    Also the CLI's signal state (#1344): the noted-signal and ever-claimed flags reset, the spawned-child registry is
+    emptied and reopened, a signal-armed watchdog is forgotten (`cli_signals._reset_for_tests`), and a test that left a
+    SIGINT handler installed fails here instead of making a later Ctrl+C yield."""
     from maxim.integration import session_ownership
     from maxim.utils import cancellation
 
     def _reset() -> None:
         cancellation.clear_stop_request()
         cancellation._signal_noted = False
+        cancellation._reset_children()  # the spawned-child registry and its closed flag (#1344 PR 3a)
         session_ownership._ever_claimed = False
         cli_signals = sys.modules.get("maxim.cli_signals")
         if cli_signals is not None:
@@ -460,6 +479,36 @@ def _isolate_maxim_llm_profile_env():
         os.environ.pop("MAXIM_LLM_PROFILE", None)
         if saved is not None:
             os.environ["MAXIM_LLM_PROFILE"] = saved
+
+
+_INTERNAL_KEY_ENV = re.compile(r"^MAXIM_(LANE|PLACEMENT)_[A-Z0-9_]+_API_KEY$")
+
+
+def _internal_key_env_names() -> list[str]:
+    return [n for n in os.environ if _INTERNAL_KEY_ENV.match(n) and not n.endswith("_REMOTE_API_KEY")]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_internal_lane_key_env():
+    """Scrub the internal key variables ``build_primary_router`` reads for its #1371 warning
+    (``MAXIM_LANE_<TIER>_API_KEY``, ``MAXIM_PLACEMENT_<KEY>_API_KEY``; never ``..._REMOTE_API_KEY``, which
+    ``_isolate_config_json_env`` owns), and forget which were warned about, so one test's export cannot change a
+    later test's warnings.
+
+    Saves and restores ``os.environ`` itself, NOT through ``monkeypatch``: an autouse fixture requesting
+    ``monkeypatch`` would set it up before ``tests/script_module_guard.py``'s check and so tear it down after,
+    which reads a test's ``monkeypatch.setitem(sys.modules, ...)`` as a leak."""
+    from maxim.runtime.lane_backends import _reset_ignored_key_env_warnings
+
+    saved = {n: os.environ.pop(n) for n in _internal_key_env_names()}
+    _reset_ignored_key_env_warnings()
+    try:
+        yield
+    finally:
+        for n in _internal_key_env_names():
+            os.environ.pop(n, None)
+        os.environ.update(saved)
+        _reset_ignored_key_env_warnings()
 
 
 @pytest.fixture(autouse=True)
@@ -603,6 +652,24 @@ def _isolate_maxim_auto_download_env():
         os.environ.pop("MAXIM_AUTO_DOWNLOAD_MODELS", None)
         if saved is not None:
             os.environ["MAXIM_AUTO_DOWNLOAD_MODELS"] = saved
+
+
+@pytest.fixture(autouse=True)
+def _reset_download_decline_memory():
+    """Reset the download gate's decline memory (#1396) around every test.
+
+    ``models/download.py`` keeps a module-level "no" memory that ``cli.py::_main_guarded`` scopes; a test that leaves
+    a scope open (or arms one) would make a later test's gate skip its question. Touches the module only when it is
+    already imported (never imports maxim from here), and requests no ``monkeypatch``: an autouse fixture that does
+    reorders teardown after the scripts-module guard (the #1371 lesson).
+    """
+    mod = sys.modules.get("maxim.models.download")
+    if mod is not None:
+        mod._reset_decline_memory_for_tests()
+    yield
+    mod = sys.modules.get("maxim.models.download")
+    if mod is not None:
+        mod._reset_decline_memory_for_tests()
 
 
 @pytest.fixture(autouse=True)

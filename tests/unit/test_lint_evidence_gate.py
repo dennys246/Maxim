@@ -473,6 +473,19 @@ def test_the_real_pass_table_supports_exp63b_earned_from_pass_only() -> None:
     assert G.pass_table_problems(table, "HEAD") == [] and "exp63b_verdict" in R.O19_KINDS
 
 
+def test_the_real_pass_table_supports_exp63c_earned_from_pass_only() -> None:
+    """Exp 63c's prereg (§Attempts, verdict, ledger): ``exp63c_verdict`` -> {PASS} supports EARNED (narrow) on T1-16
+    and nothing else: NOT SHOWN does not raise the row (OD2), and a root campaign has no REPRODUCED."""
+    table = json.loads((REPO / G.PASS_TABLE).read_text())
+    assert table["exp63c_verdict"] == {
+        "rows": ["T1-16"],
+        "scopes": ["narrow"],
+        "targets": {"EARNED": ["PASS"]},
+        "require": {"apparatus_checked": True},
+    }
+    assert G.pass_table_problems(table, "HEAD") == [] and "exp63c_verdict" in R.O19_KINDS
+
+
 def test_unknown_digests_never_match() -> None:
     assert R.unknown("unknown") and R.unknown("unknown: OSError") and R.unknown(None) and R.unknown("")
     assert not R.unknown("a" * 64)
@@ -3028,14 +3041,6 @@ def test_the_real_pass_table_scopes_match_each_rows_current_head() -> None:
             "move back up is a raise that needs new support"
         ),
         ("exp10_verdict", "T1-1"): "T1-1 is SUPERSEDED; no re-date of a superseded row is supported",
-        ("exp63_verdict", "T1-16"): (
-            "T1-16 is STALE since 2026-10-25 (Session R's recall fix replaced the ranker it measured; owner decision, "
-            "the strict option) and exp63 targets only EARNED: a move back up needs a re-run on a rebuilt judge"
-        ),
-        ("exp63b_verdict", "T1-16"): (
-            "T1-16 is STALE until Exp 63b's verdict (#1476), the re-run on the rebuilt judge, and exp63b targets only "
-            "EARNED: NOT SHOWN raises nothing (OD2, owner 2026-11-02)"
-        ),
     }
     rows = {r.id: r for r in G.L.parse((REPO / G.L.LEDGER_PATH).read_text())[0]}
     skipped = set()
@@ -3255,16 +3260,22 @@ def test_the_within_campaign_rule(rejudged, refused) -> None:
 
 def test_the_within_campaign_trigger_is_vacuous_for_every_verdict_on_main() -> None:
     """The four pre-#1079 campaigns: ABORT (10, 10c2) or deciding at k = 1 (09, 63), so their bound judges, which do
-    not emit the bar, still support exactly what they did."""
+    not emit the bar, still support exactly what they did. Every later campaign's verdict (Exp 63b onward) carries
+    the bar its judge computes (#1079), and on main it is empty: no earlier attempt leaked a failed gate."""
+    import o19_verdict
+
     found = {}
     for path in sorted((REPO / DATA).glob("*/verdict.json")):
         rec = json.loads(path.read_text())
         if R.str_field(rec, "kind") not in R.O19_KINDS:
             continue
         found[rec["experiment"]] = rec.get("deciding_attempt")
-        assert "within_campaign_leaks" not in rec, path
+        if rec["experiment"] in o19_verdict.PRE_1079_KEYS:
+            assert "within_campaign_leaks" not in rec, path
+        else:
+            assert rec.get("within_campaign_leaks") == [], path
         assert R.o19_within_campaign_problems({"rejudged": rec}, rec["experiment"]) == [], path
-    assert set(found) == {"10", "10c2", "09", "63"}, found
+    assert set(found) >= o19_verdict.PRE_1079_KEYS == {"10", "10c2", "09", "63"}, found
 
 
 # ── #1081 item 7: a redaction record retires the campaign (owner decisions 2026-10-04 + 2026-10-08) ─────────────

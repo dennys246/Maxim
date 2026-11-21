@@ -82,12 +82,18 @@ class ExperimentResult:
         return stats.get("nac_causal_links", 0)
 
 
-def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
+def load_campaign_turns(campaign_path: str, *, strict: bool = False) -> list[dict[str, Any]]:
     """Load campaign YAML and extract turns for direct injection.
 
     Returns dicts matching the format ``start_simulation_mode()``
     expects for ``pre_campaign_turns``: ``text``, ``phase``,
     ``salience``, ``novelty``, plus ``metadata`` for experiment use.
+
+    By default a percept with no ``cli_input`` is skipped (``run_campaign``'s behaviour). ``strict=True`` (the CLI's
+    ``--sim-script``, where every line is one turn) raises ``ValueError`` instead, for a file that is not YAML, has
+    no non-empty ``percepts`` list, or holds a percept that is not a mapping, whose ``metadata`` is not a mapping, or
+    whose ``cli_input`` is missing, not a string, blank or whitespace-only (``take_user_input`` reads an empty line as
+    unaddressed, so it would publish nothing). The turn dicts are the same either way.
     """
     import yaml
 
@@ -97,12 +103,25 @@ def load_campaign_turns(campaign_path: str) -> list[dict[str, Any]]:
 
     from maxim.utils.scenario_inputs import read_recorded
 
-    data = yaml.safe_load(read_recorded(path))
+    try:
+        data = yaml.safe_load(read_recorded(path))
+    except yaml.YAMLError as exc:
+        if not strict:
+            raise
+        raise ValueError(f"{campaign_path}: not YAML ({exc})") from exc
 
+    if strict and not (isinstance(data, dict) and isinstance(data.get("percepts"), list) and data["percepts"]):
+        raise ValueError(f"{campaign_path}: no non-empty 'percepts' list")
     percepts = data.get("percepts", [])
     turns = []
     for i, p in enumerate(percepts):
+        if strict and not isinstance(p, dict):
+            raise ValueError(f"{campaign_path}: percept {i} is not a mapping")
         text = p.get("cli_input", "")
+        if strict and not (isinstance(text, str) and text.strip()):
+            raise ValueError(f"{campaign_path}: percept {i}'s cli_input {text!r} is not a non-blank line")
+        if strict and not isinstance(p.get("metadata", {}), dict):
+            raise ValueError(f"{campaign_path}: percept {i}'s metadata is not a mapping")
         if not text:
             continue
         meta = p.get("metadata", {})

@@ -17,7 +17,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
-      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "message": "I heard: a stranger asks your name."
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -47,6 +47,16 @@
     {
      "answer": {
       "params": {
+       "message": "I heard: a stranger asks your name."
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "a stranger asks your name."
+    },
+    {
+     "answer": {
+      "params": {
        "message": "I heard: the stranger asks your favourite colour."
       },
       "tool_name": "respond"
@@ -73,17 +83,19 @@
        "contributors": [],
        "domain": null,
        "event_context": {
-        "goal": "direct_answer"
+        "params": {
+         "message": "I heard: a stranger asks your name."
+        }
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "60665ba2d728dfa1",
+       "id": "3257bc6b57f46624",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
        "observation_count": 1,
-       "outcome_signature": "plan:direct_answer:success",
-       "outcome_type": "plan_result",
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
        "outcome_valence": "positive",
        "percept_refs": [],
        "predicted_value": 0.57,
@@ -93,7 +105,7 @@
        "source": "local"
       },
       {
-       "confidence": 0.475,
+       "confidence": 0.609350288,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -105,21 +117,22 @@
        "event_type": "tool",
        "id": "73851f2fc2283f54",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.43,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 2,
        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
        "outcome_type": "tool_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.6302,
        "prediction_history": [
-        0.5
+        0.5,
+        0.57
        ],
        "source": "local"
       },
       {
-       "confidence": 0.475,
+       "confidence": 0.609350288,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -130,42 +143,17 @@
        "event_type": "tool",
        "id": "a90147485f2b8873",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.43,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 2,
        "outcome_signature": "plan:scripted respond:success",
        "outcome_type": "plan_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.6302,
        "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "a9ee8012a42828cd",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
+        0.5,
+        0.57
        ],
        "source": "local"
       },
@@ -195,50 +183,19 @@
         0.5
        ],
        "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
-        }
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "e342a634de19a671",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "tool:respond:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
       }
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
-     ],
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "73851f2fc2283f54",
-      "a9ee8012a42828cd"
+      "73851f2fc2283f54"
      ],
      "tool:respond:positive": [
-      "ca3a53e490997183",
-      "e342a634de19a671"
+      "3257bc6b57f46624",
+      "ca3a53e490997183"
      ]
     },
     "percept_valences": {},
@@ -315,9 +272,9 @@
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
     "status: Saving action log (2 records)...",
-    "status: Saving AUT state (<N> memories, 6 causal links)...",
+    "status: Saving AUT state (<N> memories, 4 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Actions: 2 (0 blocked) |   AUT Memories: <N> | Causal Links: 6 |   Bio events: \u25b2 Learn: 6 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Actions: 2 (0 blocked) |   AUT Memories: <N> | Causal Links: 4 |   Bio events: \u25b2 Learn: 4 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:scripted respond:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -414,12 +371,24 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 6,
+    "aut_causal_links": 4,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
       {
+       "confidence": 0.609,
+       "event": "tool:respond",
+       "observations": 2,
+       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
+      },
+      {
+       "confidence": 0.609,
+       "event": "tool:respond",
+       "observations": 2,
+       "outcome": "plan:scripted respond:success"
+      },
+      {
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
@@ -429,28 +398,10 @@
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
-       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
-      },
-      {
-       "confidence": 0.475,
-       "event": "tool:respond",
-       "observations": 1,
-       "outcome": "plan:direct_answer:success"
-      },
-      {
-       "confidence": 0.475,
-       "event": "tool:respond",
-       "observations": 1,
        "outcome": "tool:respond:positive"
-      },
-      {
-       "confidence": 0.475,
-       "event": "tool:respond",
-       "observations": 1,
-       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       }
      ],
-     "total_links": 6
+     "total_links": 4
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -464,7 +415,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 6,
+    "learn_events_count": 4,
     "llm_finish_reason": "",
     "llm_finish_status": "",
     "llm_finish_summary": "",
@@ -532,7 +483,7 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "I heard: a stranger asks your name.",
      "I heard: the stranger asks your favourite colour."
     ],
     "session_id": "<STAMP>",
@@ -660,10 +611,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       "message": "I heard: a stranger asks your name."
       },
       "tool_name": "respond",
-      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "utterance": "I heard: a stranger asks your name."
      },
      {
       "block_reason": null,
@@ -681,7 +632,7 @@
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 6,
+      "link_count": 4,
       "links": [
        {
         "confidence": 0.475,
@@ -691,17 +642,17 @@
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "observations": 2,
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -710,26 +661,27 @@
         "observations": 1,
         "outcome": "tool:respond:positive",
         "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:scripted respond:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
+       {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "script"
+       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -739,55 +691,15 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 6
+      "nac_causal_links": 4
      },
      "temporal": {
       "keys": [
@@ -812,7 +724,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 6,
+      "link_count": 4,
       "links": [
        {
         "confidence": 0.475,
@@ -822,17 +734,17 @@
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "observations": 2,
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -841,26 +753,27 @@
         "observations": 1,
         "outcome": "tool:respond:positive",
         "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:scripted respond:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
+       {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "script"
+       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -870,49 +783,9 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -923,11 +796,11 @@
      "nac_stats": {
       "eligibility_traces": 1,
       "event_signatures": 1,
-      "outcome_signatures": 4,
+      "outcome_signatures": 3,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 6,
+      "total_links": 4,
       "total_observations": 6
      },
      "pain_stats": {
@@ -952,10 +825,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 6
+      "nac_causal_links": 4
      },
      "temporal": {
       "keys": [
@@ -1011,7 +884,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: a stranger asks your name."
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -1020,7 +893,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: a stranger asks your name.",
      "text": "A stranger asks your name.",
      "timed_out": false,
      "turn": 1
@@ -1063,7 +936,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": 0.0,
      "params": {
-      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "message": "I heard: hello, who are you"
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -1072,7 +945,18 @@
     }
    ],
    "arm": "imagination",
-   "aut_calls": [],
+   "aut_calls": [
+    {
+     "answer": {
+      "params": {
+       "message": "I heard: hello, who are you"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello, who are you"
+    }
+   ],
    "aut_nac": {
     "_format_version": "1.4",
     "cluster_fear": {},
@@ -1091,17 +975,19 @@
        "contributors": [],
        "domain": null,
        "event_context": {
-        "goal": "direct_answer"
+        "params": {
+         "message": "I heard: hello, who are you"
+        }
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "60665ba2d728dfa1",
+       "id": "181feca7ecdc769a",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
        "observation_count": 1,
-       "outcome_signature": "plan:direct_answer:success",
-       "outcome_type": "plan_result",
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
        "outcome_valence": "positive",
        "percept_refs": [],
        "predicted_value": 0.57,
@@ -1117,11 +1003,11 @@
        "domain": null,
        "event_context": {
         "agent_id": "sim_aut",
-        "goal": "direct_answer"
+        "goal": "scripted respond"
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "a9ee8012a42828cd",
+       "id": "73851f2fc2283f54",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
@@ -1142,19 +1028,17 @@
        "contributors": [],
        "domain": null,
        "event_context": {
-        "params": {
-         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
-        }
+        "goal": "scripted respond"
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "e342a634de19a671",
+       "id": "a90147485f2b8873",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
        "observation_count": 1,
-       "outcome_signature": "tool:respond:positive",
-       "outcome_type": "result",
+       "outcome_signature": "plan:scripted respond:success",
+       "outcome_type": "plan_result",
        "outcome_valence": "positive",
        "percept_refs": [],
        "predicted_value": 0.57,
@@ -1166,14 +1050,14 @@
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
+     "plan:scripted respond:success": [
+      "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "a9ee8012a42828cd"
+      "73851f2fc2283f54"
      ],
      "tool:respond:positive": [
-      "e342a634de19a671"
+      "181feca7ecdc769a"
      ]
     },
     "percept_valences": {},
@@ -1302,7 +1186,7 @@
     "status: Saving action log (1 records)...",
     "status: Saving AUT state (<N> memories, 3 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 3 |   Bio events: \u25b2 Learn: 5 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 3 |   Bio events: \u25b2 Learn: 5 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:scripted respond:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -1451,7 +1335,7 @@
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
-       "outcome": "plan:direct_answer:success"
+       "outcome": "plan:scripted respond:success"
       }
      ],
      "total_links": 3
@@ -1544,7 +1428,7 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "I'm Maxim, a robot assistant designed to understand reality and help people."
+     "I heard: hello, who are you"
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
@@ -1671,10 +1555,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       "message": "I heard: hello, who are you"
       },
       "tool_name": "respond",
-      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "utterance": "I heard: hello, who are you"
      }
     ],
     "blocked_actions": 0,
@@ -1701,7 +1585,7 @@
         "confidence": 0.475,
         "event": "tool:respond",
         "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        }
       ]
@@ -1712,17 +1596,12 @@
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "answer respond"
+        "name": "respond respond"
        },
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
+        "name": "script respond"
        },
        {
         "category": "substrate",
@@ -1742,18 +1621,18 @@
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "answer"
+        "name": "respond"
        },
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "direct"
+        "name": "script"
        }
       ],
-      "count": 8
+      "count": 7
      },
      "system_stats": {
-      "atl_concepts": 8,
+      "atl_concepts": 7,
       "available": true,
       "ec_signatures": 0,
       "nac_causal_links": 3
@@ -1801,7 +1680,7 @@
         "confidence": 0.475,
         "event": "tool:respond",
         "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        }
       ]
@@ -1812,17 +1691,12 @@
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "answer respond"
+        "name": "respond respond"
        },
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
+        "name": "script respond"
        },
        {
         "category": "substrate",
@@ -1842,15 +1716,15 @@
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "answer"
+        "name": "respond"
        },
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "direct"
+        "name": "script"
        }
       ],
-      "count": 8
+      "count": 7
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -1890,7 +1764,7 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 8,
+      "atl_concepts": 7,
       "available": true,
       "ec_signatures": 0,
       "nac_causal_links": 3
@@ -1946,7 +1820,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: hello, who are you"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -1955,7 +1829,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: hello, who are you",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -1980,7 +1854,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
-      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "message": "I heard: hello, who are you"
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -2007,6 +1881,16 @@
    ],
    "arm": "narrator",
    "aut_calls": [
+    {
+     "answer": {
+      "params": {
+       "message": "I heard: hello, who are you"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello, who are you"
+    },
     {
      "answer": {
       "params": {
@@ -2037,6 +1921,33 @@
        "domain": null,
        "event_context": {
         "params": {
+         "message": "I heard: hello, who are you"
+        }
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "181feca7ecdc769a",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "params": {
          "message": "I heard: what is your favourite colour"
         }
        },
@@ -2058,32 +1969,7 @@
        "source": "local"
       },
       {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "60665ba2d728dfa1",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "plan:direct_answer:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
+       "confidence": 0.609350288,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -2095,21 +1981,22 @@
        "event_type": "tool",
        "id": "73851f2fc2283f54",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.43,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 2,
        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
        "outcome_type": "tool_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.6302,
        "prediction_history": [
-        0.5
+        0.5,
+        0.57
        ],
        "source": "local"
       },
       {
-       "confidence": 0.475,
+       "confidence": 0.609350288,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -2120,88 +2007,32 @@
        "event_type": "tool",
        "id": "a90147485f2b8873",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.43,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 2,
        "outcome_signature": "plan:scripted respond:success",
        "outcome_type": "plan_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.6302,
        "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "a9ee8012a42828cd",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
-        }
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "e342a634de19a671",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "tool:respond:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
+        0.5,
+        0.57
        ],
        "source": "local"
       }
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
-     ],
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "73851f2fc2283f54",
-      "a9ee8012a42828cd"
+      "73851f2fc2283f54"
      ],
      "tool:respond:positive": [
-      "20263f292db14bde",
-      "e342a634de19a671"
+      "181feca7ecdc769a",
+      "20263f292db14bde"
      ]
     },
     "percept_valences": {},
@@ -2260,9 +2091,9 @@
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
     "status: Saving action log (2 records)...",
-    "status: Saving AUT state (<N> memories, 6 causal links)...",
+    "status: Saving AUT state (<N> memories, 4 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Orchestrator status: completed |     Reason: two probes delivered |     Summary:\n      the agent answered both probes |   Actions: 2 (0 blocked) |   AUT Memories: <N> | Causal Links: 6 |   Bio events: \u25b2 Learn: 9 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: completed |   Orchestrator status: completed |     Reason: two probes delivered |     Summary:\n      the agent answered both probes |   Actions: 2 (0 blocked) |   AUT Memories: <N> | Causal Links: 4 |   Bio events: \u25b2 Learn: 7 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:scripted respond:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 2 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -2384,12 +2215,24 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 6,
+    "aut_causal_links": 4,
     "aut_endpoint": "",
     "aut_model": "orch-golden-fake",
     "aut_nac_summary": {
      "top_links": [
       {
+       "confidence": 0.609,
+       "event": "tool:respond",
+       "observations": 2,
+       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
+      },
+      {
+       "confidence": 0.609,
+       "event": "tool:respond",
+       "observations": 2,
+       "outcome": "plan:scripted respond:success"
+      },
+      {
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
@@ -2399,28 +2242,10 @@
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
-       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
-      },
-      {
-       "confidence": 0.475,
-       "event": "tool:respond",
-       "observations": 1,
-       "outcome": "plan:direct_answer:success"
-      },
-      {
-       "confidence": 0.475,
-       "event": "tool:respond",
-       "observations": 1,
        "outcome": "tool:respond:positive"
-      },
-      {
-       "confidence": 0.475,
-       "event": "tool:respond",
-       "observations": 1,
-       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       }
      ],
-     "total_links": 6
+     "total_links": 4
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -2434,7 +2259,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 9,
+    "learn_events_count": 7,
     "llm_finish_reason": "two probes delivered",
     "llm_finish_status": "completed",
     "llm_finish_summary": "the agent answered both probes",
@@ -2507,7 +2332,7 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "I heard: hello, who are you",
      "I heard: what is your favourite colour"
     ],
     "session_id": "<STAMP>",
@@ -2635,10 +2460,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       "message": "I heard: hello, who are you"
       },
       "tool_name": "respond",
-      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "utterance": "I heard: hello, who are you"
      },
      {
       "block_reason": null,
@@ -2656,7 +2481,7 @@
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 6,
+      "link_count": 4,
       "links": [
        {
         "confidence": 0.475,
@@ -2666,17 +2491,17 @@
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "observations": 2,
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -2685,26 +2510,27 @@
         "observations": 1,
         "outcome": "tool:respond:positive",
         "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:scripted respond:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
+       {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "script"
+       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -2714,55 +2540,15 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 6
+      "nac_causal_links": 4
      },
      "temporal": {
       "keys": [
@@ -2787,7 +2573,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 6,
+      "link_count": 4,
       "links": [
        {
         "confidence": 0.475,
@@ -2797,17 +2583,17 @@
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "observations": 2,
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -2816,26 +2602,27 @@
         "observations": 1,
         "outcome": "tool:respond:positive",
         "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:scripted respond:success",
-        "valence": ""
        }
       ]
      },
      "concepts": {
       "available": true,
       "concepts": [
+       {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "script"
+       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -2845,49 +2632,9 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -2898,11 +2645,11 @@
      "nac_stats": {
       "eligibility_traces": 1,
       "event_signatures": 1,
-      "outcome_signatures": 4,
+      "outcome_signatures": 3,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 6,
+      "total_links": 4,
       "total_observations": 6
      },
      "pain_stats": {
@@ -2927,10 +2674,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 6
+      "nac_causal_links": 4
      },
      "temporal": {
       "keys": [
@@ -2985,7 +2732,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: hello, who are you"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -2994,7 +2741,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: hello, who are you",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -3050,6 +2797,16 @@
     {
      "answer": {
       "params": {
+       "message": "I heard: hello, who are you"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello, who are you"
+    },
+    {
+     "answer": {
+      "params": {
        "message": "I heard: what do you remember"
       },
       "tool_name": "respond"
@@ -3072,32 +2829,7 @@
     "links": {
      "tool:respond": [
       {
-       "confidence": 0.45125,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "60665ba2d728dfa1",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "plan:direct_answer:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
+       "confidence": 0.609350288,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -3109,21 +2841,22 @@
        "event_type": "tool",
        "id": "73851f2fc2283f54",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.43,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 2,
        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
        "outcome_type": "tool_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.6302,
        "prediction_history": [
-        0.5
+        0.5,
+        0.57
        ],
        "source": "local"
       },
       {
-       "confidence": 0.475,
+       "confidence": 0.609350288,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -3134,57 +2867,28 @@
        "event_type": "tool",
        "id": "a90147485f2b8873",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.43,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 2,
        "outcome_signature": "plan:scripted respond:success",
        "outcome_type": "plan_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.6302,
        "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.45125,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "a9ee8012a42828cd",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
+        0.5,
+        0.57
        ],
        "source": "local"
       }
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
-     ],
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "73851f2fc2283f54",
-      "a9ee8012a42828cd"
+      "73851f2fc2283f54"
      ]
     },
     "percept_valences": {},
@@ -3295,7 +2999,7 @@
     "status: Saving action log (1 records)...",
     "status: Saving AUT state (<N> memories, 2 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 2 |   Bio events: \u25b2 Learn: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>",
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 2 |   Bio events: \u25b2 Learn: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:scripted respond:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>",
     "status: SIMULATION MODE \u2014 generative",
     "status: Goal: check what the agent says next",
     "status: Max turns: 10",
@@ -3307,9 +3011,9 @@
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
     "status: Saving action log (1 records)...",
-    "status: Saving AUT state (<N> memories, 4 causal links)...",
+    "status: Saving AUT state (<N> memories, 2 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check what the agent says next |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the new goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 4 |   Bio events: \u25b2 Learn: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:scripted respond:success (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.45, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.45, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check what the agent says next |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the new goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 2 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:scripted respond:success (conf=0.61, obs=2) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -3419,37 +3123,25 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 4,
+    "aut_causal_links": 2,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
       {
-       "confidence": 0.475,
+       "confidence": 0.609,
        "event": "tool:respond",
-       "observations": 1,
+       "observations": 2,
        "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       },
       {
-       "confidence": 0.475,
+       "confidence": 0.609,
        "event": "tool:respond",
-       "observations": 1,
+       "observations": 2,
        "outcome": "plan:scripted respond:success"
-      },
-      {
-       "confidence": 0.451,
-       "event": "tool:respond",
-       "observations": 1,
-       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
-      },
-      {
-       "confidence": 0.451,
-       "event": "tool:respond",
-       "observations": 1,
-       "outcome": "plan:direct_answer:success"
       }
      ],
-     "total_links": 4
+     "total_links": 2
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -3463,7 +3155,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 2,
+    "learn_events_count": 0,
     "llm_finish_reason": "the new goal probed",
     "llm_finish_status": "completed",
     "llm_finish_summary": "",
@@ -3791,33 +3483,19 @@
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 4,
+      "link_count": 2,
       "links": [
        {
-        "confidence": 0.451,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.451,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "plan:scripted respond:success",
         "valence": ""
        }
@@ -3827,6 +3505,21 @@
       "available": true,
       "concepts": [
        {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "script"
+       },
+       {
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "respond respond"
@@ -3835,55 +3528,15 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 4
+      "nac_causal_links": 2
      },
      "temporal": {
       "keys": [
@@ -3908,33 +3561,19 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 4,
+      "link_count": 2,
       "links": [
        {
-        "confidence": 0.451,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.451,
+        "confidence": 0.609,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
+        "observations": 2,
         "outcome": "plan:scripted respond:success",
         "valence": ""
        }
@@ -3944,6 +3583,21 @@
       "available": true,
       "concepts": [
        {
+        "category": "action",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.571,
+        "name": "script"
+       },
+       {
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "respond respond"
@@ -3952,49 +3606,9 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.571,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -4005,11 +3619,11 @@
      "nac_stats": {
       "eligibility_traces": 0,
       "event_signatures": 1,
-      "outcome_signatures": 3,
+      "outcome_signatures": 2,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 4,
+      "total_links": 2,
       "total_observations": 4
      },
      "pain_stats": {
@@ -4034,10 +3648,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 4
+      "nac_causal_links": 2
      },
      "temporal": {
       "keys": [
@@ -4102,7 +3716,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: hello, who are you"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -4111,7 +3725,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: hello, who are you",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -4154,7 +3768,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
-      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "message": "I heard: hello, who are you"
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -4163,7 +3777,18 @@
     }
    ],
    "arm": "persistent_agent",
-   "aut_calls": [],
+   "aut_calls": [
+    {
+     "answer": {
+      "params": {
+       "message": "I heard: hello, who are you"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello, who are you"
+    }
+   ],
    "aut_nac": {
     "_format_version": "1.4",
     "cluster_fear": {},
@@ -4182,12 +3807,39 @@
        "contributors": [],
        "domain": null,
        "event_context": {
-        "agent_id": "console_agent",
-        "goal": "direct_answer"
+        "params": {
+         "message": "I heard: hello, who are you"
+        }
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "4759db78a96b1ff4",
+       "id": "181feca7ecdc769a",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "agent_id": "console_agent",
+        "goal": "scripted respond"
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "45d3cd5e0bd167c0",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
@@ -4208,44 +3860,17 @@
        "contributors": [],
        "domain": null,
        "event_context": {
-        "goal": "direct_answer"
+        "goal": "scripted respond"
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "60665ba2d728dfa1",
+       "id": "a90147485f2b8873",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
        "observation_count": 1,
-       "outcome_signature": "plan:direct_answer:success",
+       "outcome_signature": "plan:scripted respond:success",
        "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
-        }
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "e342a634de19a671",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "tool:respond:positive",
-       "outcome_type": "result",
        "outcome_valence": "positive",
        "percept_refs": [],
        "predicted_value": 0.57,
@@ -4257,14 +3882,14 @@
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
+     "plan:scripted respond:success": [
+      "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "4759db78a96b1ff4"
+      "45d3cd5e0bd167c0"
      ],
      "tool:respond:positive": [
-      "e342a634de19a671"
+      "181feca7ecdc769a"
      ]
     },
     "percept_valences": {},
@@ -4427,7 +4052,7 @@
     "status: Saving action log (1 records)...",
     "status: Persistent agent \u2014 state saved to its own home (no session AUT snapshot)",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 3 |   Bio events: \u25b2 Learn: 5 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 1 |   Finish: completed |   Orchestrator status: completed |     Reason: the first goal probed |   Actions: 1 (0 blocked) |   AUT Memories: <N> | Causal Links: 3 |   Bio events: \u25b2 Learn: 5 |  |   Top Causal Links: |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:scripted respond:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 1 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -4538,7 +4163,7 @@
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
-       "outcome": "plan:direct_answer:success"
+       "outcome": "plan:scripted respond:success"
       }
      ],
      "total_links": 3
@@ -4618,7 +4243,7 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "I'm Maxim, a robot assistant designed to understand reality and help people."
+     "I heard: hello, who are you"
     ],
     "session_id": "<STAMP>",
     "substrate_metrics": {},
@@ -4718,10 +4343,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       "message": "I heard: hello, who are you"
       },
       "tool_name": "respond",
-      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "utterance": "I heard: hello, who are you"
      }
     ],
     "blocked_actions": 0,
@@ -4748,7 +4373,7 @@
         "confidence": 0.475,
         "event": "tool:respond",
         "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        }
       ]
@@ -4759,17 +4384,12 @@
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "answer respond"
+        "name": "respond respond"
        },
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
+        "name": "script respond"
        },
        {
         "category": "action",
@@ -4779,18 +4399,18 @@
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "answer"
+        "name": "respond"
        },
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "direct"
+        "name": "script"
        }
       ],
-      "count": 6
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 6,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
       "nac_causal_links": 3
@@ -4838,7 +4458,7 @@
         "confidence": 0.475,
         "event": "tool:respond",
         "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        }
       ]
@@ -4849,17 +4469,12 @@
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "answer respond"
+        "name": "respond respond"
        },
        {
         "category": "compound_alias",
         "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
+        "name": "script respond"
        },
        {
         "category": "action",
@@ -4869,15 +4484,15 @@
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "answer"
+        "name": "respond"
        },
        {
         "category": "goal",
         "confidence": 0.5,
-        "name": "direct"
+        "name": "script"
        }
       ],
-      "count": 6
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -4917,7 +4532,7 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 6,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
       "nac_causal_links": 3
@@ -4968,7 +4583,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: hello, who are you"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -4977,7 +4592,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: hello, who are you",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -6020,7 +5635,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
-      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "message": "I heard: hello, who are you"
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -6067,6 +5682,16 @@
     {
      "answer": {
       "params": {
+       "message": "I heard: hello, who are you"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello, who are you"
+    },
+    {
+     "answer": {
+      "params": {
        "message": "I heard: what is your favourite colour"
       },
       "tool_name": "respond"
@@ -6104,6 +5729,33 @@
        "domain": null,
        "event_context": {
         "params": {
+         "message": "I heard: hello, who are you"
+        }
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "181feca7ecdc769a",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "params": {
          "message": "I heard: what is your favourite colour"
         }
        },
@@ -6125,32 +5777,7 @@
        "source": "local"
       },
       {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "60665ba2d728dfa1",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "plan:direct_answer:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.609350288,
+       "confidence": 0.639544827,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -6162,22 +5789,23 @@
        "event_type": "tool",
        "id": "73851f2fc2283f54",
        "imagined": false,
-       "last_rpe": 0.43,
+       "last_rpe": 0.3698,
        "memory_ids": [],
-       "observation_count": 2,
+       "observation_count": 3,
        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
        "outcome_type": "tool_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.6302,
+       "predicted_value": 0.681972,
        "prediction_history": [
         0.5,
-        0.57
+        0.57,
+        0.6302
        ],
        "source": "local"
       },
       {
-       "confidence": 0.609350288,
+       "confidence": 0.639544827,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -6188,70 +5816,18 @@
        "event_type": "tool",
        "id": "a90147485f2b8873",
        "imagined": false,
-       "last_rpe": 0.43,
+       "last_rpe": 0.3698,
        "memory_ids": [],
-       "observation_count": 2,
+       "observation_count": 3,
        "outcome_signature": "plan:scripted respond:success",
        "outcome_type": "plan_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.6302,
+       "predicted_value": 0.681972,
        "prediction_history": [
         0.5,
-        0.57
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "a9ee8012a42828cd",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
-        }
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "e342a634de19a671",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "tool:respond:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
+        0.57,
+        0.6302
        ],
        "source": "local"
       },
@@ -6285,19 +5861,15 @@
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
-     ],
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "73851f2fc2283f54",
-      "a9ee8012a42828cd"
+      "73851f2fc2283f54"
      ],
      "tool:respond:positive": [
+      "181feca7ecdc769a",
       "20263f292db14bde",
-      "e342a634de19a671",
       "fd1bb4606397d68c"
      ]
     },
@@ -6368,12 +5940,12 @@
     },
     {
      "inject": "narrator#1",
-     "text": "DIVERSITY CHECKPOINT (turn 3): the agent under test's tools so far (not yours): respond (2x). Its blocked tools: none. Vary your send_message probes \u2014 test DIFFERENT capabilities, scenarios, or failure modes than what's been explored.",
+     "text": "DIVERSITY CHECKPOINT (turn 3): the agent under test has taken 2 action(s) with 1 different tool(s); 0 of those tools were blocked. To see what it did, call observe_actions. Vary your send_message probes \u2014 test DIFFERENT capabilities, scenar",
      "thread": "sim.stall"
     },
     {
      "inject": "narrator#1",
-     "text": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far). For context, the agent under test's last action was 'respond' (blocked=False): ITS tool, not yours. Your previous tool call may have failed or used an invalid tool name. Call send_me",
+     "text": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far; its last action was not blocked). Your previous tool call may have failed or used an invalid tool name. Call send_message NOW with your next probe. Example: send_message(text='You hav",
      "thread": "sim.stall"
     }
    ],
@@ -6389,9 +5961,9 @@
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
     "status: Saving action log (3 records)...",
-    "status: Saving AUT state (<N> memories, 7 causal links)...",
+    "status: Saving AUT state (<N> memories, 5 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 3 |   Finish: completed |   Orchestrator status: completed |     Reason: nudged after a wedged call |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 7 |   Bio events: \u25b2 Learn: 12 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:scripted respond:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.47, obs=1) |     tool:respond \u2192 plan:direct_answer:success (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 3 |   Finish: completed |   Orchestrator status: completed |     Reason: nudged after a wedged call |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 5 |   Bio events: \u25b2 Learn: 10 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.64, obs=3) |     tool:respond \u2192 plan:scripted respond:success (conf=0.64, obs=3) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -6546,7 +6118,7 @@
       "tool_name": "observe_actions"
      },
      "executed": "observe_actions",
-     "held_inputs": "DIVERSITY CHECKPOINT (turn 3): the agent under test's tools so far (not yours): respond (2x). Its blocked tools: none. V",
+     "held_inputs": "DIVERSITY CHECKPOINT (turn 3): the agent under test has taken 2 action(s) with 1 different tool(s); 0 of those tools wer",
      "kind": "followup",
      "request": "SIMULATION GOAL: check how the agent answers two short questions\n\nYou are a simulation orchestrator testing an AI agent.",
      "turn": null
@@ -6561,7 +6133,7 @@
       "tool_name": "finish_simulation"
      },
      "executed": "observe_actions",
-     "held_inputs": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far). For context, the agent under test's last action was 'respond' ",
+     "held_inputs": "SYSTEM: Stall detected (<S>s idle, 3 AUT actions so far; its last action was not blocked). Your previous tool call may h",
      "kind": "followup",
      "request": "SIMULATION GOAL: check how the agent answers two short questions\n\nYou are a simulation orchestrator testing an AI agent.",
      "turn": null
@@ -6586,21 +6158,21 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 7,
+    "aut_causal_links": 5,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
       {
-       "confidence": 0.609,
+       "confidence": 0.64,
        "event": "tool:respond",
-       "observations": 2,
+       "observations": 3,
        "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       },
       {
-       "confidence": 0.609,
+       "confidence": 0.64,
        "event": "tool:respond",
-       "observations": 2,
+       "observations": 3,
        "outcome": "plan:scripted respond:success"
       },
       {
@@ -6613,16 +6185,16 @@
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
-       "outcome": "success:{'delivered': True, 'mode': 'cli'}"
+       "outcome": "tool:respond:positive"
       },
       {
        "confidence": 0.475,
        "event": "tool:respond",
        "observations": 1,
-       "outcome": "plan:direct_answer:success"
+       "outcome": "tool:respond:positive"
       }
      ],
-     "total_links": 7
+     "total_links": 5
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -6636,7 +6208,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 12,
+    "learn_events_count": 10,
     "llm_finish_reason": "nudged after a wedged call",
     "llm_finish_status": "completed",
     "llm_finish_summary": "",
@@ -6699,7 +6271,7 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "I heard: hello, who are you",
      "I heard: what is your favourite colour",
      "I heard: name one tool you can use."
     ],
@@ -6828,10 +6400,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       "message": "I heard: hello, who are you"
       },
       "tool_name": "respond",
-      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "utterance": "I heard: hello, who are you"
      },
      {
       "block_reason": null,
@@ -6860,7 +6432,7 @@
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 7,
+      "link_count": 5,
       "links": [
        {
         "confidence": 0.475,
@@ -6870,17 +6442,17 @@
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 3,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "observations": 3,
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -6888,20 +6460,6 @@
         "event": "tool:respond",
         "observations": 1,
         "outcome": "tool:respond:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:respond",
-        "observations": 2,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:respond",
-        "observations": 2,
-        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -6923,12 +6481,12 @@
        },
        {
         "category": "goal",
-        "confidence": 0.571,
+        "confidence": 0.673,
         "name": "respond"
        },
        {
         "category": "goal",
-        "confidence": 0.571,
+        "confidence": 0.673,
         "name": "script"
        },
        {
@@ -6940,40 +6498,15 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 7
+      "nac_causal_links": 5
      },
      "temporal": {
       "keys": [
@@ -6998,7 +6531,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 7,
+      "link_count": 5,
       "links": [
        {
         "confidence": 0.475,
@@ -7008,17 +6541,17 @@
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 1,
+        "observations": 3,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.475,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 1,
-        "outcome": "plan:direct_answer:success",
+        "observations": 3,
+        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -7026,20 +6559,6 @@
         "event": "tool:respond",
         "observations": 1,
         "outcome": "tool:respond:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:respond",
-        "observations": 2,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.609,
-        "event": "tool:respond",
-        "observations": 2,
-        "outcome": "plan:scripted respond:success",
         "valence": ""
        },
        {
@@ -7061,12 +6580,12 @@
        },
        {
         "category": "goal",
-        "confidence": 0.571,
+        "confidence": 0.673,
         "name": "respond"
        },
        {
         "category": "goal",
-        "confidence": 0.571,
+        "confidence": 0.673,
         "name": "script"
        },
        {
@@ -7078,34 +6597,9 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "direct"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -7116,11 +6610,11 @@
      "nac_stats": {
       "eligibility_traces": 1,
       "event_signatures": 1,
-      "outcome_signatures": 4,
+      "outcome_signatures": 3,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 7,
+      "total_links": 5,
       "total_observations": 9
      },
      "pain_stats": {
@@ -7145,10 +6639,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 7
+      "nac_causal_links": 5
      },
      "temporal": {
       "keys": [
@@ -7205,7 +6699,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: hello, who are you"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -7214,7 +6708,7 @@
       }
      ],
      "noop_count": 0,
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: hello, who are you",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -7275,7 +6769,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
-      "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "message": "I heard: hello, who are you"
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -7292,7 +6786,7 @@
      "output": "{'delivered': True, 'mode': 'cli'}",
      "pain": null,
      "params": {
-      "message": "Hello! How can I help you?"
+      "message": "I heard: hello from the operator"
      },
      "rpe": 0.5,
      "session_id": "<STAMP>",
@@ -7319,6 +6813,26 @@
    ],
    "arm": "stdin",
    "aut_calls": [
+    {
+     "answer": {
+      "params": {
+       "message": "I heard: hello, who are you"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello, who are you"
+    },
+    {
+     "answer": {
+      "params": {
+       "message": "I heard: hello from the operator"
+      },
+      "tool_name": "respond"
+     },
+     "kind": "plan",
+     "request": "hello from the operator"
+    },
     {
      "answer": {
       "params": {
@@ -7349,6 +6863,33 @@
        "domain": null,
        "event_context": {
         "params": {
+         "message": "I heard: hello, who are you"
+        }
+       },
+       "event_signature": "tool:respond",
+       "event_type": "tool",
+       "id": "181feca7ecdc769a",
+       "imagined": false,
+       "last_rpe": 0.5,
+       "memory_ids": [],
+       "observation_count": 1,
+       "outcome_signature": "tool:respond:positive",
+       "outcome_type": "result",
+       "outcome_valence": "positive",
+       "percept_refs": [],
+       "predicted_value": 0.57,
+       "prediction_history": [
+        0.5
+       ],
+       "source": "local"
+      },
+      {
+       "confidence": 0.475,
+       "context_factors": {},
+       "contributors": [],
+       "domain": null,
+       "event_context": {
+        "params": {
          "message": "I heard: what is your favourite colour"
         }
        },
@@ -7370,33 +6911,7 @@
        "source": "local"
       },
       {
-       "confidence": 0.609350288,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "60665ba2d728dfa1",
-       "imagined": false,
-       "last_rpe": 0.43,
-       "memory_ids": [],
-       "observation_count": 2,
-       "outcome_signature": "plan:direct_answer:success",
-       "outcome_type": "plan_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.6302,
-       "prediction_history": [
-        0.5,
-        0.57
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
+       "confidence": 0.639544827,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -7408,21 +6923,23 @@
        "event_type": "tool",
        "id": "73851f2fc2283f54",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.3698,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 3,
        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
        "outcome_type": "tool_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
+       "predicted_value": 0.681972,
        "prediction_history": [
-        0.5
+        0.5,
+        0.57,
+        0.6302
        ],
        "source": "local"
       },
       {
-       "confidence": 0.475,
+       "confidence": 0.639544827,
        "context_factors": {},
        "contributors": [],
        "domain": null,
@@ -7433,43 +6950,18 @@
        "event_type": "tool",
        "id": "a90147485f2b8873",
        "imagined": false,
-       "last_rpe": 0.5,
+       "last_rpe": 0.3698,
        "memory_ids": [],
-       "observation_count": 1,
+       "observation_count": 3,
        "outcome_signature": "plan:scripted respond:success",
        "outcome_type": "plan_result",
        "outcome_valence": "positive",
        "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.609350288,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "agent_id": "sim_aut",
-        "goal": "direct_answer"
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "a9ee8012a42828cd",
-       "imagined": false,
-       "last_rpe": 0.43,
-       "memory_ids": [],
-       "observation_count": 2,
-       "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
-       "outcome_type": "tool_result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.6302,
+       "predicted_value": 0.681972,
        "prediction_history": [
         0.5,
-        0.57
+        0.57,
+        0.6302
        ],
        "source": "local"
       },
@@ -7480,39 +6972,12 @@
        "domain": null,
        "event_context": {
         "params": {
-         "message": "Hello! How can I help you?"
+         "message": "I heard: hello from the operator"
         }
        },
        "event_signature": "tool:respond",
        "event_type": "tool",
-       "id": "ce756a41dd80368e",
-       "imagined": false,
-       "last_rpe": 0.5,
-       "memory_ids": [],
-       "observation_count": 1,
-       "outcome_signature": "tool:respond:positive",
-       "outcome_type": "result",
-       "outcome_valence": "positive",
-       "percept_refs": [],
-       "predicted_value": 0.57,
-       "prediction_history": [
-        0.5
-       ],
-       "source": "local"
-      },
-      {
-       "confidence": 0.475,
-       "context_factors": {},
-       "contributors": [],
-       "domain": null,
-       "event_context": {
-        "params": {
-         "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
-        }
-       },
-       "event_signature": "tool:respond",
-       "event_type": "tool",
-       "id": "e342a634de19a671",
+       "id": "e5703712b84bac7a",
        "imagined": false,
        "last_rpe": 0.5,
        "memory_ids": [],
@@ -7530,20 +6995,16 @@
      ]
     },
     "outcome_index": {
-     "plan:direct_answer:success": [
-      "60665ba2d728dfa1"
-     ],
      "plan:scripted respond:success": [
       "a90147485f2b8873"
      ],
      "success:{'delivered': True, 'mode': 'cli'}": [
-      "73851f2fc2283f54",
-      "a9ee8012a42828cd"
+      "73851f2fc2283f54"
      ],
      "tool:respond:positive": [
+      "181feca7ecdc769a",
       "20263f292db14bde",
-      "ce756a41dd80368e",
-      "e342a634de19a671"
+      "e5703712b84bac7a"
      ]
     },
     "percept_valences": {},
@@ -7595,9 +7056,9 @@
     "status: Building simulation report...",
     "status: Saving report to <WORK>/data/sim_reports/<STAMP>/...",
     "status: Saving action log (3 records)...",
-    "status: Saving AUT state (<N> memories, 7 causal links)...",
+    "status: Saving AUT state (<N> memories, 5 causal links)...",
     "status: Running LLM analysis roundup...",
-    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: cancel |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 7 |   Bio events: \u25b2 Learn: 9 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.61, obs=2) |     tool:respond \u2192 plan:direct_answer:success (conf=0.61, obs=2) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
+    "summary: SIMULATION REPORT \u2014 <STAMP> |   Goal: check how the agent answers two short questions |   Mode: generative |   Model: orch-golden-fake |   Duration: <S> | Turns: 2 |   Finish: cancel |   Actions: 3 (0 blocked) |   AUT Memories: <N> | Causal Links: 5 |   Bio events: \u25b2 Learn: 7 |  |   Top Causal Links: |     tool:respond \u2192 success:{'delivered': True, 'mode': 'cli'} (conf=0.64, obs=3) |     tool:respond \u2192 plan:scripted respond:success (conf=0.64, obs=3) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |     tool:respond \u2192 tool:respond:positive (conf=0.47, obs=1) |  |   Tool Usage: |     respond: 3 calls (100% success) |  |   LLM Analysis: |     golden roundup |  |   Issues Found (1): |     - none observed |  |   Recommendations (1): |     - keep going |  |   Session: <WORK>/data/sim_reports/<STAMP>"
    ],
    "live_sim_threads_after": [],
    "maxim_env_after": {
@@ -7709,22 +7170,22 @@
      "substrate_actions_per_turn": null
     },
     "aut_backend_class": "",
-    "aut_causal_links": 7,
+    "aut_causal_links": 5,
     "aut_endpoint": "",
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
       {
-       "confidence": 0.609,
+       "confidence": 0.64,
        "event": "tool:respond",
-       "observations": 2,
+       "observations": 3,
        "outcome": "success:{'delivered': True, 'mode': 'cli'}"
       },
       {
-       "confidence": 0.609,
+       "confidence": 0.64,
        "event": "tool:respond",
-       "observations": 2,
-       "outcome": "plan:direct_answer:success"
+       "observations": 3,
+       "outcome": "plan:scripted respond:success"
       },
       {
        "confidence": 0.475,
@@ -7745,7 +7206,7 @@
        "outcome": "tool:respond:positive"
       }
      ],
-     "total_links": 7
+     "total_links": 5
     },
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
@@ -7759,7 +7220,7 @@
     "language_endpoint": "",
     "language_model": "orch-golden-fake",
     "language_provider": "",
-    "learn_events_count": 9,
+    "learn_events_count": 7,
     "llm_finish_reason": "",
     "llm_finish_status": "",
     "llm_finish_summary": "",
@@ -7822,8 +7283,8 @@
     "provider_failures": {},
     "record_kind": "sim_report",
     "response_texts": [
-     "I'm Maxim, a robot assistant designed to understand reality and help people.",
-     "Hello! How can I help you?",
+     "I heard: hello, who are you",
+     "I heard: hello from the operator",
      "I heard: what is your favourite colour"
     ],
     "session_id": "<STAMP>",
@@ -7951,10 +7412,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+       "message": "I heard: hello, who are you"
       },
       "tool_name": "respond",
-      "utterance": "I'm Maxim, a robot assistant designed to understand reality and help people."
+      "utterance": "I heard: hello, who are you"
      },
      {
       "block_reason": null,
@@ -7962,10 +7423,10 @@
       "result_output": "{'delivered': True, 'mode': 'cli'}",
       "result_success": true,
       "tool_args": {
-       "message": "Hello! How can I help you?"
+       "message": "I heard: hello from the operator"
       },
       "tool_name": "respond",
-      "utterance": "Hello! How can I help you?"
+      "utterance": "I heard: hello from the operator"
      },
      {
       "block_reason": null,
@@ -7983,7 +7444,7 @@
     "campaign_analysis": {
      "causal_links": {
       "available": true,
-      "link_count": 7,
+      "link_count": 5,
       "links": [
        {
         "confidence": 0.475,
@@ -7993,45 +7454,31 @@
         "valence": ""
        },
        {
-        "confidence": 0.609,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 2,
+        "observations": 3,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.609,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 2,
-        "outcome": "plan:direct_answer:success",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "tool:respond:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "tool:respond:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
+        "observations": 3,
         "outcome": "plan:scripted respond:success",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
         "valence": ""
        }
       ]
@@ -8039,6 +7486,21 @@
      "concepts": {
       "available": true,
       "concepts": [
+       {
+        "category": "action",
+        "confidence": 0.673,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.673,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.673,
+        "name": "script"
+       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -8048,55 +7510,15 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.673,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.571,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.571,
-        "name": "direct"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 7
+      "nac_causal_links": 5
      },
      "temporal": {
       "keys": [
@@ -8121,7 +7543,7 @@
     "subsystem_snapshot": {
      "causal_links": {
       "available": true,
-      "link_count": 7,
+      "link_count": 5,
       "links": [
        {
         "confidence": 0.475,
@@ -8131,45 +7553,31 @@
         "valence": ""
        },
        {
-        "confidence": 0.609,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 2,
+        "observations": 3,
         "outcome": "success:{'delivered': True, 'mode': 'cli'}",
         "valence": ""
        },
        {
-        "confidence": 0.609,
+        "confidence": 0.64,
         "event": "tool:respond",
-        "observations": 2,
-        "outcome": "plan:direct_answer:success",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "tool:respond:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "tool:respond:positive",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
-        "outcome": "success:{'delivered': True, 'mode': 'cli'}",
-        "valence": ""
-       },
-       {
-        "confidence": 0.475,
-        "event": "tool:respond",
-        "observations": 1,
+        "observations": 3,
         "outcome": "plan:scripted respond:success",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
+        "valence": ""
+       },
+       {
+        "confidence": 0.475,
+        "event": "tool:respond",
+        "observations": 1,
+        "outcome": "tool:respond:positive",
         "valence": ""
        }
       ]
@@ -8177,6 +7585,21 @@
      "concepts": {
       "available": true,
       "concepts": [
+       {
+        "category": "action",
+        "confidence": 0.673,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.673,
+        "name": "respond"
+       },
+       {
+        "category": "goal",
+        "confidence": 0.673,
+        "name": "script"
+       },
        {
         "category": "compound_alias",
         "confidence": 0.5,
@@ -8186,49 +7609,9 @@
         "category": "compound_alias",
         "confidence": 0.5,
         "name": "script respond"
-       },
-       {
-        "category": "action",
-        "confidence": 0.673,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "respond"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.5,
-        "name": "script"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.571,
-        "name": "answer"
-       },
-       {
-        "category": "goal",
-        "confidence": 0.571,
-        "name": "direct"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "answer respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct respond"
-       },
-       {
-        "category": "compound_alias",
-        "confidence": 0.5,
-        "name": "direct answer"
        }
       ],
-      "count": 10
+      "count": 5
      },
      "hippocampus_stats": {
       "compressed_memories": 0,
@@ -8239,11 +7622,11 @@
      "nac_stats": {
       "eligibility_traces": 1,
       "event_signatures": 1,
-      "outcome_signatures": 4,
+      "outcome_signatures": 3,
       "pending_events": 0,
       "priors": 0,
       "reward_biases": 0,
-      "total_links": 7,
+      "total_links": 5,
       "total_observations": 9
      },
      "pain_stats": {
@@ -8268,10 +7651,10 @@
       "total_pain_signals": 0
      },
      "system_stats": {
-      "atl_concepts": 10,
+      "atl_concepts": 5,
       "available": true,
       "ec_signatures": 0,
-      "nac_causal_links": 7
+      "nac_causal_links": 5
      },
      "temporal": {
       "keys": [
@@ -8353,7 +7736,7 @@
      "actions": [
       {
        "args": {
-        "message": "I'm Maxim, a robot assistant designed to understand reality and help people."
+        "message": "I heard: hello, who are you"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -8365,7 +7748,7 @@
      "paused_aut_actions": [
       {
        "args": {
-        "message": "Hello! How can I help you?"
+        "message": "I heard: hello from the operator"
        },
        "blocked": false,
        "output": "{'delivered': True, 'mode': 'cli'}",
@@ -8373,7 +7756,7 @@
        "tool": "respond"
       }
      ],
-     "response": "I'm Maxim, a robot assistant designed to understand reality and help people.",
+     "response": "I heard: hello, who are you",
      "text": "Hello, who are you?",
      "timed_out": false,
      "turn": 1
@@ -8400,5 +7783,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "e6e6c3bf9a1a"
+ "generated_at_commit": "7f7e258422db"
 }

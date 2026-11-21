@@ -59,13 +59,9 @@ from maxim.agents.llm_fallback import (  # noqa: F401
     _SIMPLE_OPS,
     _TRAILING_OP_PATTERN,
     _UNARY_MATH_PATTERNS,
-    _compile_phrase_pattern,
     evaluate_simple_arithmetic,
     evaluate_unary_math,
     generate_llm_fallback,
-    generate_simple_answer,
-    matches_phrase,
-    normalize_phrases,
 )
 from maxim.agents.prompt_builder import (  # noqa: F401
     PLANNING_CORRECTIONS,
@@ -258,6 +254,18 @@ def _record_inbound_rendered(request: LLMRequest, prompt: str) -> None:
     if rendered and request.inbound_feed is not None and not request.inbound_counted:
         request.inbound_counted = True
         request.inbound_feed.note_rendered(rendered)
+
+
+def _sim_log_raw_response(response: Any) -> None:
+    """Trace the parsed reply's tool for sim debugging (moved verbatim out of ``LLMWorker._process_request``, #1691)."""
+    try:
+        from maxim.simulation.sim_logger import sim_log
+
+        _action = response.get("action") if isinstance(response, dict) else None
+        _tool = _action.get("tool_name") if isinstance(_action, dict) else None
+        sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
+    except Exception:
+        pass
 
 
 def _sim_log_proposal_built(proposal: LLMProposal, request: LLMRequest) -> None:
@@ -1174,27 +1182,6 @@ class LLMWorker:
                 logger.debug("Empty prompt for request %s — skipping LLM call", request.request_id)
                 return None
 
-            # Check if this is a pre-built JSON response (simple answer)
-            # These don't need LLM - just parse and return
-            if prompt.startswith('{"action":'):
-                latency_ms = (time.time() - start_time) * 1000
-                try:
-                    response = json.loads(prompt)
-                    return LLMProposal(
-                        request_id=request.request_id,
-                        action=response.get("action"),
-                        reasoning=response.get("reasoning", "direct_answer"),
-                        strategy_used="direct_answer",
-                        confidence=response.get("confidence", 0.95),
-                        mode_goal_achieved=response.get("mode_goal_achieved", False),
-                        citations=[],
-                        latency_ms=latency_ms,
-                        triggering_input=request.triggering_input,
-                        original_request=request,
-                    )
-                except Exception:
-                    pass  # Fall through to LLM if parse fails
-
             # Check for shutdown before LLM call
             if self._stop_event.is_set():
                 return LLMProposal(
@@ -1273,6 +1260,7 @@ class LLMWorker:
                     },
                     reasoning="llm_timeout",
                     strategy_used="fallback",
+                    degraded=True,
                     confidence=0.7,
                     mode_goal_achieved=False,
                     citations=[],
@@ -1309,15 +1297,7 @@ class LLMWorker:
                 mode_name=request.mode.name if request.mode else "unknown",
             )
 
-            # Trace for simulation debugging
-            try:
-                from maxim.simulation.sim_logger import sim_log
-
-                _action = response.get("action") if isinstance(response, dict) else None
-                _tool = _action.get("tool_name") if isinstance(_action, dict) else None
-                sim_log("EXEC", f"LLM raw response parsed: tool={_tool}, type={type(response).__name__}")
-            except Exception:
-                pass
+            _sim_log_raw_response(response)  # trace for simulation debugging
 
             if not response or not isinstance(response, dict):
                 # LLM failed - generate a fallback response for the user.
@@ -1330,6 +1310,7 @@ class LLMWorker:
                         action=fallback,
                         reasoning="llm_fallback",
                         strategy_used="fallback",
+                        degraded=True,
                         confidence=0.7,
                         mode_goal_achieved=False,
                         citations=[],

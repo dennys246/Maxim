@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests._child_env import isolation_env
 from tests.policy_helpers import TEST_POLICY, policy_for
 
 # ---------------------------------------------------------------------------
@@ -621,6 +622,7 @@ class TestInteractiveAttributionGate:
             "print(json.dumps({'ok': out.success, 'loaded': 'maxim.simulation.sim_logger' in sys.modules}))\n"
         )
         env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path), "PYTHONPATH": str(src)}
+        env.update(isolation_env())  # beside HOME: the host's /etc/cloudflared never reaches the child
         proc = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, env=env, timeout=120)
         assert proc.returncode == 0, proc.stderr[-2000:]
         result = json.loads(proc.stdout.strip().splitlines()[-1])

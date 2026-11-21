@@ -59,10 +59,9 @@ _SOCKET_DIALS = frozenset({"socket", "create_connection", "socketpair", "create_
 
 # file -> (count, why). Exact both ways.
 RAW_DIAL_PINS: dict[str, tuple[int, str]] = {
-    "src/maxim/doctor/checks.py": (3, "TCP port probes of the local LLM/console servers"),
+    "src/maxim/doctor/checks.py": (2, "TCP port probes of the local LLM/console servers"),
     "src/maxim/doctor/platform_detect.py": (1, "UDP connect to learn the local IP; sends nothing"),
     "src/maxim/hardware/reachy/controller.py": (1, "TCP reachability probe of the robot daemon"),
-    "src/maxim/runtime/leader_proxy.py": (1, "TCP probe that the proxied local server is listening"),
     "src/maxim/runtime/local_server_spawner.py": (1, "TCP probe that the spawned server bound its LAN port"),
     "src/maxim/simulation/minecraft.py": (1, "Minecraft RCON client (not HTTP)"),
     "src/maxim/simulation/minecraft_harness.py": (1, "fake RCON server for the harness"),

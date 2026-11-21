@@ -880,21 +880,17 @@ class AgenticRuntimeMixin:
         llm_worker = None
         lane_backend_manager = None
         try:
-            from maxim.models.language.router import LLMRouter, load_llm_config
-            from maxim.runtime.lane_backends import build_primary_router
+            from maxim.runtime.lane_backends import build_run_router
 
             # Build infer-lane LLM via the shared multi-LLM factory. Handles
             # capability-driven profile selection (Phase 2), env overrides
-            # (Phase 4), and gate enforcement (Phase 3+4). One place owns this.
+            # (Phase 4), and gate enforcement (Phase 3+4). One place owns this,
+            # including the fallback router and its consent check (#1396).
             caps = getattr(self, "_capabilities", None)
-            llm_router, lane_backend_manager = build_primary_router(
+            llm_router, lane_backend_manager = build_run_router(
                 capabilities=caps,
                 logger=self.log,
             )
-            if llm_router is None:
-                llm_config = load_llm_config()
-                if llm_config.enabled:
-                    llm_router = LLMRouter(llm_config)
 
             if llm_router is not None and llm_router.enabled():
                 # Start warming up the LLM in background (reduces first-request latency)

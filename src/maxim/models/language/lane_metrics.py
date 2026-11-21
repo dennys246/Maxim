@@ -303,7 +303,8 @@ def get_metrics_registry() -> MetricsRegistry:
 # the typed taxonomy has a gap; file a bug and either extend the
 # hierarchy or wrap the call site. The router has explicit ordering of
 # ``except BackendOverloaded / BackendAuthFailed / BackendModelMissing /
-# BackendInferenceBroken / BackendTimeout / BackendDown / BackendError``
+# BackendInferenceBroken / BackendTimeout / BackendDown / BackendContextOverflow /
+# BackendError``
 # before the safety net, so this counter should stay at zero under
 # normal operation.
 _backend_unclassified_errors: dict[str, int] = {}

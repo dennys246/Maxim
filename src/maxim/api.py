@@ -223,6 +223,28 @@ def _restore_env(saved: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
+def _enable_llm_for_run() -> dict[str, str | None]:
+    """Turn the LLM on for an API run unless the session says otherwise; the snapshot ``_restore_env`` restores.
+
+    Only ``MAXIM_LLM_ENABLED`` rides the env: the run's model is handed to its router build (#1586)."""
+    saved = {"MAXIM_LLM_ENABLED": os.environ.get("MAXIM_LLM_ENABLED")}
+    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
+    return saved
+
+
+def _build_run_router(model: str) -> Any:
+    """``run()``'s router, built on its ``model`` over the session's ``MAXIM_LLM_PROFILE``, which stays as it was
+    (#1586); a build with no backend raises ``ConfigurationError``."""
+    from maxim.runtime.lane_backends import build_primary_router
+
+    router, _lane_manager = build_primary_router(profile=model)
+    if router is None:
+        from maxim.exceptions import ConfigurationError
+
+        raise ConfigurationError(f"No LLM backend available for model={model!r}: check its profile and backend.")
+    return router
+
+
 def _release_run_robot(lease: _RunRobotLease) -> None:
     """Restore awake state and release a connection acquired by ``run()``."""
     from maxim.hardware.registry import RobotRegistry
@@ -681,6 +703,33 @@ def _run_preflight(goal: str | None, robot: str | None, *, headless: bool) -> tu
     return goal, robot
 
 
+def _auto_curate_before_run(curate_genre: str) -> None:
+    """Pre-startup auto-curation for ``run(auto_curate=True)``; a failure warns and the run goes on."""
+    try:
+        from maxim.simulation.foundry import auto_curate as _auto_curate
+
+        _auto_curate(genre=curate_genre)
+    except Exception as e:
+        logger.warning("Auto-curation failed: %s", e)
+        print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
+
+
+def _build_run_agent(model: str, effective_home: str) -> Any:
+    """``run()``'s agent, its user event subscriptions bridged to its bus (moved verbatim out of ``run``, #1264
+    rule T)."""
+    from maxim.agents.maxim_agent import MaximAgent
+
+    agent = MaximAgent(
+        llm_profile=model,
+        memory_persistence_path=os.path.join(effective_home, "memory"),
+        data_folder=os.path.join(effective_home, "data"),
+    )
+    # Bridge user event subscriptions to the agent's bus
+    if hasattr(agent, "_bus"):
+        _bridge_event_subscriptions(agent._bus)
+    return agent
+
+
 def run(
     model: str = _API_DEFAULT_MODEL,
     *,
@@ -720,9 +769,8 @@ def run(
             disconnect cannot be confirmed, it retains the registration and
             raises ``HardwareError``.
         home_dir: Root for API-owned memory, data, and agent persistence
-            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``). Runtime step snapshots still use the
-            CWD-relative ``data/agents/`` path; complete ownership is tracked
-            for 1.1.x under D15.
+            (default: the data home -- ``MAXIM_DATA_HOME``, else ``~/.maxim``), including the loop's
+            runtime-state file, ``<home_dir>/runtime_state/`` (#1264).
         verbosity: Logging verbosity (0-3).
         learning: Enable bio-learning (episodic memory, causal learning,
             pain attribution).  Default ``True``.  Pass ``False`` to run
@@ -764,7 +812,6 @@ def run(
 
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
         from maxim.agents.llm_worker import LLMWorker
-        from maxim.agents.maxim_agent import MaximAgent
         from maxim.runtime.agent_loop import run_agentic_loop
         from maxim.runtime.bootstrap import (
             build_decision_engine,
@@ -774,33 +821,18 @@ def run(
             build_state,
             build_tool_registry,
         )
-        from maxim.runtime.lane_backends import build_primary_router
 
         configure(verbosity=verbosity)
 
-        # Pre-startup auto-curation
         if auto_curate:
-            try:
-                from maxim.simulation.foundry import auto_curate as _auto_curate
-
-                _auto_curate(genre=curate_genre)
-            except Exception as e:
-                logger.warning("Auto-curation failed: %s", e)
-                print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
+            _auto_curate_before_run(curate_genre)
 
         effective_home = _api_home(home_dir)
         os.makedirs(effective_home, exist_ok=True)
 
         # ── LLM router ───────────────────────────────────────────────────
-        _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-        os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-        os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
-        router, _lane_manager = build_primary_router()
-        if router is None:
-            from maxim.exceptions import ConfigurationError
-
-            raise ConfigurationError("No LLM backend available. Set --language-model or MAXIM_LLM_PROFILE.")
+        _saved_env = _enable_llm_for_run()
+        router = _build_run_router(model)
         # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
         # LLMWorker construction site that resolved no n_ctx at all — the
         # constructor default (4096) applied, and only the old cloud max()
@@ -812,14 +844,7 @@ def run(
         llm_worker.start()
 
         # ── Agent pipeline ───────────────────────────────────────────────────
-        agent = MaximAgent(
-            llm_profile=model,
-            memory_persistence_path=os.path.join(effective_home, "memory"),
-            data_folder=os.path.join(effective_home, "data"),
-        )
-        # Bridge user event subscriptions to the agent's bus
-        if hasattr(agent, "_bus"):
-            _bridge_event_subscriptions(agent._bus)
+        agent = _build_run_agent(model, effective_home)
 
         env = build_environment(root=effective_home)
         state = build_state()
@@ -878,6 +903,7 @@ def run(
             hippocampus=_headless_hippocampus,
             memory_hub=_headless_memory_hub,
             pain_bus=_headless_pain_bus,
+            state_home=effective_home,  # #1264: home_dir owns the run's state file (D15)
         )
     except KeyboardInterrupt:
         logger.info("Agent loop interrupted by user.")
@@ -960,10 +986,6 @@ def imagine(
     _validate_model(model)
     configure(verbosity=verbosity)
 
-    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
     # Pre-sim auto-curation
     if auto_curate:
         try:
@@ -988,6 +1010,7 @@ def imagine(
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
+    _saved_env = _enable_llm_for_run()
     try:
         sim_result = start_simulation_mode(
             goal=goal,
@@ -995,6 +1018,7 @@ def imagine(
             max_turns=max_turns,
             debug=verbosity >= 3,
             sandbox_backend=sandbox,
+            llm_profile=model,
             pre_campaign_turns=pre_campaign_turns,
             resume_session=resume,
         )
@@ -1521,10 +1545,6 @@ def campaign(
     model = _resolve_model(model)
     configure(verbosity=verbosity)
 
-    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
-    os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
-    os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
-
     from maxim.simulation.dm_schema import load_campaign as _load_campaign
     from maxim.embodiment.component_registry import ComponentRegistry
     from pathlib import Path as _Path
@@ -1559,10 +1579,12 @@ def campaign(
             )
         set_interactive_mode(InteractiveMode.ON if interactive else InteractiveMode.OFF)
 
+    _saved_env = _enable_llm_for_run()
     try:
         sim_result = start_simulation_mode(
             goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
             mode="dm",
+            llm_profile=model,
             dm_campaign=campaign_def,
             prompt_handler=prompt_handler,
         )
@@ -1777,6 +1799,7 @@ def research(
         print(f"Review verdict: {result.review}")
     """
     _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
+    model = _resolve_model(model)
     configure(verbosity=verbosity)
 
     from maxim.simulation.research_orchestrator import start_research_mode

@@ -1,6 +1,13 @@
 # Executive function: a staged, bio-faithful design
 
 > **DEFERRED in place 2026-10-17 (owner):** not on the path to 1.4.0. The file stays at this path because src/ cites it. **Revive when:** R4 credit routing or E2's relief-store review names a goal-slot consumer (homed after 1.4.0, #1072–#1075).
+> **2026-11-12 (owner decision HA-O10, [hybrid_arbitration.md](hybrid_arbitration.md)): Stage 3 is revived for the
+> hybrid-arbitration line only.**
+> - Stage 3, the ACC conflict monitor (a small top-two margin wakes deliberation), becomes that line's arbiter.
+> - The arbiter does not use Stage 3's goal-slot release, which assumes Stage 1.
+> - Stages 1, 2 and the rest of this plan stay DEFERRED on the trigger above.
+> - The revived stage still enters as `[engineering]`, with no `src/` before the 1.4.0 cut, and a four-lens review
+> runs before any harness.
 
 Proposed 2026-10-04 (superseded by the DEFERRED banner above). Tracking issue: [#1073](https://github.com/dennys246/Maxim/issues/1073).
 Prompted by #841: plan_manager's replan hint has never worked (owner: "an opportunity to explore an executive

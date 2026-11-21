@@ -634,6 +634,106 @@ def _read_new_goal(report: Any, report_dir: str) -> str:
     return "" if _new_goal.lower() in ("/cancel", "quit", "exit") else _new_goal
 
 
+def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = True) -> Any:
+    """The AUT's own router for a dual-LLM run (``aut_model``), else the shared ``llm_router``, which a failed
+    build also falls back to. The build is handed ``aut_model`` (``build_primary_router(profile=)``) and the
+    process's ``MAXIM_LLM_PROFILE`` stays the operator's: written around the build, it named the AUT's model for
+    every other thread while the build ran, and stayed after a build that raised (#1538).
+
+    The AUT router uses the same infrastructure as the primary router (peer config, lane backends, etc.) but with a
+    different model profile, handed to the build (#1538). This ensures the AUT uses the leader's GPU (via peer config)
+    rather than trying to load locally.
+
+    ``--aut-model`` names its model, so one that is missing and not downloaded refuses the run
+    (``LocalModelUnavailable`` propagates from ``build_run_router``): a dual-LLM run never measures the shared model
+    in its place (owner decision OD2, #1396 bullet 2). ``warm=False`` builds only (the run's
+    :func:`_build_run_llms`, so the refusal lands before any ``warmup()`` and before the AUT model loads);
+    :func:`_warm_aut_router` warms it later."""
+    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.models.language.types import LocalModelUnavailable
+    from maxim.runtime.lane_backends import build_run_router
+
+    aut_router = llm_router  # default: shared
+    if aut_model is not None and llm_router is not None:
+        try:
+            aut_router, _ = build_run_router(logger=logger, profile=aut_model)
+
+            if aut_router is not None:
+                if warm:
+                    aut_router = _warm_aut_router(aut_router, llm_router, aut_model)
+            else:
+                aut_router = llm_router
+        except LocalModelUnavailable:
+            raise
+        except SECURITY_REFUSALS:  # a leader or offline refusal: falling back would swap the model under test (#1315)
+            raise
+        except Exception as e:
+            logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
+            aut_router = llm_router
+    return aut_router
+
+
+def _warm_aut_router(aut_router: Any, llm_router: Any, aut_model: str | None) -> Any:
+    """Warm the AUT's own router and wait for its load (a shared AUT router is the shared one, already warming).
+
+    A raise from ``warmup()``/``wait_ready()`` propagates, by design: the old broad except around the whole AUT build
+    fell back to running the AUT on the shared model, which OD2 refuses (a dual-LLM run never measures the shared
+    model in the AUT's place; #1396 bullet 2)."""
+    if aut_router is not None and aut_router is not llm_router:
+        aut_router.warmup()
+        aut_router.wait_ready(timeout=120.0)
+        logger.info("AUT router initialized (model=%s)", aut_model)
+    return aut_router
+
+
+def _build_shared_router(llm_profile: str | None, *, warm: bool = True) -> Any:
+    """The run's shared router (narrator, AUT, fear gate), built on ``llm_profile`` when the caller has its own model
+    (#1586; None: the session's ``MAXIM_LLM_PROFILE``), or None when no LLM is available.
+
+    A named ``llm_profile`` (the CLI's ``--llm``) whose model is missing and not downloaded refuses the run, typed
+    (``build_run_router``; owner decision OD2, #1396 bullet 2); without one, a missing model is no LLM. ``warm=False``
+    builds only (:func:`_build_run_llms` warms it once the AUT's build has had its chance to refuse)."""
+    from maxim.runtime.lane_backends import build_run_router
+
+    llm_router, _lane_manager = build_run_router(logger=logger, profile=llm_profile)
+    if llm_router is not None and warm:
+        llm_router.warmup()
+        logger.info("Shared LLM router initialized")
+    return llm_router
+
+
+def _build_run_llms(
+    llm_profile: str | None, *, aut_model: str | None, start_provenance: dict[str, Any]
+) -> tuple[Any, Any]:
+    """The run's shared router and the AUT's (``aut_model``; else the shared one), both BUILT before either warms and
+    before the sandbox is set up, so a model the run named that is missing and not downloaded refuses the run
+    (``LocalModelUnavailable``) before any ``warmup()``, before the sandbox and before the AUT model loads (#1396
+    bullet 2 review round: the AUT's refusal used to land after the shared model had started loading and the sandbox
+    was up). It is not "before anything loads": on a GPU host ``build_primary_router`` may already have auto-spawned
+    the shared llama-cpp-server during the shared build.
+
+    The build order (shared, then AUT) is unchanged; the shared model warms here, the AUT's own where the run builds
+    its worker (:func:`_warm_aut_router`). Two orderings shift: (a) an AUT auto-spawn (inside the AUT's build) now runs
+    before the shared ``warmup()``; (b) the AUT build (its consent prompt, its spawn) now runs before
+    ``_await_llm_ready_or_refuse``, so a stop that lands during the shared load is honoured after the AUT build, not
+    before it. A refusal releases the run's serving registration (``release_start_provenance``), as the stop refusal
+    does: a held one would stamp every later sim ``concurrent_sims``."""
+    from maxim.models.language.types import LocalModelUnavailable
+
+    try:
+        llm_router = _build_shared_router(llm_profile, warm=False)
+        aut_router = _build_aut_router(aut_model, llm_router, warm=False)
+    except LocalModelUnavailable:
+        from maxim.simulation.report import release_start_provenance
+
+        release_start_provenance(start_provenance)
+        raise
+    if llm_router is not None:
+        llm_router.warmup()
+        logger.info("Shared LLM router initialized")
+    return llm_router, aut_router
+
+
 def _save_for_new(tail: Any, report: Any, report_dir: str) -> str | None:
     """Make this run's AUT state ready for the ``/new`` run; returns the session to carry it from (#1454).
 
@@ -683,6 +783,7 @@ NEW_RUN_CARRIES = frozenset(
         "sandbox_network",
         "aut_model",
         "aut_mode",
+        "llm_profile",
         "research_telemetry",
         "arc_yaml",
         "entity_ref",
@@ -813,6 +914,25 @@ def _await_llm_ready_or_refuse(llm_router: Any | None, start_provenance: dict[st
     logger.info("LLM ready")
 
 
+def _open_sim_workspace(*, debug: bool) -> tuple[Path, Path, str]:
+    """The sim's workspace and sim logging (moved verbatim out of ``start_simulation_mode``, #1264 rule T).
+
+    ``<data_home>/sim_sandbox`` via ``_prepare_sim_workspace`` — never CWD-relative. Both loops' runtime-state files
+    go under ``sim_tmpdir`` (``state_home=``, #1264), so they stay with the sandbox. (The former CWD-relative
+    ``data/agents/MaximAgent/runtime`` mkdir was dead code, and that CWD-relative state path was ledger D15.)
+    """
+    sim_workspace, sim_tmpdir, log_path = _prepare_sim_workspace()
+
+    # Enable sim logging (always persist to JSONL; terminal traces if --debug)
+    try:
+        from maxim.simulation.sim_logger import enable_sim_logging
+
+        enable_sim_logging(log_path=log_path, debug=debug)
+    except Exception as e:
+        logger.warning("Failed to enable sim logging — sim will run but no JSONL trace: %s", e)
+    return sim_workspace, sim_tmpdir, log_path
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -830,6 +950,7 @@ def start_simulation_mode(
     sandbox_network: str = "none",
     aut_model: str | None = None,
     aut_mode: str = "llm-primary",
+    llm_profile: str | None = None,
     research_telemetry: bool = False,
     pre_campaign_turns: list[dict[str, Any]] | None = None,
     dm_campaign: Any = None,
@@ -886,6 +1007,8 @@ def start_simulation_mode(
         prompt_handler: The handler the AUT's ``request_interaction`` tool asks (D40) -- a caller's
             own UI. None picks one from the interactive mode, as before. Cannot be combined with
             ``persistent_agent``, whose registry already holds its handler.
+        llm_profile: The run's model (``maxim.imagine``/``maxim.campaign`` hand theirs), served by the shared router
+            over the session's ``MAXIM_LLM_PROFILE``, which stays as it was (#1586). None: the session's.
         carry_aut_from: The session whose saved AUT state this run starts from. Set by ``/new`` only (#1454); unlike
             ``resume_session`` it adds no resume prompt, because the new goal is a new simulation.
 
@@ -905,8 +1028,6 @@ def start_simulation_mode(
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.maxim_agent import MaximAgent
-    from maxim.models.language.router import LLMRouter, load_llm_config
-    from maxim.runtime.lane_backends import build_primary_router
     from maxim.runtime.agent_loop import run_agentic_loop
     from maxim.runtime.bootstrap import (
         build_decision_engine,
@@ -963,15 +1084,7 @@ def start_simulation_mode(
     # ── Shared LLM router (single model, alternating inference) ──────────
     # Routed through the multi-LLM factory so sim respects per-lane assignments
     # (capability-driven profiles, env overrides, remote URLs, safety gates).
-    llm_router, _lane_manager = build_primary_router(logger=logger)
-    if llm_router is None:
-        # Factory returned nothing → fall back to the default global config path.
-        llm_config = load_llm_config()
-        if llm_config.enabled:
-            llm_router = LLMRouter(llm_config)
-    if llm_router is not None:
-        llm_router.warmup()
-        logger.info("Shared LLM router initialized")
+    llm_router, aut_router = _build_run_llms(llm_profile, aut_model=aut_model, start_provenance=start_provenance)
 
     # ── Simulation bridge ────────────────────────────────────────────────
     # Substrate-primary per-turn action budget (apparatus standard S6; the
@@ -1008,19 +1121,7 @@ def start_simulation_mode(
     orchestrator_source = ConversationalSource()
 
     # ── Simulation sandbox ───────────────────────────────────────────────
-    # <data_home>/sim_sandbox via _prepare_sim_workspace — never CWD-relative.
-    # (The former CWD-relative data/agents/MaximAgent/runtime mkdir was dead
-    # code: the loop's state_<run_id>.json writer creates its own parents in
-    # atomic_io; that writer's CWD-relative path itself is ledger D15.)
-    sim_workspace, sim_tmpdir, log_path = _prepare_sim_workspace()
-
-    # Enable sim logging (always persist to JSONL; terminal traces if --debug)
-    try:
-        from maxim.simulation.sim_logger import enable_sim_logging
-
-        enable_sim_logging(log_path=log_path, debug=debug)
-    except Exception as e:
-        logger.warning("Failed to enable sim logging — sim will run but no JSONL trace: %s", e)
+    sim_workspace, sim_tmpdir, log_path = _open_sim_workspace(debug=debug)
 
     # Build AUT pain bus + sandbox together. The pain bus MUST exist
     # before the sandbox so PainTriggerLayer can route signals; this
@@ -1504,38 +1605,7 @@ def start_simulation_mode(
     # Build AUT's LLM worker. When --aut-model is set, the AUT gets its
     # own LLMRouter so there's no inference contention and the experiment
     # can isolate memory recall from LLM context window effects.
-    #
-    # The AUT router uses the same infrastructure as the primary router
-    # (peer config, lane backends, etc.) but with a different model profile
-    # set via env var override. This ensures the AUT uses the leader's GPU
-    # (via peer config) rather than trying to load locally.
-    aut_router = llm_router  # default: shared
-    if aut_model is not None and llm_router is not None:
-        try:
-            # Override the infer lane model for this second router build
-            old_profile = os.environ.get("MAXIM_LLM_PROFILE")
-            os.environ["MAXIM_LLM_PROFILE"] = aut_model
-            aut_router, _ = build_primary_router(logger=logger)
-            # Restore original profile
-            if old_profile is not None:
-                os.environ["MAXIM_LLM_PROFILE"] = old_profile
-            else:
-                os.environ.pop("MAXIM_LLM_PROFILE", None)
-
-            if aut_router is None:
-                aut_config = load_llm_config(profile_override=aut_model)
-                if aut_config.enabled:
-                    aut_router = LLMRouter(aut_config)
-
-            if aut_router is not None:
-                aut_router.warmup()
-                aut_router.wait_ready(timeout=120.0)
-                logger.info("AUT router initialized (model=%s)", aut_model)
-            else:
-                aut_router = llm_router
-        except Exception as e:
-            logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
-            aut_router = llm_router
+    aut_router = _warm_aut_router(aut_router, llm_router, aut_model)
 
     aut_llm_worker: LLMWorker | None = None
     if aut_router is not None:
@@ -2169,6 +2239,7 @@ def start_simulation_mode(
                         stop_event=stop_event,
                         target_hz=2.0,
                         percept_source=_aut_percept_source,
+                        state_home=sim_tmpdir,  # the AUT's state file stays in the sim sandbox (#1264)
                         action_sink=bridge.action_sink,
                         pain_bus=aut_pain_bus,
                         imagination_trigger=aut_imagination_trigger,
@@ -2655,6 +2726,7 @@ def start_simulation_mode(
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=orchestrator_source,
+                    state_home=sim_tmpdir,  # the narrator's state file stays in the sim sandbox (#1264)
                     # Bugs ledger D13. THIS loop is the one that needs it: it has
                     # no action_sink and no percept producer between turns, so a
                     # planning turn dropped after a parse failure leaves nothing

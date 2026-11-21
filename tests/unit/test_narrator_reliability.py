@@ -71,7 +71,17 @@ CORRECTED = {
     "proposal_not_ready_to_act": "ready_to_act to false",
     "proposal_completed_without_action": "goal is achieved but called no tool",
     "fallback_proposal_dropped": "could not be read",
+    "unregistered_tool_proposed": "a tool that is not in your list",  # #1592
 }
+
+
+def test_every_planning_correction_is_exercised_on_both_paths() -> None:
+    """A new ``PLANNING_CORRECTIONS`` reason joins ``CORRECTED`` too, or the both-path test below skips it (#1592)."""
+    from maxim.agents.prompt_builder import PLANNING_CORRECTIONS
+
+    assert set(CORRECTED) == set(PLANNING_CORRECTIONS)
+
+
 NOT_THE_MODELS_FAULT = ("stale_proposal_dropped", "proposal_error:timeout", "planning_job_completed_without_proposal")
 FOLLOWUP = (
     "[ACTION_FOLLOWUP type=process tool=send_message mode=live query='talk to the agent']: "
@@ -172,7 +182,8 @@ def test_only_the_run_full_turns_flag_sets_the_finish_floor_and_an_observer_is_e
     full = _build_parser().parse_args(["--sim", "g", "--sim-max-turns", "8", "--sim-run-full-turns"])
     assert cli._sim_turn_caps(plain) == {"max_turns": 8, "min_finish_turns": 0}
     assert cli._sim_turn_caps(full) == {"max_turns": 8, "min_finish_turns": 8}
-    assert inspect.getsource(cli._main_impl).count("**_sim_turn_caps(args)") >= 3, "every sim launch passes both caps"
+    launches = (cli._main_impl, cli._run_goal_sim)  # the goal-string launch moved out with --sim-script (#1628)
+    assert sum(inspect.getsource(f).count("**_sim_turn_caps(args)") for f in launches) >= 3, "every launch: both caps"
     src = orchestrator_source()  # start_simulation_mode, wherever its code lives (1.3.2 decomposition)
     assert "min_turns=0 if _is_observe_only else min_finish_turns" in src
     assert src.index("_is_observe_only = ") < src.index("FinishSimulationTool("), "known before the tool is built"
@@ -393,16 +404,33 @@ def test_the_release_runs_even_when_the_submit_raises() -> None:
 def test_every_open_o19_campaign_runs_every_turn_it_asks_for() -> None:
     """The flag's caller (#1058). It replaced a red gate keyed on an Exp 10 campaign 3, which the owner dropped on
     2026-10-03 (strict: no successor on changed subject code; T1-1 goes to #1060): every O19 campaign but the two closed before the flag existed runs
-    each phase to its cap, so C1 is not lost to a narrator that finishes early."""
+    each phase to its cap, so C1 is not lost to a narrator that finishes early.
+
+    A scripted phase (``--sim-script``, Exp 63c) has no narrator to finish early, and its prereg drops the flag ("it
+    does nothing without a narrator"). Its run-to-the-cap guarantee is the CLI's length refusal (a script whose length
+    differs from ``--sim-max-turns`` is refused), so this test checks the script's strict-loaded length equals the
+    phase's cap instead."""
     import importlib.util
     import pathlib
 
-    path = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "o19_verdict.py"
+    from maxim.simulation.experiment import load_campaign_turns
+
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    path = repo / "scripts" / "o19_verdict.py"
     spec = importlib.util.spec_from_file_location("o19_verdict_for_caller", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     pre_flag = {"10", "10c2"}  # closed before #1058 shipped the flag; every other campaign, future ones too, needs it
     keys = [k for k in module.PROTOCOL if k not in pre_flag]
     assert "09" in keys, "Exp 09's campaign is the flag's caller"
+    scripted = 0
     for key in keys:
-        assert all("--sim-run-full-turns" in phase[4] for phase in module.PROTOCOL[key]["phases"]), key
+        for _name, _goal, cap, _resume, argv, _env in module.PROTOCOL[key]["phases"]:
+            if "--sim-script" in argv:
+                assert "--sim-run-full-turns" not in argv, (key, "the flag is a no-op on a scripted phase")
+                script = repo / argv[argv.index("--sim-script") + 1]
+                assert len(load_campaign_turns(script, strict=True)) == cap, (key, script.name, cap)
+                scripted += 1
+            else:
+                assert "--sim-run-full-turns" in argv, key
+    assert scripted >= 2, "Exp 63c's two scripted phases are checked"

@@ -999,12 +999,24 @@ class BenchmarkRunner:
                     metrics=mr.metrics,
                 )
 
-            from maxim.models.language.router import LLMRouter
+            from maxim.models.download import consented_router
+            from maxim.models.language.router import load_llm_config
 
+            # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
+            # (#1396 bullet 2): no paper rather than a router that refuses every call.
             try:
-                router = LLMRouter()
+                router, cause = consented_router(load_llm_config(), logger=logger)
+            except SECURITY_REFUSALS as refusal:  # said as what it is, and in the run's offline block (#1315 item 10b)
+                from maxim import _offline
+
+                _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
+                logger.warning("No paper: the paper writer's router was refused (%s)", refusal)
+                return None
             except Exception:
                 logger.warning("No LLM available for paper generation")
+                return None
+            if router is None:
+                logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
                 return None
 
             bus = LocalMessageBus()

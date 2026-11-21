@@ -6,7 +6,7 @@ import sys
 import threading
 from pathlib import Path
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from maxim.cli_parser import _build_parser
@@ -163,25 +163,122 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
-def _ensure_agentic_model(llm_router: Any) -> None:
-    """The agentic path's router has a missing model file: ask the consent gate, on the main thread (#1343).
+def _cli_local_router(profile: str) -> Any | None:
+    """The router foundry and auto-curate build from ``--llm`` (#1396): the consent gate asks first, on the main thread.
 
-    ``ExecAgent._ensure_router`` builds the router directly, so ``build_primary_router``'s preflight never ran. This is
-    the one place on that path that may prompt; the backend's own lazy load never does.
+    These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
+    missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
+    None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
+    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking as
+    ``consent_interactive()`` allows (the main thread only, #1658); the library check never prints, so the CLI prints
+    its own line here.
     """
-    model_path = str(getattr(llm_router.cfg, "model_path", "")).strip()
-    if not model_path or os.path.exists(model_path):
-        return
-    profile = str(getattr(llm_router.cfg, "profile", "") or getattr(llm_router.cfg, "model_base", "")).strip()
-    if not profile:
-        print("  Model not found. Run: maxim --list-models to see available models.")
-        return
-    from maxim.models.download import ensure_available
+    from maxim.models.download import consent_interactive, consented_router
+    from maxim.models.language.config import load_llm_config
 
-    log = logging.getLogger(__name__)
-    log.info("Model not found at %s — asking to download %s", model_path, profile)
-    if not ensure_available(profile, logger=log):
+    router, cause = consented_router(load_llm_config(profile_override=profile), interactive=consent_interactive())
+    if router is None:
+        _print_model_unavailable(cause)
+    return router
+
+
+def _print_model_unavailable(cause: str | None) -> None:
+    """The CLI's line for a router whose model stayed unusable (the library check logs, never prints; #1396)."""
+    from maxim.models.language.types import LocalModelUnavailable
+
+    if cause == LocalModelUnavailable.MODEL_PATH_MISSING:
+        print("  The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json.")
+    else:
         print("  Model not available. Run: maxim --list-models to see available models.")
+
+
+def _cli_llm_profile(args: Any) -> str | None:
+    """The model ``--llm`` named (``args.language_model``, already normalized by ``cli_utils``), or None without it.
+
+    Handed to the run's router builds as their explicit profile (``start_simulation_mode(llm_profile=)``), so a named
+    model that is missing and not downloaded refuses the run (#1396 bullet 2) instead of reading as an implicit choice
+    through ``MAXIM_LLM_PROFILE``, which other code also sets implicitly."""
+    return str(getattr(args, "language_model", "") or "").strip() or None
+
+
+def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
+    """ExecAgent's router was refused its model: when that model is the one ``--llm`` named, the run refuses, typed
+    (``LocalModelUnavailable``, exit 2; owner decision OD2, #1396). A model the operator never named (an llm.json
+    ``agent_profiles.exec_agent`` override, an implicit default) leaves the run going without the LLM, after the CLI's
+    printed line (the library check only logs)."""
+    from maxim.models.language.config import normalize_llm_profile
+    from maxim.models.language.types import LocalModelUnavailable
+
+    named = normalize_llm_profile(_cli_llm_profile(args))
+    refused = getattr(exec_agent, "_refused_profile", None)
+    if named and refused and normalize_llm_profile(refused) == named:
+        cause = getattr(exec_agent, "_refused_cause", None) or LocalModelUnavailable.NOT_DOWNLOADED
+        raise LocalModelUnavailable(named, cause=cause)
+    if refused:
+        _print_model_unavailable(getattr(exec_agent, "_refused_cause", None))
+
+
+def _cli_agentic_llm_worker(
+    agentic_agent: Any,
+    args: Any,
+    logger: Any,
+    *,
+    embodiment_ref: Any,
+    component_registry: Any,
+) -> Any | None:
+    """The CLI agentic path's LLM worker, on ExecAgent's router (the LLM lives inside ExecAgent, not MaximAgent).
+
+    The router is built with ``consent="ask"``, so the consent gate may prompt here, on the main thread, before any
+    warmup (#1343, #1396). A model that stays missing gives no worker, never a warmed router on a missing file: the
+    ``--llm`` model refuses the run (:func:`_refuse_if_named_model_missing`), any other runs without the LLM. Moved out
+    of ``_main_impl`` (rule T)."""
+    from maxim.agents.llm_worker import LLMWorker
+
+    llm_worker = None
+    llm_router = None
+    # Trigger lazy LLM + router init via ExecAgent
+    if hasattr(agentic_agent, "exec_agent"):
+        agentic_agent.exec_agent._ensure_llm()
+        llm_router = agentic_agent.exec_agent._ensure_router(consent="ask")
+        if llm_router is None:
+            _refuse_if_named_model_missing(args, agentic_agent.exec_agent)
+    if llm_router is not None:
+        if hasattr(llm_router, "warmup"):
+            llm_router.warmup()
+        # In simulation mode, wait for LLM to be fully loaded before starting
+        _is_sim = getattr(args, "sim", None) is not None
+        if _is_sim and hasattr(llm_router, "wait_ready"):
+            logger.info("Waiting for LLM to load (simulation mode)...")
+            if llm_router.wait_ready(timeout=120.0):
+                logger.info("LLM ready")
+            else:
+                logger.warning("LLM failed to load — simulation will use fallback responses")
+                print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
+                print("  Ensure model is downloaded. Run: maxim --list-models")
+        logger.info("LLM router initialized: %s", llm_router)
+        llm_worker = LLMWorker(
+            llm_router,
+            n_ctx=getattr(llm_router, "n_ctx", 4096),
+            token_counter=(llm_router.get_token_counter() if hasattr(llm_router, "get_token_counter") else None),
+        )
+        llm_worker.start()
+        # B3: Enable Acting Coach when embodiment tools are available
+        if embodiment_ref is not None:
+            from maxim.prompts.acting_coach import acting_coach_config_from_env
+
+            llm_worker.acting_coach = acting_coach_config_from_env()
+            llm_worker.is_embodied = True
+
+            # E2: Inject entity context (sensors, affordances, failure
+            # triggers) into the AUT prompt so the agent knows what
+            # physical capabilities it has.
+            if component_registry is not None:
+                try:
+                    _entity_raw = component_registry.get(embodiment_ref)
+                    llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
+                except Exception as _e:
+                    logger.debug("Entity context injection failed: %s", _e)
+    return llm_worker
 
 
 def _handle_clear_memory(scope: str, args: Any, raw_argv: Sequence[str] | None) -> int:
@@ -361,7 +458,7 @@ def _bare_maxim_menu() -> int:
             continue
 
         try:
-            _run_menu_sim(action)
+            _run_menu_choice(action)
         except KeyboardInterrupt:
             print("\n")
         if stop_noted():  # a process stop ends the menu: a later sim would refuse (owner decision 2026-11-02)
@@ -483,6 +580,34 @@ def _setup_interactive_display() -> None:
         pass
 
 
+def _apply_sim_report_flags(args: Any) -> int | None:
+    """Cross-flag validation of ``--sim-report`` / ``--report-json`` (each needs ``--sim``): 1 on a misuse, else None
+    after exporting ``--report-json``. Moved verbatim out of ``_main_impl`` (rule T) by #1396."""
+    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
+        print("Error: --sim-report requires --sim.", file=sys.stderr)
+        return 1
+    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
+        print("Error: --report-json requires --sim.", file=sys.stderr)
+        return 1
+    # --report-json is read by simulation/orchestrator.py via environment
+    # rather than by threading through start_simulation_mode's signature
+    # (which has 5+ invocation sites).  Set it once here and let the
+    # orchestrator emit when it builds the report.
+    _report_json_arg = getattr(args, "report_json", None)
+    if _report_json_arg:
+        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
+    return None
+
+
+def _run_menu_choice(action: str) -> None:
+    """One bare-``maxim`` menu choice is one run: its own armed download-decline scope (#1396), so a "no" in one choice
+    never refuses the next, and nothing from the CLI's outer scope carries into it."""
+    from maxim.models.download import download_decline_scope
+
+    with download_decline_scope(armed=True):
+        _run_menu_sim(action)
+
+
 def _run_menu_sim(action: str) -> None:
     """Run a sim from the menu. Raises KeyboardInterrupt to return to menu."""
     from pathlib import Path
@@ -601,6 +726,54 @@ def _dispatch_hivemind_cli(raw_argv: list[str]) -> int | None:
         from maxim.hivemind.hive_cli import run_hive_subcommand
 
         return run_hive_subcommand(raw_argv[1:])
+    return None
+
+
+def _dispatch_tool_cli(raw_argv: list[str]) -> int | None:
+    """Route the serve / tunnel / doctor / bench / roy / model / llm subcommands; None if not one of them.
+
+    Moved verbatim out of ``_main_impl`` (#1344 PR 3b, rule T) when ``llm`` was added: the same lazy imports per branch.
+    """
+    if raw_argv and raw_argv[0] == "serve":
+        from maxim.console import run_serve_subcommand
+
+        return run_serve_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "tunnel":
+        from maxim.tunnel import run_tunnel_subcommand
+
+        return run_tunnel_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "doctor":
+        from maxim.doctor import run_doctor_subcommand
+
+        return run_doctor_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "bench":
+        # Plan 4 B: recovery-time (and future) benchmark harnesses.
+        # Entry point lives in maxim.bench.cli — no CUDA imports,
+        # no sim orchestrator, just a tight LLM call loop.
+        from maxim.bench import run_bench_subcommand
+
+        return run_bench_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "roy":
+        # Roy harness — persona-convergence crucible utilities.
+        # Currently exposes `roy diff <session_a> <session_b>`, which
+        # delegates to maxim.analysis.substrate_diff.
+        from maxim.roy import run_roy_subcommand
+
+        return run_roy_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "model":
+        # `maxim model add/remove/list` — user-profile management
+        # per leader_ux_profile_management.md L3. Writes to
+        # ~/.config/maxim/profiles.yml; the loader at
+        # maxim.models.language.profile_loader picks up changes on
+        # the next process start.
+        from maxim.models.model_cli import run_model_subcommand
+
+        return run_model_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "llm":
+        # `maxim llm reap`: the operator-run cleanup of a leftover LLM server (#1344 PR 3b).
+        from maxim.runtime.llm_cli import run_llm_subcommand
+
+        return run_llm_subcommand(raw_argv[1:])
     return None
 
 
@@ -863,6 +1036,7 @@ def _maybe_run_dm_campaign(yaml_path: Path, args, *, debug: bool, entity_ref: st
         dm_campaign=dm_campaign,
         **_sim_turn_caps(args),
         entity_ref=entity_ref,
+        llm_profile=_cli_llm_profile(args),
     )
     sys.exit(_simulation_result_exit_code(result))
 
@@ -873,6 +1047,184 @@ def _sim_turn_caps(args: Any) -> dict[str, int]:
     owner decisions 2026-10-02: opt-in, so other harnesses keep early finishing), else 0."""
     max_turns = int(getattr(args, "sim_max_turns", 50) or 50)
     return {"max_turns": max_turns, "min_finish_turns": max_turns if getattr(args, "sim_run_full_turns", False) else 0}
+
+
+def _run_goal_sim(
+    args: Any,
+    goal: str,
+    *,
+    debug_raw: Any,
+    aut_mode: str,
+    research_telemetry: bool,
+    entity_ref: str | None,
+    pre_campaign_turns: list[dict[str, Any]] | None,
+) -> None:
+    """The plain goal-string sim (``--sim "<goal>"`` without ``--research``): the orchestrator, then exit with its
+    result. ``pre_campaign_turns`` is ``--sim-script``'s (``_sim_script_turns``), delivered before the narrator."""
+    # Pure generative campaign — use the orchestrator.
+    # When the goal matches a builtin narrative arc (cradle,
+    # memory_recall, etc.), enable the generative campaign runner
+    # so the narrator drives multi-turn structured phases.
+    from maxim.simulation.orchestrator import start_simulation_mode
+
+    mode = _resolve_mode(args)
+    debug = bool(debug_raw)
+    resume_sim = getattr(args, "resume_sim", None)
+
+    # Auto-detect generative mode: if goal matches a builtin arc,
+    # route through the generative campaign runner.
+    _use_generative = False
+    try:
+        from maxim.simulation.arcs import select_arc_for_goal
+
+        if select_arc_for_goal(goal) is not None:
+            _use_generative = True
+    except Exception:
+        pass
+
+    result = start_simulation_mode(
+        goal=goal,
+        mode=mode,
+        debug=debug,
+        resume_session=resume_sim,
+        continuous=bool(getattr(args, "continuous", False)),
+        no_sim_env=bool(getattr(args, "no_sim_env", False)),
+        sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+        sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
+        sandbox_network=getattr(args, "sandbox_network", "none"),
+        aut_model=getattr(args, "aut_model", None),
+        aut_mode=aut_mode,
+        research_telemetry=research_telemetry,
+        **_sim_turn_caps(args),
+        entity_ref=entity_ref,
+        pre_campaign_turns=pre_campaign_turns,
+        generative=_use_generative,
+        llm_profile=_cli_llm_profile(args),
+    )
+    sys.exit(_simulation_result_exit_code(result))
+
+
+def _sim_value_kind(value: str) -> str:
+    """What a ``--sim`` value selects: ``"yaml"`` (a scenario or campaign file), the legacy aliases ``"agent"``,
+    ``"research"`` and ``"benchmark"``, ``"interactive"`` (the REPL; ``--sim`` with no value), else ``"goal"`` (a goal
+    string for the generative campaign). The goal-string dispatch and ``--sim-script`` decide by it; a few older
+    sites (``_declare_run_mode``, the benchmark and REPL checks) still compare the value inline."""
+    value = value.strip()
+    if value.endswith((".yaml", ".yml")):
+        return "yaml"
+    lower = value.lower()
+    return lower if lower in ("agent", "research", "benchmark", "interactive") else "goal"
+
+
+# ``--sim-script`` runs on the plain goal-string orchestrator call only: a WHITELIST of the parsed options that may
+# differ from the parser's defaults. Any other option (a mode or driver flag, a management command, one added later)
+# refuses, so no dispatch that runs before the goal-string branch (``--foundry``, ``--generate-simulation``,
+# ``--list-models``, ...) can drop the script silently.
+_SIM_SCRIPT_ALLOWED = frozenset(
+    {
+        "sim",
+        "sim_script",
+        "sim_max_turns",
+        "resume_sim",
+        "interactive",
+        "sim_run_full_turns",
+        "language_model",
+        "aut_model",
+        "display",
+        "show_channels",
+        "debug",
+        "sandbox_backend",
+        "sandbox_image",
+        "sandbox_network",
+        "no_sim_env",
+    }
+)
+# The option ``normalize_args`` coerces away from its parsed default whatever was passed ("true" -> True), so its
+# value cannot be compared with the default; it is not a driver. (``sim_mode``'s default is SUPPRESS, so it is never
+# compared and has its own check below; ``interactive`` and ``language_model`` are whitelisted.)
+_SIM_SCRIPT_NORMALIZED = frozenset({"audio"})
+
+
+def _sim_script_unexpected_options(args: Any) -> list[str]:
+    """The options outside :data:`_SIM_SCRIPT_ALLOWED` whose value differs from the parser's default, as the first
+    option string of each (``--dm``), in parser order."""
+    from maxim.cli_parser import _build_parser
+
+    parser = _build_parser()
+    defaults = vars(parser.parse_args([]))
+    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
+    return [
+        flags.get(dest, dest)
+        for dest, default in defaults.items()
+        if dest not in _SIM_SCRIPT_ALLOWED
+        and dest not in _SIM_SCRIPT_NORMALIZED
+        and getattr(args, dest, default) != default
+    ]
+
+
+def _sim_script_refusal(args: Any) -> str | None:
+    """Why ``--sim-script`` may not run with these args (None = it may). Never reads the script."""
+    sim = getattr(args, "sim", None)
+    if sim is None or _sim_value_kind(str(sim)) != "goal" or not str(sim).strip():
+        return (
+            'it runs only with a goal string: --sim "<goal>" (not a YAML --sim, agent, research, benchmark or the REPL)'
+        )
+    unexpected = _sim_script_unexpected_options(args)
+    if unexpected:
+        return f"{', '.join(unexpected)} not accepted with it (only a plain goal-string sim)"
+    if getattr(args, "sim_mode", None) not in (None, "generative"):  # normalized, so not in the comparison above
+        return "--sim-mode not accepted with it (only a plain goal-string sim)"
+    if _resolve_interactive_mode(args, is_dm=False, is_tty=sys.stdout.isatty()) != "off":
+        return "interactive mode is on: pass --interactive false"
+    cap = getattr(args, "sim_max_turns", None)
+    if cap is None or cap < 1:
+        return f"--sim-max-turns is required with it, at least 1 (the script's length must equal it; got {cap!r})"
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    try:
+        arc = select_arc_for_goal(str(sim).strip())
+    except Exception as exc:  # noqa: BLE001 -- reported as the refusal: a probe that raises is never "no arc"
+        return f"the goal's arc could not be checked ({type(exc).__name__}: {exc})"
+    if arc is not None:
+        return "the goal selects a narrative arc, whose runner would run before the script and stop it"
+    return None
+
+
+def resolve_sim_script(args: Any) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """``--sim-script <file>``'s turns, or why it is refused: ``(turns, None)``, ``(None, reason)``, or ``(None, None)``
+    without the flag. No output and no exit, so a harness can run the CLI's own check before it spends a run (Exp
+    63c's preflight). ``args`` must have been through ``normalize_args`` (the interactive check reads
+    ``interactive_explicit``, which only it sets; on raw args ``--interactive false`` is the truthy string "false"):
+    a ``TypeError`` otherwise, never a guess. Turns come from ``experiment.load_campaign_turns(strict=True)``; a
+    relative path resolves against the working directory."""
+    path = getattr(args, "sim_script", None)
+    if path is None:
+        return None, None
+    if not hasattr(args, "interactive_explicit"):
+        raise TypeError("resolve_sim_script needs args that have been through cli_utils.normalize_args")
+    reason = _sim_script_refusal(args)
+    if reason is not None:
+        return None, reason
+    from maxim.simulation.experiment import load_campaign_turns
+
+    try:
+        turns = load_campaign_turns(path, strict=True)
+    except (OSError, ValueError) as exc:
+        return None, f"the script could not be loaded: {exc}"
+    if len(turns) != args.sim_max_turns:
+        return None, f"the script has {len(turns)} lines but --sim-max-turns is {args.sim_max_turns} (must match)"
+    return turns, None
+
+
+def _sim_script_turns(args: Any) -> list[dict[str, Any]] | None:
+    """The CLI's :func:`resolve_sim_script`: the turns for ``start_simulation_mode(pre_campaign_turns=...)`` (None
+    without the flag), or exit 1 with the refusal on stderr, before any sim starts. A scripted narrator: each line is
+    one turn sent through the bridge as the narrator's would be, and the run ends ``completed``."""
+    turns, reason = resolve_sim_script(args)
+    if reason is not None:
+        print(f"Error: --sim-script refused: {reason}.", file=sys.stderr)
+        sys.exit(1)
+    return turns
 
 
 def _early_leader_boot() -> int | None:
@@ -887,7 +1239,7 @@ def _early_leader_boot() -> int | None:
     that answers without auth) returns 2 with the reason, the role's source and
     the fix (2026-10-14: it used to warn and serve without auth).
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS, LeaderRefusal
 
     detected_role = None
     try:
@@ -895,12 +1247,13 @@ def _early_leader_boot() -> int | None:
 
         detected_role = detect_role()
         if detected_role.role == "leader":
-            from maxim.runtime.leader_proxy import start_leader_proxy_for_role
+            from maxim.runtime.leader_mode import claim_leader_services
 
             # Fails closed: no usable mesh key, or the port held by something
             # that is not an authenticated LeaderProxy, raises here and the
-            # handler below exits before anything else starts.
-            start_leader_proxy_for_role(detected_role.bind_host)
+            # handler below exits before anything else starts. Binding the
+            # proxy claims the tunnel + heartbeat for this process (#1610).
+            claim_leader_services(detected_role.bind_host)
     except LeaderRefusal as _e:
         _fix = getattr(_e, "fix_hint", "Run `maxim doctor` for diagnostics.")
         _why = detected_role.reason if detected_role is not None else "unknown"
@@ -911,6 +1264,8 @@ def _early_leader_boot() -> int | None:
         )
         logging.getLogger(__name__).error("leader boot refused: %s", _e)
         return 2
+    except SECURITY_REFUSALS:
+        raise  # an offline refusal (a refused bind or probe): cli.main says why and exits 2, not "port conflict" (#1315)
     except Exception as _e:
         # Only surface to operators when role resolved to leader. Solo users
         # should never see leader-boot noise.
@@ -1132,6 +1487,109 @@ def _build_cli_comms(args: Any, agentic_agent: Any) -> Any:
     return gateway
 
 
+_LOCAL_ROUTER_READY_TIMEOUT_S = 120.0  # foundry and --auto-curate wait this long for a warmed router
+
+
+def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any | None]:
+    """The ``--auto-curate`` router, built through :func:`_cli_local_router` only when ``auto_curate`` calls this:
+    after it finds a coverage gap, so full coverage never asks about a missing model (#1396, owner decision
+    2026-11-12). The factory's None is the template fallback; a build or warmup error keeps what was built, as
+    before the move.
+
+    Every router it builds is appended to ``built`` before warmup, and the caller unloads it once curation ends
+    (#1657), so the curation model is not still resident while the sim loads its own. It waits for the warmed router
+    like foundry does; one that is not ready in time is not handed to the runners (template fallback)."""
+
+    from maxim.exceptions import SECURITY_REFUSALS
+
+    def build() -> Any | None:
+        router = None
+        try:
+            router = _cli_local_router(profile)
+            if router is None:
+                print("  WARNING: LLM model not available — curation will use template fallback.")
+                return None
+            built.append(router)
+            router.warmup()
+            if not router.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
+                print("  WARNING: LLM failed to load — curation will use template fallback.")
+                return None
+        except SECURITY_REFUSALS:
+            raise  # an offline refusal is not a template fallback (#1315 item 10b)
+        except Exception as _llm_err:
+            logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
+        return router
+
+    return build
+
+
+def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
+    """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
+    ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup, and builds
+    it only once ``auto_curate`` finds a gap (:func:`_curate_router_factory`)."""
+    from maxim.exceptions import SECURITY_REFUSALS
+
+    _auto_curate = bool(getattr(args, "auto_curate", False))
+    _no_curate = bool(getattr(args, "no_curate", False))
+    if _auto_curate and not _no_curate and _sim_entity_ref:
+        _curate_threshold = int(getattr(args, "curate_threshold", 5) or 5)
+        # Infer genre from entity_ref or --foundry-genre flag
+        _curate_genre = getattr(args, "foundry_genre", "fantasy") or "fantasy"
+
+        try:
+            from maxim.embodiment.component_registry import ComponentRegistry
+            from maxim.simulation.foundry import auto_curate
+
+            _curate_registry = ComponentRegistry()
+
+            # Build ComponentIndex for dedup (optional — degrades gracefully)
+            _curate_index = None
+            try:
+                from maxim.embodiment.component_index import ComponentIndex
+
+                _curate_index = ComponentIndex(_curate_registry)
+            except Exception as _idx_err:
+                logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
+
+            # The --llm router is built (and a missing model asked about) only once a coverage gap is found.
+            _curate_profile = str(getattr(args, "language_model", "") or "").strip()
+
+            print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
+            _curate_built: list[Any] = []
+            try:
+                _curate_report = auto_curate(
+                    genre=_curate_genre,
+                    threshold=_curate_threshold,
+                    registry=_curate_registry,
+                    component_index=_curate_index,
+                    llm_router_factory=(
+                        _curate_router_factory(_curate_profile, _curate_built) if _curate_profile else None
+                    ),
+                )
+            finally:
+                for _router in _curate_built:  # this function owns the curation router (#1657)
+                    _router.unload()
+            if _curate_report.total_promoted > 0:
+                print(
+                    f"  Curated: {_curate_report.total_promoted} promoted, "
+                    f"{_curate_report.total_skipped_dedup} dedup-skipped"
+                )
+            elif _curate_report.categories_below_threshold == 0:
+                print("  Coverage OK — no curation needed")
+            else:
+                print(f"  Generated {_curate_report.total_generated} candidates, none promoted (below score threshold)")
+        except SECURITY_REFUSALS:
+            raise  # the run refuses, exit 2 (cli.main), not "Auto-curation failed" (#1315 item 10b)
+        except Exception as _cur_err:
+            logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
+            print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
+    elif _auto_curate and not _no_curate and not _sim_entity_ref:
+        print(
+            "  NOTE: --auto-curate requires --embodiment to determine genre context; skipping curation.",
+            file=sys.stderr,
+        )
+
+
 def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     """``maxim --foundry <theme>``: the Asset Foundry run (moved verbatim out of ``_main_impl``, #1315 step 0a)."""
     from maxim.simulation.foundry import FoundryRunner
@@ -1139,26 +1597,26 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     # Build a lightweight LLM router for generation when --llm is set.
     # The foundry dispatches before the full agent stack, so it creates
     # its own router from the profile name (same pattern as ExecAgent).
+    from maxim.exceptions import SECURITY_REFUSALS
+
     _foundry_llm = None
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
     if _foundry_profile:
         try:
-            from maxim.models.language.config import load_llm_config
-            from maxim.models.language.router import LLMRouter
-
-            _foundry_cfg = load_llm_config(profile_override=_foundry_profile)
-            _foundry_llm = LLMRouter(_foundry_cfg)
-            if hasattr(_foundry_llm, "warmup"):
+            _foundry_llm = _cli_local_router(_foundry_profile)
+            if _foundry_llm is None:
+                print("  WARNING: LLM model not available — foundry will use template fallback.")
+            else:
                 _foundry_llm.warmup()
-            if hasattr(_foundry_llm, "wait_ready"):
                 print(f"  Waiting for LLM ({_foundry_profile}) to load...")
-                if not _foundry_llm.wait_ready(timeout=120.0):
+                if not _foundry_llm.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
                     print("  WARNING: LLM failed to load — foundry will use template fallback.")
-                    if hasattr(_foundry_llm, "shutdown"):
-                        _foundry_llm.shutdown()
+                    _foundry_llm.unload()  # was a hasattr("shutdown") call LLMRouter never answered (#1657)
                     _foundry_llm = None
                 else:
                     print(f"  LLM ready: {_foundry_profile}")
+        except SECURITY_REFUSALS:
+            raise  # the foundry refuses, exit 2 (cli.main), never a template run that reports success (#1315 item 10b)
         except Exception as e:
             print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
 
@@ -1205,7 +1663,7 @@ def _cli_agent_config(*, mem_dir: str | None, is_sim_mode: bool, embodiment_ref:
 # The positional subcommands that run no simulation. `roy run` runs sims in-process, and a subcommand not listed here
 # stays unknown, so a stop exits 4: a new one is strict until someone declares it (#1344).
 _NON_SIM_SUBCOMMANDS = frozenset(
-    {"serve", "tunnel", "doctor", "bench", "model", "config", "peer", "oasis", "hive", "substrate"}
+    {"serve", "tunnel", "doctor", "bench", "model", "config", "peer", "oasis", "hive", "substrate", "llm"}
 )
 
 
@@ -1242,6 +1700,21 @@ def _declare_run_mode(args: Any) -> None:
         cli_signals.entered_sim_mode()
     else:
         cli_signals.entered_non_sim_mode()
+
+
+def _reuse_bio_pain_bus_for_sim(args: Any, *, pain_bus: Any, hippocampus: Any, nac: Any) -> None:
+    """A ``--sim`` run reuses the bio-stack's PainBus and hippocampus (moved verbatim out of ``_main_impl``, #1264
+    rule T): ``args._sim_pain_bus`` / ``args._sim_hippo`` are what the run and its report read. Logs on the
+    ``maxim`` logger, as ``_main_impl``'s own ``logger`` does."""
+    _sim_pain_bus = pain_bus
+    logging.getLogger("maxim").info(
+        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
+        hippocampus is not None,
+        nac is not None,
+    )
+
+    args._sim_pain_bus = _sim_pain_bus
+    args._sim_hippo = hippocampus
 
 
 def _main_impl(argv: Sequence[str] | None = None) -> int:
@@ -1315,41 +1788,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # Subcommand dispatch — intercepts positional subcommands before argparse.
     _declare_subcommand_mode(raw_argv)
-    if raw_argv and raw_argv[0] == "serve":
-        from maxim.console import run_serve_subcommand
-
-        return run_serve_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "tunnel":
-        from maxim.tunnel import run_tunnel_subcommand
-
-        return run_tunnel_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "doctor":
-        from maxim.doctor import run_doctor_subcommand
-
-        return run_doctor_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "bench":
-        # Plan 4 B: recovery-time (and future) benchmark harnesses.
-        # Entry point lives in maxim.bench.cli — no CUDA imports,
-        # no sim orchestrator, just a tight LLM call loop.
-        from maxim.bench import run_bench_subcommand
-
-        return run_bench_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "roy":
-        # Roy harness — persona-convergence crucible utilities.
-        # Currently exposes `roy diff <session_a> <session_b>`, which
-        # delegates to maxim.analysis.substrate_diff.
-        from maxim.roy import run_roy_subcommand
-
-        return run_roy_subcommand(raw_argv[1:])
-    if raw_argv and raw_argv[0] == "model":
-        # `maxim model add/remove/list` — user-profile management
-        # per leader_ux_profile_management.md L3. Writes to
-        # ~/.config/maxim/profiles.yml; the loader at
-        # maxim.models.language.profile_loader picks up changes on
-        # the next process start.
-        from maxim.models.model_cli import run_model_subcommand
-
-        return run_model_subcommand(raw_argv[1:])
+    _tool_rc = _dispatch_tool_cli(raw_argv)
+    if _tool_rc is not None:
+        return _tool_rc
     _hivemind_rc = _dispatch_hivemind_cli(raw_argv)
     if _hivemind_rc is not None:
         return _hivemind_rc
@@ -1442,6 +1883,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
     # ── Normalize args (after proxy boot — can trigger heavy CUDA imports) ──
     _normalize_args(args)
+    _script_turns = _sim_script_turns(args)  # --sim-script: refused (exit 1) before anything starts
 
     # Save this invocation if it's meaningful
     if should_save(raw_argv):
@@ -1472,20 +1914,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     if _foundry_theme:
         return _handle_foundry(args, _foundry_theme)
 
-    # ── Cross-flag validation ───────────────────────────────────────────
-    if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
-        print("Error: --sim-report requires --sim.", file=sys.stderr)
-        return 1
-    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
-        print("Error: --report-json requires --sim.", file=sys.stderr)
-        return 1
-    # --report-json is read by simulation/orchestrator.py via environment
-    # rather than by threading through start_simulation_mode's signature
-    # (which has 5+ invocation sites).  Set it once here and let the
-    # orchestrator emit when it builds the report.
-    _report_json_arg = getattr(args, "report_json", None)
-    if _report_json_arg:
-        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
+    # ── The run modes: from here a "no" to a model download is asked once per run (#1396) ──
+    from maxim.models.download import arm_download_decline_memory
+
+    arm_download_decline_memory()
+    _report_flags_rc = _apply_sim_report_flags(args)
+    if _report_flags_rc is not None:
+        return _report_flags_rc
 
     # Scenario generation if requested
     gen_description = getattr(args, "generate_simulation", None)
@@ -1637,24 +2072,20 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
         # -- Detect sim mode from --sim value ---------------------------------
         _sim_val = str(sim_path).strip()
-        _sim_val_lower = _sim_val.lower()
 
         # New unified detection:
         # - "agent", "research", "benchmark" → legacy aliases
         # - ends with .yaml/.yml → YAML campaign/scenario
         # - "interactive" or empty → REPL
         # - anything else → goal string for generative campaign
-        _is_yaml = _sim_val.endswith((".yaml", ".yml"))
-        _is_legacy_agent = _sim_val_lower == "agent"
-        _is_legacy_research = _sim_val_lower == "research"
-        _is_legacy_benchmark = _sim_val_lower == "benchmark"
-
-        # Legacy aliases: --sim agent/research/benchmark still work
-        # but the preferred forms are --sim "goal" / --research / --benchmark
-        _is_interactive = _sim_val_lower == "interactive"
-        _is_goal_string = not (
-            _is_yaml or _is_legacy_agent or _is_legacy_research or _is_legacy_benchmark or _is_interactive
-        )
+        # (legacy aliases: --sim agent/research/benchmark still work, but the preferred forms are --sim "goal" /
+        # --research / --benchmark)
+        _sim_kind = _sim_value_kind(_sim_val)
+        _is_yaml = _sim_kind == "yaml"
+        _is_legacy_agent = _sim_kind == "agent"
+        _is_legacy_research = _sim_kind == "research"
+        _is_interactive = _sim_kind == "interactive"
+        _is_goal_string = _sim_kind == "goal"
 
         # If --research flag is set with a goal string, use research mode
         _wants_research = getattr(args, "research", False)
@@ -1746,71 +2177,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             )
 
         # ── E3: Pre-sim auto-curation ─────────────────────────────────
-        _auto_curate = bool(getattr(args, "auto_curate", False))
-        _no_curate = bool(getattr(args, "no_curate", False))
-        if _auto_curate and not _no_curate and _sim_entity_ref:
-            _curate_threshold = int(getattr(args, "curate_threshold", 5) or 5)
-            # Infer genre from entity_ref or --foundry-genre flag
-            _curate_genre = getattr(args, "foundry_genre", "fantasy") or "fantasy"
-
-            try:
-                from maxim.embodiment.component_registry import ComponentRegistry
-                from maxim.simulation.foundry import auto_curate
-
-                _curate_registry = ComponentRegistry()
-
-                # Build ComponentIndex for dedup (optional — degrades gracefully)
-                _curate_index = None
-                try:
-                    from maxim.embodiment.component_index import ComponentIndex
-
-                    _curate_index = ComponentIndex(_curate_registry)
-                except Exception as _idx_err:
-                    logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
-
-                # Reuse the LLM router from --llm if available
-                _curate_llm = None
-                _curate_profile = str(getattr(args, "language_model", "") or "").strip()
-                if _curate_profile:
-                    try:
-                        from maxim.models.language.config import load_llm_config
-                        from maxim.models.language.router import LLMRouter
-
-                        _curate_cfg = load_llm_config(profile_override=_curate_profile)
-                        _curate_llm = LLMRouter(_curate_cfg)
-                        if hasattr(_curate_llm, "warmup"):
-                            _curate_llm.warmup()
-                    except Exception as _llm_err:
-                        logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
-
-                print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
-                _curate_report = auto_curate(
-                    genre=_curate_genre,
-                    threshold=_curate_threshold,
-                    registry=_curate_registry,
-                    component_index=_curate_index,
-                    llm_router=_curate_llm,
-                )
-                if _curate_report.total_promoted > 0:
-                    print(
-                        f"  Curated: {_curate_report.total_promoted} promoted, "
-                        f"{_curate_report.total_skipped_dedup} dedup-skipped"
-                    )
-                elif _curate_report.categories_below_threshold == 0:
-                    print("  Coverage OK — no curation needed")
-                else:
-                    print(
-                        f"  Generated {_curate_report.total_generated} candidates, "
-                        f"none promoted (below score threshold)"
-                    )
-            except Exception as _cur_err:
-                logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
-                print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
-        elif _auto_curate and not _no_curate and not _sim_entity_ref:
-            print(
-                "  NOTE: --auto-curate requires --embodiment to determine genre context; skipping curation.",
-                file=sys.stderr,
-            )
+        _auto_curate_before_sim(args, _sim_entity_ref)
 
         # ── Generative campaign mode (new default for goal strings) ──
         if _is_goal_string and not _is_legacy_agent:
@@ -1836,45 +2203,15 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 )
                 sys.exit(_research_result_exit_code(result))
             else:
-                # Pure generative campaign — use the orchestrator.
-                # When the goal matches a builtin narrative arc (cradle,
-                # memory_recall, etc.), enable the generative campaign runner
-                # so the narrator drives multi-turn structured phases.
-                from maxim.simulation.orchestrator import start_simulation_mode
-
-                mode = _resolve_mode(args)
-                debug = bool(_debug_raw)
-                resume_sim = getattr(args, "resume_sim", None)
-
-                # Auto-detect generative mode: if goal matches a builtin arc,
-                # route through the generative campaign runner.
-                _use_generative = False
-                try:
-                    from maxim.simulation.arcs import select_arc_for_goal
-
-                    if select_arc_for_goal(goal) is not None:
-                        _use_generative = True
-                except Exception:
-                    pass
-
-                result = start_simulation_mode(
-                    goal=goal,
-                    mode=mode,
-                    debug=debug,
-                    resume_session=resume_sim,
-                    continuous=bool(getattr(args, "continuous", False)),
-                    no_sim_env=bool(getattr(args, "no_sim_env", False)),
-                    sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-                    sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
-                    sandbox_network=getattr(args, "sandbox_network", "none"),
-                    aut_model=getattr(args, "aut_model", None),
+                _run_goal_sim(
+                    args,
+                    goal,
+                    debug_raw=_debug_raw,
                     aut_mode=_aut_mode_val,
                     research_telemetry=bool(_wants_research),
-                    **_sim_turn_caps(args),
                     entity_ref=_sim_entity_ref,
-                    generative=_use_generative,
+                    pre_campaign_turns=_script_turns,
                 )
-                sys.exit(_simulation_result_exit_code(result))
 
         # ── Legacy: agent mode (deprecated alias) ──
         _sim_agent = _is_legacy_agent
@@ -1900,6 +2237,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 aut_mode=getattr(args, "aut_mode", "llm-primary"),
                 **_sim_turn_caps(args),
                 entity_ref=_sim_entity_ref,
+                llm_profile=_cli_llm_profile(args),
             )
             sys.exit(_simulation_result_exit_code(result))
 
@@ -2021,6 +2359,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 arc_yaml=getattr(args, "arc", None),
                 **_sim_turn_caps(args),
                 entity_ref=_sim_entity_ref,
+                llm_profile=_cli_llm_profile(args),
             )
             sys.exit(_simulation_result_exit_code(result))
 
@@ -2192,7 +2531,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     SafetyConstraints,
                     SupervisionPolicy,
                 )
-                from maxim.agents.llm_worker import LLMWorker
                 from maxim.environment import ReachyEnv
                 from maxim.runtime import (
                     build_decision_engine,
@@ -2406,52 +2744,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         duration_seconds=autonomy_duration,
                     )
 
-                # Set up LLM worker — LLM lives inside ExecAgent, not MaximAgent
-                llm_worker = None
-                llm_router = None
-                # Trigger lazy LLM + router init via ExecAgent
-                if hasattr(agentic_agent, "exec_agent"):
-                    agentic_agent.exec_agent._ensure_llm()
-                    llm_router = agentic_agent.exec_agent._ensure_router()
-                if llm_router is not None:
-                    _ensure_agentic_model(llm_router)
-                    if hasattr(llm_router, "warmup"):
-                        llm_router.warmup()
-                    # In simulation mode, wait for LLM to be fully loaded before starting
-                    _is_sim = getattr(args, "sim", None) is not None
-                    if _is_sim and hasattr(llm_router, "wait_ready"):
-                        logger.info("Waiting for LLM to load (simulation mode)...")
-                        if llm_router.wait_ready(timeout=120.0):
-                            logger.info("LLM ready")
-                        else:
-                            logger.warning("LLM failed to load — simulation will use fallback responses")
-                            print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
-                            print("  Ensure model is downloaded. Run: maxim --list-models")
-                    logger.info("LLM router initialized: %s", llm_router)
-                    llm_worker = LLMWorker(
-                        llm_router,
-                        n_ctx=getattr(llm_router, "n_ctx", 4096),
-                        token_counter=(
-                            llm_router.get_token_counter() if hasattr(llm_router, "get_token_counter") else None
-                        ),
-                    )
-                    llm_worker.start()
-                    # B3: Enable Acting Coach when embodiment tools are available
-                    if _embodiment_ref is not None:
-                        from maxim.prompts.acting_coach import acting_coach_config_from_env
-
-                        llm_worker.acting_coach = acting_coach_config_from_env()
-                        llm_worker.is_embodied = True
-
-                        # E2: Inject entity context (sensors, affordances, failure
-                        # triggers) into the AUT prompt so the agent knows what
-                        # physical capabilities it has.
-                        if _component_registry is not None:
-                            try:
-                                _entity_raw = _component_registry.get(_embodiment_ref)
-                                llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
-                            except Exception as _e:
-                                logger.debug("Entity context injection failed: %s", _e)
+                llm_worker = _cli_agentic_llm_worker(
+                    agentic_agent, args, logger, embodiment_ref=_embodiment_ref, component_registry=_component_registry
+                )
 
                 # The EFFECTIVE state at launch (the cap AND the persisted toggle/policy), not the cap
                 # alone (#832). A launch snapshot: the live per-turn read is #965 (agent_loop slices).
@@ -2488,6 +2783,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                             response_timeout=120.0,
                             debug=_sim_debug,
                             entity_ref=_sim_entity_ref,
+                            llm_profile=_cli_llm_profile(args),
                         )
                         sys.exit(_simulation_result_exit_code(result))
                     finally:
@@ -2504,15 +2800,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 # the double-subscription.  The bio-stack already has
                 # hippocampus + nac subscribers wired.
                 if sim_source is not None:
-                    _sim_pain_bus = _cli_pain_bus
-                    logger.info(
-                        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
-                        _cli_hippocampus is not None,
-                        _cli_nac is not None,
+                    _reuse_bio_pain_bus_for_sim(
+                        args, pain_bus=_cli_pain_bus, hippocampus=_cli_hippocampus, nac=_cli_nac
                     )
-
-                    args._sim_pain_bus = _sim_pain_bus
-                    args._sim_hippo = _cli_hippocampus
 
                 try:
                     run_agentic_loop(
@@ -2535,6 +2825,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         bio_enrichment_pipeline=_cli_bio_enrichment,
                         thought_gate=_cli_thought_gate,
                         stop_event=threading.Event(),  # registered for the run: its proposal wait sees a stop (#1344)
+                        state_home=getattr(args, "_sim_tmpdir", None),  # a --sim run's state goes with its sandbox
                     )
                 finally:
                     if llm_worker:
@@ -2675,9 +2966,11 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
     exception re-raises — we don't want to swallow bugs.
     """
     from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.models.download import download_decline_scope
 
     try:
-        return _main_impl(argv)
+        with download_decline_scope(armed=False):  # _main_impl arms it for the run modes (#1396)
+            return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
     except SECURITY_REFUSALS as refusal:
@@ -2688,13 +2981,19 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
-        from maxim.exceptions import ConfigDirUnreadable, UserProfilesInvalid
+        from maxim.exceptions import ConfigDirUnreadable, LLMServerPortBusy, UserProfilesInvalid
 
         if isinstance(e, UserProfilesInvalid):  # a malformed profiles.yml, refused at run start (#1315 step 0a)
             from maxim.utils.logging import user_warn
 
             logging.getLogger(__name__).debug("user profiles invalid", exc_info=True)
             user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event="user_profiles_invalid")
+            return 2
+        if isinstance(e, LLMServerPortBusy):  # a port held by a server this process must not kill (#1344 PR 3a)
+            from maxim.utils.logging import user_warn
+
+            logging.getLogger(__name__).debug("LLM server port busy", exc_info=True)
+            user_warn(f"{e}\n    → {e.fix_hint}", source="llm-server", event="llm_server_port_busy")
             return 2
         if isinstance(e, ConfigDirUnreadable):
             # Checked before importing models.language: an unreadable config dir fails that import too (#1403).

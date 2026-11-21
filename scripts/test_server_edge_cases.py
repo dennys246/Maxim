@@ -1,11 +1,30 @@
-"""Edge-case smoke tests against the auto-spawned llama-cpp-server."""
+"""Edge-case smoke tests against the auto-spawned llama-cpp-server.
 
+Every spawned server is keyed since #1314, so this sends the key the server accepts (#1408 item 3), found the way
+doctor finds it (``doctor/checks.py::_accepted_server_key``: each key this host holds, read-only, never created).
+"""
+
+import functools
 import json
 import time
 import urllib.error
 import urllib.request
 
-URL = "http://127.0.0.1:8100/v1/chat/completions"
+PORT = 8100
+URL = f"http://127.0.0.1:{PORT}/v1/chat/completions"
+
+
+def _accepted_key():
+    """The key on this host the server accepts, or None (none configured, every key rejected, or unreachable)."""
+    from maxim.doctor.checks import _accepted_server_key
+
+    return _accepted_server_key(PORT)[1]
+
+
+@functools.lru_cache(maxsize=1)
+def _headers():
+    key = _accepted_key()
+    return {"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})}
 
 
 def call(messages, max_tokens=10, temperature=0.0):
@@ -19,7 +38,7 @@ def call(messages, max_tokens=10, temperature=0.0):
                 "temperature": temperature,
             }
         ).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=_headers(),
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as r:

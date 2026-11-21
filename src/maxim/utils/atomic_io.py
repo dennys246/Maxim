@@ -3,9 +3,19 @@
 All persistence paths in Maxim use a write-to-.tmp-then-os.replace pattern.
 This module centralizes that pattern with proper error handling:
 
+- a temp file UNIQUE to each write, beside the target (``.<name>.<12 hex>.tmp``,
+  created ``O_EXCL``), so concurrent writers to one path never share a temp:
+  a fixed ``<path>.tmp`` let two writers interleave their bytes in it and let
+  the first ``os.replace`` take it from under the second (#1663)
 - fsync before rename so the data is durable before the replace is visible
 - cleanup of the .tmp file if replace fails (no orphaned tmp files)
 - directory creation so callers don't need to remember
+
+A writer that dies between creating its temp and the replace leaves an orphan
+named by :func:`orphan_temp_globs`; a sweep that removes such orphans matches
+both that name and the pre-#1663 ``<name>.tmp`` (still on disk from older
+versions) and recovers the target name with :func:`orphan_temp_target`, never
+by hard-coding either form.
 
 Example:
     from maxim.utils.atomic_io import atomic_write_json
@@ -28,9 +38,76 @@ import errno
 import json
 import logging
 import os
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_TEMP_SUFFIX = ".tmp"
+_TEMP_TOKEN_HEX = 12  # 48 random bits per name; an O_EXCL clash only means another draw
+_TEMP_ATTEMPTS = 16
+_TEMP_RE = re.compile(r"^\.(?P<target>.+)\.[0-9a-f]{%d}\.tmp$" % _TEMP_TOKEN_HEX)
+
+
+def _temp_name(base: str) -> str:
+    """A fresh temp basename for the target basename ``base``: the ONE place the form is built, so
+    :func:`orphan_temp_target` (``_TEMP_RE``) and every writer here cannot drift apart."""
+    return f".{base}.{os.urandom(_TEMP_TOKEN_HEX // 2).hex()}{_TEMP_SUFFIX}"
+
+
+def _open_unique_temp(path: str, mode: int) -> tuple[int, str]:
+    """Create and open a temp file unique to this write, in ``path``'s directory: ``(fd, temp_path)``.
+
+    ``O_EXCL`` makes the name this writer's alone (a symlink planted at it is refused too), so no
+    other writer can open, truncate or rename it. ``mode`` is masked by the umask exactly as
+    ``open()``'s 0o666 was, so a caller that passes no ``initial_mode`` gets the same bits as
+    before. ``O_BINARY`` (Windows only) keeps the C runtime from translating newlines under the
+    Python file object, which does its own.
+    """
+    parent = os.path.dirname(path)
+    base = os.path.basename(path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    for _ in range(_TEMP_ATTEMPTS):
+        tmp_path = os.path.join(parent, _temp_name(base))
+        try:
+            return os.open(tmp_path, flags, mode), tmp_path
+        except FileExistsError:
+            continue
+    raise FileExistsError(errno.EEXIST, f"no free temp name beside {path} after {_TEMP_ATTEMPTS} draws")
+
+
+def orphan_temp_globs(name_pattern: str) -> tuple[str, str]:
+    """The glob patterns, relative to the target's directory, matching a temp an atomic writer left behind.
+
+    ``name_pattern`` is a glob for the TARGET's basename (e.g. ``"8100.*.json"``). The first pattern
+    is the current unique name (``.<name>.<hex>.tmp``); the second is the pre-#1663 fixed name
+    (``<name>.tmp``), which older versions may have left on disk.
+    """
+    return (f".{name_pattern}.*{_TEMP_SUFFIX}", f"{name_pattern}{_TEMP_SUFFIX}")
+
+
+def orphan_temp_target(temp_name: str) -> str | None:
+    """The target basename an atomic writer's temp ``temp_name`` was written for, or None if it is not one.
+
+    Recognizes both forms :func:`orphan_temp_globs` matches.
+    """
+    m = _TEMP_RE.match(temp_name)
+    if m is not None:
+        return m.group("target")
+    if temp_name.endswith(_TEMP_SUFFIX) and not temp_name.startswith(".") and len(temp_name) > len(_TEMP_SUFFIX):
+        return temp_name[: -len(_TEMP_SUFFIX)]
+    return None
+
+
+def _remove_temp(tmp_path: str | None) -> None:
+    """Don't leave an orphan temp behind on failure; a cleanup failure is logged, the caller re-raises the cause."""
+    if tmp_path is None:
+        return
+    try:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    except OSError as cleanup_err:
+        logger.warning("Failed to clean up %s: %s", tmp_path, cleanup_err)
 
 
 def atomic_write_text(
@@ -43,8 +120,10 @@ def atomic_write_text(
 ) -> None:
     """Atomically write text to ``path``.
 
-    Writes to ``{path}.tmp``, fsyncs, then os.replace() to the final path.
-    If the replace fails, the tmp file is cleaned up.
+    Writes to a temp file unique to this write beside ``path`` (module
+    docstring), fsyncs, then os.replace() to the final path. If the write or
+    the replace fails, the temp file is cleaned up. Concurrent writers to one
+    path each install a complete file; the last replace wins.
 
     Parameters
     ----------
@@ -73,7 +152,7 @@ def atomic_write_text(
     """
     parent = os.path.dirname(path) or "."
     os.makedirs(parent, exist_ok=True)
-    tmp_path = f"{path}.tmp"
+    tmp_path: str | None = None
 
     # Capture existing mode before we touch anything — an exception
     # during write must not leave a mode-drift footprint on the caller.
@@ -91,14 +170,11 @@ def atomic_write_text(
             existing_mode = None
 
     try:
-        if initial_mode is not None:
-            # Restrictive bits ON THE FD, from creation — no umask games
-            # (os.umask is process-global and racy under threads).
-            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, initial_mode)
-            f_ctx = os.fdopen(fd, "w", encoding=encoding)
-        else:
-            f_ctx = open(tmp_path, "w", encoding=encoding)
-        with f_ctx as f:
+        # initial_mode: restrictive bits ON THE FD, from creation — no umask
+        # games (os.umask is process-global and racy under threads). Without
+        # it, 0o666 under the umask: what open() gave the old fixed temp.
+        fd, tmp_path = _open_unique_temp(path, 0o666 if initial_mode is None else initial_mode)
+        with os.fdopen(fd, "w", encoding=encoding) as f:
             # Writing content to disk is this function's purpose.
             # ``atomic_write_secret`` is the caller for credential files and
             # passes ``initial_mode=0o600`` so the temp file carries
@@ -114,13 +190,10 @@ def atomic_write_text(
                 # the write still happened, just without a durability guarantee.
                 pass
         os.replace(tmp_path, path)
-    except Exception:
-        # Don't leave orphan .tmp files behind on failure.
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError as cleanup_err:
-            logger.warning("Failed to clean up %s: %s", tmp_path, cleanup_err)
+    except BaseException:
+        # BaseException, like atomic_write_json_at: a KeyboardInterrupt or SystemExit mid-write must not leave
+        # an orphan either (each write's temp is new, so nothing later overwrites it). Always re-raised.
+        _remove_temp(tmp_path)
         raise
 
     if existing_mode is not None:
@@ -148,9 +221,9 @@ def atomic_write_bytes(
 ) -> None:
     """Atomically write raw ``bytes`` to ``path``.
 
-    The binary sibling of :func:`atomic_write_text`: writes to
-    ``{path}.tmp``, fsyncs, then ``os.replace()`` to the final path,
-    cleaning up the tmp file if the replace fails. This is the canonical
+    The binary sibling of :func:`atomic_write_text`: writes to a temp file
+    unique to this write beside ``path``, fsyncs, then ``os.replace()`` to the
+    final path, cleaning up the tmp file if the write or the replace fails. This is the canonical
     writer for BYTES payloads (ZIP bundles, downloaded model blobs) — the
     surface that ``atomic_io`` previously lacked, forcing call sites to
     hand-roll the tmp + ``os.replace`` dance the atomic-persistence
@@ -165,15 +238,11 @@ def atomic_write_bytes(
     """
     parent = os.path.dirname(path) or "."
     os.makedirs(parent, exist_ok=True)
-    tmp_path = f"{path}.tmp"
+    tmp_path: str | None = None
 
     try:
-        if initial_mode is not None:
-            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, initial_mode)
-            f_ctx = os.fdopen(fd, "wb")
-        else:
-            f_ctx = open(tmp_path, "wb")
-        with f_ctx as f:
+        fd, tmp_path = _open_unique_temp(path, 0o666 if initial_mode is None else initial_mode)
+        with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
             try:
@@ -183,12 +252,8 @@ def atomic_write_bytes(
                 # happened, just without a durability guarantee.
                 pass
         os.replace(tmp_path, path)
-    except Exception:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError as cleanup_err:
-            logger.warning("Failed to clean up %s: %s", tmp_path, cleanup_err)
+    except BaseException:  # as in atomic_write_text: an interrupt leaves no orphan; always re-raised
+        _remove_temp(tmp_path)
         raise
 
     if initial_mode is not None:
@@ -230,7 +295,7 @@ def atomic_write_secret(path: str, content: str, *, encoding: str = "utf-8") -> 
 
     Brand-new files are 0600 FROM CREATION (``initial_mode`` — the fd
     is opened with restrictive bits, so the secret never sits on disk
-    umask-wide, not even in the ``.tmp`` window; 2026-09-04 console-auth
+    umask-wide, not even in the temp-file window; 2026-09-04 console-auth
     review fold, cross-confirmed by both lenses). Pre-existing files
     keep their exact mode via ``preserve_mode``.
 
@@ -338,7 +403,7 @@ def atomic_write_json_at(dir_fd: int, name: str, payload: Any, *, mode: int = 0o
     if not name or "/" in name or "\0" in name or name in (".", ".."):
         raise ValueError(f"atomic_write_json_at writes one path component, not {name!r}")
     data = (json.dumps(payload, ensure_ascii=True, allow_nan=False, indent=2) + "\n").encode("ascii")
-    tmp = f".{name}.{os.urandom(6).hex()}.tmp"
+    tmp = _temp_name(name)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
     fd = os.open(tmp, flags, mode, dir_fd=dir_fd)
     try:

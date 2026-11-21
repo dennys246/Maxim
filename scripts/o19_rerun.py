@@ -32,7 +32,8 @@ An attempt, in order:
   3. Each phase from ONE fresh ``MAXIM_DATA_HOME`` (models symlinked, no ``active_llm_model`` state, so the
      configured profile decides). The sim's environment is the operator's minus every ``MAXIM_*`` key, plus the
      harness's and the protocol's own (recorded exactly). While the sim runs, the harness reads the served model
-     from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s. The sim's own report is
+     from the sim's port (``/v1/models``, with the key the sim itself uses) every 30 s, the first read once the port
+     accepts a connection (#1616). The sim's own report is
      found by run id (``spawn_evidence``); the session directory and its run log are copied into the data dir,
      the files hashed (uncompressed) into the row; the row says ``failed`` when the complete-attempt condition
      (C1–C4, ``o19_verdict.complete_problems``) does not hold, and later phases do not run. A source file that
@@ -51,6 +52,7 @@ import argparse
 import fcntl
 import gzip
 import ipaddress
+import hashlib
 import json
 import logging
 import os
@@ -299,7 +301,7 @@ def take_lock(exp: str):
 # llama_cpp.server answers /v1/models under the same model lock as a completion, so a read made mid-generation
 # waits for it. Campaigns 1-2 read with the backend's 4 s discovery budget and 26 of 36 reads came back null; their
 # completions took up to 24 s, and the narrator and the AUT share the server, so a read may wait for two.
-SERVED_READ_TIMEOUT = {"connect_s": 2.0, "read_s": 60.0, "total_s": 60.0}
+SERVED_READ_TIMEOUT = {"connect_s": 2.0, "read_s": 60.0, "pool_s": 60.0}
 
 
 def check_argv_parses(exp: str) -> None:
@@ -315,6 +317,78 @@ def check_argv_parses(exp: str) -> None:
             raise Refused(
                 f"phase {index}'s argv does not parse on this build (argparse's error above): {argv}"
             ) from exc
+
+
+def check_scripts(exp: str) -> None:
+    """Exp 63c, BEFORE the marker: each phase's ``--sim-script`` loads from the repo, hashes to its pinned content
+    (``scenario_content_sha256`` over ``load_campaign_turns``' dicts, as the sim's provenance computes it), and its
+    texts are ``PROTOCOL``'s literals; and the CLI's own check (``cli.resolve_sim_script``) accepts the phase's argv.
+    A missing or edited script then costs no attempt. A no-op for every other experiment."""
+    if v.experiment_of(exp) != "63c":
+        return
+    from maxim.cli import resolve_sim_script  # noqa: PLC0415
+    from maxim.cli_parser import _build_parser  # noqa: PLC0415
+    from maxim.cli_utils import normalize_args  # noqa: PLC0415
+    from maxim.simulation.experiment import load_campaign_turns  # noqa: PLC0415
+    from maxim.simulation.serving_provenance import _content_sha256  # noqa: PLC0415
+
+    for index, phase in enumerate(v.PROTOCOL[exp]["phases"]):
+        path = REPO_ROOT / v.EXP63C_SCRIPTS[index]
+        try:
+            turns = load_campaign_turns(str(path), strict=True)
+        except (OSError, ValueError) as exc:
+            raise Refused(f"phase {index}'s script {v.EXP63C_SCRIPTS[index]} cannot be loaded: {exc}") from exc
+        if _content_sha256([turns]) != v.EXP63C_CONTENT_PINS[index]:
+            raise Refused(f"phase {index}'s script {v.EXP63C_SCRIPTS[index]} is not the pinned content")
+        if tuple(t["text"] for t in turns) != v.EXP63C_LINES[index]:
+            raise Refused(f"phase {index}'s script lines are not PROTOCOL's literals")
+        argv = v.phase_argv(exp, index, "preflight" if phase[3] else None)
+        args = _build_parser().parse_args([str(path) if a == v.EXP63C_SCRIPTS[index] else a for a in argv])
+        normalize_args(args)  # writes nothing for this argv (tests/unit/test_cli_sim_script.py pins it)
+        _turns, reason = resolve_sim_script(args)
+        if reason is not None:
+            raise Refused(f"phase {index}'s argv is refused by --sim-script: {reason}")
+
+
+def check_gguf_identity(exp: str, model_path: str) -> None:
+    """Exp 63c, BEFORE the marker: the configured GGUF's SHA-256 is ``PROTOCOL["63c"]["gguf_sha256"]`` (OD-c4: pinned
+    and re-read on the rig), so a same-named file with other bytes costs no attempt (S2' would make every one
+    incomplete). A no-op for every other experiment."""
+    if v.experiment_of(exp) != "63c":
+        return
+    try:
+        sha = hashlib.sha256()
+        with open(model_path, "rb") as fh:  # chunked: a 4 GB GGUF, and file_digest needs Python 3.11 (>= 3.10 here)
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                sha.update(chunk)
+        digest = sha.hexdigest()
+    except OSError as exc:
+        raise Refused(f"the configured GGUF {model_path!r} cannot be read: {exc}") from exc
+    if digest != v.EXP63C_GGUF_SHA256:
+        raise Refused(f"the configured GGUF's SHA-256 is {digest}, not the pinned {v.EXP63C_GGUF_SHA256}")
+
+
+def check_keying(exp: str) -> None:
+    """BEFORE the marker: the judge's port of the content keys equals the keying this interpreter (the sim's, asserted
+    above) executes, on the script's lines and words that exercise every convergence step, so a keying drift is caught
+    before rig time is spent. A no-op for an experiment whose port is not the shipped keying (Exp 63b's is e841abca's)."""
+    if v.experiment_of(exp) != "63c":
+        return
+    from maxim.memory.text import key_tokens  # noqa: PLC0415
+
+    port = v.keying_of(exp)
+    words = [*(line for lines in v.EXP63C_LINES for line in lines), v.EXP10_GOAL_DUNGEON, *KEYING_PROBE_WORDS.split()]
+    bad = [w for w in words if port(w) != key_tokens(w)]
+    if bad:
+        raise Refused(f"the judge's keying port disagrees with this build's key_tokens on {bad[:5]!r}")
+
+
+# Words whose keys every convergence step decides (#1620): the harness's pre-marker keying probe.
+KEYING_PROBE_WORDS = (
+    "move moved moving moves stopped stopping pulling pull close closed closing whose issue asking placed taking used "
+    "agreed freed passing accessing hidden hid slept hung plan plane hope hop done don't fast-suite 1000 hmmmmmmmmmmmm "
+    "settings carried batteries guard's sleeping"
+)
 
 
 # The pre-marker check's rule for a recorded hostname (#1166 S1b). It is deliberately NOT the reducer's rule
@@ -374,6 +448,18 @@ def check_host_identity() -> None:
             "2 digits and no 8+ hex-digit run, and the local address is private. Rename the host (e.g. "
             "`scutil --set LocalHostName` on macOS) or run from a machine that meets it; no attempt was started."
         )
+
+
+def port_accepts(port: int) -> bool:
+    """Whether something accepts a TCP connection on 127.0.0.1:``port`` (#1616). A bare connect, never an HTTP
+    read: it logs nothing, so the harness waits out the sim's server start without recording a refused read or
+    ``utils/http.py``'s ``http_request_failed`` WARNING (a transport failure; a 503 logs below WARNING). Accepting is
+    not serving, and nothing here says WHICH process accepted: the reads that follow are the evidence. The harness
+    labels no read; a judge works out which reads it judges from the reads themselves (63c's S2′ judge must compute
+    its own first-OK to last-OK window)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1.0)
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def served_reader():
@@ -564,18 +650,22 @@ def spawn_phase(
     }
     url = f"http://127.0.0.1:{v.SIM_PORT}/v1"
     reads: list[dict] = []
-    fields["served_model"] = {"url": url, "reads": reads}
+    # listening_at: when the port first accepted (a timestamp, not evidence of whose server it was).
+    fields["served_model"] = served = {"url": url, "reads": reads, "listening_at": None}
     timed_out = False
     last_read = 0.0
     with console.open("wb") as out:
-        proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        cwd = REPO_ROOT if v.experiment_of(exp) == "63c" else None  # 63c's --sim-script path is repo-relative
+        proc = subprocess.Popen(cmd, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, cwd=cwd)
         deadline = time.monotonic() + timeout_s
         try:
             while proc.poll() is None:
                 if time.monotonic() > deadline:
                     timed_out = True
                     break
-                if time.monotonic() - last_read >= SERVED_EVERY_S:
+                if served["listening_at"] is None and port_accepts(v.SIM_PORT):
+                    served["listening_at"] = time.time()  # #1616: no read before the port accepts
+                if served["listening_at"] is not None and time.monotonic() - last_read >= SERVED_EVERY_S:
                     reads.append(read_served(v.SIM_PORT, gguf))
                     # after the read: a read that waited out a completion keeps the spacing
                     last_read = time.monotonic()
@@ -632,7 +722,7 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         }
     endpoint = f"http://127.0.0.1:{v.SIM_PORT}"  # the form a sim report records (#997)
     report = {
-        "finish_reason": "max_turns",
+        "finish_reason": "completed" if v.experiment_of(exp) == "63c" else "max_turns",
         "turns": cap,
         "goal": goal,
         "language_endpoint": endpoint,
@@ -640,11 +730,14 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         "provenance": prov,
     }
     (sdir / "report.json").write_text(json.dumps(report))
-    if v.experiment_of(exp) == "63b":
+    if v.experiment_of(exp) in ("63b", "63c"):
         prov.update(_mock_b0_fields(index, cap), executed_git_hash=provenance.get("executed_git_hash"))
+        if v.experiment_of(exp) == "63c":
+            prov.update(_mock_63c_fields(index, cap))
         report.update(record_kind="sim_report", ts=time.time())
         (sdir / "report.json").write_text(json.dumps(report))
-        lines = mock63b_session(home, session, index, goal, cap, resume)
+        script = v.EXP63C_LINES[index] if v.experiment_of(exp) == "63c" else None
+        lines = mock63b_session(home, session, index, goal, cap, resume, script=script)
     elif v.experiment_of(exp) == "63":
         lines = mock63_session(home, session, index, goal, cap, resume)
     else:
@@ -662,7 +755,11 @@ def mock_phase(exp: str, index: int, *, home: Path, run_id: str, resume: str | N
         "ts": now,
         "end_ts": now,
         "returncode": 0,
-        "served_model": {"url": endpoint, "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}]},
+        "served_model": {
+            "url": endpoint,
+            "reads": [{"served": v.MODEL_GGUF, "match": True, "at": now}],
+            "listening_at": now,
+        },
         "depends_on": [],
         "sims": [_provenance.sim_evidence(sdir, report)],
     }
@@ -862,6 +959,15 @@ def _mock_b0_fields(index: int, cap: int) -> dict:
     }
 
 
+def _mock_63c_fields(index: int, cap: int) -> dict:
+    """What a 63c phase's report adds: the script's content pin and S2''s serving fields on the one router."""
+    served = f"/tmp/o19-home-mock/models/LLM/{v.MODEL_GGUF}"
+    entry = {"n": cap, "identity_source": "local_file", "identity": v.EXP63C_GGUF_SHA256, "seed_honoured": False,
+             "backend_kind": "peer", "served_id": served}  # fmt: skip
+    calls = {"1": {**_mock_b0_fields(index, cap)["llm_calls"]["1"], "entries": [entry]}}
+    return {"scenario_content_sha256": v.EXP63C_CONTENT_PINS[index], "llm_calls": calls}
+
+
 class _LineCollector(logging.Handler):
     """The run log as the sim's JSONL handler writes it (``StructuredFormatter``), read back as dicts in order."""
 
@@ -876,7 +982,9 @@ class _LineCollector(logging.Handler):
         self._out.append(json.loads(self.format(record)))
 
 
-def mock63b_session(home: Path, session: str, index: int, goal: str, cap: int, resume: str | None) -> list[dict]:
+def mock63b_session(
+    home: Path, session: str, index: int, goal: str, cap: int, resume: str | None, *, script=None
+) -> list[dict]:
     """An Exp 63b phase through the real MEMORY seams: the shipped Hippocampus (capture, the turn's own records
     excluded, the ranker and collapse, ``save`` and ``load`` with I1's digest lines), the enrichment pipeline (its
     trace and render) and the JSONL formatter. Nothing the judge computes chooses an id, unlike Exp 63's mock. Written
@@ -891,7 +999,8 @@ def mock63b_session(home: Path, session: str, index: int, goal: str, cap: int, r
 
     sdir = home / "sim_reports" / session
     variant = MOCK63B_VARIANT if index == 1 else "pass"
-    script = MOCK63B_PHASE1 if index == 0 else MOCK63B_PHASE2.get(variant, MOCK63B_PHASE2["pass"])
+    if script is None:  # Exp 63c hands in its own lines (PROTOCOL's literals)
+        script = MOCK63B_PHASE1 if index == 0 else MOCK63B_PHASE2.get(variant, MOCK63B_PHASE2["pass"])
     if index == 1 and variant in ("repeat", "no_collapse"):
         script = (MOCK63B_PHASE2["pass"][0],) * cap
     lines: list[dict] = []
@@ -977,8 +1086,12 @@ def exp63_attempt_problems(exp: str, data_root: Path, sessions: list, *, smoke: 
                 }
             )
         goal = v.PROTOCOL[exp]["phases"][-1][1]
-        if v.experiment_of(exp) == "63b":  # the smoke never reads R3a (its view included): build order step 4
-            return v.exp63b_c5_problems(phases, goal=goal, r3a_view=not smoke)
+        if v.experiment_of(exp) == "63c":  # the smoke never reads R3a (its view included): build order step 4
+            return v.exp63c_c5_problems(
+                phases, goal=goal, key=v.keying_of(exp), r3a_view=not smoke, verdict_time=not smoke
+            )
+        if v.experiment_of(exp) == "63b":
+            return v.exp63b_c5_problems(phases, goal=goal, key=v.keying_of(exp), r3a_view=not smoke)
         return v.exp63_c5_problems(phases, goal=goal)
     except (OSError, ValueError, v.Refusal) as exc:
         return [f"C5 the copied phases could not be read: {type(exc).__name__}: {exc}"]
@@ -1084,6 +1197,8 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
         raise Refused(refusal + " (keep the rig at the first attempt's commit)")
     try:
         check_argv_parses(exp)
+        check_scripts(exp)
+        check_keying(exp)
         check_host_identity()
         if not mock:
             check_on_main(rows_file)
@@ -1107,10 +1222,11 @@ def prepare(args: argparse.Namespace, exp: str, mock: bool):
     gguf, read_served = "", None
     stamps: dict = {}
     try:
-        if v.experiment_of(exp) in ("63", "63b"):  # mock or not: the mock runs the same read in its own fresh home
+        if v.experiment_of(exp) in ("63", "63b", "63c"):  # mock or not: the mock reads in its own fresh home
             stamps["memory_strategy"] = check_memory_strategy(home, exp, run_id=run_id)
         if not mock:
             gguf = check_model_config(home, exp, run_id=run_id)["model_path"]
+            check_gguf_identity(exp, gguf)
             check_port_free(v.SIM_PORT)
             read_served = served_reader()
     except BaseException:  # any refusal or failure before the marker: the fresh home goes too (E2)
@@ -1256,7 +1372,7 @@ def _run_phases(
                 elif not error:
                     problems.append("no report")
                 last = index == len(v.PROTOCOL[exp]["phases"]) - 1
-                if not problems and last and v.experiment_of(exp) in ("63", "63b") and sdir is not None:
+                if not problems and last and v.experiment_of(exp) in ("63", "63b", "63c") and sdir is not None:
                     problems += exp63_attempt_problems(exp, data_root, [phase1_session, sdir.name], smoke=smoke)
         except BaseException as exc:
             # The attempt counts once its marker is pushed: an interrupted or crashed phase still writes its row.
@@ -1342,7 +1458,11 @@ def smoke_checks(
         return checks, reported
     base, gate = (_copied_phase(data_root, r["session_id"]) for r in rows)
     goal = v.PROTOCOL[exp]["phases"][1][1]
-    c5 = v.exp63b_c5_problems([base, gate], goal=goal, r3a_view=False)
+    if v.experiment_of(exp) == "63c":
+        c5 = v.exp63c_c5_problems([base, gate], goal=goal, key=v.keying_of(exp), r3a_view=False, verdict_time=False)
+        reported.append(v.EXP63C_VERDICT_TIME_ONLY)  # ruling S1: their absence here is not a pass
+    else:
+        c5 = v.exp63b_c5_problems([base, gate], goal=goal, key=v.keying_of(exp), r3a_view=False)
     check("C5 holds (the instrument reads true)", not c5, "; ".join(c5))
     base_records, records = v.store_records(base["store"]), v.store_records(gate["store"])
     n1, seq_c = len(base_records), v._seq_c(base_records)
@@ -1364,7 +1484,7 @@ def smoke_checks(
     )
     carried = set(base_records)
     conform = {
-        t: h is not None and v.exp63b_turn(h[1], records, carried, goal, decide=False)["conforms"]
+        t: h is not None and v.exp63b_turn(h[1], records, carried, goal, key=v.keying_of(exp), decide=False)["conforms"]
         for t, h in per_turn.items()
     }
     check(
@@ -1381,7 +1501,92 @@ def smoke_checks(
     check("every row's sim passes the evidence gate's judge_sim_fields", not reasons, "; ".join(reasons))
     leaks = _smoke_leak_locations(exp, data_root)
     check("lint_secrets finds nothing in the outputs", not leaks, "; ".join(leaks))
+    if v.experiment_of(exp) == "63c":
+        smoke_checks_63c([base, gate], check, reported)
     return checks, reported
+
+
+_NARRATOR_SUBMIT = ("LLM submit", "LLM proposes")  # the narrator's own sim_exec lines (63b's run log)
+
+
+def _enter_times(lines: list[dict]) -> dict[int, float]:
+    """``turn -> `` the time of its first ``Bridge.send_and_wait ENTER`` line."""
+    out: dict[int, float] = {}
+    for r in lines:
+        m = v._TURN_ENTER.search(str(r.get("message", ""))) if r.get("e") == "sim_exec" else None
+        if m and int(m.group(1)) not in out and isinstance(r.get("t"), (int, float)):
+            out[int(m.group(1))] = float(r["t"])
+    return out
+
+
+def _by_turn(lines: list[dict], enters: dict[int, float], pick) -> dict[int, int]:
+    """How many lines ``pick`` selects in each turn's window (from its ENTER to the next one's)."""
+    bounds = sorted(enters.items())
+    counts = {t: 0 for t, _ in bounds}
+    for r in lines:
+        at = r.get("t")
+        if not (isinstance(at, (int, float)) and pick(r)):
+            continue
+        turn = next((t for t, start in reversed(bounds) if at >= start), None)
+        if turn is not None:
+            counts[turn] += 1
+    return counts
+
+
+def smoke_checks_63c(phases: list[dict], check, reported: list[str]) -> None:
+    """Exp 63c's smoke additions (prereg §Smoke): never R3a or R3d. Checks: eight ENTER lines per phase, zero
+    narrator submits, no AUT call in flight at any ENTER, the peak prompt under n_ctx. Reported: per-turn timing, AUT
+    actions, imagination events, hippocampus size, and the echo channels that can show a fact before its cue."""
+    for label, phase in zip(("phase 1", "phase 2"), phases):
+        lines = phase["lines"]
+        enters = _enter_times(lines)
+        check(
+            f"{label}: eight ENTER lines, one per script line",
+            sorted(enters) == list(range(1, 9)),
+            repr(sorted(enters)),
+        )
+        submits = [r for r in lines if r.get("e") == "sim_exec" and r.get("agent_id") == "sim_orchestrator"
+                   and str(r.get("message", "")).startswith(_NARRATOR_SUBMIT)]  # fmt: skip
+        check(f"{label}: zero narrator submits", not submits, f"{len(submits)} narrator LLM lines")
+        calls = [r for r in lines if r.get("e") == "peer_backend_call" and isinstance(r.get("t"), (int, float))]
+        in_flight = sorted(
+            t for t, at in enters.items()
+            for r in calls if r["t"] - float(r.get("latency_ms") or 0) / 1000.0 < at < r["t"]
+        )  # fmt: skip
+        check(f"{label}: no LLM call in flight at any ENTER", not in_flight, f"turns {sorted(set(in_flight))}")
+        peak = max((r.get("input_tokens") or 0 for r in calls), default=0)
+        check(f"{label}: the peak prompt is under n_ctx", peak < v.N_CTX, f"peak {peak} of {v.N_CTX} tokens")
+        times = sorted(enters.items())
+        reported.append(f"{label} turn seconds: {[round(b[1] - a[1], 1) for a, b in zip(times, times[1:])]}")
+        aut = _by_turn(lines, enters, lambda r: r.get("e") == "sim_exec" and r.get("agent_id") == v.SIM_AUT_AGENT_ID)
+        reported.append(f"{label} AUT sim_exec lines by turn (#1634: a turn with none still reads completed): {aut}")
+        imagination = _by_turn(lines, enters, lambda r: r.get("e") == "sim_imagination")
+        reported.append(f"{label} imagination and designer events by turn: {imagination}")
+        echo = _by_turn(lines, enters, lambda r: r.get("e") == "sim_enrichment" and r.get("system") in ("nac", "atl"))
+        reported.append(f"{label} NAc/ATL enrichment lines by turn (echo channels): {echo}")
+        key, goal = v.keying_of("63c"), v.PROTOCOL["63c"]["phases"][1][1]
+        watched = {k for t in (*v.EXP63C_CONTROL_TURNS, *v.EXP63C_CUE_TURNS) for k in v._exp63c_nongoal(
+            v.EXP63C_LINES[1][t - 1], goal, key=key)} | {k for keys in v.EXP63C_ANSWER_KEYS.values() for k in keys}  # fmt: skip
+        touched = sorted({k for r in lines if r.get("e") == "sim_imagination"
+                          for k in set(key(json.dumps(r, default=str))) & watched})  # fmt: skip
+        reported.append(
+            f"{label} imagination/designer lines holding a control or planted key (never C5): {touched or 'none'}"
+        )
+    base, gate = phases  # 63c: phase 1 holds the planted facts
+    base_records = v.store_records(base["store"])
+    facts = {
+        f: {m for m, rec in base_records.items()
+            if v.p_same_words(v.p_input_text(rec)) == v.p_same_words(v.EXP63C_LINES[0][line - 1])}
+        for f, line in v.EXP63C_FACT_LINES.items()
+    }  # fmt: skip
+    per_turn = v.turn_traces_63b(gate["lines"])
+    for t in (1, 2, 6):  # the cue path's main way to show a fact before its cue
+        hit = per_turn.get(t)
+        ids = list(zip(v._list(hit[1].get("memory_ids")), v._list(hit[1].get("memory_paths")))) if hit else []
+        shown = sorted(f for f, members in facts.items() for m, _p in ids if m in members)
+        reported.append(f"phase 2 turn {t}: facts surfaced before their cue: {shown or 'none'} (paths {ids})")
+    sizes = {t: hit[1].get("hippocampus_size") for t, hit in per_turn.items() if hit}
+    reported.append(f"phase 2 hippocampus_size by turn (the arrival plus the AUT's records): {sizes}")
 
 
 def smoke(args: argparse.Namespace) -> int:
@@ -1389,8 +1594,8 @@ def smoke(args: argparse.Namespace) -> int:
     no marker and nothing under ``docs/experiments/data/``: one per candidate commit, never an attempt. Exit 0 only
     when every check holds; then ``preflight`` at the merged commit."""
     exp, mock = args.exp, bool(args.mock)
-    if v.experiment_of(exp) != "63b":
-        print("REFUSED: the smoke is Exp 63b's pre-marker instrument check", file=sys.stderr)
+    if v.experiment_of(exp) not in ("63b", "63c"):
+        print("REFUSED: the smoke is Exp 63b's and 63c's pre-marker instrument check", file=sys.stderr)
         return 2
     if args.write_experiment_results:
         print("REFUSED: a smoke writes no committed evidence", file=sys.stderr)
@@ -1404,6 +1609,8 @@ def smoke(args: argparse.Namespace) -> int:
             provenance = _provenance.executed_code_provenance(REPO_ROOT, sys.executable, out_path=rows_file)
             run_id = _provenance.harness_run_id()
             check_argv_parses(exp)
+            check_scripts(exp)
+            check_keying(exp)
             check_host_identity()
             stamps = {"memory_strategy": check_memory_strategy(home, exp, run_id=run_id)}
             probe = (
@@ -1415,6 +1622,7 @@ def smoke(args: argparse.Namespace) -> int:
             gguf, read_served = "", None
             if not mock:
                 gguf = check_model_config(home, exp, run_id=run_id)["model_path"]
+                check_gguf_identity(exp, gguf)
                 check_port_free(v.SIM_PORT)
                 read_served = served_reader()
         except _provenance.ProvenanceError as exc:

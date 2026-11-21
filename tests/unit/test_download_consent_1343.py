@@ -31,8 +31,9 @@ ALLOWED_CALLERS = {
 def _download_llm_callers(target: str = "download_llm") -> set[tuple[str, str]]:
     """(file, enclosing function) of every call to ``target`` in src/, through any import alias.
 
-    The CLI agentic site is checked at its helper, ``cli.py::_ensure_agentic_model``; if the ``_main_impl`` call to
-    it were deleted, the path still fails safe (the backend behind it refuses without a grant)."""
+    The CLI agentic site is checked where its router is built, ``models/download.py::consented_router`` (through
+    ``router_model_problem``); if that check were deleted, the path still fails safe (the backend behind it refuses
+    without a grant)."""
     found: set[tuple[str, str]] = set()
     for path in sorted(SRC.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -188,30 +189,40 @@ def test_the_backend_downloads_with_a_standing_grant(no_consent, monkeypatch, tm
     assert no_consent == [backend.cfg.profile]
 
 
-def test_the_cli_agentic_path_asks_the_gate_and_never_downloads_without_consent(no_consent, tmp_path) -> None:
-    from maxim.cli import _ensure_agentic_model
+def _consented(monkeypatch, cfg: SimpleNamespace):
+    """``consented_router`` with the ask (``interactive=None``), the call ``ExecAgent._ensure_router(consent="ask")``
+    makes on the main thread, on a stand-in ``LLMRouter`` that only carries its config. These cases cover no terminal,
+    a standing grant and a present file; that the prompt itself fires on a terminal is pinned in
+    ``test_direct_router_consent_1396b2`` (the CLI-ask and main-thread fallback tests)."""
+    from maxim.models.download import consented_router
+
+    monkeypatch.setattr("maxim.models.language.router.LLMRouter", lambda c: SimpleNamespace(cfg=c))
+    return consented_router(cfg, interactive=None)
+
+
+def test_consented_router_with_the_ask_asks_the_gate_and_never_downloads_without_consent(
+    no_consent, monkeypatch, tmp_path
+) -> None:
     from maxim.models.download import LLM_MODELS
 
     profile = next(iter(LLM_MODELS))
-    router = SimpleNamespace(cfg=SimpleNamespace(model_path=str(tmp_path / "missing.gguf"), profile=profile))
-    _ensure_agentic_model(router)
+    router, cause = _consented(monkeypatch, SimpleNamespace(model_path=str(tmp_path / "missing.gguf"), profile=profile))
+    assert router is None and cause is not None
     assert no_consent == []
 
 
-def test_the_cli_agentic_path_downloads_with_the_operators_grant(no_consent, monkeypatch, tmp_path) -> None:
-    from maxim.cli import _ensure_agentic_model
+def test_consented_router_with_the_ask_downloads_with_the_operators_grant(no_consent, monkeypatch, tmp_path) -> None:
     from maxim.models.download import LLM_MODELS
 
     monkeypatch.setenv("MAXIM_AUTO_DOWNLOAD_MODELS", "1")
     monkeypatch.setattr("maxim.runtime.llm_server.profile_has_local_file", lambda p: False)
     profile = next(iter(LLM_MODELS))
-    _ensure_agentic_model(SimpleNamespace(cfg=SimpleNamespace(model_path=str(tmp_path / "x.gguf"), profile=profile)))
+    _consented(monkeypatch, SimpleNamespace(model_path=str(tmp_path / "x.gguf"), profile=profile))
     assert no_consent == [profile]
 
 
-def test_the_cli_agentic_path_leaves_a_present_model_alone(no_consent, monkeypatch, tmp_path) -> None:
+def test_consented_router_with_the_ask_leaves_a_present_model_alone(no_consent, monkeypatch, tmp_path) -> None:
     """Even with a standing grant and a registry file missing, a model at the router's own path is used as is."""
-    from maxim.cli import _ensure_agentic_model
     from maxim.models.download import LLM_MODELS
 
     monkeypatch.setenv("MAXIM_AUTO_DOWNLOAD_MODELS", "1")
@@ -219,7 +230,8 @@ def test_the_cli_agentic_path_leaves_a_present_model_alone(no_consent, monkeypat
     present = tmp_path / "m.gguf"
     present.write_text("")
     profile = next(iter(LLM_MODELS))
-    _ensure_agentic_model(SimpleNamespace(cfg=SimpleNamespace(model_path=str(present), profile=profile)))
+    router, cause = _consented(monkeypatch, SimpleNamespace(model_path=str(present), profile=profile))
+    assert router is not None and cause is None
     assert no_consent == []
 
 
@@ -328,7 +340,13 @@ def test_a_backend_without_a_profile_refuses_without_asking(no_consent, monkeypa
 
 
 def test_the_cli_path_without_a_profile_says_where_to_look(no_consent, tmp_path, capsys) -> None:
-    from maxim.cli import _ensure_agentic_model
+    """The library check names the cause and never prints (#1396 bullet 2 review round); the CLI prints the line."""
+    from maxim import cli
+    from maxim.models.download import router_model_problem
+    from maxim.models.language.types import LocalModelUnavailable
 
-    _ensure_agentic_model(SimpleNamespace(cfg=SimpleNamespace(model_path=str(tmp_path / "x.gguf"), profile="")))
-    assert "--list-models" in capsys.readouterr().out and no_consent == []
+    cause = router_model_problem(SimpleNamespace(cfg=SimpleNamespace(model_path=str(tmp_path / "x.gguf"), profile="")))
+    assert cause == LocalModelUnavailable.NOT_IN_REGISTRY and no_consent == []
+    assert capsys.readouterr().out == ""
+    cli._print_model_unavailable(cause)
+    assert "--list-models" in capsys.readouterr().out

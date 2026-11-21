@@ -68,7 +68,9 @@ JUnit report cannot answer in CI. The lint prints every gate's outstanding count
 6. **Runtime twin (SF-8, ``--junit <xml>``).** Static analysis cannot see a conftest fixture or
    ``pytest_collection_modifyitems`` that skips. So every evidence nodeid of a satisfied item or arm, and each
    satisfied arm's golden case, must appear in the fast suite's JUnit report (every parametrization, mapped
-   forward with pytest's own ``mangle_test_address``, as ``check_lane_roster.py`` does), with every case passed.
+   forward with pytest's own ``mangle_test_address``, as ``check_lane_roster.py`` does), with every case PASSED in
+   this run, or in the git- and stamp-bound source run it re-used (#1640: a floors-only push skips the suite and the
+   coverage re-use decision places that run's report; ``lint_coverage.py``'s docstring has the binding).
    The report must also carry this lint's own test file, so that it is the fast suite's. A missing or unreadable
    report is exit 2.
 7. **History (shrink-only, SF-4).** Every first-parent commit of HEAD that touched the gate file is compared with
@@ -88,8 +90,15 @@ JUnit report cannot answer in CI. The lint prints every gate's outstanding count
 9. **Wiring (SF-10).** Both modes check both steps, read from the PARSED workflow. The lint job has exactly one
    step whose run is ``python3 scripts/lint_release_gates.py``, with only ``name`` and ``run``. The unit-tests job
    has exactly one ``python scripts/lint_release_gates.py --junit fast-suite.xml`` step, also only ``name`` and
-   ``run``, placed after the fast suite. That suite (the ``--cov`` step) passes ``--junitxml=fast-suite.xml``, and
-   no other step names the report. Also checked: every checkout in both jobs has ``fetch-depth: 0``, and neither
+   ``run``, placed after the fast suite. That suite (the ``--cov`` step) runs exactly
+   ``scripts/run_fast_suite.py::CI_STEP_RUN`` (#1645: the sharded runner, which passes ``--junitxml=fast-suite.xml``
+   once and is the only writer of the merged report; a pinned whole text, so no dead string satisfies it), and that
+   text must equal ``lint_coverage.CI_STEP_EXPECTED``, a gate-owned literal independent of the runner. The
+   one other writer of the report is named explicitly: at most one step running exactly
+   ``python scripts/lint_coverage.py --reuse-decision`` (``REUSE_RUN``), before the suite (#1640, it places the
+   re-used source run's report). No other step names the report, except an ``actions/upload-artifact`` step, which
+   only reads it (the coverage artifact carries it; ``lint_coverage.ci_step_rules`` pins that upload and the
+   decision step). Also checked: every checkout in both jobs has ``fetch-depth: 0``, and neither
    job, nor the workflow, has an ``if:``, ``continue-on-error`` or ``defaults``.
    ``tests/unit/test_ci_workflow_shape.py`` pins both steps.
 
@@ -154,6 +163,7 @@ from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lint_function_length as FL  # noqa: E402
+import run_fast_suite as RF  # noqa: E402  (the fast suite's runner owns the measuring step's exact run text)
 from _lint_allowance import append_only_problem, ref_ok  # noqa: E402
 from _lint_git import GitUnavailable, git, show  # noqa: E402
 
@@ -168,6 +178,8 @@ JUNIT_FILE = "fast-suite.xml"
 LINT_RUN = "python3 scripts/lint_release_gates.py"
 TWIN_RUN = f"python scripts/lint_release_gates.py --junit {JUNIT_FILE}"
 SUITE_FLAG = f"--junitxml={JUNIT_FILE}"
+# lint_coverage.CI_REUSE_RUN (#1640; test-pinned equal): the one step besides the suite that writes the report.
+REUSE_RUN = "python scripts/lint_coverage.py --reuse-decision"
 ANCHOR_TEST_FILE = "tests/unit/test_lint_release_gates.py"
 FAST_SUITE_IGNORED = frozenset({"tests/integration/test_memory_hub.py"})
 DENY_MARKS = frozenset({"xfail", "skip", "skipif", "importorskip", "slow", "requires_model_cache", "robot"})
@@ -1025,13 +1037,40 @@ def wiring_problems(root: Path) -> list[str]:
         if set(g) != {"name", "run"}:
             out.append(f"{where}: the release-gate step may carry only `name` and `run` (found {sorted(set(g))})")
         if name == TWIN_JOB:
-            suite = [i for i, s in enumerate(steps) if "--cov" in run(s) and "pytest" in run(s)]
-            if len(suite) != 1 or run(steps[suite[0]]).count(SUITE_FLAG) != 1:
-                out.append(f"{where}: the fast suite (the one `--cov` pytest step) must pass `{SUITE_FLAG}` once")
+            # #1645: the suite is the sharded runner, its whole run text pinned (CI_STEP_RUN passes SUITE_FLAG once)
+            suite = [i for i, s in enumerate(steps) if "--cov" in run(s)]
+            # Independent of the runner (#1645 delta review): the runner's text must EQUAL the coverage gate's own
+            # literal (an extra -k or --deselect would hide evidence tests as surely as a dropped flag), and that
+            # literal must carry this gate's SUITE_FLAG exactly once.
+            import lint_coverage as LC
+
+            if RF.flat_run(LC.CI_STEP_EXPECTED).count(SUITE_FLAG) != 1:
+                out.append(f"{where}: lint_coverage.CI_STEP_EXPECTED must pass `{SUITE_FLAG}` exactly once")
+            if RF.flat_run(RF.CI_STEP_RUN) != RF.flat_run(LC.CI_STEP_EXPECTED):
+                out.append(
+                    f"{where}: scripts/run_fast_suite.py::CI_STEP_RUN differs from lint_coverage.CI_STEP_EXPECTED "
+                    f"(which passes `{SUITE_FLAG}` exactly once)"
+                )
+            if len(suite) != 1 or RF.flat_run(run(steps[suite[0]])) != RF.flat_run(RF.CI_STEP_RUN):
+                out.append(
+                    f"{where}: the fast suite (the one `--cov` step) must run exactly scripts/run_fast_suite.py::"
+                    f"CI_STEP_RUN, which passes `{SUITE_FLAG}` once"
+                )
             elif gate[0] < suite[0]:
                 out.append(f"{where}: the release-gate step must come after the fast suite that writes {JUNIT_FILE}")
+            # #1640: the one OTHER writer of the report, named explicitly: the coverage re-use decision places the
+            # git- and stamp-bound source run's report before the suite (which it then skips). Exactly that run line.
+            reuse = [i for i, s in enumerate(steps) if "--reuse-decision" in run(s)]
+            if len(reuse) > 1 or any(run(steps[i]).strip() != REUSE_RUN for i in reuse):
+                out.append(f"{where}: the one other writer of {JUNIT_FILE} is exactly one `{REUSE_RUN}` step")
+            elif reuse and suite and reuse[0] > suite[0]:
+                out.append(f"{where}: `{REUSE_RUN}` must come before the fast suite")
             others = [
-                s.get("name") for i, s in enumerate(steps) if i not in (gate[0], *suite) and JUNIT_FILE in json.dumps(s)
+                s.get("name")
+                for i, s in enumerate(steps)
+                if i not in (gate[0], *suite, *reuse)
+                and JUNIT_FILE in json.dumps(s)
+                and not str(s.get("uses", "")).startswith("actions/upload-artifact@")  # reads it only (#1640)
             ]
             if others:
                 out.append(f"{where}: only the fast suite and the release-gate step may name {JUNIT_FILE} ({others})")

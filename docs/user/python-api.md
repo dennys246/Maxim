@@ -56,8 +56,10 @@ Top-level functions for common operations. All heavy imports are deferred.
 `<home>/.maxim_workspace`: not the process working directory, not the home's own stores and config (#1342). `bash`
 and `execute_file` start in that workspace, but a shell command or the file's code can reach any absolute path; `run()`'s passive mode refuses
 both. Put the files a run should see in that workspace.
-Low-level runtime step snapshots still use CWD-relative `data/agents/`; complete
-`home_dir` ownership is tracked for 1.1.x as D15.
+Low-level runtime step snapshots go to `<home_dir>/runtime_state/` (the data home's when `home_dir` is not
+given; #1264); `maxim --clear-memory runtime_state --home-dir <home_dir>` clears them. A relative `home_dir`
+resolves against the working directory, like every store under it. Some process-wide stores (the `util/` learners,
+provenance) stay in the data home whatever `home_dir` says: complete `home_dir` ownership is still open as D15.
 
 `run()` installs no terminal-input reader: `goal=None` starts an idle service
 loop, and completing an initial goal does not currently stop that loop. Only one

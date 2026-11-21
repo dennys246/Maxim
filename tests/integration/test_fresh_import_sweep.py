@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._child_env import isolation_env
+
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
 
@@ -56,7 +58,12 @@ def _modules() -> tuple[list[str], list[str]]:
 
 @pytest.mark.slow
 def test_every_module_imports_first_in_a_fresh_process(tmp_path: Path) -> None:
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path)}
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(tmp_path),
+        "XDG_CONFIG_HOME": str(tmp_path),
+        **isolation_env(),  # beside HOME: the host's /etc/cloudflared never reaches the child
+    }
     names, unwalkable = _modules()
     assert not unwalkable, f"packages whose __init__ fails to import, so their subtrees were not swept: {unwalkable}"
     fails: dict[str, str] = {}

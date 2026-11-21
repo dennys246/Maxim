@@ -32,6 +32,7 @@ from tests.unit.test_cross_session_recall_1444 import (
     _ask,
     _framed_bodies,
     _handle,
+    _stop_until_saved,
 )
 
 _DAYS = 5 * 24 * 3600  # past 3 x compression_age (1 day): user-input records compress at 3 days (access_based)
@@ -73,14 +74,14 @@ def compressed_session(tmp_path_factory: pytest.TempPathFactory) -> dict[str, An
             time.sleep(0.5)
             _age_every_record(session_n, _DAYS)
         finally:
-            session_n.stop()
+            _stop_until_saved(session_n)
 
         stored = json.loads((home / "hippocampus.json").read_text())
         session_n1 = _handle(home)
         try:
             prompts = _ask(session_n1, model, _QUESTION)
         finally:
-            session_n1.stop()
+            _stop_until_saved(session_n1)
             disable_sim_logging()
     return {"stored": stored, "prompts": prompts}
 

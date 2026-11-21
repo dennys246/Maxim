@@ -1,0 +1,1414 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:sense_tools": [
+      {
+        "id": "b8cdde17f28598d2",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "discover actions for interacting with the guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.001528024673461914
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071770.005014,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d39e53043d13c2a3",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I'll explore my options to find out what I can do with the guard."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 3 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071770.006896,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d74889f99de5ba73",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I'll explore my options to find out what I can do with the guard."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I'll explore my options to find out what I can do with the guard.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071770.00753,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "72a4bce53838e34f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "wake sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0007469654083251953
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072122.4163961,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "fb541849a8208ed5",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072122.418167,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "46cc26dfa57be34a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making a loud noise."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making a loud noise.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072122.4188328,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bc5c3ac87b5336d5",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "wake up guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0011959075927734375,
+            0.001512289047241211
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.609350288425444,
+        "last_observed": 1794072348.3809438,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "84127b85f6ab16dc",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can mak"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072180.969876,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8064eb42685c84b3",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can make a loud noise."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can make a loud noise.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072180.970295,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "25e5fd89dbad58a8",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "make_noise"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00043487548828125
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072272.275499,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "52dfa22b2cbfb57c",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a t"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Your capabilities by category:\n- Head (base_humano",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072272.275862,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "79043512a5a85d25",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a tool for that."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a tool for that.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072272.2759738,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9fc6756f73ce511f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can m"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072348.382598,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "86adcaa71fcf2364",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can make such a noise."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can make such a noise.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072348.3833332,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d42bc9eb10b1dd90",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "params": {
+            "query": "find a tool to wake up the sleeping guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_tools:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000370025634765625
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072386.73571,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6c2dfceea4865191",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "My experience suggests waking someone up requires a loud noise. I need to find a tool that can produ"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:Found 8 capabilities:\n- base_humanoid_listen: Atte",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072386.736195,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "e3576af4dc17f312",
+        "event_type": "tool",
+        "event_signature": "tool:sense_tools",
+        "event_context": {
+          "goal": "My experience suggests waking someone up requires a loud noise. I need to find a tool that can produce such a sound."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:My experience suggests waking someone up requires a loud noise. I need to find a tool that can produce such a sound.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072386.736337,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:base_humanoid_listen": [
+      {
+        "id": "b49a253723d7d57a",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "params": {
+            "target": "guard"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:base_humanoid_listen:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0013518333435058594,
+            0.00040793418884277344
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.5788827740041718,
+        "last_observed": 1794071944.5977979,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "098f98dceb37f052",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I'll locate the guard using base_humanoid_listen."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'base_humanoid', 'affordance': 'listen'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071805.219535,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "d90710d9be390bae",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "goal": "I'll locate the guard using base_humanoid_listen."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I'll locate the guard using base_humanoid_listen.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071805.220148,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "3466918c5fcdd81c",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to locate the guard before attempting to wake him up and distract him."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'base_humanoid', 'affordance': 'listen'",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071944.59838,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "9aba9c135f67e36f",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_listen",
+        "event_context": {
+          "goal": "I need to locate the guard before attempting to wake him up and distract him."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to locate the guard before attempting to wake him up and distract him.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071944.5986052,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:base_humanoid_move": [
+      {
+        "id": "8329076aea08936b",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_move",
+        "event_context": {
+          "params": {
+            "direction": "east",
+            "speed": "sneak"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:base_humanoid_move:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0012521743774414062
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071838.249265,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "c7185153b56ab7aa",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_move",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east w"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'entity': 'base_humanoid', 'affordance': 'move', ",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071838.250796,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "b1f86747181a2eb3",
+        "event_type": "tool",
+        "event_signature": "tool:base_humanoid_move",
+        "event_context": {
+          "goal": "I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east while sneaking could help me avoid detection."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east while sneaking could help me avoid detection.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071838.25123,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense": [
+      {
+        "id": "0d24e2b534fa169a",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "params": {
+            "entity_name": "dungeon"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense:negative",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.00011801719665527344
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071876.927976,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "db55445e730785cf",
+        "event_type": "tool",
+        "event_signature": "tool:sense",
+        "event_context": {
+          "goal": "I need to understand the dungeon layout before attempting to sneak past the sleeping guard. Sensing the dungeon will provide me with necessary context."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon layout before attempting to sneak past the sleeping guard. Sensing the dungeon will provide me with necessary context.:failure",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071876.9283571,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:sense_presence": [
+      {
+        "id": "a0f9e9daaf69cb1a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "params": {}
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_presence:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0002918243408203125,
+            0.0003139972686767578,
+            0.0007259845733642578
+          ]
+        },
+        "predicted_value": 0.6819720000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001,
+          0.6302000000000001
+        ],
+        "observation_count": 3,
+        "confidence": 0.6395448267190432,
+        "last_observed": 1794072309.836603,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.3697999999999999,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "057586a59d428402",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the layout of the scene and locate the guard's position before attempting to sn"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071909.369555,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "ff8f2a47929ef30a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "goal": "I need to understand the layout of the scene and locate the guard's position before attempting to sneak past him."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the layout of the scene and locate the guard's position before attempting to sneak past him.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071909.36972,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "bef58b5128228c94",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to locate the guard's position before attempting to wake him up and distract him."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071982.8034298,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "6f46f963f0347b55",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "goal": "I need to locate the guard's position before attempting to wake him up and distract him."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to locate the guard's position before attempting to wake him up and distract him.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071982.803617,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "276f91f3f8216b3f",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "params": {
+            "context": "dungeon layout"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:sense_presence:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0015261173248291016
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072070.627696,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "8ef3df94e3aac43d",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon layout before finding the sleeping guard."
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072070.630084,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "f43ae7c8d902762a",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "goal": "I need to understand the dungeon layout before finding the sleeping guard."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon layout before finding the sleeping guard.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072070.6309388,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "01185ce36c1c6262",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence "
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072309.837775,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "201d5cc2feb12a09",
+        "event_type": "tool",
+        "event_signature": "tool:sense_presence",
+        "event_context": {
+          "goal": "I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence of nearby entities."
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence of nearby entities.:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.475,
+        "last_observed": 1794072309.838449,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:respond": [
+      {
+        "id": "8523d4b78a4cf37e",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "params": {
+            "message": "I heard your question about 'the guard is sleeping. can you try to pick up the ', but I'm having trouble processing it right now. Could you try rephrasing?"
+          }
+        },
+        "outcome_type": "result",
+        "outcome_signature": "tool:respond:positive",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.000560760498046875
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071991.9037519,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "1fa3fbf3d81453f8",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "agent_id": "sim_aut",
+          "goal": "llm_fallback"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "success:{'delivered': True, 'mode': 'cli'}",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.0
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071991.906775,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      },
+      {
+        "id": "2c7b23b1ea3b8e6f",
+        "event_type": "tool",
+        "event_signature": "tool:respond",
+        "event_context": {
+          "goal": "llm_fallback"
+        },
+        "outcome_type": "plan_result",
+        "outcome_signature": "plan:llm_fallback:success",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            0.1
+          ]
+        },
+        "predicted_value": 0.5700000000000001,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.45125,
+        "last_observed": 1794071991.908139,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "tool:sense_tools:positive": [
+      "25e5fd89dbad58a8",
+      "bc5c3ac87b5336d5",
+      "72a4bce53838e34f",
+      "b8cdde17f28598d2",
+      "d42bc9eb10b1dd90"
+    ],
+    "success:Found 3 capabilities:\n- base_humanoid_listen: Atte": [
+      "d39e53043d13c2a3"
+    ],
+    "plan:I'll explore my options to find out what I can do with the guard.:success": [
+      "d74889f99de5ba73"
+    ],
+    "tool:base_humanoid_listen:positive": [
+      "b49a253723d7d57a"
+    ],
+    "success:{'entity': 'base_humanoid', 'affordance': 'listen'": [
+      "3466918c5fcdd81c",
+      "098f98dceb37f052"
+    ],
+    "plan:I'll locate the guard using base_humanoid_listen.:success": [
+      "d90710d9be390bae"
+    ],
+    "tool:base_humanoid_move:positive": [
+      "8329076aea08936b"
+    ],
+    "success:{'entity': 'base_humanoid', 'affordance': 'move', ": [
+      "c7185153b56ab7aa"
+    ],
+    "plan:I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east while sneaking could help me avoid detection.:success": [
+      "b1f86747181a2eb3"
+    ],
+    "tool:sense:negative": [
+      "0d24e2b534fa169a"
+    ],
+    "plan:I need to understand the dungeon layout before attempting to sneak past the sleeping guard. Sensing the dungeon will provide me with necessary context.:failure": [
+      "db55445e730785cf"
+    ],
+    "tool:sense_presence:positive": [
+      "a0f9e9daaf69cb1a",
+      "276f91f3f8216b3f"
+    ],
+    "success:You sense 5 entity/entities nearby:\n\n  [YOU] base_": [
+      "bef58b5128228c94",
+      "057586a59d428402",
+      "8ef3df94e3aac43d",
+      "01185ce36c1c6262"
+    ],
+    "plan:I need to understand the layout of the scene and locate the guard's position before attempting to sneak past him.:success": [
+      "ff8f2a47929ef30a"
+    ],
+    "plan:I need to locate the guard before attempting to wake him up and distract him.:success": [
+      "9aba9c135f67e36f"
+    ],
+    "plan:I need to locate the guard's position before attempting to wake him up and distract him.:success": [
+      "6f46f963f0347b55"
+    ],
+    "tool:respond:positive": [
+      "8523d4b78a4cf37e"
+    ],
+    "success:{'delivered': True, 'mode': 'cli'}": [
+      "1fa3fbf3d81453f8"
+    ],
+    "plan:llm_fallback:success": [
+      "2c7b23b1ea3b8e6f"
+    ],
+    "plan:I need to understand the dungeon layout before finding the sleeping guard.:success": [
+      "f43ae7c8d902762a"
+    ],
+    "success:Your capabilities by category:\n- Head (base_humano": [
+      "fb541849a8208ed5",
+      "52dfa22b2cbfb57c"
+    ],
+    "plan:I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making a loud noise.:success": [
+      "46cc26dfa57be34a"
+    ],
+    "success:Found 1 capabilities:\n- base_humanoid_pick_up: Pic": [
+      "84127b85f6ab16dc",
+      "9fc6756f73ce511f"
+    ],
+    "plan:I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can make a loud noise.:success": [
+      "8064eb42685c84b3"
+    ],
+    "plan:My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a tool for that.:success": [
+      "79043512a5a85d25"
+    ],
+    "plan:I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence of nearby entities.:success": [
+      "201d5cc2feb12a09"
+    ],
+    "plan:My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can make such a noise.:success": [
+      "86adcaa71fcf2364"
+    ],
+    "success:Found 8 capabilities:\n- base_humanoid_listen: Atte": [
+      "6c2dfceea4865191"
+    ],
+    "plan:My experience suggests waking someone up requires a loud noise. I need to find a tool that can produce such a sound.:success": [
+      "e3576af4dc17f312"
+    ]
+  },
+  "priors": {},
+  "total_observations": 44,
+  "reward_bias": {},
+  "goal_reward_bias": {
+    "escape a dungeon with a sleeping guard": 0.13352159435101885
+  },
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1794072422.639877,
+  "_format_version": "1.4"
+}

@@ -82,7 +82,7 @@ not-ready LLM does not exit: the process prints `NOT READY` on stderr, stays up 
 | `--memory-path` | str | `{home_dir}/memory/memories.json` | Custom memory storage path |
 | `--reset` | flag | | Clear memory on startup |
 | `--enable-embeddings` | flag | | Enable semantic embeddings for similarity |
-| `--clear-memory` | str | `all` | Clear persistent memory in the data home (`~/.maxim` or `$MAXIM_DATA_HOME`) and exit; also `--home-dir`'s stores when `--home-dir` is passed. Agent stores are cleared in every agent home (`agents/<id>/`, `memory/`, `orchestrator/`, `sessions/`). Types: `all` (default), `hippo`, `nac`, `ec`, `scn`, `atl`, `angular_gyrus`, `cerebellum`, `memory_hub`, `focus`, `bounds`, `escalation`, `fear`, `threshold`, `pain`, `statistician`, `significance`, `short_term`, `cross_layer`, `semantic`, `tool_index`, `planning`. Comma-separated. `nac` and `ec` are a pair — clearing either clears both, because NAc's reward biases are keyed by EC node ids. It lists every path first and asks y/N (on stderr); when stdin is not a terminal it refuses unless `--yes`. Exit 0 done or nothing found, 1 declined or a deletion failed, 2 an unknown type or a refusal (nothing deleted). `sim_reports/` is never cleared. |
+| `--clear-memory` | str | `all` | Clear persistent memory in the data home (`~/.maxim` or `$MAXIM_DATA_HOME`) and exit; also `--home-dir`'s stores when `--home-dir` is passed. Agent stores are cleared in every agent home (`agents/<id>/`, `memory/`, `orchestrator/`, `sessions/`). Types: `all` (default), `hippo`, `nac`, `ec`, `scn`, `atl`, `angular_gyrus`, `cerebellum`, `memory_hub`, `focus`, `bounds`, `escalation`, `fear`, `threshold`, `pain`, `statistician`, `significance`, `short_term`, `cross_layer`, `semantic`, `tool_index`, `planning`, `runtime_state` (the loop's per-run state snapshots). Comma-separated. `nac` and `ec` are a pair — clearing either clears both, because NAc's reward biases are keyed by EC node ids. It lists every path first and asks y/N (on stderr); when stdin is not a terminal it refuses unless `--yes`. Exit 0 done or nothing found, 1 declined or a deletion failed, 2 an unknown type or a refusal (nothing deleted). `sim_reports/` is never cleared. |
 | `--yes` | flag | off | Confirm `--clear-memory` without asking (required when stdin is not a terminal). |
 
 ## Hardware and Perception
@@ -219,7 +219,7 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer --node <name> restart` | Mesh-aware restart on a named node. Composes **drain → restart → resume** around the shared `restart_on_target` core. Two-phase recovery poll waits for the proxy to respond (~90s), then waits for the LLM model to load (~150s for large models). Self-guard refuses restarting yourself (use `maxim peer restart` directly). Same exit-code contract as `--node install`. (Plan 4 Stage C3.5) |
 | `maxim peer --node <name> llm <model>` | Mesh-aware LLM swap on a named node. Composes **drain → swap → resume** around the shared `llm_swap_on_target` core. Key enabler for C5 capacity-aware routing — per-node model assignment means the router can know which node runs which model. Self-guard refuses swapping yourself (use `maxim peer llm` directly). Same exit-code contract as `--node install`. (Plan 4 Stage C3.6) |
 
-| `GET /v1/debug/vram` | (admin endpoint, not a CLI verb) Returns the leader's live VRAM state as JSON: nvidia-smi ratio, utilization, temperature, projected model footprint from `project_vram_usage()`, spillover/warning flags, and recommended n_ctx. Auth via bearer (cluster key) or localhost. Returns 503 if nvidia-smi is unavailable (not a GPU node). Prerequisite for peer-mode doctor VRAM visibility and C5 capacity-aware routing. (Plan 4 Stage C3.4) |
+| `GET /v1/debug/vram` | (admin endpoint, not a CLI verb) Returns the leader's live VRAM state as JSON: nvidia-smi ratio, utilization, temperature, projected model footprint from `project_vram_usage()`, spillover/warning flags, and recommended n_ctx. Auth via bearer (cluster key) only: a loopback request is not trusted, since a cloudflared tunnel's ingress is localhost. Returns 503 if nvidia-smi is unavailable (not a GPU node). Prerequisite for peer-mode doctor VRAM visibility and C5 capacity-aware routing. (Plan 4 Stage C3.4) |
 
 | `maxim peer key` | Print the raw stored API key to stdout (for piping / export idioms like `export KEY=$(maxim peer key)`). Reads `config.json::lanes.large.remote_api_key_ref` first; falls back to `peer.yml::api_key` for back-compat. |
 | `maxim peer key set [KEY]` | Update the stored API key in place without re-running `peer connect`. Validates latin-1 encoding (HTTP Bearer token requirement). If `KEY` is omitted, prompts with hidden input. Writes the canonical `~/.config/maxim/api_key` (mode 0600) referenced by `config.json`, and also updates `peer.yml` for 1.x back-compat. |
@@ -427,6 +427,15 @@ directly rather than running a full scenario.
 | `--last` | int | None | Re-run a recent invocation: `--last` (most recent), `--last 2` (second most recent) |
 | `--show-last` | flag | | Show all saved invocations and exit |
 | `--clear-last` | flag | | Clear saved invocations and exit |
+
+### `maxim llm reap [--port N]`
+
+Clean up a leftover LLM server that a maxim process spawned and did not stop (a crash, a killed terminal). Not
+`maxim peer llm`, which switches a leader's model. It reports the server on the port (default `MAXIM_AUTO_SPAWN_PORT`,
+else 8100): pid, model, age, whether its spawner still runs, and its connections ("connections are a hint: a client between
+calls holds none"). At a terminal, type the pid to stop it (SIGTERM, then SIGKILL after 5 s); anything else cancels.
+It never touches a server without a matching spawn record (one started by hand or by a maxim before 1.3.4), and
+outside a terminal it only reports. Exit 0 stopped or nothing recorded, 1 cancelled, 2 refused. Linux and macOS only.
 
 ---
 

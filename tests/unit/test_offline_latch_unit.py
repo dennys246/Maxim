@@ -19,6 +19,17 @@ import pytest
 from maxim import _offline
 
 
+# POSIX's value where the platform has none (Windows, #1687): these args are only the hook's input, no socket is made.
+_AF_UNIX = getattr(socket, "AF_UNIX", 1)
+
+
+@pytest.fixture(autouse=True)
+def _latch_logic_on_any_platform(monkeypatch):
+    """These tests exercise the latch's own logic, which is platform-neutral; they run on Windows too, where the
+    production ``engage()`` refuses (#1687). The platform-boundary tests below set the flag back to False."""
+    monkeypatch.setattr(_offline, "_PLATFORM_SUPPORTED", True)
+
+
 class _Sock:
     def __init__(self, family: int) -> None:
         self.family = family
@@ -33,9 +44,9 @@ class _Sock:
         ("socket.__new__", (None, getattr(socket, "AF_ROUTE", 17), socket.SOCK_RAW, 0)),
         ("socket.__new__", (None, -1, socket.SOCK_STREAM, 0)),  # fd adoption without a family
         ("socket.connect", (_Sock(socket.AF_INET), ("127.0.0.1", 9))),
-        ("socket.connect", (_Sock(socket.AF_UNIX), "/tmp/x.sock")),
+        ("socket.connect", (_Sock(_AF_UNIX), "/tmp/x.sock")),
         ("socket.sendto", (_Sock(socket.AF_INET), ("192.0.2.1", 53))),
-        ("socket.sendto", (_Sock(socket.AF_UNIX), "/tmp/dgram.sock")),  # Executor S3: any family
+        ("socket.sendto", (_Sock(_AF_UNIX), "/tmp/dgram.sock")),  # Executor S3: any family
         ("socket.sendmsg", (_Sock(socket.AF_INET6), ("::1", 53, 0, 0))),
         ("socket.getaddrinfo", ("example.com", 80, 0, 0, 0)),
         ("socket.gethostbyname", ("example.com",)),
@@ -59,9 +70,13 @@ def test_refused_events(event: str, args: tuple) -> None:
     [
         ("socket.__new__", (None, socket.AF_INET, socket.SOCK_STREAM, 0)),
         ("socket.__new__", (None, socket.AF_INET6, socket.SOCK_DGRAM, 0)),
-        ("socket.__new__", (None, socket.AF_UNIX, socket.SOCK_STREAM, 0)),
+        pytest.param(
+            "socket.__new__",
+            (None, _AF_UNIX, socket.SOCK_STREAM, 0),
+            marks=pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="no AF_UNIX here, so it is not allowed"),
+        ),
         ("socket.sendto", (_Sock(socket.AF_INET), None)),  # connected socket: its connect was refused
-        ("socket.sendmsg", (_Sock(socket.AF_UNIX), None)),
+        ("socket.sendmsg", (_Sock(_AF_UNIX), None)),
         ("socket.bind", (_Sock(socket.AF_INET), ("127.0.0.1", 0))),  # inbound passes
         ("socket.listen", (_Sock(socket.AF_INET), 1)),
         ("os.putenv", (b"K", b"V")),
@@ -303,3 +318,68 @@ def test_former_replica_parsers_agree_with_truthy(monkeypatch, raw: str) -> None
     assert _read_nac_reward_bias_disabled_env() is expected
     assert _auto_download_enabled() is expected
     assert _is_truthy(raw) is expected
+
+
+# ── the platform boundary (#1687) ─────────────────────────────────────────
+
+
+def _unsupported(monkeypatch) -> None:
+    monkeypatch.setattr(_offline, "_PLATFORM_SUPPORTED", False)
+    monkeypatch.delenv("MAXIM_OFFLINE", raising=False)
+
+
+def test_engage_refuses_on_an_unsupported_platform_and_changes_nothing(monkeypatch) -> None:
+    _unsupported(monkeypatch)
+    monkeypatch.setattr(_offline, "_callbacks", [])  # the module keeps callbacks across resets: do not leak one
+    calls: list[str] = []
+    _offline.on_engage(lambda: calls.append("ran"))
+    env_before = {key: os.environ.get(key) for key, _ in _offline.ENGAGE_ENV}
+    with pytest.raises(_offline.OfflineUnsupportedPlatform, match="POSIX-only") as info:
+        _offline.engage("unit: platform")
+    assert "unit: platform" in str(info.value)
+    assert not isinstance(info.value, (_offline.OfflineRefusal, OSError))
+    assert _offline._engaged is False
+    assert {key: os.environ.get(key) for key, _ in _offline.ENGAGE_ENV} == env_before
+    assert _offline.ledger() == ()
+    assert calls == []
+
+
+def test_a_truthy_variable_on_an_unsupported_platform_fails_loudly(monkeypatch) -> None:
+    import maxim
+
+    _unsupported(monkeypatch)
+    monkeypatch.setenv("MAXIM_OFFLINE", "1")
+    with pytest.raises(_offline.OfflineUnsupportedPlatform):
+        maxim._self_engage_offline()  # what `import maxim` runs
+    with pytest.raises(_offline.OfflineUnsupportedPlatform):
+        _offline.is_offline()
+    assert _offline._engaged is False
+
+
+def test_is_offline_without_the_variable_is_false_on_an_unsupported_platform(monkeypatch) -> None:
+    _unsupported(monkeypatch)
+    assert _offline.is_offline() is False
+
+
+def test_import_works_where_socket_has_no_af_unix() -> None:
+    """Windows CPython has no ``socket.AF_UNIX`` (#1687). A child whose socket module lacks it imports the latch and
+    the base of every tool, and allows no family it lacks. It fakes only the missing constant (not ``os.name``), so
+    it proves import safety; the refusal is the in-process tests' job. No Windows CI exists, and on Windows the pop
+    is a no-op."""
+    import subprocess
+
+    src = Path(_offline.__file__).resolve().parents[1]
+    code = (
+        "import socket\n"
+        "socket.__dict__.pop('AF_UNIX', None)\n"
+        "from maxim import _offline\n"
+        "import maxim.tools.base\n"
+        "assert _offline._ALLOWED_FAMILIES == {socket.AF_INET, socket.AF_INET6}, _offline._ALLOWED_FAMILIES\n"
+        "print('ok')\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "MAXIM_OFFLINE"}
+    env["PYTHONPATH"] = str(src)
+    done = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120, check=False
+    )
+    assert done.returncode == 0 and done.stdout.strip().endswith("ok"), done.stderr[-2000:]

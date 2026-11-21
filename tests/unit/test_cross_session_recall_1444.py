@@ -83,6 +83,23 @@ def _handle(home: Path) -> Any:
     return MaximHandle("recall_gate", home=home)
 
 
+# A loaded runner can outlast stop()'s bounded talk-loop join: stop() then returns False and the loop's own session end
+# saves the store LATER (#1438). A fixture that reads hippocampus.json, or opens the next session on the same home,
+# before that end read a store without the fact (#1645 trial run 5: an empty store). The ceiling only bounds a hang.
+_SESSION_END_CEILING_S = 120.0
+
+
+def _stop_until_saved(handle: Any) -> None:
+    """Stop ``handle`` and return only once its memory session has ended, so its store is on disk."""
+    if handle.stop():
+        return
+    hub = handle.instance.memory_hub
+    assert hub is not None, "stop() did not finish and the agent has no memory hub to wait on"
+    assert hub.wait_session_ended(deadline_s=_SESSION_END_CEILING_S), (
+        f"the memory session did not end within {_SESSION_END_CEILING_S:.0f} s of stop(): the store was never saved"
+    )
+
+
 def _prompts_for(model: _RecordingModel, question: str, start: int) -> list[str]:
     # The prompt carries the current input lowercased (``=== User Request ===``), so match without case.
     return [p for p in model.prompts[start:] if question.lower() in p.lower()]
@@ -125,7 +142,7 @@ def two_sessions(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str
             for filler in _FILLERS:  # through talk too: the same Talk goal, so the goal path's recency favours them
                 _ask(session_n, model, filler)
         finally:
-            session_n.stop()
+            _stop_until_saved(session_n)
 
         session_n1 = _handle(home)
         try:
@@ -136,7 +153,7 @@ def two_sessions(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str
             for _ in range(6):  # #1573: the same question, stored again each time
                 asked["repeated"] = _ask(session_n1, model, _QUESTION)
         finally:
-            session_n1.stop()
+            _stop_until_saved(session_n1)
             disable_sim_logging()
     return asked
 
@@ -176,3 +193,34 @@ def test_an_instruction_shaped_utterance_reaches_the_prompt_only_inside_the_fram
     prompts = two_sessions["injection"]
     assert any("pwned" in body.lower() for p in prompts for body in _framed_bodies(p)), prompts[-1]  # recalled at all
     assert not [p for p in prompts if "pwned" in outside_tool_output(p).lower()]  # and never outside the frame
+
+
+class _Hub:
+    def __init__(self, ends: bool) -> None:
+        self.ends = ends
+        self.waited: list[float | None] = []
+
+    def wait_session_ended(self, *, deadline_s: float | None = None) -> bool:
+        self.waited.append(deadline_s)
+        return self.ends
+
+
+class _StoppedHandle:
+    def __init__(self, stopped: bool, hub: _Hub) -> None:
+        self._stopped = stopped
+        self.instance = type("I", (), {"memory_hub": hub})()
+
+    def stop(self) -> bool:
+        return self._stopped
+
+
+def test_a_stop_that_has_not_finished_waits_for_the_session_end_before_the_store_is_read() -> None:
+    """#1645: the fixtures read the store only after the session end; a finished stop needs no wait."""
+    unfinished = _Hub(ends=True)
+    _stop_until_saved(_StoppedHandle(False, unfinished))
+    assert unfinished.waited == [_SESSION_END_CEILING_S]
+    finished = _Hub(ends=True)
+    _stop_until_saved(_StoppedHandle(True, finished))
+    assert finished.waited == []
+    with pytest.raises(AssertionError, match="was never saved"):
+        _stop_until_saved(_StoppedHandle(False, _Hub(ends=False)))

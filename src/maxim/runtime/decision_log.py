@@ -72,6 +72,9 @@ class LaneDecisionRecord:
     tier_decisions: dict[str, dict[str, Any]]
     probe_results: dict[str, str] = field(default_factory=dict)
     auto_download_triggered: list[str] = field(default_factory=list)
+    # The profile the build was handed (``build_primary_router(profile=)``, #1538), which wins over the env's
+    # MAXIM_LLM_PROFILE above; None when the build served the session's.
+    build_profile: str | None = None
     # The offline latch (#1315 item 10b, owner decision V27): whether it was up for this build, and the degraded
     # fallbacks so far ("site: reason", once each). Written only when offline (record_to_json_line), so an online
     # record keeps its old shape; an older reader returns None on an offline one, as on any newer record.
@@ -189,6 +192,7 @@ def build_record(
     peer_config_loaded: bool = False,
     probe_results: dict[str, str] | None = None,
     auto_download_triggered: list[str] | None = None,
+    build_profile: str | None = None,
 ) -> LaneDecisionRecord:
     """Assemble a :class:`LaneDecisionRecord` from the build pipeline outputs.
 
@@ -209,6 +213,7 @@ def build_record(
         tier_decisions=tier_decisions,
         probe_results=dict(probe_results or {}),
         auto_download_triggered=list(auto_download_triggered or []),
+        build_profile=build_profile,
         **_offline_fields(),
     )
 
@@ -298,8 +303,12 @@ def read_last_record() -> LaneDecisionRecord | None:
             payload = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(payload, dict):
+            return None  # valid JSON, but not a record
+        # A key this version does not know (a later one's field) is dropped, not a reason to show no record.
+        known = {f.name for f in dataclasses.fields(LaneDecisionRecord)}
         try:
-            return LaneDecisionRecord(**payload)
+            return LaneDecisionRecord(**{k: v for k, v in payload.items() if k in known})
         except TypeError:
             return None
     return None
@@ -315,6 +324,8 @@ def format_record_human(record: LaneDecisionRecord) -> str:
         f"  Capabilities: {record.caps}",
         f"  Peer config loaded: {record.peer_config_loaded}",
     ]
+    if record.build_profile:
+        lines.append(f"  Profile handed to the build: {record.build_profile} (wins over the env's MAXIM_LLM_PROFILE)")
     if record.env:
         lines.append("  Env (redacted):")
         for k, v in sorted(record.env.items()):

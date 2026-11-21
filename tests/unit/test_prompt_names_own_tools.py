@@ -32,14 +32,20 @@ from maxim.agents.prompt_builder import (
     build_tool_guidance_extended,
     is_realtime_request,
 )
+from maxim.simulation.stall_detector import stall_nudge_text
 from tests.policy_helpers import TEST_POLICY
 
 NARRATOR_TOOLS = {"send_message", "observe_actions", "check_completion"}
 FOREIGN = ("internet_search", "write_file", "read_file", "speak", "respond", "math", "focus_interests", "track_target")
-# The stall nudge the narrator receives (orchestrator.py's stall detector, wording as shipped by this PR).
-STALL = (
-    "SYSTEM: Stall detected (30s idle, 1 AUT actions so far). For context, the agent under test's last action was "
-    "'sense_tools' (blocked=False): ITS tool, not yours. Call send_message NOW with your next probe."
+# The idle stall nudge the narrator receives, from the stall detector's own builder (#1592: it names no AUT tool).
+STALL = stall_nudge_text(
+    nudge_count=1,
+    ping_pong=False,
+    orch_actions_since_turn=0,
+    stall_duration_s=30,
+    total_actions=1,
+    last_blocked=False,
+    example="What do you see?",
 )
 FOLLOWUP = (
     "[ACTION_FOLLOWUP type=process tool=send_message mode=live query='talk to the agent']: "
@@ -119,12 +125,30 @@ def test_an_agent_with_every_tool_sees_unchanged_guidance() -> None:
         assert build_tool_guidance_extended(mode_name=mode, tools=every) == build_tool_guidance_extended(mode_name=mode)
 
 
-def test_the_narrators_stall_and_diversity_inputs_label_the_agents_tools() -> None:
-    from maxim.simulation import stall_detector  # the detector's module since the orchestrator's §11 slice
+def test_the_narrators_stall_and_diversity_inputs_name_none_of_the_agents_tools() -> None:
+    """#1592 replaced labelling ("ITS tool, not yours") with naming none: a labelled name still primed a weak
+    narrator (Exp 63b smoke). Every text the detector writes for the narrator, over the smoke's own agent tools."""
+    from maxim.simulation.stall_detector import diversity_checkpoint_text, stall_nudge_text
 
-    src = inspect.getsource(stall_detector)
-    assert "the agent under test's last action was" in src
-    assert "the agent under test's tools so far (not yours)" in src
+    agent = ["sense_tools", "base_humanoid_turn_left", "respond", "memory_recall", "say"]
+    actions = [SimpleNamespace(tool_name=t, blocked=i % 2 == 0) for i, t in enumerate(agent)]
+    texts = [diversity_checkpoint_text(3, actions)] + [
+        stall_nudge_text(
+            nudge_count=count,
+            ping_pong=ping_pong,
+            orch_actions_since_turn=6,
+            stall_duration_s=90,
+            total_actions=len(actions),
+            last_blocked=True,
+            example="What do you see?",
+        )
+        for count in (1, 3)
+        for ping_pong in (False, True)
+    ]
+    roster = _narrator_roster()
+    for text in texts:
+        assert _mentions(text, roster) == [] and not any(t in text for t in agent), text
+        assert "send_message" in text
 
 
 # ── The real tool universe and the narrator's real roster ─────────────────────

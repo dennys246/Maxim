@@ -14,15 +14,23 @@ Every module that previously did ``Path("data/util/foo.json")`` should
 use one of these helpers instead so that ``pip install pymaxim`` works
 outside a repo checkout.
 
+It also owns the one system path Maxim reads outside its own data:
+:func:`cloudflared_system_dir` (the user-side ``~/.cloudflared/config.yml``
+is ``tunnel/config.py::CONFIG_PATH``).
+
 Environment variables:
     MAXIM_DATA_HOME  Override user data directory (default ``~/.maxim``)
+    MAXIM_CLOUDFLARED_SYSTEM_DIR  Override the system cloudflared config directory (default ``/etc/cloudflared``)
+    MAXIM_LLM_SPAWN_RECORD_DIR  Override the LLM spawn-record directory (default ``<passwd home>/.maxim/run/llm_server``)
 """
 
 from __future__ import annotations
 
 import errno
+import logging
 import os
 import stat
+import sys
 from pathlib import Path
 
 from maxim.exceptions import ConfigDirUnreadable
@@ -59,6 +67,81 @@ def _unreadable_config_message(path: Path, err: OSError) -> str:
         return msg
     blocker = next((d for d in reversed(path.parents) if not os.access(d, os.X_OK)), path.parent)
     return f"{msg}; {blocker} is not accessible: chmod 700 {blocker}"
+
+
+_DEFAULT_CLOUDFLARED_SYSTEM_DIR = Path("/etc/cloudflared")
+
+
+def cloudflared_system_dir() -> Path:
+    """The system cloudflared config directory: ``/etc/cloudflared``, or ``$MAXIM_CLOUDFLARED_SYSTEM_DIR``.
+
+    The ONE reader of that path. Role detection's rank 4 (``runtime/role.py``), the tunnel spawner
+    (``tunnel/daemon_spawner.py``) and the doctor's sync check (``doctor/checks.py``) all go through it. Read on each
+    call, never cached, so the override reaches every reader, including a child process that inherits it.
+    ``tests/conftest.py`` points the override into its isolation root at import, beside ``HOME``: a leader dev box's
+    real tunnel config otherwise made every role-dependent test resolve ``leader`` (2026-11-05). conftest also REBINDS
+    the module global ``_DEFAULT_CLOUDFLARED_SYSTEM_DIR`` to the same dir, so a test that strips the variable still
+    never reads ``/etc``: keep the default a module-level name read here at call time, never inlined or captured
+    (guard: ``tests/unit/test_cloudflared_system_dir_isolation.py``).
+
+    The override is meant to be an absolute path (conftest's always is); a relative one resolves against the working
+    directory at each read.
+    """
+    raw = os.environ.get("MAXIM_CLOUDFLARED_SYSTEM_DIR", "").strip()
+    return Path(raw).expanduser() if raw else _DEFAULT_CLOUDFLARED_SYSTEM_DIR
+
+
+# None: resolve from the passwd home at each call. tests/conftest.py rebinds it to its isolation dir.
+_DEFAULT_LLM_SPAWN_RECORD_DIR: Path | None = None
+_spawn_record_dir_error_logged = False
+
+
+def llm_spawn_record_dir() -> Path | None:
+    """Where maxim records the LLM servers it spawns: ``<passwd home>/.maxim/run/llm_server/``, or
+    ``$MAXIM_LLM_SPAWN_RECORD_DIR`` (#1344 PR 3b, ``runtime/llm_spawn_record.py``).
+
+    The ONE reader. It ignores ``HOME`` and ``MAXIM_DATA_HOME`` on purpose: a TCP port is box-wide, so a record that
+    followed a per-run data home would be invisible to the operator's ``maxim llm reap`` (design round 5 D1). The home
+    comes from ``pwd.getpwuid(os.getuid())``. None (no record is written, the command refuses) on native Windows, or
+    when the passwd entry is missing or its home is ``/`` or does not exist: never a fallback to ``HOME``; that case
+    logs one ERROR per process. ``tests/conftest.py`` exports the override into its isolation root and REBINDS
+    ``_DEFAULT_LLM_SPAWN_RECORD_DIR``, so a test that strips the variable never reaches the developer's real records:
+    keep the default a module-level name read here at call time (guard:
+    ``tests/unit/test_llm_spawn_record_dir_isolation.py``).
+    """
+    if sys.platform == "win32":  # first: the override never turns records on natively (no getuid, no pidfd)
+        return None
+    raw = os.environ.get("MAXIM_LLM_SPAWN_RECORD_DIR", "").strip()
+    if raw:
+        try:
+            return Path(raw).expanduser()
+        except RuntimeError as e:  # `~nosuchuser/...`: unusable, like a missing passwd home (never raise to a spawner)
+            _spawn_record_dir_unusable(f"MAXIM_LLM_SPAWN_RECORD_DIR={raw!r} cannot be expanded ({e})")
+            return None
+    if _DEFAULT_LLM_SPAWN_RECORD_DIR is not None:
+        return _DEFAULT_LLM_SPAWN_RECORD_DIR
+    import pwd
+
+    try:
+        pw_dir = pwd.getpwuid(os.getuid()).pw_dir
+    except KeyError:
+        pw_dir = ""
+    if not pw_dir or pw_dir == "/" or not os.path.isdir(pw_dir):
+        _spawn_record_dir_unusable(f"no usable passwd home for uid {os.getuid()} ({pw_dir!r})")
+        return None
+    return Path(pw_dir) / ".maxim" / "run" / "llm_server"
+
+
+def _spawn_record_dir_unusable(why: str) -> None:
+    """Log, once per process, that LLM spawn records are off and why."""
+    global _spawn_record_dir_error_logged
+    if not _spawn_record_dir_error_logged:
+        _spawn_record_dir_error_logged = True
+        logging.getLogger(__name__).error(
+            "%s: LLM spawn records are off, so `maxim llm reap` cannot clean up a server this process spawns. Set "
+            "MAXIM_LLM_SPAWN_RECORD_DIR to a usable directory to enable them.",
+            why,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +273,24 @@ def agent_data(agent_id: str) -> Path:
     p = data_home() / _AGENTS / agent_id
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+# The agent loop's per-run state snapshots (#1264): their OWN root, outside ``agents/`` (which holds created-agent
+# homes, ``maxim.create.agent`` / ``load.agent`` / ``resolve_run_dir``'s "agent" kind) and outside every agent home.
+# ``--clear-memory`` clears it as a global path (``cli_utils._GLOBAL_PATHS["runtime_state"]``).
+RUNTIME_STATE_DIR = "runtime_state"
+
+
+def loop_state_dir(agent_name: str, *, root: str | os.PathLike[str] | None = None) -> Path:
+    """A loop's runtime-state directory — ``<root or data_home()>/runtime_state/<agent_name>/`` (#1264).
+
+    ``agent_name`` is ``runtime/tool_dispatch.safe_agent_name(agent)`` (already one safe path segment). ``root`` is a
+    data-home-shaped root a caller puts the state under instead of the data home (a sim's sandbox, a harness AUT's
+    own home). Creates nothing: ``runtime/loop_state.claim_state_path`` makes the directory and the file, so a
+    failure to create them is reported there, by the loop.
+    """
+    base = Path(root) if root is not None else data_home()
+    return base / RUNTIME_STATE_DIR / agent_name
 
 
 def benchmarks_dir() -> Path:

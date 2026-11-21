@@ -39,6 +39,7 @@ from maxim.models.language.types import (
     BackendAuthFailed,
     BackendModelMissing,
     BackendInferenceBroken,
+    BackendContextOverflow,
 )
 from maxim.models.language.cloud_dispatch import (
     MODEL_DOWNGRADE_MAP as _MODEL_DOWNGRADE_MAP,
@@ -52,6 +53,16 @@ from maxim.models.language.cloud_dispatch import (
 )
 
 _SYSTEM_PLAIN_TEXT = "You are a helpful assistant. Reply in plain text, concisely."
+
+# The provider types the router builds a ``_LlamaCppBackend`` for, after ``LLMRouter._provider_type``'s
+# normalisation. ``models/download.py::router_model_problem`` reads the same table to decide whether a router loads a
+# local GGUF.
+LLAMA_CPP_PROVIDER_TYPES: tuple[str, ...] = ("llama", "llama_cpp", "llamacpp")
+
+
+def normalize_provider_type(raw: object) -> str:
+    """A backend/provider type as the router compares it: stripped, lower-cased, ``-`` as ``_``."""
+    return str(raw or "").strip().lower().replace("-", "_")
 
 
 def _inference_lock_timeout_s() -> float:
@@ -148,9 +159,8 @@ def _neutralize_stray_frame_markers(text: str) -> str:
 
 
 # The in-process provider types: the only lanes that run under the offline latch (``_refuse_offline_lanes``).
-_LLAMA_TYPES = ("llama", "llama_cpp", "llamacpp")
 _TORCH_TYPES = ("pytorch", "torch", "transformers", "huggingface", "hf")
-_IN_PROCESS_TYPES = frozenset(_LLAMA_TYPES + _TORCH_TYPES)
+_IN_PROCESS_TYPES = frozenset(LLAMA_CPP_PROVIDER_TYPES + _TORCH_TYPES)
 
 
 class LLMRouter:
@@ -163,6 +173,9 @@ class LLMRouter:
 
     # Sentinel value to distinguish "init failed" from "not yet initialized"
     _INIT_FAILED = object()
+    # Read by wait_ready/is_ready/_get_backend_for_provider; a class default so a router built without __init__
+    # (LLMRouter.__new__, as some tests and stand-ins do) reads as not unloaded (#1657).
+    _unloaded: bool = False
 
     def __init__(
         self,
@@ -179,6 +192,9 @@ class LLMRouter:
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
         self._backend_lock = threading.Lock()
+        self._unloaded = False  # set by unload() (#1657): this router builds no backend after it
+        self._warmups_running = 0  # warmup threads not yet finished (#1657)
+        self._deferred_release: list[Any] = []  # backends unload() left to the last running warmup to release
         self._inference_lock = threading.Lock()  # Serializes inference calls (llama-cpp not thread-safe)
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
@@ -365,7 +381,7 @@ class LLMRouter:
 
     def _provider_type(self, provider_cfg: dict[str, Any]) -> str:
         raw = provider_cfg.get("type") or provider_cfg.get("backend") or self.cfg.backend
-        return str(raw or "").strip().lower().replace("-", "_")
+        return normalize_provider_type(raw)
 
     def _provider_is_cloud(self, provider_cfg: dict[str, Any]) -> bool:
         provider_type = self._provider_type(provider_cfg)
@@ -417,6 +433,8 @@ class LLMRouter:
         return self._provider_is_cloud(provider_cfg)
 
     def _get_backend_for_provider(self, provider_key: str) -> Any | None:
+        if self._unloaded:
+            return None
         backend = self._backends.get(provider_key)
         if backend is not None:
             return None if backend is LLMRouter._INIT_FAILED else backend
@@ -427,7 +445,7 @@ class LLMRouter:
             _offline.refuse("router[backend]", f"{provider_key} ({provider_type}) is not in-process")
 
         # Local backends
-        if provider_type in _LLAMA_TYPES:
+        if provider_type in LLAMA_CPP_PROVIDER_TYPES:
             cfg = self._build_provider_config(provider_cfg)
             backend = _LlamaCppBackend(cfg)
         elif provider_type in _TORCH_TYPES:
@@ -484,6 +502,11 @@ class LLMRouter:
                 backend = LLMRouter._INIT_FAILED
 
         self._backends[provider_key] = backend
+        if self._unloaded and self._backends.pop(provider_key, None) is backend:
+            # unload() ran while this backend was being built (a call outside _backend_lock): unload()'s snapshot
+            # missed it, so it is released here instead (#1657). The pop makes the release happen exactly once.
+            self._release_backends([backend])
+            return None
         return None if backend is LLMRouter._INIT_FAILED else backend
 
     def _build_provider_config(self, provider_cfg: dict[str, Any]) -> LLMConfig:
@@ -1534,18 +1557,9 @@ class LLMRouter:
             self._maybe_schedule_auto_drain(provider_key, "timeout")
             return "", None, "failed"
         except BackendDown as e:
-            http_status = getattr(e, "status", None)
-            self._note_provider_failure(
-                provider_key,
-                f"down_{http_status}"[:200] if http_status is not None else "down",
-            )
-            self._record_attempt_outcome(
-                provider_key,
-                outcome="down",
-                extra={"http_status": http_status},
-            )
-            self._maybe_schedule_auto_drain(provider_key, "down")
-            return "", None, "failed"
+            return self._note_provider_down(provider_key, e)
+        except BackendContextOverflow as e:
+            return self._note_context_overflow(provider_key, e)
         except BackendError as e:
             # Unmapped BackendError subclass or generic base. Records as
             # generic_backend_error (still typed, still actionable — the
@@ -1575,6 +1589,59 @@ class LLMRouter:
         self._note_provider_failure(provider_key, "call_failed")
         self._record_attempt_outcome(provider_key, outcome="empty_response")
         self._maybe_schedule_auto_drain(provider_key, "empty_response")
+        return "", None, "failed"
+
+    def _note_provider_down(self, provider_key: str, e: BackendDown) -> tuple[str, None, str]:
+        """``_try_provider``'s :class:`BackendDown` branch: the exponential cooldown, the attempt, a drain check."""
+        http_status = getattr(e, "status", None)
+        self._note_provider_failure(
+            provider_key,
+            f"down_{http_status}"[:200] if http_status is not None else "down",
+        )
+        self._record_attempt_outcome(
+            provider_key,
+            outcome="down",
+            extra={"http_status": http_status},
+        )
+        self._maybe_schedule_auto_drain(provider_key, "down")
+        return "", None, "failed"
+
+    def _note_context_overflow(self, provider_key: str, e: BackendContextOverflow) -> tuple[str, None, str]:
+        """``_try_provider``'s :class:`BackendContextOverflow` branch (#1369): the REQUEST failed, the provider is fine.
+
+        No cooldown, no failure count and no drain check, so the next, smaller prompt still reaches this provider;
+        the dispatch still moves on, because a provider with a larger window may serve this one. Loud, with the
+        numbers: a prompt the budgeter let through that the server refuses usually means the two disagree on n_ctx,
+        so the router's own belief (``believed_n_ctx``) is logged beside the server's window. ``last_error`` is set
+        (and only that) so a run's report.json names the provider when the overflow was its last outcome
+        (``simulation/report.py::_provider_failures``; a later success clears it, as for every failure class).
+        """
+        requested = "?" if e.requested_tokens is None else str(e.requested_tokens)
+        window = "?" if e.context_window is None else str(e.context_window)
+        believed = self._provider_n_ctx(self._providers.get(provider_key, {}))
+        warn(
+            "LLM prompt overflows %s's context window: requested %s tokens, server window %s, router belief %s "
+            "(HTTP %s). Not cooling the provider down. %s",
+            provider_key,
+            requested,
+            window,
+            believed,
+            e.status,
+            e.fix_hint,
+        )
+        state = self._provider_states.get(provider_key)
+        if state is not None and not self._is_cancelled():
+            state.last_error = f"context_overflow: requested {requested}, window {window}"
+        self._record_attempt_outcome(
+            provider_key,
+            outcome="context_overflow",
+            extra={
+                "http_status": e.status,
+                "requested_tokens": e.requested_tokens,
+                "context_window": e.context_window,
+                "believed_n_ctx": believed,
+            },
+        )
         return "", None, "failed"
 
     def _check_provider_budget(
@@ -1890,71 +1957,90 @@ class LLMRouter:
         Call this after other initialization is complete. The model loading
         happens in a background thread so it doesn't block startup.
 
-        Returns True if warmup was initiated, False if LLM is disabled. Under the offline latch a router with a lane
-        that is not in-process refuses here, in the caller's thread, not in the warmup thread (#1315 item 10a).
+        Returns True if warmup was initiated, False if LLM is disabled or the router was unloaded. Under the offline
+        latch a router with a lane that is not in-process refuses here, in the caller's thread, not in the warmup
+        thread (#1315 item 10a).
         """
         self._refuse_offline_lanes("router[warmup]")
         if not self.enabled():
             return False
+        with self._backend_lock:
+            if self._unloaded:
+                return False
+            self._warmups_running += 1
 
         import threading
-        import time
 
         def _warmup_thread():
             from maxim.exceptions import SECURITY_REFUSALS
 
-            success = False
             try:
-                start_time = time.time()
-                log_agentic(
-                    "llm_router",
-                    "startup",
-                    {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]},
-                )
-                backend = self._get_backend()
-                if backend is not None and hasattr(backend, "warmup"):
-                    info("Warming up LLM backend...")
-                    if backend.warmup():
-                        elapsed = time.time() - start_time
-                        info("LLM model loaded and ready")
-                        log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
-                        success = True
-                    else:
-                        warn("LLM warmup failed")
-                        log_agentic(
-                            "llm_router",
-                            "error",
-                            {"context": "warmup", "error": "warmup returned false"},
-                            level="WARNING",
-                        )
-                elif backend is not None:
-                    # Backend doesn't have warmup, try a minimal completion to load
-                    info("Warming up LLM backend (no warmup method, using test prompt)...")
-                    try:
-                        backend.complete(
-                            prompt="Hello",
-                            max_tokens=1,
-                            temperature=0.0,
-                            stop=(),
-                        )
-                        elapsed = time.time() - start_time
-                        info("LLM model loaded and ready")
-                        log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
-                        success = True
-                    except Exception as e:
-                        warn("LLM warmup failed: %s", e)
-                        log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+                self._warm_default_backend()
             except SECURITY_REFUSALS as refusal:
                 # A remembered offline refusal (a model it may not fetch, #1315 item 10b): booked once, said here;
-                # the next dispatch re-raises it typed. Never a dead thread that leaves wait_ready blocking.
+                # the next dispatch re-raises it typed. The finally still sets the ready event.
+                self._warmup_failed = True
                 warn("LLM warmup refused: %s", refusal)
+            except Exception as e:  # a raising warmup is a failed one, never "ready" (it used to kill the thread)
+                self._warmup_failed = True
+                warn("LLM warmup failed: %s", e)
+                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
             finally:
-                self._warmup_failed = not success
+                with self._backend_lock:
+                    self._warmups_running -= 1
+                    deferred = self._deferred_release if self._warmups_running == 0 else []
+                    if deferred:
+                        self._deferred_release = []
+                # unload() left the backend being warmed to the last warmup, so unload() never waits on a load (#1657).
+                self._release_backends(deferred)
                 self._ready_event.set()
 
         thread = threading.Thread(target=_warmup_thread, daemon=True, name="LLMWarmup")
         thread.start()
         return True
+
+    def _warm_default_backend(self) -> Any | None:
+        """The warmup thread's body: load the default backend; sets ``_warmup_failed``. Returns the backend it warmed
+        (or tried to)."""
+        import time
+
+        start_time = time.time()
+        log_agentic(
+            "llm_router", "startup", {"status": "loading", "model": str(getattr(self.cfg, "model_path", ""))[-50:]}
+        )
+        backend = self._get_backend()
+        success = False
+        if backend is not None and hasattr(backend, "warmup"):
+            info("Warming up LLM backend...")
+            if backend.warmup():
+                elapsed = time.time() - start_time
+                info("LLM model loaded and ready")
+                log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                success = True
+            else:
+                warn("LLM warmup failed")
+                log_agentic(
+                    "llm_router", "error", {"context": "warmup", "error": "warmup returned false"}, level="WARNING"
+                )
+        elif backend is not None:
+            # Backend doesn't have warmup, try a minimal completion to load
+            info("Warming up LLM backend (no warmup method, using test prompt)...")
+            try:
+                backend.complete(
+                    prompt="Hello",
+                    max_tokens=1,
+                    temperature=0.0,
+                    stop=(),
+                )
+                elapsed = time.time() - start_time
+                info("LLM model loaded and ready")
+                log_agentic("llm_router", "startup", {"status": "ready", "load_time_s": round(elapsed, 1)})
+                success = True
+            except Exception as e:
+                warn("LLM warmup failed: %s", e)
+                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+        self._warmup_failed = not success
+        return backend
 
     def wait_ready(self, timeout: float = 120.0) -> bool:
         """Block until the LLM is loaded and ready, or timeout expires.
@@ -1973,22 +2059,64 @@ class LLMRouter:
         """
         from maxim.utils.cancellation import yield_requested
 
-        if not self.enabled():
+        if not self.enabled() or self._unloaded:
             return False
         end = time.monotonic() + timeout
         while not self._ready_event.wait(timeout=max(0.0, min(0.5, end - time.monotonic()))):
+            if self._unloaded:
+                return False
             if yield_requested():
                 info("LLM wait_ready stopped: a process stop was requested")
                 return False
             if time.monotonic() >= end:
                 warn("LLM wait_ready timed out after %.1fs", timeout)
                 return False
-        return not self._warmup_failed
+        return not self._warmup_failed and not self._unloaded
 
     @property
     def is_ready(self) -> bool:
-        """Check if the LLM has finished loading (non-blocking)."""
-        return self._ready_event.is_set() and not self._warmup_failed
+        """Check if the LLM has finished loading (non-blocking). False once the router is unloaded."""
+        return self._ready_event.is_set() and not self._warmup_failed and not self._unloaded
+
+    def unload(self) -> None:
+        """Release every backend this router built, through each backend's own ``unload()`` (#1657).
+
+        For the owner of a router it is done with: ``--auto-curate``'s short-lived router, foundry's on a load
+        timeout, and the lane manager's routers at runtime shutdown (``LaneBackendManager.unload_all``), so an
+        in-process model is not still resident when the run loads another. Call it once the router is idle (no call
+        in progress). Calling it twice is harmless. Afterwards the router builds no backend, warms nothing and is
+        never ready, so callers take their fallback.
+
+        It never waits on a model load: the backend a running warmup is loading is left to that warmup, which
+        releases it when its load ends (or fails). A backend whose ``unload()`` raises is logged, and the others are
+        still released. A token counter already taken from this router (``get_token_counter``) holds the llama.cpp
+        model itself and keeps it alive.
+        """
+        with self._backend_lock:
+            self._unloaded = True
+            built = [self._backend, *self._backends.values()]
+            if self._warmups_running and self._backend is not None and self._backend is not LLMRouter._INIT_FAILED:
+                self._deferred_release.append(self._backend)
+            deferred = {id(b) for b in self._deferred_release}
+            self._backend = LLMRouter._INIT_FAILED
+            self._backends.clear()
+        self._release_backends([b for b in built if id(b) not in deferred])
+
+    @staticmethod
+    def _release_backends(backends: list[Any]) -> None:
+        """Call each distinct backend's own ``unload()`` (when it has one); log one that raises and go on (#1657)."""
+        seen: set[int] = set()
+        for backend in backends:
+            if backend is None or backend is LLMRouter._INIT_FAILED or id(backend) in seen:
+                continue
+            seen.add(id(backend))
+            release = getattr(backend, "unload", None)
+            if not callable(release):
+                continue
+            try:
+                release()
+            except Exception as e:
+                warn("LLM backend unload failed (%s): %s", type(backend).__name__, e)
 
     def _get_backend(self) -> Any | None:
         # Fast path: already initialized
@@ -2150,14 +2278,18 @@ Return JSON exactly like:
         # Stage 1: Get plain text answer (easier for small models)
         # Stage 2: Wrap in JSON programmatically
         if prompt.startswith("ANSWER_ONLY|"):
-            question = prompt[len("ANSWER_ONLY|") :].strip()
+            # A clock block, a blank line, then the question (PromptBuilder.build_prompt, #1689); or a bare question.
+            context, sep, question = prompt[len("ANSWER_ONLY|") :].strip().partition("\n\n")
+            if not sep:
+                context, question = "", context
             return self._generate_answer_only(
                 backend,
-                question,
+                question.strip(),
                 temperature,
                 max_tokens,
                 provider_hint=provider_hint,
                 request_context=request_context,
+                context=context.strip(),
             )
 
         # Tool-aware prompt with full context
@@ -2216,8 +2348,10 @@ Return JSON exactly like:
         *,
         provider_hint: str | None = None,
         request_context: dict[str, Any] | None = None,
+        context: str = "",
     ) -> dict[str, Any] | None:
-        """Two-stage answer generation: get plain text, then wrap in JSON.
+        """Two-stage answer generation: get plain text, then wrap in JSON. ``context`` (the builder's clock line,
+        #1689) goes before the question.
 
         This approach works better with small local models that struggle
         with JSON formatting instructions.
@@ -2228,7 +2362,8 @@ Return JSON exactly like:
             "Answer the user's question directly and concisely. "
             "Give only the answer, no explanations or preamble."
         )
-        user = f"Question: {question}\nAnswer:"
+        question_line = f"Question: {question}\nAnswer:"
+        user = f"{context}\n\n{question_line}" if context else question_line
         text, usage = self._complete_text(
             system,
             user,

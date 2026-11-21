@@ -25,8 +25,11 @@ import argparse
 import logging
 import os
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from maxim import _offline
 
@@ -399,7 +402,7 @@ def download_file(
             tmp_path,
             progress_hook=_progress_hook,
             # Large models can take 10+ minutes over slow links — generous budget.
-            timeout=_http.TimeoutPolicy(connect_s=10.0, read_s=300.0, total_s=3600.0),
+            timeout=_http.TimeoutPolicy(connect_s=10.0, read_s=300.0, pool_s=3600.0),
         )
     except BaseException as e:
         # BaseException catches KeyboardInterrupt (which Exception doesn't)
@@ -538,6 +541,83 @@ def _soft_budget_gb() -> float | None:
         return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Decline memory (#1396, owner decision 2026-11-12): one run asks a question once
+# ─────────────────────────────────────────────────────────────────────────────
+# Module state under a lock, not a contextvar: Python threads do not inherit the caller's context, and the scope is
+# opened on the main thread while gates may be reached from others. Since #1658 only the main thread asks
+# (consent_interactive), so only its answers are remembered; a gate that does not ask neither reads nor writes the
+# memory. Only an armed scope
+# remembers; the CLI arms one per run (cli.py::_main_guarded opens it unarmed, _main_impl arms it after the subcommand
+# dispatch) and per bare-maxim menu choice (cli.py::_run_menu_choice). The library and every subcommand never arm one,
+# so they ask every time; the console's talk never asks.
+_DECLINE_LOCK = threading.RLock()
+_decline_depth = 0  # open scopes
+_decline_armed = False  # the innermost scope remembers
+_declined: set[str] = set()  # profiles the innermost scope's run answered "no" (or let time out) for
+
+
+@contextmanager
+def download_decline_scope(*, armed: bool) -> Iterator[None]:
+    """One run's decline memory: entry saves the outer state and starts empty (armed or not); exit restores it.
+
+    A stack, not a clear: an inner scope (a menu choice inside the CLI's run) neither inherits the outer "no"s nor
+    wipes them, and an exception or Ctrl+C restores the outer state too. One global stack: open and exit scopes on
+    one thread, last in first out (the CLI's two sites, both on the main thread; the scope pin in
+    tests/unit/test_download_decline_memory_1396.py keeps it so). Any thread may ASK inside a scope.
+    """
+    global _decline_depth, _decline_armed, _declined
+    with _DECLINE_LOCK:
+        saved = (_decline_armed, _declined)
+        _decline_depth += 1
+        _decline_armed, _declined = armed, set()
+    try:
+        yield
+    finally:
+        with _DECLINE_LOCK:
+            _decline_depth = max(0, _decline_depth - 1)  # a scope outliving a test reset never goes negative
+            _decline_armed, _declined = saved
+
+
+def arm_download_decline_memory() -> None:
+    """Arm the innermost open :func:`download_decline_scope`: from here, a "no" at the prompt is not asked again.
+
+    With no scope open, a WARNING and no effect: nothing would ever clear the memory.
+    """
+    global _decline_armed
+    with _DECLINE_LOCK:
+        if _decline_depth <= 0:
+            logger.warning("arm_download_decline_memory: no download decline scope is open; nothing remembered")
+            return
+        _decline_armed = True
+
+
+def _decline_memory_token() -> set[str] | None:
+    """The asking scope's set, taken before the prompt: None when no armed scope is open."""
+    with _DECLINE_LOCK:
+        return _declined if _decline_armed else None
+
+
+def _remember_decline(profile_name: str, token: set[str] | None) -> None:
+    """Record a "no" in the scope that ASKED: if that scope exited while the prompt waited (a thread still at the
+    prompt), the answer belongs to no current run and is dropped rather than landing in the outer scope."""
+    with _DECLINE_LOCK:
+        if token is not None and token is _declined:
+            token.add(profile_name)
+
+
+def _declined_earlier(profile_name: str) -> bool:
+    with _DECLINE_LOCK:
+        return _decline_armed and profile_name in _declined
+
+
+def _reset_decline_memory_for_tests() -> None:
+    """Back to no scope open (tests/conftest.py's autouse reset)."""
+    global _decline_depth, _decline_armed, _declined
+    with _DECLINE_LOCK:
+        _decline_depth, _decline_armed, _declined = 0, False, set()
+
+
 def ensure_available(
     profile_name: str,
     *,
@@ -558,9 +638,14 @@ def ensure_available(
         auto: Override the env-derived auto-download flag. ``True`` skips
             the prompt unconditionally; ``None`` (default) reads
             ``MAXIM_AUTO_DOWNLOAD_MODELS`` via :func:`_auto_download_enabled`.
-        interactive: Override the tty check. ``None`` (default) checks
-            ``sys.stdin.isatty()``.
+        interactive: Override the tty check. ``None`` (default) asks only where
+            :func:`consent_interactive` allows (the main thread, no running
+            event loop), and then checks ``sys.stdin.isatty()``; elsewhere it
+            never asks (#1658). ``False`` never asks; ``True`` forces the ask.
         logger: Logger for warnings; ``print`` for user-facing messages.
+
+    Inside an armed :func:`download_decline_scope` (one CLI run), an answer of "no" or a timeout at the prompt is
+    remembered: a later call for the same profile returns False without asking and prints how to grant it (#1396).
 
     Returns:
         True iff the file is on disk after this call (already-present or
@@ -570,7 +655,7 @@ def ensure_available(
     import sys
 
     from maxim.runtime.llm_server import profile_has_local_file
-    from maxim.utils.process_lock import LockContended, file_lock
+    from maxim.utils.process_lock import LockContended, LockUnavailable, file_lock
     from maxim.utils.paths import data_home
     from maxim.utils.storage import can_download, format_report, report_storage
 
@@ -613,16 +698,29 @@ def ensure_available(
         print("  raise MAXIM_DATA_BUDGET_GB and retry.\n")
         return False
 
+    if interactive is None:
+        interactive = consent_interactive()  # the default asks only where the rule allows (#1658 review round)
     auto_flag = _auto_download_enabled() if auto is None else bool(auto)
     is_tty = (sys.stdin.isatty() if interactive is None else bool(interactive)) if sys.stdin else False
 
     if not auto_flag:
         if is_tty:
+            if _declined_earlier(profile_name):  # an answer this run already gave (#1396): not asked twice
+                print(
+                    f"\n  '{profile_name}' was declined earlier in this run, so it is not asked again. To download it,\n"
+                    f"  from another terminal (a later check in this run, if any, picks the file up):\n"
+                    f"    python -m maxim.models.download --llm {profile_name}\n"
+                    f"  From the next run: --auto-download, or `maxim config set llm.auto_download true`.\n"
+                )
+                return False
             question = (
                 f"\n  Maxim wants to download '{profile_name}' (~{size_gb:.1f} GB) "
                 f"from HuggingFace.\n  Disk: {reason}\n  Proceed? [y/N] (30s timeout) "
             )
+            asking_scope = _decline_memory_token()
             answer = _prompt_yes_no_with_timeout(question, timeout_s=30.0)
+            if not answer:
+                _remember_decline(profile_name, asking_scope)  # a "no" or a timeout; a no-op outside an armed scope
             if answer is None:
                 print(
                     f"\n  Auto-download cancelled (timeout). Run with --auto-download "
@@ -675,6 +773,134 @@ def ensure_available(
             f"or kill it and retry.\n  (lock file: {lock_path})\n"
         )
         return False
+    except LockUnavailable as e:
+        print(
+            f"\n  Cannot lock the download ({e.strerror}): the data home's filesystem does not support file locks.\n"
+            f"  Keep ~/.maxim on a local filesystem (not NFS without a lock daemon).\n  (lock file: {lock_path})\n"
+        )
+        return False
+
+
+def consent_interactive(interactive: Literal[False] | None = None) -> Literal[False] | None:
+    """Whether a consent gate may ask at a terminal: the one rule (#1658, owner decision OD-G).
+
+    ``False``: never. ``None`` (the default): ask (where stdin is a terminal) only on the main thread outside a running
+    event loop, the operator's own startup; anywhere else never, because a prompt there (a console talk request, the
+    robot's wake-word rebuild, a campaign worker, an ``async def`` route on uvicorn's main-thread loop) blocks on a
+    terminal nobody may be watching and can read a line typed for something else as consent. There the gate logs how
+    to grant the download instead. Anything else raises ``TypeError``: no caller forces a prompt
+    (``ensure_available(interactive=True)`` would ask even when stdin is not a terminal). :func:`ensure_available`
+    applies this to its own default, and the preflight in ``build_primary_router``, ``build_run_router``'s check,
+    ``ExecAgent`` and the CLI's local router decide here; a pin test refuses a consent site that asks
+    ``threading.main_thread()`` itself.
+    """
+    import asyncio
+
+    if interactive is False:
+        return False
+    if interactive is not None:
+        raise TypeError(f"interactive must be False or None, not {interactive!r}")
+    if threading.current_thread() is not threading.main_thread():
+        return False
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return None  # the main thread, no loop running: the operator's startup
+    return False  # a coroutine on the main thread's loop (uvicorn's): a request, not the startup
+
+
+def router_model_problem(
+    llm_router: Any,
+    *,
+    interactive: bool | None = None,
+    declined: frozenset[str] | set[str] = frozenset(),
+    logger: Any | None = None,
+) -> str | None:
+    """Why a built router's local model is unusable, after asking the consent gate for it, or None when it is usable.
+
+    The one router-level check (#1343, #1396), moved here from ``cli.py`` (#1396 bullet 2) so every router build
+    (:func:`consented_router`, ``runtime/lane_backends.py::build_run_router``) reaches it without importing the CLI.
+    None when the router loads no local GGUF (its resolved backend is not llama_cpp: ``load_llm_config`` fills a
+    ``.gguf`` ``model_path`` even for a cloud backend, so the path alone cannot say), when its file is present, when a
+    provider that loads no local GGUF (a ``--cloud-fallback`` tail, a peer) is among its providers while the local
+    file is missing (the router skips a provider that fails to load, so the run keeps its LLM, as before the check),
+    or when the gate put the profile's file on disk and the router's own ``model_path`` now exists.
+
+    Otherwise the cause, one of ``LocalModelUnavailable.CAUSES``: ``NOT_DOWNLOADED`` (the gate did not put a registry
+    model on disk, or this build's preflight already left that profile missing: a profile in ``declined`` is not asked
+    about again), ``NOT_IN_REGISTRY`` (no registry file to download, so it is placed by hand; the gate is still asked,
+    and says so), ``MODEL_PATH_MISSING`` (the registry file is present, but the router loads its own ``model_path``,
+    from llm.json or the quantization it is built from, which does not exist). ``interactive`` goes to
+    :func:`ensure_available` (``False``: never ask, for a path off the main thread or mid-run). This never prints
+    (#1396 bullet 2 review round): each cause is logged, and a CLI caller prints its own line.
+    """
+    from maxim.models.language.router import LLAMA_CPP_PROVIDER_TYPES, normalize_provider_type
+    from maxim.models.language.types import LocalModelUnavailable as Unavailable
+
+    cfg = getattr(llm_router, "cfg", None)
+    backend = getattr(cfg, "backend", "") or "llama_cpp"
+    if normalize_provider_type(backend) not in LLAMA_CPP_PROVIDER_TYPES:
+        return None  # cloud, transformers, a peer: no local GGUF to load (load_llm_config fills model_path anyway)
+    model_path = str(getattr(cfg, "model_path", "")).strip()
+    if not model_path or os.path.exists(model_path):
+        return None
+    log = logger if logger is not None else logging.getLogger(__name__)
+    if _another_provider_serves(getattr(cfg, "providers", None), backend, LLAMA_CPP_PROVIDER_TYPES):
+        log.info("Local model %s is not on disk; the router's non-local provider serves instead", model_path)
+        return None
+    profile = str(getattr(cfg, "profile", "") or getattr(cfg, "model_base", "")).strip()
+    if not profile:
+        log.warning("The router's model %s is not on disk and names no profile to download", model_path)
+        return Unavailable.NOT_IN_REGISTRY
+    if profile in declined:
+        log.info("Model %s was declined earlier in this build; not asking again", profile)
+        return Unavailable.NOT_DOWNLOADED
+    log.info("Model not found at %s — checking the download gate for %s", model_path, profile)
+    if not ensure_available(profile, interactive=interactive, logger=log):
+        return Unavailable.NOT_DOWNLOADED if profile in llm_models() else Unavailable.NOT_IN_REGISTRY
+    if not os.path.exists(model_path):
+        log.warning(
+            "The router's model_path %s does not exist; point it at the downloaded %s file", model_path, profile
+        )
+        return Unavailable.MODEL_PATH_MISSING
+    return None
+
+
+def _another_provider_serves(providers: Any, backend: str, llama_types: tuple[str, ...]) -> bool:
+    """True when the router's providers include one that loads no local GGUF (a cloud or peer provider), so a missing
+    local file does not leave the router without a model (a ``--cloud-fallback`` tail; #1396 bullet 2 review round)."""
+    from maxim.models.language.router import normalize_provider_type
+
+    if not isinstance(providers, dict):
+        return False
+    for provider_cfg in providers.values():
+        raw = (provider_cfg.get("type") or provider_cfg.get("backend")) if isinstance(provider_cfg, dict) else None
+        if normalize_provider_type(raw or backend) not in llama_types:
+            return True
+    return False
+
+
+def consented_router(
+    llm_config: Any,
+    *,
+    interactive: bool | None = False,
+    declined: frozenset[str] | set[str] = frozenset(),
+    logger: Any | None = None,
+) -> tuple[Any | None, str | None]:
+    """An ``LLMRouter`` on ``llm_config`` whose local model is usable, or why not: ``(router, None)`` / ``(None, cause)``.
+
+    The one place a router is built outside a lane manager (#1396 bullet 2, the review round's D43 fold): the CLI's
+    foundry and ``--auto-curate`` router (``cli.py::_cli_local_router``, which asks at a terminal), ``ExecAgent``,
+    ``runtime/lane_backends.py::build_run_router``'s fallback, the benchmark's paper writer and offline scripts. No
+    lanes, no spawned server, no banner or decision record. ``interactive`` defaults to ``False`` (never ask: a missing
+    model downloads only with a standing grant); a caller that may ask passes :func:`consent_interactive`'s answer.
+    ``cause`` is one of ``LocalModelUnavailable.CAUSES``, for a caller that refuses the run, typed. Never prints.
+    """
+    from maxim.models.language.router import LLMRouter
+
+    router = LLMRouter(llm_config)
+    cause = router_model_problem(router, interactive=interactive, declined=declined, logger=logger)
+    return (router, None) if cause is None else (None, cause)
 
 
 def download_llm(
@@ -834,7 +1060,7 @@ def ensure_tts_voice(
     import sys
 
     from maxim.utils.paths import data_home
-    from maxim.utils.process_lock import LockContended, file_lock
+    from maxim.utils.process_lock import LockContended, LockUnavailable, file_lock
     from maxim.utils.storage import can_download
 
     info = TTS_MODELS.get(model_name)
@@ -885,6 +1111,13 @@ def ensure_tts_voice(
             return verified() or (download_tts(model_name, tts_dir) and verified())
     except LockContended:
         logger.warning("Another process is downloading TTS voice %s; try again shortly", model_name)
+        return False
+    except LockUnavailable as e:
+        logger.warning(
+            "Cannot lock the TTS voice %s download (%s): the data home's filesystem does not support file locks",
+            model_name,
+            e.strerror,
+        )
         return False
 
 

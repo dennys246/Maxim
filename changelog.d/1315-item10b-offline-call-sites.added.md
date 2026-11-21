@@ -15,4 +15,7 @@
 - **Refusals stay refusals**: a robot run or an NPC line stopped by an offline refusal reports it as a refusal (exit
   2), not a crash. A benchmark records a refused model (offline, or a leader refusal) as refused, not failed: it is
   not scored or ranked, the other models still run, and the run exits 2 (owner decision V26). `maxim doctor` keeps a
-  check's own rows and adds a "refused (offline)" row; each robot says so by name.
+  check's own rows and adds a "refused (offline)" row; each robot says so by name. `--auto-curate` and `--foundry`
+  with a model offline cannot run refuse (exit 2) instead of falling back to templates, and a leader boot refused
+  offline says so instead of reporting a port conflict. A model named by `maxim.run(model=)`, `--aut-model` or
+  research's `language_model` counts as chosen: offline it is refused by name, never swapped.

@@ -65,9 +65,11 @@ ANTENNA_LIMIT_RAD = math.radians(90.0)
 # bounded, the motor thread included (it logs and drops the command). The
 # lifecycle (wake, sleep) waits without a bound; the stop fence bounds it.
 MOTION_LOCK_WAIT_S = 25.0
-# The fresh readback's overall deadline (R1). Provisional; measured on the rig
-# before release (§12 item 3). Tunnel: an auto-tunnel or a manual one
-# (connection_mode localhost_only). The reads between chunks and after the last
+# The fresh readback's overall deadline (R1): the most a reference may age. Each
+# httpx phase may use all of it (#1706); the check after the read enforces it.
+# Provisional; measured on the rig before release (§12 item 3), and to be
+# re-measured on the robot under #1706 before any change to the number.
+# Tunnel: an auto-tunnel or a manual one (connection_mode localhost_only). The reads between chunks and after the last
 # chunk get one retry (owner, 2026-10-29); the first read of a move never does.
 FRESH_READ_DEADLINE_S = 0.1
 FRESH_READ_DEADLINE_TUNNEL_S = 0.3
@@ -297,6 +299,8 @@ class ReachyMiniController(RobotController):
         self._automatic_body_yaw = False
         self._tunnel_proc: subprocess.Popen | None = None
         self._mini: Any = None  # ReachyMini SDK instance
+        # True only when THIS connect released the daemon's media (#1704): disconnect re-acquires it.
+        self._media_released_by_connect = False
         self._video_stream: ReachyVideoStream | None = None
         self._audio_stream: ReachyAudioStream | None = None
         # The host connect() actually resolved + spoke to (mDNS-resolved IP,
@@ -587,6 +591,7 @@ class ReachyMiniController(RobotController):
                 # daemon from rotating the body behind the runtime.
                 automatic_body_yaw=False,
             )
+            self._media_released_by_connect = self._connect_released_media(status)
             self._assert_auto_yaw_off()
             self._probe_state_shape()
             self._clear_latch_after_connect()
@@ -645,6 +650,9 @@ class ReachyMiniController(RobotController):
 
         except Exception as e:
             logger.error("Failed to connect to Reachy Mini: %s", e)
+            # A connect that fails after its SDK handle released the media undoes the release (#1704).
+            if self._mini is not None and self._media_released_by_connect:
+                self._reacquire_media()
             self._stop_ssh_tunnel()
             self._update_state(
                 connection_state=RobotConnectionState.ERROR,
@@ -665,6 +673,53 @@ class ReachyMiniController(RobotController):
         """
         self._stop(by_sleep=True)
 
+    def _connect_released_media(self, status: dict | None) -> bool:
+        """Whether the connect that just built ``self._mini`` released the daemon's media (#1704).
+
+        SDK 1.8.3's ``no_media`` connect calls ``release_media()``, which is daemon-wide, and only the SDK's
+        ``__exit__`` re-acquires. This controller owns the re-acquire only for a release it caused: the SDK
+        handle reports ``media_released`` now, and the daemon reported ``media_released: false`` before the
+        connect. A release someone else made stays theirs; an unknown pre-connect state is reported, never
+        guessed. A release of this controller's whose re-acquire was never confirmed (a dead link on
+        ``reconnect()``) carries over, so the daemon's ``media_released: true`` before this connect is still
+        ours to undo.
+        """
+        if getattr(self._mini, "media_released", None) is not True:
+            return False
+        before = status.get("media_released") if isinstance(status, dict) else None
+        if before is False or (before is True and self._media_released_by_connect):
+            return True
+        if before is True:
+            logger.info("The daemon's media was released before this connect by another client: left to it (#1704).")
+        if before is None:
+            logger.warning(
+                "The daemon's media is released after this connect, but its state before the connect is "
+                "unknown (no /api/daemon/status read): this controller will not re-acquire it on disconnect. "
+                "If no other client released it, POST /api/media/acquire to restore the camera (#1704)."
+            )
+        return False
+
+    def _reacquire_media(self) -> None:
+        """Re-acquire the daemon's media this controller's connect released (#1704), as the SDK's ``__exit__`` does.
+
+        The SDK's ``acquire_media()`` POSTs ``/api/media/acquire`` (10 s timeout) and then rebuilds its media
+        manager (a ``get_status`` of up to 5 s), so on a dead link this can block a disconnect for ~15 s, once.
+        Ownership is cleared only when the SDK confirms the re-acquire; otherwise it carries over to the next
+        connect (``_connect_released_media``), so a failed attempt on ``reconnect()`` is retried, not lost.
+        """
+        try:
+            self._mini.acquire_media()
+        except Exception as e:  # noqa: BLE001 - any SDK/transport failure: report it; ownership carries over
+            logger.warning("acquire_media() raised during disconnect: %s", e)
+        if getattr(self._mini, "media_released", None) is False:
+            self._media_released_by_connect = False
+            return
+        logger.warning(
+            "The daemon's media could not be confirmed re-acquired on disconnect: if GET /api/daemon/status "
+            "shows media_released: true, every later camera client fails to connect until "
+            "POST /api/media/acquire (#1704)."
+        )
+
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
         # Latch (nothing new starts; connect clears it unless a sleep set it) and the stop
@@ -672,6 +727,9 @@ class ReachyMiniController(RobotController):
         self._stop(by_sleep=False)
         self._unsettled = None  # a reconnect starts from a fresh read (§12 item 18)
         self._auto_yaw_asserted = False
+        # Before the tunnel stops: under tunnel=True the SDK client's host is the tunnel's 127.0.0.1 end (#1704).
+        if self._mini is not None and self._media_released_by_connect:
+            self._reacquire_media()
         self._stop_ssh_tunnel()
         if self._mini is None:
             return
@@ -683,7 +741,9 @@ class ReachyMiniController(RobotController):
             if self._audio_stream:
                 self._audio_stream.stop()
 
-            # SDK doesn't have explicit disconnect, just release reference
+            # Drop the handle. Not mirrored from the SDK's __exit__: media_manager.close() (the media
+            # lifecycle owner closes it, after stopping the speaker, #1435) and client.disconnect()
+            # (the WS client closes in ReachyMini.__del__, once no other holder keeps the handle: #1712).
             self._mini = None
             self._video_stream = None
             self._audio_stream = None
@@ -871,9 +931,20 @@ class ReachyMiniController(RobotController):
         """``GET /api/state/full`` from the daemon this controller connected to; JSON or ``MotionRefused``.
 
         Through ``maxim_http.fetch_url`` (the ``_daemon_status`` pattern) with a
-        private address policy and a short per-phase timeout whose phases sum to
-        the deadline. The deadline is checked again on return. One read, no
-        retry: ``_fresh_readback(retry=True)`` owns the single retry.
+        private address policy. The deadline is the whole read's budget (#1706):
+        httpx has no whole-request timeout, so every phase it does time (the pool
+        wait, the connect, each write and each socket read) may use the whole
+        deadline, and the elapsed-time check on return is what bounds the
+        reference's age: a read that succeeds is never older than the deadline.
+
+        A read that FAILS can block for longer, because the phases run one after
+        another: about 3-4x the deadline before the first byte (pool, connect,
+        write, read; ~0.3-0.4 s on the LAN, ~0.9-1.2 s tunnelled, doubled by
+        ``_fresh_readback(retry=True)``), plus an untimed DNS lookup when the host
+        is a name, and a body trickled out in small pieces is bounded only by
+        each piece. Every such read is refused on return. Before #1706 each
+        phase got a third of the deadline (~1x before the first byte). One read,
+        no retry: ``_fresh_readback(retry=True)`` owns the single retry.
         """
         from maxim.utils import http as maxim_http
 
@@ -882,12 +953,11 @@ class ReachyMiniController(RobotController):
             raise MotionRefused("reference", "no daemon host to read the pose from")
         tunnelled = self._tunnel or self._connection_mode == "localhost_only"
         deadline = FRESH_READ_DEADLINE_TUNNEL_S if tunnelled else FRESH_READ_DEADLINE_S
-        phase = deadline / 3.0
         started = time.monotonic()
         try:
             resp = maxim_http.fetch_url(
                 f"http://{host}:8000/api/state/full?{_STATE_FULL_QUERY}",
-                timeout=maxim_http.TimeoutPolicy(connect_s=phase, read_s=phase, total_s=phase),
+                timeout=maxim_http.TimeoutPolicy(connect_s=deadline, read_s=deadline, pool_s=deadline),
                 address_policy="private",
             )
         except Exception as e:  # noqa: BLE001 - any transport failure is a missing reference

@@ -376,6 +376,23 @@ def test_open_engages_the_offline_latch_before_it_builds_anything(
     assert _offline.is_offline(), "a refused open() did not engage the latch first"
 
 
+def test_open_refuses_an_unsupported_platform_before_it_builds_anything(
+    monkeypatch: pytest.MonkeyPatch, dirs: SimpleNamespace
+) -> None:
+    """#1687: off POSIX the latch refuses, and open() reports it in the advisor's own refusal family, built nothing."""
+    from maxim import _offline
+
+    monkeypatch.setattr(_offline, "_PLATFORM_SUPPORTED", False)
+    built: list[str] = []
+    monkeypatch.setattr(_session, "_backend_factory", lambda *_a, **_k: built.append("backend"))
+    before = sorted(p.name for p in dirs.reports.iterdir()), sorted(p.name for p in dirs.home.iterdir())
+    with pytest.raises(AdvisorCompositionError, match="offline latch") as info:
+        advisor.open(home_dir=dirs.home, model=dirs.model, report_dir=dirs.reports)
+    assert isinstance(info.value.__cause__, _offline.OfflineUnsupportedPlatform)
+    assert built == [] and _offline._engaged is False
+    assert (sorted(p.name for p in dirs.reports.iterdir()), sorted(p.name for p in dirs.home.iterdir())) == before
+
+
 # ── item 1 review folds (2026-11-02) ─────────────────────────────────────
 
 
