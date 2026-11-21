@@ -277,14 +277,9 @@ class MaximAgent(Agent):
                 hub.nac._collector = collector
 
     def share_run_llm(self, llm_router: LLMRouter | None, llm_worker: LLMWorker | None = None) -> None:
-        """Hand the ExecAgent the run's router and worker when they are built after the agent (owner decision V29):
-        it then never builds its own. One already set is kept; a shared worker is not the ExecAgent's to stop."""
-        exec_agent = self.exec_agent
-        if exec_agent._router is None:
-            exec_agent._router = llm_router
-        if exec_agent._llm_worker is None and llm_worker is not None:
-            exec_agent._llm_worker = llm_worker
-            exec_agent._owns_llm_worker = False
+        """Hand the ExecAgent the run's router and worker when they are built after the agent (owner decision V29);
+        :meth:`ExecAgent.share_run_llm` owns the rule."""
+        self.exec_agent.share_run_llm(llm_router, llm_worker)
 
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""

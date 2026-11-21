@@ -188,6 +188,9 @@ class ExecAgent(Agent):
         return self._llm
 
     def _resolve_profile_override(self, cfg: Any) -> str | None:
+        """llm.json's ``agent_profiles.exec_agent`` (or ``executive``) model, read only where this agent builds its own
+        router (:meth:`_ensure_router`, the CLI agentic path). An ExecAgent handed the run's router (owner decision
+        V29: api.run, console talk, the sims) uses that router's model and ignores the override."""
         profiles = getattr(cfg, "agent_profiles", {})
         if not isinstance(profiles, dict):
             return None
@@ -200,9 +203,9 @@ class ExecAgent(Agent):
     def _ensure_router(self, *, consent: Literal["ask", "never"] = "never") -> LLMRouter | None:
         """ExecAgent's router, built once, its local model usable (``models/download.py::consented_router``).
 
-        ``consent="never"`` (the default: library and API agents, built lazily, possibly mid-run or off the main
-        thread) never asks: a missing model downloads only with a standing grant, else there is no router, the refusal
-        is remembered (``_refused_profile``) and the consent check's message says how to grant it. ``consent="ask"``
+        ``consent="never"`` (the default; no caller in ``src/`` uses it since owner decision V29) never asks: a missing
+        model downloads only with a standing grant, else there is no router, the refusal is remembered
+        (``_refused_profile``) and the consent check's message says how to grant it. ``consent="ask"``
         (the CLI agentic path, on the main thread before any warmup) may prompt, and is not stopped by an earlier
         "never" refusal (#1343, #1396 bullet 2). The proposal path never calls it (owner decision V29): an ExecAgent
         uses the run's router (``MaximAgent(llm_router=)``, ``MaximAgent.share_run_llm``) and builds one only when its
@@ -232,6 +235,16 @@ class ExecAgent(Agent):
         self._refused_cause = None
         self._router = router
         return self._router
+
+    def share_run_llm(self, llm_router: LLMRouter | None, llm_worker: LLMWorker | None = None) -> None:
+        """Take the run's router and worker when they are built after this agent (owner decision V29). A router or
+        worker already set is kept, and a different one passed later is ignored, not swapped in; a shared worker is
+        not this agent's to stop (``_owns_llm_worker``)."""
+        if self._router is None:
+            self._router = llm_router
+        if self._llm_worker is None and llm_worker is not None:
+            self._llm_worker = llm_worker
+            self._owns_llm_worker = False
 
     def _ensure_llm_worker(self) -> LLMWorker | None:
         """A worker over the run's router (``self._router``); never a router of its own (owner decision V29)."""
@@ -1754,7 +1767,8 @@ Based on this context, what goal should be proposed?"""
                 proposal = self._propose_goal(ctx)
             except SECURITY_REFUSALS as refusal:
                 # The run's router was refused (#1315 item 10b): said once, by name, and the worker ends, rather than
-                # a dead thread or a "language model error" every turn. The run's own loop meets the same refusal.
+                # a dead thread or a "language model error" every turn. No caller starts this worker today
+                # (MaximAgent.on_start is never called); this keeps the refusal typed for when one does.
                 warn("ExecAgent stops proposing: %s", refusal)
                 return
 
