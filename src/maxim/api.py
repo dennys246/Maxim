@@ -1764,7 +1764,11 @@ def research(
 
     Args:
         goal: Research question (e.g., ``"hippocampal recall under interference"``).
-        campaign: Optional campaign YAML for structured stimulus injection.
+        campaign: Optional campaign YAML for structured stimulus injection:
+            every percept must be a ``cli_input`` line, delivered as one turn.
+            A campaign that cannot be loaded or yields no turn raises
+            :class:`~maxim.exceptions.CampaignUnloadable` (a ``ValueError``)
+            before any run starts (#1621).
         model: LLM profile for the research orchestrator.
         aut_model: LLM profile for the agent under test (defaults to model).
         verbosity: Logging verbosity (0-3).

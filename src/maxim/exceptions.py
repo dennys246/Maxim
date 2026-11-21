@@ -510,6 +510,25 @@ class UserProfilesInvalid(ConfigurationError):
     fix_hint = "Fix the file, or move it aside, then run `maxim doctor` to check it."
 
 
+class CampaignUnloadable(MaximError, ValueError):
+    """Research mode's explicit campaign cannot be run as scripted turns: it is missing, malformed, or holds a
+    percept that is not a ``cli_input`` line (#1621). Raised by ``research_orchestrator._load_campaign_turns`` before
+    any session directory or LLM is built, so research never runs a free-form sim in its place. A ``ValueError``, so
+    ``maxim.research()`` callers catching that keep working; the CLI exits 2 with ``fix_hint``. ``campaign`` is the
+    path as given and ``reason`` the loader's message.
+    """
+
+    fix_hint = (
+        "Give --campaign a scenario whose percepts are all cli_input lines (one turn each); a scenario with other "
+        "percepts runs through `maxim --sim <scenario>`, and a DM campaign through `maxim --sim <campaign.yaml>`."
+    )
+
+    def __init__(self, *, campaign: str, reason: str) -> None:
+        self.campaign = campaign
+        self.reason = reason
+        super().__init__(f"research campaign {campaign} cannot be loaded: {reason}")
+
+
 class ComponentNotFoundError(ConfigurationError):
     """Requested SEM component template does not exist.
 

@@ -116,14 +116,18 @@ def _build_research_llm(language_model: str | None = None) -> Any:
 def _load_campaign_turns(campaign: str | None) -> list[dict]:
     """The researcher's campaign turns (empty without a campaign), read strictly by the one scripted-turn loader,
     ``experiment.load_campaign_turns`` (#1621): an explicit campaign that fails to load, or holds a percept that is
-    not a ``cli_input`` line, raises ``ValueError``/``OSError``, so research never runs a free-form sim in its place
-    and writes a paper about a different experiment."""
+    not a ``cli_input`` line, raises :class:`~maxim.exceptions.CampaignUnloadable`, so research never runs a
+    free-form sim in its place and writes a paper about a different experiment."""
     if not campaign:
         return []
+    from maxim.exceptions import CampaignUnloadable
     from maxim.simulation.experiment import load_campaign_turns
     from maxim.simulation.sim_logger import display_status
 
-    campaign_turns = load_campaign_turns(campaign, strict=True)
+    try:
+        campaign_turns = load_campaign_turns(campaign, strict=True)
+    except (OSError, ValueError) as exc:
+        raise CampaignUnloadable(campaign=str(campaign), reason=str(exc)) from exc
     display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
     return campaign_turns
 

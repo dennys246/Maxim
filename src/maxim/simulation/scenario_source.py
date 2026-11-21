@@ -117,7 +117,10 @@ def _check_expectation_tool(path: Path, exp: Expectation) -> None:
 def _check_scoring(path: Path, section: str, body: dict[str, Any]) -> None:
     """Each scoring threshold uses only the operators ``BenchmarkRunner._check_thresholds`` knows, and at least one:
     an unknown key (``pas:``) or an empty threshold used to count as applied while checking nothing (#1395)."""
-    for metric, threshold in (body.get("scoring") or {}).items():
+    scoring = body.get("scoring") or {}
+    if not isinstance(scoring, dict):
+        raise ValueError(f"Scenario {path}: {section}.scoring is not a mapping (got {type(scoring).__name__})")
+    for metric, threshold in scoring.items():
         if not isinstance(threshold, dict) or not threshold:
             raise ValueError(
                 f"Scenario {path}: {section}.scoring.{metric} has no threshold ({sorted(THRESHOLD_OPERATORS)})"
@@ -128,6 +131,27 @@ def _check_scoring(path: Path, section: str, body: dict[str, Any]) -> None:
                 f"Scenario {path}: {section}.scoring.{metric} has unknown key(s) {unknown}; "
                 f"known: {sorted(THRESHOLD_OPERATORS)}"
             )
+
+
+def _expectation_items(path: Path, raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """``expectations`` as a list of mappings (absent or null: none), or ``ValueError`` naming the file: a DM
+    campaign's ``expectations:`` mapping, or a string item, used to escape as an untyped ``AttributeError`` (#1621)."""
+    items = raw.get("expectations")
+    if items is None:
+        return []
+    if not isinstance(items, list):
+        raise ValueError(f"Scenario {path}: 'expectations' is not a list (got {type(items).__name__})")
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"Scenario {path}: expectation {i} is not a mapping (got {type(item).__name__})")
+    return items
+
+
+def _duration_s(path: Path, value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Scenario {path}: estimated_duration_s {value!r} is not a number") from exc
 
 
 def load_scenario(path: Path) -> ScenarioDefinition:
@@ -143,7 +167,7 @@ def load_scenario(path: Path) -> ScenarioDefinition:
         raise ValueError(f"Scenario {path}: the top level is not a mapping (got {type(raw).__name__})")
 
     expectations = []
-    for exp_raw in raw.get("expectations", []):
+    for exp_raw in _expectation_items(path, raw):
         exp_type = exp_raw.get("type")
         if not exp_type:
             logger.warning("Expectation missing 'type' field, skipping: %s", exp_raw)
@@ -167,6 +191,8 @@ def load_scenario(path: Path) -> ScenarioDefinition:
             "params",
         }
         extra_params = {k: v for k, v in exp_raw.items() if k not in known_keys}
+        if not isinstance(exp_raw.get("params") or {}, dict):
+            raise ValueError(f"Scenario {path}: expectation {exp_type!r}'s params is not a mapping")
         params = {**(exp_raw.get("params") or {}), **extra_params}
 
         expectations.append(
@@ -202,7 +228,7 @@ def load_scenario(path: Path) -> ScenarioDefinition:
         # Discoverability metadata
         tags=raw.get("tags", []),
         difficulty=raw.get("difficulty", ""),
-        estimated_duration_s=float(raw.get("estimated_duration_s", 0)),
+        estimated_duration_s=_duration_s(path, raw.get("estimated_duration_s", 0)),
         subsystems_tested=raw.get("subsystems_tested", []),
         tools_tested=raw.get("tools_tested", []),
         # Optional runner-specific sections

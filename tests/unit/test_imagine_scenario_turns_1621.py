@@ -173,12 +173,42 @@ def test_the_repo_pain_scenario_is_refused_by_imagine(no_model_checks: None, mon
         ("- cli_input: a\n- cli_input: b\n", "not a mapping"),
         ("percepts: abc\n", "'percepts' is not a list"),
         ("percepts: [unclosed\n", "YAML"),
+        ("expectations:\n  survived: true\npercepts:\n  - cli_input: a\n", "'expectations' is not a list"),
+        ("expectations: [just a string]\npercepts:\n  - cli_input: a\n", "expectation 0 is not a mapping"),
+        ("expectations:\n  - type: x\n    params: 3\npercepts:\n  - cli_input: a\n", "params is not a mapping"),
+        ("benchmark:\n  scoring: [a]\npercepts:\n  - cli_input: a\n", "benchmark.scoring is not a mapping"),
+        ("estimated_duration_s: [1]\npercepts:\n  - cli_input: a\n", "estimated_duration_s"),
     ],
-    ids=["list_top_level", "percepts_string", "malformed_yaml"],
+    ids=[
+        "list_top_level",
+        "percepts_string",
+        "malformed_yaml",
+        "dm_expectations_mapping",
+        "expectation_string",
+        "params_not_mapping",
+        "scoring_not_mapping",
+        "duration_not_number",
+    ],
 )
 def test_a_malformed_file_raises_value_error_in_both_modes(tmp_path: Path, body: str, match: str, strict: bool) -> None:
     with pytest.raises(ValueError, match=match):
         load_campaign_turns(_scenario(tmp_path, body), strict=strict)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "campaign", sorted((Path(__file__).resolve().parents[2] / "scenarios" / "campaigns").glob("*.yaml")), ids=str
+)
+def test_every_dm_campaign_is_a_typed_refusal_naming_its_path(campaign: Path, strict: bool) -> None:
+    """A DM campaign (``acts``/``encounters``, ``expectations:`` as a mapping) is not scripted turns: a
+    ``ValueError`` naming the file, never an untyped ``AttributeError`` (#1621 delta review)."""
+    with pytest.raises(ValueError, match=str(campaign.name)):
+        load_campaign_turns(str(campaign), strict=strict)
+
+
+def test_null_expectations_read_as_none(tmp_path: Path) -> None:
+    path = _scenario(tmp_path, "expectations: null\npercepts:\n  - cli_input: a\n")
+    assert [t["text"] for t in load_campaign_turns(path, strict=True)] == ["a"]
 
 
 # --- the lenient mode: skip and name, by the strict mode's test ---------------------------------------------------
@@ -197,21 +227,31 @@ def test_lenient_mode_skips_and_names_every_percept_that_is_not_a_line(tmp_path:
           - cli_input: 42
           - source: proprioception
             content: pain_signal
+          - cli_input: bad metadata
+            metadata: []
+          - cli_input: zero metadata
+            metadata: 0
+          - cli_input: old phase
+            phase: encode
           - cli_input: last
             metadata: null
         """,
     )
     turns: list[dict[str, Any]] = []
     messages = _warnings_while(lambda: turns.extend(load_campaign_turns(path)))
-    assert [t["text"] for t in turns] == ["first", "last"]
-    assert turns[1]["metadata"] == {} and turns[1]["phase"] == ""
+    assert [t["text"] for t in turns] == ["first", "old phase", "last"]
+    assert turns[1]["phase"] == ""  # the percept-level phase is not read ...
+    assert any("percept 7's percept-level 'phase' is ignored" in m for m in messages)  # ... and says so
+    assert turns[2]["metadata"] == {} and turns[2]["phase"] == ""  # only null reads as no metadata
     (warning,) = [m for m in messages if "not delivered as turns" in m]
     assert "percept 1 (is not a mapping)" in warning
     for index in (2, 3, 4):
         assert f"{index} (has no cli_input line" in warning
+    for index in (5, 6):  # metadata [] and 0: skipped and named, not silently {}
+        assert f"{index} (has a metadata that is not a mapping)" in warning
     bridge = _Bridge()
     run_precampaign_turns(turns=turns, bridge=bridge, introspector=None)  # 42 no longer reaches len(text)
-    assert bridge.received == ["first", "last"]
+    assert bridge.received == ["first", "old phase", "last"]
 
 
 # --- research mode ------------------------------------------------------------------------------------------------
@@ -238,13 +278,41 @@ def test_research_refuses_a_campaign_with_no_deliverable_line_before_any_session
     monkeypatch.setattr(research_orchestrator, "_build_research_llm", lambda *_a: pytest.fail("built an LLM"))
     monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", lambda **_k: pytest.fail("ran"))
     monkeypatch.setattr("maxim.utils.paths.sim_reports", lambda: tmp_path / "reports")
-    with pytest.raises(ValueError):
+    from maxim.exceptions import CampaignUnloadable
+
+    with pytest.raises(CampaignUnloadable) as info:
         research_orchestrator.start_research_mode(goal="g", campaign=_scenario(tmp_path, body))
+    assert isinstance(info.value, ValueError)  # maxim.research() callers catching ValueError keep working
+    assert info.value.campaign.endswith("s.yaml") and info.value.reason
     assert not (tmp_path / "reports").exists()  # no session dir for a refused campaign
 
 
 def test_research_refuses_a_missing_campaign(tmp_path: Path) -> None:
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
-    with pytest.raises(FileNotFoundError):
+    from maxim.exceptions import CampaignUnloadable
+
+    with pytest.raises(CampaignUnloadable, match="not found") as info:
         _load_campaign_turns(str(tmp_path / "nope.yaml"))
+    assert isinstance(info.value.__cause__, FileNotFoundError)
+
+
+def test_the_cli_refuses_an_unloadable_research_campaign_with_exit_2_not_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--research --campaign`` reaches ``start_research_mode``; its typed refusal is rendered by
+    ``cli._main_guarded`` (``user_warn`` + exit 2), not a traceback (#1621 delta review)."""
+    from maxim import cli
+    from maxim.simulation import research_orchestrator
+
+    campaign = str(Path(__file__).resolve().parents[2] / "scenarios" / "campaigns" / "heist_v1.yaml")
+    monkeypatch.setattr(research_orchestrator, "_build_research_llm", lambda *_a: pytest.fail("built an LLM"))
+
+    def _impl(argv: Any = None) -> int:
+        return research_orchestrator.start_research_mode(goal="g", campaign=campaign)
+
+    warned: list[str] = []
+    monkeypatch.setattr(cli, "_main_impl", _impl)
+    monkeypatch.setattr("maxim.utils.logging.user_warn", lambda message, **_k: warned.append(message))
+    assert cli._main_guarded([]) == 2
+    assert len(warned) == 1 and "heist_v1.yaml" in warned[0] and "cli_input" in warned[0]

@@ -136,7 +136,9 @@ def load_campaign_turns(campaign_path: str, *, strict: bool = False) -> list[dic
             raise ValueError(f"{campaign_path}: percept {i}'s metadata is not a mapping")
         if strict and "phase" in p:
             raise ValueError(f"{campaign_path}: percept {i} carries a percept-level 'phase'; put it in metadata.phase")
-        meta = (p.get("metadata") or {}) if problem is None else {}
+        meta = p.get("metadata", {}) if problem is None else {}
+        if meta is None:  # only null reads as no metadata; [], 0 or "" is skipped and named below
+            meta = {}
         if not isinstance(meta, dict):
             problem = "has a metadata that is not a mapping"
         if problem is not None:
