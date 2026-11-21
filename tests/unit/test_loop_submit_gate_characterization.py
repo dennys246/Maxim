@@ -22,7 +22,7 @@ auto-sense text (``test_loop_perception_characterization.py``). Not reachable: t
 cli_inputs" trace (every input the gate sees is marked processed before it), pinned as not firing. Equivalent mutant:
 grayscale's ``= None`` in its error handler (the field is set only after a build succeeds).
 
-Pinned AS-IS, each a candidate defect for its own issue (never fixed inside an extraction): a Selfy command typed as a
+Pinned AS-IS, each a defect with its own issue (never fixed inside an extraction; #1721, #1722): a Selfy command typed as a
 fresh percept is logged skipped yet submitted, and recorded processed twice; a follow-up arriving with a fresh input is
 folded in and cleared, but the submission keeps only the input, so the tool result never reaches the model; with no
 built context a fresh input is marked processed and never sent.
@@ -355,7 +355,7 @@ def test_the_same_words_as_a_new_percept_are_a_new_turn(monkeypatch, tmp_path):
 
 
 def test_a_fresh_skip_command_is_logged_skipped_yet_submitted(monkeypatch, tmp_path, caplog):
-    """Pinned as-is: the fresh-percept branch marks the input meaningful before the context loop's skip check, so a
+    """Pinned as-is (#1722): the fresh-percept branch marks the input meaningful before the context loop's skip check, so a
     Selfy command typed as a percept is logged "Skipping LLM", submitted anyway and recorded processed twice."""
     obs = _run(monkeypatch, tmp_path, inputs={0: "maxim pause"}, steps=2)
     assert _brief(obs) == [(["maxim pause"], "maxim pause")]
@@ -424,7 +424,7 @@ def test_a_follow_up_becomes_the_input_and_is_cleared(monkeypatch, tmp_path, cap
 
 
 def test_a_follow_up_with_a_fresh_input_submits_the_input_and_drops_the_result(monkeypatch, tmp_path):
-    """Pinned as-is: the follow-up is folded in and cleared, but the submission keeps only the fresh input."""
+    """Pinned as-is (#1721): the follow-up is folded in and cleared, but the submission keeps only the fresh input."""
     obs = _run(monkeypatch, tmp_path, hooks={0: _set_followup()}, inputs={0: "new words"}, steps=2)
     assert _brief(obs) == [(["new words"], "new words")]
     assert obs.ctrl.pending_action_followup is None
@@ -439,7 +439,7 @@ def test_a_follow_up_with_no_built_context_gets_a_minimal_one(monkeypatch, tmp_p
 
 
 def test_with_no_built_context_a_fresh_input_is_marked_processed_unsent(monkeypatch, tmp_path):
-    """Pinned as-is: nothing to submit into, yet the input is recorded processed."""
+    """Pinned as-is (#1722): nothing to submit into, yet the input is recorded processed."""
     obs = _run(monkeypatch, tmp_path, amend=lambda k, ctx: None, inputs={0: "lost"}, steps=2)
     assert obs.worker.submits == [] and list(obs.ctrl.processed_cli_inputs) == ["lost"]
 
