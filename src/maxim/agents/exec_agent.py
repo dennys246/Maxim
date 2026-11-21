@@ -81,29 +81,44 @@ def _override_in(cfg: Any) -> str | None:
     return None
 
 
-# (config_generation, override) of the last read, or None: re-read only when the config moved (#1228).
-_OVERRIDE_READ: tuple[int, str | None] | None = None
+# (llm.json identity, override) of the last read, or None: re-read only when that file changed (#1228).
+_OVERRIDE_READ: tuple[tuple[str, int, int] | None, str | None] | None = None
 # Set once the "handed None: no goal proposals" WARNING has been logged in this process (#1228).
 _NO_ROUTER_START_WARNED = False
 
 
-def _configured_override() -> str | None:
-    """The process's ``agent_profiles.exec_agent`` override (the bypass warning's input, #1228), read once per config
-    generation: a constructor handed a router does not reload the config, and a config write
-    (``config_writer`` → ``invalidate_config_cache``) is seen by the next one, as in a long-lived ``maxim serve``.
-    None when there is none or the config is unreadable."""
-    global _OVERRIDE_READ
-    from maxim.runtime.config_loader import config_generation
+def _llm_json_identity() -> tuple[str, int, int] | None:
+    """(path, st_mtime_ns, st_size) of the llm.json ``load_llm_config`` would read (the first existing discovery
+    candidate), or None when there is none. ``agent_profiles`` lives there, not in config.json, and no llm.json writer
+    (the downloader, a hand edit) moves ``config_generation()``, so the file itself is the key."""
+    from maxim.models.language.config import _llm_config_candidates
 
-    generation = config_generation()
-    if _OVERRIDE_READ is not None and _OVERRIDE_READ[0] == generation:
+    for path in _llm_config_candidates():
+        if path and os.path.isfile(path):
+            try:
+                st = os.stat(path)
+            except OSError:
+                return None
+            return (path, st.st_mtime_ns, st.st_size)
+    return None
+
+
+def _configured_override() -> str | None:
+    """The process's ``agent_profiles.exec_agent`` override (the bypass warning's input, #1228), read again only when
+    the llm.json it comes from changed (path, mtime or size): a constructor handed a router does not reload an
+    unchanged file, and an edit (the downloader's write, a hand edit, in a long-lived ``maxim serve`` too) is seen by
+    the next one. ``load_llm_config`` itself does not cache; this is the warning's own read. None when there is none
+    or the config is unreadable."""
+    global _OVERRIDE_READ
+    identity = _llm_json_identity()
+    if _OVERRIDE_READ is not None and _OVERRIDE_READ[0] == identity:
         return _OVERRIDE_READ[1]
     try:
         override = _override_in(load_llm_config())
     except Exception as e:  # an unreadable config is load_llm_config's to report on the build path
         logger.debug("ExecAgent: could not read the config to check the exec_agent override: %s", e)
         override = None
-    _OVERRIDE_READ = (generation, override)
+    _OVERRIDE_READ = (identity, override)
     return override
 
 

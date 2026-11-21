@@ -153,26 +153,34 @@ def test_a_bypassed_exec_agent_override_is_warned_once(
     assert len(reads) == 1  # read once per config generation, not per constructor
 
 
-def test_a_config_write_reaches_the_override_warning(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def test_an_llm_json_edit_reaches_the_override_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A long-lived process (``maxim serve``) that edits ``agent_profiles.exec_agent`` between two agents: the write's
-    ``invalidate_config_cache`` moves the generation, so the next constructor sees the new override."""
+    """``agent_profiles`` lives in llm.json, which no writer invalidates (the downloader's ``atomic_write_json``, a hand
+    edit): rewriting the file between two agents, with no manual invalidate, gives the next constructor the new
+    override (a long-lived ``maxim serve``)."""
+    import json
+    import os
+
     import maxim.agents.exec_agent as EA
     from maxim.agents.maxim_agent import MaximAgent
-    from maxim.runtime.config_loader import invalidate_config_cache
 
+    llm_json = tmp_path / "llm.json"
+    monkeypatch.setenv("MAXIM_LLM_CONFIG", str(llm_json))  # the first discovery candidate
     monkeypatch.setattr(EA, "_BYPASSED_OVERRIDES_WARNED", set())
     monkeypatch.setattr(EA, "_OVERRIDE_READ", None)
-    current = {"exec_agent": "small"}
-    monkeypatch.setattr(EA, "load_llm_config", lambda *a, **k: SimpleNamespace(agent_profiles=dict(current)))
+
+    def _write(override: str, mtime_s: int) -> None:
+        llm_json.write_text(json.dumps({"agent_profiles": {"exec_agent": override}}), encoding="utf-8")
+        os.utime(llm_json, (mtime_s, mtime_s))  # a distinct mtime, however fast the two writes land
+
     with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+        _write("small", 1_700_000_000)
         MaximAgent(shared_router=_Router("small"))  # the override's own profile: nothing bypassed
-        current["exec_agent"] = "big"
-        invalidate_config_cache()  # what config_writer does after every write
+        _write("big", 1_700_000_100)
         MaximAgent(shared_router=_Router("small"))
-    warned = [r for r in caplog.records if "agent_profiles.exec_agent" in r.getMessage()]
-    assert len(warned) == 1 and "'big'" in warned[0].getMessage(), [r.getMessage() for r in warned]
+    warned = [r.getMessage() for r in caplog.records if "agent_profiles.exec_agent" in r.getMessage()]
+    assert len(warned) == 1 and "'big'" in warned[0], warned
 
 
 def test_starting_an_agent_handed_none_warns_once_naming_build_own(
