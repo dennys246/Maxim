@@ -242,6 +242,20 @@ update.
   ATL relations, and the survival harnesses use the ATL only through `activate_substrate_node` (#812's
   caller grep).
 
+### Trigger walk — 2026-11-21, #1185 (synthetic action records leave every count)
+
+`ActionRecord.is_synthetic` (a `_`-prefixed tool name: `_gating_prompt`, `_llm_unavailable`, `_deliberation_noop`) now
+keeps loop-made markers out of every count a run reports (owner decision 2026-11-21): the report's `total_actions`,
+`tool_usage` and `tool_success_rates`, the substrate action budget (`SimulationBridge.substrate_action_allowed`), the
+stall detector, validation's action-count and variance checks, and the cli / interactive / orchestrator totals.
+`actions.jsonl` stays complete. **A run that recorded any such marker is not comparable on those numbers with a report
+from before c95a35c8.** Rows checked: no T1 row's metric is an action count or a tool success rate. T1-8 cites "~60
+near-balanced turn actions per mother-turn" as apparatus context for its plateau, not as its metric, and T1-13 cites
+`tool_success_rates` inside a walk note about the statistician; neither row's gate reads the changed numbers, and
+substrate-primary runs record no such markers (no production caller of `record_noop`; `_llm_unavailable` is LLM-mode
+only), so no row's trigger fires and no re-run is owed. Re-check this if a row ever adopts a report action count or
+success rate as its metric.
+
 ### Trigger walk — 2026-11-09, #1620 (the content keys converge a word's inflections)
 
 #1620 changes `memory/text.py::settle_key`, the content-key layer every memory store keys through (`key_tokens`,

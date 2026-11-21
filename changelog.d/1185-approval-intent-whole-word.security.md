@@ -18,9 +18,11 @@
     with its memory record and recall cue kept;
   - inputs that arrive together are taken one per tick, oldest first: newer input no longer overtakes words
     waiting behind a prompt's answer, and a voice turn that arrives with typed input is no longer dropped;
-  - a re-asked prompt shown to a simulated person no longer counts as an action: action totals, tool counts,
-    success rates and the per-turn action budget leave out every loop-made marker (`ActionRecord.is_synthetic`),
-    which also takes the "LLM unavailable" marker out of a report's totals.
+  - a re-asked prompt shown to a simulated person no longer counts as an action. Report action totals, tool
+    counts and success rates, the substrate action budget and the stall detector now count only real actions:
+    every loop-made marker (`ActionRecord.is_synthetic`: `_gating_prompt`, `_llm_unavailable`,
+    `_deliberation_noop`) is left out. A run that recorded any such marker is not comparable on those numbers with
+    earlier reports; `actions.jsonl` stays complete.
 - **A failing simulation response policy no longer approves** (#1723): `SimulationAdapter.resolve_plan_approval`,
   `resolve_confirmation` and `resolve_timeout_retry` swallowed any error from the bridge's policy and answered
   "yes"; the error now propagates.
