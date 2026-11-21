@@ -54,6 +54,18 @@ class TestSafeAgentName:
         # Falls through to type(agent).__name__ which is MagicMock
         assert result  # Not empty
 
+    def test_a_name_attribute_that_raises_falls_back_to_the_class_name(self):
+        """A ``TypeError`` from reading a name attribute (``getattr``'s default only covers ``AttributeError``) is
+        reported and swallowed: the name falls back to the agent's class name (characterization before the move to a
+        bio-free leaf, B2 prerequisite 1)."""
+
+        class Broken:
+            @property
+            def state_name(self):
+                raise TypeError("unreadable name")
+
+        assert safe_agent_name(Broken()) == "Broken"
+
     def test_none_attrs_uses_class(self):
         agent = MagicMock()
         agent.state_name = None
