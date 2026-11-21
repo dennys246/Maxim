@@ -1086,7 +1086,11 @@ class ExecAgent(Agent):
             self._urgent_work_available.set()
 
     def _build_llm_context(self, ctx: StructuredContext, budget_context: str | None = None) -> str:
-        """Build prompt from structured context."""
+        """Build prompt from structured context. Dormant with ExecAgent's own LLM path (``_invoke_llm_for_goal``).
+        A percept's or message's text from outside the agent is framed by its provenance, and no sender is shown
+        (#1519; #1481's code review E2: a phone number never reaches a prompt)."""
+        from maxim.runtime.loop_perception import stored_percept_text
+
         # Current percept summary
         percept_str = "(none)"
         if ctx.current_percept:
@@ -1096,7 +1100,7 @@ class ExecAgent(Agent):
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
 - Voice command: {p.raw_transcript_text or "(none)"}
-- Message: {p.content or "(none)"}
+- Message: {stored_percept_text(p.source, p.content, limit=2000) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 
@@ -1140,10 +1144,12 @@ class ExecAgent(Agent):
         # Comms messages (inbound SMS/voice)
         comms_lines = []
         for msg in ctx.comms_messages[-5:]:
-            prefix = "User" if msg.get("direction") == "inbound" else "Maxim"
+            prefix = "Inbound" if msg.get("direction") == "inbound" else "Maxim"  # a sender is not the operator
             channel = msg.get("channel", "sms")
-            sender = msg.get("sender", "unknown")
-            comms_lines.append(f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}")
+            body = str(msg.get("content", ""))  # the agent's own outbound words are shown as they are
+            if msg.get("direction") == "inbound":
+                body = stored_percept_text(f"comms:{channel}", body, limit=2000)
+            comms_lines.append(f"  [{prefix} via {channel}] {body}")
         comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
         # DN escalation context (if percept was escalated by Default Network)

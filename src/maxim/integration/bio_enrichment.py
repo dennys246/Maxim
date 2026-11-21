@@ -359,8 +359,9 @@ class BioEnrichmentPipeline:
                 lines.append(f"  - {pred.event} → {pred.outcome} ({conf_word} confidence, {pred.valence})")
 
         if result.concepts:
-            concept_names = [c.concept for c in result.concepts[:5]]
-            lines.append(f"Related concepts: {', '.join(concept_names)}")
+            # ATL names are stored text (formed from what the agent heard and did), so framed (#1516 F15).
+            concept_names = ", ".join(c.concept for c in result.concepts[:5])
+            lines.append(f"Related concepts: {_frame_recalled('recalled_concepts', concept_names)}")
 
         if result.affordances:
             lines.append(f"Available actions (use via use tool): {', '.join(result.affordances[:5])}")
@@ -560,6 +561,7 @@ class BioEnrichmentPipeline:
             return []
         try:
             from maxim.agents.working_memory import WorkingMemoryKind
+            from maxim.runtime.loop_perception import stored_percept_text
 
             # Pull recent outcomes and conversations (last 5)
             relevant_kinds = {
@@ -584,12 +586,13 @@ class BioEnrichmentPipeline:
                             summary += f" (goal: {goal})"
                         summaries.append(summary)
                     else:
-                        # Generic dict — take a short repr
+                        # A stored percept's (or turn's) text, by its provenance (#1519): never raw.
                         text_val = content.get("text") or content.get("content") or ""
-                        if text_val:
-                            summaries.append(str(text_val)[:100])
+                        shown = stored_percept_text(content.get("source"), str(text_val)) if text_val else ""
+                        if shown:
+                            summaries.append(shown)
                 elif isinstance(content, str) and content.strip():
-                    summaries.append(content[:100])
+                    summaries.append(stored_percept_text(None, content))
             return summaries
         except Exception:
             return []
@@ -1065,9 +1068,11 @@ class BioEnrichmentPipeline:
         # Goal context
         # Intent goal, else active goal: ``goal`` answers exactly that on both record kinds (#995);
         # a compressed record used to show none.
-        goal = mem.goal or ""
+        goal = _bounded_text(
+            str(mem.goal or ""), _RECALLED_GOAL_MAX_CHARS
+        )  # stored text, often the user's (#1516 F15, N11)
         if goal:
-            parts.append(f"(goal: {goal[:40]})")
+            parts.append(f"(goal: {_frame_recalled('recalled_goal', goal)})")
         heard = _bounded_text(_input_text(mem), RECALLED_WORDS_MAX_CHARS)
         if heard:
             parts.append(f"earlier input: {_frame_recalled('recalled_input', heard)}")
@@ -1093,6 +1098,7 @@ class BioEnrichmentPipeline:
 # ``memory/text.py::bounded_words``, whose ``RECALLED_WORDS_MAX_CHARS`` compression keeps too (#1137); 80 holds an
 # outcome's gist.
 _RECALLED_RESULT_MAX_CHARS = 80
+_RECALLED_GOAL_MAX_CHARS = 40
 
 
 def _input_text(mem: Any) -> str:

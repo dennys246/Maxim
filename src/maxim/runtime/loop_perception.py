@@ -213,6 +213,25 @@ def percept_text(observation: Any) -> str:
 ADDRESSED_SOURCES: frozenset[str] = frozenset({"cli", "voice", "speech", "transcript"})
 
 
+def stored_percept_text(source: Any, text: str, *, limit: int = 100) -> str:
+    """A STORED percept's text as a prompt may show it, by provenance (#1519): bounded after NFKC normalization, then
+    the operator's own words (an ``ADDRESSED_SOURCES`` source) defanged in place, as their live request is
+    (``prompt_builder._defanged``), and every other source framed external: inbound comms (``comms:*``: SMS, voice
+    calls, the command API), the world (game chat, an NPC, a narrated scene, a camera's text) and a record that lost
+    its source (fail-closed: unlike a live observation, a stored one without a source is not the CLI channel).
+    "" for empty text."""
+    from maxim.memory.text import bounded_words
+    from maxim.utils.content_safety import defang_frame_markers, frame_tool_output
+
+    body = bounded_words(str(text or ""), limit)
+    if not body:
+        return ""
+    if isinstance(source, str) and source in ADDRESSED_SOURCES:
+        return defang_frame_markers(body)[0]
+    label = f"percept_{source}" if isinstance(source, str) and source else "percept"
+    return frame_tool_output(label, body, external=True)
+
+
 def _addresses(observation: Any) -> bool:
     """Whether the observation's SOURCE addresses the agent (``ADDRESSED_SOURCES``, or no source at all): read from
     the source, never from which field carries the text (Session R, owner decision D5 2026-10-24). Being addressed

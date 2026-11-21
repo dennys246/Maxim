@@ -1034,6 +1034,12 @@ def _whole_frames(text: str) -> str:
     return drop_unbalanced_frames(text)[0]
 
 
+def _stored(label: str, text: str) -> str:
+    """Stored text from outside the agent, framed external (#1519): a recalled record's words are data, never
+    instructions."""
+    return frame_tool_output(label, text, external=True)
+
+
 def _deferred_section(request: Any) -> str:
     """The inputs a request carries that arrived while the previous planning job was in flight: a follow-up's
     (#1048) and a re-plan's (#1451), defanged, under one heading; empty when it carries none."""
@@ -2017,7 +2023,9 @@ class PromptBuilder:
         tools: set[str],
     ) -> None:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
-        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845)."""
+        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845).
+        Stored text (an episode's goal, action and what it heard, a concept's name and relations, a definition) is
+        framed external, so a revival cannot reopen the stored-injection channel (#1519, #1516 F15)."""
         if context.relevant_memories:
             mem_lines = ["=== Relevant Memories ==="]
             for mem in context.relevant_memories[:8]:
@@ -2034,7 +2042,7 @@ class PromptBuilder:
                 if content.get("transcript"):
                     parts.append(f'"{content["transcript"][:80]}"')
                 summary = ", ".join(parts) if parts else str(content)[:80]
-                mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
+                mem_lines.append(f"- [{source}, salience={salience:.2f}] {_stored('recalled_memory', summary)}")
                 if mem.get("predictions"):
                     for pred in mem["predictions"][:2]:
                         pred_tool = pred.get("tool", "?")
@@ -2060,9 +2068,14 @@ class PromptBuilder:
                 category = concept.get("category", "?")
                 confidence = concept.get("confidence", 0)
                 episodes = concept.get("episode_count", 0)
-                concept_lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
+                concept_lines.append(
+                    f"- {_stored('recalled_concept', str(name))} ({category}, confidence={confidence:.2f}, "
+                    f"episodes={episodes})"
+                )
                 for rel in concept.get("relationships", [])[:2]:
-                    concept_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
+                    concept_lines.append(
+                        f"  → {rel.get('type', '?')} {_stored('recalled_concept', str(rel.get('target', '?')))}"
+                    )
             budgeter.add(
                 "concept_context",
                 "\n".join(concept_lines),
@@ -2080,9 +2093,13 @@ class PromptBuilder:
                 definition = entry.get("definition", "")
                 layer = entry.get("source_layer", "?")
                 conf = entry.get("confidence", 0)
-                knowledge_lines.append(f"- {name} ({layer}, confidence={conf:.2f}): {definition}")
+                knowledge_lines.append(
+                    f"- {_stored('recalled_knowledge', f'{name}: {definition}')} ({layer}, confidence={conf:.2f})"
+                )
                 for rel in entry.get("relationships", [])[:2]:
-                    knowledge_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
+                    knowledge_lines.append(
+                        f"  → {rel.get('type', '?')} {_stored('recalled_knowledge', str(rel.get('target', '?')))}"
+                    )
             budgeter.add(
                 "knowledge_context",
                 "\n".join(knowledge_lines),

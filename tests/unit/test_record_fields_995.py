@@ -161,7 +161,8 @@ def test_an_enrichment_summary_names_tool_and_intent_goal_for_both_kinds():
 
     for record in (_episode(), CompressedMemory.from_episodic(_episode())):
         text = BioEnrichmentPipeline()._summarize_episode(record)
-        assert "draw_water" in text and "(goal: fetch water)" in text, (type(record).__name__, text)
+        assert "draw_water" in text and "(goal: <<TOOL_OUTPUT" in text, (type(record).__name__, text)
+        assert "\nfetch water\n" in text, (type(record).__name__, text)  # framed (#1516 F15), the goal whole
 
 
 def test_public_recall_ranks_each_item_by_its_own_records_salience():
