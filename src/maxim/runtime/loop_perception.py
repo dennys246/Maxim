@@ -121,14 +121,20 @@ class UserInput(NamedTuple):
 # Where the loop puts a reply it makes itself (an auto-approved confirmation, a sim-resolved one, a timeout retry):
 # processed like typed input, never memorized as something a person said (owner decision 2026-10-25).
 LOOP_REPLY_SLOT = "pending_loop_reply"
+# Where an observation's words wait one tick when they arrive with the loop's own reply (#1185): the reply answers a
+# pending gating prompt (a confirmation, a timeout retry), so it goes first, and dropping either would wedge the
+# prompt or lose the turn. They were memorized on arrival, so they are processed, never memorized again.
+DEFERRED_INPUT_SLOT = "pending_deferred_input"
 
 
 def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
     """The tick's input, from every channel, read ONCE at the top of the pass (§1.2), and the words that address the
     agent published to memory as they arrive (Session R, owner decisions 2026-10-24/25).
 
-    The input comes from the observation, else the loop's own reply (``LOOP_REPLY_SLOT``, which keeps a person's
-    pending input for the next tick), else the interactive CLI / robot / API mailbox ``pending_cli_input``, else the
+    The input is the loop's own reply first (``LOOP_REPLY_SLOT``, the answer to a pending gating prompt; an
+    observation's words that arrive with it wait one tick in ``DEFERRED_INPUT_SLOT``, #1185, and a person's pending
+    input waits too), else the observation, else those deferred words, else the interactive CLI / robot / API
+    mailbox ``pending_cli_input``, else the
     voice thread's ``pending_voice_input`` (only forwarded once the wake word opened an agentic session); each slot
     read is popped, so an input is processed once. ``addressed`` is what a person said: the pending CLI and voice
     channels always, the observation's ``cli_input`` when its source addresses the agent (``_addresses``), never the
@@ -148,8 +154,15 @@ def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
     addressed = str(cli_input) if cli_input and _addresses(observation) else ""  # the words the loop processes
 
     loop_reply = state.data.pop("pending_loop_reply", None)  # LOOP_REPLY_SLOT
-    if not cli_input and loop_reply:
+    if loop_reply:
+        if cli_input:  # the observation's words wait one tick behind the answer to the pending prompt (#1185)
+            state.data.setdefault("pending_deferred_input", []).append(cli_input)  # DEFERRED_INPUT_SLOT
         cli_input = loop_reply  # the loop answering itself; a person's pending input waits for the next tick
+    elif not cli_input and state.data.get("pending_deferred_input"):  # DEFERRED_INPUT_SLOT
+        deferred = state.data["pending_deferred_input"]
+        cli_input = deferred.pop(0)  # memorized when it arrived: processed now, ``addressed`` stays ""
+        if not deferred:
+            state.data.pop("pending_deferred_input", None)
     else:
         pending_cli = state.data.pop("pending_cli_input", None)  # always read once, discarded behind an observation
         if not cli_input and pending_cli:

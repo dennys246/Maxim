@@ -338,6 +338,39 @@ class LoopController:
         except Exception:
             log_swallowed_exception()
 
+    # ── Phase: Answer a pending gating prompt ────────────────────────────
+
+    def answer_pending_prompt(
+        self,
+        cli_text: str,
+        *,
+        execute_and_learn: Callable[..., ExecutionOutcome],
+        book_refusal: Callable[..., None],
+        book_machine_refusal: Callable[..., None],
+        observation: Any,
+        sim: Any,
+    ) -> bool:
+        """The tick's input as the answer to whichever gating prompt is pending (#1185): the action confirmation,
+        the timeout retry, then the plan approval. True when the input was the answer (consumed: the caller drops
+        it, as the next turn it is not). A tool's ``[ACTION_FOLLOWUP`` result is never an answer to any prompt.
+        The callables are the run's (``LoopRun``), ``observation`` this tick's, ``sim`` the run's adapter."""
+        if cli_text.startswith("[ACTION_FOLLOWUP"):
+            return False
+        if self.handle_confirmation(
+            cli_text, execute_and_learn=execute_and_learn, book_refusal=book_refusal, observation=observation, sim=sim
+        ):
+            return True
+        if self.handle_timeout_retry(cli_text, sim=sim):
+            return True
+        return self.handle_plan_approval(
+            cli_text,
+            book_refusal=book_refusal,
+            execute_and_learn=execute_and_learn,
+            book_machine_refusal=book_machine_refusal,
+            observation=observation,
+            sim=sim,
+        )
+
     # ── Phase: Handle confirmation input ─────────────────────────────────
 
     def handle_confirmation(
@@ -347,6 +380,7 @@ class LoopController:
         execute_and_learn: Callable[..., ExecutionOutcome],
         book_refusal: Callable[..., None],
         observation: Any,
+        sim: Any,
     ) -> bool:
         """Process user input when a confirmation is pending.
 
@@ -435,7 +469,10 @@ class LoopController:
 
         elif intent == "unknown":
             self._reask(
-                "confirmation_reask", pc.tool_name, f"Confirm {pc.tool_name}? Type 'yes' or 'no', or describe changes."
+                "confirmation_reask",
+                pc.tool_name,
+                f"Confirm {pc.tool_name}? Type 'yes' or 'no', or describe changes.",
+                sim=sim,
             )
             return True
 
@@ -462,10 +499,12 @@ class LoopController:
 
     # ── Phase: Handle timeout retry ──────────────────────────────────────
 
-    def handle_timeout_retry(self, cli_text: str) -> bool:
+    def handle_timeout_retry(self, cli_text: str, *, sim: Any) -> bool:
         """Process user input when a timeout retry is pending.
 
-        Returns True if the input was consumed.
+        Returns True if the input was consumed. The answers are the gating prompts' yes/no (#1185, owner
+        decision C): "yes" doubles the time limit, a whole number of minutes 1-10 sets it, "no" declines; anything
+        else keeps the retry pending and asks again (``_reask``), as the confirmation and plan prompts do.
         """
         tr = self.get_timeout_retry()
         if tr is None:
@@ -510,48 +549,132 @@ class LoopController:
                 self.clear_pending_user_input()
                 return True
 
-        # Could not parse — fall through to normal processing
-        logger.debug("Could not parse timeout retry response: %s", response)
-        return False
+        if new_timeout_s is None:
+            self.set_timeout_retry(tr)  # not an answer: the retry stays pending and the question is asked again
+            self._reask(
+                "timeout_retry_reask",
+                "llm_timeout",
+                "Try again with more time? Type 'yes' to double the time limit, a number of minutes (1-10), or 'no'.",
+                sim=sim,
+            )
+            return True
+        # An answer, but nothing to retry with (no worker, or no request): consumed, the retry dropped
+        logger.debug("Timeout retry answered but nothing to retry: %s", response)
+        self.clear_pending_user_input()
+        return True
 
     # ── Phase: Handle plan approval ──────────────────────────────────────
 
-    def gate_plan_approval(self, action: dict[str, Any], *, sim: Any) -> bool:
-        """The loop's plan gate (moved out of ``_run_agentic_loop_body``, rule T for #1185): a proposal that
-        ``requires_approval`` with a ``plan_text`` is resolved by the sim's response policy, or parked in
-        ``pending_plan_proposal`` for the person. True when the caller must skip execution this tick (parked, or
-        the policy refused it); False to execute it (no gate, or the policy approved it).
+    def gate_plan_approval(
+        self,
+        *,
+        execute_and_learn: Callable[..., ExecutionOutcome],
+        book_machine_refusal: Callable[..., None],
+        observation: Any,
+        sim: Any,
+    ) -> bool:
+        """The loop's plan gate (moved out of ``_run_agentic_loop_body``, rule T for #1185). A proposal that
+        ``requires_approval`` with a ``plan_text`` leaves ``pending_proposal`` here, and the caller skips execution
+        (True); any other proposal is the caller's to execute (False).
+
+        - The sim's response policy answers first: its "yes" (``classify_yes_no``, the one reader) runs the plan
+          through the SAME approved path as a person's (``_run_approved_plan``, owner decision B); anything else
+          drops it.
+        - Otherwise the plan is parked for the person in ``pending_plan_proposal`` and its real tool and params are
+          shown. While a plan is already waiting, a new one is refused typed (``awaiting_human``, a machine refusal,
+          no NAc) and the waiting one keeps the slot (S3), so the person's answer can only ever answer the plan
+          they were shown.
         """
         proposal = self.pending_proposal
         if not (getattr(proposal, "requires_approval", False) and proposal.plan_text):
             return False
-        # In sim mode, auto-resolve plan approval via response policy
+        self.pending_proposal = None  # from here the plan runs once, waits for the person, or is refused
+        run = {"execute_and_learn": execute_and_learn, "book_machine_refusal": book_machine_refusal, "sim": sim}
         sim_plan_response = sim.resolve_plan_approval(proposal.plan_text)
         if sim_plan_response is not None:
+            from maxim.runtime.approval import classify_yes_no
+
             sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
-            if sim_plan_response.lower() in ("yes", "y"):
-                # Auto-approved — skip the approval flow, proceed to execution
+            if classify_yes_no(sim_plan_response) == "yes":
                 logger.info("Sim mode: plan auto-approved, executing")
-                return False
-            # Auto-rejected
-            logger.info("Sim mode: plan auto-rejected")
-            self.pending_proposal = None
+                self._run_approved_plan(proposal, approved_by="sim:response_policy", observation=observation, **run)
+            else:
+                logger.info("Sim mode: plan auto-rejected")
             return True
-        # Production mode: store and wait for real user
+        if self.pending_plan_proposal is not None:
+            from maxim.runtime.loop_planning import AWAITING_HUMAN, refuse_plan
+
+            waiting = (self.pending_plan_proposal.action or {}).get("tool_name") or "unknown"
+            refuse_plan(
+                proposal,
+                reason=AWAITING_HUMAN,
+                detail=f"a plan for {waiting} is waiting for the person's answer",
+                autonomy_controller=self.autonomy_controller,
+                book_machine_refusal=book_machine_refusal,
+                executor=self.executor,
+                state=self.state,
+                sim=sim,
+            )
+            return True
         logger.info("Proposal requires approval, showing plan to user")
+        action = proposal.action or {}
         log_agentic(
             "agent_loop",
             "plan_awaiting_approval",
             {
                 "tool": action.get("tool_name"),
+                "params": action.get("params", {}),
                 "plan_preview": proposal.plan_text[:100] if proposal.plan_text else None,
             },
         )
-        self.state.data["pending_plan_text"] = proposal.plan_text
-        self.state.data["pending_plan_tool"] = action.get("tool_name")
         self.pending_plan_proposal = proposal
-        self.pending_proposal = None
+        self._show_prompt(self._plan_prompt(proposal), sim=sim)
         return True
+
+    @staticmethod
+    def _plan_prompt(plan: LLMProposal) -> str:
+        """What the person approves: the tool and params that will run (B2's half: the model's prose is shown as
+        its description, never as what runs)."""
+        import json
+
+        action = plan.action or {}
+        try:
+            params = json.dumps(action.get("params", {}), sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            params = repr(action.get("params", {}))
+        return (
+            f"[Awaiting approval] Run {action.get('tool_name') or 'unknown'} with {params}\n"
+            f"  The model's description: {plan.plan_text}\n"
+            "Type 'yes' to approve, 'no' to cancel, or describe changes."
+        )
+
+    def _run_approved_plan(
+        self,
+        plan: LLMProposal,
+        *,
+        approved_by: str,
+        execute_and_learn: Callable[..., ExecutionOutcome],
+        book_machine_refusal: Callable[..., None],
+        observation: Any,
+        sim: Any,
+    ) -> None:
+        """The one approved-plan path, for a person's "yes" and the sim policy's (owner decision B): one
+        ``loop_planning.execute_approved_plan``; its follow-up, if any, is the loop's next."""
+        from maxim.runtime.loop_planning import execute_approved_plan
+
+        outcome = execute_approved_plan(
+            plan,
+            autonomy_controller=self.autonomy_controller,
+            execute_and_learn=execute_and_learn,
+            book_machine_refusal=book_machine_refusal,
+            executor=self.executor,
+            observation=observation,
+            state=self.state,
+            sim=sim,
+            approved_by=approved_by,
+        )
+        if outcome is not None and outcome.followup is not None:
+            self.pending_action_followup = outcome.followup
 
     def handle_plan_approval(
         self,
@@ -565,19 +688,20 @@ class LoopController:
     ) -> bool:
         """Process user input when a plan proposal is awaiting approval.
 
-        Returns True if the input was consumed: an approval, a rejection or a re-ask is the answer to the plan,
-        never a new turn for the LLM, so the caller drops it (#1185). A modification returns False: the plan is
-        dropped and the text reaches the LLM as the user's turn, with the dropped plan in
-        ``state.data["pending_modification"]`` (the shape ``handle_confirmation`` writes and the §6 submit
-        reads). A rejection is booked through ``book_refusal`` (``LoopRun.book_refusal``, the run's recorder),
-        so it is required.
+        Returns True when the input answered the plan (the caller drops it, as the next turn it is not, #1185).
+        A modification returns False: the plan is dropped and the text reaches the LLM as the person's turn, with
+        the dropped plan in ``state.data["pending_modification"]`` (the shape ``handle_confirmation`` writes and the
+        §6 submit reads). It is not consumed the way the confirmation path consumes one: nothing then wakes the
+        loop or triggers the submit for a ``pending_modification`` alone (#1185 delta round, reported). A
+        rejection is booked through ``book_refusal``
+        (``LoopRun.book_refusal``, the run's recorder), so it is required.
 
         An approval executes the plan exactly once, here (#1185 Surface, owner decision 2026-11-21), through
-        ``loop_planning.execute_approved_plan``: the approval is bound to the object the person was shown (the
-        slot's ``pending_plan_proposal``), the slot is emptied BEFORE it runs, so a second "yes" finds nothing to
-        approve, and the plan never re-enters ``pending_proposal``, so the plan gate never parks it again.
-        ``execute_and_learn`` / ``book_machine_refusal`` are the run's (``LoopRun``); ``observation`` is this
-        tick's, ``sim`` the run's adapter.
+        ``_run_approved_plan``. The slot holds one plan and ``gate_plan_approval`` refuses any other while it is
+        occupied, so the plan answered is the plan whose tool and params were shown; the slot is emptied BEFORE it
+        runs, so a second "yes" finds nothing to approve; and the plan never re-enters ``pending_proposal``, so
+        the gate never parks it again. ``execute_and_learn`` / ``book_machine_refusal`` are the run's
+        (``LoopRun``); ``observation`` is this tick's, ``sim`` the run's adapter.
         """
         from maxim.runtime.approval import detect_approval_intent
 
@@ -602,24 +726,17 @@ class LoopController:
                     else None,
                 },
             )
-            from maxim.runtime.loop_planning import execute_approved_plan
-
-            plan = self.pending_plan_proposal  # the object that was shown: the approval answers this one only
+            plan = self.pending_plan_proposal  # the one plan in the slot, the one whose tool and params were shown
             self.pending_plan_proposal = None  # spent before it runs: a repeated "yes" approves nothing
-            self.state.data.pop("pending_plan_text", None)
             self.clear_pending_user_input()
-            outcome = execute_approved_plan(
+            self._run_approved_plan(
                 plan,
-                autonomy_controller=self.autonomy_controller,
+                approved_by="human:plan_prompt",
                 execute_and_learn=execute_and_learn,
                 book_machine_refusal=book_machine_refusal,
-                executor=self.executor,
                 observation=observation,
-                state=self.state,
                 sim=sim,
             )
-            if outcome is not None and outcome.followup is not None:
-                self.pending_action_followup = outcome.followup
             return True
 
         elif intent == "reject":
@@ -637,7 +754,6 @@ class LoopController:
             )
 
             self.pending_plan_proposal = None
-            self.state.data.pop("pending_plan_text", None)
             self.clear_pending_user_input()
             return True
 
@@ -659,32 +775,32 @@ class LoopController:
                 "timestamp": time.time(),
             }
             self.pending_plan_proposal = None
-            self.state.data.pop("pending_plan_text", None)
-            # cli_input stays set so it gets sent to LLM
-            return False  # Don't consume — let LLM see the modification text
+            return False  # the text is the person's next turn; ``pending_modification`` carries the dropped plan
 
         else:  # unknown: the plan stays pending, the reply is consumed, and the question is asked again
             tool = (self.pending_plan_proposal.action or {}).get("tool_name") or "unknown"
-            self._reask(
-                "plan_awaiting_approval",
-                tool,
-                f"[Awaiting approval] {self.pending_plan_proposal.plan_text}\n"
-                "Type 'yes' to approve, 'no' to cancel, or describe changes.",
-            )
+            self._reask("plan_awaiting_approval", tool, self._plan_prompt(self.pending_plan_proposal), sim=sim)
             return True
 
-    def _reask(self, event: str, tool_name: str, prompt: str) -> None:
+    def _reask(self, event: str, tool_name: str, prompt: str, *, sim: Any) -> None:
         """Ask a gating question again after an answer that was neither a plain yes nor a plain no (#1185).
 
         The reply is consumed (the pending input slot is cleared, the caller drops it), the pending item stays
         parked, and the question goes back on the surfaces the original prompt used: the abstraction stream
-        (``event``, flagged ``reask``), the status line and the input panel's prompt."""
-        from maxim.simulation.sim_logger import display_status
-
+        (``event``, flagged ``reask``), then ``_show_prompt``'s."""
         logger.info("Could not read a yes or no for %s, asking again", tool_name)
         log_agentic("agent_loop", event, {"tool": tool_name, "reask": True})
         self.clear_pending_user_input()
+        self._show_prompt(prompt, sim=sim)
+
+    @staticmethod
+    def _show_prompt(prompt: str, *, sim: Any) -> None:
+        """Show a gating question: the status line, the input panel's prompt, and the sim's channel
+        (``sim.emit_prompt``: a simulated person reads the AUT's words from its action sink, never the terminal)."""
+        from maxim.simulation.sim_logger import display_status
+
         display_status(prompt)
+        sim.emit_prompt(prompt)
         try:
             from maxim.simulation.sim_logger import get_active_display
 

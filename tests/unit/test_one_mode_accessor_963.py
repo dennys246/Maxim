@@ -98,7 +98,9 @@ def test_a_refused_confirmation_is_audited_with_the_operational_mode():
             mode_goal_achieved=False,
         )
     )
-    assert ctrl.handle_confirmation("no", execute_and_learn=MagicMock(), book_refusal=MagicMock(), observation={})
+    assert ctrl.handle_confirmation(
+        "no", execute_and_learn=MagicMock(), book_refusal=MagicMock(), observation={}, sim=MagicMock()
+    )
     [call] = autonomy.log_action.call_args_list
     assert (call.kwargs["action_type"], call.kwargs["mode"]) == ("rejected", "passive")
 

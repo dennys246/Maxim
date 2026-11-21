@@ -312,8 +312,13 @@ class SupervisionPolicy:
             return f"Tool '{tool_name}' is forbidden"
         return None
 
-    def can_execute(self, action: dict[str, Any], *, confidence: float | None = None) -> tuple[bool, str | None]:
-        """Check if action can be executed autonomously (the hard denials are ``hard_deny``'s)."""
+    def can_execute(
+        self, action: dict[str, Any], *, confidence: float | None = None, confirmed: bool = False
+    ) -> tuple[bool, str | None]:
+        """Check if action can be executed autonomously (the hard denials are ``hard_deny``'s).
+
+        ``confirmed``: a person already confirmed this action (a plan approved at the plan-approval prompt, #1185
+        owner decision A), so ``requires_confirmation`` is satisfied; every other check still applies."""
         tool_name = str(action.get("tool_name", "") or "")
 
         denied = self.hard_deny(action)
@@ -326,7 +331,7 @@ class SupervisionPolicy:
         if confidence is not None and confidence < self.min_confidence_autonomous:
             return False, f"Confidence {confidence:.2f} below threshold"
 
-        if tool_name in self.requires_confirmation:
+        if tool_name in self.requires_confirmation and not confirmed:
             return False, f"Tool '{tool_name}' requires confirmation"
 
         # Check sandbox/filesystem-specific policies
@@ -685,6 +690,23 @@ class AutonomyController:
         untouched by it.
         """
         return self.approval_blocker(action) or self.supervision_policy.hard_deny(action)
+
+    def approved_plan_denial(self, action: dict[str, Any], *, confidence: float | None) -> str | None:
+        """Why a plan a person APPROVED at the plan-approval prompt may still not run, beyond
+        ``approved_action_blocker``, or ``None`` (#1185, owner decision A, 2026-11-21).
+
+        The approval lifts the PLANNING level gate only, and counts as the SUPERVISED confirmation (no second
+        prompt). So at PLANNING and SUPERVISED the supervision policy's other checks still apply (the
+        ``allowed_tools`` list, the confidence threshold, the sandbox/CWD write and execute rules), as
+        ``can_execute_action`` applies them at SUPERVISED; at AUTONOMOUS only ``approved_action_blocker``'s
+        checks do, as for an unapproved action. An always-allowed tool passes, as in ``can_execute_action``.
+        """
+        if str(action.get("tool_name", "") or "") in self.ALWAYS_ALLOWED_TOOLS:
+            return None
+        if self.current_level in (AutonomyLevel.PLANNING, AutonomyLevel.SUPERVISED):
+            ok, reason = self.supervision_policy.can_execute(action, confidence=confidence, confirmed=True)
+            return None if ok else reason
+        return None
 
     def can_execute_action(self, action: dict[str, Any], confidence: float | None = None) -> tuple[bool, str | None]:
         """Check if an action can be executed at current autonomy level.

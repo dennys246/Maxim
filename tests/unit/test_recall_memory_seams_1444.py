@@ -824,6 +824,7 @@ def _confirm_and_finish(state: Any) -> None:
             execute_and_learn=lambda **k: (_ for _ in ()).throw(RuntimeError("stub")),
             book_refusal=lambda **k: None,
             observation={},
+            sim=SimpleNamespace(emit_prompt=lambda text: None),
         )
     except Exception:  # the stub raises out of the dispatch; the finally under test still ran
         pass

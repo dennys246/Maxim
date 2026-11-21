@@ -97,3 +97,93 @@ def test_an_approved_plan_that_is_forbidden_is_refused_not_run(monkeypatch, tmp_
     obs = _run(monkeypatch, tmp_path, ["yes"], level="planning", forbid=True)
     assert obs.executed == []
     assert [d["reason"] for d in _events(obs, "plan_refused")] == ["blocked"]
+
+
+# ── S3: the slot holds the plan that was shown ───────────────────────────────────────────────────────
+
+
+SECOND = "second_1085"
+
+
+def test_a_plan_proposed_while_one_waits_is_refused_and_the_yes_runs_the_waiting_one(monkeypatch, tmp_path):
+    """A parked, then B proposed: B is refused ``awaiting_human`` (a machine refusal: no NAc) and A keeps the
+    slot; the person's "yes" (typed after B was refused) runs A once and B never."""
+    obs = run_once(
+        monkeypatch,
+        tmp_path,
+        plan_text=PLAN,
+        plan_every=True,
+        then_propose=SECOND,
+        submit_interval=0.0,
+        answers=["yes"],
+        answer_on="plan_refused",
+        max_steps=14,
+    )
+    assert [e["_tool"] for e in obs.executed] == [TOOL]
+    assert [(d["reason"], d["tool"]) for d in _events(obs, "plan_refused")] == [("awaiting_human", SECOND)]
+    assert [o for o in obs.nac_observations if SECOND in str(o.get("event_signature"))] == []  # B booked no NAc
+    [refusal] = [kw for kw in obs.all_outcomes if kw["tool_name"] == SECOND]  # B: the machine refusal only
+    assert refusal["success"] is False and refusal.get("nac") is None
+    assert "awaiting_human" in refusal["error"]
+    [shown] = [d for d in _events(obs, "plan_awaiting_approval") if not d.get("reask")]
+    assert (shown["tool"], shown["params"]) == (TOOL, {})
+
+
+# ── Decision A: the approval is the SUPERVISED confirmation; the policy's other checks still apply ──────
+
+
+def test_at_supervised_an_approved_plan_needs_no_second_confirmation(monkeypatch, tmp_path):
+    obs = _run(monkeypatch, tmp_path, ["yes"], level="supervised")  # the probe tool is in requires_confirmation
+    assert [e["_tool"] for e in obs.executed] == [TOOL]
+    assert _events(obs, "user_confirmed") == []
+
+
+def test_at_supervised_a_forbidden_tool_is_refused(monkeypatch, tmp_path):
+    obs = _run(monkeypatch, tmp_path, ["yes"], level="supervised", policy={"forbidden_tools": {TOOL}})
+    assert obs.executed == []
+    assert [d["reason"] for d in _events(obs, "plan_refused")] == ["blocked"]
+
+
+@pytest.mark.parametrize(
+    ("policy", "tool", "params"),
+    [
+        ({"allowed_tools": {"some_other_tool"}}, TOOL, {}),
+        ({"min_confidence_autonomous": 0.95}, TOOL, {}),
+        ({}, "write_file", {"path": "/definitely/outside/the/workspace.txt"}),
+    ],
+    ids=["allowed_tools", "confidence", "cwd_write"],
+)
+def test_the_policy_can_still_refuse_an_approved_plan(monkeypatch, tmp_path, policy, tool, params):
+    """Decision A: ``allowed_tools``, the confidence threshold and the sandbox/CWD rules still apply at PLANNING,
+    typed ``not_permitted``, booked as a machine refusal (no NAc)."""
+    obs = run_once(
+        monkeypatch,
+        tmp_path,
+        tool=tool,
+        params=params,
+        plan_text=PLAN,
+        answers=["yes"],
+        max_steps=10,
+        level="planning",
+        policy=policy or None,
+    )
+    assert obs.executed == []
+    assert [d["reason"] for d in _events(obs, "plan_refused")] == ["not_permitted"]
+    assert obs.nac_observations == []
+
+
+# ── Decision B: the sim's "yes" takes the same path ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("level", ["autonomous", "planning"])
+def test_a_sim_yes_dispatches_once_through_the_approved_path(monkeypatch, tmp_path, level):
+    obs = run_once(monkeypatch, tmp_path, plan_text=PLAN, sim_plan_answer="Yes.", max_steps=10, level=level)
+    assert [e["_tool"] for e in obs.executed] == [TOOL]
+    [entry] = [a for a in obs.autonomy.get_audit_log() if a.action_type == "executed"]
+    assert entry.human_involved is True  # a sim AUTO_APPROVE counts as involved (execute_and_learn's docstring)
+    assert _events(obs, "plan_awaiting_approval") == []  # the policy answered: nothing parked
+
+
+def test_a_sim_no_dispatches_nothing(monkeypatch, tmp_path):
+    obs = run_once(monkeypatch, tmp_path, plan_text=PLAN, sim_plan_answer="no", max_steps=10)
+    assert obs.executed == []

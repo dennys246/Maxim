@@ -75,6 +75,7 @@ class TestConfirmationBranchScope:
                 execute_and_learn=run.execute_and_learn,
                 book_refusal=run.book_refusal,
                 observation={},
+                sim=MagicMock(),
             )
             is True
         )
@@ -86,7 +87,11 @@ class TestConfirmationBranchScope:
         run = _run()
         assert (
             ctrl.handle_confirmation(
-                "no", execute_and_learn=run.execute_and_learn, book_refusal=run.book_refusal, observation={}
+                "no",
+                execute_and_learn=run.execute_and_learn,
+                book_refusal=run.book_refusal,
+                observation={},
+                sim=MagicMock(),
             )
             is True
         )

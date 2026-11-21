@@ -168,6 +168,7 @@ def pre_tick_gate(
         state.data.get("pending_cli_input")
         or state.data.get("pending_voice_input")
         or state.data.get("pending_loop_reply")  # loop_perception.LOOP_REPLY_SLOT: the loop's own reply
+        or state.data.get("pending_deferred_input")  # loop_perception.DEFERRED_INPUT_SLOT: waited behind that reply
     )
     _has_pending_work = bool(
         ctrl.pending_proposal or ctrl.pending_action_followup or ctrl.pending_next_actions or ctrl.pending_plan_proposal

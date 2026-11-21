@@ -116,6 +116,10 @@ _WIRE1_LOW_PHRASE = "reliable from prior experience"
 BLOCKED = "blocked"
 DRAIN_ABORTED = "drain_aborted"
 NO_ACTION = "no_action"
+# #1185: a plan approved at the plan-approval prompt that the supervision policy still refuses (owner decision A),
+# and a plan proposed while another waits for the person's answer (S3: the waiting plan keeps the slot).
+NOT_PERMITTED = "not_permitted"
+AWAITING_HUMAN = "awaiting_human"
 
 
 def drain_approved(
@@ -179,28 +183,18 @@ def execute_approved_plan(
     observation: Any,
     state: Any,
     sim: Any,
+    approved_by: str,
 ) -> ExecutionOutcome | None:
-    """Execute a plan a person approved at the plan-approval prompt, once (#1185 Surface, owner decision 2026-11-21).
+    """Execute an approved plan once (#1185 Surface, owner decisions 2026-11-21): a person's "yes" at the
+    plan-approval prompt, or the sim response policy's.
 
-    The same step a drained entry takes (``_drain_one``): ``approved_action_blocker`` first (approval lifts only
-    the level, S7), a blocked plan refused typed and booked as a machine refusal, else one
-    ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in. ``plan`` is the
-    object the person was shown and answered; it never re-enters ``ctrl.pending_proposal``, so the loop's plan gate
-    never parks it again. ``None`` when it was refused.
+    The drain's per-entry step (``_drain_one``: ``approved_action_blocker``, then one
+    ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in), after one more
+    check (decision A): the approval lifts the PLANNING level gate only, so ``approved_plan_denial`` (the
+    supervision policy's ``allowed_tools``, confidence and sandbox/CWD rules) may still refuse it. A refused plan is
+    refused typed (``blocked`` / ``not_permitted``) and booked as a machine refusal (no NAc). ``None`` when refused.
     """
-    from maxim.agents.autonomy import Proposal
-
-    proposal = Proposal(
-        id=plan.request_id,
-        action=plan.action,
-        reasoning=plan.reasoning or "",
-        confidence=plan.confidence,
-        strategy_used=plan.strategy_used,
-        citations=list(plan.citations or []),
-        status="approved",
-        approved_by="human:plan_prompt",
-        source=plan,
-    )
+    proposal = _plan_record(plan, status="approved", approved_by=approved_by)
     refuser = _Refuser(
         autonomy_controller=autonomy_controller,
         book_machine_refusal=book_machine_refusal,
@@ -208,12 +202,58 @@ def execute_approved_plan(
         state=state,
         sim=sim,
     )
+    action = plan.action
+    if action and autonomy_controller.approved_action_blocker(action) is None:
+        denial = autonomy_controller.approved_plan_denial(action, confidence=plan.confidence)
+        if denial is not None:
+            refuser.refuse(proposal, reason=NOT_PERMITTED, detail=denial)
+            return None
     return _drain_one(
         proposal,
         autonomy_controller=autonomy_controller,
         execute_and_learn=execute_and_learn,
         observation=observation,
         refuser=refuser,
+    )
+
+
+def refuse_plan(
+    plan: LLMProposal,
+    *,
+    reason: str,
+    detail: str,
+    autonomy_controller: AutonomyController,
+    book_machine_refusal: Callable[..., None],
+    executor: Any,
+    state: Any,
+    sim: Any,
+) -> None:
+    """Refuse a plan the person never answered, typed (``plan_refused``), booked as a machine refusal (no NAc):
+    #1185 S3, a plan proposed while another waits in the slot (``awaiting_human``)."""
+    refuser = _Refuser(
+        autonomy_controller=autonomy_controller,
+        book_machine_refusal=book_machine_refusal,
+        executor=executor,
+        state=state,
+        sim=sim,
+    )
+    refuser.refuse(_plan_record(plan, status="pending", approved_by=None), reason=reason, detail=detail)
+
+
+def _plan_record(plan: LLMProposal, *, status: str, approved_by: str | None) -> Proposal:
+    """The queue's record of a plan from the plan-approval prompt, so it takes the drain's step and refusals."""
+    from maxim.agents.autonomy import Proposal
+
+    return Proposal(
+        id=plan.request_id,
+        action=plan.action,
+        reasoning=plan.reasoning or "",
+        confidence=plan.confidence,
+        strategy_used=plan.strategy_used,
+        citations=list(plan.citations or []),
+        status=status,
+        approved_by=approved_by,
+        source=plan,
     )
 
 

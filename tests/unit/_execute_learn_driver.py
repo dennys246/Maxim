@@ -27,8 +27,9 @@ controller right after the approval (``emergency_halt``), before the loop drains
 
 ``plan_text`` makes the proposal a plan that ``requires_approval`` (#1185): the loop parks it behind the
 plan-approval prompt, and ``answers`` are the person's replies, typed into the interactive mailbox
-(``pending_cli_input``): the first once the plan is shown (``plan_awaiting_approval``), each later one once the
-previous answer was read (``plan_approval_check``).
+(``pending_cli_input``): the first once the plan is shown (``plan_awaiting_approval``; or once ``answer_on``
+fires), each later one once the previous answer was read (``plan_approval_check``). ``plan_every``: every proposal
+(``then_propose``'s too) is such a plan. ``sim_plan_answer``: the sim response policy answers the plan prompt.
 
 The mode (#963): ``state_mode`` is the loop state's ``"mode"`` (``None`` leaves it unset), ``grant`` the operator's
 launch grant set on the executor before the run, and ``grant_at[k]`` a grant set just before the k-th proposal
@@ -225,6 +226,9 @@ def run_once(
     grant_at: dict[int, str | None] | None = None,
     plan_text: str | None = None,
     answers: list[str] | None = None,
+    answer_on: str = "plan_awaiting_approval",
+    plan_every: bool = False,
+    sim_plan_answer: str | None = None,
 ) -> Observed:
     """Run the loop until the one proposal has been executed (and, supervised, confirmed).
 
@@ -328,8 +332,8 @@ def run_once(
             triggering_input=TRIGGER,
             cluster_id=CLUSTERS["interoception"],
             clusters=dict(CLUSTERS),
-            plan_text=plan_text if name == tool else None,
-            requires_approval=plan_text is not None and name == tool,
+            plan_text=plan_text if (name == tool or plan_every) else None,
+            requires_approval=plan_text is not None and (name == tool or plan_every),
         )
 
     real_record = tool_dispatch.record_outcome
@@ -353,12 +357,14 @@ def run_once(
     real_append = buffer.append
 
     pending_answers = list(answers or [])
+    answered: list[int] = []
 
     def _append(record: Any) -> Any:
         if getattr(record, "source", None) == "agent_loop":
             obs.events.append((record.event, dict(record.data or {})))
-            first_prompt = record.event == "plan_awaiting_approval" and not (record.data or {}).get("reask")
-            if pending_answers and (first_prompt or record.event == "plan_approval_check"):
+            first = record.event == answer_on and not (record.data or {}).get("reask") and not answered
+            if pending_answers and (first or (answered and record.event == "plan_approval_check")):
+                answered.append(1)
                 state.data["pending_cli_input"] = pending_answers.pop(0)  # the person types the next reply
         return real_append(record)
 
@@ -375,6 +381,10 @@ def run_once(
     monkeypatch.setattr(LoopController, "__init__", _init)
 
     monkeypatch.setattr(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF)
+    if sim_plan_answer is not None:
+        from maxim.runtime.sim_adapter import NullSimulationAdapter
+
+        monkeypatch.setattr(NullSimulationAdapter, "resolve_plan_approval", lambda self, plan_text: sim_plan_answer)
     if display_raises:
 
         def _boom(*a: Any, **k: Any) -> None:

@@ -1573,33 +1573,23 @@ def _run_agentic_loop_body(
             # ───────────────────────────────────────────────────────────────
             # CONFIRMATION / TIMEOUT / PLAN APPROVAL — delegated to controller
             # ───────────────────────────────────────────────────────────────
-            if ctrl.handle_confirmation(
-                cli_text, execute_and_learn=_execute_and_learn, book_refusal=_book_refusal, observation=observation
+            if ctrl.answer_pending_prompt(
+                cli_text,
+                execute_and_learn=_execute_and_learn,
+                book_refusal=_book_refusal,
+                book_machine_refusal=_book_machine_refusal,
+                observation=observation,
+                sim=sim,
             ):
-                cli_input = None
+                cli_input = None  # the answer to a pending prompt, never a new turn (#1185)
                 continue
 
-            if ctrl.handle_timeout_retry(cli_text):
-                cli_input = None
-                continue
-
-            # Store in state and memory (only reached if NOT a confirmation/timeout)
+            # Store in state and memory (only reached if NOT the answer to a pending prompt)
             ctrl.store_user_input(cli_text, source_type)
 
             # Speculative pre-fetching
             ctrl.run_prefetch(cli_text)
             pending_prefetch = ctrl.pending_prefetch
-
-            # Planning mode: check if this input is approval/rejection/modify
-            if ctrl.handle_plan_approval(
-                cli_text,
-                book_refusal=_book_refusal,
-                execute_and_learn=_execute_and_learn,
-                book_machine_refusal=_book_machine_refusal,
-                observation=observation,
-                sim=sim,
-            ):
-                cli_input = None  # the answer to the plan (approved, rejected or re-asked), never a new turn (#1185)
 
         hard_stop_reason = check_hard_stop(transcript, hard_override)
         if hard_stop_reason:
@@ -2210,7 +2200,12 @@ def _run_agentic_loop_body(
             # ───────────────────────────────────────────────────────────────
             # PLANNING MODE: Check if this proposal requires user approval
             # ───────────────────────────────────────────────────────────────
-            if ctrl.gate_plan_approval(action, sim=sim):  # parked for the person, or the sim policy refused it
+            if ctrl.gate_plan_approval(  # a plan: run once if approved, parked for the person, or refused
+                execute_and_learn=_execute_and_learn,
+                book_machine_refusal=_book_machine_refusal,
+                observation=observation,
+                sim=sim,
+            ):
                 continue
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)

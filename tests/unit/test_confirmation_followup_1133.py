@@ -120,7 +120,11 @@ def _confirm(ctrl: LoopController, answer: str = "yes"):
     ):
         run = _run(ctrl, rec)
         consumed = ctrl.handle_confirmation(
-            answer, execute_and_learn=run.execute_and_learn, book_refusal=run.book_refusal, observation={}
+            answer,
+            execute_and_learn=run.execute_and_learn,
+            book_refusal=run.book_refusal,
+            observation={},
+            sim=MagicMock(),
         )
     return consumed, d_action, d_status, rec
 
@@ -297,7 +301,9 @@ class TestReviewPins:
             raise RuntimeError("capture_before broke")
 
         with pytest.raises(RuntimeError, match="capture_before broke"):
-            ctrl.handle_confirmation("yes", execute_and_learn=_boom, book_refusal=MagicMock(), observation={})
+            ctrl.handle_confirmation(
+                "yes", execute_and_learn=_boom, book_refusal=MagicMock(), observation={}, sim=MagicMock()
+            )
         assert ctrl.pending_confirmation is None
         assert ctrl.pending_proposal is None
         # Session R (delta review S1): take_user_input read and popped the tick's slots before this ran; what is left

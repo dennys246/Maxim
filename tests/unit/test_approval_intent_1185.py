@@ -182,6 +182,7 @@ def _proposal() -> LLMProposal:
 def _plan_controller():
     ctrl = _controller()
     ctrl.autonomy_controller.approved_action_blocker.return_value = None
+    ctrl.autonomy_controller.approved_plan_denial.return_value = None
     ctrl.pending_plan_proposal = _proposal()
     return ctrl
 
@@ -255,7 +256,7 @@ def test_a_plan_modification_reaches_the_next_submit() -> None:
     """The modify branch wrote ``plan_modification_context``, which nothing read. It now writes
     ``pending_modification``, the shape ``handle_confirmation`` writes and the §6 submit pops into the prompt."""
     ctrl = _plan_controller()
-    assert _answer(ctrl, "write the file to the other folder") is False
+    assert _answer(ctrl, "write the file to the other folder") is False  # the person's next turn
     mod = ctrl.state.data["pending_modification"]
     assert mod["user_modification"] == "write the file to the other folder"
     assert mod["original_tool_name"] == "bash"
@@ -275,7 +276,9 @@ def _confirm_controller():
 def _confirm(ctrl, text: str):
     book, run = MagicMock(), MagicMock()
     with patch("maxim.simulation.sim_logger.display_status"):
-        consumed = ctrl.handle_confirmation(text, execute_and_learn=run, book_refusal=book, observation={})
+        consumed = ctrl.handle_confirmation(
+            text, execute_and_learn=run, book_refusal=book, observation={}, sim=MagicMock()
+        )
     return consumed, run, book
 
 
@@ -329,21 +332,23 @@ def test_a_punctuated_yes_at_a_timeout_prompt_retries() -> None:
     """Before: the timeout handler matched the raw lowercased text, so "Yes." fell through to normal processing."""
     ctrl = _timeout_controller()
     with patch("maxim.simulation.sim_logger.display_status"):
-        assert ctrl.handle_timeout_retry("Yes.") is True
+        assert ctrl.handle_timeout_retry("Yes.", sim=MagicMock()) is True
     assert ctrl.llm_worker.retry_with_timeout.call_args.args[1] == 120.0
 
 
 def test_a_punctuated_no_at_a_timeout_prompt_declines() -> None:
     ctrl = _timeout_controller()
     with patch("maxim.simulation.sim_logger.display_status"):
-        assert ctrl.handle_timeout_retry("No!") is True
+        assert ctrl.handle_timeout_retry("No!", sim=MagicMock()) is True
     ctrl.llm_worker.retry_with_timeout.assert_not_called()
 
 
 @pytest.mark.parametrize("text", ["ok", "sure?", "not now"])
 def test_an_ambiguous_timeout_answer_does_not_retry(text: str) -> None:
     ctrl = _timeout_controller()
-    ctrl.handle_timeout_retry(text)
+    with patch("maxim.simulation.sim_logger.display_status"):
+        assert ctrl.handle_timeout_retry(text, sim=MagicMock()) is True  # consumed: re-asked (decision C)
+    assert ctrl.get_timeout_retry() is not None  # still pending
     ctrl.llm_worker.retry_with_timeout.assert_not_called()
 
 
@@ -377,3 +382,107 @@ def test_a_working_policy_still_answers() -> None:
     policy = MagicMock()
     policy.resolve_plan_approval.return_value = "no"
     assert _bridge_adapter(policy).resolve_plan_approval("plan") == "no"
+
+
+# ── Delta-round folds ─────────────────────────────────────────────────────────
+
+
+def test_a_tool_follow_up_is_never_an_answer() -> None:
+    """Fold 3: an ``[ACTION_FOLLOWUP`` arriving while a plan waits is a tool result, not the person's answer."""
+    ctrl = _plan_controller()
+    run = MagicMock()
+    text = "[ACTION_FOLLOWUP type=process tool=read_file mode=active query='x']: yes"
+    assert (
+        ctrl.answer_pending_prompt(
+            text,
+            execute_and_learn=run,
+            book_refusal=MagicMock(),
+            book_machine_refusal=MagicMock(),
+            observation={},
+            sim=MagicMock(),
+        )
+        is False
+    )
+    run.assert_not_called()
+    assert ctrl.pending_plan_proposal is not None
+
+
+def test_the_loop_reply_answers_first_and_the_observation_waits() -> None:
+    """Fold 2: a sim confirmation answered "yes" (the loop's own reply) while the narrator's sentence arrives in the
+    same observation. The reply used to be dropped, so the sentence came out "unknown", was consumed by the re-ask,
+    and the confirmation stayed parked forever. Now the reply answers first and the sentence is the next tick's."""
+    from maxim.runtime.loop_perception import take_user_input
+
+    sentence = "Great, can you also look at the logs?"
+    state = MagicMock()
+    state.data = {"pending_loop_reply": "yes"}
+    agent = MagicMock()
+    first = take_user_input({"cli_input": sentence, "source": "cli"}, state, agent)
+    assert first.cli_input == "yes"
+    assert first.addressed == sentence  # memorized once, as it arrived
+    second = take_user_input({}, state, agent)
+    assert second.cli_input == sentence
+    assert second.addressed == ""  # never memorized twice
+    assert agent.publish_arrival.call_count == 1
+    assert "pending_deferred_input" not in state.data
+
+
+def test_the_sentence_after_the_reply_wedges_nothing() -> None:
+    """Fold 2 end to end at the controller: the reply confirms, then the sentence is an ordinary turn."""
+    from maxim.runtime.loop_perception import take_user_input
+
+    ctrl = _confirm_controller()
+    ctrl.state.data["pending_loop_reply"] = "yes"
+    first = take_user_input({"cli_input": "Great, can you also look at the logs?"}, ctrl.state, MagicMock())
+    consumed, run, _ = _confirm(ctrl, first.cli_input)
+    assert consumed is True and ctrl.pending_confirmation is None
+    run.assert_called_once()
+    second = take_user_input({}, ctrl.state, MagicMock())
+    assert second.cli_input == "Great, can you also look at the logs?"
+
+
+def test_a_reask_reaches_the_sim_channel() -> None:
+    ctrl = _confirm_controller()
+    sim = MagicMock()
+    with patch("maxim.simulation.sim_logger.display_status"):
+        ctrl.handle_confirmation(
+            "not ok", execute_and_learn=MagicMock(), book_refusal=MagicMock(), observation={}, sim=sim
+        )
+    [call] = sim.emit_prompt.call_args_list
+    assert "Type 'yes' or 'no'" in call.args[0]
+
+
+def test_the_sim_adapter_puts_a_prompt_in_its_action_sink() -> None:
+    from maxim.runtime.sim_adapter import NullSimulationAdapter, SimulationAdapter
+    from maxim.simulation.sinks import RecordingSink
+
+    sink = RecordingSink()
+    SimulationAdapter(percept_source=None, action_sink=sink).emit_prompt("Confirm bash? Type 'yes' or 'no'.")
+    [record] = sink.actions
+    assert record.utterance == "Confirm bash? Type 'yes' or 'no'."
+    assert NullSimulationAdapter().emit_prompt("x") is None
+
+
+def test_the_reask_events_are_shown_at_the_prompt_level() -> None:
+    from maxim.utils.structured_logging import EVENT_VERBOSITY
+
+    level = EVENT_VERBOSITY["plan_awaiting_approval"]
+    assert EVENT_VERBOSITY["confirmation_reask"] == EVENT_VERBOSITY["timeout_retry_reask"] == level == 0
+
+
+def test_a_plan_prompt_shows_the_tool_and_params_that_will_run() -> None:
+    from maxim.runtime.loop_controller import LoopController
+
+    text = LoopController._plan_prompt(_proposal())
+    assert "Run bash with" in text and '"command": "rm -rf build"' in text
+    assert "The model's description: delete the build dir" in text
+
+
+def test_the_timeout_prompt_offers_only_the_answers_it_reads() -> None:
+    import inspect
+
+    from maxim.agents import llm_worker
+
+    src = inspect.getsource(llm_worker)
+    assert "'no' to skip" not in src
+    assert "or 'no'." in src

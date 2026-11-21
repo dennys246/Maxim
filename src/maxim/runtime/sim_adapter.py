@@ -250,6 +250,17 @@ class SimulationAdapter:
             return self.percept_source.response_policy.resolve_plan_approval(plan_text)
         return "yes"
 
+    def emit_prompt(self, text: str) -> None:
+        """Put a gating prompt (a re-ask, a parked plan) on the sim's channel (#1185): the simulated person reads
+        the AUT's words from the action sink (``ActionRecord.utterance``), never from the terminal."""
+        if self.action_sink is None:
+            return
+        from maxim.simulation.sinks import ActionRecord
+
+        self.action_sink.record(
+            ActionRecord(timestamp=time.time(), tool_name="_gating_prompt", result_success=True, utterance=text)
+        )
+
     def resolve_timeout_retry(self, timeout_s: float) -> str | None:
         """Auto-resolve timeout retry prompts."""
         from maxim.simulation.bridge import SimulationBridge
@@ -347,3 +358,6 @@ class NullSimulationAdapter:
 
     def resolve_timeout_retry(self, timeout_s: float) -> str | None:
         return None
+
+    def emit_prompt(self, text: str) -> None:
+        return None  # production: the prompt is on the terminal and the input panel; there is no sim channel
