@@ -386,11 +386,16 @@ def test_a_refused_goals_staging_never_borrows_another_events_surprise(
 
 def test_a_subscriber_contract_error_does_not_strand_the_goal() -> None:
     """A subscriber whose contract error re-raises out of ``publish`` (``EncodingContractError``) used to leave the goal
-    set with no pending call: never completed, nothing proposed again. The goal is cleared regardless."""
+    set with no pending call: never completed, nothing proposed again. The error stays loud, and the goal agent,
+    memory's active goal and the plan all end the goal together (delta review 2: none is left stranded)."""
+    from unittest.mock import MagicMock
+
     from maxim.agents.bus import GoalCompleted
     from maxim.memory.encoding import EncodingContractError
 
     goal_agent = _goal_agent_with_pending_call()
+    goal_agent._memory = MagicMock()
+    goal_agent._plan_manager = MagicMock()
 
     def _breaks(_: Any) -> None:
         raise EncodingContractError("a broken contract")
@@ -400,3 +405,41 @@ def test_a_subscriber_contract_error_does_not_strand_the_goal() -> None:
     with pytest.raises(EncodingContractError):
         goal_agent.close_tool_call(intent["tool_call_id"], True, "out", None)
     assert goal_agent._current_goal is None and goal_agent._pending_tool_call is None
+    goal_agent._memory.set_active_goal.assert_called_with(None, None)
+    goal_agent._memory.set_active_sub_goals.assert_called_with([])
+    goal_agent._plan_manager.advance_phase.assert_called_once_with(True, "out", None)
+
+
+@pytest.mark.parametrize("second", ["refused", "ran"])
+def test_a_goal_that_went_on_past_a_refused_skip_sub_goal_is_marked_refused(second: str) -> None:
+    """Owner decision 2026-11-21: SKIP semantics are unchanged (a goal of refused SKIP sub-goals still ends a success),
+    but a goal where any sub-goal was skipped by a refusal ends ``refused=True``, so contemplation learning skips it."""
+    from maxim.agents.bus import AgentBus, FailureStrategy, GoalCompleted, GoalPriority, ProposedGoal, SubGoal
+    from maxim.agents.agentic_goal_agent import AgenticGoalAgent
+
+    goal_agent = AgenticGoalAgent(AgentBus())
+    done = _on_bus(goal_agent, GoalCompleted)
+    goal_agent._bus.publish(
+        ProposedGoal(
+            id="g3",
+            description="two optional steps",
+            priority=GoalPriority.HIGH,
+            sub_goals=[
+                SubGoal(id="a", description="first", tool_name="bash", on_failure=FailureStrategy.SKIP),
+                SubGoal(id="b", description="second", tool_name="respond", on_failure=FailureStrategy.SKIP),
+            ],
+        )
+    )
+    first = goal_agent.propose_intent(state=None, memory=None)
+    assert goal_agent.refuse_tool_call(first["tool_call_id"], "forbidden") is True
+    nxt = goal_agent.propose_intent(state=None, memory=None)
+    if second == "refused":
+        assert goal_agent.refuse_tool_call(nxt["tool_call_id"], "forbidden") is True
+    else:
+        assert goal_agent.close_tool_call(nxt["tool_call_id"], True, "ok", None) is True
+    assert [(c.success, c.refused) for c in done] == [(True, True)]
+
+    goal_agent._bus.publish(ProposedGoal(id="g4", description="next goal", priority=GoalPriority.HIGH, tool_name="t"))
+    later = goal_agent.propose_intent(state=None, memory=None)
+    assert goal_agent.close_tool_call(later["tool_call_id"], True, "ok", None) is True
+    assert done[-1].refused is False  # the mark belongs to the goal it was set on, never the next one

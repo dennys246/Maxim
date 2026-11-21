@@ -4,8 +4,9 @@
   the new `AgenticGoalAgent.close_tool_call` (and `MaximAgent.close_tool_call`), a refused one through
   `refuse_tool_call`, which ends the goal unless the sub-goal is `SKIP` (`ProposedGoal.handle_sub_goal_refusal`).
   - Goals now end, so `GoalCompleted` reaches memory, the statistician and ExecAgent for these goals, and the
-    active plan advances (replanning a failed phase). A refused goal ends with the new `GoalCompleted.refused` set: ExecAgent's contemplation stats and
-    NAc link skip it, and everything else sees a failed goal.
+    active plan advances (replanning a failed phase). A refused goal ends with the new `GoalCompleted.refused` set (so does one that went on past a
+    refused `SKIP` sub-goal, even as a success): ExecAgent's contemplation stats and NAc link skip it, and
+    everything else sees the goal's outcome.
   - **RETRY sub-goals retry.** A launch counted twice toward `max_retries`, so a RETRY sub-goal never retried; it
     now gets `max_retries` launches.
   - Still no `ToolResult` is published by any dispatcher (#1727).

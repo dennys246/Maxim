@@ -69,6 +69,9 @@ class AgenticGoalAgent(Agent):
         # Current goal state
         self._current_goal: ProposedGoal | None = None
         self._pending_tool_call: ToolCall | None = None
+        # The id of the current goal once one of its SKIP sub-goals was skipped by a REFUSAL (#1414): the goal goes
+        # on and may end as a success, but it is still marked refused so contemplation learning skips it.
+        self._refused_in_goal: str | None = None
 
         # Subscribe to messages
         self._bus.subscribe(ProposedGoal, self._on_proposed_goal)
@@ -254,8 +257,11 @@ class AgenticGoalAgent(Agent):
         if self._current_goal is None:
             return
 
+        goal_id = self._current_goal.id
+        refused = refused or self._refused_in_goal == goal_id
+        self._refused_in_goal = None
         completed = GoalCompleted(
-            goal_id=self._current_goal.id,
+            goal_id=goal_id,
             success=success,
             result=result,
             error=error,
@@ -276,21 +282,23 @@ class AgenticGoalAgent(Agent):
         try:
             self._bus.publish(completed)
         finally:
-            # Cleared even when a subscriber's contract error re-raises out of publish (``EncodingContractError``),
-            # or the goal would be stuck: no pending call, never completed, and nothing proposed again (#1414 review).
+            # The goal has ended whatever a subscriber does: when a contract error re-raises out of publish
+            # (``EncodingContractError``, still loud), the goal agent, memory's active goal and the plan all end it
+            # together, so none is left stranded (no pending call, a stale active goal, a phase that never advances;
+            # #1414 review).
             self._current_goal = None
             self._pending_tool_call = None
 
-        if self._memory:
-            self._memory.set_active_goal(None, None)
-            self._memory.set_active_sub_goals([])
+            if self._memory:
+                self._memory.set_active_goal(None, None)
+                self._memory.set_active_sub_goals([])
 
-        # Delegate phase advancement to PlanManager if a plan is active
-        if self._plan_manager and self._plan_manager.active_plan:
-            try:
-                self._plan_manager.advance_phase(success, result, error)
-            except Exception:
-                pass  # PlanManager failure should not block goal completion
+            # Delegate phase advancement to PlanManager if a plan is active
+            if self._plan_manager and self._plan_manager.active_plan:
+                try:
+                    self._plan_manager.advance_phase(success, result, error)
+                except Exception:
+                    pass  # PlanManager failure should not block goal completion
 
     def get_current_goal(self) -> ProposedGoal | None:
         """Get the current active goal."""
@@ -363,6 +371,7 @@ class AgenticGoalAgent(Agent):
         self._pending_tool_call = None
         current = next((sg for sg in goal.sub_goals if sg.status == SubGoalStatus.IN_PROGRESS), None) if goal else None
         if goal is not None and current is not None and goal.handle_sub_goal_refusal(current, reason):
+            self._refused_in_goal = goal.id  # owner decision 2026-11-21: SKIP goes on, the goal is marked refused
             self._continue_goal(goal)
             return True
         self._complete_goal(success=False, error=f"Refused: {reason}", refused=True)
