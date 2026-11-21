@@ -981,10 +981,15 @@ class ProposedGoal:
         return executable[0]
 
     def handle_sub_goal_failure(self, sub_goal: SubGoal, error: str) -> bool:
-        """Handle sub-goal failure. Returns True if parent goal should continue."""
+        """Handle sub-goal failure. Returns True if parent goal should continue.
+
+        ``attempts`` is not incremented here: it counts LAUNCHES, and ``AgenticGoalAgent._schedule_next_action``
+        increments it when it starts the sub-goal. Counting the failure too made one launch count twice, so with the
+        default ``max_retries=2`` a RETRY sub-goal never retried (#1414 review, owner decision 2026-11-21): it now
+        gets ``max_retries`` launches in all.
+        """
         sub_goal.status = SubGoalStatus.FAILED
         sub_goal.error = error
-        sub_goal.attempts += 1
 
         if sub_goal.on_failure == FailureStrategy.SKIP:
             sub_goal.status = SubGoalStatus.SKIPPED
@@ -1008,9 +1013,10 @@ class ProposedGoal:
 
         Beside :meth:`handle_sub_goal_failure`, the one other copy of the policy: a refused call would be refused
         again, so RETRY and ESCALATE (retry at a higher priority) cannot help, and only SKIP lets the goal go on.
+        REPLAN ends the goal too: a failed goal is the route to the plan's own replanning
+        (``PlanManager._handle_phase_failure``). ``attempts`` counts launches, as in :meth:`handle_sub_goal_failure`.
         """
         sub_goal.error = reason
-        sub_goal.attempts += 1
         if sub_goal.on_failure == FailureStrategy.SKIP:
             sub_goal.status = SubGoalStatus.SKIPPED
             return True
@@ -1075,6 +1081,10 @@ class GoalCompleted:
     success: bool
     result: Any = None
     error: str | None = None
+    # True when the goal ended because the loop's autonomy REFUSED its tool call (#1414): the tool never ran, so
+    # it is still a failed goal for memory, metrics and replanning, but not evidence about how the goal was drafted
+    # (ExecAgent's contemplation learning skips it; owner decision 2026-11-21).
+    refused: bool = False
 
 
 @dataclass
