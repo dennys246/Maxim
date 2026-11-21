@@ -6,8 +6,9 @@ one line per breach otherwise:
 
   - no network interface but ``lo`` (also catches a run that never entered a namespace);
   - ``sudo -n true`` is refused (setpriv's no_new_privs; a missing sudo counts as refused);
-  - the containerd socket is refused (root-only on hosted runners);
-  - closed mode (every lane but slow-tests): each docker socket path is refused (PermissionError) or absent, and on CI
+  - the containerd socket is ``"denied"`` (PermissionError: root-only on hosted runners) or ``"absent"``;
+  - closed mode (every lane but slow-tests): each docker socket path is ``"denied"`` or ``"absent"`` (in
+    :func:`connect_result`'s words: its ``"refused"``, like any ``"error:<errno>"``, is a breach here), and on CI
     (``GITHUB_ACTIONS=true``) at least one exists, or the check is vacuous; and no socket left under the runtime dir
     (outside ``pulse/``) answers a connect, since ci_netns.sh covered each with /dev/null;
   - keep mode (``--keep-docker``): on CI a docker socket must ANSWER, which proves this probe works against a live
@@ -20,6 +21,7 @@ are tested on temporary sockets (tests/unit/test_ci_netns_probe.py); ``main`` us
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import socket
 import stat
@@ -47,6 +49,10 @@ def connect_result(path: str, timeout_s: float = 2.0) -> str:
     except ConnectionRefusedError:
         return "refused"
     except OSError as e:
+        # Not a socket is refused too: Linux answers a connect to a non-socket with ECONNREFUSED, Darwin with
+        # ENOTSOCK (#1714). Either way nothing can answer at that path.
+        if e.errno == errno.ENOTSOCK:
+            return "refused"
         return f"error:{e.errno}"
     finally:
         s.close()
