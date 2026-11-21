@@ -33,7 +33,9 @@ reached a security review mid-PR; it belonged in the approach note.
 
 **Stop rule for a gate's review rounds:** when the REVIEWER classifies every finding in a round as
 fail-closed (it can only make a clean tree read dirty, never the reverse) and in a class already covered,
-those findings go to a follow-up issue, not onto the branch, and no further round is owed. The author
+those findings go to a follow-up issue, not onto the branch, and no further round is owed. *2026-11-21:* this applies only to that case (fail-closed findings, in a covered class, on a
+gate). It is not a general licence to file findings: every other finding is folded unless a reason from
+[filing-is-not-fixing.md](filing-is-not-fixing.md) applies. The author
 does not make that classification: an author-attested "it's only a NIT" deciding whether a gate is
 reviewed is exactly the weak evidence CLAUDE.md rules out. Any `src/` fold after the last round still
 gets a round (a delta-scoped one, §6, is enough). A gate inside an experiment harness gets both passes:
