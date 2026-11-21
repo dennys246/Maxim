@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import Any, Literal
 
@@ -305,7 +306,8 @@ class DamageRefused(MaximError, ValueError):
     ``SpecModulator.apply_damage`` raises it for a modulator with no sub-sensors, which used to return ``1.0``
     and drop the damage. How a partless body should take damage is open
     (``docs/plans/deferred/reflex_layering.md`` §3); until it is decided, the call refuses. Also a
-    ``ValueError``, so it reads as bad input (like ``MotionRefused``).
+    ``ValueError``, so it reads as bad input (like ``MotionRefused``). That makes any ``except ValueError`` around
+    ``apply_damage`` that substitutes a default integrity a hazard: it would bring back the silent drop.
 
     Attributes:
         modulator: The name of the part that refused.
@@ -316,12 +318,8 @@ class DamageRefused(MaximError, ValueError):
         self.modulator = modulator
 
     def __reduce__(self) -> tuple[Any, ...]:
-        # A keyword-only init: rebuild through a helper so pickle and copy keep ``modulator``.
-        return (_rebuild_damage_refused, (self.message, self.modulator))
-
-
-def _rebuild_damage_refused(message: str, modulator: str) -> DamageRefused:
-    return DamageRefused(message, modulator=modulator)
+        # A keyword-only init: bind ``modulator`` so pickle and copy keep it (and a subclass stays itself).
+        return (functools.partial(type(self), modulator=self.modulator), (self.message,))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -714,6 +712,8 @@ __all__ = [
     "ToolValidationError",
     "ToolTimeoutError",
     "ToolEffectRefused",
+    # Embodiment
+    "DamageRefused",
     # Models
     "ModelError",
     "ModelLoadError",
