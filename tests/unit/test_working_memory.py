@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from maxim.agents.working_memory import WMEntry, WorkingMemoryKind, WorkingMemorySet
+from maxim.memory.text import Provenance
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ from maxim.agents.working_memory import WMEntry, WorkingMemoryKind, WorkingMemor
 class TestWorkingMemorySetBasic:
     def test_add_returns_entry(self):
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.PERCEPT, content="hello", ref="p-1")
+        entry = wms.add(WorkingMemoryKind.PERCEPT, content="hello", ref="p-1", provenance=Provenance.INTERNAL)
         assert isinstance(entry, WMEntry)
         assert entry.kind == WorkingMemoryKind.PERCEPT
         assert entry.content == "hello"
@@ -42,44 +43,45 @@ class TestWorkingMemorySetBasic:
             WorkingMemoryKind.THOUGHT,
             content="deliberation",
             goal_tag="escape the dungeon",
+            provenance=Provenance.INTERNAL,
         )
         assert entry.goal_tag == "escape the dungeon"
 
     def test_add_goal_tag_default_none(self):
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.PERCEPT, content="hello")
+        entry = wms.add(WorkingMemoryKind.PERCEPT, content="hello", provenance=Provenance.INTERNAL)
         assert entry.goal_tag is None
 
     def test_add_increments_tick(self):
         wms = WorkingMemorySet(agent_id="test")
-        e1 = wms.add(WorkingMemoryKind.PERCEPT, content="a")
-        e2 = wms.add(WorkingMemoryKind.OUTCOME, content="b")
+        e1 = wms.add(WorkingMemoryKind.PERCEPT, content="a", provenance=Provenance.INTERNAL)
+        e2 = wms.add(WorkingMemoryKind.OUTCOME, content="b", provenance=Provenance.INTERNAL)
         assert e1.tick == 0
         assert e2.tick == 1
         assert wms.current_tick == 2
 
     def test_recent_returns_oldest_first(self):
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.PERCEPT, content="first")
-        wms.add(WorkingMemoryKind.PERCEPT, content="second")
-        wms.add(WorkingMemoryKind.PERCEPT, content="third")
+        wms.add(WorkingMemoryKind.PERCEPT, content="first", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="second", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="third", provenance=Provenance.INTERNAL)
         items = wms.recent(limit=3)
         assert [e.content for e in items] == ["first", "second", "third"]
 
     def test_recent_respects_limit(self):
         wms = WorkingMemorySet(agent_id="test")
         for i in range(10):
-            wms.add(WorkingMemoryKind.PERCEPT, content=f"item-{i}")
+            wms.add(WorkingMemoryKind.PERCEPT, content=f"item-{i}", provenance=Provenance.INTERNAL)
         items = wms.recent(limit=3)
         assert len(items) == 3
         assert items[-1].content == "item-9"
 
     def test_by_kind_filters(self):
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.PERCEPT, content="p1")
-        wms.add(WorkingMemoryKind.OUTCOME, content="o1")
-        wms.add(WorkingMemoryKind.PERCEPT, content="p2")
-        wms.add(WorkingMemoryKind.THOUGHT, content="t1")
+        wms.add(WorkingMemoryKind.PERCEPT, content="p1", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.OUTCOME, content="o1", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="p2", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="t1", provenance=Provenance.INTERNAL)
 
         percepts = wms.by_kind({WorkingMemoryKind.PERCEPT})
         assert len(percepts) == 2
@@ -89,26 +91,26 @@ class TestWorkingMemorySetBasic:
 
     def test_by_kind_multi(self):
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.PERCEPT, content="p")
-        wms.add(WorkingMemoryKind.OUTCOME, content="o")
-        wms.add(WorkingMemoryKind.THOUGHT, content="t")
+        wms.add(WorkingMemoryKind.PERCEPT, content="p", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.OUTCOME, content="o", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="t", provenance=Provenance.INTERNAL)
 
         results = wms.by_kind({WorkingMemoryKind.PERCEPT, WorkingMemoryKind.THOUGHT})
         assert len(results) == 2
 
     def test_since_tick(self):
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.PERCEPT, content="a")
-        wms.add(WorkingMemoryKind.PERCEPT, content="b")
-        wms.add(WorkingMemoryKind.PERCEPT, content="c")
+        wms.add(WorkingMemoryKind.PERCEPT, content="a", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="b", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="c", provenance=Provenance.INTERNAL)
         items = wms.since_tick(1)
         assert len(items) == 2
         assert items[0].content == "b"
 
     def test_for_agent(self):
         wms = WorkingMemorySet(agent_id="agent-1")
-        wms.add(WorkingMemoryKind.PERCEPT, content="a", agent_id="agent-1")
-        wms.add(WorkingMemoryKind.PERCEPT, content="b", agent_id="agent-2")
+        wms.add(WorkingMemoryKind.PERCEPT, content="a", agent_id="agent-1", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="b", agent_id="agent-2", provenance=Provenance.INTERNAL)
         items = wms.for_agent("agent-1")
         assert len(items) == 1
         assert items[0].content == "a"
@@ -116,13 +118,13 @@ class TestWorkingMemorySetBasic:
     def test_size(self):
         wms = WorkingMemorySet(agent_id="test")
         assert wms.size == 0
-        wms.add(WorkingMemoryKind.PERCEPT, content="a")
+        wms.add(WorkingMemoryKind.PERCEPT, content="a", provenance=Provenance.INTERNAL)
         assert wms.size == 1
 
     def test_clear(self):
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.PERCEPT, content="a")
-        wms.add(WorkingMemoryKind.PERCEPT, content="b")
+        wms.add(WorkingMemoryKind.PERCEPT, content="a", provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="b", provenance=Provenance.INTERNAL)
         old_tick = wms.current_tick
         wms.clear()
         assert wms.size == 0
@@ -138,7 +140,7 @@ class TestWorkingMemorySetBasic:
 class TestValenceModulation:
     def test_receive_valence_creates_ema(self):
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.THOUGHT, content="think")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="think", provenance=Provenance.INTERNAL)
         wms.receive_valence(entry.tick, 1.0)
         assert entry.tick in wms._valence_ema
         assert wms._valence_ema[entry.tick] > 0
@@ -146,7 +148,7 @@ class TestValenceModulation:
     def test_ema_bounded(self):
         """EMA stays in [-1, +1] even with extreme inputs."""
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.THOUGHT, content="think")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="think", provenance=Provenance.INTERNAL)
         for _ in range(100):
             wms.receive_valence(entry.tick, 1.0)
         assert wms._valence_ema[entry.tick] <= 1.0
@@ -158,7 +160,7 @@ class TestValenceModulation:
     def test_negative_valence_boosts_salience(self):
         """Negative valence increases effective salience (survival)."""
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.THOUGHT, content="pain", salience=0.5)
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="pain", salience=0.5, provenance=Provenance.INTERNAL)
         wms.receive_valence(entry.tick, -1.0)
         effective = wms.get_effective_salience(entry)
         assert effective > entry.salience
@@ -166,7 +168,7 @@ class TestValenceModulation:
     def test_positive_valence_boosts_salience(self):
         """Positive valence increases effective salience (reinforcement)."""
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.THOUGHT, content="reward", salience=0.5)
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="reward", salience=0.5, provenance=Provenance.INTERNAL)
         wms.receive_valence(entry.tick, 1.0)
         effective = wms.get_effective_salience(entry)
         assert effective > entry.salience
@@ -174,8 +176,8 @@ class TestValenceModulation:
     def test_top_by_salience_uses_effective(self):
         """top_by_salience ranks by effective salience (base + abs(ema))."""
         wms = WorkingMemorySet(agent_id="test")
-        low = wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.3)
-        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.5)
+        low = wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.3, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.5, provenance=Provenance.INTERNAL)
 
         # Boost the low-base entry with valence
         wms.receive_valence(low.tick, 1.0)  # EMA = 0.1
@@ -194,21 +196,21 @@ class TestValenceModulation:
         wms = WorkingMemorySet(agent_id="test", capacity=3)
         entries = []
         for i in range(3):
-            e = wms.add(WorkingMemoryKind.THOUGHT, content=f"t-{i}")
+            e = wms.add(WorkingMemoryKind.THOUGHT, content=f"t-{i}", provenance=Provenance.INTERNAL)
             wms.receive_valence(e.tick, 0.5)
             entries.append(e)
 
         assert len(wms._valence_ema) == 3
 
         # Add a 4th — first entry (tick=0) should be evicted + pruned
-        wms.add(WorkingMemoryKind.THOUGHT, content="t-3")
+        wms.add(WorkingMemoryKind.THOUGHT, content="t-3", provenance=Provenance.INTERNAL)
         assert entries[0].tick not in wms._valence_ema
         assert len(wms._valence_ema) == 2  # tick 1 and 2 remain
 
     def test_no_valence_means_base_salience(self):
         """Without valence signals, effective == base."""
         wms = WorkingMemorySet(agent_id="test")
-        entry = wms.add(WorkingMemoryKind.THOUGHT, content="clean", salience=0.7)
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="clean", salience=0.7, provenance=Provenance.INTERNAL)
         assert wms.get_effective_salience(entry) == 0.7
 
 
@@ -221,7 +223,7 @@ class TestWorkingMemorySetCapacity:
     def test_bounded_deque(self):
         wms = WorkingMemorySet(agent_id="test", capacity=5)
         for i in range(10):
-            wms.add(WorkingMemoryKind.PERCEPT, content=f"item-{i}")
+            wms.add(WorkingMemoryKind.PERCEPT, content=f"item-{i}", provenance=Provenance.INTERNAL)
         assert wms.size == 5
         items = wms.recent()
         assert items[0].content == "item-5"  # oldest surviving
@@ -248,6 +250,7 @@ class TestWorkingMemorySetConcurrency:
                         WorkingMemoryKind.PERCEPT,
                         content=f"t{thread_id}-{i}",
                         ref=f"ref-{thread_id}-{i}",
+                        provenance=Provenance.INTERNAL,
                     )
             except Exception as e:
                 errors.append(e)
@@ -276,7 +279,7 @@ class TestWorkingMemorySetConcurrency:
         def writer() -> None:
             try:
                 for i in range(200):
-                    wms.add(WorkingMemoryKind.PERCEPT, content=f"w-{i}")
+                    wms.add(WorkingMemoryKind.PERCEPT, content=f"w-{i}", provenance=Provenance.INTERNAL)
             except Exception as e:
                 errors.append(e)
             finally:

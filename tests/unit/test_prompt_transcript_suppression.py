@@ -278,7 +278,9 @@ class TestMotorProgramTruncation:
         ]
         b = self._build_with_programs(progs)
         s = self._section(b, "motor_programs")
-        truncated = s.truncate_fn(s.content, max_tok=30)
+        # Room for the header and one entry: each program's name, steps and risks are framed (#1519), so an entry is
+        # a few hundred characters, and the section states the frame rule above them.
+        truncated = s.truncate_fn(s.content, max_tok=150)
         assert "first" in truncated
         # third should be dropped before first under tight budget
         if "third" in truncated:

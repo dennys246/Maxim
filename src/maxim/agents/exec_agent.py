@@ -51,6 +51,7 @@ from maxim.utils.logging import warn
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
+from maxim.memory.text import Provenance, frame_external, stored_percept_text
 
 
 class ExecAgent(Agent):
@@ -1089,8 +1090,6 @@ class ExecAgent(Agent):
         """Build prompt from structured context. Dormant with ExecAgent's own LLM path (``_invoke_llm_for_goal``).
         A percept's or message's text from outside the agent is framed by its provenance, and no sender is shown
         (#1519; #1481's code review E2: a phone number never reaches a prompt)."""
-        from maxim.runtime.loop_perception import stored_percept_text
-
         # Current percept summary
         percept_str = "(none)"
         if ctx.current_percept:
@@ -1099,8 +1098,8 @@ class ExecAgent(Agent):
 - Source: {p.source}
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
-- Voice command: {p.raw_transcript_text or "(none)"}
-- Message: {stored_percept_text(p.source, p.content, limit=2000) or "(none)"}
+- Voice command: {stored_percept_text(p.source, p.raw_transcript_text, limit=2000, keep_lines=True) or "(none)"}
+- Message: {stored_percept_text(p.source, p.content, limit=2000, keep_lines=True) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 
@@ -1123,7 +1122,7 @@ class ExecAgent(Agent):
         for out in ctx.recent_outcomes[-3:]:
             if not isinstance(out, dict):
                 continue
-            status = "OK" if out.get("success") else f"FAILED: {out.get('error')}"
+            status = "OK" if out.get("success") else f"FAILED: {frame_external('tool_error', str(out.get('error')))}"
             outcome_lines.append(f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}")
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 
@@ -1148,7 +1147,7 @@ class ExecAgent(Agent):
             channel = msg.get("channel", "sms")
             body = str(msg.get("content", ""))  # the agent's own outbound words are shown as they are
             if msg.get("direction") == "inbound":
-                body = stored_percept_text(f"comms:{channel}", body, limit=2000)
+                body = stored_percept_text(f"comms:{channel}", body, limit=2000, keep_lines=True)
             comms_lines.append(f"  [{prefix} via {channel}] {body}")
         comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
@@ -1224,10 +1223,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for pred in ctx.causal_context[:5]:
                 valence = pred.get("valence", "neutral")
                 conf = pred.get("confidence", 0)
-                causal_lines.append(
-                    f"  - {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f})"
-                )
+                what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+                causal_lines.append(f"  - {what} (valence={valence}, confidence={conf:.2f})")
             causal_str = "\n".join(causal_lines)
 
         valence_str = ""
@@ -1236,7 +1233,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for entry in ctx.valence_context[:5]:
                 v = entry.get("valence", 0.0)
                 sentiment = "negative" if v < -0.1 else ("positive" if v > 0.1 else "neutral")
-                valence_parts.append(f"{entry.get('concept', '?')}: {sentiment} ({v:+.2f})")
+                concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+                valence_parts.append(f"{concept}: {sentiment} ({v:+.2f})")
             valence_str = "\n\nLEARNED ASSOCIATIONS: " + "; ".join(valence_parts)
 
         # Pre-deliberation enrichment (Layer 1): bio-system associations
@@ -1466,6 +1464,7 @@ Based on this context, what goal should be proposed?"""
                         kind=self._WorkingMemoryKind.THOUGHT,
                         content={"source": "pre_deliberation", "enrichment": formatted},
                         salience=result.valence,
+                        provenance=Provenance.INTERNAL,
                     )
                     return formatted
         except Exception as e:

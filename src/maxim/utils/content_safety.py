@@ -472,7 +472,8 @@ def defang_frame_markers(text: str, *, unbalanced_only: bool = False) -> tuple[s
             prev = m.end()
         out.append(text[prev:])
         return "".join(out), len(bad)
-    return _MARKER_LIKE.subn(lambda g: f"<<{g.group(1)}t-o", text)
+    # Zero-width characters go first, here at the root (#1519): ``<\u200b<TOOL_OUTPUT`` would otherwise slip past.
+    return _MARKER_LIKE.subn(lambda g: f"<<{g.group(1)}t-o", _ZERO_WIDTH.sub("", text))
 
 
 def framed_section(text: str, *, wording: str = TOOL_OUTPUT_WORDING) -> str:

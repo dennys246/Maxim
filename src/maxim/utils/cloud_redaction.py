@@ -126,8 +126,35 @@ _SECTION_RULES: list[tuple[re.Pattern, str, DataSensitivity, bool]] = [
 ]
 
 _HEADER_PATTERN = re.compile(r"^=== .* ===$")
-_PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/)[^ \n\t\r]+")
+# A frame's closer (``<</TOOL_OUTPUT id=…>>``, ``utils/content_safety.py::frame_tool_output``) is not a path: redacting it
+# left every framed body unclosed (#1519). Frame bodies have their own marker lookalikes defanged, so only a real
+# closer reads this way.
+_PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/(?!TOOL_OUTPUT id=[0-9a-f]+>>))[^ \n\t\r]+")
+_FRAME_OPENER = re.compile(r"<<TOOL_OUTPUT id=([0-9a-f]+) ")
 _SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
+
+
+def _section_end(lines: list[str], i: int, *, bounded: bool) -> int:
+    """The index past a redacted section's body starting at ``i``: the next header (``bounded``) or blank line.
+    A line inside an untrusted-content frame is body whatever it says (#1519): a framed ``=== Notes ===`` or a blank
+    line in a message must not end a PRIVATE section early and send the rest of it."""
+    open_id: str | None = None
+    while i < len(lines):
+        line = lines[i]
+        if open_id is not None:
+            if f"<</TOOL_OUTPUT id={open_id}>>" in line:
+                open_id = None
+            i += 1
+            continue
+        if bounded and _HEADER_PATTERN.match(line.strip()):
+            break
+        if not bounded and not line.strip():
+            break
+        opener = _FRAME_OPENER.search(line)
+        if opener and f"<</TOOL_OUTPUT id={opener.group(1)}>>" not in line[opener.end() :]:
+            open_id = opener.group(1)
+        i += 1
+    return i
 
 
 class CloudRedactionFilter:
@@ -206,25 +233,28 @@ class CloudRedactionFilter:
         redacted_categories: set[str] = set()
         out: list[str] = []
         i = 0
+        open_id: str | None = None  # inside a frame, a line is body, never a section header (#1519)
         while i < len(lines):
             line = lines[i]
             matched = None
-            for pattern, category, sensitivity, bounded in _SECTION_RULES:
-                if pattern.match(line.strip()):
-                    matched = (category, sensitivity, bounded)
-                    break
+            if open_id is not None:
+                if f"<</TOOL_OUTPUT id={open_id}>>" in line:
+                    open_id = None
+            else:
+                for pattern, category, sensitivity, bounded in _SECTION_RULES:
+                    if pattern.match(line.strip()):
+                        matched = (category, sensitivity, bounded)
+                        break
+                opener = _FRAME_OPENER.search(line)
+                if not matched and opener and f"<</TOOL_OUTPUT id={opener.group(1)}>>" not in line[opener.end() :]:
+                    open_id = opener.group(1)
             if matched:
                 category, sensitivity, bounded = matched
                 if self._should_redact(sensitivity):
                     redacted_categories.add(category)
                     out.append(f"[REDACTED: {category}]")
                     i += 1
-                    if bounded:
-                        while i < len(lines) and not _HEADER_PATTERN.match(lines[i].strip()):
-                            i += 1
-                    else:
-                        while i < len(lines) and lines[i].strip():
-                            i += 1
+                    i = _section_end(lines, i, bounded=bounded)
                     continue
             out.append(line)
             i += 1

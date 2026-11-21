@@ -89,6 +89,7 @@ logger = logging.getLogger(__name__)
 _WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to failing)\)$")
 
 
+from maxim.memory.text import Provenance
 from maxim.runtime.loop_state import (
     loop_liveness_scope,
     operational_mode,
@@ -516,6 +517,25 @@ def _compute_thought_salience(
     return 0.3 * section_score + 0.3 * recall_score + 0.4 * novelty_score
 
 
+def _add_deliberation_thought(
+    working_memory: Any, *, cycle: int, enrichment: str, salience: float, goal: str | None
+) -> None:
+    """One deliberation cycle's enrichment as a THOUGHT in working memory: the agent's own composed text
+    (``Provenance.INTERNAL``), whose outside words are already framed inside it (#1519)."""
+    import uuid
+
+    from maxim.agents.working_memory import WorkingMemoryKind
+
+    working_memory.add(
+        WorkingMemoryKind.THOUGHT,
+        ref=f"thought:{uuid.uuid4().hex[:8]}",
+        content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": enrichment[:500]},
+        salience=salience,
+        goal_tag=goal,
+        provenance=Provenance.INTERNAL,
+    )
+
+
 def _run_deliberation_cycles(
     *,
     first_proposal: Any,
@@ -650,16 +670,8 @@ def _run_deliberation_cycles(
 
         # 2. Add THOUGHT to working memory with computed salience
         if working_memory is not None and formatted:
-            import uuid
-
-            from maxim.agents.working_memory import WorkingMemoryKind
-
-            working_memory.add(
-                WorkingMemoryKind.THOUGHT,
-                ref=f"thought:{uuid.uuid4().hex[:8]}",
-                content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
-                salience=salience,
-                goal_tag=active_goal,
+            _add_deliberation_thought(
+                working_memory, cycle=cycle, enrichment=formatted, salience=salience, goal=active_goal
             )
 
         # 3. Build transcript entry (reasoning + bio-system response)
@@ -1471,21 +1483,9 @@ def _run_agentic_loop_body(
                         )
                         # Add THOUGHT to working memory with computed salience
                         if _wms is not None and _percept_enrichment_text:
-                            import uuid
-
-                            from maxim.agents.working_memory import WorkingMemoryKind
-
                             _c1_goal = state.data.get("active_goal") if hasattr(state, "data") else None
-                            _wms.add(
-                                WorkingMemoryKind.THOUGHT,
-                                ref=f"thought:{uuid.uuid4().hex[:8]}",
-                                content={
-                                    "source": "pfc_deliberation",
-                                    "cycle": 1,
-                                    "enrichment": _percept_enrichment_text[:500],
-                                },
-                                salience=_salience_c1,
-                                goal_tag=_c1_goal,
+                            _add_deliberation_thought(
+                                _wms, cycle=1, enrichment=_percept_enrichment_text, salience=_salience_c1, goal=_c1_goal
                             )
                     else:
                         from maxim.simulation.sim_logger import sim_pre_deliberation

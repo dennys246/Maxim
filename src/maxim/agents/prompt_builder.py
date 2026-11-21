@@ -12,6 +12,7 @@ import logging
 import functools
 import re
 from datetime import datetime
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
@@ -29,6 +30,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
+from maxim.memory.text import frame_external
 from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section
 
 if TYPE_CHECKING:
@@ -506,7 +508,7 @@ def build_workspace_manifest(
         sections.append(f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ===")
         sections.append("You have FULL read/write access to all files below.")
         sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
-        sections.extend(cwd_entries)
+        sections.append(_listing(cwd_entries))
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             sections.append(f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files).")
@@ -552,9 +554,14 @@ def build_workspace_manifest(
                 sections.append("You can READ these files and SUGGEST edits (requires approval).")
             else:
                 sections.append("You can READ these files. CWD edits must be proposed as plans.")
-            sections.extend(cwd_entries)
+            sections.append(_listing(cwd_entries))
 
     return "\n".join(sections) if sections else ""
+
+
+def _listing(entries: list[str]) -> str:
+    """A directory listing's file names, framed external (#1519): a name is whatever whoever made the file chose."""
+    return frame_external("cwd_listing", "\n".join(entries))
 
 
 def _tool_name_re(name: str) -> re.Pattern[str]:
@@ -1031,13 +1038,13 @@ def _whole_frames(text: str) -> str:
         return text
     from maxim.utils.content_safety import drop_unbalanced_frames
 
-    return drop_unbalanced_frames(text)[0]
+    kept, dropped = drop_unbalanced_frames(text)
+    # A tail cut leaves the label of the frame it dropped ("(goal: ", "earlier input: "): drop that too (#1519).
+    return _DANGLING_LABEL.sub("", kept) if dropped else kept
 
 
-def _stored(label: str, text: str) -> str:
-    """Stored text from outside the agent, framed external (#1519): a recalled record's words are data, never
-    instructions."""
-    return frame_tool_output(label, text, external=True)
+# The labels enrichment writes before a frame, as a tail cut can leave them (``_whole_frames``).
+_DANGLING_LABEL = re.compile(r"\s*(?:\(goal:|earlier input:|→|Related concepts:)\s*$")
 
 
 def _deferred_section(request: Any) -> str:
@@ -1888,8 +1895,10 @@ class PromptBuilder:
             for outcome in request.recent_outcomes[-3:]:
                 tool = outcome.get("tool", "?")
                 success = "succeeded" if outcome.get("success") else "failed"
-                result = outcome.get("result", "")[:50] if outcome.get("result") else ""
-                outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
+                result = str(outcome.get("result") or "")[:50]  # a tool's result text: outside words (#1519)
+                outcome_lines.append(
+                    f"- {tool}: {success}" + (f" ({frame_external('tool_result', result)})" if result else "")
+                )
             budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT, source="data")
 
         # Body state (interoception — always present when embodied)
@@ -2024,181 +2033,30 @@ class PromptBuilder:
     ) -> None:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
         Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845).
-        Stored text (an episode's goal, action and what it heard, a concept's name and relations, a definition) is
-        framed external, so a revival cannot reopen the stored-injection channel (#1519, #1516 F15)."""
-        if context.relevant_memories:
-            mem_lines = ["=== Relevant Memories ==="]
-            for mem in context.relevant_memories[:8]:
-                content = mem.get("content", {})
-                source = mem.get("source", "episodic")
-                salience = mem.get("salience", 0.0)
-                parts = []
-                if content.get("goal"):
-                    parts.append(f"goal: {content['goal']}")
-                if content.get("action"):
-                    parts.append(f"action: {content['action']}")
-                if content.get("success") is not None:
-                    parts.append("succeeded" if content["success"] else "failed")
-                if content.get("transcript"):
-                    parts.append(f'"{content["transcript"][:80]}"')
-                summary = ", ".join(parts) if parts else str(content)[:80]
-                mem_lines.append(f"- [{source}, salience={salience:.2f}] {_stored('recalled_memory', summary)}")
-                if mem.get("predictions"):
-                    for pred in mem["predictions"][:2]:
-                        pred_tool = pred.get("tool", "?")
-                        pred_success = pred.get("success", "?")
-                        pred_conf = pred.get("confidence", 0)
-                        mem_lines.append(
-                            f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})"
-                        )
+        Every stored text these sections show (the ``_render_*`` helpers) is framed external, so a revival
+        cannot reopen the stored-injection channel (#1519, #1516 F15)."""
+        if context.relevant_memories:  # a literal add: the cloud-redaction header test pins it by AST
             budgeter.add(
                 "relevant_memories",
-                "\n".join(mem_lines),
+                _render_relevant_memories(context.relevant_memories),
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=50,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+                truncate_fn=_lines_cut(20),
                 source="data",
             )
-
-        if context.concept_context:
-            concept_lines = ["=== Active Concepts ==="]
-            for concept in context.concept_context[:5]:
-                name = concept.get("name", "?")
-                category = concept.get("category", "?")
-                confidence = concept.get("confidence", 0)
-                episodes = concept.get("episode_count", 0)
-                concept_lines.append(
-                    f"- {_stored('recalled_concept', str(name))} ({category}, confidence={confidence:.2f}, "
-                    f"episodes={episodes})"
+        important, critical = SectionPriority.IMPORTANT, SectionPriority.CRITICAL
+        for name, items, render, priority, min_tok, cut in (
+            ("concept_context", context.concept_context, _render_concepts, important, 30, _lines_cut(15)),
+            ("knowledge_context", context.knowledge_context, _render_knowledge, important, 30, _lines_cut(15)),
+            ("causal_context", context.causal_context, _render_causal, critical, 30, _lines_cut(15)),
+            ("valence_context", context.valence_context, _render_valence, critical, 30, _lines_cut(15)),
+            ("motor_programs", context.motor_programs, _render_motor_programs, important, 30, _truncate_motor_programs),
+        ):
+            if items:
+                budgeter.add(
+                    name, render(items), priority, truncatable=True, min_tokens=min_tok, truncate_fn=cut, source="data"
                 )
-                for rel in concept.get("relationships", [])[:2]:
-                    concept_lines.append(
-                        f"  → {rel.get('type', '?')} {_stored('recalled_concept', str(rel.get('target', '?')))}"
-                    )
-            budgeter.add(
-                "concept_context",
-                "\n".join(concept_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.knowledge_context:
-            knowledge_lines = ["=== Semantic Knowledge ==="]
-            for entry in context.knowledge_context[:5]:
-                name = entry.get("concept_name", "?")
-                definition = entry.get("definition", "")
-                layer = entry.get("source_layer", "?")
-                conf = entry.get("confidence", 0)
-                knowledge_lines.append(
-                    f"- {_stored('recalled_knowledge', f'{name}: {definition}')} ({layer}, confidence={conf:.2f})"
-                )
-                for rel in entry.get("relationships", [])[:2]:
-                    knowledge_lines.append(
-                        f"  → {rel.get('type', '?')} {_stored('recalled_knowledge', str(rel.get('target', '?')))}"
-                    )
-            budgeter.add(
-                "knowledge_context",
-                "\n".join(knowledge_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.causal_context:
-            causal_lines = ["=== Causal Predictions (learned from experience) ==="]
-            for pred in context.causal_context[:5]:
-                valence = pred.get("valence", "neutral")
-                conf = pred.get("confidence", 0)
-                ctx_match = pred.get("context_match", 0)
-                causal_lines.append(
-                    f"- {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})"
-                )
-            budgeter.add(
-                "causal_context",
-                "\n".join(causal_lines),
-                SectionPriority.CRITICAL,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.valence_context:
-            valence_lines = ["=== Learned Associations (from experience) ==="]
-            for entry in context.valence_context[:5]:
-                concept = entry.get("concept", "?")
-                valence = entry.get("valence", 0.0)
-                if valence < -0.1:
-                    sentiment = "negative (associated with pain/failure)"
-                elif valence > 0.1:
-                    sentiment = "positive (associated with success/benefit)"
-                else:
-                    sentiment = "neutral"
-                assoc = ", ".join(entry.get("associations", [])[:3])
-                valence_lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {assoc})")
-            budgeter.add(
-                "valence_context",
-                "\n".join(valence_lines),
-                SectionPriority.CRITICAL,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.motor_programs:
-            motor_lines = ["=== Available Motor Programs ==="]
-            for prog in context.motor_programs[:8]:
-                name = prog.get("name", "?")
-                conf = prog.get("confidence", 0)
-                rate = prog.get("success_rate", 0)
-                execs = prog.get("executions", 0)
-                steps_str = " → ".join(prog.get("steps", [])[:5])
-                motor_lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
-                if steps_str:
-                    motor_lines.append(f"  Steps: {steps_str}")
-                risks = prog.get("risks", [])
-                if risks:
-                    motor_lines.append(f"  Known risks: {', '.join(risks)}")
-
-            def _truncate_motor_programs(content: str, max_tok: int) -> str:
-                """Drop full motor program entries (name + steps + risks) from
-                the tail. The previous implementation sliced by line count,
-                which left partial entries (e.g. a Steps line with no name)
-                because each entry spans 1-3 lines. Pure function — uses the
-                conservative ~4-chars-per-token estimate (same as the
-                deliberation-transcript truncator) since the static-method
-                context has no token counter in scope.
-                """
-                lines = content.split("\n")
-                target_chars = max_tok * 4
-                while len("\n".join(lines)) > target_chars:
-                    cut = None
-                    for i in range(len(lines) - 1, 0, -1):
-                        if lines[i].startswith("- "):
-                            cut = i
-                            break
-                    if cut is None:
-                        break  # only header left, can't drop more
-                    lines = lines[:cut]
-                return "\n".join(lines)
-
-            budgeter.add(
-                "motor_programs",
-                "\n".join(motor_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=_truncate_motor_programs,
-                source="data",
-            )
 
         if context.statistical_context and context.active_pattern_count > 0:
             stat_lines = [
@@ -2443,3 +2301,130 @@ Example JSON format (COPY THIS STRUCTURE EXACTLY):
 Your response (use tool_name "respond"):"""
 
         return f"TOOL_PROMPT|{prompt}"
+
+
+# ── PromptBuilder._add_memory_sections' renderers (Dormant since 2026-10-06, #845) ──────────────────────────────────
+# Each shows a stored record's free text (what an episode heard, its goal and action, a concept's or association's
+# name, a definition, a causal event and outcome, a motor program's name, steps and risks) only framed external
+# (#1519, #1516 F15): the numbers and labels beside it are the agent's own.
+
+
+def _lines_cut(per_line: int) -> Callable[[str, int], str]:
+    return lambda c, m: "\n".join(c.split("\n")[: max(2, m // per_line)])
+
+
+def _render_relevant_memories(memories: list[Any]) -> str:
+    lines = ["=== Relevant Memories ==="]
+    for mem in memories[:8]:
+        content = mem.get("content", {})
+        source = mem.get("source", "episodic")
+        salience = mem.get("salience", 0.0)
+        parts = []
+        if content.get("goal"):
+            parts.append(f"goal: {content['goal']}")
+        if content.get("action"):
+            parts.append(f"action: {content['action']}")
+        if content.get("success") is not None:
+            parts.append("succeeded" if content["success"] else "failed")
+        if content.get("transcript"):
+            parts.append(f'"{content["transcript"][:80]}"')
+        summary = ", ".join(parts) if parts else str(content)[:80]
+        lines.append(f"- [{source}, salience={salience:.2f}] {frame_external('recalled_memory', summary)}")
+        for pred in (mem.get("predictions") or [])[:2]:
+            pred_tool = pred.get("tool", "?")
+            pred_success = pred.get("success", "?")
+            pred_conf = pred.get("confidence", 0)
+            lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
+    return "\n".join(lines)
+
+
+def _render_relations(entry: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"  → {rel.get('type', '?')} {frame_external(label, str(rel.get('target', '?')))}"
+        for rel in entry.get("relationships", [])[:2]
+    ]
+
+
+def _render_concepts(concepts: list[Any]) -> str:
+    lines = ["=== Active Concepts ==="]
+    for concept in concepts[:5]:
+        name = frame_external("recalled_concept", str(concept.get("name", "?")))
+        category = concept.get("category", "?")
+        confidence = concept.get("confidence", 0)
+        episodes = concept.get("episode_count", 0)
+        lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
+        lines.extend(_render_relations(concept, "recalled_concept"))
+    return "\n".join(lines)
+
+
+def _render_knowledge(entries: list[Any]) -> str:
+    lines = ["=== Semantic Knowledge ==="]
+    for entry in entries[:5]:
+        text = frame_external("recalled_knowledge", f"{entry.get('concept_name', '?')}: {entry.get('definition', '')}")
+        lines.append(f"- {text} ({entry.get('source_layer', '?')}, confidence={entry.get('confidence', 0):.2f})")
+        lines.extend(_render_relations(entry, "recalled_knowledge"))
+    return "\n".join(lines)
+
+
+def _render_causal(predictions: list[Any]) -> str:
+    lines = ["=== Causal Predictions (learned from experience) ==="]
+    for pred in predictions[:5]:
+        valence = pred.get("valence", "neutral")
+        conf = pred.get("confidence", 0)
+        ctx_match = pred.get("context_match", 0)
+        what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+        lines.append(f"- {what} (valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})")
+    return "\n".join(lines)
+
+
+def _render_valence(entries: list[Any]) -> str:
+    lines = ["=== Learned Associations (from experience) ==="]
+    for entry in entries[:5]:
+        valence = entry.get("valence", 0.0)
+        if valence < -0.1:
+            sentiment = "negative (associated with pain/failure)"
+        elif valence > 0.1:
+            sentiment = "positive (associated with success/benefit)"
+        else:
+            sentiment = "neutral"
+        concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+        assoc = ", ".join(str(a) for a in entry.get("associations", [])[:3])
+        related = frame_external("recalled_association", assoc) if assoc else ""
+        lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {related})")
+    return "\n".join(lines)
+
+
+def _render_motor_programs(programs: list[Any]) -> str:
+    lines = ["=== Available Motor Programs ==="]
+    for prog in programs[:8]:
+        conf = prog.get("confidence", 0)
+        rate = prog.get("success_rate", 0)
+        execs = prog.get("executions", 0)
+        name = frame_external("motor_program", str(prog.get("name", "?")))
+        lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
+        steps_str = " → ".join(str(st) for st in prog.get("steps", [])[:5])
+        if steps_str:
+            lines.append(f"  Steps: {frame_external('motor_program', steps_str)}")
+        risks = prog.get("risks", [])
+        if risks:
+            lines.append(f"  Known risks: {frame_external('motor_program', ', '.join(str(r) for r in risks))}")
+    return "\n".join(lines)
+
+
+def _truncate_motor_programs(content: str, max_tok: int) -> str:
+    """Drop full motor program entries (name + steps + risks) from the tail. Slicing by line count left partial
+    entries (e.g. a Steps line with no name), because each entry spans several lines. Pure function: uses the
+    conservative ~4-chars-per-token estimate (same as the deliberation-transcript truncator), since there is no
+    token counter in scope. A cut through a frame is dropped by the budgeter (rule 2)."""
+    lines = content.split("\n")
+    target_chars = max_tok * 4
+    while len("\n".join(lines)) > target_chars:
+        cut = None
+        for i in range(len(lines) - 1, 0, -1):
+            if lines[i].startswith("- "):
+                cut = i
+                break
+        if cut is None:
+            break  # only header left, can't drop more
+        lines = lines[:cut]
+    return "\n".join(lines)
