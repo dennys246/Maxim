@@ -48,9 +48,8 @@ SCORE_SCHEME = "weighted-per-scenario-v1"
 logger = logging.getLogger(__name__)
 
 
-#: ``BenchmarkRunner.write_paper``'s causes beside ``LocalModelUnavailable.CAUSES``: the LLM is switched off in
-#: llm.json, or the router returned no text for any paper section (a failed call returns "", #1680).
-PAPER_LLM_DISABLED = "llm_disabled"
+#: ``BenchmarkRunner.write_paper``'s cause beside ``consented_router``'s: the router returned no text for any paper
+#: section (a failed call returns "", #1680).
 PAPER_NO_TEXT = "no_text"
 
 
@@ -946,8 +945,8 @@ class BenchmarkRunner:
         Converts benchmark metrics into experiment log entries.
 
         Returns ``(paper_path, None)``, or ``(None, cause)`` when no LLM is usable, the ``consented_router`` idiom:
-        ``cause`` is :data:`PAPER_LLM_DISABLED`, one of ``LocalModelUnavailable.CAUSES``, or :data:`PAPER_NO_TEXT`
-        (the router returned no text for any section). Any other failure raises: a broad except here once turned a
+        ``cause`` is ``consented_router``'s (``LLM_DISABLED`` or one of ``LocalModelUnavailable.CAUSES``), or
+        :data:`PAPER_NO_TEXT` (the router returned no text for any section). Any other failure raises: a broad except here once turned a
         constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so the paper step never worked
         and nothing said why (#1680).
         """
@@ -960,11 +959,7 @@ class BenchmarkRunner:
         # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
         # (#1396 bullet 2): no paper rather than a router that refuses every call. Built first, so a run with no
         # usable LLM leaves no experiment log behind.
-        cfg = load_llm_config()
-        if not cfg.enabled:
-            logger.warning("No LLM available for paper generation: the LLM is disabled in llm.json")
-            return None, PAPER_LLM_DISABLED
-        router, cause = consented_router(cfg, logger=logger)
+        router, cause = consented_router(load_llm_config(), logger=logger)
         if router is None:
             logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
             return None, cause

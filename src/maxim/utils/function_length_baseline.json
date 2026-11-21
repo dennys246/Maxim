@@ -211,7 +211,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 241
+      "lines": 226
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",

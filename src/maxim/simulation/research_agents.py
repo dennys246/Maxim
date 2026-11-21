@@ -310,6 +310,15 @@ class WriterAgent:
         return result if result else current
 
 
+def _model_confidence(value: Any) -> float:
+    """The verdict's confidence as the model wrote it, as a float; 0.5 (logged) for a value that is not a number."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        logger.warning("Reviewer: the model's confidence %r is not a number; using 0.5", value)
+        return 0.5
+
+
 # ── Reviewer Agent ───────────────────────────────────────────────────────────
 
 
@@ -407,7 +416,7 @@ class ReviewerAgent:
             if isinstance(result, dict):
                 return result.get("feedback", result.get("content", str(result)))
             return str(result) if result else ""
-        except Exception as e:
+        except BackendError as e:  # a failed call; a LeaderRefusal or a code defect propagates (#1680)
             logger.warning("Reviewer: failed to review '%s': %s", name, e)
             return ""
 
@@ -458,14 +467,15 @@ class ReviewerAgent:
 
         try:
             result = self.llm.generate_json(prompt, max_tokens=256)
-            if isinstance(result, dict):
-                return {
-                    "verdict": result.get("verdict", "revise"),
-                    "confidence": float(result.get("confidence", 0.5)),
-                    "revision_requests": result.get("revision_requests", []),
-                }
-        except Exception as e:
+        except BackendError as e:  # a failed call; a LeaderRefusal or a code defect propagates (#1680)
             logger.warning("Reviewer: verdict generation failed: %s", e)
+            result = None
+        if isinstance(result, dict):
+            return {
+                "verdict": result.get("verdict", "revise"),
+                "confidence": _model_confidence(result.get("confidence", 0.5)),
+                "revision_requests": result.get("revision_requests", []),
+            }
 
         # Fallback
         return {"verdict": "revise", "confidence": 0.5, "revision_requests": review.issues}

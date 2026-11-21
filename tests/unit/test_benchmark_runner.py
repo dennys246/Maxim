@@ -1312,12 +1312,12 @@ class TestWritePaper:
     def test_a_disabled_llm_is_no_paper_without_building_a_router(self, monkeypatch, tmp_path):
         from types import SimpleNamespace
 
-        from maxim.simulation.benchmark import PAPER_LLM_DISABLED
+        from maxim.models.download import LLM_DISABLED
 
         monkeypatch.setattr("maxim.models.language.router.load_llm_config", lambda: SimpleNamespace(enabled=False))
-        runner = self._runner(monkeypatch, _StubProseLLM())
-        monkeypatch.setattr("maxim.models.download.consented_router", lambda *a, **k: pytest.fail("router built"))
-        assert runner.write_paper(_paper_report(), tmp_path) == (None, PAPER_LLM_DISABLED)
+        monkeypatch.setattr("maxim.models.language.router.LLMRouter", lambda cfg: pytest.fail("router built"))
+        runner = object.__new__(BenchmarkRunner)  # the real consented_router: it checks enabled (#1680)
+        assert runner.write_paper(_paper_report(), tmp_path) == (None, LLM_DISABLED)
         assert list(tmp_path.iterdir()) == []
 
     @pytest.mark.parametrize("text", ["", "backend"], ids=["empty-text", "backend-error"])

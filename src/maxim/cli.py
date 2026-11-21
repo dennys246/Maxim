@@ -45,7 +45,7 @@ def _research_result_exit_code(result: object) -> int:
     sim_code = _simulation_result_exit_code(result)
     if sim_code:
         return sim_code
-    return 1 if getattr(result, "review_verdict", "") == "reject" else 0
+    return 1 if getattr(result, "review_verdict", "") in ("reject", "no_paper") else 0  # no paper is a failed run
 
 
 def _resolve_mode(args, default: str = "generative") -> str:
@@ -184,9 +184,12 @@ def _cli_local_router(profile: str) -> Any | None:
 
 def _print_model_unavailable(cause: str | None) -> None:
     """The CLI's line for a router whose model stayed unusable (the library check logs, never prints; #1396)."""
+    from maxim.models.download import LLM_DISABLED
     from maxim.models.language.types import LocalModelUnavailable
 
-    if cause == LocalModelUnavailable.MODEL_PATH_MISSING:
+    if cause == LLM_DISABLED:
+        print("  The LLM is disabled in ~/.maxim/config/llm.json.")
+    elif cause == LocalModelUnavailable.MODEL_PATH_MISSING:
         print("  The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json.")
     else:
         print("  Model not available. Run: maxim --list-models to see available models.")
@@ -194,14 +197,12 @@ def _print_model_unavailable(cause: str | None) -> None:
 
 def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
     """``--write-paper``: the benchmark's comparative paper, or the line saying why there is none (#1680)."""
-    from maxim.simulation.benchmark import PAPER_LLM_DISABLED, PAPER_NO_TEXT
+    from maxim.simulation.benchmark import PAPER_NO_TEXT
 
     print("  Generating comparative paper...")
     paper_path, cause = runner.write_paper(report, report_dir)
     if paper_path is not None:
         print(f"  Paper saved: {paper_path}\n")
-    elif cause == PAPER_LLM_DISABLED:
-        print("  No paper: the LLM is disabled in ~/.maxim/config/llm.json.\n")
     elif cause == PAPER_NO_TEXT:
         print("  No paper: the LLM returned no text for any section (see the Writer warnings in the log).\n")
     else:
