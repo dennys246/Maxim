@@ -139,6 +139,8 @@ def load_scenario(path: Path) -> ScenarioDefinition:
 
     if raw is None:
         raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Scenario {path}: the top level is not a mapping (got {type(raw).__name__})")
 
     expectations = []
     for exp_raw in raw.get("expectations", []):

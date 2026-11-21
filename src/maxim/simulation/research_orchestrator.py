@@ -114,19 +114,17 @@ def _build_research_llm(language_model: str | None = None) -> Any:
 
 
 def _load_campaign_turns(campaign: str | None) -> list[dict]:
-    """The researcher's campaign turns from the campaign YAML (empty with none, or when it fails to load), read by
-    the one scripted-turn loader, ``experiment.load_campaign_turns`` (#1621), not a parser of its own."""
+    """The researcher's campaign turns (empty without a campaign), read strictly by the one scripted-turn loader,
+    ``experiment.load_campaign_turns`` (#1621): an explicit campaign that fails to load, or holds a percept that is
+    not a ``cli_input`` line, raises ``ValueError``/``OSError``, so research never runs a free-form sim in its place
+    and writes a paper about a different experiment."""
+    if not campaign:
+        return []
+    from maxim.simulation.experiment import load_campaign_turns
     from maxim.simulation.sim_logger import display_status
 
-    campaign_turns: list[dict] = []
-    if campaign:
-        try:
-            from maxim.simulation.experiment import load_campaign_turns
-
-            campaign_turns = load_campaign_turns(campaign)
-            display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
-        except Exception as e:
-            logger.warning("Failed to load campaign YAML: %s", e)
+    campaign_turns = load_campaign_turns(campaign, strict=True)
+    display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
     return campaign_turns
 
 
@@ -159,6 +157,7 @@ def start_research_mode(
     from maxim.simulation.research_tools import ExperimentLog
     from maxim.simulation.research_agents import WriterAgent, ReviewerAgent
 
+    campaign_turns = _load_campaign_turns(campaign)  # refused before any session dir or LLM (#1621)
     start_time = time.time()
     session_id = time.strftime("%Y%m%d_%H%M%S")
     # Under the data home like every other simulation report (#932): a working-directory-relative
@@ -190,22 +189,13 @@ def start_research_mode(
 
     display_status("Phase 1: Running experiments...")
 
-    # Load campaign YAML and extract percept texts for the researcher
-    campaign_turns = _load_campaign_turns(campaign)
-
-    # Build the researcher goal — for non-campaign runs only.
-    # Campaign runs bypass the orchestrator LLM entirely.
-    researcher_goal = goal
-    if not campaign_turns and campaign:
-        researcher_goal = f"{goal}\n\nCampaign file: {campaign} (failed to load — run manually with send_message)"
-
     # Run the simulation. Campaign turns are injected directly through
     # the bridge, and post-campaign analysis runs programmatically.
     # The orchestrator LLM is only used for non-campaign simulations.
     # Pass our experiment_log so the orchestrator's research tools write to
     # the same log the Writer/Reviewer will read from (D-0a fix).
     sim_result = start_simulation_mode(
-        goal=researcher_goal,
+        goal=goal,  # campaign runs bypass the orchestrator LLM; a goal run is driven by it
         mode="research",
         max_turns=max_turns,
         debug=debug,

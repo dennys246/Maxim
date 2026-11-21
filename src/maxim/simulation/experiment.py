@@ -82,6 +82,18 @@ class ExperimentResult:
         return stats.get("nac_causal_links", 0)
 
 
+def _undeliverable(p: Any) -> str | None:
+    """Why percept ``p`` cannot be one scripted turn, or ``None`` when it can: the ONE test both modes of
+    :func:`load_campaign_turns` apply (#1621). A turn is a non-blank ``cli_input`` string (``take_user_input`` reads
+    a blank line as unaddressed, so it would publish nothing, and ``run_precampaign_turns`` measures ``len(text)``)."""
+    if not isinstance(p, dict):
+        return "is not a mapping"
+    text = p.get("cli_input", "")
+    if not (isinstance(text, str) and text.strip()):
+        return f"has no cli_input line (cli_input {text!r} is not a non-blank line)"
+    return None
+
+
 def load_campaign_turns(campaign_path: str, *, strict: bool = False) -> list[dict[str, Any]]:
     """Load campaign YAML and extract turns for direct injection.
 
@@ -90,51 +102,51 @@ def load_campaign_turns(campaign_path: str, *, strict: bool = False) -> list[dic
     ``salience``, ``novelty``, plus ``metadata`` for experiment use.
 
     This is the ONE loader of scripted turns (#1621): ``run_campaign``, ``maxim.imagine(scenario=)``, research mode's
-    campaign and the CLI's ``--sim-script`` all read their turns here, so no caller reads its own key. An empty file
-    has no percepts; a file whose top level is any other non-mapping raises ``ValueError`` in either mode. By default
-    a percept with no ``cli_input`` is skipped (``run_campaign``'s behaviour) and one WARNING names every skipped percept. ``strict=True`` (the CLI's
-    ``--sim-script``, where every line is one turn) raises ``ValueError`` instead, for a file that is not YAML, has
-    no non-empty ``percepts`` list, or holds a percept that is not a mapping, whose ``metadata`` is not a mapping, or
-    whose ``cli_input`` is missing, not a string, blank or whitespace-only (``take_user_input`` reads an empty line as
-    unaddressed, so it would publish nothing). The turn dicts are the same either way. A caller that cannot run on
-    zero turns refuses an empty result itself (``run_campaign``, ``imagine``).
-    """
-    import yaml
+    campaign and the CLI's ``--sim-script`` all read their turns here, so no caller reads its own key. The file is
+    parsed by ``scenario_source.load_scenario`` (one parser, two views: its expectation and scoring checks run here
+    too), so a file that is not YAML, whose top level is not a mapping, or whose ``percepts`` is not a list raises
+    ``ValueError`` in either mode; an empty file has no percepts.
 
+    A percept is a turn when :func:`_undeliverable` passes it (a non-blank ``cli_input`` string). By default any
+    other percept is skipped (``run_campaign``'s behaviour) and one WARNING names every skipped percept.
+    ``strict=True`` (``--sim-script``, ``imagine``, research mode, where every percept must be one turn) raises
+    ``ValueError`` instead, for an empty ``percepts`` list, a percept that is not a turn, a percept whose
+    ``metadata`` is not a mapping, or one carrying a percept-level ``phase`` (the old ``imagine`` format; the phase
+    is read from ``metadata.phase`` only, so it would silently be ``""``). The turn dicts are the same either way. A
+    caller that cannot run on zero turns refuses an empty result itself (``run_campaign``).
+    """
     path = Path(campaign_path)
     if not path.exists():
         raise FileNotFoundError(f"Campaign file not found: {campaign_path}")
 
-    from maxim.utils.scenario_inputs import read_recorded
+    from maxim.simulation.scenario_source import load_scenario
 
-    try:
-        data = yaml.safe_load(read_recorded(path))
-    except yaml.YAMLError as exc:
-        if not strict:
-            raise
-        raise ValueError(f"{campaign_path}: not YAML ({exc})") from exc
-
-    if strict and not (isinstance(data, dict) and isinstance(data.get("percepts"), list) and data["percepts"]):
+    percepts = load_scenario(path).percepts
+    if not isinstance(percepts, list):
+        raise ValueError(f"{campaign_path}: 'percepts' is not a list (got {type(percepts).__name__})")
+    if strict and not percepts:
         raise ValueError(f"{campaign_path}: no non-empty 'percepts' list")
-    if data is None:  # an empty file: no percepts (``load_scenario`` reads it the same way)
-        data = {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{campaign_path}: the top level is not a mapping (got {type(data).__name__})")
-    percepts = data.get("percepts") or []
     turns = []
-    skipped: list[int] = []
+    skipped: list[str] = []
     for i, p in enumerate(percepts):
-        if strict and not isinstance(p, dict):
-            raise ValueError(f"{campaign_path}: percept {i} is not a mapping")
-        text = p.get("cli_input", "") if isinstance(p, dict) else ""
-        if strict and not (isinstance(text, str) and text.strip()):
-            raise ValueError(f"{campaign_path}: percept {i}'s cli_input {text!r} is not a non-blank line")
+        problem = _undeliverable(p)
+        if strict and problem is not None:
+            raise ValueError(f"{campaign_path}: percept {i} {problem}")
         if strict and not isinstance(p.get("metadata", {}), dict):
             raise ValueError(f"{campaign_path}: percept {i}'s metadata is not a mapping")
-        if not text:
-            skipped.append(i)
+        if strict and "phase" in p:
+            raise ValueError(f"{campaign_path}: percept {i} carries a percept-level 'phase'; put it in metadata.phase")
+        meta = (p.get("metadata") or {}) if problem is None else {}
+        if not isinstance(meta, dict):
+            problem = "has a metadata that is not a mapping"
+        if problem is not None:
+            skipped.append(f"{i} ({problem})")
             continue
-        meta = p.get("metadata", {})
+        if "phase" in p:
+            logger.warning(
+                "%s: percept %d's percept-level 'phase' is ignored (read from metadata.phase)", campaign_path, i
+            )
+        text = p["cli_input"]
         turns.append(
             {
                 "at": p.get("at", i),
@@ -147,11 +159,7 @@ def load_campaign_turns(campaign_path: str, *, strict: bool = False) -> list[dic
             }
         )
     if skipped:
-        logger.warning(
-            "%s: percept %s carries no cli_input line and is not delivered as a turn",
-            campaign_path,
-            ", ".join(map(str, skipped)),
-        )
+        logger.warning("%s: not delivered as turns: percept %s", campaign_path, "; ".join(skipped))
     return turns
 
 

@@ -4,7 +4,6 @@ campaign YAML load (its turns, its status line and its failure warning)."""
 
 from __future__ import annotations
 
-import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -100,24 +99,21 @@ def test_load_campaign_turns_reads_its_turns_through_the_one_loader(monkeypatch:
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
     assert _load_campaign_turns("camp.yaml") is turns  # #1621: experiment.load_campaign_turns' dicts, unchanged
-    assert loaded == {"path": "camp.yaml", "kw": {}}
+    assert loaded == {"path": "camp.yaml", "kw": {"strict": True}}
     assert statuses == ["Loaded 1 campaign turns from camp.yaml"]
 
 
-def test_load_campaign_turns_warns_and_returns_empty_on_a_bad_file(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_load_campaign_turns_raises_on_a_bad_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1621: an explicit campaign that fails to load is refused, never replaced by a free-form sim."""
+
     def boom(path: Any, **_kw: Any) -> None:
         raise ValueError("bad yaml 1586")
 
     monkeypatch.setattr("maxim.simulation.experiment.load_campaign_turns", boom)
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
-    with caplog.at_level(logging.WARNING, logger="maxim.simulation.research_orchestrator"):
-        assert _load_campaign_turns("missing.yaml") == []
-    assert any(
-        "Failed to load campaign YAML" in r.getMessage() and "bad yaml 1586" in r.getMessage() for r in caplog.records
-    )
+    with pytest.raises(ValueError, match="bad yaml 1586"):
+        _load_campaign_turns("missing.yaml")
 
 
 def test_load_campaign_turns_without_a_campaign_loads_nothing(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,9 +2,11 @@
 
 ``imagine`` hand-parsed ``percepts[]`` reading ``p.get("text", "")``, but scenario YAMLs carry their lines in
 ``cli_input``, so every scripted turn reached the bridge as an empty string, silently, and the run still produced a
-report. The verb now loads turns through the one scripted-turn loader, ``experiment.load_campaign_turns``, and a
-scenario with no deliverable line is refused before any run starts. The research path's second hand parser
-(``research_orchestrator._load_campaign_turns``) goes through the same loader.
+report. The verb now loads turns through the one scripted-turn loader, ``experiment.load_campaign_turns``, STRICTLY
+(owner decision 2026-11-21): every percept must be a ``cli_input`` line, and anything else is refused before any run
+starts (delivering pain/vision percepts here is #1393's). Research mode's campaign goes through the same strict load
+and raises instead of falling back to a free-form sim. The lenient mode (``run_campaign``) skips and names every
+percept that is not a line, by the same test.
 """
 
 from __future__ import annotations
@@ -48,15 +50,15 @@ def _cli_scenario(tmp_path: Path) -> str:
             cli_input: "{LINES[0]}"
             metadata: {{phase: encode}}
           - at: 1
-            source: proprioception
-            content: pain_signal
-          - at: 2
             source: cli
             cli_input: "{LINES[1]}"
             salience: 0.5
             metadata: {{phase: recall}}
         """,
     )
+
+
+PAIN_PERCEPT = "  - at: 1\n    source: proprioception\n    content: pain_signal\n"
 
 
 class _Bridge:
@@ -72,12 +74,25 @@ class _Bridge:
 
 
 class _Records(logging.Handler):
+    """The maxim loggers do not propagate to caplog, so the test listens on the logger itself."""
+
     def __init__(self) -> None:
         super().__init__(logging.WARNING)
         self.messages: list[str] = []
 
     def emit(self, record: logging.LogRecord) -> None:
         self.messages.append(record.getMessage())
+
+
+def _warnings_while(fn: Any) -> list[str]:
+    records = _Records()
+    experiment_logger = logging.getLogger("maxim.simulation.experiment")
+    experiment_logger.addHandler(records)
+    try:
+        fn()
+    finally:
+        experiment_logger.removeHandler(records)
+    return records.messages
 
 
 def test_imagine_delivers_the_scenarios_cli_input_lines_to_the_bridge(
@@ -96,53 +111,140 @@ def test_imagine_delivers_the_scenarios_cli_input_lines_to_the_bridge(
     monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", _sim)
     monkeypatch.setattr("maxim.simulation.campaign_runner.time.sleep", lambda _s: None)
     monkeypatch.setattr("maxim.utils.paths.sim_reports", lambda: tmp_path)
-    records = _Records()
-    experiment_logger = logging.getLogger("maxim.simulation.experiment")
-    experiment_logger.addHandler(records)
-    try:
-        with pytest.raises(_Stop):
-            imagine("g", model="m", scenario=path)
-    finally:
-        experiment_logger.removeHandler(records)
+    with pytest.raises(_Stop):
+        imagine("g", model="m", scenario=path)
 
-    assert seen["turns"] == load_campaign_turns(path)  # the one loader's dicts (the sim's provenance hashes them)
+    assert seen["turns"] == load_campaign_turns(path, strict=True)  # the one loader's dicts (provenance hashes them)
     bridge = _Bridge()
     run_precampaign_turns(turns=seen["turns"], bridge=bridge, introspector=None)  # what the sim does with them
     assert bridge.received == LINES
     assert [t["phase"] for t in seen["turns"]] == ["encode", "recall"]
     assert seen["turns"][1]["salience"] == 0.5
-    # the percept that carries no line is named, not dropped silently
-    assert any("percept 1 " in m and "no cli_input" in m for m in records.messages)
 
 
 @pytest.mark.parametrize(
-    "body",
+    ("body", "names"),
     [
-        "name: empty\npercepts: []\n",
-        "name: none\n",
-        "name: vision_only\npercepts:\n  - at: 0\n    source: proprioception\n    content: pain_signal\n",
-        "name: text_key\npercepts:\n  - at: 0\n    text: the old key imagine used to read\n",
-        "",
+        ("name: empty\npercepts: []\n", "non-empty 'percepts'"),
+        ("name: none\n", "non-empty 'percepts'"),
+        ("", "non-empty 'percepts'"),
+        ("name: pain_only\npercepts:\n" + PAIN_PERCEPT, "percept 0 has no cli_input line"),
+        (
+            "name: mixed\npercepts:\n  - at: 0\n    cli_input: hello\n" + PAIN_PERCEPT,
+            "percept 1 has no cli_input line",
+        ),
+        ("name: text_key\npercepts:\n  - at: 0\n    text: the old key imagine read\n", "percept 0 has no cli_input"),
+        ("name: phase_key\npercepts:\n  - cli_input: hi\n    phase: encode\n", "percept 0 carries a percept-level"),
+        ("name: blank\npercepts:\n  - cli_input: '   '\n", "percept 0 has no cli_input line"),
     ],
-    ids=["empty_list", "no_percepts", "no_cli_line", "text_key_only", "empty_file"],
+    ids=["empty_list", "no_percepts", "empty_file", "pain_only", "mixed", "text_key", "phase_key", "blank_line"],
 )
-def test_imagine_refuses_a_scenario_with_no_deliverable_line_before_any_run(
-    no_model_checks: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: str
+def test_imagine_refuses_a_scenario_that_is_not_all_cli_input_lines_before_any_run(
+    no_model_checks: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, body: str, names: str
 ) -> None:
     from maxim.api import imagine
 
     def _never(**_kw: Any) -> Any:
-        raise AssertionError("no run may start for a scenario with no deliverable line")
+        raise AssertionError("no run may start for a scenario imagine cannot deliver")
 
     monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", _never)
-    path = _scenario(tmp_path, body)
-    with pytest.raises(ValueError, match="no percept carries a cli_input line"):
-        imagine("g", model="m", scenario=path)
+    with pytest.raises(ValueError, match="imagine\\(scenario=\\) delivers only cli_input lines") as info:
+        imagine("g", model="m", scenario=_scenario(tmp_path, body))
+    assert names in str(info.value)
+    assert "#1393" in str(info.value) and "maxim --sim <scenario>" in str(info.value)
 
 
-def test_research_campaign_turns_come_from_the_same_loader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_repo_pain_scenario_is_refused_by_imagine(no_model_checks: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.api import imagine
+
+    monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", lambda **_k: pytest.fail("ran"))
+    path = Path(__file__).resolve().parents[2] / "scenarios" / "malware_with_pain.yaml"
+    with pytest.raises(ValueError, match="percept 1 has no cli_input line"):
+        imagine("g", model="m", scenario=str(path))
+
+
+# --- the loader's malformed-file branches (both modes) -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    ("body", "match"),
+    [
+        ("- cli_input: a\n- cli_input: b\n", "not a mapping"),
+        ("percepts: abc\n", "'percepts' is not a list"),
+        ("percepts: [unclosed\n", "YAML"),
+    ],
+    ids=["list_top_level", "percepts_string", "malformed_yaml"],
+)
+def test_a_malformed_file_raises_value_error_in_both_modes(tmp_path: Path, body: str, match: str, strict: bool) -> None:
+    with pytest.raises(ValueError, match=match):
+        load_campaign_turns(_scenario(tmp_path, body), strict=strict)
+
+
+# --- the lenient mode: skip and name, by the strict mode's test ---------------------------------------------------
+
+
+def test_lenient_mode_skips_and_names_every_percept_that_is_not_a_line(tmp_path: Path) -> None:
+    from maxim.simulation.campaign_runner import run_precampaign_turns
+
+    path = _scenario(
+        tmp_path,
+        """\
+        percepts:
+          - cli_input: first
+          - just a string
+          - cli_input: "   "
+          - cli_input: 42
+          - source: proprioception
+            content: pain_signal
+          - cli_input: last
+            metadata: null
+        """,
+    )
+    turns: list[dict[str, Any]] = []
+    messages = _warnings_while(lambda: turns.extend(load_campaign_turns(path)))
+    assert [t["text"] for t in turns] == ["first", "last"]
+    assert turns[1]["metadata"] == {} and turns[1]["phase"] == ""
+    (warning,) = [m for m in messages if "not delivered as turns" in m]
+    assert "percept 1 (is not a mapping)" in warning
+    for index in (2, 3, 4):
+        assert f"{index} (has no cli_input line" in warning
+    bridge = _Bridge()
+    run_precampaign_turns(turns=turns, bridge=bridge, introspector=None)  # 42 no longer reaches len(text)
+    assert bridge.received == ["first", "last"]
+
+
+# --- research mode ------------------------------------------------------------------------------------------------
+
+
+def test_research_campaign_turns_come_from_the_same_strict_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
     monkeypatch.setattr("maxim.simulation.sim_logger.display_status", lambda _m: None)
     path = _cli_scenario(tmp_path)
-    assert _load_campaign_turns(path) == load_campaign_turns(path)
+    assert _load_campaign_turns(path) == load_campaign_turns(path, strict=True)
+
+
+@pytest.mark.parametrize(
+    "body", ["name: none\n", "name: pain_only\npercepts:\n" + PAIN_PERCEPT], ids=["no_lines", "pain_only"]
+)
+def test_research_refuses_a_campaign_with_no_deliverable_line_before_any_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> None:
+    from maxim.simulation import research_orchestrator
+
+    monkeypatch.setattr(research_orchestrator, "_build_research_llm", lambda *_a: pytest.fail("built an LLM"))
+    monkeypatch.setattr("maxim.simulation.orchestrator.start_simulation_mode", lambda **_k: pytest.fail("ran"))
+    monkeypatch.setattr("maxim.utils.paths.sim_reports", lambda: tmp_path / "reports")
+    with pytest.raises(ValueError):
+        research_orchestrator.start_research_mode(goal="g", campaign=_scenario(tmp_path, body))
+    assert not (tmp_path / "reports").exists()  # no session dir for a refused campaign
+
+
+def test_research_refuses_a_missing_campaign(tmp_path: Path) -> None:
+    from maxim.simulation.research_orchestrator import _load_campaign_turns
+
+    with pytest.raises(FileNotFoundError):
+        _load_campaign_turns(str(tmp_path / "nope.yaml"))

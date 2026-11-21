@@ -933,8 +933,10 @@ def imagine(
             (default ``"generative"``). Free-form.
         persona: REMOVED in 1.1 (legacy alias for ``mode``) — accepted with
             a ``DeprecationWarning`` through 1.x, dropped in 1.2.
-        scenario: Path to YAML scenario file.  If provided, percepts are
-            loaded from the file and injected directly. Relative paths
+        scenario: Path to YAML scenario file.  If provided, each percept's
+            ``cli_input`` line is delivered to the agent as one turn; a
+            scenario with any other percept (or none) raises ``ValueError``
+            before the run starts (#1621, #1393). Relative paths
             resolve against the current working directory — pass an
             absolute path from async / pip-install / arbitrary-CWD
             callers (CC10, see ``docs/user/stable_api.md``).
@@ -986,9 +988,15 @@ def imagine(
         # so every turn reached the agent empty, silently.
         from maxim.simulation.experiment import load_campaign_turns
 
-        pre_campaign_turns = load_campaign_turns(str(scenario))
-        if not pre_campaign_turns:
-            raise ValueError(f"{scenario}: no percept carries a cli_input line, so the scenario has no turn to deliver")
+        # Strict (owner decision 2026-11-21): every percept must be a ``cli_input`` turn, since only lines reach the
+        # agent here; delivering other percepts (pain, vision) is #1393's.
+        try:
+            pre_campaign_turns = load_campaign_turns(str(scenario), strict=True)
+        except ValueError as exc:
+            raise ValueError(
+                f"{exc}. imagine(scenario=) delivers only cli_input lines, one per percept; a scenario with other "
+                "percepts runs through `maxim --sim <scenario>` (ScenarioSource), and delivering them here is #1393"
+            ) from exc
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
