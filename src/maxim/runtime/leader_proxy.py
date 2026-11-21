@@ -122,6 +122,24 @@ _REMOTE_UPDATE_DISABLED = (
 )
 
 
+def _stop_own_servers_for_restart() -> None:
+    """Before ``admin/restart``'s ``os.execv`` (which fires no atexit handler): stop every LLM server this process
+    spawned, a swap's server mid-readiness included, and none it did not (#1344 PR 3a). The registry is closed first,
+    so a swap cannot start one past the sweep. The cloudflared daemon is left running: it survives the execv, and the
+    new image finds it running and keeps it."""
+    from maxim.utils.cancellation import close_child_registry, stop_children
+
+    close_child_registry()
+    try:
+        from maxim.runtime.lane_backends import stop_active_spawner
+
+        stop_active_spawner()
+        logger.info("admin/restart: LLM server stopped")
+    except Exception as e:
+        logger.warning("admin/restart: failed to stop LLM server: %s", e)
+    stop_children("llm_server")
+
+
 class ProxyAuthError(LeaderRefusal):
     """The proxy was asked to serve in a way its auth does not allow."""
 
@@ -676,61 +694,6 @@ def _query_nvidia_smi() -> dict[str, Any] | None:
         return None
 
 
-def _current_llama_server_n_ctx(port: int) -> int | None:
-    """Return the n_ctx the running llama-cpp-server is configured for, or None.
-
-    Probes ``/v1/models`` on the upstream llama-cpp-server for
-    ``context_length``, falling back to process command-line inspection on
-    Linux. Shared by :func:`check_vram_pressure` in ``doctor/checks.py``
-    and :func:`_handle_debug_vram` in this module.
-    """
-    import socket
-
-    try:
-        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").encode()
-        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
-            s.sendall(req_bytes)
-            raw = b""
-            while True:
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                raw += chunk
-        body = raw.split(b"\r\n\r\n", 1)[-1]
-        data = json.loads(body)
-        for model in data.get("data", []):
-            ctx = model.get("context_length") or model.get("n_ctx") or model.get("max_context_length")
-            if ctx:
-                return int(ctx)
-    except Exception:
-        pass
-
-    # Process args fallback — best-effort, cross-platform
-    try:
-        import platform as _platform
-
-        system = _platform.system().lower()
-        if system == "linux":
-            import glob
-
-            for cmdline_path in glob.glob("/proc/*/cmdline"):
-                try:
-                    with open(cmdline_path, "rb") as f:
-                        args = f.read().split(b"\x00")
-                    args_str = [a.decode("utf-8", errors="ignore") for a in args]
-                    if any("llama" in a for a in args_str):
-                        for i, arg in enumerate(args_str):
-                            if arg in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(args_str):
-                                return int(args_str[i + 1])
-                            if arg.startswith("--ctx-size="):
-                                return int(arg.split("=", 1)[1])
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    return None
-
-
 # ─── log ring buffer ─────────────────────────────────────────────────────
 
 _MAX_LOG_LINES = 500
@@ -1157,7 +1120,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 probe,
                 method="GET",
                 headers=headers,
-                timeout=_http.TimeoutPolicy(connect_s=0.8, read_s=1.5, total_s=2.0),
+                timeout=_http.TimeoutPolicy(connect_s=0.8, read_s=1.5, pool_s=2.0),
             )
             return resp.status == 200
         except _http.HTTPAuthError:
@@ -1235,7 +1198,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     upstream_port = urlparse(self.upstream_url).port or DEFAULT_UPSTREAM_PORT
                 except Exception:
                     upstream_port = DEFAULT_UPSTREAM_PORT
-                running_n_ctx = _current_llama_server_n_ctx(upstream_port)
+                # A leader's server holds the mesh key, which is this proxy's bearer key (#1314); #1408 item 1
+                # (a leader-local server key) would change that, and this line with it.
+                upstream_key = self.auth.key if self.auth is not None and self.auth.is_bearer else None
+                from maxim.runtime.local_server_spawner import served_n_ctx
+
+                running_n_ctx = served_n_ctx(upstream_port, api_key=upstream_key)
                 if running_n_ctx and running_n_ctx > 0:
                     from maxim.models.language.config import get_profile
 
@@ -2412,23 +2380,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # is fully flushed before os.execv replaces the process image.
         def _do_restart() -> None:
             time.sleep(delay_s)
-            # Kill LLM server + cloudflared before replacing process image.
-            # os.execv() does NOT fire atexit handlers, so we must clean up
-            # child processes explicitly to prevent ghost servers.
-            try:
-                from maxim.runtime.lane_backends import stop_active_spawner
-
-                stop_active_spawner()
-                logger.info("admin/restart: LLM server stopped")
-            except Exception as e:
-                logger.warning("admin/restart: failed to stop LLM server: %s", e)
-            try:
-                from maxim.runtime.local_server_spawner import kill_stale_llm_servers
-
-                kill_stale_llm_servers()
-                logger.info("admin/restart: cleaned stale servers")
-            except Exception:
-                pass
+            # os.execv() does NOT fire atexit handlers: this process's own LLM servers are stopped first (#1344 PR 3a).
+            _stop_own_servers_for_restart()
             logger.info("admin/restart: executing os.execv — goodbye")
             # Re-exec with the original command line
             os.execv(sys.executable, [sys.executable] + sys.argv)
@@ -2464,6 +2417,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
         logger.info("admin/llm-swap: peer=%s model=%s", self.client_address[0], model)
 
+        from maxim.exceptions import LLMSwapRefused
+
         try:
             from maxim.runtime.lane_backends import swap_llm_server
 
@@ -2480,12 +2435,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             if len(parts) > 1:
                 resp["hint"] = re.sub(r"/[\w./-]{5,}", "<path>", parts[1])
             self._send_json(404, resp)
+        except LLMSwapRefused as e:
+            # A refusal the operator can act on (#1408; LLMSwapInProgress included): its message and fix_hint are
+            # static, so both are safe to return.
+            self._send_json(409, {"error": e.message, "hint": e.fix_hint})
         except RuntimeError as e:
-            if "already in progress" in str(e):
-                self._send_json(409, {"error": "LLM swap already in progress"})
-            else:
-                logger.error("LLM swap failed: %s", e)
-                self._send_json(500, {"error": "LLM swap failed. Check server logs."})
+            logger.error("LLM swap failed: %s", e)
+            self._send_json(500, {"error": "LLM swap failed. Check server logs."})
 
     # ─── HTTP method dispatchers ──────────────────────────────────────
 
@@ -2869,7 +2825,7 @@ def _port_refuses_unauthenticated(port: int) -> bool:
         _http.fetch_url(
             f"http://127.0.0.1:{port}/v1/debug/ping",
             method="GET",
-            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
+            timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, pool_s=4.0),
         )
     except _http.HTTPAuthError as e:
         return e.status == 401

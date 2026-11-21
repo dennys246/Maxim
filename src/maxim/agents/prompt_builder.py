@@ -16,10 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.llm_context import _load_foundational_context
-from maxim.agents.llm_fallback import (
-    generate_simple_answer,
-    ReasoningCarryover,
-)
+from maxim.agents.llm_fallback import ReasoningCarryover
 from maxim.agents.llm_types import LLMRequest, ModeInfo
 from maxim.agents.prompt_budgeter import (
     PromptBudgeter,
@@ -290,7 +287,7 @@ def build_failed_tools_section(request: LLMRequest) -> str:
     outcomes, not be told).
     """
     names = ", ".join(repr(n) for n in _recent_failed_tool_names(request))
-    if not names:
+    if not names or not _echoes_rejected_names(request):
         return ""
     return (
         "=== Tools You've Hallucinated ===\n"
@@ -318,7 +315,24 @@ PLANNING_CORRECTIONS = {
         "Your last answer could not be read. Reply with ONLY one JSON object in the response format above, naming "
         "one of your tools: {own}."
     ),
+    # #1592: the narrator proposed a tool it lacks, in the Exp 63b smoke the AUT's, read from its checkpoint. Only a
+    # planning-liveness loop records a correction, and only the sim narrator opts in (pinned by
+    # test_narrator_agent_tools_1592.py), so "the agent under test" is always its reader's agent. The claim is
+    # conditional ("not in your list"): the narrator's own tools appear in its results and checkpoints too. It names
+    # no rejected tool, which a retry for this reason no longer echoes either (``_echoes_rejected_names``).
+    "unregistered_tool_proposed": (
+        "Your last answer called a tool that is not in your list. A tool you read about that is not in your list, "
+        "such as one in the agent under test's actions, is the agent's, and you cannot call it. Call one of your "
+        "tools: {own}."
+    ),
 }
+
+
+def _echoes_rejected_names(request: LLMRequest) -> bool:
+    """Whether a retry repeats the rejected tool names (#935's echo). Not after the narrator proposed a tool it lacks
+    (#1592, owner decision 2026-11-05): even labelled, a name primed mistral-7b, and that retry's correction says what
+    went wrong without one. The opt-in ``MAXIM_TOOL_FAILURE_HINTS`` list keeps the echo for every other request."""
+    return "unregistered_tool_proposed" not in request.planning_corrections
 
 
 def build_planning_correction(request: LLMRequest) -> str:
@@ -376,15 +390,19 @@ def build_followup_retry_correction(request: LLMRequest) -> str:
     with ``MAXIM_TOOL_FAILURE_HINTS`` off (the default); with it on, the session-long list reaches every
     new request, so a first follow-up attempt carries the correction too — that knob's stated purpose.
     """
-    names = ", ".join(repr(n) for n in _recent_failed_tool_names(request))
+    names = ", ".join(repr(n) for n in _recent_failed_tool_names(request)) if _echoes_rejected_names(request) else ""
     planning = build_planning_correction(request)
     if not names and not planning:
         return ""
-    lines = ["=== Correction ==="] + ([planning] if planning else [])
+    lines = ["=== Correction ==="]
     if names:
         own = ", ".join(repr(n) for n in sorted(request.available_tools))
-        choose = f" Your tools are: {own}. Choose one of these." if own else ""
+        # A planning correction ends with the agent's own tools (every ``PLANNING_CORRECTIONS`` value has ``{own}``),
+        # so they are listed once, and last: the last tool names the model reads are its own (#1592).
+        choose = f" Your tools are: {own}. Choose one of these." if own and not planning else ""
         lines.append(f"You called {names}, which you do not have." + choose + _sense_tools_hint(request))
+    if planning:
+        lines.append(planning)
     return "\n".join(lines)
 
 
@@ -1105,16 +1123,8 @@ class PromptBuilder:
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M %p")
 
-        # Try simple answers first, unless the request carries held inputs (#1451): a canned reply would answer only
-        # the request, and the held inputs, already marked read, would vanish unshown.
-        if question_text and not request.deferred_inputs:
-            answer = generate_simple_answer(question_text, date_str, time_str)
-            if answer:
-                import json
-
-                escaped_answer = json.dumps(answer)
-                return f'{{"action":{{"tool_name":"respond","params":{{"message":{escaped_answer}}}}},"confidence":0.95,"reasoning":"direct_answer"}}'
-
+        # No canned answer here (#1689): every input with a question reaches the model. Both prompts carry the date and
+        # time: the tool-aware one in its datetime section, ANSWER_ONLY as the block before its first blank line.
         if not request.use_tool_prompting or not request.available_tools:
             if request.deferred_inputs:  # only a planning-liveness loop carries them, and it prompts with tools
                 logger.warning(
@@ -1123,7 +1133,8 @@ class PromptBuilder:
                     [d[:80] for d in request.deferred_inputs],
                 )
             if question_text:
-                return f"""ANSWER_ONLY|{question_text}"""
+                # The router splits the payload at its FIRST blank line: this builder's clock line, then the question.
+                return f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
             return ""
 
         return self._build_tool_aware_prompt(request, question_text, date_str, time_str)

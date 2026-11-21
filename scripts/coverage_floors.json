@@ -3,13 +3,13 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 73.6,
-    "missing": 26713
+    "percent": 74.6,
+    "missing": 26107
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 69.5,
-      "missing": 1184
+      "percent": 73.0,
+      "missing": 1080
     },
     "maxim/advisor": {
       "percent": 98.9,
@@ -26,6 +26,10 @@
     "maxim/attention": {
       "percent": 39.7,
       "missing": 534
+    },
+    "maxim/bench": {
+      "percent": 81.5,
+      "missing": 37
     },
     "maxim/bridges": {
       "percent": 54.4,
@@ -52,8 +56,8 @@
       "missing": 1068
     },
     "maxim/doctor": {
-      "percent": 72.2,
-      "missing": 494
+      "percent": 73.6,
+      "missing": 460
     },
     "maxim/embodied_runtime": {
       "percent": 56.8,
@@ -104,8 +108,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 62.7,
-      "missing": 2285
+      "percent": 64.9,
+      "missing": 2235
     },
     "maxim/modes": {
       "percent": 80.6,
@@ -140,8 +144,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 77.4,
-      "missing": 3060
+      "percent": 79.7,
+      "missing": 2943
     },
     "maxim/salience": {
       "percent": 68.6,
@@ -172,26 +176,26 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 67.1,
-      "missing": 2065
+      "percent": 66.8,
+      "missing": 2095
     }
   },
   "files": {
     "src/maxim/models/language/router.py": {
-      "percent": 68.6,
-      "missing": 319
+      "percent": 75.5,
+      "missing": 267
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 74.5,
-      "missing": 253
+      "percent": 75.7,
+      "missing": 250
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
       "missing": 41
     },
     "src/maxim/simulation/stall_detector.py": {
-      "percent": 82.8,
-      "missing": 43
+      "percent": 84.2,
+      "missing": 40
     },
     "src/maxim/simulation/stdin_lines.py": {
       "percent": 100.0,

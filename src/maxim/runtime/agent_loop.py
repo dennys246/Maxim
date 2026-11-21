@@ -93,6 +93,7 @@ from maxim.runtime.loop_state import (
     loop_liveness_scope,
     operational_mode,
     seed_runtime_run_mode,
+    start_run_state,
     _planning_attempt_is_active,
     _substrate_tick_due,
     _persist_state_json,
@@ -145,11 +146,8 @@ def run_agent_loop(
     if evaluators is None:
         evaluators = []
 
-    if not run_id:
-        run_id = time.strftime("%Y-%m-%d_%H%M%S")
     agent_name = _safe_agent_name(agent)
-    state_path = os.path.join("data", "agents", agent_name, "runtime", f"state_{run_id}.json")
-    _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
+    run_id, state_path = start_run_state(state, agent_name, run_id)
 
     max_steps_i = int(max_steps or 0)
     step_iter = itertools.count() if max_steps_i <= 0 else range(max_steps_i)
@@ -1002,6 +1000,7 @@ def run_agentic_loop(
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
     end_bound: EndBound | None = None,  # #1536, wrapper-only: the bound a per-handle stop hands this run's session end
+    state_home: str | os.PathLike[str] | None = None,  # #1264: the state file's root (data-home-shaped)
 ) -> None:
     """The agent loop: a thin wrapper over ``_run_agentic_loop_body``, which holds the loop and its full docstring.
 
@@ -1060,12 +1059,32 @@ def run_agentic_loop(
             consolidation=consolidation,
             planning_liveness=planning_liveness,
             sim_adapter=sim_adapter,
+            state_home=state_home,
             session=session,
             inbound_inbox=inbound_inbox,
         )
     # D13 (bugs ledger): raised only AFTER the session ended, so an aborted sim still persisted and consolidated.
     if deferred is not None:
         raise deferred
+
+
+def _loop_timing(target_hz: float, max_steps: int | None) -> tuple[float, Any]:
+    """The loop's target period and its step iterator: unbounded when ``max_steps`` is 0 or None (moved verbatim out
+    of ``_run_agentic_loop_body``, #1264 rule T)."""
+    target_period = 1.0 / target_hz
+    max_steps_i = int(max_steps or 0)
+    step_iter = itertools.count() if max_steps_i <= 0 else range(max_steps_i)
+    return target_period, step_iter
+
+
+def _persist_final_state(state: Any, state_path: str, context_pool: Any, *, run_id: str, agent_name: str) -> None:
+    """The loop's teardown persist: the run's state file and its context pool (moved verbatim out of
+    ``_run_agentic_loop_body``, #1264 rule T)."""
+    _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
+    try:
+        context_pool.save()
+    except Exception as e:
+        logger.debug(f"Failed to save context pool: {e}")
 
 
 def _run_agentic_loop_body(
@@ -1123,6 +1142,7 @@ def _run_agentic_loop_body(
     # lets a live producer (the DoA feed) hold the adapter and carry_percept() into the loop's
     # modality-preserving side-channel WITHOUT a percept_source (which would flip is_sim_mode).
     # Only honored when percept_source is None; ignored (with the sim adapter built as before) otherwise.
+    state_home: str | os.PathLike[str] | None,  # #1264: the state file's root (data-home-shaped)
     session: BioSession,  # the run's memory session, claimed by run_agentic_loop's bio_session (#1438 PR 0)
     inbound_inbox: ExternalInbox | None = None,  # #1481: the run's held inbound comms (wrapper-supplied)
 ) -> Exception | None:
@@ -1185,6 +1205,7 @@ def _run_agentic_loop_body(
         planning_liveness=planning_liveness,
         sim_adapter=sim_adapter,
         session=session,
+        state_home=state_home,
     )
     executor, sim, ctrl, autonomy_controller = run.executor, run.sim, run.ctrl, run.autonomy_controller
     run_id, agent_name, state_path = run.run_id, run.agent_name, run.state_path
@@ -1222,9 +1243,7 @@ def _run_agentic_loop_body(
         return ctrl.get_all_tools()
 
     # Loop timing
-    target_period = 1.0 / target_hz
-    max_steps_i = int(max_steps or 0)
-    step_iter = itertools.count() if max_steps_i <= 0 else range(max_steps_i)
+    target_period, step_iter = _loop_timing(target_hz, max_steps)
 
     # Diagnostic heartbeat: log once per agent on first iteration + every
     # ~10s thereafter so we can see if a loop is alive but stuck. Silent
@@ -3202,11 +3221,7 @@ def _run_agentic_loop_body(
             time.sleep(sleep_time)
 
     # Always persist final state and context pool
-    _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
-    try:
-        context_pool.save()
-    except Exception as e:
-        logger.debug(f"Failed to save context pool: {e}")
+    _persist_final_state(state, state_path, context_pool, run_id=run_id, agent_name=agent_name)
 
     # D13 planning liveness: RETURNED, and raised by run_agentic_loop AFTER its bio_session ends (#1438 PR 0), so
     # state persistence and the bio session end ran, but the sim still aborts loudly (the orchestrator converts this

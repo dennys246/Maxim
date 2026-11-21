@@ -119,7 +119,7 @@ def update_on_target(
             timeout=_http.TimeoutPolicy(
                 connect_s=5.0,
                 read_s=read_timeout,
-                total_s=read_timeout + 5.0,
+                pool_s=read_timeout + 5.0,
             ),
         )
         data = resp.json()
@@ -290,7 +290,7 @@ def restart_on_target(url: str, key: str | None) -> int:
             method="POST",
             headers=headers,
             json={"delay_s": 1.5},
-            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
+            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, pool_s=33.0),
         )
         data = resp.json()
     except _http.HTTPError as e:
@@ -418,7 +418,7 @@ def llm_swap_on_target(url: str, key: str | None, model: str) -> int:
             method="POST",
             headers=headers,
             json={"model": model},
-            timeout=_http.TimeoutPolicy(connect_s=5.0, read_s=180.0, total_s=185.0),
+            timeout=_http.TimeoutPolicy(connect_s=5.0, read_s=180.0, pool_s=185.0),
         )
         data = resp.json()
     except _http.HTTPError as e:

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from scripts import lint_release_gates as L
+from scripts import run_fast_suite as RF
 
 GATES = "scripts/release_gates.json"
 BASELINE = "src/maxim/utils/function_length_baseline.json"
@@ -39,8 +40,8 @@ jobs:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
       - name: Run required fast suite
-        run: python -m pytest tests/ --junitxml=fast-suite.xml --cov=src/maxim
-      - name: Release gates, runtime twin
+        run: |
+@SUITE_RUN@      - name: Release gates, runtime twin
         run: python scripts/lint_release_gates.py --junit fast-suite.xml
   lint:
     runs-on: x
@@ -49,7 +50,7 @@ jobs:
         with: {fetch-depth: 0}
       - name: Release gates
         run: python3 scripts/lint_release_gates.py
-"""
+""".replace("@SUITE_RUN@", "".join(f"          {ln}\n" for ln in RF.CI_STEP_RUN.splitlines()))  # #1645: the pinned run
 
 RED = 'import pytest\n\n\n@pytest.mark.xfail(strict=True, reason="#1: flips with the fix")\ndef test_fixed():\n    assert 1 + 1 == 2\n'
 GREEN = "import pytest\n\n\ndef test_fixed():\n    assert 1 + 1 == 2\n"
@@ -976,7 +977,10 @@ def test_git_failing_mid_rule_is_exit_2_in_ci_and_a_skip_locally(repo, capsys, m
             "      - name: Release gates, runtime twin\n        if: always()\n        run:",
             "may carry only `name` and `run`",
         ),
-        (" --junitxml=fast-suite.xml --cov", " --cov", "must pass `--junitxml=fast-suite.xml` once"),
+        (" --junitxml=fast-suite.xml --cov", " --cov", "must run exactly scripts/run_fast_suite.py::CI_STEP_RUN"),
+        # #1645 S12: a runner invocation that keeps the report flag as a dead string still fails (pinned whole)
+        ("run_fast_suite.py --shards 4", "run_fast_suite.py --shards 4 --no-cov", "must run exactly"),
+        ('bash scripts/ci_netns.sh "$SUITE"', 'echo "$SUITE"', "must run exactly"),
         (
             "      - name: Release gates, runtime twin\n        run: python scripts/lint_release_gates.py --junit fast-suite.xml\n",
             "",
@@ -1005,6 +1009,31 @@ def test_the_ci_wiring_is_checked_from_both_steps(repo, capsys, tmp_path, old, n
     assert rc == 1 and needle in out, out
 
 
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        (" --junitxml=fast-suite.xml", ""),
+        # the delta review's additions (each hides evidence tests from the twin's report)
+        (" --cov=src/maxim ", " -k notmemory --cov=src/maxim "),
+        (" --cov=src/maxim ", " --deselect tests/unit/test_box_quiet.py --cov=src/maxim "),
+        (" --cov=src/maxim ", " --cov=src/maxim/memory --cov=src/maxim "),
+    ],
+    ids=["no-report", "extra-k", "extra-deselect", "second-cov"],
+)
+def test_a_runner_step_text_edit_alone_fails_rule_9(repo, capsys, monkeypatch, old, new):
+    """#1645 review: rule 9 compares the runner's text with lint_coverage's gate-owned literal for EQUALITY. Editing
+    the runner's text AND the workflow together still fails, for a dropped report flag and an added filter alike."""
+    edited = RF.CI_STEP_RUN.replace(old, new)
+    assert edited != RF.CI_STEP_RUN
+    monkeypatch.setattr(L.RF, "CI_STEP_RUN", edited)
+    old_block = "".join(f"          {ln}\n" for ln in RF.CI_STEP_RUN.splitlines())
+    new_block = "".join(f"          {ln}\n" for ln in edited.splitlines())
+    assert old_block in WORKFLOW
+    repo.write(".github/workflows/test.yml", WORKFLOW.replace(old_block, new_block))
+    rc, out = run(capsys)
+    assert rc == 1 and "CI_STEP_RUN differs from lint_coverage.CI_STEP_EXPECTED" in out, out
+
+
 def test_no_other_step_may_name_the_report(repo, capsys):
     wf = WORKFLOW.replace(
         "      - name: Release gates, runtime twin\n",
@@ -1014,6 +1043,57 @@ def test_no_other_step_may_name_the_report(repo, capsys):
     repo.write(".github/workflows/test.yml", wf)
     rc, out = run(capsys)
     assert rc == 1 and "only the fast suite and the release-gate step may name fast-suite.xml" in out
+
+
+def test_an_upload_artifact_step_may_name_the_report_it_only_reads(repo, capsys):
+    """#1640: the coverage artifact carries fast-suite.xml so a floors-only push can re-use a verified run; an upload
+    reads the file, so it is the one exception (any other step naming it still fails, above)."""
+    upload = (
+        "      - name: Upload\n        uses: actions/upload-artifact@v4\n"
+        "        with:\n          name: x\n          path: fast-suite.xml\n"
+    )
+    wf = WORKFLOW.replace(
+        "      - name: Release gates, runtime twin\n", upload + "      - name: Release gates, runtime twin\n"
+    )
+    repo.write(".github/workflows/test.yml", wf)
+    rc, out = run(capsys)
+    assert "may name fast-suite.xml" not in out, out
+    repo.write(".github/workflows/test.yml", wf.replace("actions/upload-artifact@v4", "actions/cache@v4"))
+    rc, out = run(capsys)
+    assert rc == 1 and "may name fast-suite.xml" in out
+
+
+_SUITE_STEP = "      - name: Run required fast suite\n"
+
+
+@pytest.mark.parametrize(
+    "decide, needle",
+    [
+        (f"      - name: decide\n        id: reuse\n        run: {L.REUSE_RUN}\n", None),
+        (
+            f"      - name: decide\n        id: reuse\n        run: {L.REUSE_RUN} --extra\n",
+            "the one other writer of fast-suite.xml is exactly one",
+        ),
+    ],
+)
+def test_the_reuse_decision_is_the_one_named_other_writer_of_the_report(repo, capsys, decide, needle):
+    """#1640 (Arch SF-2): the decision step places the re-used source run's report; the wiring names it explicitly,
+    exactly that run line, before the suite."""
+    from scripts import lint_coverage as LC
+
+    assert L.REUSE_RUN == LC.CI_REUSE_RUN
+    repo.write(".github/workflows/test.yml", WORKFLOW.replace(_SUITE_STEP, decide + _SUITE_STEP))
+    rc, out = run(capsys)
+    if needle is None:
+        assert "the one other writer" not in out and "must come before the fast suite" not in out, out
+        after = WORKFLOW.replace(
+            "      - name: Release gates, runtime twin\n", decide + "      - name: Release gates, runtime twin\n"
+        )
+        repo.write(".github/workflows/test.yml", after)
+        rc, out = run(capsys)
+        assert rc == 1 and "must come before the fast suite" in out
+    else:
+        assert rc == 1 and needle in out, out
 
 
 def test_the_twin_must_follow_the_suite(repo, capsys):

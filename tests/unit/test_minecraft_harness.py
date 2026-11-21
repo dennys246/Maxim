@@ -38,8 +38,11 @@ class TestLoopKwargsPins:
         aut.percept_source = object()
         aut.bio = _Stub()
         aut.bio.pain_bus = aut.bio.memory_hub = aut.bio.hippocampus = None
+        aut.persistence_dir = str(tmp_path / "aut")
         kwargs = _loop_kwargs(aut, max_steps=5, stop_event=threading.Event(), target_hz=2.0)
         assert kwargs["consolidation"] == "full"
+        # #1264: the loop's state file stays in the AUT's own home, never the operator's data home
+        assert kwargs["state_home"] == aut.persistence_dir
         # AUTONOMOUS (orchestrator parity): PLANNING never executes a substrate proposal
         from maxim.agents.autonomy import AutonomyLevel
 
@@ -138,7 +141,11 @@ class TestReducedEndToEndSmoke:
     verdict on live AND persisted world nodes."""
 
     def test_two_aut_smoke_is_green_and_non_vacuous(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)  # the loop writes CWD-relative diagnostics
+        from maxim.utils.paths import _reset_caches
+
+        monkeypatch.chdir(tmp_path)  # a scratch CWD (data/short_term_memory still lands here); no state file (#1264)
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data_home"))  # to prove nothing lands there either
+        _reset_caches()
         server = FakeBridgeServer(seed=42, state_interval_s=0.05)
         auts = []
         pumps = []
@@ -215,6 +222,16 @@ class TestReducedEndToEndSmoke:
                 f"{name}: the session took the LIGHTWEIGHT close ({counts}) — "
                 "the harness's consolidation='full' did not reach _end_bio_session"
             )
+        # #1264: each AUT's loop kept ONE state file, in its own home; none landed under the CWD or the data home.
+        from pathlib import Path
+
+        from maxim.utils.paths import data_home
+
+        for aut in auts:
+            assert len(list(Path(aut.persistence_dir).glob("runtime_state/*/state_*.json"))) == 1, aut.agent_id
+        # (Not ``data/`` as a whole: ``data/short_term_memory`` is another CWD-relative writer, outside #1264.)
+        assert not list(tmp_path.glob("data/agents/*/runtime/state_*.json"))
+        assert list(data_home().glob("runtime_state/*/state_*.json")) == []
 
     def test_dead_world_feed_is_red(self, tmp_path, monkeypatch):
         """The executor lens's vacuity demonstration, pinned as a negative
@@ -421,3 +438,22 @@ class TestL11AnalyzerOnSyntheticTrace:
         with _pytest.raises(SystemExit) as exc:
             mod.analyze(a)
         assert exc.value.code == 4
+
+
+def test_the_fake_bridge_ends_a_connection_when_the_client_hangs_up():
+    """#1645: the hang-up return had no direct test; it ran only when a test's client happened to close first."""
+    import socket
+    import threading
+
+    srv = FakeBridgeServer(state_interval_s=0.05)
+    a, b = socket.socketpair()
+    try:
+        t = threading.Thread(target=srv._serve, args=(a,), daemon=True)
+        t.start()
+        b.shutdown(socket.SHUT_WR)  # the client hangs up its side; it can still read
+        t.join(timeout=5)
+        assert not t.is_alive(), "_serve must return when recv reads end-of-stream"
+    finally:
+        srv.close()
+        a.close()
+        b.close()

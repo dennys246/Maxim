@@ -6,7 +6,14 @@ The pre-PR list used to be followed by attention ("run every ``jobs.lint`` step,
 
 1. every ``run:`` step of ``jobs.lint``, in workflow order, each finishing before the next (ruff check + ruff
    format --check are the first of them, exactly as CI runs them);
-2. the unit-tests job's one step that runs ``scripts/run_mypy_public.sh`` (the targeted mypy check, M65).
+2. the unit-tests job's one step that runs ``scripts/run_mypy_public.sh`` (the targeted mypy check, M65); its one
+   ``if:``, the coverage re-use skip (``MYPY_STEP_IF``, #1640), is accepted and the step always runs here, because a
+   local run is never a re-use;
+3. ``scripts/lint_coverage.py --missing-floors`` (#1640): a package that crossed 200 statements with no floor, which
+   CI's coverage ratchet would fail, fails here first (statement counts are deterministic, coverage percentages are
+   not). Coverage not installed, or another version, is a REFUSAL (exit 2) with the install hint: prepr cannot
+   count, so it cannot reproduce CI's verdict. It runs beside the workflow steps, so ``--fail-fast`` does not stop at
+   it and the "N/M steps passed" line does not count it (it prints its own line).
 
 **prepr is a gate, so it refuses rather than guesses.** A developer reads ``prepr: PASS`` as clearance to push. Any
 condition under which prepr cannot reproduce CI's verdict is exit 2 (REFUSED), or an operator-chosen downgrade
@@ -196,6 +203,10 @@ IGNORED_PY_ROOTS = ("src", "tests", "scripts")
 # Pins whose mismatch refuses (they decide what the step reports); other pins only WARN.
 STRICT_PINS = ("ruff", "mypy")
 PR_SECRET_SCAN = "Secret scan of the PR title + body (lint_secrets.scan_range, as CI's pull_request run)"
+MISSING_FLOORS = "Coverage floors for every package over 200 statements (lint_coverage.py --missing-floors, #1640)"
+# The one `if:` the mypy step may carry: lint_coverage.CI_REUSE_SKIP_IF (test_prepr pins that they agree). Locally the
+# step always runs: a re-use is a CI-only decision.
+MYPY_STEP_IF = "steps.reuse.outputs.reuse != 'true'"
 PIN = re.compile(r"""["']?([A-Za-z0-9_.\-\[\]]+)==([A-Za-z0-9_.+\-]+)["']?""")
 
 
@@ -434,10 +445,12 @@ def _uses_step(job: str, step: dict) -> str | None:
     return None
 
 
-def _to_step(job: str, step: dict, base_env: dict[str, str], base_pr: dict[str, str]) -> Step | None:
+def _to_step(
+    job: str, step: dict, base_env: dict[str, str], base_pr: dict[str, str], *, allowed_if: str | None = None
+) -> Step | None:
     name = str(step.get("name") or str(step["run"]).splitlines()[0])
     where = f"{job} step {name!r}"
-    extra = set(step) - RUN_STEP_KEYS
+    extra = set(step) - RUN_STEP_KEYS - ({"if"} if allowed_if is not None and step.get("if") == allowed_if else set())
     if extra:
         raise PlanError(f"{where}: key(s) {sorted(extra)} cannot be reproduced locally")
     shell = step.get("shell")
@@ -495,7 +508,7 @@ def build_plan(workflow: dict) -> Plan:
             if v is not None:
                 pythons.add(v)
     job_env, job_pr = _resolve_env(spec.get("env"), f"job {MYPY_JOB}")
-    s = _to_step(MYPY_JOB, mypy[0], {**wf_env, **job_env}, {**wf_pr, **job_pr})
+    s = _to_step(MYPY_JOB, mypy[0], {**wf_env, **job_env}, {**wf_pr, **job_pr}, allowed_if=MYPY_STEP_IF)
     if s is None:
         raise PlanError(f"{MYPY_JOB}: the mypy step has no command after the install lines")
     steps.append(s)
@@ -662,6 +675,26 @@ def scan_pr_text(root: Path, base: str, head: str, text: str) -> int:
     except (mod.GitUnavailable, mod.ConfigError) as e:
         raise Refusal(f"the PR-text secret scan cannot run ({type(e).__name__}: {e})") from e
     return int(mod._report([scan], "branch range + PR title/body, as CI's pull_request run"))
+
+
+def missing_floors(root: Path) -> tuple[int, float, str]:
+    """(exit code, seconds, output) of ``scripts/lint_coverage.py --missing-floors`` in a step's scrubbed environment,
+    with this interpreter (the coverage version it imports is checked against CI's pin by the mode itself). Exit 2
+    (it cannot count: coverage absent or another version, or it could not run) is a REFUSAL, never a FAIL."""
+    t0 = time.monotonic()
+    env = step_env(Step("prepr", MISSING_FLOORS, ""), {})
+    try:
+        r = subprocess.run(
+            [sys.executable, str(root / "scripts/lint_coverage.py"), "--missing-floors"],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 2, time.monotonic() - t0, f"cannot run --missing-floors ({e})"
+    return r.returncode, time.monotonic() - t0, r.stdout + r.stderr
 
 
 def gh_pr_view(root: Path = REPO_ROOT) -> dict | None:
@@ -860,6 +893,9 @@ def main(argv: list[str] | None = None, root: Path = REPO_ROOT) -> int:
             s0 = time.monotonic()
             scan_ok = scan_pr_text(root, mb, head, f"{title}\n{body or ''}") == 0
             scan_result = (scan_ok, time.monotonic() - s0)
+        mf_rc, mf_secs, mf_out = missing_floors(root)
+        if mf_rc == 2:  # it cannot count here (the install hint is in its output): prepr cannot reproduce CI's verdict
+            raise Refusal(f"{MISSING_FLOORS} cannot run: {' '.join(mf_out.split())[-400:]}")
     except Refusal as e:
         print(f"ERROR: prepr refuses: {e}", file=sys.stderr)
         print("prepr: REFUSED (exit 2)")
@@ -888,6 +924,11 @@ def main(argv: list[str] | None = None, root: Path = REPO_ROOT) -> int:
         print(f"{'PASS' if scan_result[0] else 'FAIL'}  {scan_result[1]:6.1f}s  [prepr] {PR_SECRET_SCAN}", flush=True)
         if not scan_result[0]:
             failed.append(PR_SECRET_SCAN)
+    mf_ok = mf_rc == 0
+    print(f"{'PASS' if mf_ok else 'FAIL'}  {mf_secs:6.1f}s  [prepr] {MISSING_FLOORS}", flush=True)
+    if not mf_ok:
+        failed.append(MISSING_FLOORS)
+        print("\n".join(f"      | {ln}" for ln in mf_out.splitlines()[-30:]))
     for i, s in enumerate(steps, 1):
         log = log_dir / f"{i:02d}.log"
         ok, secs = run_step(s, step_env(s, pr_text), log, root, args.verbose)

@@ -332,7 +332,7 @@ Maxim's architecture draws inspiration from neuroscience:
 | Thalamus | ThalamicGate (DefaultNetwork) |
 | Superior Colliculus | AttentionNetwork |
 | Cerebellum | Cerebellum forward models (motor programs / engrams dormant) |
-| Default Mode Network | DefaultNetwork behaviors |
+| Salience network / exogenous attention | DefaultNetwork behaviors (the name is historical: NAME-ONLY, not the default mode network) |
 | Anterior Temporal Lobe | ATL semantic memory, concept extraction, grounding |
 | Angular Gyrus | AngularGyrus mathematical cognition |
 | Basal Ganglia | DecisionEngine (planning) |

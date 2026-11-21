@@ -251,7 +251,7 @@ class TestCheckExistingLlmServer:
         commands (config_unification.md C2 + 2026-06-09 footgun lesson):
           (a) ``maxim config set llm.profile <profile>``  — adopt served
           (b) ``maxim --llm <configured>``                 — re-spawn to match config
-          (c) ``pkill -f llama_cpp.server``                — stop everything
+          (c) stop that server, named by pid               — no box-wide pkill (#1344 PR 3a)
         Without these, the operator has to read CLAUDE.md to figure out
         what to do; the singleton-check error is the natural surface for
         the resolution paths.
@@ -278,8 +278,9 @@ class TestCheckExistingLlmServer:
         # (b) re-spawn-to-match-config path — must interpolate the
         # configured profile so operator can copy/paste
         assert f"maxim --llm {self._PROFILE}" in msg, f"resolution (b) missing or stale: {msg!r}"
-        # (c) kill-everything path
-        assert "pkill -f llama_cpp.server" in msg, f"resolution (c) missing: {msg!r}"
+        # (c) stop THAT server, named by its listener (never a box-wide pkill: #1344 PR 3a)
+        assert "Stop that server (a listener" in msg, f"resolution (c) missing: {msg!r}"
+        assert "pkill" not in msg, f"a box-wide kill is advised: {msg!r}"
         # Pointer to the new CLAUDE.md lesson by name
         assert "config.json" in msg.lower() or "active_llm_model" in msg.lower(), (
             f"message should mention the two state files by name: {msg!r}"

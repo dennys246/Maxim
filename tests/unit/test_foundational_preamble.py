@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests._child_env import isolation_env
+
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -72,7 +74,7 @@ def test_an_installed_package_gets_the_preamble(tmp_path) -> None:
         f"assert pathlib.Path(maxim.__file__).is_relative_to({str(site)!r}), maxim.__file__; "
         "print(len(f()))"
     )
-    env = {"PYTHONPATH": str(site), "HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    env = {"PYTHONPATH": str(site), "HOME": str(tmp_path), "PATH": "/usr/bin:/bin", **isolation_env()}
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, env=env, cwd=tmp_path)
     assert out.returncode == 0, out.stderr[-600:]
     assert int(out.stdout.strip().splitlines()[-1]) > 0, "an installed maxim has an EMPTY foundational preamble"

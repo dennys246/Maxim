@@ -91,6 +91,15 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
   - #1453, #1454, #1457 (FIXED, the ``/new`` slice): the re-entry carries the run settings and the AUT's saved state,
     and ``--report-json`` describes the returned run (the new_goal arm's ``report_writes`` hold one extra
     ``save_aut_state`` and one ``emit_report_json``, and the fixture was regenerated for it in its own commit).
+  - #1592 (FIXED): the stall detector's narrator texts named the AUT's tools (the diversity checkpoint's
+    ``respond (2x)``, the idle nudge's last tool), which primed a weak narrator to propose them (Exp 63b smoke,
+    ``planning_failed``). The checkpoint now gives counts and points at ``observe_actions``, and the nudges name
+    only ``send_message``; the stall arm's two injected texts changed, and the fixture was regenerated for it in
+    its own commit.
+  - #1689 (FIXED): the AUT answered a short identity or greeting probe ("Hello, who are you?", "A stranger asks
+    your name.") with a canned reply before its model, booked as ``plan:direct_answer:success``. Every arm now
+    shows the AUT's model answering ("I heard: ..."), and the stdin arm's operator text reaches that model. The
+    fixture was regenerated for it, on Linux (the Windows trace differs by path separator).
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
@@ -102,9 +111,9 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
 
 NEUTRALISED, NOT PINNED (the harness takes them out of the trace, so a fix does not change the golden):
 
-  - #1264: the AUT and narrator loops race on one CWD-relative ``state_<second>.json`` and a shared
-    ``.tmp``. How many state files land, under which second, is the race itself, so the data-home file
-    set excludes ``agents/*/runtime/`` (``_DATA_HOME_EXCLUDED``).
+  - #1264 (fixed): the AUT and narrator loops raced on one CWD-relative ``state_<second>.json``. Each
+    run now has its own ``<sim_tmpdir>/runtime_state/<name>/state_<run_id>_<token>.json``; the token is
+    random, so the data-home file set excludes ``sim_sandbox/*/runtime_state/`` (``_DATA_HOME_EXCLUDED``).
   - #1265: the report's ``lane_breakdown`` and latency percentiles read the process-global lane
     ``MetricsRegistry``, never session-scoped. The harness hands each run a fresh registry
     (``_GlobalState``), so an earlier sim's (or test's) metrics cannot leak in; a run reading only its
@@ -140,6 +149,7 @@ session snapshot deleted; the imagination teardown's ``clear_ephemeral`` deleted
 from __future__ import annotations
 
 import json
+import threading
 import logging
 import os
 import subprocess
@@ -226,6 +236,24 @@ def test_orchestrator_run_matches_the_golden(arm: str, tmp_path_factory: pytest.
         pytest.fail(f"{_first_difference(got, want)}\n--- agent loop log, last 150 lines (#1488) ---\n{loop_log}")
 
 
+@pytest.mark.timeout(240)
+def test_a_reader_left_alive_by_an_earlier_test_does_not_stall_the_stdin_arm(tmp_path: Path) -> None:
+    """#1654: the harness waits on the run's OWN reader for ``/cancel``. It once looked the reader up by the name
+    ``sim.stdin``, found a reader an earlier test had left alive, waited out its 30 s timeout, and failed turn 2's
+    ``send_message`` (``nac_credits.other[0]: length 1 != 2``). A fresh run, never the cached trace."""
+    assert_this_checkout()
+    release = threading.Event()
+    stale = threading.Thread(target=release.wait, args=(120,), name="sim.stdin", daemon=True)
+    stale.start()
+    try:
+        trace = run_arm("stdin", tmp_path)
+    finally:
+        release.set()
+    trace.pop("_elapsed_s")
+    got, want = json.loads(canonical_json(trace)), _fixture()["arms"]["stdin"]
+    assert canonical_json(got) == canonical_json(want), _first_difference(got, want)
+
+
 # ── direct assertions (each is also in the golden; these say what the golden means) ──
 
 
@@ -265,9 +293,9 @@ def test_operator_commands_reach_their_targets(tmp_path_factory: pytest.TempPath
     ]
     paused = t["turns"][0]["paused_aut_actions"]
     assert [a["tool"] for a in paused] == ["respond"]
-    # The AUT's no-LLM direct answer to a greeting (``agents/llm_fallback.py``): the operator's "hello" reached it.
-    # (Until #1260 the respond's follow-up was an AUT LLM call carrying the text, which this read instead.)
-    assert paused[0]["args"] == {"message": "Hello! How can I help you?"}
+    # The fake AUT model echoes its request, so the operator's paused text reached the AUT's MODEL. (Until #1689 a
+    # canned no-model answer to the greeting stood here; until #1260 the respond's follow-up carried the text.)
+    assert paused[0]["args"] == {"message": "I heard: hello from the operator"}
     assert t["result"]["finish_reason"] == "cancel"
     assert t["result"]["total_actions"] == 3
 
@@ -323,7 +351,7 @@ def test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_n
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
     """The stall detector (§11) past its first diversity checkpoint and its idle threshold. The checkpoint (after
-    turn 3) carries the AUT's tools of turns 1-2 and rides the narrator's next follow-up (#1048). That follow-up is
+    turn 3) counts the AUT's actions of turns 1-2 (#1592: never their tool names) and rides the narrator's next follow-up (#1048). That follow-up is
     a WEDGED call: held, registered in the call registry, while the detector's injected clock jumps past the age it
     was allowed plus the margin, so the detector judges it wedged and injects its idle nudge, which rides the next
     follow-up; the narrator then finishes and the finish ends the run (#1259). Re-homed by #1259's fix (owner
@@ -337,7 +365,9 @@ def test_stall_arm_the_detector_injects_its_checkpoint_and_nudges_the_finished_n
         ("sim.stall", "DIVERSITY CHECKPOINT (turn 3): the agent"),
         ("sim.stall", "SYSTEM: Stall detected (<S>s idle, 3 AUT"),
     ]
-    assert "tools so far (not yours): respond (2x). Its blocked tools: none." in narrator[1]["text"]
+    # Counts only, never the AUT's tool names (#1592).
+    assert "has taken 2 action(s) with 1 different tool(s); 0 of those tools were blocked." in narrator[1]["text"]
+    assert "respond" not in narrator[1]["text"] and "respond" not in narrator[2]["text"]
     calls = t["narrator_calls"]
     wedged, nudged = [c for c in calls if c.get("executed") == "observe_actions"]
     assert wedged["held_inputs"].startswith("DIVERSITY CHECKPOINT (turn 3)")  # rode the follow-up (#1048)

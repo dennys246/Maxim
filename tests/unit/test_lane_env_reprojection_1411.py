@@ -206,7 +206,7 @@ def test_a_live_talk_loop_is_rebuilt_after_a_config_write(monkeypatch, tmp_path)
     h._workspace = tmp_path / "ws"
     stopped: list[bool] = []
     monkeypatch.setattr(h, "_stop_talk_loop", lambda **_k: stopped.append(True), raising=False)
-    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda: (None, None))
+    monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", lambda **_kw: (None, None))
     assert h._ensure_talk_loop() is h._talk_bridge  # unchanged config: the live loop is reused
     assert stopped == []
     invalidate_config_cache()
@@ -278,3 +278,22 @@ def test_a_talk_loop_that_will_not_stop_stays_visible(monkeypatch) -> None:
     # The next talk must not reuse the finished straggler's bridge (a 180 s hang): it refuses again, loudly.
     with pytest.raises(RuntimeError, match="did not exit"):
         h._ensure_talk_loop()
+
+
+def test_the_persisted_restore_logs_the_profile_it_restored(monkeypatch) -> None:
+    """#1645: the restore's log line ran only when an earlier test left a persisted model behind, so the coverage
+    ratchet saw it come and go with test order. Restore one directly and read the line."""
+    from unittest.mock import MagicMock
+
+    from maxim.runtime import lane_backends
+
+    monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+    monkeypatch.setattr(lane_backends, "_read_persisted_model", lambda: "mistral-7b")
+    log = MagicMock()
+    try:
+        lane_backends._restore_persisted_profile(False, log)
+        assert os.environ.get("MAXIM_LLM_PROFILE") == "mistral-7b"
+    finally:
+        lane_backends._undo_lane_env_projection()
+    log.info.assert_called_once_with("Restored persisted model preference: %s", "mistral-7b")
+    assert "MAXIM_LLM_PROFILE" not in os.environ, "the restore is a recorded projection write, so the undo removes it"

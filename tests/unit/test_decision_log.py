@@ -231,7 +231,7 @@ class TestBuildPrimaryRouterAppends:
             patch("maxim.runtime.lane_backends._maybe_pin_pre_upgrade_profile"),
             patch(
                 "maxim.runtime.lane_backends._ensure_lane_profiles_available",
-                side_effect=lambda lc, _caps, _log: lc,
+                side_effect=lambda lc, _caps, _log, **_kw: lc,
             ),
             patch.object(
                 _MaximPeerBackend,

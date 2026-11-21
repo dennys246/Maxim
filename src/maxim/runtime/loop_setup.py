@@ -16,7 +16,7 @@ rebinds (step counters, the consecutive-tool cap, the planning-liveness exhausti
 container aliases) stays a local of ``run_agentic_loop``.
 
 **Imports.** Helpers with a home outside ``agent_loop`` are imported from it directly
-(``bio_integration.bio_session``, ``loop_state._persist_state_json``,
+(``bio_integration.bio_session``, ``loop_state.start_run_state``,
 ``tool_dispatch.safe_agent_name``; each is the same object ``agent_loop`` re-binds). The five helpers
 only the setup calls moved here with it, bodies verbatim (rule (a) of the roadmap's import-direction
 paragraph): ``_prepare_executor``, ``_planning_liveness_enabled_via_env``, ``_loop_bio_handles``,
@@ -41,7 +41,6 @@ from __future__ import annotations
 import functools
 import logging
 import os
-import time
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -49,7 +48,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.runtime import tool_dispatch as _td
 from maxim.runtime.bio_integration import BioSession
-from maxim.runtime.loop_state import _persist_state_json, run_mode, tool_description_overlay
+from maxim.runtime.loop_state import run_mode, start_run_state, tool_description_overlay
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.runtime.tool_dispatch import (
     book_hard_rejection,
@@ -509,12 +508,14 @@ def build_loop_run(
     planning_liveness: bool,
     sim_adapter: Any | None,
     session: BioSession,
+    state_home: str | os.PathLike[str] | None,
 ) -> LoopRun:
     """Build and start everything ``run_agentic_loop`` needs before its first tick (module docstring).
 
     Side effects, in order: the first state persist, the global prefetcher, the LLM loop overrides
     (a malformed config raises here), the Default Network start, the bio session start, and the
     planning-liveness "inactive" log. A sim-mode ``sim_adapter`` raises ``ValueError`` before any.
+    ``state_home`` is the data-home-shaped root of the run's state file (None: the data home; #1264).
     """
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.context_pool import ContextPool
@@ -539,11 +540,8 @@ def build_loop_run(
         executor=executor,
     )
 
-    if not run_id:
-        run_id = time.strftime("%Y-%m-%d_%H%M%S")
     agent_name = safe_agent_name(agent)
-    state_path = os.path.join("data", "agents", agent_name, "runtime", f"state_{run_id}.json")
-    _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
+    run_id, state_path = start_run_state(state, agent_name, run_id, root=state_home)  # a collision raises (#1264)
 
     # Initialize context pool for accumulated observations
     context_pool = ContextPool(config=_context_pool_config(context_pool_config))
@@ -568,6 +566,7 @@ def build_loop_run(
         evaluators=evaluators,
         max_steps=max_steps,
         run_id=run_id,
+        state_path=state_path,
         stop_event=stop_event,
         on_step=on_step,
         on_event=on_event,

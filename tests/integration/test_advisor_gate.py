@@ -115,6 +115,8 @@ from typing import Any
 
 import pytest
 
+from tests._child_env import isolation_env
+
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
 TINY_GGUF = REPO / "tests" / "fixtures" / "advisor" / "tiny_runnable.gguf"
@@ -707,6 +709,7 @@ def _run_child(
         "XDG_CONFIG_HOME": str(sb.xdg),
         "PYTHONPATH": str(SRC),  # ignored under -I; the child inserts SRC itself from its config
         "PATH": "/usr/bin:/bin",
+        **isolation_env(),  # beside HOME: the host's /etc/cloudflared never reaches the child
     }
     # A read-only CWD: a CWD-relative write fails loudly, so a dir_fd-relative name in an audit event (which carries
     # no dir_fd) can be accepted, with the tree diffs as the backstop (three-lens B2).
@@ -814,6 +817,7 @@ def test_language_config_import_does_not_read_profiles(tmp_path: Path) -> None:
     cfg = tmp_path / "cfg.json"
     cfg.write_text(json.dumps({"src": str(SRC), "profiles": str(profiles), "marker": MARKER}))
     env = {"HOME": str(home), "TMPDIR": str(tmp_path), "XDG_CONFIG_HOME": str(xdg), "PYTHONPATH": str(SRC)}
+    env.update(isolation_env())  # beside HOME: the host's /etc/cloudflared never reaches the child
     env["PATH"] = "/usr/bin:/bin"
     proc = subprocess.run(  # noqa: S603 -- our own interpreter, our own script
         [sys.executable, "-I", "-B", str(script), str(cfg)],

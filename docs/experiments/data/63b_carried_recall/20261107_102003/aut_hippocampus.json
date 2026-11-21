@@ -1,0 +1,3346 @@
+{
+  "saved_at": 1794072422.637842,
+  "memories": [
+    {
+      "activation_count": 6,
+      "activation_sources": {
+        "enrichment": 6
+      },
+      "id": "9801e5ad-95b2-4ca6-a8f1-ff5ec67ed17e",
+      "timestamp": 1794071748.4606001,
+      "run_id": "",
+      "created_at": 1794071748.4606001,
+      "accessed_at": 1794072397.836289,
+      "access_count": 13,
+      "long_term": true,
+      "consolidated_at": 1794071748.4669912,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. I will be your guide and helper in this task. Let's start by discussing the layout of the dungeon and our current location.",
+          "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. I will be your guide and helper in this task. Let's start by discussing the layout of the dungeon and our current location.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "SIMULATION GOAL: escape a dungeon with a sleeping guard. I will be your guide and helper in this task. Let's start by discussing the layout of the dungeon and our current location.",
+        "transcript": "SIMULATION GOAL: escape a dungeon with a sleeping guard. I will be your guide and helper in this task. Let's start by discussing the layout of the dungeon and our current location.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 0,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 0,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "cfc8685a-2234-41f4-89a7-061c97422f68",
+      "timestamp": 1794071770.0094311,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071770.0094311,
+      "accessed_at": 1794071885.305544,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1794071813.9590368,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "0183840698271ebc",
+        "active_goal": "I'll explore my options to find out what I can do with the guard.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I'll explore my options to find out what I can do with the guard.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "discover actions for interacting with the guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 3 capabilities:\n- base_humanoid_listen: Attend to the current sound and localize it \u2014 reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it.\n- base_humanoid_pick_up: Pick up an object from the environment\n- base_humanoid_use: Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 1,
+      "retrievability_anchor_us": 5000000,
+      "encoded_at_us": 5000000,
+      "capture_seq": 1,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "7596be42-2f66-440c-a23f-cc4228448497",
+      "timestamp": 1794071783.380692,
+      "run_id": "",
+      "created_at": 1794071783.380692,
+      "accessed_at": 1794071919.832972,
+      "access_count": 7,
+      "long_term": true,
+      "consolidated_at": 1794071783.385886,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Use base_humanoid_listen to locate the guard. Then, use base_humanoid_use on a tool or object that can help you escape the dungeon.",
+          "cli_input": "Use base_humanoid_listen to locate the guard. Then, use base_humanoid_use on a tool or object that can help you escape the dungeon.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Use base_humanoid_listen to locate the guard. Then, use base_humanoid_use on a tool or object that can help you escape the dungeon.",
+        "transcript": "Use base_humanoid_listen to locate the guard. Then, use base_humanoid_use on a tool or object that can help you escape the dungeon.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 2,
+      "retrievability_anchor_us": 10000000,
+      "encoded_at_us": 10000000,
+      "capture_seq": 2,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "550d4d6d-19b8-4adc-9d81-70319d3512e1",
+      "timestamp": 1794071805.221762,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071805.221762,
+      "accessed_at": 1794071852.787468,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.8900979439417522,
+      "last_scored_at": 1794071852.787473,
+      "access_contexts": [
+        "f005c0d784f9",
+        "639fe4f856db"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "88d320fac4027dfc",
+        "active_goal": "I'll locate the guard using base_humanoid_listen.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I'll locate the guard using base_humanoid_listen.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "base_humanoid_listen",
+        "tool_params": {
+          "target": "guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": {
+            "entity": "base_humanoid",
+            "affordance": "listen",
+            "success": true,
+            "entity_state": {
+              "stamina": 1.0,
+              "hunger": 0.0,
+              "visibility": 0.8,
+              "carrying_weight": 0.0,
+              "azimuth": 0.0
+            },
+            "active_failures": []
+          },
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "listen",
+            "tool": "base_humanoid_listen",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.006517887115478516,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 3,
+      "retrievability_anchor_us": 10000000,
+      "encoded_at_us": 10000000,
+      "capture_seq": 3,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "96189125-9b45-43f9-9a2c-7c194a73cc1e",
+      "timestamp": 1794071813.95345,
+      "run_id": "",
+      "created_at": 1794071813.95345,
+      "accessed_at": 1794071958.64944,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1794071813.9573262,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard is sleeping. Please try to sneak past him.",
+          "cli_input": "The guard is sleeping. Please try to sneak past him.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard is sleeping. Please try to sneak past him.",
+        "transcript": "The guard is sleeping. Please try to sneak past him.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 4,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 4,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 3,
+      "activation_sources": {
+        "enrichment": 3
+      },
+      "id": "8b253d12-8e75-4d9c-a22e-bdf8167d6728",
+      "timestamp": 1794071838.252357,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071838.252357,
+      "accessed_at": 1794071958.649456,
+      "access_count": 4,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 2.0494268051783244,
+      "last_scored_at": 1794071958.649466,
+      "access_contexts": [
+        "639fe4f856db",
+        "57d27e8fc703",
+        "29253b4ddf0c"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "5b79376c8fea47a6",
+        "active_goal": "I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east while sneaking could help me avoid detection.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east while sneaking could help me avoid detection.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "base_humanoid_move",
+        "tool_params": {
+          "direction": "east",
+          "speed": "sneak"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": {
+            "entity": "base_humanoid",
+            "affordance": "move",
+            "success": true,
+            "entity_state": {
+              "stamina": 1.0,
+              "hunger": 0.0,
+              "visibility": 0.8,
+              "carrying_weight": 0.0,
+              "azimuth": 0.0
+            },
+            "active_failures": []
+          },
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "move",
+            "tool": "base_humanoid_move",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.005462169647216797,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 5,
+      "retrievability_anchor_us": 15000000,
+      "encoded_at_us": 15000000,
+      "capture_seq": 5,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "10702ae8-1d05-426f-b648-28d67f5d9b39",
+      "timestamp": 1794071852.78252,
+      "run_id": "",
+      "created_at": 1794071852.78252,
+      "accessed_at": 1794072049.0987341,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1794071852.786411,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "transcript": "Can you describe the dungeon layout and where the sleeping guard is located?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 6,
+      "retrievability_anchor_us": 20000000,
+      "encoded_at_us": 20000000,
+      "capture_seq": 6,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 3,
+      "activation_sources": {
+        "enrichment": 3
+      },
+      "id": "ef9259b9-d712-4cd4-941b-0699d10e005d",
+      "timestamp": 1794071876.9287732,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071876.9287732,
+      "accessed_at": 1794072049.098746,
+      "access_count": 5,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 2.440802790323893,
+      "last_scored_at": 1794072049.098754,
+      "access_contexts": [
+        "57d27e8fc703",
+        "5f4319431980",
+        "29253b4ddf0c",
+        "2ba6522ba830"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "87caadfba9a7d1af",
+        "active_goal": "I need to understand the dungeon layout before attempting to sneak past the sleeping guard. Sensing the dungeon will provide me with necessary context.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the dungeon layout before attempting to sneak past the sleeping guard. Sensing the dungeon will provide me with necessary context.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense",
+        "tool_params": {
+          "entity_name": "dungeon"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": false,
+        "result": {
+          "success": false,
+          "output": null,
+          "error": "Unknown entity: dungeon. Known entities: base_humanoid, guard, heavy_wooden_door, rusty_key, flickering_lantern"
+        },
+        "error": "Unknown entity: dungeon. Known entities: base_humanoid, guard, heavy_wooden_door, rusty_key, flickering_lantern",
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 7,
+      "retrievability_anchor_us": 20000000,
+      "encoded_at_us": 20000000,
+      "capture_seq": 7,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "534b70aa-2542-4201-9ec4-43dd741f4eb0",
+      "timestamp": 1794071885.300905,
+      "run_id": "",
+      "created_at": 1794071885.300905,
+      "accessed_at": 1794072099.824875,
+      "access_count": 5,
+      "long_term": true,
+      "consolidated_at": 1794071885.304439,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Try to move towards the exit while avoiding the sleeping guard. Use your 'sense' tool to detect obstacles and the guard's position.",
+          "cli_input": "Try to move towards the exit while avoiding the sleeping guard. Use your 'sense' tool to detect obstacles and the guard's position.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Try to move towards the exit while avoiding the sleeping guard. Use your 'sense' tool to detect obstacles and the guard's position.",
+        "transcript": "Try to move towards the exit while avoiding the sleeping guard. Use your 'sense' tool to detect obstacles and the guard's position.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 8,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 8,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "43fde81c-1115-4100-ac9e-067ae0021e8b",
+      "timestamp": 1794071909.370327,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071909.370327,
+      "accessed_at": 1794071991.266836,
+      "access_count": 4,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 2.7379895083109536,
+      "last_scored_at": 1794071991.266847,
+      "access_contexts": [
+        "5f4319431980",
+        "29253b4ddf0c",
+        "f1c35cb81005"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "6f84386d62d5e29b",
+        "active_goal": "I need to understand the layout of the scene and locate the guard's position before attempting to sneak past him.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the layout of the scene and locate the guard's position before attempting to sneak past him.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_presence",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "You sense 5 entity/entities nearby:\n\n  [YOU] base_humanoid (body)\n    Your capabilities \u2014 head: look, listen\n    Your capabilities \u2014 orient: turn_left, turn_right\n    Your capabilities \u2014 torso: rest\n    Your capabilities \u2014 arms: pick_up, drop, use\n    Your capabilities \u2014 legs: move\n    Your capabilities \u2014 communication: speak\n    state: stamina=1.0, hunger=0.0, visibility=0.8, carrying_weight=0.0, azimuth=0.0\n\n  [SCENE] guard (npc)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 social: speak, interrogate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 physical: punch, shove\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 combat: attack, block\n    state: hp=18.0, stamina=10.0, mood=0.0, trust=0.4, suspicion=0.2\n\n  [SCENE] heavy_wooden_door (environment)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 open_door: open\n    state: weight=75.0, integrity=0.8\n\n  [SCENE] rusty_key (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 use_key: unlock\n    state: durability=5.0\n\n  [SCENE] flickering_lantern (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 flicker_verb: extinguish, rekindle\n    state: brightness=0.5\n\nUse sense_tools to find YOUR specific actions, or sense(entity_name) to read any entity's full sensor state.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_presence",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 9,
+      "retrievability_anchor_us": 25000000,
+      "encoded_at_us": 25000000,
+      "capture_seq": 9,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 7,
+      "activation_sources": {
+        "enrichment": 7
+      },
+      "id": "f3fb982d-30c4-4670-b944-d58b20d4c1e1",
+      "timestamp": 1794071919.823616,
+      "run_id": "",
+      "created_at": 1794071919.823616,
+      "accessed_at": 1794072397.8362792,
+      "access_count": 11,
+      "long_term": true,
+      "consolidated_at": 1794071919.831549,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "You see a sleeping guard. To escape the dungeon, you need to wake him up and distract him while you pass by. First, let's try waking him up with a loud noise. Use 'make_noise' tool.",
+          "cli_input": "You see a sleeping guard. To escape the dungeon, you need to wake him up and distract him while you pass by. First, let's try waking him up with a loud noise. Use 'make_noise' tool.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "You see a sleeping guard. To escape the dungeon, you need to wake him up and distract him while you pass by. First, let's try waking him up with a loud noise. Use 'make_noise' tool.",
+        "transcript": "You see a sleeping guard. To escape the dungeon, you need to wake him up and distract him while you pass by. First, let's try waking him up with a loud noise. Use 'make_noise' tool.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 10,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 10,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "dcceecaa-5bae-4e20-918a-7a6bcd9bcb0b",
+      "timestamp": 1794071944.599406,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071944.599406,
+      "accessed_at": 1794071944.599406,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.715
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.715,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "92f4a3a65944fa70",
+        "active_goal": "I need to locate the guard before attempting to wake him up and distract him.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to locate the guard before attempting to wake him up and distract him.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "base_humanoid_listen",
+        "tool_params": {
+          "target": "guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": {
+            "entity": "base_humanoid",
+            "affordance": "listen",
+            "success": true,
+            "entity_state": {
+              "stamina": 1.0,
+              "hunger": 0.0,
+              "visibility": 0.8,
+              "carrying_weight": 0.0,
+              "azimuth": 0.0
+            },
+            "active_failures": []
+          },
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.42999999999999994,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "listen",
+            "tool": "base_humanoid_listen",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0018591880798339844,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 14300000.0,
+      "encoding_tag": 0.42999999999999994,
+      "novelty_reference_size": 11,
+      "retrievability_anchor_us": 30000000,
+      "encoded_at_us": 30000000,
+      "capture_seq": 11,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "7b4430bc-995b-4337-aead-d3488edc12a6",
+      "timestamp": 1794071958.6456761,
+      "run_id": "",
+      "created_at": 1794071958.6456761,
+      "accessed_at": 1794071991.266834,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1794071958.648376,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Try to sneak past the sleeping guard.",
+          "cli_input": "Try to sneak past the sleeping guard.",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Try to sneak past the sleeping guard.",
+        "transcript": "Try to sneak past the sleeping guard.",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 12,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 12,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "4f9f0c36-efa0-4112-8e8a-ae5967195790",
+      "timestamp": 1794071982.804207,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071982.804207,
+      "accessed_at": 1794072285.956102,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.3816666666666668,
+      "last_scored_at": 1794072285.9561112,
+      "access_contexts": [
+        "f1c35cb81005",
+        "cb6a8a29b664"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.715
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.715,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "9bcb442a918d424a",
+        "active_goal": "I need to locate the guard's position before attempting to wake him up and distract him.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to locate the guard's position before attempting to wake him up and distract him.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_presence",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "You sense 5 entity/entities nearby:\n\n  [YOU] base_humanoid (body)\n    Your capabilities \u2014 head: look, listen\n    Your capabilities \u2014 orient: turn_left, turn_right\n    Your capabilities \u2014 torso: rest\n    Your capabilities \u2014 arms: pick_up, drop, use\n    Your capabilities \u2014 legs: move\n    Your capabilities \u2014 communication: speak\n    state: stamina=1.0, hunger=0.0, visibility=0.8, carrying_weight=0.0, azimuth=0.0\n\n  [SCENE] guard (npc)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 social: speak, interrogate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 physical: punch, shove\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 combat: attack, block\n    state: hp=18.0, stamina=10.0, mood=0.0, trust=0.4, suspicion=0.2\n\n  [SCENE] heavy_wooden_door (environment)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 open_door: open\n    state: weight=75.0, integrity=0.8\n\n  [SCENE] rusty_key (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 use_key: unlock\n    state: durability=5.0\n\n  [SCENE] flickering_lantern (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 flicker_verb: extinguish, rekindle\n    state: brightness=0.5\n\nUse sense_tools to find YOUR specific actions, or sense(entity_name) to read any entity's full sensor state.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.42999999999999994,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_presence",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 14300000.0,
+      "encoding_tag": 0.42999999999999994,
+      "novelty_reference_size": 13,
+      "retrievability_anchor_us": 35000000,
+      "encoded_at_us": 35000000,
+      "capture_seq": 13,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "39e757c7-e027-4eeb-ad31-38fcdd2a9907",
+      "timestamp": 1794071991.262847,
+      "run_id": "",
+      "created_at": 1794071991.262847,
+      "accessed_at": 1794072049.098748,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1794071991.2656262,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "The guard is sleeping. Can you try to pick up the key from his pocket?",
+          "cli_input": "The guard is sleeping. Can you try to pick up the key from his pocket?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "The guard is sleeping. Can you try to pick up the key from his pocket?",
+        "transcript": "The guard is sleeping. Can you try to pick up the key from his pocket?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 14,
+      "retrievability_anchor_us": 40000000,
+      "encoded_at_us": 40000000,
+      "capture_seq": 14,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "b78381e7-a712-404f-941a-9807d4af8d3e",
+      "timestamp": 1794071991.910028,
+      "run_id": "2026-11-07_101536",
+      "created_at": 1794071991.910028,
+      "accessed_at": 1794071991.910028,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "141895f7476b3033",
+        "active_goal": "llm_fallback",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "llm_fallback",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "respond",
+        "tool_params": {
+          "message": "I heard your question about 'the guard is sleeping. can you try to pick up the ', but I'm having trouble processing it right now. Could you try rephrasing?"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": {
+            "delivered": true,
+            "mode": "cli"
+          },
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "respond",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 15,
+      "retrievability_anchor_us": 40000000,
+      "encoded_at_us": 40000000,
+      "capture_seq": 15,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "541422d5-de96-48e1-b61d-79f8e379b162",
+      "timestamp": 1794072049.093499,
+      "run_id": "",
+      "created_at": 1794072049.093499,
+      "accessed_at": 1794072157.1517491,
+      "access_count": 4,
+      "long_term": true,
+      "consolidated_at": 1794072049.0972831,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "Can you tell me where the sleeping guard is located in the dungeon?",
+          "cli_input": "Can you tell me where the sleeping guard is located in the dungeon?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "Can you tell me where the sleeping guard is located in the dungeon?",
+        "transcript": "Can you tell me where the sleeping guard is located in the dungeon?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 16,
+      "retrievability_anchor_us": 45000000,
+      "encoded_at_us": 45000000,
+      "capture_seq": 16,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "9f640158-72cb-45d0-bec7-fbddc741531a",
+      "timestamp": 1794072070.633248,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072070.633248,
+      "accessed_at": 1794072285.956091,
+      "access_count": 5,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.55,
+      "last_scored_at": 1794072285.9561112,
+      "access_contexts": [
+        "935b4d24c2a8",
+        "ab879ffbae25",
+        "cb6a8a29b664"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "a1da4348002eeb38",
+        "active_goal": "I need to understand the dungeon layout before finding the sleeping guard.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the dungeon layout before finding the sleeping guard.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_presence",
+        "tool_params": {
+          "context": "dungeon layout"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "You sense 5 entity/entities nearby:\n\n  [YOU] base_humanoid (body)\n    Your capabilities \u2014 head: look, listen\n    Your capabilities \u2014 orient: turn_left, turn_right\n    Your capabilities \u2014 torso: rest\n    Your capabilities \u2014 arms: pick_up, drop, use\n    Your capabilities \u2014 legs: move\n    Your capabilities \u2014 communication: speak\n    state: stamina=1.0, hunger=0.0, visibility=0.8, carrying_weight=0.0, azimuth=0.0\n\n  [SCENE] guard (npc)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 social: speak, interrogate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 physical: punch, shove\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 combat: attack, block\n    state: hp=18.0, stamina=10.0, mood=0.0, trust=0.4, suspicion=0.2\n\n  [SCENE] heavy_wooden_door (environment)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 open_door: open\n    state: weight=75.0, integrity=0.8\n\n  [SCENE] rusty_key (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 use_key: unlock\n    state: durability=5.0\n\n  [SCENE] flickering_lantern (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 flicker_verb: extinguish, rekindle\n    state: brightness=0.5\n\nUse sense_tools to find YOUR specific actions, or sense(entity_name) to read any entity's full sensor state.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": 2.220446049250313e-16,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_presence",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 17,
+      "retrievability_anchor_us": 45000000,
+      "encoded_at_us": 45000000,
+      "capture_seq": 17,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "7438f4c3-87d2-4463-80f4-9995d42f99dc",
+      "timestamp": 1794072099.818804,
+      "run_id": "",
+      "created_at": 1794072099.818804,
+      "accessed_at": 1794072249.2657259,
+      "access_count": 4,
+      "long_term": true,
+      "consolidated_at": 1794072099.8230898,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What is your next step toward: escape a dungeon with a sleeping guard?",
+          "cli_input": "What is your next step toward: escape a dungeon with a sleeping guard?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What is your next step toward: escape a dungeon with a sleeping guard?",
+        "transcript": "What is your next step toward: escape a dungeon with a sleeping guard?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 18,
+      "retrievability_anchor_us": 50000000,
+      "encoded_at_us": 50000000,
+      "capture_seq": 18,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "54b22c62-b326-466e-99d8-09916156a33f",
+      "timestamp": 1794072122.420139,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072122.420139,
+      "accessed_at": 1794072285.9561012,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.25,
+      "last_scored_at": 1794072285.9561112,
+      "access_contexts": [
+        "cb6a8a29b664"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "d5372d3db832c43a",
+        "active_goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making a loud noise.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making a loud noise.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "wake sleeping guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Your capabilities by category:\n- Head (base_humanoid): look, listen\n- Orient (base_humanoid): turn_left, turn_right\n- Torso (base_humanoid): rest\n- Arms (base_humanoid): pick_up, drop, use\n- Legs (base_humanoid): move\n- Communication (base_humanoid): speak\n\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.\nNote: 'guard' is a nearby entity you can observe with sense(\"guard\"), but you cannot control it. Use YOUR tools (move, use, etc.) to interact with it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 19,
+      "retrievability_anchor_us": 50000000,
+      "encoded_at_us": 50000000,
+      "capture_seq": 19,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 3,
+      "activation_sources": {
+        "enrichment": 3
+      },
+      "id": "674fa6dd-44bf-4b73-9fb2-71467edf96ca",
+      "timestamp": 1794072157.1451619,
+      "run_id": "",
+      "created_at": 1794072157.1451619,
+      "accessed_at": 1794072397.836278,
+      "access_count": 6,
+      "long_term": true,
+      "consolidated_at": 1794072157.150146,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What is your next step toward: escape a sleeping guard from the dungeon?",
+          "cli_input": "What is your next step toward: escape a sleeping guard from the dungeon?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What is your next step toward: escape a sleeping guard from the dungeon?",
+        "transcript": "What is your next step toward: escape a sleeping guard from the dungeon?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 20,
+      "retrievability_anchor_us": 55000000,
+      "encoded_at_us": 55000000,
+      "capture_seq": 20,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "f5be26fb-464b-4f16-96c5-92f8ae561e66",
+      "timestamp": 1794072180.971262,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072180.971262,
+      "accessed_at": 1794072285.956098,
+      "access_count": 2,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.25,
+      "last_scored_at": 1794072285.9561112,
+      "access_contexts": [
+        "cb6a8a29b664"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "8f85dfc09dbf87fa",
+        "active_goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can make a loud noise.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can make a loud noise.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "wake up guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 1 capabilities:\n- base_humanoid_pick_up: Pick up an object from the environment\n\nNote: 'guard' is a nearby entity you can observe with sense(\"guard\"), but you cannot control it. Use YOUR tools (move, use, etc.) to interact with it.\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 21,
+      "retrievability_anchor_us": 55000000,
+      "encoded_at_us": 55000000,
+      "capture_seq": 21,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "1a96e171-cbe1-4748-8a75-ab730de6b09a",
+      "timestamp": 1794072249.260847,
+      "run_id": "",
+      "created_at": 1794072249.260847,
+      "accessed_at": 1794072323.923011,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1794072249.2646348,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "what is your next step toward: escape a dungeon with a sleeping guard?",
+          "cli_input": "what is your next step toward: escape a dungeon with a sleeping guard?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "what is your next step toward: escape a dungeon with a sleeping guard?",
+        "transcript": "what is your next step toward: escape a dungeon with a sleeping guard?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 22,
+      "retrievability_anchor_us": 60000000,
+      "encoded_at_us": 60000000,
+      "capture_seq": 22,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "a1885d1b-8f5c-407b-8579-99d222e57bd0",
+      "timestamp": 1794072272.276434,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072272.276434,
+      "accessed_at": 1794072272.276434,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "2a5ad712dcad59b6",
+        "active_goal": "My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a tool for that.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a tool for that.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "make_noise"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Your capabilities by category:\n- Head (base_humanoid): look, listen\n- Orient (base_humanoid): turn_left, turn_right\n- Torso (base_humanoid): rest\n- Arms (base_humanoid): pick_up, drop, use\n- Legs (base_humanoid): move\n- Communication (base_humanoid): speak\n\nTry a more specific query like 'attack with sword' or 'repair equipment' to activate those tools.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 23,
+      "retrievability_anchor_us": 60000000,
+      "encoded_at_us": 60000000,
+      "capture_seq": 23,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "18cca262-ac40-4e04-9fd6-b87bd5ad039e",
+      "timestamp": 1794072285.950646,
+      "run_id": "",
+      "created_at": 1794072285.950646,
+      "accessed_at": 1794072361.9072719,
+      "access_count": 3,
+      "long_term": true,
+      "consolidated_at": 1794072285.9549062,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What is the sleeping guard's location and what tool can I use to interact with it?",
+          "cli_input": "What is the sleeping guard's location and what tool can I use to interact with it?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What is the sleeping guard's location and what tool can I use to interact with it?",
+        "transcript": "What is the sleeping guard's location and what tool can I use to interact with it?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 24,
+      "retrievability_anchor_us": 65000000,
+      "encoded_at_us": 65000000,
+      "capture_seq": 24,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "5e73f581-cb05-486d-b7aa-6277519e0bea",
+      "timestamp": 1794072309.8398762,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072309.8398762,
+      "accessed_at": 1794072361.907271,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.7767817272822062,
+      "last_scored_at": 1794072361.90728,
+      "access_contexts": [
+        "935b4d24c2a8",
+        "02499da23bbc"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.6849
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.6849,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "e653bb8edd7b9685",
+        "active_goal": "I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence of nearby entities.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence of nearby entities.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_presence",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "You sense 5 entity/entities nearby:\n\n  [YOU] base_humanoid (body)\n    Your capabilities \u2014 head: look, listen\n    Your capabilities \u2014 orient: turn_left, turn_right\n    Your capabilities \u2014 torso: rest\n    Your capabilities \u2014 arms: pick_up, drop, use\n    Your capabilities \u2014 legs: move\n    Your capabilities \u2014 communication: speak\n    state: stamina=1.0, hunger=0.0, visibility=0.8, carrying_weight=0.0, azimuth=0.0\n\n  [SCENE] guard (npc)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 social: speak, interrogate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 physical: punch, shove\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 combat: attack, block\n    state: hp=18.0, stamina=10.0, mood=0.0, trust=0.4, suspicion=0.2\n\n  [SCENE] heavy_wooden_door (environment)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 open_door: open\n    state: weight=75.0, integrity=0.8\n\n  [SCENE] rusty_key (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 use_key: unlock\n    state: durability=5.0\n\n  [SCENE] flickering_lantern (item)\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 mechanism: activate, deactivate\n    Observed capabilities (not callable \u2014 use your own tools to interact) \u2014 flicker_verb: extinguish, rekindle\n    state: brightness=0.5\n\nUse sense_tools to find YOUR specific actions, or sense(entity_name) to read any entity's full sensor state.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.3697999999999999,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_presence",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 13697999.999999998,
+      "encoding_tag": 0.3697999999999999,
+      "novelty_reference_size": 25,
+      "retrievability_anchor_us": 65000000,
+      "encoded_at_us": 65000000,
+      "capture_seq": 25,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 2,
+      "activation_sources": {
+        "enrichment": 2
+      },
+      "id": "c60663a5-287b-4419-a3f0-6cf6d71441be",
+      "timestamp": 1794072323.917155,
+      "run_id": "",
+      "created_at": 1794072323.917155,
+      "accessed_at": 1794072397.836263,
+      "access_count": 4,
+      "long_term": true,
+      "consolidated_at": 1794072323.92144,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What is your next step toward: escape a dungeon with a sleeping guard?",
+          "cli_input": "What is your next step toward: escape a dungeon with a sleeping guard?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What is your next step toward: escape a dungeon with a sleeping guard?",
+        "transcript": "What is your next step toward: escape a dungeon with a sleeping guard?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 26,
+      "retrievability_anchor_us": 70000000,
+      "encoded_at_us": 70000000,
+      "capture_seq": 26,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 1,
+      "activation_sources": {
+        "enrichment": 1
+      },
+      "id": "6b05065d-8f17-4f12-a422-3dda002276ef",
+      "timestamp": 1794072348.385041,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072348.385041,
+      "accessed_at": 1794072397.8362932,
+      "access_count": 3,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 1.8780862633387247,
+      "last_scored_at": 1794072397.8363001,
+      "access_contexts": [
+        "02499da23bbc",
+        "935b4d24c2a8"
+      ],
+      "perception": {
+        "observations": {
+          "salience": 0.715
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.715,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "6cde38165ab90edd",
+        "active_goal": "My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can make such a noise.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can make such a noise.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "wake up guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 1 capabilities:\n- base_humanoid_pick_up: Pick up an object from the environment\n\nNote: 'guard' is a nearby entity you can observe with sense(\"guard\"), but you cannot control it. Use YOUR tools (move, use, etc.) to interact with it.\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.42999999999999994,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 14300000.0,
+      "encoding_tag": 0.42999999999999994,
+      "novelty_reference_size": 27,
+      "retrievability_anchor_us": 70000000,
+      "encoded_at_us": 70000000,
+      "capture_seq": 27,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e501f192-9f55-4cfe-bce0-47030829dc37",
+      "timestamp": 1794072361.903465,
+      "run_id": "",
+      "created_at": 1794072361.903465,
+      "accessed_at": 1794072361.906081,
+      "access_count": 2,
+      "long_term": true,
+      "consolidated_at": 1794072361.906066,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What is the sleeping guard's weakness?",
+          "cli_input": "What is the sleeping guard's weakness?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What is the sleeping guard's weakness?",
+        "transcript": "What is the sleeping guard's weakness?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 28,
+      "retrievability_anchor_us": 75000000,
+      "encoded_at_us": 75000000,
+      "capture_seq": 28,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "e09a2022-bdb1-4de7-9c11-9fa6fa402ef6",
+      "timestamp": 1794072386.737151,
+      "run_id": "2026-11-07_102036",
+      "created_at": 1794072386.737151,
+      "accessed_at": 1794072386.737151,
+      "access_count": 1,
+      "long_term": false,
+      "consolidated_at": null,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "salience": 0.75
+        },
+        "cli_input": null,
+        "transcript": null,
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.75,
+        "novelty": 0.5,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": "07e9f3844ff54cad",
+        "active_goal": "My experience suggests waking someone up requires a loud noise. I need to find a tool that can produce such a sound.",
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {
+          "goal": "My experience suggests waking someone up requires a loud noise. I need to find a tool that can produce such a sound.",
+          "source": "llm_worker"
+        },
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "sense_tools",
+        "tool_params": {
+          "query": "find a tool to wake up the sleeping guard"
+        },
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": true,
+        "result": {
+          "success": true,
+          "output": "Found 8 capabilities:\n- base_humanoid_listen: Attend to the current sound and localize it \u2014 reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it. [worked well before]\n- base_humanoid_turn_left: Turn to face left (toward a sound on your left; moves azimuth toward center/+).\n- base_humanoid_turn_right: Turn to face right (toward a sound on your right; moves azimuth toward center/-).\n- base_humanoid_pick_up: Pick up an object from the environment\n- base_humanoid_move: Move in a direction (north/south/east/west) at a speed (walk/run/sneak) [worked well before]\n- base_humanoid_look: Observe surroundings or examine a specific object\n- base_humanoid_rest: Rest to recover stamina and health (brief/moderate/long)\n- base_humanoid_drop: Drop a carried object\n\nThese tools are now available. USE one of them as your next action \u2014 pick the most relevant tool above and call it.",
+          "error": null
+        },
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": {
+        "interoception": "a5fe179b-9509-41e3-81e5-6dc9576b7390",
+        "audio": "164c3a36-a19d-425b-b286-a1695db4f4f4"
+      },
+      "encoding": {
+        "site": "loop",
+        "salience": null,
+        "novelty": null,
+        "surprise": 0.5,
+        "pain": 0.0,
+        "drive_pressure": {
+          "azimuth": 0.0
+        },
+        "drive_relief": null,
+        "interoception": {
+          "agent_id": "sim_aut",
+          "body_path": "base_humanoid",
+          "provenance": "experienced",
+          "sufferer": "base_humanoid",
+          "cause": {
+            "entity": "",
+            "affordance": "",
+            "tool": "sense_tools",
+            "extra": {}
+          },
+          "pressure_before": [],
+          "pressure_after": [],
+          "drive_delta": [],
+          "deviation_after": [],
+          "caused": [],
+          "satiated": [],
+          "nociception": 0.0,
+          "drive_pain": 0.0,
+          "relief": 0.0,
+          "harm": 0.0,
+          "urgency": 0.0,
+          "extra": {
+            "drift_dt_s": 0.0,
+            "drift": {},
+            "observed_change": {},
+            "nociception_basis": "caused_or_felt"
+          }
+        }
+      },
+      "storage_strength": 15000000.0,
+      "encoding_tag": 0.5,
+      "novelty_reference_size": 29,
+      "retrievability_anchor_us": 75000000,
+      "encoded_at_us": 75000000,
+      "capture_seq": 29,
+      "retro_tag": null
+    },
+    {
+      "activation_count": 0,
+      "activation_sources": {},
+      "id": "6d8c3bb0-0736-4531-9524-881764570468",
+      "timestamp": 1794072397.8309288,
+      "run_id": "",
+      "created_at": 1794072397.8309288,
+      "accessed_at": 1794072397.834719,
+      "access_count": 2,
+      "long_term": true,
+      "consolidated_at": 1794072397.8346949,
+      "promotion_pressure": 0.0,
+      "last_scored_at": 0.0,
+      "access_contexts": [],
+      "perception": {
+        "observations": {
+          "detections": [],
+          "transcript": "What is your next step toward: escape a dungeon with a sleeping guard?",
+          "cli_input": "What is your next step toward: escape a dungeon with a sleeping guard?",
+          "salience": 0.9,
+          "novelty": 0.0
+        },
+        "cli_input": "What is your next step toward: escape a dungeon with a sleeping guard?",
+        "transcript": "What is your next step toward: escape a dungeon with a sleeping guard?",
+        "detected_objects": [],
+        "detected_people": [],
+        "salience": 0.9,
+        "novelty": 0.0,
+        "decision_rationale": "",
+        "tool_alternatives": []
+      },
+      "context": {
+        "state_ref": null,
+        "active_goal": null,
+        "active_mode": "observe",
+        "memory_context": null,
+        "fear_level": 0.0
+      },
+      "decision": {
+        "intent": {},
+        "reasoning": null,
+        "alternatives_considered": [],
+        "plan": null,
+        "confidence": 1.0
+      },
+      "action": {
+        "tool_name": "",
+        "tool_params": {},
+        "execution_time_ms": 0.0
+      },
+      "outcome": {
+        "success": null,
+        "result": {},
+        "error": null,
+        "evaluations": []
+      },
+      "metadata": {},
+      "situation": null,
+      "encoding": {
+        "site": "memory_agent",
+        "salience": null,
+        "novelty": null,
+        "surprise": null,
+        "pain": null,
+        "drive_pressure": null,
+        "drive_relief": null
+      },
+      "storage_strength": 10000000.0,
+      "encoding_tag": 0.0,
+      "novelty_reference_size": 30,
+      "retrievability_anchor_us": 80000000,
+      "encoded_at_us": 80000000,
+      "capture_seq": 30,
+      "retro_tag": null
+    }
+  ],
+  "context_index": {
+    "success:None": [
+      "96189125-9b45-43f9-9a2c-7c194a73cc1e",
+      "541422d5-de96-48e1-b61d-79f8e379b162",
+      "1a96e171-cbe1-4748-8a75-ab730de6b09a",
+      "18cca262-ac40-4e04-9fd6-b87bd5ad039e",
+      "39e757c7-e027-4eeb-ad31-38fcdd2a9907",
+      "e501f192-9f55-4cfe-bce0-47030829dc37",
+      "7596be42-2f66-440c-a23f-cc4228448497",
+      "534b70aa-2542-4201-9ec4-43dd741f4eb0",
+      "10702ae8-1d05-426f-b648-28d67f5d9b39",
+      "9801e5ad-95b2-4ca6-a8f1-ff5ec67ed17e",
+      "f3fb982d-30c4-4670-b944-d58b20d4c1e1",
+      "7b4430bc-995b-4337-aead-d3488edc12a6",
+      "7438f4c3-87d2-4463-80f4-9995d42f99dc",
+      "6d8c3bb0-0736-4531-9524-881764570468",
+      "674fa6dd-44bf-4b73-9fb2-71467edf96ca",
+      "c60663a5-287b-4419-a3f0-6cf6d71441be"
+    ],
+    "mode:observe": [
+      "54b22c62-b326-466e-99d8-09916156a33f",
+      "9801e5ad-95b2-4ca6-a8f1-ff5ec67ed17e",
+      "e09a2022-bdb1-4de7-9c11-9fa6fa402ef6",
+      "8b253d12-8e75-4d9c-a22e-bdf8167d6728",
+      "5e73f581-cb05-486d-b7aa-6277519e0bea",
+      "43fde81c-1115-4100-ac9e-067ae0021e8b",
+      "b78381e7-a712-404f-941a-9807d4af8d3e",
+      "4f9f0c36-efa0-4112-8e8a-ae5967195790",
+      "f5be26fb-464b-4f16-96c5-92f8ae561e66",
+      "96189125-9b45-43f9-9a2c-7c194a73cc1e",
+      "18cca262-ac40-4e04-9fd6-b87bd5ad039e",
+      "7596be42-2f66-440c-a23f-cc4228448497",
+      "9f640158-72cb-45d0-bec7-fbddc741531a",
+      "6d8c3bb0-0736-4531-9524-881764570468",
+      "c60663a5-287b-4419-a3f0-6cf6d71441be",
+      "534b70aa-2542-4201-9ec4-43dd741f4eb0",
+      "6b05065d-8f17-4f12-a422-3dda002276ef",
+      "f3fb982d-30c4-4670-b944-d58b20d4c1e1",
+      "7438f4c3-87d2-4463-80f4-9995d42f99dc",
+      "674fa6dd-44bf-4b73-9fb2-71467edf96ca",
+      "ef9259b9-d712-4cd4-941b-0699d10e005d",
+      "541422d5-de96-48e1-b61d-79f8e379b162",
+      "1a96e171-cbe1-4748-8a75-ab730de6b09a",
+      "e501f192-9f55-4cfe-bce0-47030829dc37",
+      "39e757c7-e027-4eeb-ad31-38fcdd2a9907",
+      "a1885d1b-8f5c-407b-8579-99d222e57bd0",
+      "cfc8685a-2234-41f4-89a7-061c97422f68",
+      "10702ae8-1d05-426f-b648-28d67f5d9b39",
+      "dcceecaa-5bae-4e20-918a-7a6bcd9bcb0b",
+      "7b4430bc-995b-4337-aead-d3488edc12a6",
+      "550d4d6d-19b8-4adc-9d81-70319d3512e1"
+    ],
+    "goal:I'll explore my options to find out what I can do with the guard.": [
+      "cfc8685a-2234-41f4-89a7-061c97422f68"
+    ],
+    "tool:sense_tools": [
+      "a1885d1b-8f5c-407b-8579-99d222e57bd0",
+      "cfc8685a-2234-41f4-89a7-061c97422f68",
+      "54b22c62-b326-466e-99d8-09916156a33f",
+      "6b05065d-8f17-4f12-a422-3dda002276ef",
+      "e09a2022-bdb1-4de7-9c11-9fa6fa402ef6",
+      "f5be26fb-464b-4f16-96c5-92f8ae561e66"
+    ],
+    "success:True": [
+      "a1885d1b-8f5c-407b-8579-99d222e57bd0",
+      "cfc8685a-2234-41f4-89a7-061c97422f68",
+      "54b22c62-b326-466e-99d8-09916156a33f",
+      "9f640158-72cb-45d0-bec7-fbddc741531a",
+      "6b05065d-8f17-4f12-a422-3dda002276ef",
+      "dcceecaa-5bae-4e20-918a-7a6bcd9bcb0b",
+      "e09a2022-bdb1-4de7-9c11-9fa6fa402ef6",
+      "8b253d12-8e75-4d9c-a22e-bdf8167d6728",
+      "5e73f581-cb05-486d-b7aa-6277519e0bea",
+      "550d4d6d-19b8-4adc-9d81-70319d3512e1",
+      "43fde81c-1115-4100-ac9e-067ae0021e8b",
+      "b78381e7-a712-404f-941a-9807d4af8d3e",
+      "4f9f0c36-efa0-4112-8e8a-ae5967195790",
+      "f5be26fb-464b-4f16-96c5-92f8ae561e66"
+    ],
+    "goal:I'll locate the guard using base_humanoid_listen.": [
+      "550d4d6d-19b8-4adc-9d81-70319d3512e1"
+    ],
+    "tool:base_humanoid_listen": [
+      "dcceecaa-5bae-4e20-918a-7a6bcd9bcb0b",
+      "550d4d6d-19b8-4adc-9d81-70319d3512e1"
+    ],
+    "goal:I notice the guard is sleeping and I'd like to sneak past him. Based on my experience, moving east while sneaking could help me avoid detection.": [
+      "8b253d12-8e75-4d9c-a22e-bdf8167d6728"
+    ],
+    "tool:base_humanoid_move": [
+      "8b253d12-8e75-4d9c-a22e-bdf8167d6728"
+    ],
+    "goal:I need to understand the dungeon layout before attempting to sneak past the sleeping guard. Sensing the dungeon will provide me with necessary context.": [
+      "ef9259b9-d712-4cd4-941b-0699d10e005d"
+    ],
+    "tool:sense": [
+      "ef9259b9-d712-4cd4-941b-0699d10e005d"
+    ],
+    "success:False": [
+      "ef9259b9-d712-4cd4-941b-0699d10e005d"
+    ],
+    "goal:I need to understand the layout of the scene and locate the guard's position before attempting to sneak past him.": [
+      "43fde81c-1115-4100-ac9e-067ae0021e8b"
+    ],
+    "tool:sense_presence": [
+      "43fde81c-1115-4100-ac9e-067ae0021e8b",
+      "4f9f0c36-efa0-4112-8e8a-ae5967195790",
+      "5e73f581-cb05-486d-b7aa-6277519e0bea",
+      "9f640158-72cb-45d0-bec7-fbddc741531a"
+    ],
+    "goal:I need to locate the guard before attempting to wake him up and distract him.": [
+      "dcceecaa-5bae-4e20-918a-7a6bcd9bcb0b"
+    ],
+    "goal:I need to locate the guard's position before attempting to wake him up and distract him.": [
+      "4f9f0c36-efa0-4112-8e8a-ae5967195790"
+    ],
+    "goal:llm_fallback": [
+      "b78381e7-a712-404f-941a-9807d4af8d3e"
+    ],
+    "tool:respond": [
+      "b78381e7-a712-404f-941a-9807d4af8d3e"
+    ],
+    "goal:I need to understand the dungeon layout before finding the sleeping guard.": [
+      "9f640158-72cb-45d0-bec7-fbddc741531a"
+    ],
+    "goal:I remember waking someone up required a loud noise. I'll use sense_tools to find the tool for making a loud noise.": [
+      "54b22c62-b326-466e-99d8-09916156a33f"
+    ],
+    "goal:I remember waking someone up required a loud noise. I'll use sense_tools to find a tool that can make a loud noise.": [
+      "f5be26fb-464b-4f16-96c5-92f8ae561e66"
+    ],
+    "goal:My experience suggests I need to wake the guard up with a loud noise. Let's find out if there is a tool for that.": [
+      "a1885d1b-8f5c-407b-8579-99d222e57bd0"
+    ],
+    "goal:I need to understand the dungeon layout before finding the sleeping guard. Let's sense the presence of nearby entities.": [
+      "5e73f581-cb05-486d-b7aa-6277519e0bea"
+    ],
+    "goal:My experience suggests waking the sleeping guard with a loud noise. I need to find a tool that can make such a noise.": [
+      "6b05065d-8f17-4f12-a422-3dda002276ef"
+    ],
+    "goal:My experience suggests waking someone up requires a loud noise. I need to find a tool that can produce such a sound.": [
+      "e09a2022-bdb1-4de7-9c11-9fa6fa402ef6"
+    ]
+  },
+  "stats": {
+    "memories_captured": 31,
+    "queries": 18,
+    "unknown_outcome": 16,
+    "successful": 14,
+    "long_term_count": 1,
+    "failed": 1
+  },
+  "compressed_count": 0,
+  "associative_graph": {
+    "nodes": [],
+    "edges": []
+  },
+  "episodes": [
+    {
+      "id": "ep_1",
+      "start_tick": 1,
+      "end_tick": 1,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_2",
+      "start_tick": 2,
+      "end_tick": 2,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_3",
+      "start_tick": 3,
+      "end_tick": 3,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_4",
+      "start_tick": 4,
+      "end_tick": 4,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_5",
+      "start_tick": 5,
+      "end_tick": 5,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_6",
+      "start_tick": 6,
+      "end_tick": 6,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_7",
+      "start_tick": 7,
+      "end_tick": 7,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_9",
+      "start_tick": 1,
+      "end_tick": 1,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_10",
+      "start_tick": 2,
+      "end_tick": 2,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_11",
+      "start_tick": 3,
+      "end_tick": 3,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_12",
+      "start_tick": 4,
+      "end_tick": 4,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_13",
+      "start_tick": 5,
+      "end_tick": 5,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    },
+    {
+      "id": "ep_14",
+      "start_tick": 6,
+      "end_tick": 6,
+      "channel": "text",
+      "sender_ids": [],
+      "thread_id": null,
+      "activated_nodes": [],
+      "reward_events": [],
+      "scn_tag": null,
+      "valence": 0.0
+    }
+  ],
+  "next_episode_ordinal": 15,
+  "node_modality": {},
+  "experience_clock": {
+    "us": 80000000,
+    "unit": "world_experience_us"
+  },
+  "_format_version": "1.2"
+}

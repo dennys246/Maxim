@@ -865,7 +865,11 @@ def test_a_tunnelled_read_gets_the_tunnel_deadline(daemon, monkeypatch, tunnel, 
 
 
 def test_the_fresh_read_is_private_and_bounded(daemon):
-    """R1: the read is pinned to a private address and to a per-phase timeout that sums to the deadline."""
+    """R1: the read is pinned to a private address, and each phase's timeout is the whole deadline.
+
+    #1706: each phase may use the whole deadline (they are no longer a third each); the timeouts httpx
+    actually applies, against a real socket, are pinned in tests/unit/test_readback_budget_1706.py.
+    """
     import maxim.hardware.reachy.controller as reachy_controller
 
     ctl = controller(daemon)
@@ -873,8 +877,8 @@ def test_the_fresh_read_is_private_and_bounded(daemon):
     kw = daemon.last_fetch_kwargs
     assert kw["address_policy"] == "private"
     policy = kw["timeout"]
-    phases = policy.connect_s + policy.read_s + policy.total_s
-    assert phases == pytest.approx(reachy_controller.FRESH_READ_DEADLINE_S)
+    deadline = reachy_controller.FRESH_READ_DEADLINE_S
+    assert (policy.connect_s, policy.read_s, policy.pool_s) == pytest.approx((deadline, deadline, deadline))
 
 
 def test_a_failed_read_between_chunks_is_retried_once(daemon):
@@ -1379,3 +1383,19 @@ def test_a_disconnect_during_a_split_stops_it_at_the_next_chunk(daemon):
     assert not out and _kind(out) == "cancelled"
     assert len(daemon.gotos()) == 1
     assert ctl._stop_latched and not ctl._stop_by_sleep
+
+
+def test_a_failed_final_readback_is_partial_and_counts_the_chunk_that_ran(daemon):
+    """#1645: the final-readback refusal had no direct test; it ran only when another test's timing reached it."""
+    ctl = controller(daemon)
+    real_goto = daemon.goto_target
+
+    def _goto_then_break_the_read(**kw):
+        real_goto(**kw)
+        daemon.rest_mode = "status500"
+
+    daemon.goto_target = _goto_then_break_the_read  # type: ignore[method-assign]
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "partial"
+    assert "the final readback failed" in as_outcome_reason(out)
+    assert len(daemon.gotos()) == 1

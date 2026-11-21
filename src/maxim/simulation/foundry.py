@@ -20,6 +20,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import yaml
@@ -1217,6 +1218,7 @@ def auto_curate(
     registry: Any | None = None,
     component_index: Any | None = None,
     llm_router: Any | None = None,
+    llm_router_factory: Callable[[], Any | None] | None = None,
     dry_run: bool = False,
 ) -> CurationReport:
     """Run auto-curation: analyze coverage gaps and fill them via foundry.
@@ -1231,11 +1233,20 @@ def auto_curate(
         registry: ComponentRegistry to check. Built if None.
         component_index: ComponentIndex for dedup. Skips dedup if None.
         llm_router: LLM router for generation. None = template fallback.
+        llm_router_factory: Builds the router only once a gap is found, called at most once; its None is the template
+            fallback. The CLI passes this, so a missing model is asked about only when curation will use it (#1396,
+            owner decision 2026-11-12). Exclusive with ``llm_router``. A factory that raises propagates (curation
+            stops); return None for the template fallback. The CLI's factory catches its own errors.
         dry_run: If True, generate + validate only (no gauntlet/promotion).
 
     Returns:
         CurationReport summarizing what was generated/promoted/skipped.
+
+    Raises:
+        TypeError: both ``llm_router`` and ``llm_router_factory`` were passed.
     """
+    if llm_router is not None and llm_router_factory is not None:
+        raise TypeError("auto_curate takes llm_router or llm_router_factory, not both")
     if registry is None:
         from maxim.embodiment.component_registry import ComponentRegistry
 
@@ -1257,6 +1268,8 @@ def auto_curate(
         "y" if len(gaps) == 1 else "ies",
         ", ".join(f"{cat}={count}" for cat, count in gaps.items()),
     )
+    if llm_router_factory is not None:
+        llm_router = llm_router_factory()
 
     for cat, existing_count in gaps.items():
         needed = threshold - existing_count

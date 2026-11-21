@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import contextvars
+import errno
 import functools
 import logging
 import os
+import re
 import threading
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from typing import Any, ParamSpec, TypeVar
 
@@ -13,6 +16,7 @@ from maxim.agents.llm_types import LLMAttemptState
 from maxim.modes.definitions import DEFAULT_RUN_MODE
 from maxim.runtime import heartbeat as _heartbeat  # module-level: imported before any run, looked up per call
 from maxim.utils.atomic_io import atomic_write_json
+from maxim.utils.paths import loop_state_dir
 
 from maxim.utils.logging import log_swallowed_exception
 
@@ -44,6 +48,101 @@ def _extract_episode_actions(episode: Any) -> list[dict]:
             actions.extend(plan_actions)
 
     return actions
+
+
+# ── the loop's runtime-state file (#1264, D15): ONE path builder, under the data home, one file per run ──
+
+
+class StatePathCollision(FileExistsError):
+    """Two loop runs resolved to one runtime-state file (#1264). Raised at the claim, before the first write, so a
+    second loop never overwrites the first's state; ``_persist_state_json``'s best-effort handler never sees it. A
+    backstop: with a random token per run it is not an expected path. ``errno`` is EEXIST and ``filename`` the path."""
+
+
+_UNSAFE_SEGMENT_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+_DOT_RUNS = re.compile(r"\.{2,}")
+
+
+def _run_id_segment(run_id: str) -> str:
+    """The run id as one safe filename segment, in the style of ``tool_dispatch.safe_agent_name``: any character
+    outside ``[A-Za-z0-9._-]`` becomes ``_``, and a run of dots or a leading dot becomes underscores, so no run id
+    can name a path outside the runtime directory. Only the FILENAME uses it; the raw run id is the one in the file's
+    meta and everywhere else (the hippocampus and the bio-integration records persist it)."""
+    segment = _UNSAFE_SEGMENT_CHARS.sub("_", str(run_id))
+    segment = _DOT_RUNS.sub(lambda m: "_" * len(m.group()), segment)
+    if segment.startswith("."):
+        segment = "_" + segment[1:]
+    return segment or "_"
+
+
+def _state_token() -> str:
+    """The per-run unique part of a state file's name: 48 random bits, so loops started in the same second (and
+    with the same agent name and run id) never share a file."""
+    return uuid.uuid4().hex[:12]
+
+
+def loop_state_path(agent_name: str, run_id: str, *, root: str | os.PathLike[str] | None = None) -> str:
+    """THE path of one loop run's runtime-state file (#1264; closes D15's CWD-relative half):
+    ``<root or data home>/runtime_state/<agent_name>/state_<run_id segment>_<token>.json``.
+
+    The directory is ``utils/paths.loop_state_dir`` (the data home is ``MAXIM_DATA_HOME``, else ``~/.maxim``; never
+    the working directory). ``root`` is a data-home-shaped root (``run_agentic_loop(state_home=...)``: a sim's
+    sandbox, a harness AUT's own home). ``agent_name`` is ``tool_dispatch.safe_agent_name(agent)``; the run id is
+    unchanged and only its filename segment is sanitised (``_run_id_segment``); the token makes the name unique per
+    call. Builds the path only: ``claim_state_path`` is what reserves it for a run."""
+    name = f"state_{_run_id_segment(run_id)}_{_state_token()}.json"
+    return str(loop_state_dir(agent_name, root=root) / name)
+
+
+def claim_state_path(agent_name: str, run_id: str, *, root: str | os.PathLike[str] | None = None) -> str:
+    """Build a run's state path (``loop_state_path``) and reserve it by EXCLUSIVE create of an empty file, which the
+    first persist then replaces atomically (owner decisions 2026-11-16, option A).
+
+    Only a file already there aborts the run: ``StatePathCollision``, so two runs that still resolve to one file
+    never overwrite each other. Any other ``OSError`` (permissions, a full or read-only disk, a directory that cannot
+    be made) is reported in the Stage-1 form and the run goes on with the path unclaimed, as before #1264: its
+    persists then fail and are reported by ``_persist_state_json``."""
+    path = loop_state_path(agent_name, run_id, root=root)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        msg = f"runtime-state file already belongs to another loop run (#1264): {path}"
+        raise StatePathCollision(errno.EEXIST, msg, path) from None
+    except OSError:
+        log_swallowed_exception(site="loop_state.py:claim_state_path")  # the run continues; its persists report too
+        return path
+    os.close(fd)
+    return path
+
+
+def _drop_empty_placeholder(path: str) -> None:
+    """After the first persist: a claim placeholder still at 0 bytes means that persist failed (and was reported);
+    remove it so no empty, unversioned state file is left behind."""
+    try:
+        if os.path.getsize(path) != 0:
+            return
+        os.unlink(path)
+    except FileNotFoundError:
+        return  # never claimed (the claim was reported) or already gone: nothing is left behind
+    except OSError:
+        log_swallowed_exception(site="loop_state.py:_drop_empty_placeholder")
+        return
+    logger.warning("first state persist failed; removed the empty state-file placeholder %s (#1264)", path)
+
+
+def start_run_state(
+    state: Any, agent_name: str, run_id: str | None, *, root: str | os.PathLike[str] | None = None
+) -> tuple[str, str]:
+    """A loop run's state-file start: default the run id (a timestamp, as ever), claim the run's own state path
+    (under ``root``, else the data home) and persist the state there once. Returns ``(run_id, state_path)``. Shared
+    by ``agent_loop.run_agent_loop`` and ``loop_setup.build_loop_run``; a ``StatePathCollision`` propagates to the
+    caller (the run does not start)."""
+    run_id = run_id or time.strftime("%Y-%m-%d_%H%M%S")
+    state_path = claim_state_path(agent_name, run_id, root=root)
+    _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
+    _drop_empty_placeholder(state_path)
+    return run_id, state_path
 
 
 def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:

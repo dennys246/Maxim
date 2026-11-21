@@ -29,9 +29,9 @@ from maxim.runtime.worker_pool import LaneConfig
 
 @pytest.fixture(autouse=True)
 def _scrub_lane_api_key_env(monkeypatch):
-    """_build_remote_backend does os.environ.setdefault(MAXIM_LANE_LARGE_API_KEY,
-    remote_api_key) — without this scrub the test key 'k' leaks into the
-    process and later lane-router tests read it (arch-lens review fold)."""
+    """Before #1371 _build_remote_backend did os.environ.setdefault(MAXIM_LANE_LARGE_API_KEY, remote_api_key);
+    it no longer writes the env (conftest's _isolate_internal_lane_key_env now scrubs the name for every test), so
+    this scrub is belt and braces."""
     monkeypatch.delenv("MAXIM_LANE_LARGE_API_KEY", raising=False)
     yield
     monkeypatch.delenv("MAXIM_LANE_LARGE_API_KEY", raising=False)
@@ -62,6 +62,7 @@ def _build_remote(cfg: LaneConfig):
     mgr = lb.LaneBackendManager.__new__(lb.LaneBackendManager)
     mgr._peer_owned = False
     mgr._logger = None
+    mgr._profile_override = None  # the session's profile (#1538)
     with mock.patch.object(lb, "LLMRouter", _FakeRouter, create=True):
         with mock.patch("maxim.models.language.router.LLMRouter", _FakeRouter):
             mgr._build_remote_backend(cfg)
@@ -210,6 +211,31 @@ class TestAutoSpawnStamp:
         spawner = types.SimpleNamespace(is_running=True, n_ctx=8192, base_url="http://127.0.0.1:9999/v1")
         lane = self._reuse_run(monkeypatch, tmp_path, spawner)
         assert lane.served_n_ctx is None
+
+    def test_a_missing_gguf_skips_the_spawn_and_names_the_path(self, monkeypatch, tmp_path):
+        """#1645: the skip's warning had no direct test; it ran only when an earlier test's state reached it."""
+        import sys
+        import types
+        from unittest import mock as _m
+
+        from maxim.runtime import lane_backends as lb
+
+        monkeypatch.setitem(sys.modules, "llama_cpp.server", types.ModuleType("llama_cpp.server"))
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+        monkeypatch.delenv("MAXIM_AUTO_SPAWN_LLM_SERVER", raising=False)
+        monkeypatch.setattr(lb, "_read_persisted_model", lambda: None)
+        missing = tmp_path / "absent.gguf"
+        cfg = LaneConfig(name="large", max_workers=1, model_profile="mistral-7b")
+        log = _m.MagicMock()
+        with _m.patch(
+            "maxim.models.language.config.load_llm_config",
+            return_value=types.SimpleNamespace(model_path=str(missing)),
+        ):
+            out = lb._maybe_auto_spawn_server(_Caps(), {"large": cfg}, log)
+        assert out["large"] is cfg, "a missing GGUF leaves the lane unchanged (no spawn, no stamp)"
+        skips = [c for c in log.warning.call_args_list if "GGUF file not found" in c.args[0]]
+        assert len(skips) == 1
+        assert skips[0].args[1:] == (str(missing), "mistral-7b")
 
 
 if __name__ == "__main__":

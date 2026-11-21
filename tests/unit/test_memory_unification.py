@@ -109,14 +109,14 @@ class TestMemoryRecordKeywords:
     def test_episodic_keywords(self):
         ep = _make_episodic()
         kws = ep.keywords()
-        assert "mug" in kws
-        assert "table" in kws
-        # memory/text.py's one standard (D3) keys every store: a name is keyed as the tokenizer keys it ("Dennis" ->
-        # "denni", its frozen trailing-s rule), on the write and the read side alike
-        from maxim.memory.text import normalize_tokens
+        # memory/text.py's one standard (D3) keys every store: a word is keyed as the standard keys it ("Dennis" ->
+        # "denni", the frozen trailing-s rule; "table" -> "tabl", #1620's convergence), on the write and the read side
+        from maxim.memory.text import key_tokens
 
-        assert normalize_tokens("Dennis")[0] in kws
-        assert "navigate" in kws
+        assert "mug" in kws
+        assert key_tokens("table") == ["tabl"] and "tabl" in kws
+        assert key_tokens("Dennis")[0] in kws
+        assert key_tokens("navigate")[0] in kws
         assert "grasp" in kws
 
     def test_episodic_keywords_empty(self):
@@ -140,8 +140,10 @@ class TestMemoryRecordKeywords:
         ep = _make_episodic()
         cm = CompressedMemory.from_episodic(ep)
         kws = cm.keywords()
+        from maxim.memory.text import key_tokens
+
         assert "grasp" in kws
-        assert "navigate" in kws
+        assert key_tokens("navigate")[0] in kws
 
     def test_compressed_math_keywords(self):
         mm = _make_math()

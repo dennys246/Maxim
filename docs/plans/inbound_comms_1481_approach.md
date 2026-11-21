@@ -101,7 +101,8 @@ message is never shown to the model, and nothing reports that.
     - router default output that is never executed. Router **salvage** of the model's own text
       (`salvaged_from_json`, `fallback_parse`) reaches the success branch, runs, and **is** acknowledged, which is
       correct (D4-1);
-    - the `direct_answer` early return, which runs a `respond` with no LLM call and holds no frames (D4-2);
+    - the `direct_answer` early return, which runs a `respond` with no LLM call and holds no frames (D4-2; the early
+      return was deleted 2026-11-17 by #1689, so this row no longer occurs);
     - a proposal `_drop_stale_proposal` discards;
     - the sim's skipped fallback;
     - timeouts, empty replies and parse failures.
@@ -128,7 +129,7 @@ message is never shown to the model, and nothing reports that.
 **3. Which prompt paths render it.**
 - **Rendered on:** the tool-aware prompt, and the follow-up prompt. The follow-up path bypasses the budgeter (B4), so
   it applies its own rule line and the same token cap.
-- **Not rendered on:** `ANSWER_ONLY`, the simple direct answer (no LLM call), or the empty prompt (A3). Messages
+- **Not rendered on:** `ANSWER_ONLY`, the simple direct answer (no LLM call; deleted by #1689), or the empty prompt (A3). Messages
   stay held.
 - **When nothing is held,** every path emits **nothing**: no header, no blank line, no separator. A unit test
   asserts it, so the goldens stay byte-identical (E1).

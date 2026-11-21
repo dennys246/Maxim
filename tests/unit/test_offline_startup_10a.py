@@ -209,9 +209,34 @@ def test_build_primary_router_engages_from_config(tmp_path: Path, monkeypatch: p
     from maxim.runtime import lane_backends
 
     _write_config(tmp_path, monkeypatch, json.dumps({"llm": {"offline": True}}))
-    monkeypatch.setattr(lane_backends, "_require_valid_user_profiles", lambda: None)
-    lane_backends._router_build_preflight()
+    seen: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        lane_backends, "_start_process_services", lambda _log: seen.append(("services", _offline.is_offline()))
+    )
+    monkeypatch.setattr(
+        lane_backends, "_require_valid_user_profiles", lambda: seen.append(("profiles", _offline.is_offline()))
+    )
+    lane_backends._router_build_preflight(None)
     assert _offline.is_offline()
+    # the latch is up before the leader owner's tunnel + heartbeat start (#1610), which spawn cloudflared
+    assert seen == [("services", True), ("profiles", True)]
+
+
+def test_a_leader_tunnel_refused_offline_stays_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The claimed leader's tunnel spawn refused by the latch propagates: it used to read as "tunnel daemon did not
+    start" and the build went on (#1610's handler, merged into #1315 item 10a)."""
+    from maxim.runtime import leader_mode
+    from maxim.tunnel import daemon_spawner
+
+    def spawn(_log: object) -> None:
+        _offline.refuse("subprocess", "cloudflared")
+
+    monkeypatch.setattr(leader_mode, "owns_leader_services", lambda: True)
+    monkeypatch.setattr(leader_mode, "_started_by_pid", None)
+    monkeypatch.setattr(daemon_spawner, "auto_spawn_tunnel_daemon", spawn)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal, match="cloudflared"):
+        leader_mode.start_claimed_leader_services(None)
 
 
 def test_a_peer_lane_is_refused_by_name_not_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -378,20 +403,13 @@ def test_cli_main_reports_an_offline_refusal_and_exits_2(
     assert "Refusing to run" in capsys.readouterr().err
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 10a delta SF1: flips when the orchestrator's AUT router build re-raises SECURITY_REFUSALS "
-    "(after #1538 extracts simulation/orchestrator.py::_build_aut_router)",
-)
 def test_the_aut_router_build_does_not_fall_back_on_an_offline_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
     """An offline sim whose AUT model is not in-process must refuse, not fall back to the shared router: that would
-    silently swap the model under test. Fails today: no ``_build_aut_router``, and the inline block falls back."""
+    silently swap the model under test (#1315 item 10a delta SF1; ``_build_aut_router`` came with #1538)."""
     from maxim.runtime import lane_backends
     from maxim.simulation import orchestrator
 
-    build = getattr(orchestrator, "_build_aut_router", None)
-    assert build is not None, "simulation/orchestrator.py has no _build_aut_router yet (#1538)"
+    build = orchestrator._build_aut_router
 
     def refuse(**_k: object) -> None:
         _offline.refuse("router[build]", "lanes that are not in-process: lane-large")

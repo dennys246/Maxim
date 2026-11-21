@@ -40,6 +40,7 @@ checkpoint assumption.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import sys
@@ -56,6 +57,24 @@ class LockContended(RuntimeError):
     process holds the lock. Callers should treat this as "another
     process is doing the work — wait or skip."
     """
+
+
+class LockUnavailable(OSError):
+    """Raised when the filesystem cannot take the lock at all (#1408): NFS without a lock daemon (``ENOLCK``), a
+    filesystem without ``flock`` (``ENOTSUP``), a bad descriptor. This is not contention, so it is raised at once
+    rather than after the timeout, and callers must not report it as "another process holds the lock". It is an
+    ``OSError`` (``errno`` and ``strerror`` are the lock call's), so the documented "filesystem errors propagate"
+    contract holds.
+    """
+
+
+# What a non-blocking lock call reports when ANOTHER holder has the lock: flock's EWOULDBLOCK/EAGAIN, and the
+# EACCES / EDEADLOCK that msvcrt.locking and fcntl-style locks use. Every other errno is the filesystem refusing.
+_CONTENDED_ERRNOS = frozenset({errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES, errno.EDEADLK})
+
+
+def _is_contention(exc: OSError) -> bool:
+    return isinstance(exc, BlockingIOError) or exc.errno in _CONTENDED_ERRNOS
 
 
 @contextmanager
@@ -76,9 +95,12 @@ def file_lock(path: Path | str, *, timeout_s: float = 0.0) -> Iterator[None]:
     Raises:
         LockContended: If another process holds the lock and the
             timeout expires (or is zero).
+        LockUnavailable: At once, if the filesystem cannot take the
+            lock at all (an ``OSError`` subclass; #1408).
         OSError: On filesystem errors (permission denied, disk full,
             etc.). These are propagated so the caller can log them
-            and fall back to no-locking behavior if appropriate.
+            and decide. Fail closed is the rule: key creation never
+            runs unlocked, and the model downloads refuse (#1408).
     """
     lock_path = Path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,10 +118,13 @@ def file_lock(path: Path | str, *, timeout_s: float = 0.0) -> Iterator[None]:
             try:
                 _acquire(fd)
                 break
-            except (BlockingIOError, OSError) as e:
+            except OSError as e:
                 # BlockingIOError is what fcntl.flock raises on POSIX
                 # when the lock is held. Windows msvcrt raises OSError
-                # with errno=EDEADLK-ish. Treat both as "contended".
+                # with errno=EDEADLK-ish. Treat both as "contended";
+                # any other errno is the filesystem refusing (#1408).
+                if not _is_contention(e):
+                    raise LockUnavailable(e.errno, e.strerror or str(e), str(lock_path)) from e
                 if first_attempt and timeout_s <= 0.0:
                     raise LockContended(f"lock held: {lock_path}") from e
                 first_attempt = False
@@ -155,4 +180,4 @@ def _release(fd: int) -> None:
         fcntl.flock(fd, fcntl.LOCK_UN)
 
 
-__all__ = ["LockContended", "file_lock"]
+__all__ = ["LockContended", "LockUnavailable", "file_lock"]

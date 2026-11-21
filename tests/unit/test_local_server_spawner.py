@@ -107,6 +107,18 @@ class TestApiKey:
         assert "--api_key" not in s._build_cmd()
 
 
+def _launch_kwargs(mock_popen: MagicMock) -> dict:
+    """The kwargs of the ONE server launch among the patched ``Popen``'s calls (#1714).
+
+    ``call_args`` is the LAST call, and it is not always the launch: after it, ``write_spawn_record`` reads the
+    process's start time, which on macOS (no ``/proc``) runs ``ps`` through the same patched ``Popen``. Picking the
+    launch by its argv, and asserting there is exactly one, holds on every platform.
+    """
+    launches = [c for c in mock_popen.call_args_list if c.args and "llama_cpp.server" in c.args[0]]
+    assert len(launches) == 1, f"expected one server launch, got {mock_popen.call_args_list}"
+    return launches[0].kwargs
+
+
 class TestTunnelEcho:
     def test_echo_off_by_default_streams_to_devnull(self, tmp_path, monkeypatch):
         monkeypatch.delenv("MAXIM_TUNNEL_ECHO", raising=False)
@@ -121,7 +133,7 @@ class TestTunnelEcho:
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
-        kwargs = mock_popen.call_args.kwargs
+        kwargs = _launch_kwargs(mock_popen)
         assert kwargs.get("stdout") == _sp.DEVNULL
         assert kwargs.get("stderr") == _sp.DEVNULL
 
@@ -141,7 +153,7 @@ class TestTunnelEcho:
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
-        kwargs = mock_popen.call_args.kwargs
+        kwargs = _launch_kwargs(mock_popen)
         # None → inherits parent's stdout/stderr
         assert kwargs.get("stdout") is None
         assert kwargs.get("stderr") is None
@@ -162,7 +174,7 @@ class TestSignalIsolation:
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
             s.start(timeout_s=0.1)
-        kwargs = mock_popen.call_args.kwargs
+        kwargs = _launch_kwargs(mock_popen)
         assert kwargs.get("start_new_session") is True
 
 
@@ -199,8 +211,7 @@ class TestStop:
         s.stop()  # should not raise
         assert s.is_running is False
 
-    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
-    def test_stop_terminates_process(self, mock_kill_tree):
+    def test_stop_terminates_a_process_whose_group_cannot_be_signalled(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # running
@@ -210,8 +221,7 @@ class TestStop:
         mock_proc.terminate.assert_called_once()
         assert s._process is None
 
-    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
-    def test_stop_kills_on_timeout(self, mock_kill_tree):
+    def test_stop_kills_on_timeout(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -222,8 +232,7 @@ class TestStop:
         mock_proc.terminate.assert_called_once()
         mock_proc.kill.assert_called_once()
 
-    @patch("maxim.runtime.local_server_spawner._kill_process_tree")
-    def test_stop_swallows_exceptions(self, mock_kill_tree):
+    def test_stop_swallows_exceptions(self):
         s = LocalServerSpawner(model_path="/tmp/fake.gguf")
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -231,6 +240,24 @@ class TestStop:
         mock_proc.terminate.side_effect = RuntimeError("oops")
         s._process = mock_proc
         s.stop()  # should not raise
+
+    def test_stop_signals_the_group_term_then_kill_while_unreaped(self, monkeypatch):
+        """#1344 PR 3a: a real server's whole group gets SIGTERM, then SIGKILL on a timeout (the leader is still
+        unreaped then); terminate/kill are the fallback only when the group cannot be signalled."""
+        import signal as _signal
+
+        from maxim.utils import cancellation
+
+        sent: list[int] = []
+        monkeypatch.setattr(cancellation, "signal_child_group", lambda proc, sig: sent.append(sig) or True)
+        s = LocalServerSpawner(model_path="/tmp/fake.gguf")
+        mock_proc = MagicMock()
+        mock_proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="", timeout=5.0), None]
+        s._process = mock_proc
+        s.stop()
+        assert sent == [_signal.SIGTERM, _signal.SIGKILL]
+        mock_proc.terminate.assert_not_called()
+        mock_proc.kill.assert_not_called()
 
 
 class TestHealthCheck:

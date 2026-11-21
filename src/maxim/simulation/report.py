@@ -649,6 +649,26 @@ A future change that requires readers to handle a removed field is a major
 bump."""
 
 
+def _url_scrubbed(value: Any, _depth: int = 0) -> Any:
+    """``value`` with every string in it passed through ``redact_urls`` (#1404 item 2): dict values, list and tuple
+    items and string keys, at any depth up to 16 (deeper structure, a cycle included, is written as its scrubbed
+    ``str``). Numbers, bools and None are kept, and text without a ``scheme://`` URL is unchanged. Any other leaf (a Path, a custom object) becomes its scrubbed
+    ``str`` here, since ``json.dumps(default=str)`` would otherwise stringify it after the scrub."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return redact_urls(value)
+    if _depth >= 16:
+        return redact_urls(str(value))
+    if isinstance(value, dict):
+        # String keys too: a map keyed by URL would otherwise keep the URL whole. Keys that share an origin
+        # collapse into one, the later value winning: a URL-keyed map loses entries (rare in tool args).
+        return {(redact_urls(k) if isinstance(k, str) else k): _url_scrubbed(v, _depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_url_scrubbed(v, _depth + 1) for v in value]
+    return redact_urls(str(value))
+
+
 def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
     """Save all action records as JSONL for post-hoc analysis.
 
@@ -691,15 +711,17 @@ def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
             }
             f.write(json.dumps(header) + "\n")
             for a in bridge.get_all_actions():
+                # Every string is URL-scrubbed (#1404 item 2; owner decision 2026-11-10): a URL keeps only its origin,
+                # before the output's cut so a cut cannot split one.
                 entry = {
                     "timestamp": a.timestamp,
                     "tool": a.tool_name,
-                    "params": a.tool_args,
+                    "params": _url_scrubbed(a.tool_args),
                     "success": a.result_success,
-                    "output": str(a.result_output)[:1000] if a.result_output else None,
-                    "error": a.result_error,
+                    "output": redact_urls(str(a.result_output))[:1000] if a.result_output else None,
+                    "error": _url_scrubbed(a.result_error),
                     "blocked": a.blocked,
-                    "block_reason": a.block_reason,
+                    "block_reason": _url_scrubbed(a.block_reason),
                     # Stage 0b telemetry — None when RequestContext was unbound
                     # (pre-0b sims, headless API) or entity_class couldn't be
                     # derived from tool_args.

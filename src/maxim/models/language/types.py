@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.exceptions import ConfigurationError
+
 # ─────────────────────────── Plan 2 R2b constants ──────────────────────────
 
 INFERENCE_BROKEN_BACKOFF_S: float = 15.0
@@ -116,8 +118,11 @@ class BackendError(Exception):
     parameters with defaults are non-breaking and may be added per
     subclass; adding a *new subclass* requires the matching
     ``LLMRouter._try_provider`` branch in specific-before-general
-    order. Adding a *required* field post-1.0 is a major-version-bump
-    change.
+    order. The one exception is a build-time subclass that no provider
+    raises (``LocalModelUnavailable``, raised while a router is being
+    built, before any provider runs): it has no ``_try_provider``
+    branch, and its docstring says so (#1396 bullet 2). Adding a
+    *required* field post-1.0 is a major-version-bump change.
     """
 
     provider_key: str = ""
@@ -205,6 +210,52 @@ class BackendModelMissing(BackendError):
         super().__init__(provider_key, status=status, fix_hint=fix_hint)
 
 
+class LocalModelUnavailable(BackendError, ConfigurationError):
+    """An explicitly named local model is not on disk and was not downloaded, so the run refuses up front (#1396).
+
+    Raised at router build time, never by a provider, so it has no ``LLMRouter._try_provider`` branch (the build-time
+    exception :class:`BackendError` names): when the caller named the model (``build_primary_router(profile=)``,
+    ``--llm``, ``--aut-model``, research's ``language_model``) and the consent gate
+    (``models/download.py::ensure_available``) did not put its GGUF on disk. A run on some other model than the one
+    asked for would be weak evidence, and a router on the missing file refuses every call. The CLI renders ``fix_hint``
+    and exits 2 (``cli.py::_main_guarded``).
+
+    Also a :class:`~maxim.exceptions.ConfigurationError` (owner decision 2026-11-14): ``maxim.run()``,
+    ``maxim.create.router()`` and the other API entry points document ``ConfigurationError`` for a model they cannot
+    serve, so an existing ``except ConfigurationError`` still catches it.
+
+    ``profile`` is the model and ``cause`` why it is unusable (one of :attr:`CAUSES`); the fix hint is chosen by the
+    cause from static text, and the profile is kept out of it (``fix_hint`` is never user-controllable).
+    """
+
+    NOT_DOWNLOADED = "not_downloaded"  # a registry model the gate did not download (declined, no grant, failed)
+    NOT_IN_REGISTRY = "not_in_registry"  # a profile the download registry has no file for: placed by hand
+    MODEL_PATH_MISSING = "model_path_missing"  # the router's own model_path is not where the registry file landed
+    _FIX_HINTS = {
+        NOT_DOWNLOADED: (
+            "The model is not on disk and was not downloaded. Download it with `python -m maxim.models.download --llm "
+            "<profile>`, or grant downloads with --auto-download or `maxim config set llm.auto_download true`."
+        ),
+        NOT_IN_REGISTRY: (
+            "The model is not in the download registry, so it cannot be downloaded for you. Place its GGUF by hand, "
+            "or register it with `maxim model add`."
+        ),
+        MODEL_PATH_MISSING: (
+            "The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json (or the quantization "
+            "it is built from) to point at the model file."
+        ),
+    }
+    CAUSES = tuple(_FIX_HINTS)
+    fix_hint = _FIX_HINTS[NOT_DOWNLOADED]
+
+    def __init__(self, profile: str, *, cause: str = NOT_DOWNLOADED, fix_hint: str = "") -> None:
+        if cause not in self._FIX_HINTS:
+            raise ValueError(f"unknown LocalModelUnavailable cause {cause!r}; expected one of {self.CAUSES}")
+        self.profile = profile
+        self.cause = cause
+        super().__init__(profile, status=None, fix_hint=fix_hint or self._FIX_HINTS[cause])
+
+
 class BackendInferenceBroken(BackendError):
     """Stage-2 probe failed: listener alive, chat endpoint broken.
 
@@ -214,6 +265,54 @@ class BackendInferenceBroken(BackendError):
     """
 
     fix_hint = "Model loading, llama-cpp crashed, or chat template broken. Check peer logs."
+
+
+class BackendContextOverflow(BackendError):
+    """The REQUEST overflowed the model's context window; the provider is healthy (#1369).
+
+    Raised from a 400/413 whose body says so: the leader proxy's admission gate, llama-cpp-python, vLLM and the
+    llama.cpp server each have a shape (``maxim_peer_backend.py::_context_overflow_counts``), and from a mid-stream
+    error chunk of one of those shapes. The router gives it no cooldown, because the next, smaller prompt should
+    still reach this provider. ``requested_tokens`` (prompt plus completion, or the prompt alone when the server
+    reports only that) and ``context_window`` are ``None`` when the body did not carry them.
+    """
+
+    fix_hint = (
+        "The prompt exceeds the model's context window. Shrink the prompt or max_tokens, or raise llm.n_ctx; "
+        "`maxim doctor`'s context-window check reports the n_ctx the running server uses."
+    )
+
+    def __init__(
+        self,
+        provider_key: str,
+        *,
+        status: int | None = None,
+        fix_hint: str = "",
+        requested_tokens: int | None = None,
+        context_window: int | None = None,
+    ) -> None:
+        self.requested_tokens = requested_tokens
+        self.context_window = context_window
+        super().__init__(provider_key, status=status, fix_hint=fix_hint)
+
+
+RESOLVED_KEY_MARKER = "api_key_resolved"
+
+
+def resolved_entry_key(entry: Any) -> str | None:
+    """The key a provider entry carries already resolved, or None (#1371).
+
+    A lane or placement entry built by ``runtime/lane_backends.py`` (``_build_remote_backend``,
+    ``_placement_entry_to_provider`` for PEER and url-CLOUD) carries the key it resolved at the build, where an
+    operator's ``MAXIM_LANE_<TIER>_REMOTE_API_KEY`` already beat config, and marks it ``api_key_resolved: True``. Every
+    backend sends that key and consults no env var for it. Any other entry (a cloud profile, a hand-written llm.json
+    provider) keeps its backend's env-first rule (CLI > env > config): the marker, never the absence of an
+    ``api_key_env``, is what says "already resolved", so an entry that gains an ``api_key_env`` later cannot silently
+    flip back."""
+    if not isinstance(entry, dict) or entry.get(RESOLVED_KEY_MARKER) is not True:
+        return None
+    key = entry.get("api_key")
+    return str(key).strip() if key else None
 
 
 @dataclass

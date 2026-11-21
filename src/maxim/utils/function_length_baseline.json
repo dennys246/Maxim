@@ -6,22 +6,17 @@
     {
       "file": "src/maxim/agents/llm_worker.py",
       "qualname": "LLMWorker._process_request",
-      "lines": 252
-    },
-    {
-      "file": "src/maxim/api.py",
-      "qualname": "run",
-      "lines": 209
+      "lines": 225
     },
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1377
+      "lines": 1195
     },
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 610
+      "lines": 593
     },
     {
       "file": "src/maxim/console/server.py",
@@ -51,7 +46,7 @@
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
       "qualname": "AgenticRuntimeMixin._start_agentic_runtime",
-      "lines": 800
+      "lines": 796
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -114,14 +109,9 @@
       "lines": 269
     },
     {
-      "file": "src/maxim/models/language/maxim_peer_backend.py",
-      "qualname": "_MaximPeerBackend._stream_response",
-      "lines": 225
-    },
-    {
       "file": "src/maxim/models/language/router.py",
       "qualname": "LLMRouter._try_provider",
-      "lines": 212
+      "lines": 203
     },
     {
       "file": "src/maxim/peer/admin_core.py",
@@ -136,12 +126,12 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agent_loop",
-      "lines": 233
+      "lines": 230
     },
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2144
+      "lines": 2140
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -161,12 +151,7 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 255
-    },
-    {
-      "file": "src/maxim/runtime/lane_backends.py",
-      "qualname": "build_primary_router",
-      "lines": 228
+      "lines": 201
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
@@ -181,7 +166,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 357
+      "lines": 342
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -211,7 +196,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1943
+      "lines": 1895
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -221,7 +206,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 262
+      "lines": 241
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -231,7 +216,7 @@
     {
       "file": "src/maxim/tools/http_fetch.py",
       "qualname": "HttpFetchTool.execute",
-      "lines": 243
+      "lines": 236
     },
     {
       "file": "src/maxim/tools/math_tool.py",
@@ -386,7 +371,7 @@
     "build_primary_router tightened 245 -> 239 on 2026-10-30 (#1315 step 0a review fold W1/S1, rule T): the fail-fast profiles.yml check went in as one call to lane_backends._require_valid_user_profiles, and the capability detection moved verbatim to lane_backends._capabilities_or_detected.",
     "_main_impl tightened 1458 -> 1419 on 2026-10-30 (#1315 step 0a delta fold D1, rule T; Session A's grant): the run-start require_valid_user_profiles() call went in before the mode dispatch, and the foundry dispatch moved verbatim to cli.py::_handle_foundry.",
     "build_app tightened 283 -> 245 on 2026-10-30 (#1438 PR 1b, rule T): the lifespan closure left build_app for module-level console/server.py::_make_lifespan (with the new startup refusal under a pending stop request) and its bounded shutdown for _lifespan_shutdown; build_app gained the keyword-only stop_budget_s.",
-    "start_simulation_mode tightened 2862 -> 2414 on 2026-10-30 (orchestrator \u00a711 slice, the injected stall clock owed by #1259/#1488): its nested _stall_detector (pinned 405, entry removed) left for simulation/stall_detector.py::StallDetector, whose methods each span 200 lines or fewer; the detector reads every 'now' through StallDetector.CLOCK.",
+    "start_simulation_mode tightened 2862 -> 2414 on 2026-10-30 (orchestrator §11 slice, the injected stall clock owed by #1259/#1488): its nested _stall_detector (pinned 405, entry removed) left for simulation/stall_detector.py::StallDetector, whose methods each span 200 lines or fewer; the detector reads every 'now' through StallDetector.CLOCK.",
     "run_generative_campaign tightened 313 -> 308 on 2026-10-30 (#1438 PR 1c, rule T): the narrator call moved to generative_runner.py::_narrate_turn, which carries the edit (a process stop is checked before and after the call, so an abandoned call's fallback turn is never delivered or recorded; a failure under a stop reports yielded).",
     "start_simulation_mode tightened 2414 -> 2399 on 2026-10-30 (#1438 PR 1c, an owner-approved fence touch, rule T): the entry reset moved to orchestrator.py::_refuse_a_stop_then_reset_llm_cancellation (which first refuses under a process stop request) and the model-load wait to _await_llm_ready_or_refuse (moved above SimulationBridge, refusing if the stop landed during the load); 2399 -> 2398 at the review fold, when the entry refusal moved above the start provenance capture.",
     "start_simulation_mode tightened 2398 -> 2035 on 2026-10-30 (#1438 PR 1c, the decomposition's tail slice, owner decision D5; Session A's terms): everything after the orchestrator loop returns moved verbatim to simulation/sim_teardown.py (end_run composing shut_down_run, release_run_resources, save_run_report and roundup_and_emit_report, then build_simulation_result; each 200 lines or fewer, over one SimTail), with _resolve_finish_reason and _sim_provenance; the interactive post-sim prompt stays.",
@@ -394,10 +379,36 @@
     "start_simulation_mode tightened 2032 -> 2007 on 2026-10-30 (#1259, rule T): the narrator's simulation-tool registrations left it for module-level orchestrator.py::_register_narrator_sim_tools, which carries the finish tool's new stop_event.",
     "start_simulation_mode tightened 2007 -> 1995 on 2026-10-30 (#1541 in #1259, rule T): the line reader's loop left its _stdin_reader_line closure for simulation/stdin_lines.py::read_operator_lines (reading through OperatorLines, which the run's stop ends), carrying the edit; the teardown's join is one call to stdin_lines.stop_reader, in sim_teardown.py::_wait_for_run (the run's stdin_thread rides SimTail).",
     "api.py::run tightened 276 -> 244 on 2026-10-31 (#1521, rule T): the stale shutdown comment is corrected in the cleanup it describes, which moved verbatim to api._tear_down_run (the names it reads passed as keywords). Merged with #1555 (main's run at 256 after _run_workspace and _build_run_executor moved out): 224.",
+    "build_primary_router tightened 239 -> 217 (207 at the review fold, which moved its remote large-tier placeholder verbatim to lane_backends._add_remote_large_placeholder), _maybe_auto_spawn_server 259 -> 248 and start_simulation_mode 1943 -> 1917 on 2026-11-02 (#1538, rule T): the router build takes the profile it serves as a parameter (build_primary_router(profile=)) instead of a MAXIM_LLM_PROFILE write around the call. It pays for the parameter with verbatim moves of its decision-log record, FunctionRouter build and heartbeat start (lane_backends._append_decision_record, _function_router_for, _start_heartbeat_if_enabled); auto-spawn's profile choice moved to lane_backends._auto_spawn_profile; the dual-LLM AUT router build left start_simulation_mode for orchestrator.py::_build_aut_router.",
     "_main_impl tightened 1412 -> 1377 and MediaLoopMixin.live 422 -> 419 on 2026-11-02 (#1344, rule T): the double-Ctrl+C handler closure left _main_impl for maxim/cli_signals.py (installed by cli.main around every subcommand), paying for its one run-mode line and the CLI loop's stop_event=; live's stop-event setup and its end-of-run handle resets moved to _open_live_stop_event and _release_live_handles, which register the event for the process stop.",
     "MediaLoopMixin.live tightened 417 -> 296 on 2026-11-03 (#1499 PR 3, rule T): its outer try now starts right after the stop event opens, so the setup moved under it, paid for by moving the per-frame observation step and the transcriber stop out to _observe_frame and _stop_transcription_worker (verbatim) and the last shutdown to _shutdown_after_live.",
-    "api.py::run tightened 224 -> 209 and _maybe_auto_spawn_server 259 -> 255 on 2026-11-03 (#1315 item 10a, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the new offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out.",
-    "build_primary_router tightened 239 -> 228 on 2026-11-03 (#1315 item 10a review fold, rule T): its first step became lane_backends._router_build_preflight (the offline engage from llm.offline, then _require_valid_user_profiles), and the remote large-tier placeholder moved verbatim to lane_backends._add_remote_large_tier.",
-    "check_resolved_config tightened 249 -> 227 on 2026-11-03 (#1315 item 10a review fold, rule T): it walks config_loader.SETTABLE_FIELDS (so the config-only llm.offline gets a row), and its role row moved to doctor/checks.py::_role_row (returning the row instead of appending it)."
+    "_maybe_auto_spawn_server tightened 259 -> 224 on 2026-11-03 (#1344 PR 3a, rule T): the box-wide kill_stale_llm_servers call left it, and its singleton check (check_existing_llm_server + the new llm_server.preflight_spawn) moved to lane_backends.py::_existing_server_decision. Merged with #1538 (main's _maybe_auto_spawn_server at 248 after its profile choice moved to _auto_spawn_profile): 213.",
+    "api.py::run tightened 224 -> 216 and start_simulation_mode 1917 -> 1910 on 2026-11-03 (#1586, rule T): the API's model is handed to the run's router build (build_primary_router(profile=), start_simulation_mode(llm_profile=)) instead of a MAXIM_LLM_PROFILE write for the run. run's router build moved to api._build_run_router and its MAXIM_LLM_ENABLED setdefault to api._enable_llm_for_run (shared with imagine and campaign); the shared sim router build moved to orchestrator.py::_build_shared_router.",
+    "start_research_mode tightened 262 -> 241 on 2026-11-03 (#1586 review fold, rule T): research hands its model to its router build (_build_research_llm(language_model)) and its sim (start_simulation_mode(llm_profile=)); the campaign YAML load moved verbatim to research_orchestrator._load_campaign_turns.",
+    "_main_impl tightened 1377 -> 1345 on 2026-11-06 (#1344 PR 3b, rule T): the serve/tunnel/doctor/bench/roy/model subcommand dispatch moved verbatim to cli.py::_dispatch_tool_cli, carrying the new `llm` route.",
+    "_maybe_auto_spawn_server tightened 213 -> 205 and build_primary_router 207 -> 206 on 2026-11-09 (#1610, rule T; owner decisions: one role-keyed owner of a leader's services, CLI leaders only): the fresh-spawn tail that started the tunnel, proxy and heartbeat left auto-spawn (the tunnel starter moved to tunnel/daemon_spawner.auto_spawn_tunnel_daemon; _maybe_start_leader_proxy was deleted, and the CLI's early boot claims through leader_mode.claim_leader_services), and build_primary_router's heartbeat start became one call to lane_backends._start_process_services, which first starts the claimed leader's services.",
+    "_main_impl tightened 1345 -> 1312 and cli_parser.py::_build_parser 610 -> 593 on 2026-11-10 (#1628, --sim-script, rule T): the goal-string orchestrator call moved to cli.py::_run_goal_sim (verbatim, plus pre_campaign_turns) and the --sim value's kind to cli.py::_sim_value_kind (shared with the --sim-script check), and the turn flags (--sim-max-turns, whose default the change touches, --sim-run-full-turns and the new --sim-script) to cli_parser.py::_add_turn_cap_arguments, so each extraction carries the edit.",
+    "_MaximPeerBackend._stream_response 225 -> 168 (now under the 200 threshold, entry removed) and LLMRouter._try_provider 212 -> 203 on 2026-11-10 (#1370 #1369, rule T): the streamed and the buffered call's HTTPError -> BackendError mappings became the one _MaximPeerBackend._typed_http_failure (which adds the context-overflow classification), chunk decoding moved to _MaximPeerBackend._stream_chunk (which adds the error-chunk and non-object checks), and _try_provider's BackendDown branch body moved to LLMRouter._note_provider_down beside the new _note_context_overflow.",
+    "_main_impl tightened 1312 -> 1248 on 2026-11-11 (#1396, rule T): the pre-sim auto-curate block moved to cli.py::_auto_curate_before_sim, carrying its router build's switch to cli.py::_cli_local_router (the consent gate asks before warmup); the agentic call site's rename to _ensure_router_model rides on the same extraction.",
+    "_main_impl tightened 1248 -> 1241 on 2026-11-12 (#1396 Q2, rule T): the --sim-report / --report-json cross-flag validation moved verbatim to cli.py::_apply_sim_report_flags, paying for the one arm_download_decline_memory() call that arms the run's download-decline scope after the subcommand dispatch.",
+    "_main_impl tightened 1241 -> 1200, AgenticRuntimeMixin._start_agentic_runtime 800 -> 796 and build_primary_router 206 -> 190 (entry removed: under the threshold) on 2026-11-13 (#1396 bullet 2, rule T): the CLI agentic path's LLM worker setup moved to cli.py::_cli_agentic_llm_worker (acting on the consent check's result, paying for the five --sim sites passing llm_profile), the robot runtime builds through lane_backends.build_run_router instead of a hand-built fallback, and build_primary_router's --cloud-fallback tail, manager, banner and decision record moved verbatim to lane_backends._primary_router_and_manager, paying for the normalized build profile and the preflight's declined set. start_simulation_mode tightened 1910 -> 1905 at the review fold: the shared and the AUT router builds moved together to orchestrator.py::_build_run_llms (both built before either warms or the sandbox is up, so a declined --aut-model refuses before any warmup and before the sandbox), the AUT warmup to orchestrator.py::_warm_aut_router, and the AUT router's peer-config comment into _build_aut_router's docstring.",
+    "run_agent_loop tightened 233 -> 230 on 2026-11-16 (#1264, rule T): its run-id default, state-path build and first persist moved to runtime/loop_state.py::start_run_state (shared with loop_setup.build_loop_run), which claims the run's own state file under the data home.",
+    "#1264 fold 3 (2026-11-16, rule T, no exemption): _run_agentic_loop_body 2144 -> 2140 (the loop timing to agent_loop._loop_timing and the teardown persist to agent_loop._persist_final_state, paying for the state_home parameter and its forward to build_loop_run); _main_impl 1241 -> 1236 (the --sim PainBus reuse to cli._reuse_bio_pain_bus_for_sim, paying for the --sim loop's state_home); start_simulation_mode 1910 -> 1900 (the sandbox and sim logging block, with its corrected D15 comment, to orchestrator._open_sim_workspace, paying for the AUT's and narrator's state_home); api.py::run 216 -> 208 (the agent build and its event bridge to api._build_run_agent, paying for the home_dir docstring fix). Rebased on #1396 bullet 2 (2026-11-17 merge of main): _main_impl 1200 -> 1195 and start_simulation_mode 1905 -> 1895, the same extractions.",
+    "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
+    "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
+    "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
+    "api.py::run 201 -> 186 (entry removed: under the threshold) and _maybe_auto_spawn_server 205 -> 201 on 2026-11-20 (#1315 item 10a merged with main, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out. build_primary_router stays under the threshold: its first step is lane_backends._router_build_preflight (the offline engage, then #1610's process services and _require_valid_user_profiles). check_resolved_config walks config_loader.SETTABLE_FIELDS and its role row is doctor/checks.py::_role_row."
+  ],
+  "touch_exemptions": [
+    {
+      "file": "src/maxim/peer/admin_core.py",
+      "qualname": "update_on_target",
+      "touched": 1,
+      "from": 209,
+      "to": 209,
+      "date": "2026-11-20",
+      "ref": "#1715",
+      "reason": "#1715 repo-wide rename TimeoutPolicy.total_s -> pool_s (one keyword argument, no behaviour change); the touch rule expects a record per pinned function for a rename."
+    }
   ]
 }

@@ -2,6 +2,193 @@
 
 This file tracks decisions that affect public behavior, repo structure, and long-term maintenance.
 
+## 2026-11-16 — The loop's runtime-state file is one per run, in its own root (#1264, D15's CWD-relative half)
+
+### Decision (owner, 2026-11-16: option A on #1264, then the three-lens review's decisions the same day)
+
+- **Its own root.** `utils/paths.py::loop_state_dir(agent_name, *, root=None)` is
+  `<root or data_home()>/runtime_state/<agent_name>/` (`paths.RUNTIME_STATE_DIR`), outside `agents/`: a loop run
+  creates no `agents/<name>/` directory, so `maxim.load.agent` and `resolve_run_dir` never see it as a created agent.
+  The data home is `data_home()` (`MAXIM_DATA_HOME`, else `~/.maxim`), the root the D15/D16 decision below names as
+  `home_dir`'s default ("Root for API-owned memory, data, and agent persistence", `api.py::_api_home`). Never the
+  working directory (a relative `home_dir` resolves against it, as every store under that home does).
+  `--clear-memory` clears it in the data home, and in a home named with `--home-dir`
+  (`cli_utils._GLOBAL_PATHS["runtime_state"]`).
+- **One builder.** `runtime/loop_state.py::loop_state_path` names every run's file,
+  `state_<run id segment>_<token>.json`: the run's own identity (the directory is `tool_dispatch.safe_agent_name`)
+  plus a 48-bit random token, so two loops never share a file by sharing a class name and a wall-clock second (a
+  sim's AUT and narrator are both `MaximAgent`).
+- **Sanitised, never refused.** Only the filename segment of the run id is sanitised, as `safe_agent_name` does:
+  a character outside `[A-Za-z0-9._-]` becomes `_`, and a run of dots or a leading dot becomes underscores. The raw
+  run id stays in the file's meta and everywhere else; run ids are unchanged (the timestamp default stays), because
+  the hippocampus and the bio-integration records persist them.
+- **Only a collision aborts.** `loop_state.claim_state_path` reserves the file by exclusive create before the first
+  write. A file already there raises `StatePathCollision` (a `FileExistsError`, `errno` EEXIST, `filename` the path)
+  out of the run's setup, so a run never overwrites another's state. That path is a BACKSTOP: with a random token it
+  is not expected. Any other `OSError` while claiming (permissions, a full or read-only disk, a directory that cannot
+  be made) is reported in the Stage-1 form (`log_swallowed_exception(site=...)`) and the run goes on, as before
+  #1264; its persists then fail and are reported by `_persist_state_json`. A placeholder still empty after a failed
+  first persist is removed (and logged). The claim sits outside `_persist_state_json`'s best-effort handler.
+- **Back in the sandbox.** `run_agentic_loop(state_home=...)` is a data-home-shaped root for the state file, threaded
+  as an explicit parameter (wrapper -> `_run_agentic_loop_body` -> `build_loop_run` -> `start_run_state(root=)` ->
+  `loop_state_path(root=)`); nothing else moves with it. The callers with a sandbox pass it, so the file goes with
+  the sandbox as before: the CLI `--sim` loop (`args._sim_tmpdir`), the orchestrator's AUT and narrator
+  (`sim_tmpdir`), the `spawn_sub_simulation` tool's sub-AUT (its parent sim's `sim_tmpdir`), the interactive sim
+  (each turn's sandbox) and the Minecraft harness (each AUT's `persistence_dir`, `minecraft_harness._loop_kwargs`). The console
+  handle, `maxim.run()` and the Reachy runtime keep the data home. Not `MAXIM_DATA_HOME`, which would move every
+  other store too.
+- The pinned functions this touched paid under rule T by extraction (`_run_agentic_loop_body`, `cli._main_impl`,
+  `orchestrator.start_simulation_mode`, `api.run`); no touch exemption. `LoopController` takes the run's claimed path
+  (`state_path=`) and, built on its own, has none.
+
+### Reason
+
+- Two loops in one process wrote one CWD-relative `state_<second>.json`; one write was lost, and a run's state
+  scattered `data/` trees wherever the process was started (#1264; the D15 row of `docs/bugs/README.md`).
+
+### Rejected
+
+- B, an agent-id filename that stays CWD-relative: the Minecraft harness's two AUTs could still collide.
+- C, a unique default run id: it changes persisted ids.
+- `<data home>/agents/<name>/runtime/` (this change's first draft): a loop run then minted a created-agent-shaped
+  directory that `resolve_run_dir` finds.
+- Refusing a run id that is not one path segment (`InvalidRunId`, the first fold): a valid caller-chosen id such as
+  `demo 1` or an ISO timestamp would stop a run over a diagnostics file.
+- A context variable carrying `state_home` past the pinned loop body (the second fold): hidden state; rule T is paid
+  by extraction instead.
+
+### Tradeoffs
+
+- `maxim.run(home_dir=...)` with a home other than the data home still writes this file under the data home: the
+  loop is not told `home_dir`. (Superseded by the owner decision of 2026-11-18: `api.run` passes
+  `state_home=<home_dir or data home>`, so a `home_dir` run's state file is `<home_dir>/runtime_state/<name>/`,
+  cleared by `--clear-memory --home-dir <home_dir>`. D15's complete `home_dir` ownership stays open for the
+  process-wide stores that remain in the data home.)
+- Old CWD `data/agents/*/runtime/` files are not migrated; nothing in Maxim reads them.
+
+## 2026-11-16 — BF2 read for a STALE pre-BF2 row restored by a frozen-prereg re-run whose gate is new (BF2-R1, T1-16 only)
+
+### Decision (owner, 2026-11-16 UTC: "agreed as long as we're completely transparent")
+
+1. **BF2-R1. T1-16 goes to `EARNED 2026-11-13` (narrow) on Exp 63c, with `floor: not measured`.** This is the owner's
+   reading of BF2, not its letter. It replaces the strict reading taken on 2026-11-13.
+2. **What BF2 says** ([baseline_floors.md](docs/plans/baseline_floors.md) §Owner decisions; the 2026-10-10 record
+   below). A NEW `[behavioral]` claim on the LLM path cannot be EARNED unless the full arm beats `bare_llm`, and also
+   `llm_notes` for a cross-session claim. "Existing EARNED/MAINTAINED rows keep their status": each owes its floor at
+   its next trigger re-run once its harness has the floor arm, and a loss then moves it to `PARTIAL (narrow: floor
+   matched)`, not `BROKEN`.
+3. **Why its letter does not cover T1-16.**
+   - T1-16 was EARNED on 2026-10-04, before BF2, but it was STALE from 2026-10-25 to 2026-11-13, after 1.3.4's
+     recall fix replaced the ranker it measured. When Exp 63c ran, the row was STALE, not EARNED, so "keep their
+     status" had no EARNED status to keep.
+   - The criterion that separated PASS from NOT SHOWN is new in 63b and 63c: R3d, a carried memory displacing a new
+     one on the cue's non-goal content keys, on the cue path. Exp 63 never tested it. Exp 63b met the old row's other
+     gates (P0–P3, R2′, R3′, R3a) and still read NOT SHOWN. Read by its letter, 63c's claim is a new LLM-path claim.
+4. **The strict reading (2026-11-13), and why it was replaced (2026-11-16).** The strict reading held 63c's
+   displacement claim to be a new LLM-path claim, which cannot be EARNED before B2/B3. It was replaced because 63c's
+   prereg, frozen with the owner's approval on 2026-11-10 before any data existed, pre-committed the consequence:
+   "PASS → T1-16 EARNED (narrow, the wording above)" ([prereg](docs/experiments/exp63c_scripted_recall_prereg.md)
+   §Attempts).
+5. **Scope: this one row only.** BF2-R1 is NOT a precedent for any other STALE row, and NOT a route for a new claim to
+   earn before its floor. Another case needs its own owner decision.
+6. **The owed floor.** T1-16 owes its floor at B3 (`bare_llm` and `llm_notes`). A loss there moves the row to
+   `PARTIAL (narrow: floor matched)`. Until then the row carries `floor: not measured` in its status prose.
+7. **The evidence.** Exp 63c is the sole evidence. Its code-under-test (9176025a, clean tree), n_ctx (8192 on all four
+   fields) and served GGUF (SHA-256 `3e0039fd…ccf9`, basename match, on every accounted call) are machine-stamped, not
+   operator-attested. Only the AUT's own slot is not established (`aut_model_attribution: not_established`, B0b). The
+   claim needs only that every accounted call was that file (prereg OD-c4/OD-c5), because the ranker is model-free.
+8. **Transparency.** Every surface that shows the row's status states points 3, 4, 6 and 7, and the design caveats under Tradeoffs: the ledger row
+   ([behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md), T1-16), the README results
+   table, the experiments index and the 63c prereg's outcome header.
+9. **No evidence exception.** No evidence exception was recorded in `docs/experiments/evidence_exceptions.json`: the evidence gate's pass table already lets an `exp63c_verdict` PASS support EARNED (narrow), so the move needs none, and an exception there would act as a waiver for those verdict bytes rather than a record. The override is recorded here and in the ledger row; a record-only
+   exception kind is a mechanization follow-up: backlog M91 ([outstanding.md](docs/plans/outstanding.md) §Mechanization backlog).
+
+### Rationale
+
+The weak-evidence rule recommends the strict option by default, and it was taken first. The owner replaced it on the
+ground that the frozen prereg had already stated, before any data, what a PASS would mean for the row. The evidence
+itself is not weak in the rule's sense: the code, model file and context size are machine-stamped, and the run is not
+a typed abort.
+
+### Tradeoffs
+
+The row is EARNED before any floor comparison, on one run with one model and a scripted narrator. Its 4 of 4 was close
+to guaranteed by design, because each cue reuses its plant's words; what was at risk was the live AUT's echo, measured
+at 0 on every cue's non-goal keys. AUT restatements of the facts also won on 3 cues (on turn 5 one tied the planted fact
+at 4 v 0); fact B surfaced on turns 1–2 through a phase-1 AUT restatement, not its planted record, and fact D's
+planted record on control turn 6, before its cue; completion uses designer-chosen answer keys and is not a selection
+claim. B3 can still narrow the row. The narrow qualifier, the floor line and the stated
+caveats carry that cost on every surface.
+
+## 2026-11-11 — Hybrid arbitration is a 1.5 candidate line: the substrate acts by default, the LLM is called when the substrate is unsure, and a default mode network works at idle
+
+### Decision (owner, 2026-11-11, direction only; design in [docs/plans/hybrid_arbitration.md](docs/plans/hybrid_arbitration.md))
+
+1. **A parallel paper line, not a 1.4 rung.**
+   - No `src/` change for this line before the 1.4.0 cut (mechanization backlog M89). This also keeps `NAc.recommend_action`'s selection path untouched while E1's mechanism lives there.
+   - Before 1.4.0 the line is paper, plus Step 0: a calibration analysis of the `NAc_RECOMMEND` provenance logs that
+     already exist. If those are too thin, a substrate-only logging re-run.
+   - It is never active in an E1–E3 arm. Until mechanization backlog M88 closes, that rule is policy, not a check.
+   - Its claims are candidate 1.5 headlines.
+2. **Arbitration is per decision, at the cognition layer.** This does not reverse the 2026-07-17 HYBRID decision or its
+   deferred plan ([deferred/hybrid_substrate_reflex_runtime.md](docs/plans/deferred/hybrid_substrate_reflex_runtime.md)).
+   That plan rejected `aut_mode="hybrid"` for a motor reflex running UNDER the LLM, which needs no mode switch. This
+   line needs a per-decision choice between two controllers; how it is switched on is HA-O1. The two compose.
+   - **SF-1 (one-way inhibition) carries over unchanged.**
+   - **BL-4 (NAc separation) does NOT carry over.** This line shares one NAc between the controllers on purpose, so
+     that LLM-chosen actions can become habits. The resulting Wire-A content is owner decision HA-O9.
+   - The new mode value is not the July-rejected literal `"hybrid"`.
+3. **The default mode network is the idle-time half, not the substrate path.** It is bio_faithful_roadmap Stage B,
+   now its own plan, [idle_dmn_coordinator.md](docs/plans/idle_dmn_coordinator.md).
+   `default_network/` stays a salience/reactive layer under a historical name. Two docs that called it a DMN are
+   corrected in the same change.
+4. **The claim is efficiency first, and two-sided.**
+   - The hybrid must beat substrate-primary and the floors on outcome.
+   - It must also be non-inferior to llm-primary, at a fraction of the LLM calls.
+   - BF2 binds every claim of the line, so none EARNs before B2.
+   - The hybrid becomes the default only by a later owner decision.
+
+5. **The design decisions (owner, 2026-11-12; HA-O1–HA-O16 in the plan).**
+   - **The mode value** is named for the arbiter and enters through exhaustive dispatch.
+   - **The substrate acts by default**, after a per-world hold that is scaled by conflict.
+   - **Pre-emption is asymmetric:**
+     - the LLM pre-empts on authority;
+     - the substrate pre-empts only on danger or staleness, with self-caused changes excluded;
+     - the habit the LLM overrode is suppressed, capped, and cleared by any danger event.
+   - **A safety floor (HA-O16).** The LLM can never override, withdraw, cancel, delay or suppress a danger-selected
+     or protective action.
+   - **Coupling is a two-way 2×2 with the both-on cell primary.** The LLM → substrate direction goes through the
+     shared [foreign_advice_layer.md](docs/plans/foreign_advice_layer.md): credit-isolated, never persisted or
+     promoted. Advice-flipped actions are stamped `substrate_advised` and credited as LLM choices.
+   - **Credit is per chooser.**
+   - **The claim** is per-decision efficiency across a portfolio, under the project's effect-size pass rule. Each
+     member has its own comparator role, and a safety DEGRADE vetoes the claim.
+   - **The first evidence slice** is a one-cell, boundary-only Exp 49 re-run, reported as exploratory.
+   - **The arbiter is ExecutiveFunction Stage 3, revived for this line.**
+   - **Split out into four plans of their own:** the advice layer (above), mid-action cancel
+     ([sem_interruptibility.md](docs/plans/sem_interruptibility.md), owned by embodiment, MP13 for the robot),
+     the learned hold ([learned_hold_window.md](docs/plans/learned_hold_window.md)), and the idle DMN coordinator.
+     The chooser stamp joins M1.
+   - **`default_network/` keeps its name.**
+
+### Reason
+
+Exp 49 split the two controllers cleanly. The substrate was about 20× faster where its policy applied, and the LLM
+crossed a trap the substrate could not. Exp 37/38/40 found that when the substrate only annotates the LLM's prompt,
+the coupling follows the LLM's prior: the prior dominates it, or the substrate amplifies the prior. Letting the
+substrate act, and escalating only when it is unsure, replaces that coupling without a new bus or bio-system. The
+arbiter is proposed as the deferred ExecutiveFunction Stage 3.
+
+### Tradeoffs
+
+- A per-tick arbiter adds a third control path to a loop still being decomposed. That is why no `src/` lands
+  before the 1.4.0 cut, why the mode enters through exhaustive dispatch, and why it is composed once in the
+  loop-stack builder.
+- The full design depends on about ten unbuilt plans or stages owned by other lines, among them GL3.B7's stale-LLM
+  pre-emption (not GL3.B4). So a 1.5 EARNED claim is unrealistic. The first slice is a one-cell Exp 49 run that
+  needs neither GL3.B7 nor the advice layer.
+- Confidence is not calibrated today, so the line can stop at Step 0 (no rising calibration curve).
+
 ## 2026-11-02 — The bounded stop: the library never exits, sessions have one owner, and the CLI owns signals (#1438, #1344)
 
 ### Decision (owner, 2026-10-25/26, 2026-10-30 and 2026-11-02; design in [docs/plans/bounded_stop.md](docs/plans/bounded_stop.md))

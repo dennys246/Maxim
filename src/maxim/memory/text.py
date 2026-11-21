@@ -194,8 +194,10 @@ def _lemmatize(word: str) -> str:
     perfect, but sufficient for concept name matching where the goal is
     "grasping" -> "grasp", "mugs" -> "mug", etc.
 
-    Edge-case aware: checks stem validity (min length, vowel presence)
-    to avoid garbage stems like "used" -> "us" or "placed" -> "plac".
+    Edge-case aware about stem length and vowels, but it does NOT reach the base form of a silent-e verb: "placed"
+    -> "plac", "moved" -> "mov", "used" -> "us", while "place" and "move" stay whole; a doubled consonant stays
+    doubled before "-ed" ("stopped" -> "stopp"). Frozen with ``normalize_tokens`` (ATL names are persisted from
+    it); the content keys converge these forms on top of it, in ``settle_key`` (#1620).
     """
     # -ing: grasping -> grasp, running -> run.
     # Split the two cases so we can require a longer stem for non-doubled
@@ -287,16 +289,82 @@ def text_values(value: Any, *, depth: int = 3) -> Iterator[str]:
             yield from text_values(inner, depth=depth - 1)
 
 
-def settle_key(token: str) -> str:
-    """One WORD as a content key: normalized until it stops changing; a key the tokenizer would drop (under 3
-    characters, "used" -> "us") keeps its last form. Idempotent: a keyed word keys to itself, so a store that is
-    handed keys (NAc's keyword scan) settles them rather than re-tokenizing them."""
-    for _ in range(4):
-        again = normalize_tokens(token)
-        if not again or again == [token]:
-            return token
-        token = again[0]
+def _kept(token: str) -> bool:
+    """A convergence step may produce ``token`` only when the tokenizer keeps it and does not lemmatize it to a stop
+    word ("whos" from "whose" would settle to "who"); ``settle_key`` then normalizes it to its fixed point, so "clos"
+    from "close" settles to "clo", as "closed" and "closing" do."""
+    again = normalize_tokens(token)
+    return bool(again) and again[0] not in _STOP_WORDS
+
+
+# The longest token the keys converge: an English word's inflections are what converge, and a longer token (a run in
+# a tool's output) is no word; each step re-normalizes the token, so converging an n-character run costs O(n^2).
+_CONVERGE_MAX_LEN = 40
+# The longest token settled to its fixed point. A longer one is no word either (a run in a tool's output, "ed" * 16000):
+# it settles as it did before #1620, in at most four passes, because the frozen ``_lemmatize`` strips one suffix per
+# pass and a fixed point over n characters costs O(n^2). Idempotency is promised for a token up to this length.
+_SETTLE_MAX_LEN = 64
+
+
+def _converge(token: str) -> str:
+    """One pass of the content keys' convergence over a normalized word (#1620): the regular inflections of one word
+    reach one key, which the frozen ``_lemmatize`` does not do ("move", "moved", "moving", "moves" keyed as "move",
+    "mov", "moving", "move"). Three steps, each taken only when the tokenizer keeps its result (``_kept``):
+
+    - a three-letter stem the frozen ``-ing`` branch refused is cut: "moving" -> "mov", "asking" -> "ask";
+    - a doubled final consonant other than "s" is single: "stopp" (from "stopped") -> "stop", "pull" -> "pul" (as
+      "pulling" keys); an "-ss" word keeps it, since "bras" would settle to "bra";
+    - a final "e" after a consonant or "u" is dropped: "move" -> "mov", "place" -> "plac", "issue" -> "issu", and
+      "close" -> "clos", which ``settle_key`` settles to "clo" with "closed" and "closing".
+
+    The keys are not words ("mov", "plac") and are never shown; they are what a write and a read both reach. The cost
+    is a merge of words that differ only by a final "e" ("plan" and "plane", "made" and "mad", "care" and "car",
+    "hope" and "hop", "done" and the "don" of "don't"): a recall that shares a key it should not, never one that
+    misses a key it should share. Only a lowercase ASCII word of at most ``_CONVERGE_MAX_LEN`` letters converges:
+    "1000" stays apart from "100", a hyphenated or marked-up token ("fast-suite", "sweep**") keeps its frozen key,
+    and a long run of one letter is not re-normalized letter by letter. Not converged, because the frozen tokenizer
+    drops or keeps them before this runs: "used" ("us", under 3 characters) against "use"/"using", "agreed"/"freed"
+    (its "-eed" rule) against "agree"/"free", "accessing"/"passing" ("acc", "pas") against "access"/"pass", and
+    irregular forms ("hid", "hidden", "slept", "hung"). Persisted ATL concept names (frozen ``normalize_tokens`` output such as "plac") reach
+    the same key as the words they came from."""
+    if len(token) > _CONVERGE_MAX_LEN or not (token.isascii() and token.isalpha()):
+        return token
+    if token.endswith("ing") and len(token) > 4:
+        stem = token[:-3]
+        if len(stem) >= 3 and _has_vowel(stem) and _kept(stem):
+            token = stem
+    if len(token) >= 4 and token[-1] == token[-2] and token[-1] not in "aeiouys" and _kept(token[:-1]):
+        token = token[:-1]
+    if len(token) >= 4 and token[-1] == "e" and token[-2] not in "aeioy" and _kept(token[:-1]):
+        token = token[:-1]
     return token
+
+
+def settle_key(token: str) -> str:
+    """One WORD as a content key: normalized until it stops changing, then converged (``_converge``, #1620), the two
+    repeated until neither changes it; a key the tokenizer would drop (under 3 characters, "used" -> "us") keeps its
+    last form. Every change shortens the word, so the loops end at a fixed point, never at a cap (a capped loop left
+    "hmmmmmmmmmmmm" keyed as "hmmmm", which settled again to "hmm"), except for a token longer than
+    ``_SETTLE_MAX_LEN``, which is no word: it settles in at most four passes, as before #1620, and is not converged.
+    Idempotent for a token up to that length: a keyed word keys to itself, so a store that is handed keys (NAc's
+    keyword scan) settles them rather than re-tokenizing them."""
+    if len(token) > _SETTLE_MAX_LEN:
+        for _ in range(4):
+            again = normalize_tokens(token)
+            if not again or again == [token]:
+                return token
+            token = again[0]
+        return token
+    while True:
+        while True:
+            again = normalize_tokens(token)
+            if not again or again == [token]:
+                break
+            token = again[0]
+        converged = _converge(token)
+        if converged == token:
+            return token
+        token = converged
 
 
 def key_tokens(text: str) -> list[str]:

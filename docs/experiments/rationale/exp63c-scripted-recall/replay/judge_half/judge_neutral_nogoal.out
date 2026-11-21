@@ -1,0 +1,438 @@
+
+===== policy r: decisive cue turns [3, 4, 5] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3 margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.4', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.1', 'cue'), ('P1.6', 'cue'), ('P1.5', 'cue')] | without-carried=[('P2.1', 'cue'), ('P2.5.aut', 'goal'), ('P2.5', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=None displaced=None margin=None newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6', 'cue'), ('P2.1', 'cue')] | without-carried=[('P2.6', 'cue'), ('P2.1', 'cue'), ('P2.6.aut', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy p: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy e1: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.2 margin=3 v 0 newpool=4 completion=True
+      shown=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P1.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P2.2', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 2, 'hang': 2, 'ladl': 2}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 1, 'straw': 1}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P2.4.aut', 'cue'), ('P1.4', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 1, 'hatch': 1, 'padlock': 1, 'squeak': 1}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.1', 'cue'), ('P1.6', 'cue'), ('P1.5', 'cue')] | without-carried=[('P2.1', 'cue'), ('P2.5.aut', 'goal'), ('P2.5', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.6 margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.6', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 2, 'drip': 2, 'water': 2}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy e2: decisive cue turns [3, 4, 5] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.2 margin=3 v 0 newpool=4 completion=True
+      shown=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P1.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P2.2', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 2, 'hang': 2, 'ladl': 2}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.1.aut margin=3 v 2 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 3, 'straw': 3}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.4 margin=4 v 0 newpool=8 completion=True
+      shown=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P1.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.4', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 2, 'hatch': 2, 'padlock': 2, 'squeak': 2}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.1', 'cue'), ('P1.6', 'cue'), ('P1.5', 'cue')] | without-carried=[('P2.1', 'cue'), ('P2.5.aut', 'goal'), ('P2.5', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=P1.5 displaced=P2.4.aut margin=3 v 3 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.4.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 3, 'drip': 3, 'water': 3}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy e3: decisive cue turns [3, 4] k=2/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.2 margin=3 v 0 newpool=4 completion=True
+      shown=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P1.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P2.2', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 2, 'hang': 2, 'ladl': 2}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.1.aut margin=3 v 2 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 3, 'straw': 3}
+ t5 [cue C] decisive=False winner=None displaced=None margin=None newpool=8 completion=False
+      shown=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 4, 'hatch': 4, 'padlock': 4, 'squeak': 4}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.1', 'cue'), ('P1.6', 'cue'), ('P1.5', 'cue')] | without-carried=[('P2.1', 'cue'), ('P2.5.aut', 'goal'), ('P2.5', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=P1.5 displaced=P2.4.aut margin=3 v 3 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.4.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 4, 'drip': 4, 'water': 4}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy b4: decisive cue turns [3] k=1/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.2 margin=3 v 0 newpool=4 completion=True
+      shown=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P1.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P2.2', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 2, 'hang': 2, 'ladl': 2}
+ t4 [cue B] decisive=False winner=None displaced=None margin=None newpool=6 completion=False
+      shown=[('P2.3.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.1.aut', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 3, 'mattress': 3, 'straw': 3}
+ t5 [cue C] decisive=False winner=None displaced=None margin=None newpool=8 completion=False
+      shown=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 4, 'hatch': 4, 'padlock': 4, 'squeak': 4}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=None displaced=None margin=None newpool=12 completion=False
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.4.aut', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.4.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 6, 'drip': 6, 'water': 6}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy cpart: decisive cue turns [3, 4, 5] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.2.aut margin=4 v 3 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 4, 'hatch': 4, 'padlock': 4, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.1', 'cue'), ('P1.6', 'cue'), ('P1.5', 'cue')] | without-carried=[('P2.1', 'cue'), ('P2.5.aut', 'goal'), ('P2.4.aut', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=None displaced=None margin=None newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6', 'cue'), ('P2.1', 'cue')] | without-carried=[('P2.6', 'cue'), ('P2.1', 'cue'), ('P2.6.aut', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy cpart2: decisive cue turns [3, 4, 5] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.2.aut margin=4 v 3 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 4, 'hatch': 4, 'padlock': 4, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.1', 'cue'), ('P1.6', 'cue'), ('P1.5', 'cue')] | without-carried=[('P2.1', 'cue'), ('P2.5.aut', 'goal'), ('P2.5', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=None displaced=None margin=None newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6', 'cue'), ('P2.1', 'cue')] | without-carried=[('P2.6', 'cue'), ('P2.1', 'cue'), ('P2.6.aut', 'goal')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy pA: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.2 margin=3 v 0 newpool=4 completion=True
+      shown=[('P2.1.aut', 'cue'), ('P1.2', 'cue'), ('P2.2.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 1, 'hang': 1, 'ladl': 1}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy pB: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.3 margin=3 v 0 newpool=6 completion=True
+      shown=[('P2.1.aut', 'cue'), ('P1.3', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 1, 'mattress': 1, 'straw': 1}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy pC: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.4 margin=4 v 0 newpool=8 completion=True
+      shown=[('P2.1.aut', 'cue'), ('P1.4', 'cue'), ('P2.4.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 1, 'hatch': 1, 'padlock': 1, 'squeak': 1}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy pD: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.6 margin=3 v 0 newpool=12 completion=True
+      shown=[('P2.1.aut', 'cue'), ('P1.5', 'cue'), ('P2.6.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 1, 'drip': 1, 'water': 1}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy stuckA: decisive cue turns [3, 4, 5, 7] k=4/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.2 margin=3 v 0 newpool=4 completion=True
+      shown=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P1.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.1.aut', 'cue'), ('P2.2', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 2, 'hang': 2, 'ladl': 2}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy stuckB: decisive cue turns [3, 5, 7] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=False winner=None displaced=None margin=None newpool=6 completion=False
+      shown=[('P2.3.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.1.aut', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.2.aut', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 3, 'mattress': 3, 'straw': 3}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3.aut margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4.aut', 'cue'), ('P2.4', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy stuckC: decisive cue turns [3, 4, 7] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=False winner=None displaced=None margin=None newpool=8 completion=False
+      shown=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')] | without-carried=[('P2.4.aut', 'cue'), ('P2.3.aut', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 4, 'hatch': 4, 'padlock': 4, 'squeak': 4}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=True winner=P1.5 displaced=P2.5.aut margin=3 v 0 newpool=12 completion=True
+      shown=[('P1.5', 'cue'), ('P2.6.aut', 'cue'), ('P2.6', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.6', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 0, 'drip': 0, 'water': 0}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')] | without-carried=[('P2.7.aut', 'cue'), ('P2.6.aut', 'cue'), ('P2.5.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+===== policy stuckD: decisive cue turns [3, 4, 5] k=3/4; goal-words distractor surfaced=True
+ t1 [R3a view] decisive=False winner=None displaced=None margin=None newpool=0 completion=None
+      shown=[('P1.6', 'cue'), ('P1.4.aut', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'back': 0}
+ t2 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=2 completion=None
+      shown=[('P2.1.aut', 'cue'), ('P2.1', 'cue'), ('P1.7.aut', 'cue')] | without-carried=[('P2.1.aut', 'cue'), ('P2.1', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'bel': 0, 'chapel': 0, 'ring': 0, 'silver': 0}
+ t3 [cue A] decisive=True winner=P1.2 displaced=P2.1.aut margin=3 v 0 newpool=4 completion=True
+      shown=[('P1.2', 'cue'), ('P2.2.aut', 'cue'), ('P2.2', 'cue')] | without-carried=[('P2.2.aut', 'cue'), ('P2.2', 'cue'), ('P2.1.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'brass': 0, 'hang': 0, 'ladl': 0}
+ t4 [cue B] decisive=True winner=P1.3 displaced=P2.2.aut margin=3 v 0 newpool=6 completion=True
+      shown=[('P1.3', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')] | without-carried=[('P2.3.aut', 'cue'), ('P2.3', 'cue'), ('P2.2.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'beneath': 0, 'mattress': 0, 'straw': 0}
+ t5 [cue C] decisive=True winner=P1.4 displaced=P2.3 margin=4 v 0 newpool=8 completion=True
+      shown=[('P1.4', 'cue'), ('P2.4', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.4', 'cue'), ('P2.3.aut', 'cue'), ('P2.3', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'cel': 0, 'hatch': 0, 'padlock': 0, 'squeak': 0}
+ t6 [control] CTRL armed=True decisive=False winner=None displaced=None margin=None newpool=10 completion=None
+      shown=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')] | without-carried=[('P2.5.aut', 'cue'), ('P2.4.aut', 'cue'), ('P2.3.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'banner': 0, 'drap': 0, 'purpl': 0}
+ t7 [cue D] decisive=False winner=None displaced=None margin=None newpool=12 completion=False
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.4.aut', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.4.aut', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'crevic': 6, 'drip': 6, 'water': 6}
+ t8 [closing] decisive=False winner=None displaced=None margin=None newpool=14 completion=None
+      shown=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')] | without-carried=[('P2.6.aut', 'cue'), ('P2.5.aut', 'cue'), ('P2.5', 'cue')]
+      goal_fill_win=[] echo_load(new records holding each cue non-goal key)={'stir': 0}
+
+ranker pin: calls=425 port mismatches=0 exact (score,timestamp) tie groups=0
+
+JUDGE HALF (63c layer): script lines == PROTOCOL['63c'] literals: True
+r3d calls=128 non-conforming=0 decisive mismatches=0 over_bound=0 max tie orderings=1 C5(k)=0 C5(q)=0
+  r       k=3/4 turns=[3, 4, 5] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  p       k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  e1      k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  e2      k=3/4 turns=[3, 4, 5] contested(any order best)=[4] not-uncontested-literal=[4] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  e3      k=2/4 turns=[3, 4] contested(any order best)=[4] not-uncontested-literal=[4] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  b4      k=1/4 turns=[3] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  cpart   k=3/4 turns=[3, 4, 5] contested(any order best)=[5] not-uncontested-literal=[5] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  cpart2  k=3/4 turns=[3, 4, 5] contested(any order best)=[5] not-uncontested-literal=[5] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  pA      k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  pB      k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  pC      k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  pD      k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  stuckA  k=4/4 turns=[3, 4, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  stuckB  k=3/4 turns=[3, 5, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  stuckC  k=3/4 turns=[3, 4, 7] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+  stuckD  k=3/4 turns=[3, 4, 5] contested(any order best)=[] not-uncontested-literal=[] completion=True planted-winner=True controls={2: 'armed', 6: 'armed'}
+TOTAL decisive cue turns=52; not uncontested-literal=4

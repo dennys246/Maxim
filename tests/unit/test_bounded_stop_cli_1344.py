@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 import maxim
+from tests._child_env import without_maxim_overrides
 
 _DRIVER = Path(__file__).with_name("_cli_signal_driver.py")
 _SRC = str(Path(maxim.__file__).resolve().parents[1])
@@ -32,7 +33,7 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
 
 class _Child:
     def __init__(self, scenario: str, tmp_path: Path, env: dict[str, str] | None = None, *, stdin: Any = None) -> None:
-        child_env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+        child_env = without_maxim_overrides()
         child_env.update({"PYTHONPATH": _SRC, "HOME": str(tmp_path), "PYTHONUNBUFFERED": "1"})
         child_env.update(env or {})
         self.proc = subprocess.Popen(
@@ -206,7 +207,7 @@ def test_g7_on_a_real_tty_with_readline_a_signal_wakes_input(tmp_path: Path, sig
     import select
 
     master, slave = pty.openpty()
-    child_env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    child_env = without_maxim_overrides()
     child_env.update({"PYTHONPATH": _SRC, "HOME": str(tmp_path), "PYTHONUNBUFFERED": "1"})
     proc = subprocess.Popen(
         [sys.executable, str(_DRIVER), "prompt_after_session"],
@@ -475,7 +476,7 @@ def test_g13_a_sigterm_to_the_real_maxim_serve_exits_0_not_143(tmp_path: Path) -
     pytest.importorskip("uvicorn")
 
     port = _free_port()
-    child_env = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    child_env = without_maxim_overrides()
     child_env.update({"PYTHONPATH": _SRC, "HOME": str(tmp_path), "PYTHONUNBUFFERED": "1"})
     proc = subprocess.Popen(
         [sys.executable, str(_DRIVER), "real_serve", str(port)],
@@ -612,6 +613,20 @@ def test_a_command_that_handles_its_own_ctrl_c_keeps_its_exit_code(tmp_path: Pat
     assert code == 0
 
 
+@pytest.mark.parametrize(
+    ("scenario", "sig"), [("late_claim", signal.SIGTERM), ("pre_session_handles_interrupt", signal.SIGINT)]
+)
+def test_a_signal_the_moment_ready_prints_is_caught_by_the_scenario(scenario: str, sig: int, tmp_path: Path) -> None:
+    """#1645: these scenarios printed READY BEFORE entering the ``try`` that catches the stop's KeyboardInterrupt, so a
+    signal sent the moment the parent read READY could land outside it (3 of 6 sharded CI runs failed g10_a). The gap
+    holds the child 0.5 s right after READY: with READY inside the ``try`` the signal is still caught; moved back
+    before it, both cases fail every time (verified by that deletion)."""
+    code, _, child = _run(scenario, tmp_path, sig, env={"CLI_SIGNAL_DRIVER_READY_GAP_S": "0.5"})
+    assert code == 0
+    if scenario == "late_claim":
+        assert "BORN_STOPPED" in child.lines
+
+
 @pytest.mark.parametrize("ask", ["_prompt_confirm", "_prompt_text"])
 def test_a_rich_prompt_entered_after_a_stop_returns_its_default_without_reading(
     ask: str, monkeypatch: pytest.MonkeyPatch
@@ -658,8 +673,13 @@ def test_the_watchdog_kills_the_spawned_servers_process_group(tmp_path: Path) ->
             os.killpg(pid, 0)
         except ProcessLookupError:
             return
+        except PermissionError:  # macOS answers EPERM for a killed group mid-teardown: not gone yet, poll again
+            pass
         time.sleep(0.1)
-    os.killpg(pid, signal.SIGKILL)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError:
+        pass
     raise AssertionError("the spawned server outlived the watchdog")
 
 

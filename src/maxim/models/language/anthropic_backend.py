@@ -13,7 +13,7 @@ from maxim.utils.optional_deps import require_optional_dependency
 from maxim.utils.structured_logging import log_structured
 from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
 from maxim.models.language.config import LLMConfig
-from maxim.models.language.types import LLMResponse
+from maxim.models.language.types import LLMResponse, resolved_entry_key
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,11 @@ class _AnthropicBackend:
 
     def _get_api_key(self) -> str:
         cfg = self._provider_cfg()
+        # An entry marked api_key_resolved sends its already-resolved key, as every backend does (#1371,
+        # models/language/types.py::resolved_entry_key); every other entry stays env-first.
+        resolved = resolved_entry_key(cfg)
+        if resolved:
+            return resolved
         # Provider entry wins; fall back to the top-level LLMConfig.api_key_env
         # (set from the active profile) for the default cloud path where the
         # provider entry is synthesized in the router — same shape as the

@@ -43,24 +43,24 @@ class TestConfigPathResolution:
     def test_system_config_preferred_when_both_exist(self, tmp_path, monkeypatch):
         """System config (/etc/cloudflared/) is authoritative for systemd service."""
         user_cfg = tmp_path / "user.yml"
-        sys_cfg = tmp_path / "system.yml"
+        sys_cfg = tmp_path / "config.yml"
         user_cfg.write_text("user")
         sys_cfg.write_text("system")
         monkeypatch.setattr(daemon_spawner, "USER_CONFIG_PATH", user_cfg)
-        monkeypatch.setattr(daemon_spawner, "SYSTEM_CONFIG_PATH", sys_cfg)
+        monkeypatch.setenv("MAXIM_CLOUDFLARED_SYSTEM_DIR", str(tmp_path))
         assert resolve_config_path() == sys_cfg
 
     def test_system_config_used_when_only_it_exists(self, tmp_path, monkeypatch):
         user_cfg = tmp_path / "missing-user.yml"
-        sys_cfg = tmp_path / "system.yml"
+        sys_cfg = tmp_path / "config.yml"
         sys_cfg.write_text("system")
         monkeypatch.setattr(daemon_spawner, "USER_CONFIG_PATH", user_cfg)
-        monkeypatch.setattr(daemon_spawner, "SYSTEM_CONFIG_PATH", sys_cfg)
+        monkeypatch.setenv("MAXIM_CLOUDFLARED_SYSTEM_DIR", str(tmp_path))
         assert resolve_config_path() == sys_cfg
 
     def test_none_when_neither_exists(self, tmp_path, monkeypatch):
         monkeypatch.setattr(daemon_spawner, "USER_CONFIG_PATH", tmp_path / "a.yml")
-        monkeypatch.setattr(daemon_spawner, "SYSTEM_CONFIG_PATH", tmp_path / "b.yml")
+        monkeypatch.setenv("MAXIM_CLOUDFLARED_SYSTEM_DIR", str(tmp_path / "etc"))
         assert resolve_config_path() is None
 
 

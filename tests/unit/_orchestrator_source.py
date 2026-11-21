@@ -30,7 +30,9 @@ FUNCTION-SPECIFIC PINS. These read an ordering inside the one function (``lineno
 end updates them consciously:
 
   - ``test_report_provenance_m1.py``, ``_start_simulation_mode`` (the start stamp's ``lineno`` before
-    every ``build_primary_router`` call; §0-§1).
+    the ``_build_run_llms`` call, which builds the shared and the AUT router; §0-§1).
+  - ``test_config_sparse_1_2.py::test_the_report_stamps_provenance_before_the_router_is_built`` (the start stamp's
+    ``lineno`` before ``_build_run_llms``, the shared and the AUT's router builds, #1538, #1586, #1396 bullet 2).
   - ``test_finish_reason_1002.py``, ``_start_simulation_mode``. The operator-stop pin separates the
     run's own top-level ``KeyboardInterrupt`` handler (§12) from the nested readers' (§10) with
     ``n is not fn``. Its other pins (the ``_resolve_finish_reason`` arguments in §14, each runner's
@@ -81,10 +83,21 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("sim_teardown.py", "save_session_aut_state"),
     ("sim_teardown.py", "generative_for_new_goal"),
     ("sim_teardown.py", "finish_run"),
+    # #1538 (rule T): the dual-LLM AUT router build, handed its profile (build_primary_router(profile=))
+    ("orchestrator.py", "_build_aut_router"),
+    # #1586 (rule T): the shared router build, handed the run's model (start_simulation_mode(llm_profile=))
+    ("orchestrator.py", "_build_shared_router"),
+    # #1396 bullet 2 review round (rule T): both router builds before either warms or the sandbox is up, and the AUT
+    # router's warmup, split from its build
+    ("orchestrator.py", "_build_run_llms"),
+    ("orchestrator.py", "_warm_aut_router"),
     # the §11 slice (2026-10-30): the stall detector, from a nested closure to stall_detector.py::StallDetector (its
     # methods, by BARE name: ``_function`` requires exactly one def of that name in the file, so a second ``run`` or
     # ``__init__`` there fails loudly, never silently picks one) and the nudge-example builder nested beside it
     ("stall_detector.py", "_build_stall_nudge_example"),
+    # #1592 (2026-11-05): the narrator's checkpoint and nudge texts, out of _on_turn_progress and _nudge
+    ("stall_detector.py", "diversity_checkpoint_text"),
+    ("stall_detector.py", "stall_nudge_text"),
     ("stall_detector.py", "__init__"),
     ("stall_detector.py", "_now"),
     ("stall_detector.py", "run"),
@@ -163,6 +176,9 @@ NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
     "(current_stop() at entry; PR 1b's yield_requested() read moved to sim_teardown with _resolve_finish_reason)",
     "maxim.runtime.tool_policy": "#1315 item 3: the AUT's and the narrator's AgentConfig carry a required ToolPolicy "
     "(aut_tool_policy, orchestrator_tool_policy); a new dependency, not run code moved out",
+    "maxim.models.language.types": "#1396 bullet 2: _build_aut_router lets LocalModelUnavailable (a declined "
+    "--aut-model) past its broad except, so the run refuses instead of measuring the shared model; a new "
+    "dependency, not run code moved out",
 }
 
 # A new top-level function in a pre-slice ``maxim.simulation`` module that is NOT code moved out of the run
@@ -172,6 +188,10 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
     ("tools.py", "_action_summary"): (
         "#1261: the narrator-facing per-action summary, factored out of SendMessageTool, ExtendSimulationTool and "
         "SpawnSubSimulationTool (three identical copies) to add the utterance; not orchestrator run code"
+    ),
+    ("report.py", "_url_scrubbed"): (
+        "#1404 item 2: the recursive URL scrub save_action_log applies to actions.jsonl's params/output/error/"
+        "block_reason; record redaction, not orchestrator run code"
     ),
     ("report.py", "_provider_failures"): (
         "#997: build_report's provider-failure attribution block moved out verbatim (rule T, after the URL scrub "

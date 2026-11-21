@@ -50,7 +50,9 @@ Every argument is keyword-only:
 - `model` is not an existing regular file, cannot be read, or changes while `open()` loads it;
 - `home_dir` or `report_dir` is missing, not writable, a symlink, or the same as or inside the other;
 - a limit is out of range, or `max_prompt_tokens + 1024` exceeds `n_ctx`;
-- the model fails to load.
+- the model fails to load;
+- the platform is not POSIX (Windows): the offline latch is POSIX-only (#1687), so the observer refuses rather than
+  run without it.
 
 `open()` also engages Maxim's process-wide **offline latch**, the same one `MAXIM_OFFLINE=1` raises. It is one way:
 nothing in the process can lower it again. The observer reads no Maxim config file and no data home, and of the

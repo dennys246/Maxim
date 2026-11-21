@@ -84,6 +84,48 @@ class StopStillPending(MaximError, RuntimeError):
         super().__init__(message)
 
 
+class LLMServerPortBusy(MaximError, RuntimeError):
+    """The port this process would spawn its llama-cpp-server on is held by a listener it cannot reuse: a keyed
+    server that stayed busy for the whole spawn budget, a server that answers without a key, or something that is not
+    a llama-cpp-server (#1344 PR 3a). Nothing is killed: a server maxim did not start is the operator's to stop.
+
+    Not a :class:`LeaderRefusal`: server mode reports it NOT READY and stays up behind its proxy (``peer restart``
+    still reaches it), and the CLI exits 2 with ``fix_hint``. Raised by ``runtime/llm_server.py::preflight_spawn``.
+    """
+
+    fix_hint = (
+        "Wait for that server to finish (a leader's server is busy while it generates), reuse it with the same model, "
+        "or stop the process named above; then start maxim again."
+    )
+
+    def __init__(self, port: int, listener: str, why: str) -> None:
+        super().__init__(
+            f"port {port} is held by {listener}, which {why}: this process cannot reuse it, and will not spawn a "
+            "second llama-cpp-server beside it (it would load the model again and fail to bind)"
+        )
+        self.port = port
+
+
+class LLMSwapRefused(MaximError, RuntimeError):
+    """A hot swap (the leader proxy's llm-swap admin route) this process will not do, for a reason the operator can
+    act on (#1408).
+    The message and ``fix_hint`` are static, so the leader proxy returns both as a 409
+    (``leader_proxy.py::_ProxyHandler._handle_admin_llm_swap``) instead of a generic 500. Raised by
+    ``runtime/lane_backends.py::_swap_key`` when no llama-cpp-server started by this process is there to swap.
+
+    Not a :class:`LeaderRefusal`: a swap refusal is not a security refusal. A ``RuntimeError``, so a caller catching
+    that still catches it.
+    """
+
+    fix_hint = "Restart maxim on the leader with the new model."
+
+
+class LLMSwapInProgress(LLMSwapRefused):
+    """Another hot swap is running in this process (``lane_backends.py::swap_llm_server``'s swap lock is held)."""
+
+    fix_hint = "Wait for the running swap to finish, then check `maxim peer llm --status`."
+
+
 class LeaderRefusal(MaximError, RuntimeError):
     """A process refused to serve because doing so would be unauthenticated or over-exposed.
 
@@ -126,8 +168,9 @@ class AdvisorCompositionError(AdvisorError, ValueError):
     """``maxim.advisor.open()`` refused to build the observer (#1315 item 1, §4.2 "Refusals at open()").
 
     A pinned code-loading variable is set, the model is not an existing regular file, the home or report directory
-    is missing, not writable, a symlink or overlaps the other, a limit is out of range, or the backend failed to
-    load. Nothing was built, so there is no report.
+    is missing, not writable, a symlink or overlaps the other, a limit is out of range, the backend failed to
+    load, or the platform is not POSIX, so the offline latch refused (#1687; ``__cause__`` is the latch's
+    ``OfflineUnsupportedPlatform``). Nothing was built, so there is no report.
     """
 
 
@@ -630,6 +673,9 @@ __all__ = [
     "MaximError",
     "KeyFileUnusable",
     "StopStillPending",
+    "LLMServerPortBusy",
+    "LLMSwapRefused",
+    "LLMSwapInProgress",
     "LeaderRefusal",
     "AdvisorError",
     "AdvisorCompositionError",

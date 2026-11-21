@@ -57,6 +57,7 @@ SHARED_PATHS = (
     "scripts/_lint_git.py",
     "scripts/check_lane_roster.py",
     "scripts/ci_netns.sh",
+    "scripts/ci_netns_probe.py",
 )
 
 # extra -> the paths (prefixes) whose change makes a PR run that extra's cells: the extra's code, what its marked tests

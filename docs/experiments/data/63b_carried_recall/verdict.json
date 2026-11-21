@@ -1,0 +1,377 @@
+{
+  "attempts": [
+    {
+      "run_id": "06142f16a488415398e4694dfe6f1458",
+      "k": 1,
+      "complete": true,
+      "problems": []
+    }
+  ],
+  "experiment": "63b",
+  "within_campaign_leaks": [],
+  "deciding_attempt": "06142f16a488415398e4694dfe6f1458",
+  "gates": {
+    "N1": 16,
+    "seq_C": 15,
+    "P0": {
+      "pass": true,
+      "N1": 16
+    },
+    "P1": {
+      "first_trace_hippocampus_size": 17,
+      "pass": true
+    },
+    "P2": {
+      "missing": [],
+      "pass": true
+    },
+    "P3": {
+      "changed": {},
+      "new_not_after_seq_C": [],
+      "pass": true
+    },
+    "R1": {
+      "pass": true,
+      "turns": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    "R2prime": {
+      "restore_digest": "bf7a77d01e23364a97b88653f157fd5f93f0d3711a5bcffb3d83b9ca1679e860",
+      "phase1_saved_digest": "bf7a77d01e23364a97b88653f157fd5f93f0d3711a5bcffb3d83b9ca1679e860",
+      "pass": true
+    },
+    "R3prime": {
+      "pass": true,
+      "nonconforming": []
+    },
+    "R3a": {
+      "turn": 1,
+      "ids": [
+        "10702ae8-1d05-426f-b648-28d67f5d9b39",
+        "f3fb982d-30c4-4670-b944-d58b20d4c1e1",
+        "ef9259b9-d712-4cd4-941b-0699d10e005d"
+      ],
+      "status": "held",
+      "pass": true
+    },
+    "R3d": {
+      "decisive_turns": [],
+      "pass": false
+    },
+    "descriptive": {
+      "status": "DESCRIPTIVE (never gating)",
+      "turns": {
+        "1": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 17,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 3,
+          "carried_share": 1.0,
+          "cue_nongoal_keys": [
+            "locat",
+            "tell"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "10702ae8-1d05-426f-b648-28d67f5d9b39": 1,
+            "f3fb982d-30c4-4670-b944-d58b20d4c1e1": 0,
+            "ef9259b9-d712-4cd4-941b-0699d10e005d": 0
+          },
+          "cue_added_over_goal": [
+            "10702ae8-1d05-426f-b648-28d67f5d9b39"
+          ],
+          "distinct_heard_texts": 2,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "2": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 19,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 2,
+          "carried_share": 0.6666666666666666,
+          "cue_nongoal_keys": [
+            "next",
+            "step",
+            "toward"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "f3fb982d-30c4-4670-b944-d58b20d4c1e1": 0,
+            "9801e5ad-95b2-4ca6-a8f1-ff5ec67ed17e": 0,
+            "9f640158-72cb-45d0-bec7-fbddc741531a": 0
+          },
+          "cue_added_over_goal": [],
+          "distinct_heard_texts": 2,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "3": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 21,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 2,
+          "carried_share": 0.6666666666666666,
+          "cue_nongoal_keys": [
+            "next",
+            "step",
+            "toward"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "7438f4c3-87d2-4463-80f4-9995d42f99dc": 3,
+            "f3fb982d-30c4-4670-b944-d58b20d4c1e1": 0,
+            "9801e5ad-95b2-4ca6-a8f1-ff5ec67ed17e": 0
+          },
+          "cue_added_over_goal": [],
+          "distinct_heard_texts": 3,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "4": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 23,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 1,
+          "carried_share": 0.3333333333333333,
+          "cue_nongoal_keys": [
+            "next",
+            "step",
+            "toward"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "674fa6dd-44bf-4b73-9fb2-71467edf96ca": 3,
+            "7438f4c3-87d2-4463-80f4-9995d42f99dc": 3,
+            "f3fb982d-30c4-4670-b944-d58b20d4c1e1": 0
+          },
+          "cue_added_over_goal": [],
+          "distinct_heard_texts": 3,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "5": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 25,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 0,
+          "carried_share": 0.0,
+          "cue_nongoal_keys": [
+            "interact",
+            "location",
+            "tool",
+            "use"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "9f640158-72cb-45d0-bec7-fbddc741531a": 3,
+            "f5be26fb-464b-4f16-96c5-92f8ae561e66": 3,
+            "54b22c62-b326-466e-99d8-09916156a33f": 3
+          },
+          "cue_added_over_goal": [
+            "9f640158-72cb-45d0-bec7-fbddc741531a",
+            "f5be26fb-464b-4f16-96c5-92f8ae561e66",
+            "54b22c62-b326-466e-99d8-09916156a33f"
+          ],
+          "distinct_heard_texts": 0,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "6": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 27,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 1,
+          "carried_share": 0.3333333333333333,
+          "cue_nongoal_keys": [
+            "next",
+            "step",
+            "toward"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "1a96e171-cbe1-4748-8a75-ab730de6b09a": 3,
+            "674fa6dd-44bf-4b73-9fb2-71467edf96ca": 3,
+            "f3fb982d-30c4-4670-b944-d58b20d4c1e1": 0
+          },
+          "cue_added_over_goal": [],
+          "distinct_heard_texts": 3,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "7": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 29,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 0,
+          "carried_share": 0.0,
+          "cue_nongoal_keys": [
+            "weakness"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "6b05065d-8f17-4f12-a422-3dda002276ef": 0,
+            "c60663a5-287b-4419-a3f0-6cf6d71441be": 0,
+            "5e73f581-cb05-486d-b7aa-6277519e0bea": 0
+          },
+          "cue_added_over_goal": [
+            "6b05065d-8f17-4f12-a422-3dda002276ef",
+            "5e73f581-cb05-486d-b7aa-6277519e0bea"
+          ],
+          "distinct_heard_texts": 1,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        },
+        "8": {
+          "orderings": 1,
+          "over_bound": false,
+          "visible": 31,
+          "late": [],
+          "conforms": true,
+          "decisive": false,
+          "paths": [
+            "cue",
+            "cue",
+            "cue"
+          ],
+          "observed_carried": 1,
+          "carried_share": 0.3333333333333333,
+          "cue_nongoal_keys": [
+            "next",
+            "step",
+            "toward"
+          ],
+          "cue_hits_on_nongoal_keys": {
+            "c60663a5-287b-4419-a3f0-6cf6d71441be": 3,
+            "674fa6dd-44bf-4b73-9fb2-71467edf96ca": 3,
+            "f3fb982d-30c4-4670-b944-d58b20d4c1e1": 0
+          },
+          "cue_added_over_goal": [],
+          "distinct_heard_texts": 3,
+          "goal_fill_win": [],
+          "carried_hidden_by_a_newer_copy": []
+        }
+      },
+      "new_records_per_input": 1.875
+    },
+    "verdict": "NOT SHOWN",
+    "not_passed": [
+      "R3d"
+    ]
+  },
+  "verdict": "NOT SHOWN",
+  "apparatus_checked": true,
+  "apparatus": {
+    "markers": [
+      {
+        "k": 1,
+        "ref": "refs/tags/o19/63b/attempt-1-06142f16a488415398e4694dfe6f1458",
+        "object": "6b1fe70c891804296124b99da94760e7b9a008bb",
+        "peeled": "e841abca42e29ce17697621a524659e1401f13d8",
+        "tagger_date": 1794071702.0,
+        "run_id": "06142f16a488415398e4694dfe6f1458"
+      }
+    ],
+    "ruleset": {
+      "id": 24345734,
+      "created_at": "2026-10-01T21:27:48.500-06:00",
+      "updated_at": "2026-10-01T21:27:48.517-06:00",
+      "history_versions": [
+        51650702
+      ]
+    },
+    "rows_history": [
+      {
+        "commit": "d4bbb360a4789051ee9195ba5dd5225bb9087be9",
+        "committed_at": 1794076393.0
+      }
+    ],
+    "landed": {
+      "06142f16a488415398e4694dfe6f1458": 1794076393.0
+    },
+    "succession": null
+  },
+  "bound_files": {
+    "docs/experiments/exp63b_carried_recall_prereg.md": "3addf3632d2af61c9853fdb971ebbe6f419460f9",
+    "scripts/o19_verdict.py": "ab3d9d26c3122c609fed435011c4b34a0e9c31b8",
+    "scripts/o19_rerun.py": "08d9220bed8bad367befefe5245ecb8a587d0fc4"
+  },
+  "verdict_commit": "d4bbb360a4789051ee9195ba5dd5225bb9087be9",
+  "verdict_source_sha256": "626caa22da85d9c97fd689124f29cf859d63a2c1b741741a41b89e47a5327542",
+  "record_kind": "verdict",
+  "kind": "exp63b_verdict",
+  "data": "docs/experiments/data/63b_carried_recall/rows.jsonl",
+  "data_sha256": "2b77da95e6f46a8ae23282dc7b721fbcab7c487d3bafa49cad306c978a935e84",
+  "scope": {
+    "all_rows": true
+  },
+  "mock": false,
+  "provenance": {
+    "executed_maxim_file": "/home/dennys/GitSpot/Maxim/.worktrees/63b-verdict/src/maxim/__init__.py",
+    "executed_git_hash": "d4bbb360a4789051ee9195ba5dd5225bb9087be9",
+    "harness_run_id": "b79e8779ad5c4eb1970491f3421532ef",
+    "harness_family": "in_process",
+    "working_tree_dirty_src_scripts": false,
+    "code_tree_sha256": "be295a6ce2330860617bbfa0026bbc5be2ebc190eb4a9891c9eb3fece66b85a4",
+    "python": "/home/dennys/GitSpot/Maxim/.venv/bin/python",
+    "pythonpath": "/home/dennys/GitSpot/Maxim/.worktrees/63b-verdict/src"
+  },
+  "_format_version": "1.0"
+}

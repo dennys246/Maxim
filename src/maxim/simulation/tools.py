@@ -1395,7 +1395,8 @@ class SpawnSubSimulationTool(Tool):
         llm_router: Any,
         stop_event: Any = None,
         parent_bridge: Any = None,
-        sim_tmpdir: str = ".",
+        *,
+        sim_tmpdir: str,  # required (#1264): the sub-AUT's workspace and state root, never a CWD-relative "."
         sandbox_dirs: list[str] | None = None,
     ) -> None:
         super().__init__()
@@ -1610,6 +1611,7 @@ class SpawnSubSimulationTool(Tool):
                     target_hz=2.0,
                     percept_source=sub_bridge.percept_source,
                     action_sink=sub_bridge.action_sink,
+                    state_home=self._sim_tmpdir,  # the parent sim's sandbox: the state file goes with it (#1264)
                 )
             except Exception as e:
                 sub_error.append(e)

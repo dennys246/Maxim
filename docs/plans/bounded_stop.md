@@ -402,17 +402,101 @@ exits 0, not 143. What changed from the text above, and why:
 
 **Residuals:** daemon threads freeze at interpreter finalization, so a hang in module teardown is not bounded by the
 watchdog; a model download does not poll the stop (a second Ctrl+C forces); a server whose readiness wait was interrupted
-is not yet registered for the kill (PR 3).
+is not yet registered for the kill (PR 3; closed by PR 3a, §7a).
 
 ## 7. PR 3: spawned servers
 
-- A registry of every spawner.
-- A per-port pidfile (`_format_version`, atomic, `stable_hash` of the cmdline) records owner and server pid plus
-  create_time. The create_time source is `/proc/<pid>/stat` on Linux and `ps -o lstart=` on macOS. psutil is used only
-  through `utils/optional_deps.py`, never assumed. A process that reuses a server re-stamps the owner; only the named owner removes the file.
-- The reaper acts only when the owner is dead AND the create_time matches (on by default; owner decision).
-- Servers are killed with `os.killpg`, asserting `start_new_session`.
-- Linux pdeathsig goes through an exec wrapper, from a long-lived thread only. macOS gets the pidfile only (accepted).
+**Split 2026-11-03 (owner decisions).** Four design rounds on one reaper did not converge (blockers 2, 1, 2, 1, all one
+class: a reap firing while the server is in use; "owner dead" is not "unused", and llama_cpp's `/v1/models` waits on
+its generation lock, so a busy server reads as dead). The owner split PR 3, took lock-based liveness for the reaper
+(3b; it replaces the "owner dead AND create_time matches" predicate above), removed `kill_stale_llm_servers` from both
+callers, and put cloudflared in the registry, killed by `_die` only.
+
+### 7a. PR 3a (#1344): stop killing; register every child (this PR)
+
+Promise: **no maxim code kills a process it did not start; every LLM server and tunnel daemon it spawns dies on a
+forced stop.** (The Reachy ssh tunnel, sandbox scripts and docker are not covered.) Approach note and its four design
+rounds: the PR body.
+- **The registry** is the stop module's kill list (`utils/cancellation.py`): `spawn_registered` launches and registers
+  as one step under its lock, so a server is reachable from its Popen (its readiness wait included), and a closed
+  registry launches nothing. `_die` reads it lock-free and SIGKILLs each live group; `signal_child_group` acts only on
+  a real Popen whose leader is unreaped (it holds the pgid, so the group is never a stranger's). Every other stop goes
+  through the owner's `stop()`, the one claimer that reaps: SIGTERM to the group, SIGKILL only while unreaped, nothing
+  after the reap.
+- **`kill_stale_llm_servers` is deleted.** After the singleton check says "spawn", `llm_server.preflight_spawn`
+  decides without killing: a pending stop refuses the spawn; our own server is reused on a model match; a keyless
+  `/v1/models` tells a free port (spawn) from a keyed server (401, costs no lock), which gets ONE keyed check with the
+  spawn budget; anything else raises `LLMServerPortBusy` naming the listener's pid. What each caller of
+  `build_primary_router` does with it (and with `StopStillPending(refused="the LLM server spawn")`), every row better
+  than main, which killed the other server:
+
+  | Caller | Outcome |
+  |---|---|
+  | the CLI (`cli._main_guarded`: a sim, chat, any run mode) | exit 2 with `fix_hint` (a stop: the stop's exit code) |
+  | server mode (`cli._start_server_llm`) | NOT READY, stays up behind its proxy; exit 1 without one |
+  | the robot / live runtime (`agentic_runtime`) | WARNING, runs without the LLM (its existing degrade) |
+  | research (`research_orchestrator`) | WARNING, Writer/Reviewer fall back to heuristics |
+  | the sim's AUT rebuild (`orchestrator`, `aut_model`) | WARNING, the AUT shares the primary router |
+  | the menu's campaign load | "Failed to load campaign: ..." |
+  | `api.py`, `create.py`, `console/handle.py` | propagates to the caller |
+- **A restart** (`leader_proxy._do_restart`) closes the registry, then stops every LLM server this process spawned
+  through its owner; cloudflared survives the execv as before.
+- **Residuals, stated:** an orphan from a crash or an older maxim needs one manual kill (the refusal names it); a
+  `peer restart` onto a 401 orphan exits 2 (keeping the proxy up would forward the mesh key to it); an orphan still
+  loading is invisible to the keyless probe; no Linux pdeathsig yet; a cold-boot leader whose spawn does not succeed
+  starts no tunnel (pre-existing, issue drafted); keyed probes can truncate a streaming generation (pre-existing,
+  `interrupt_requests`, issue drafted); while a hot swap is loading, `_active_spawner` is None, so a same-process
+  rebuild in that window sees a free port and spawns beside it (on main the old sweep killed the swap's server); an
+  `os.execv` that raises leaves the process with its registry closed (every later spawn refused; the swap path
+  already refuses, `_active_spawner` being cleared).
+
+### 7b. PR 3b (#1344): no automatic reaper; an operator-run `maxim llm reap`
+
+**Owner decision 2026-11-06:** no automatic reaper. Five design rounds on the lock-based one (blockers 2, 1, 2, 1, 4)
+found one class every time: a reap while the server is in use. What automatic reaping would need (a per-use token
+every user of the server holds) is recorded with round 5, not built. The replacement went two further rounds (6:
+sound with conditions; delta 7: sound with conditions, no further round owed). Carried decisions: identity by spawn
+record only; Linux pdeathsig is #1613; the cold-boot tunnel/proxy gap is #1610, its own PR; the hot-swap 409 question
+is moot.
+
+Promise: 3a's holds, **no maxim code kills a process it did not start**, and nothing kills automatically. The one new
+kill path is run by an operator at a terminal and acts only on a server a maxim process recorded spawning, whose
+identity still matches at signal time.
+- **The spawn record** (`runtime/llm_spawn_record.py`): `<llm_spawn_record_dir()>/<port>.<pid>.json`, written by
+  `LocalServerSpawner.start` right after `spawn_registered` (auto-spawn and the hot swap), with the server's start time
+  (Linux `/proc/<pid>/stat` field 22 plus the boot id; macOS `ps -o lstart` under `LC_ALL=C TZ=UTC`), model, spawner
+  pid and start time. The writer first prunes the provably dead records for its port (files only). The owner's
+  `stop()` unlinks its own record once the leader is reaped. Advisory: no record means no reap (3a's behaviour).
+  The dir is `utils/paths.py::llm_spawn_record_dir`, the passwd home's `.maxim/run/llm_server/` (never `HOME` or
+  `MAXIM_DATA_HOME`: a port is box-wide), override `MAXIM_LLM_SPAWN_RECORD_DIR`; created 0700, and a dir or file that is
+  a symlink, another user's, or group/world-writable is neither written nor trusted.
+- **`maxim llm reap [--port N]`** reads every record for the port, then the listeners (Linux `/proc/net/tcp*` over every
+  uid in the netns, inodes mapped through `/proc/<pid>/fd`; macOS `lsof`, whose absence refuses). It acts only on
+  exactly one visible listener that is an alive recorded pid whose start time, boot id and exact `--port <N>` argv pair
+  all match. No listener and no live record: exit 0. A live record not listening (loading or hung), a listener with no
+  record or a mismatched one, several listeners or an unattributable socket: reported, exit 2. The report gives the
+  pid, model, age, whether the spawner lives, and the server-side ESTABLISHED connections, with "connections are a
+  hint: a client between calls holds none". It opens no connection of its own.
+- **The gate:** unless stdin AND stdout are TTYs it prints the report and "run `maxim llm reap --port N` yourself in a
+  terminal", exit 2, without reading stdin or printing a kill line. At a TTY the operator types the pid (anything else
+  cancels, exit 1); connections are re-read after it, and a new one is shown and asked again. A pty wrapper defeats the
+  TTY check: agents are kept off the command by policy (CLAUDE.md's agent command list; backlog M87, M86 being #1614's).
+- **The kill.** Linux: `pidfd_open` (a failure refuses; never `os.kill` by number), identity re-verified while the pidfd
+  pins the process, SIGTERM through the pidfd with `PIDFD_SIGNAL_PROCESS_GROUP` (4) when the kernel takes it (6.9+),
+  else to the leader and then `killpg` only while the leader has not exited; 5 s, then SIGKILL the same way. macOS:
+  identity re-verified before each signal. Then the record is unlinked. Exit 0 reaped, 1 cancelled, 2 refused.
+- **Surfaced:** `_wrong_model_error` and `LLMServerKeyRejected` name the command; `LLMServerPortBusy` does not (its
+  "stayed busy" case is a server generating for someone). `maxim doctor` gains a read-only INFO line per stale record
+  or recorded server whose spawner is gone; it never says a server is unused.
+- **Residuals, stated:** no record, no reap (a pre-3b orphan or a hand-started server is killed by hand); connections
+  are a hint, so a confirmed kill can still cut off a client between calls (and on Linux a connection still in the
+  accept queue has no server fd, so it is not counted); a pty wrapper defeats the TTY check; on
+  Linux before 6.9 and on macOS the group signal goes by number (a leader exiting between the check and `killpg`, with
+  an empty group and an immediate pid wrap, could reach a stranger's group); a group member that ignores SIGTERM
+while its leader exits is not followed, as in 3a's `stop_child_group` (llama_cpp.server does not fork today); macOS
+`lsof` sees only this user's
+  sockets, so an unattributable listener is not detected there; native Windows writes no records and the command
+  refuses.
 
 ## 8. Proof
 

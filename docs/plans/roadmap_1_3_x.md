@@ -1078,7 +1078,7 @@ Also, an utterance shaped like an instruction appears only inside the frame. Ide
   - #1515 (f177ab45) ships #1137: the user's words survive compression (`hippocampus.json` 1.2).
   - The design record is [recall_1_3_4.md](recall_1_3_4.md), SHIPPED.
 - **Blocking the recall CLAIM, not the code:** [#1476](https://github.com/dennys246/Maxim/issues/1476), T1-16's
-  judge rebuild and Exp 63 re-run. T1-16 is STALE since 2026-10-25. 1.3.4 may publish the fixes, but its notes claim no
+  judge rebuild and Exp 63 re-run. T1-16 was STALE from 2026-10-25 (update 2026-11-16: EARNED 2026-11-13, narrow, on Exp 63c, an owner reading of BF2; see DECISIONS.md 2026-11-16, BF2-R1). 1.3.4 may publish the fixes, but its notes claim no
   cross-session recall until a stamped re-run lands (weak evidence never gates). It is a pure re-run, so it needs no
   design review; it needs the harness provenance assert and a box with no leader beside it.
 - **Deferred, tracked:** [#1516](https://github.com/dennys246/Maxim/issues/1516) (the boundary, activation and

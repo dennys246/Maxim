@@ -14,6 +14,8 @@ def test_user_state_and_cache_roots_are_session_isolated() -> None:
     assert "MAXIM_DATA_HOME" not in os.environ
     assert Path(os.environ["XDG_CONFIG_HOME"]).is_relative_to(isolation_root)
     assert Path(os.environ["XDG_CACHE_HOME"]).is_relative_to(isolation_root)
+    # /etc is not under HOME: the host's tunnel config would make role detection resolve "leader" (2026-11-05).
+    assert Path(os.environ["MAXIM_CLOUDFLARED_SYSTEM_DIR"]).is_relative_to(isolation_root)
     if not os.environ.get("MAXIM_RUN_MODEL_TESTS"):
         assert Path(os.environ["HF_HOME"]).is_relative_to(isolation_root)
         assert Path(os.environ["TORCH_HOME"]).is_relative_to(isolation_root)

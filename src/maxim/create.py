@@ -433,21 +433,23 @@ def router(model: str = "mistral-7b") -> Any:
     Raises:
         ConfigurationError: no LLM backend could be built for ``model``. The message names what is missing: the
             provider key (e.g. ``ANTHROPIC_API_KEY``) for a cloud profile, or a configured local profile (#1338).
+        LocalModelUnavailable: ``model`` is a local model that is not on disk and was not downloaded (the consent
+            gate asks at a terminal on the main thread; elsewhere only a standing grant downloads it, #1658). A ``ConfigurationError`` too, so
+            the clause above catches it; its ``fix_hint`` says how to get the model (#1396).
 
     Example::
 
         llm = maxim.create.router(model="claude-sonnet")
         response = llm.generate("What should I do next?", max_tokens=100)
     """
-    # Set env vars in a scoped way — save originals, restore after build
+    # The model goes to the build as its profile, never through MAXIM_LLM_PROFILE (#1538). MAXIM_LLM_ENABLED is
+    # still set in a scoped way — save the original, restore after build.
     _saved_enabled = os.environ.get("MAXIM_LLM_ENABLED")
-    _saved_profile = os.environ.get("MAXIM_LLM_PROFILE")
     try:
         os.environ["MAXIM_LLM_ENABLED"] = "1"
-        os.environ["MAXIM_LLM_PROFILE"] = model
         from maxim.runtime.lane_backends import build_primary_router
 
-        router_instance, _ = build_primary_router()
+        router_instance, _ = build_primary_router(profile=model)
         if router_instance is None:
             from maxim.exceptions import ConfigurationError
 
@@ -459,7 +461,3 @@ def router(model: str = "mistral-7b") -> Any:
             os.environ.pop("MAXIM_LLM_ENABLED", None)
         else:
             os.environ["MAXIM_LLM_ENABLED"] = _saved_enabled
-        if _saved_profile is None:
-            os.environ.pop("MAXIM_LLM_PROFILE", None)
-        else:
-            os.environ["MAXIM_LLM_PROFILE"] = _saved_profile

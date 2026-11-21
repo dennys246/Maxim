@@ -122,7 +122,7 @@ ships, **the sandbox is that channel's only guard**:
 | Environment | `MAXIM_ROLE=leader` (proxy, mesh, tunnel), other `MAXIM_*` toggles, `~/.config/maxim/config.json` | the closed builder builds from a closed config: it ignores `MAXIM_*` and the user config file | Maxim's gate |
 | Context (reads) | `runtime/prefetch.py` runs `find` and direct `open()` reads of `os.getcwd()` (captured at loop setup) on every input, outside the registry (#1342) | the closed builder: no prefetch, or prefetch rooted in an empty directory set before setup *(superseded, V1: no loop, so no prefetch)* | Maxim's gate, once item 1 ships |
 | Egress | the LLM; cloud lanes and provider keys; model, encoder, vision, whisper and voice downloads; a second consent-free download in `llama_backend.py`; `transformers`; docker pulls; hivemind; the leader proxy and tunnel | item 10 (offline, a census-backed refusal) plus the closed builder (local LLM only) | Maxim's gate for fetches, once item 10 ships |
-| Disk | the loop's `data/agents/<agent>/runtime/state_*.json` under the CWD; Hippocampus, NAc and session saves; `lane_decisions.jsonl`; `MAXIM_LOG_FILE`; `utils/config.py::save_config`; `sim_reports` | item 7 (ephemeral) | sandbox only |
+| Disk | the loop's `runtime_state/<agent>/state_*.json` under the data home (since #1264); Hippocampus, NAc and session saves; `lane_decisions.jsonl`; `MAXIM_LOG_FILE`; `utils/config.py::save_config`; `sim_reports` | item 7 (ephemeral) | sandbox only |
 | Inbound | `comms/api.py`, the tailed `<home>/cli/*.jsonl`, console `talk()` | item 4 (one framed entry point) | sandbox only |
 
 **AD5, restated (decided):** Maxim's guard holds on its own for the channels marked "Maxim's gate". The sandbox is an
@@ -310,7 +310,8 @@ proposal log back into a dispatch.
   - So Maxim also writes the server's pid to a pidfile under the data home. The supervisor kills that group as well.
   - Today neither cleanup path frees the GPU:
     - `runtime/orphan_reaper.py` matches only `--sim` command lines;
-    - `kill_stale_llm_servers` kills only servers that are not responding, and a responding orphan is reused.
+    - `kill_stale_llm_servers` is gone (#1344 PR 3a): nothing kills a server Maxim did not start, and an occupied port
+      refuses with the listener's pid.
 - **The supervisor contract:** send SIGTERM to Maxim, then wait `yield_timeout_s` plus a margin. Then SIGKILL Maxim's
   process group *and* the server group named in the pidfile.
 - **Why the bound needs a margin:** Python runs a signal handler only after the current C call returns (a llama.cpp
