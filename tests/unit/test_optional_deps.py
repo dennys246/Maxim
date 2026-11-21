@@ -370,11 +370,11 @@ def test_import_refused_classifies_by_cause(exc, import_name, refused):
     assert import_refused(exc, import_name) is refused
 
 
-# ── #1647: a module owned by an extra imports without it; only USING the extra's surface needs it ─────────────────
-# The fresh-import sweep (tests/integration/test_fresh_import_sweep.py, nightly) imports every module first in a bare
-# interpreter. ``motor_cortex`` raised a plain ImportError at import when keras was absent, so the slow lane (which
-# does not install ``training``) was red from 2026-11-01. The keras-derived classes are now built on first access and
-# a missing keras surfaces there, as the typed error, with the ``training`` hint.
+# ── #1647: an extra's own module refuses TYPED without the extra ────────────────────────────────────────────────
+# ``motor_cortex`` raised a plain ImportError at import when keras was absent, and the fresh-import sweep
+# (tests/integration/test_fresh_import_sweep.py, nightly) read it as a defect, so the slow lane (no ``training``) was
+# red from 2026-11-01. The module is the ``training`` extra's own: the sweep lists it in ``EXTRA_OWNED``, and the
+# module refuses with ``OptionalDependencyError(keras, training)``, the one refusal the sweep accepts for it.
 
 _MOTOR = "maxim.models.movement.motor_cortex"
 _SRC = str(Path(__file__).resolve().parents[2] / "src")
@@ -392,50 +392,46 @@ def _run_child(code: str, *, hide_keras: bool) -> subprocess.CompletedProcess[st
     )
 
 
-def test_motor_cortex_imports_without_keras_and_refuses_typed_on_use():
+def test_motor_cortex_without_keras_refuses_typed_at_import():
     proc = _run_child(
-        "import importlib, json, os\n"
-        f"m = importlib.import_module({_MOTOR!r})\n"
-        "out = {'tf_env_set': 'TF_GPU_ALLOCATOR' in os.environ, 'resolve': m._resolve_input_shape(None)}\n"
+        "import importlib, json\n"
         "from maxim.utils.optional_deps import OptionalDependencyError\n"
-        "for name in ('LayerScale', 'MotorCortex', 'motor_cortex', 'load_motor_model'):\n"
-        "    try:\n"
-        f"        exec(f'from {_MOTOR} import {{name}}')\n"
-        "        obj = getattr(m, name)\n"
-        "        out[name] = 'ok' if name == 'load_motor_model' else 'no error'\n"
-        "    except OptionalDependencyError as e:\n"
-        "        out[name] = [e.import_name, e.extra]\n"
         "try:\n"
-        "    m.no_such_name\n"
-        "except AttributeError:\n"
-        "    out['missing'] = 'AttributeError'\n"
+        f"    importlib.import_module({_MOTOR!r})\n"
+        "    out = 'imported'\n"
+        "except OptionalDependencyError as e:\n"
+        "    out = [e.import_name, e.extra, 'training' in e.fix_hint]\n"
         "print(json.dumps(out))\n",
         hide_keras=True,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
-    out = json.loads(proc.stdout.strip().splitlines()[-1])
-    assert out["resolve"] == [None, None, 3]
-    assert out["tf_env_set"] is False, "the TF env defaults belong to building the model, not to importing the module"
-    for name in ("LayerScale", "MotorCortex", "motor_cortex"):
-        assert out[name] == ["keras", "training"], (name, out[name])
-    assert out["load_motor_model"] == "ok"
-    assert out["missing"] == "AttributeError"
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == ["keras", "training", True]
 
 
-def test_motor_cortex_builds_its_keras_classes_once_with_their_own_names():
-    """The with-keras half, against a stand-in keras (the real one costs minutes of TensorFlow start-up): the classes
-    subclass keras's, are built once, keep the module-level names a checkpoint records, and the alias holds."""
+def test_motor_cortex_with_keras_defines_its_classes_after_the_tf_env():
+    """The with-keras half, against a stand-in keras (the real one costs minutes of TensorFlow start-up): the TF GPU
+    defaults are set BEFORE keras is imported, the classes subclass keras's under their module-level names (what a
+    checkpoint's ``custom_objects`` records), and the ``motor_cortex`` alias holds."""
     proc = _run_child(
-        "import json, types\n"
-        "keras = types.ModuleType('keras')\n"
-        "keras.layers = types.SimpleNamespace(Layer=type('Layer', (), {}))\n"
-        "keras.Model = type('Model', (), {})\n"
-        "sys.modules['keras'] = keras\n"
-        f"import {_MOTOR} as m\n"
+        "import importlib.abc, importlib.util, json, os, types\n"
+        "seen = {}\n"
+        "class _StandIn(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        return importlib.util.spec_from_loader(name, self) if name == 'keras' else None\n"
+        "    def create_module(self, spec):\n"
+        "        return None\n"
+        "    def exec_module(self, module):\n"
+        "        seen['env_at_keras_import'] = os.environ.get('TF_GPU_ALLOCATOR')\n"
+        "        module.layers = types.SimpleNamespace(Layer=type('Layer', (), {}))\n"
+        "        module.Model = type('Model', (), {})\n"
+        "sys.meta_path.insert(0, _StandIn())\n"
+        "os.environ.pop('TF_GPU_ALLOCATOR', None)\n"
         f"from {_MOTOR} import LayerScale, MotorCortex, motor_cortex\n"
+        "keras = sys.modules['keras']\n"
         "print(json.dumps({\n"
+        "  'env': seen.get('env_at_keras_import'),\n"
         "  'layer': issubclass(LayerScale, keras.layers.Layer), 'model': issubclass(MotorCortex, keras.Model),\n"
-        "  'alias': motor_cortex is MotorCortex, 'cached': m.MotorCortex is MotorCortex,\n"
+        "  'alias': motor_cortex is MotorCortex,\n"
         "  'names': [LayerScale.__qualname__, MotorCortex.__qualname__, LayerScale.__module__],\n"
         "}))\n",
         hide_keras=False,
@@ -443,9 +439,9 @@ def test_motor_cortex_builds_its_keras_classes_once_with_their_own_names():
     assert proc.returncode == 0, proc.stderr[-2000:]
     out = json.loads(proc.stdout.strip().splitlines()[-1])
     assert out == {
+        "env": "cuda_malloc_async",
         "layer": True,
         "model": True,
         "alias": True,
-        "cached": True,
         "names": ["LayerScale", "MotorCortex", _MOTOR],
     }
