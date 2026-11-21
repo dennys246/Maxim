@@ -7,7 +7,7 @@ parallel, whose findings are folded into the same branch before the PR opens (CL
 (`report.json`, JSONL, persisted stores). Each lens reports **BLOCKER / SHOULD-FIX / NIT** with a `file::symbol` and a
 concrete failure scenario, and gives every finding a **disposition**: `FOLD` (the default), or `FILE: <reason>` where
 the reason is one of CLAUDE.md's "Filing is not fixing" list (`owner-decision`, `hardware`, `experiment`, `upstream`,
-`fenced:<who>`, `design-pass:<link>`, `too-large:<est. lines>`, `gate-stop-rule`). A finding that shares the diff's root cause, or is another site of the
+`fenced:<who>`, `design-pass:<link>`, `too-large:<est. lines>`, `needs-repro:<what is ruled out>`, `gate-stop-rule`). A finding that shares the diff's root cause, or is another site of the
 same pattern, is always `FOLD`. The reader assigns the disposition, not the author; an author who disagrees asks
 the owner rather than filing. The table below summarises each lens; the review prompt carries its full brief.
 

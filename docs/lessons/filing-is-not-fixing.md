@@ -85,6 +85,8 @@ recomputed with the command or commit given.
    - `fenced:<who>` (another session holds the file; ask them first)
    - `design-pass:<link>` (the issue or note where the gate's approach note is owed)
    - `too-large:<estimated src lines>`
+   - `needs-repro:<what has been ruled out>` (the cause is unknown, so the fix is not yet "known"; the issue owes a
+     structural reproducer, and closing it on non-recurrence is not allowed)
    - `gate-stop-rule` (the 2026-09-29 rule's own case: fail-closed findings, in an already-covered class, on
      a gate, so classified by the reviewer)
 
