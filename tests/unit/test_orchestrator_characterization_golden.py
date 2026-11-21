@@ -100,6 +100,9 @@ SRC BEHAVIOUR THIS GOLDEN PINS AS-IS (findings from building it, 2026-10-12, and
     your name.") with a canned reply before its model, booked as ``plan:direct_answer:success``. Every arm now
     shows the AUT's model answering ("I heard: ..."), and the stdin arm's operator text reaches that model. The
     fixture was regenerated for it, on Linux (the Windows trace differs by path separator).
+  - #1228 (owner decision C): the report's cost totals include the AUT's own router in a two-model run, split by
+    role, so every arm's ``report`` gains ``narrator_*`` and ``aut_*`` cost and token keys (all 0 under the fake
+    router). The fixture was regenerated for it in its own commit; nothing else in the trace moved.
   - #1263: teardown leaves threads running: the two agents' ``plan-logger``/``plan-dashboard`` writers
     and the ``memctx_*`` pool. (Its DefaultNetwork part is FIXED with #1281: the loop that starts the AUT's
     DN now stops it in a sim too, so the ``DefaultNetwork`` and ``DN-BackgroundTasks`` threads end with the
