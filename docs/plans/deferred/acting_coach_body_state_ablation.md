@@ -9,8 +9,8 @@
 > would not have run the declared dilemma as written), then wrote and reviewed a paper this plan does not measure;
 > such a run exits 1 with no paper or a rejected review, so every such row would have failed. No recorded run is
 > affected: the arms were never validly run. Exp 42 (substrate-primary) keeps `--research` and its argv unchanged.
-> The CLI now refuses (exit 2) an explicit `--embodiment`, `--sim-mode`, `--sim-run-full-turns` and the other
-> options the research protocol cannot take, and forwards `--sim-max-turns`.
+> The CLI now refuses (exit 2) an explicit `--embodiment`, `--sim-mode` (other than `research`),
+> `--sim-run-full-turns` and the other options the research protocol cannot take, and forwards `--sim-max-turns`.
 >
 > **The 2026-07-15 session log below was diagnosed on a confounded vehicle.** Its harness launches ran under
 > llm-primary with `--research`, so each went through `start_research_mode`: no body attached and the arc not

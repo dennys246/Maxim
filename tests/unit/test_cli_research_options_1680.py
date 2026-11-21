@@ -143,6 +143,24 @@ def _args_reads(func) -> set[str]:
     return names
 
 
+def _forwarded_reads(func) -> set[str]:
+    """``func``'s own reads plus those of each ``cli`` helper it hands ``args`` to (one level: ``_sim_max_turns``),
+    except the refusal itself, which reads the options it refuses."""
+    names = _args_reads(func)
+    for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(func)))):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == "args"
+            and node.func.id != "_research_refusal"
+            and callable(getattr(cli, node.func.id, None))
+        ):
+            names |= _args_reads(getattr(cli, node.func.id))
+    return names
+
+
 #: Read by ``_main_impl`` for a goal-string sim before it dispatches (the embodiment ``_run_goal_sim`` is handed, and
 #: the curation run before it), so not visible in ``_run_goal_sim``'s own reads.
 _MAIN_IMPL_GOAL_SIM_READS = {"embodiment", "no_embodiment", "deep_embodiment", "auto_curate"}
@@ -161,7 +179,7 @@ def test_every_goal_sim_option_is_forwarded_or_refused() -> None:
         | _args_reads(cli._cli_llm_profile)
         | _MAIN_IMPL_GOAL_SIM_READS
     )
-    forwarded = _args_reads(cli._run_research_from_cli)
+    forwarded = _forwarded_reads(cli._run_research_from_cli)
     missing = read - forwarded - _HONOURED_BY_DESIGN - cli._RESEARCH_DROPPED_OPTIONS
     assert not missing, f"the goal sim reads {sorted(missing)}: forward them to start_research_mode or refuse them"
 
@@ -171,3 +189,18 @@ def test_the_refusal_round_trips_through_pickle() -> None:
     refusal = CliOptionsRefused("--embodiment cannot run", fix_hint="Drop --embodiment.")
     back = pickle.loads(pickle.dumps(refusal))
     assert str(back) == str(refusal) and back.fix_hint == refusal.fix_hint
+
+
+def test_normalizing_twice_does_not_read_the_default_sim_mode_as_passed() -> None:
+    """``normalize_args`` fills ``sim_mode="generative"``; a second call must not then record it as explicit, or a
+    plain ``--sim goal --research`` would be refused (#1680 delta-5)."""
+    from maxim.cli_utils import normalize_args
+
+    args = _build_parser().parse_args(["--sim", "warm the cradle", "--research", "--interactive", "false"])
+    normalize_args(args)
+    normalize_args(args)
+    assert args.sim_mode_explicit is False and cli._research_refusal(args) is None
+    explicit = _build_parser().parse_args(["--sim", "g", "--research", "--sim-mode", "dm", "--interactive", "false"])
+    normalize_args(explicit)
+    normalize_args(explicit)
+    assert explicit.sim_mode_explicit is True and isinstance(cli._research_refusal(explicit), CliOptionsRefused)

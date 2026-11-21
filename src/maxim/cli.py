@@ -1069,11 +1069,16 @@ def _maybe_run_dm_campaign(yaml_path: Path, args, *, debug: bool, entity_ref: st
     sys.exit(_simulation_result_exit_code(result))
 
 
+def _sim_max_turns(args: Any) -> int:
+    """``--sim-max-turns``, default 50: the one definition, for the goal sim's caps and the research protocol."""
+    return int(getattr(args, "sim_max_turns", 50) or 50)
+
+
 def _sim_turn_caps(args: Any) -> dict[str, int]:
     """``start_simulation_mode``'s turn caps from the CLI: ``max_turns`` (``--sim-max-turns``, default 50) and
     ``min_finish_turns``, the same cap under ``--sim-run-full-turns`` (the narrator may not end such a run early;
     owner decisions 2026-10-02: opt-in, so other harnesses keep early finishing), else 0."""
-    max_turns = int(getattr(args, "sim_max_turns", 50) or 50)
+    max_turns = _sim_max_turns(args)
     return {"max_turns": max_turns, "min_finish_turns": max_turns if getattr(args, "sim_run_full_turns", False) else 0}
 
 
@@ -1233,7 +1238,7 @@ def _run_research_from_cli(args: Any, goal: str, *, debug_raw: Any) -> NoReturn:
         aut_model=getattr(args, "aut_model", None),
         debug=bool(debug_raw),
         sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-        max_turns=int(getattr(args, "sim_max_turns", None) or 50),  # _sim_turn_caps's default
+        max_turns=_sim_max_turns(args),
     )
     sys.exit(_research_result_exit_code(result))
 

@@ -590,7 +590,7 @@ For full details on campaign authoring, character definitions, and the encounter
 
 Add `--research` to a goal-string simulation to run Writer and Reviewer agents after the sim completes. They produce a structured research report with findings, methodology, and analysis. (Under `--aut-mode substrate-primary`, `--research` means per-tick substrate telemetry instead, and no paper is written.)
 
-The research protocol runs its own sim call, which does not take every simulation option. Passing one it cannot honour is refused before the run starts (exit `2`, `CliOptionsRefused`, naming the options) instead of being dropped: `--embodiment`, `--no-embodiment`, `--deep-embodiment`, `--auto-curate`, `--sim-mode` (other than `research`), `--sim-run-full-turns`, `--continuous`, `--sandbox-image`, `--sandbox-network`, `--resume-sim`, `--sim-script`, and `--sim-max-turns` together with `--campaign`. `--sim-max-turns` is forwarded; `--no-sim-env` is accepted (the protocol always runs without the sim environment).
+The research protocol runs its own sim call, which does not take every simulation option. Passing one it cannot honour is refused before the run starts (exit `2`, `CliOptionsRefused`, naming the options) instead of being dropped: `--embodiment`, `--no-embodiment`, `--deep-embodiment`, `--auto-curate`, `--sim-mode` (other than `research`), `--sim-run-full-turns`, `--continuous`, `--sandbox-image`, `--sandbox-network`, `--resume-sim`, and `--sim-max-turns` together with `--campaign` (`--sim-script` with `--research` is refused earlier by its own check, exit `1`). `--sim-max-turns` is forwarded; `--no-sim-env` is accepted (the protocol always runs without the sim environment).
 
 ```bash
 maxim --sim "hippocampal recall" --research
