@@ -20,7 +20,10 @@
     one pairing rule every frame consumer now shares (`content_safety.frame_spans`): an opener whose closer never
     comes, one repeated before its closer, or one whose span would cross a section header (an opener forged in
     unframed text with a live id) is not a frame, so every private header after it is still redacted. A frame's
-    body never holds a header line (`frame_tool_output` quotes one), and a private-shaped header INSIDE a complete
-    frame is no longer redacted: the framed body is external text, not the agent's private section.
+    body never holds a section header line: `frame_tool_output` turns every line break `str.splitlines` honours
+    (U+2028 included) into a newline and quotes every line the one header predicate
+    (`content_safety.is_section_header`: `=== Name ===` or `NAME:`) calls a header, and the redactor finds its
+    sections with that same predicate and splitter. A private-shaped header INSIDE a complete frame is no longer
+    redacted: the framed body is external text, not the agent's private section.
   - A truncated CWD listing is cut inside its frame, so no file name is ever shown outside it.
   - The enrichment log's ATL line carries concept ids, not names.

@@ -133,18 +133,14 @@ _PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/(?!TOOL_OUTPUT id=[0-9a-f]+>>))
 _SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
 
 
-def _is_section_header(line: str) -> bool:
-    stripped = line.strip()
-    return bool(_HEADER_PATTERN.match(stripped)) or any(p.match(stripped) for p, _, _, _ in _SECTION_RULES)
-
-
 def _frame_body_lines(lines: list[str]) -> list[bool]:
     """Which lines sit inside a COMPLETE untrusted-content frame (#1519), by the one pairing rule
     (``content_safety.frame_spans``): the lines after an opener's line, through its own closer's. Such a line is
     framed external text, so it is body whatever it says: a framed blank line never ends a PRIVATE section early, and
     a framed private-shaped header is not itself redacted. Fail-closed: an opener whose closer never comes (a cut),
-    one repeated before its closer, and a pair whose span crosses a section header (this filter's own headers too:
-    an opener forged in unframed text with a live id) mark nothing, so every header is still found and redacted."""
+    one repeated before its closer, and a pair whose span crosses a section header (``content_safety.
+    is_section_header``, the one predicate every header in ``_SECTION_RULES`` satisfies: an opener forged in
+    unframed text with a live id) mark nothing, so every header is still found and redacted."""
     from maxim.utils.content_safety import frame_spans
 
     text = "\n".join(lines)
@@ -154,7 +150,7 @@ def _frame_body_lines(lines: list[str]) -> list[bool]:
         starts.append(offset)
         offset += len(line) + 1
     inside = [False] * len(lines)
-    spans, _, _ = frame_spans(text, is_header=_is_section_header)
+    spans, _, _ = frame_spans(text)
     for start, end in spans:
         for k, line_start in enumerate(starts):
             if start < line_start <= end:
@@ -246,7 +242,9 @@ class CloudRedactionFilter:
         return True
 
     def _redact_sections(self, text: str) -> tuple[str, set[str]]:
-        lines = text.splitlines()
+        from maxim.utils.content_safety import split_lines
+
+        lines = split_lines(text)  # the one splitter frame_tool_output normalises bodies to (#1519)
         redacted_categories: set[str] = set()
         out: list[str] = []
         i = 0

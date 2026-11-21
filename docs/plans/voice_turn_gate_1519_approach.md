@@ -145,7 +145,8 @@ through the same recorded-at-class-creation mechanism as `effect` (`_EFFECT_RECO
 
 ## Open question
 
-- **Q1:** `focus_interests` (`Effect.ALL`): narrow its declaration, or keep it gated on voice turns?
+- **Q1 (PENDING, the owner's open decision; not decided here):** `focus_interests` declares `Effect.ALL`. Narrow its
+  declaration, or keep it gated on voice turns? Until the owner decides, the build keeps it gated (fail-closed).
 
 ## Notes and scope
 
