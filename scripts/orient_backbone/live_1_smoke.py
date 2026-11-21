@@ -34,6 +34,8 @@ BEST long-term setup: robot on home Wi-Fi (station mode) — same LAN + internet
 from __future__ import annotations
 
 import argparse
+import atexit
+import signal
 import math
 import os
 import socket
@@ -184,6 +186,55 @@ def preflight(host: str) -> None:
         print("            System Settings -> Privacy & Security -> Local Network, then retry.")
 
 
+def release_mini(mini) -> None:
+    """Undo a ``ReachyMini`` connect as the SDK's own ``__exit__`` does (#1712).
+
+    A ``media_backend="no_media"`` connect calls ``release_media()``, which is daemon-wide and outlives this
+    process: until something re-acquires, the robot's camera stays released and the next camera client (the
+    Maxim app included) fails with ``Errno 61``. ``__exit__`` re-acquires what the handle released, closes its
+    media manager and disconnects its WebSocket client. Safe on ``None`` and on a handle already closed.
+    Callers register it with ``atexit`` and call :func:`exit_on_hangup_and_term`; a SIGKILL still skips it, and
+    ``POST http://<robot>:8000/api/media/acquire`` restores the camera then.
+    """
+    if mini is None:
+        return
+    try:
+        mini.__exit__(None, None, None)
+    except Exception as e:  # noqa: BLE001 - a dead link: report below, and still close the client
+        print(f"[warn] the SDK's __exit__ raised ({e}).")
+        try:
+            mini.client.disconnect()  # __exit__ stopped before its own client.disconnect()
+        except Exception as e2:  # noqa: BLE001 - the process is ending; the WS thread dies with it
+            print(f"[warn] the SDK client's disconnect() raised ({e2}).")
+    # acquire_media() reports a refused or unreachable POST only by leaving the handle released.
+    if getattr(mini, "media_released", None) is not False:
+        print("[warn] the daemon's media may still be released: if GET /api/daemon/status shows")
+        print("       media_released: true, POST /api/media/acquire to restore the camera (#1712).")
+
+
+def _exit_through_atexit(signum: int, _frame) -> None:
+    # A second signal must not interrupt release_mini inside atexit. It stays ignored for the rest of the process;
+    # SIGINT and SIGKILL still end it, and release_mini's HTTP call is bounded by the SDK's own timeouts.
+    signal.signal(signum, signal.SIG_IGN)
+    sys.exit(128 + signum)
+
+
+def exit_on_hangup_and_term() -> None:
+    """Make SIGTERM and SIGHUP end the process through ``sys.exit``, so ``atexit`` runs (#1712).
+
+    Python's default handlers for them end the process without ``atexit``, so ``kill``, ``timeout``, or a closed
+    tmux/ssh session would skip :func:`release_mini` and leave the daemon's media released. A handler someone else
+    installed is left alone, and off the main thread (where ``signal.signal`` raises) nothing changes.
+    """
+    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+        if sig is None or signal.getsignal(sig) is not signal.SIG_DFL:
+            continue
+        try:
+            signal.signal(sig, _exit_through_atexit)
+        except ValueError:  # not the main thread: atexit still covers a normal exit
+            return
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -230,6 +281,7 @@ def main() -> int:
     ws_era = _vt >= (1, 5)  # zenoh removed in v1.5.0 (PR #858)
     print(f"[sdk] reachy_mini {sdk_ver} ({'WebSocket transport' if ws_era else 'legacy zenoh transport'})")
     mode = "localhost_only" if args.via_tunnel else "network"
+    exit_on_hangup_and_term()  # before the connect: SIGTERM/SIGHUP would otherwise skip atexit (#1712)
     try:
         if ws_era:
             if args.via_tunnel:
@@ -258,6 +310,7 @@ def main() -> int:
         else:
             print("       Legacy zenoh path: see --via-tunnel / Local Network permission notes in the docstring.")
         return 2
+    atexit.register(release_mini, mini)  # every exit but SIGKILL re-acquires the media (#1712)
     print(f"[ok] connected ({mode}).")
     if ws_era:
         # 1.8.x: wake_up() no longer enables torque (it only moves + plays a
