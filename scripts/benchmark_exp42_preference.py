@@ -337,8 +337,14 @@ def _run_real(
         str(max_turns),
         "--seed",
         str(seed),
-        "--research",
     ]
+    # ``--research`` means two different runs. Under substrate-primary it is per-tick substrate telemetry (the
+    # learning nets read below; Exp 42's argv, unchanged). Under llm-primary the CLI routes it to
+    # ``start_research_mode``: a Writer/Reviewer paper step this harness does not measure, whose sim call drops
+    # this argv's --embodiment, --sim-max-turns and the arc's generative routing, and whose "no_paper" verdict
+    # exits 1 (#1680). The llm-primary fork (#391) inherited the flag from Exp 42; it was never meant there.
+    if aut_mode == "substrate-primary":
+        cmd.append("--research")
     if aut_model:
         cmd += ["--aut-model", aut_model]
     log_dir = data_home / "harness_logs"

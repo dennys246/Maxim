@@ -1354,3 +1354,27 @@ class TestWriteBenchmarkPaperCli:
         _write_benchmark_paper(SimpleNamespace(write_paper=lambda r, d: result), None, None)
         out = capsys.readouterr().out
         assert expected in out and "LLM unavailable" not in out
+        assert len([line for line in out.splitlines() if line.strip()]) == 2  # "Generating..." and ONE outcome line
+
+
+class TestPaperCauseLogging:
+    def test_a_disabled_llm_is_logged_as_disabled(self, monkeypatch, tmp_path, caplog):
+        from types import SimpleNamespace
+
+        monkeypatch.setattr("maxim.models.language.router.load_llm_config", lambda: SimpleNamespace(enabled=False))
+        with caplog.at_level("WARNING", logger="maxim.simulation.benchmark"):
+            object.__new__(BenchmarkRunner).write_paper(_paper_report(), tmp_path)
+        assert "the LLM is disabled in llm.json" in caplog.text and "not usable" not in caplog.text
+
+
+@pytest.mark.parametrize("cause", ["llm_disabled", "model_path_missing", "not_downloaded"])
+def test_the_foundry_and_curate_router_prints_one_line(monkeypatch, capsys, cause):
+    """``cli.py::_cli_local_router``: one WARNING line naming the cause and the template fallback (#1680)."""
+    from maxim import cli
+
+    monkeypatch.setattr("maxim.models.language.config.load_llm_config", lambda profile_override=None: object())
+    monkeypatch.setattr("maxim.models.download.consented_router", lambda cfg, interactive=None: (None, cause))
+    assert cli._cli_local_router("p", fallback_user="curation") is None
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert len(lines) == 1 and "curation will use template fallback" in lines[0]
+    assert ("disabled" in lines[0]) is (cause == "llm_disabled")

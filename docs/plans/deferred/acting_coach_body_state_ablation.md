@@ -2,6 +2,14 @@
 
 > **ARCHIVED in place 2026-10-18; the file stays under `deferred/` because src cites this path.** Deferred 2026-08-27 with the arms never validly run. Its revive trigger keys on ledger row T3-11 (B3 Acting Coach), which was DROPPED 2026-08-30 ([behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md)), so it can never fire. The prerequisites (PR #391) and their code stays wired per dormancy (CLAUDE.md §Working principles).
 
+> **Harness change 2026-11-21 (#1680; no run moved, nothing re-run).** `scripts/benchmark_exp42_preference.py` no
+> longer passes `--research` under `--aut-mode llm-primary`. The llm-primary fork (#391) inherited the flag from Exp 42,
+> where it means substrate telemetry; under llm-primary the CLI routes it to `start_research_mode` instead. That call
+> ran the sim without this plan's `--embodiment`, `--sim-max-turns` or the arc's generative routing (so the arms below
+> would not have run the declared dilemma as written), then wrote and reviewed a paper this plan does not measure; a
+> run with no paper now exits 1 and would have failed every row. No recorded run is affected: the arms were never
+> validly run. Exp 42 (substrate-primary) keeps `--research` and its argv unchanged.
+
 **Status:** PRE-REGISTERED + PREREQUISITES SHIPPED (2026-07-14, branch
 `exp/44-body-state-wiring`). Ready to run pending Phase 0 smoke.
 **Decision it settles:** whether to wire `embodiment=` into the production

@@ -951,7 +951,7 @@ class BenchmarkRunner:
         and nothing said why (#1680).
         """
         from maxim.mesh.bus import LocalMessageBus
-        from maxim.models.download import consented_router
+        from maxim.models.download import LLM_DISABLED, consented_router
         from maxim.models.language.router import load_llm_config
         from maxim.simulation.research_agents import WriterAgent
         from maxim.simulation.research_tools import ExperimentLog
@@ -961,7 +961,10 @@ class BenchmarkRunner:
         # usable LLM leaves no experiment log behind.
         router, cause = consented_router(load_llm_config(), logger=logger)
         if router is None:
-            logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
+            if cause == LLM_DISABLED:
+                logger.warning("No LLM available for paper generation: the LLM is disabled in llm.json")
+            else:
+                logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
             return None, cause
 
         exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")

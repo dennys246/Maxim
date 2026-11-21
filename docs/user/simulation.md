@@ -33,7 +33,9 @@ The CLI treats process success as **run integrity**, not as a favorable result:
 
 - `0` — the run completed with usable evidence. Semantic outcomes such as
   `failed`, `blocked`, and `inconclusive` are still valid observations.
-- `1` — a generic runtime error (or a rejected research review).
+- `1` — a generic runtime error, or a `--research` run that ended without a usable paper: the review rejected it
+  (`reject`), or the Writer saved no paper, so nothing was reviewed (`no_paper`; the cause, no research LLM or no
+  text from the LLM for any section, is in `research_result.json`'s `review_issues`).
 - `4` — the run was incomplete or aborted (`llm_wedged`, `planning_failed`,
   `worker_unavailable`, `aut_died`, `aborted`, `cancel`, `stuck`, or `yielded`: a process stop request
   ended it, for example the console shutting down). This is the

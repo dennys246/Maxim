@@ -817,3 +817,20 @@ def test_the_mid_sim_agent_refusal_names_the_grant(monkeypatch, tmp_path, caplog
     with caplog.at_level(logging.WARNING):
         assert _LlamaCppBackend(cfg)._ensure() is False
     assert "--auto-download" in caplog.text and "llm.auto_download" in caplog.text
+
+
+def test_the_exp44_rerun_names_a_disabled_llm_itself(monkeypatch) -> None:
+    """#1680: nothing logs ``LLM_DISABLED``, so the script's exit message must say it on its own."""
+    import importlib.util
+
+    from maxim.models.download import LLM_DISABLED
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "exp44" / "rerun_ablated_offline.py"
+    spec = importlib.util.spec_from_file_location("exp44_rerun_1680", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr("maxim.models.language.router.load_llm_config", lambda: object())
+    monkeypatch.setattr("maxim.models.download.consented_router", lambda cfg: (None, LLM_DISABLED))
+    with pytest.raises(SystemExit) as exc:
+        module._build_router()
+    assert "disabled" in str(exc.value) and "logged" not in str(exc.value)

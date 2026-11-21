@@ -425,3 +425,27 @@ def test_a_failure_after_the_report_names_the_session(exp41, tmp_path: Path, mon
             "A_dec", 42, model="m", embodiment="e", max_turns=3, explore_weight=1.5, timeout_s=5, workdir=tmp_path
         )
     assert err.value.sims[0]["session_id"] == "sess_0" and "no actions.jsonl" in str(err.value)
+
+
+@pytest.mark.parametrize(("aut_mode", "research"), [("substrate-primary", True), ("llm-primary", False)])
+def test_exp42_asks_for_research_only_where_it_is_substrate_telemetry(
+    exp42, tmp_path: Path, monkeypatch, aut_mode: str, research: bool
+) -> None:
+    """#1680: under llm-primary ``--research`` is the paper-writing protocol (its sim call drops the harness's
+    embodiment, turn cap and arc routing, and a no-paper run exits 1); under substrate-primary it is the telemetry
+    the harness reads, and Exp 42's argv stays as it was."""
+    run, _seen = _fake_sim()
+    cmds = []
+    monkeypatch.setattr(exp42.subprocess, "run", lambda cmd, **kw: cmds.append(cmd) or run(cmd, **kw))
+    exp42._run_real(
+        "cradle_pref_a",
+        42,
+        model="m",
+        embodiment="e",
+        max_turns=3,
+        explore_weight=1.5,
+        timeout_s=5,
+        workdir=tmp_path / "w",
+        aut_mode=aut_mode,
+    )
+    assert ("--research" in cmds[0]) is research

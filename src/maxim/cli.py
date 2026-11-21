@@ -45,7 +45,9 @@ def _research_result_exit_code(result: object) -> int:
     sim_code = _simulation_result_exit_code(result)
     if sim_code:
         return sim_code
-    return 1 if getattr(result, "review_verdict", "") in ("reject", "no_paper") else 0  # no paper is a failed run
+    from maxim.simulation.research_orchestrator import NO_PAPER_VERDICT
+
+    return 1 if getattr(result, "review_verdict", "") in ("reject", NO_PAPER_VERDICT) else 0  # no paper: a failed run
 
 
 def _resolve_mode(args, default: str = "generative") -> str:
@@ -163,40 +165,46 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
-def _cli_local_router(profile: str) -> Any | None:
+def _cli_local_router(profile: str, *, fallback_user: str) -> Any | None:
     """The router foundry and auto-curate build from ``--llm`` (#1396): the consent gate asks first, on the main thread.
 
     These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
     missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
-    None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
-    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking as
-    ``consent_interactive()`` allows (the main thread only, #1658); the library check never prints, so the CLI prints
-    its own line here.
+    None when the model is missing and was not downloaded (or the LLM is disabled): the caller takes its template
+    fallback, and no warmup runs. Built by ``models/download.py::consented_router``, the one consented builder (#1396
+    bullet 2), asking as ``consent_interactive()`` allows (the main thread only, #1658); the library check never
+    prints, so the CLI prints its one line here, naming the cause and that ``fallback_user`` ("foundry", "curation")
+    takes the template fallback.
     """
     from maxim.models.download import consent_interactive, consented_router
     from maxim.models.language.config import load_llm_config
 
     router, cause = consented_router(load_llm_config(profile_override=profile), interactive=consent_interactive())
     if router is None:
-        _print_model_unavailable(cause)
+        print(f"  WARNING: {_model_unavailable_reason(cause)} — {fallback_user} will use template fallback.")
     return router
 
 
-def _print_model_unavailable(cause: str | None) -> None:
-    """The CLI's line for a router whose model stayed unusable (the library check logs, never prints; #1396)."""
+def _model_unavailable_reason(cause: str | None) -> str:
+    """Why a router build gave no router, for the CLI's one line (the library check logs, never prints; #1396)."""
     from maxim.models.download import LLM_DISABLED
     from maxim.models.language.types import LocalModelUnavailable
 
     if cause == LLM_DISABLED:
-        print("  The LLM is disabled in ~/.maxim/config/llm.json.")
-    elif cause == LocalModelUnavailable.MODEL_PATH_MISSING:
-        print("  The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json.")
-    else:
-        print("  Model not available. Run: maxim --list-models to see available models.")
+        return "the LLM is disabled in ~/.maxim/config/llm.json"
+    if cause == LocalModelUnavailable.MODEL_PATH_MISSING:
+        return "the router's model_path does not exist (fix model_path in ~/.maxim/config/llm.json)"
+    return "LLM model not available (run: maxim --list-models to see available models)"
+
+
+def _print_model_unavailable(cause: str | None) -> None:
+    """The CLI's line for a router whose model stayed unusable (the library check logs, never prints; #1396)."""
+    reason = _model_unavailable_reason(cause)
+    print(f"  {reason[0].upper()}{reason[1:]}.")
 
 
 def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
-    """``--write-paper``: the benchmark's comparative paper, or the line saying why there is none (#1680)."""
+    """``--write-paper``: the benchmark's comparative paper, or the one line saying why there is none (#1680)."""
     from maxim.simulation.benchmark import PAPER_NO_TEXT
 
     print("  Generating comparative paper...")
@@ -206,8 +214,7 @@ def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
     elif cause == PAPER_NO_TEXT:
         print("  No paper: the LLM returned no text for any section (see the Writer warnings in the log).\n")
     else:
-        print("  No paper: the LLM is not usable.")
-        _print_model_unavailable(cause)
+        print(f"  No paper: {_model_unavailable_reason(cause)}.\n")
 
 
 def _cli_llm_profile(args: Any) -> str | None:
@@ -1519,9 +1526,8 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
     def build() -> Any | None:
         router = None
         try:
-            router = _cli_local_router(profile)
+            router = _cli_local_router(profile, fallback_user="curation")
             if router is None:
-                print("  WARNING: LLM model not available — curation will use template fallback.")
                 return None
             built.append(router)
             router.warmup()
@@ -1609,10 +1615,8 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
     if _foundry_profile:
         try:
-            _foundry_llm = _cli_local_router(_foundry_profile)
-            if _foundry_llm is None:
-                print("  WARNING: LLM model not available — foundry will use template fallback.")
-            else:
+            _foundry_llm = _cli_local_router(_foundry_profile, fallback_user="foundry")
+            if _foundry_llm is not None:
                 _foundry_llm.warmup()
                 print(f"  Waiting for LLM ({_foundry_profile}) to load...")
                 if not _foundry_llm.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):

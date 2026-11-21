@@ -7,8 +7,8 @@
   before the experiment log is written, so a run with no usable LLM leaves no file.
 - `models/download.py::consented_router` checks `llm_config.enabled` itself and returns `(None, LLM_DISABLED)`, for
   every caller; `ExecAgent`, `build_run_router` and the benchmark no longer check it each. Foundry and
-  `--auto-curate` on a disabled config now take their template fallback with a printed "LLM is disabled" line, instead
-  of building a router that answers nothing.
+  `--auto-curate` on a disabled config now take their template fallback, instead of building a router that answers
+  nothing, and print one WARNING line naming the cause (it used to be two lines for any cause).
 - The research Writer no longer saves, announces or hands the reviewer an empty `paper.md` when no section came back.
   A partial draft is saved and its missing sections are logged. With no paper, the research protocol skips the review
   and revisions and reports the verdict `no_paper` with its cause (in `research_result.json`'s `review_issues` and the
