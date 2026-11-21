@@ -27,6 +27,7 @@ from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import LoopController
 from maxim.runtime.loop_types import PendingConfirmation
 from maxim.simulation.response_policy import PolicyType, ResponsePolicy
+from maxim.utils.input_source import InputSource
 
 # A tool with a followup type ("process"), so a successful confirm must queue a follow-up.
 _TOOL = "read_file"
@@ -78,7 +79,7 @@ def _controller() -> LoopController:
         memory=MagicMock(),
         decision_engine=MagicMock(),
         executor=executor,
-        autonomy_controller=MagicMock(),
+        autonomy_controller=MagicMock(**{"approved_action_denial.return_value": None}),
     )
     ctrl.context_pool = MagicMock()
     ctrl.recent_outcomes = []
@@ -125,6 +126,8 @@ def _confirm(ctrl: LoopController, answer: str = "yes"):
             book_refusal=run.book_refusal,
             observation={},
             sim=MagicMock(),
+            book_machine_refusal=MagicMock(),
+            answer_source=InputSource.OPERATOR,
         )
     return consumed, d_action, d_status, rec
 
@@ -230,6 +233,7 @@ class TestPlanRejectToolName:
             book_machine_refusal=MagicMock(),
             observation={},
             sim=MagicMock(),
+            answer_source=InputSource.OPERATOR,
         )
         rec.assert_called_once()
         return rec.call_args.kwargs["tool_name"]
@@ -280,6 +284,7 @@ class TestReviewPins:
             book_machine_refusal=MagicMock(),
             observation={},
             sim=MagicMock(),
+            answer_source=InputSource.OPERATOR,
         )
         kw = rec.call_args.kwargs
         assert (kw["agent_id"], kw["cluster_id"], kw["clusters"]) == (_HUB, _CLUSTERS["interoception"], _CLUSTERS)
@@ -302,7 +307,13 @@ class TestReviewPins:
 
         with pytest.raises(RuntimeError, match="capture_before broke"):
             ctrl.handle_confirmation(
-                "yes", execute_and_learn=_boom, book_refusal=MagicMock(), observation={}, sim=MagicMock()
+                "yes",
+                execute_and_learn=_boom,
+                book_refusal=MagicMock(),
+                observation={},
+                sim=MagicMock(),
+                book_machine_refusal=MagicMock(),
+                answer_source=InputSource.OPERATOR,
             )
         assert ctrl.pending_confirmation is None
         assert ctrl.pending_proposal is None

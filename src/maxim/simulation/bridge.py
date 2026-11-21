@@ -333,8 +333,13 @@ class SimulationBridge:
         self._turn_count += 1
 
     def get_all_actions(self) -> list[ActionRecord]:
-        """Read the full action history."""
+        """Read the full action history, synthetic markers included (``get_agent_actions`` leaves them out)."""
         return self.action_sink.actions
+
+    def get_agent_actions(self) -> list[ActionRecord]:
+        """The actions the agent took: the history without synthetic markers (``ActionRecord.is_synthetic``,
+        #1185), what every count and success rate reads."""
+        return [a for a in self.action_sink.actions if not a.is_synthetic]
 
     def get_actions_since(self, index: int) -> list[ActionRecord]:
         """Read actions since a given index."""
@@ -374,7 +379,7 @@ class SimulationBridge:
         """
         if self._substrate_actions_per_turn is None:
             return True
-        used = len(self.action_sink.actions) - self._turn_start_action_idx
+        used = sum(1 for a in self.action_sink.actions[self._turn_start_action_idx :] if not a.is_synthetic)
         if used < self._substrate_actions_per_turn:
             return True
         if not self._budget_logged_this_turn:

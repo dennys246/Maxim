@@ -47,6 +47,8 @@ from maxim.utils.logging import log_swallowed_exception
 
 # The SAME logger object as ``agent_loop.logger`` (logging returns one logger per name), so records keep
 # the ``maxim.runtime.agent_loop`` name.
+from maxim.utils.input_source import InputSource
+
 logger = logging.getLogger("maxim.runtime.agent_loop")
 
 
@@ -116,80 +118,127 @@ class UserInput(NamedTuple):
     is_agentic_voice_input: bool
     addressed: str
     own_capture_id: str = ""  # the record ``addressed`` became at arrival, "" if none: recall excludes it (#1573)
+    source: InputSource = InputSource.UNKNOWN  # who it came from: the approver when it answers a prompt (#1185)
 
 
 # Where the loop puts a reply it makes itself (an auto-approved confirmation, a sim-resolved one, a timeout retry):
-# processed like typed input, never memorized as something a person said (owner decision 2026-10-25).
+# processed like typed input, never memorized as something a person said (owner decision 2026-10-25). Its writer
+# also sets ``LOOP_REPLY_SOURCE_SLOT`` (an ``InputSource`` value; ``loop`` when absent): a sim policy's answer is the
+# sim's, an auto-yes is the loop's own (#1185).
 LOOP_REPLY_SLOT = "pending_loop_reply"
-# Where an observation's words wait one tick when they arrive with the loop's own reply (#1185): the reply answers a
-# pending gating prompt (a confirmation, a timeout retry), so it goes first, and dropping either would wedge the
-# prompt or lose the turn. They were memorized on arrival, so they are processed, never memorized again.
+LOOP_REPLY_SOURCE_SLOT = "pending_loop_reply_source"
+# Where a tick's other inputs wait, oldest first, behind the one it takes (#1185): the loop's own reply answers a
+# pending gating prompt first, and an observation, a typed line and a voice turn that arrive together are taken
+# one per tick. Each entry keeps its words, ``source``, ``addressed`` and ``own_capture_id``: it was memorized on
+# arrival, so it is processed later with its recall cue, never memorized again. (Read by its literal key: the
+# mode-read lint, rule A4, refuses a non-constant key on ``state.data``.)
 DEFERRED_INPUT_SLOT = "pending_deferred_input"
 
 
-def take_user_input(observation: Any, state: Any, agent: Any) -> UserInput:
+def is_tool_followup(text: Any) -> bool:
+    """A tool's result fed back to the model (``agent_loop._format_followup``), never a person's words or an answer
+    to a prompt: the one test for an ``[ACTION_FOLLOWUP`` line (#1185)."""
+    return str(text or "").startswith("[ACTION_FOLLOWUP")
+
+
+def take_user_input(observation: Any, state: Any, agent: Any, *, sim_mode: bool) -> UserInput:
     """The tick's input, from every channel, read ONCE at the top of the pass (§1.2), and the words that address the
     agent published to memory as they arrive (Session R, owner decisions 2026-10-24/25).
 
-    The input is the loop's own reply first (``LOOP_REPLY_SLOT``, the answer to a pending gating prompt; an
-    observation's words that arrive with it wait one tick in ``DEFERRED_INPUT_SLOT``, #1185, and a person's pending
-    input waits too), else the observation, else those deferred words, else the interactive CLI / robot / API
-    mailbox ``pending_cli_input``, else the
-    voice thread's ``pending_voice_input`` (only forwarded once the wake word opened an agentic session); each slot
-    read is popped, so an input is processed once. ``addressed`` is what a person said: the pending CLI and voice
+    The channels: the observation's ``cli_input`` (a sim's narrator when ``sim_mode``, else a person), the
+    interactive CLI / robot / API mailbox ``pending_cli_input`` (a person; read once, and discarded behind an
+    observation as before), and the voice thread's ``pending_voice_input`` (only forwarded once the wake word opened
+    an agentic session). Each slot read is popped. ``addressed`` is what a person said: the pending CLI and voice
     channels always, the observation's ``cli_input`` when its source addresses the agent (``_addresses``), never the
-    loop's own reply or a synthetic ``[ACTION_FOLLOWUP``. It is handed to ``agent.publish_arrival`` (memory hears
-    every utterance whatever the loop does next; §3 alone used to publish it, which in Talk never ran) and the
-    observation's ``cli_input`` copy in ``state.data`` is cleared, so §3 never publishes it again (#1414).
+    loop's own reply or a tool's ``[ACTION_FOLLOWUP`` result. Every arrival is handed to ``agent.publish_arrival`` as
+    it arrives (memory hears every utterance whatever the loop does next; §3 alone used to publish it, which in Talk
+    never ran) and the observation's ``cli_input`` copy in ``state.data`` is cleared, so §3 never publishes it again
+    (#1414).
+
+    One input is taken per tick (#1185): the loop's own reply first (``LOOP_REPLY_SLOT``, the answer to a pending
+    prompt; a person's mailbox input then waits in its slot), else the oldest waiting entry in
+    ``DEFERRED_INPUT_SLOT``, then this tick's arrivals in channel order. Every arrival not taken waits there (FIFO),
+    so nothing is dropped, a voice turn included, and a steady stream cannot overtake older words.
     """
-    transcript = hard_override = cli_input = None
-    if hasattr(observation, "get"):
-        transcript = observation.get("transcript") or observation.get("raw_transcript_text")
-        hard_override = observation.get("hard_override")
-        cli_input = observation.get("cli_input")
-    elif hasattr(observation, "transcript"):
-        transcript = getattr(observation, "transcript", None)
-        hard_override = getattr(observation, "hard_override", None)
-        cli_input = getattr(observation, "cli_input", None)
-    addressed = str(cli_input) if cli_input and _addresses(observation) else ""  # the words the loop processes
-
+    transcript, hard_override, obs_cli = _observation_fields(observation)
     loop_reply = state.data.pop("pending_loop_reply", None)  # LOOP_REPLY_SLOT
-    if loop_reply:
-        if cli_input:  # the observation's words wait one tick behind the answer to the pending prompt (#1185)
-            state.data.setdefault("pending_deferred_input", []).append(cli_input)  # DEFERRED_INPUT_SLOT
-        cli_input = loop_reply  # the loop answering itself; a person's pending input waits for the next tick
-    elif not cli_input and state.data.get("pending_deferred_input"):  # DEFERRED_INPUT_SLOT
-        deferred = state.data["pending_deferred_input"]
-        cli_input = deferred.pop(0)  # memorized when it arrived: processed now, ``addressed`` stays ""
-        if not deferred:
-            state.data.pop("pending_deferred_input", None)
-    else:
-        pending_cli = state.data.pop("pending_cli_input", None)  # always read once, discarded behind an observation
-        if not cli_input and pending_cli:
-            cli_input = addressed = pending_cli
+    loop_source = state.data.pop("pending_loop_reply_source", None) or InputSource.LOOP.value  # LOOP_REPLY_SOURCE_SLOT
 
+    arrivals: list[dict[str, Any]] = []
+    if obs_cli:
+        obs_source = (
+            InputSource.SELF if is_tool_followup(obs_cli) else (InputSource.SIM if sim_mode else InputSource.OPERATOR)
+        )
+        arrivals.append(_entry(obs_cli, obs_source, str(obs_cli) if _addresses(observation) else ""))
+    if not loop_reply:  # behind the loop's reply, a person's mailbox input waits in its own slot for the next tick
+        pending_cli = state.data.pop("pending_cli_input", None)  # always read once, discarded behind an observation
+        if pending_cli and not obs_cli:
+            arrivals.append(_entry(pending_cli, InputSource.OPERATOR, pending_cli))
     voice_input = state.data.pop("pending_voice_input", None)
     state.data.pop("pending_voice_transcript", None)
-    is_agentic_voice_input = False
-    if not cli_input and voice_input:  # CLI takes priority
-        cli_input = addressed = voice_input
-        is_agentic_voice_input = True  # came from an agentic voice session (wake word already said)
-        logger.info("Using voice transcript as user input: %s", voice_input[:50])
+    if voice_input:  # never dropped behind another input (#1185): it waits its turn
+        arrivals.append(_entry(voice_input, InputSource.OPERATOR, voice_input, voice=True))
+    for entry in arrivals:
+        _publish_arrival(entry, state, agent)
 
-    text = str(addressed).strip() if addressed else ""
-    if text.startswith("[ACTION_FOLLOWUP"):
+    waiting = list(state.data.pop("pending_deferred_input", None) or []) + arrivals  # DEFERRED_INPUT_SLOT, oldest first
+    if loop_reply:
+        taken: dict[str, Any] | None = _entry(loop_reply, InputSource(loop_source), "")
+    else:
+        taken = waiting.pop(0) if waiting else None
+    if waiting:
+        state.data["pending_deferred_input"] = waiting  # DEFERRED_INPUT_SLOT
+    if taken is None:
+        return UserInput(transcript, hard_override, None, False, "", "", InputSource.UNKNOWN)
+    if taken["voice"]:
+        logger.info("Using voice transcript as user input: %s", str(taken["text"])[:50])
+    return UserInput(
+        transcript,
+        hard_override,
+        taken["text"],
+        taken["voice"],
+        taken["addressed"],
+        taken["own_capture_id"],
+        InputSource(taken["source"]),
+    )
+
+
+def _observation_fields(observation: Any) -> tuple[Any, Any, Any]:
+    """The observation's transcript, hard override and ``cli_input`` (a dict or a percept-like object)."""
+    if hasattr(observation, "get"):
+        transcript = observation.get("transcript") or observation.get("raw_transcript_text")
+        return transcript, observation.get("hard_override"), observation.get("cli_input")
+    if hasattr(observation, "transcript"):
+        return (
+            getattr(observation, "transcript", None),
+            getattr(observation, "hard_override", None),
+            getattr(observation, "cli_input", None),
+        )
+    return None, None, None
+
+
+def _entry(text: Any, source: InputSource, addressed: Any, *, voice: bool = False) -> dict[str, Any]:
+    """One input as it is taken or waits: its words, source, the words that address the agent and the record they
+    became (``own_capture_id``, set on publish). Plain data, so the waiting slot is JSON."""
+    return {"text": text, "source": source.value, "addressed": addressed or "", "own_capture_id": "", "voice": voice}
+
+
+def _publish_arrival(entry: dict[str, Any], state: Any, agent: Any) -> None:
+    """Memorize an arrival's addressing words once, as it arrives (Session R), and keep the record it became."""
+    text = str(entry["addressed"]).strip() if entry["addressed"] else ""
+    if is_tool_followup(text):
         text = ""
-    own_capture_id = ""
-    if text:
-        if str(state.data.get("cli_input") or "").strip() == text:
-            state.data.pop("cli_input", None)  # the runtime owns the state: §3 must not publish it again
-        # ``maxim.api`` runs duck-typed embedder agents too: one without ``publish_arrival`` (``agents/base.py``'s
-        # explicit default does nothing) has no memory pipeline to tell. A capability probe, not a swallow.
-        publish = getattr(agent, "publish_arrival", None)
-        if callable(publish):
-            published = publish(state, text, source="voice" if is_agentic_voice_input else "cli")
-            own_capture_id = published if isinstance(published, str) else ""
-    return UserInput(transcript, hard_override, cli_input or None, is_agentic_voice_input, text, own_capture_id)
+    entry["addressed"] = text
+    if not text:
+        return
+    if str(state.data.get("cli_input") or "").strip() == text:
+        state.data.pop("cli_input", None)  # the runtime owns the state: §3 must not publish it again
+    # ``maxim.api`` runs duck-typed embedder agents too: one without ``publish_arrival`` (``agents/base.py``'s
+    # explicit default does nothing) has no memory pipeline to tell. A capability probe, not a swallow.
+    publish = getattr(agent, "publish_arrival", None)
+    if callable(publish):
+        published = publish(state, text, source="voice" if entry["voice"] else "cli")
+        entry["own_capture_id"] = published if isinstance(published, str) else ""
 
 
 def context_addresses_the_llm(context: Any, state: Any) -> bool:

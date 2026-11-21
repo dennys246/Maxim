@@ -43,7 +43,7 @@ def _llm_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks: int = 30
     from maxim.utils import structured_logging
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF)
+    monkeypatch.setattr(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.ON)  # a person answers
     real_init = LoopController.__init__
 
     ctrls: list[Any] = []
@@ -164,7 +164,9 @@ def test_in_llm_mode_a_change_request_is_submitted_once_with_the_original_action
 
 
 def test_in_substrate_mode_a_change_request_is_told_and_cleared(monkeypatch, tmp_path):
-    obs = run_once(monkeypatch, tmp_path, plan_text="delete the build dir", answers=[CHANGE], max_steps=10)
+    obs = run_once(
+        monkeypatch, tmp_path, plan_text="delete the build dir", answers=[CHANGE], max_steps=10, interactive=True
+    )
     told = [d for e, d in obs.events if e == "modification_unsupported"]
     assert len(told) == 1 and told[0]["modification"] == CHANGE
     assert obs.executed == []

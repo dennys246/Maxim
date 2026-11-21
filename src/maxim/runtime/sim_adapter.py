@@ -50,6 +50,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
+
+from maxim.utils.input_source import InputSource
 from typing import Any
 
 from maxim.utils.structured_logging import log_agentic
@@ -250,6 +252,13 @@ class SimulationAdapter:
             return self.percept_source.response_policy.resolve_plan_approval(plan_text)
         return "yes"
 
+    def answer_source(self) -> InputSource:
+        """Who a ``resolve_*`` answer comes from (#1185): the bridge's response policy is the sim's (human-involved,
+        owner decision B); the default "yes" an adapter with no bridge returns is the loop's own."""
+        from maxim.simulation.bridge import SimulationBridge
+
+        return InputSource.SIM if isinstance(self.percept_source, SimulationBridge) else InputSource.LOOP
+
     def emit_prompt(self, text: str) -> None:
         """Put a gating prompt (a re-ask, a parked plan) on the sim's channel (#1185): the simulated person reads
         the AUT's words from the action sink (``ActionRecord.utterance``), never from the terminal."""
@@ -358,6 +367,9 @@ class NullSimulationAdapter:
 
     def resolve_timeout_retry(self, timeout_s: float) -> str | None:
         return None
+
+    def answer_source(self) -> InputSource:
+        return InputSource.LOOP  # production resolves nothing; were it to, the answer would be the loop's own
 
     def emit_prompt(self, text: str) -> None:
         return None  # production: the prompt is on the terminal and the input panel; there is no sim channel

@@ -22,6 +22,7 @@ import pytest
 
 from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.approval import classify_yes_no, detect_approval_intent
+from maxim.utils.input_source import InputSource
 
 _CASES = [
     # The false approvals #1185 reported, and its probe list: all re-ask.
@@ -162,7 +163,7 @@ def _controller():
         memory=MagicMock(),
         decision_engine=MagicMock(),
         executor=executor,
-        autonomy_controller=MagicMock(),
+        autonomy_controller=MagicMock(**{"approved_action_denial.return_value": None}),
     )
 
 
@@ -196,6 +197,7 @@ def _answer(ctrl, text: str, book=None, run=None) -> bool:
         book_machine_refusal=MagicMock(),
         observation={},
         sim=MagicMock(),
+        answer_source=InputSource.OPERATOR,
     )
 
 
@@ -277,7 +279,13 @@ def _confirm(ctrl, text: str):
     book, run = MagicMock(), MagicMock()
     with patch("maxim.simulation.sim_logger.display_status"):
         consumed = ctrl.handle_confirmation(
-            text, execute_and_learn=run, book_refusal=book, observation={}, sim=MagicMock()
+            text,
+            execute_and_learn=run,
+            book_refusal=book,
+            observation={},
+            sim=MagicMock(),
+            book_machine_refusal=MagicMock(),
+            answer_source=InputSource.OPERATOR,
         )
     return consumed, run, book
 
@@ -400,6 +408,7 @@ def test_a_tool_follow_up_is_never_an_answer() -> None:
             book_machine_refusal=MagicMock(),
             observation={},
             sim=MagicMock(),
+            answer_source=InputSource.OPERATOR,
         )
         is False
     )
@@ -417,13 +426,15 @@ def test_the_loop_reply_answers_first_and_the_observation_waits() -> None:
     state = MagicMock()
     state.data = {"pending_loop_reply": "yes"}
     agent = MagicMock()
-    first = take_user_input({"cli_input": sentence, "source": "cli"}, state, agent)
+    agent.publish_arrival.return_value = "cap-1"
+    first = take_user_input({"cli_input": sentence, "source": "cli"}, state, agent, sim_mode=True)
     assert first.cli_input == "yes"
-    assert first.addressed == sentence  # memorized once, as it arrived
-    second = take_user_input({}, state, agent)
-    assert second.cli_input == sentence
-    assert second.addressed == ""  # never memorized twice
-    assert agent.publish_arrival.call_count == 1
+    assert first.addressed == "" and first.source is InputSource.LOOP  # the loop's own reply: no one said it
+    second = take_user_input({}, state, agent, sim_mode=True)
+    # Wire item 3: the deferred turn keeps what it had on arrival, so it enriches and recalls like an undeferred one.
+    assert (second.cli_input, second.addressed, second.own_capture_id) == (sentence, sentence, "cap-1")
+    assert second.source is InputSource.SIM
+    assert agent.publish_arrival.call_count == 1  # memorized once, as it arrived
     assert "pending_deferred_input" not in state.data
 
 
@@ -433,11 +444,13 @@ def test_the_sentence_after_the_reply_wedges_nothing() -> None:
 
     ctrl = _confirm_controller()
     ctrl.state.data["pending_loop_reply"] = "yes"
-    first = take_user_input({"cli_input": "Great, can you also look at the logs?"}, ctrl.state, MagicMock())
+    first = take_user_input(
+        {"cli_input": "Great, can you also look at the logs?"}, ctrl.state, MagicMock(), sim_mode=False
+    )
     consumed, run, _ = _confirm(ctrl, first.cli_input)
     assert consumed is True and ctrl.pending_confirmation is None
     run.assert_called_once()
-    second = take_user_input({}, ctrl.state, MagicMock())
+    second = take_user_input({}, ctrl.state, MagicMock(), sim_mode=False)
     assert second.cli_input == "Great, can you also look at the logs?"
 
 
@@ -446,7 +459,13 @@ def test_a_reask_reaches_the_sim_channel() -> None:
     sim = MagicMock()
     with patch("maxim.simulation.sim_logger.display_status"):
         ctrl.handle_confirmation(
-            "not ok", execute_and_learn=MagicMock(), book_refusal=MagicMock(), observation={}, sim=sim
+            "not ok",
+            execute_and_learn=MagicMock(),
+            book_refusal=MagicMock(),
+            observation={},
+            sim=sim,
+            book_machine_refusal=MagicMock(),
+            answer_source=InputSource.OPERATOR,
         )
     [call] = sim.emit_prompt.call_args_list
     assert "Type 'yes' or 'no'" in call.args[0]
@@ -486,3 +505,137 @@ def test_the_timeout_prompt_offers_only_the_answers_it_reads() -> None:
     src = inspect.getsource(llm_worker)
     assert "'no' to skip" not in src
     assert "or 'no'." in src
+
+
+# ── Delta 3: synthetic records, input order, voice, wake, sources ─────────────────────────────────────
+
+
+def _bridge_with(actions: int, *, reasks: int):
+    import time as _time
+
+    from maxim.runtime.sim_adapter import SimulationAdapter
+    from maxim.simulation.bridge import SimulationBridge
+    from maxim.simulation.sinks import ActionRecord
+
+    bridge = SimulationBridge(
+        response_timeout=0.5, settle_s=0.1, aut_mode="substrate-primary", substrate_actions_per_turn=3
+    )
+    adapter = SimulationAdapter(percept_source=bridge, action_sink=bridge.action_sink)
+    for i in range(actions):
+        bridge.action_sink.record(ActionRecord(timestamp=_time.time(), tool_name="probe", result_success=i % 2 == 0))
+        for _ in range(reasks):
+            adapter.emit_prompt("Confirm probe? Type 'yes' or 'no'.")
+    return bridge
+
+
+def test_re_asks_do_not_change_a_runs_action_counts() -> None:
+    """Fold 1: a re-asked prompt is recorded so the simulated person sees it, but it is not an action: the report's
+    totals and tool counts, and the substrate budget, are the same with re-asks as without."""
+    from maxim.simulation.report import build_report
+
+    def _report(bridge):
+        return build_report(
+            goal="g", mode="m", bridge=bridge, duration_s=1.0, finish_reason="completed", started_at=0.0, provenance={}
+        )
+
+    plain, noisy = _bridge_with(2, reasks=0), _bridge_with(2, reasks=3)
+    assert len(noisy.action_sink.actions) == 8  # the markers are recorded (the person reads them)
+    a, b = _report(plain), _report(noisy)
+    view = lambda r: (r.total_actions, r.blocked_actions, r.tool_usage, r.tool_success_rates)  # noqa: E731
+    assert view(a) == view(b) == (2, 0, {"probe": 2}, {"probe": 0.5})
+    assert noisy.substrate_action_allowed() is plain.substrate_action_allowed() is True  # 2 < 3 either way
+    from maxim.simulation.sinks import ActionRecord
+
+    assert ActionRecord(timestamp=0.0, tool_name="_gating_prompt").is_synthetic
+    assert not ActionRecord(timestamp=0.0, tool_name="respond").is_synthetic
+
+
+def test_deferred_inputs_are_taken_oldest_first() -> None:
+    """Fold 2's probe: yes, yes, obs3, obs1, obs2 arrive as (reply+obs1), (reply+obs2), (obs3), (), (); the words
+    come out in arrival order, never overtaken by newer input."""
+    from maxim.runtime.loop_perception import take_user_input
+
+    state = MagicMock()
+    state.data = {}
+    agent = MagicMock(**{"publish_arrival.return_value": None})
+    taken = []
+    for obs, reply in ((("obs1"), "yes"), ("obs2", "yes"), ("obs3", None), (None, None), (None, None)):
+        if reply:
+            state.data["pending_loop_reply"] = reply
+        got = take_user_input({"cli_input": obs} if obs else {}, state, agent, sim_mode=False)
+        taken.append(got.cli_input)
+    assert taken == ["yes", "yes", "obs1", "obs2", "obs3"]
+
+
+def test_a_voice_turn_that_arrives_with_typed_input_is_not_dropped() -> None:
+    """Fold 3: voice behind typed input (or behind the loop's reply) used to be popped and dropped."""
+    from maxim.runtime.loop_perception import take_user_input
+
+    state = MagicMock()
+    state.data = {"pending_voice_input": "v1", "pending_loop_reply": "yes"}
+    agent = MagicMock(**{"publish_arrival.return_value": None})
+    first = take_user_input({"cli_input": "typed"}, state, agent, sim_mode=False)
+    second = take_user_input({}, state, agent, sim_mode=False)
+    third = take_user_input({}, state, agent, sim_mode=False)
+    assert [first.cli_input, second.cli_input, third.cli_input] == ["yes", "typed", "v1"]
+    assert third.is_agentic_voice_input is True and third.source is InputSource.OPERATOR
+
+
+def test_a_deferred_turn_recalls_like_an_undeferred_one() -> None:
+    """Wire item 3: the tick that sends deferred words carries their ``addressed`` and ``own_capture_id`` (the
+    enrichment context's cue and self-exclusion, #1447/#1573), exactly as if they had not waited."""
+    from maxim.runtime.loop_perception import percept_enrichment_context, take_user_input
+
+    def _ctx(user_input):
+        state = MagicMock()
+        state.data = {}
+        return percept_enrichment_context(state, [], user_input)
+
+    agent = MagicMock(**{"publish_arrival.return_value": "cap-9"})
+    direct_state = MagicMock()
+    direct_state.data = {}
+    direct = take_user_input({"cli_input": "where is my cat"}, direct_state, agent, sim_mode=False)
+    waited_state = MagicMock()
+    waited_state.data = {"pending_loop_reply": "yes"}
+    take_user_input({"cli_input": "where is my cat"}, waited_state, agent, sim_mode=False)
+    waited = take_user_input({}, waited_state, agent, sim_mode=False)
+    a, b = _ctx(direct), _ctx(waited)
+    assert (a.user_input, a.own_capture_id) == (b.user_input, b.own_capture_id) == ("where is my cat", "cap-9")
+
+
+def test_a_change_the_submit_cannot_read_is_told_not_kept_awake() -> None:
+    """Fold 4: where the section 6 submit cannot read the change (``llm_reads_it`` False: substrate-primary, no
+    worker, asleep) it is told on the prompts' surfaces, the sim channel included, and cleared."""
+    ctrl = _plan_controller()
+    ctrl.state.data["pending_modification"] = {"original_tool_name": "bash", "user_modification": "x"}
+    sim = MagicMock()
+    with patch("maxim.simulation.sim_logger.display_status"):
+        assert ctrl.settle_pending_modification(llm_reads_it=False, sim=sim) is False
+    assert "pending_modification" not in ctrl.state.data
+    assert "can't apply a change" in sim.emit_prompt.call_args.args[0]
+
+
+def test_asleep_the_loop_does_not_wake_for_a_change() -> None:
+    """Fold 4: ``loop_gates`` passes ``llm_reads_it`` False while asleep (no wake keyword reaches the submit)."""
+    import inspect
+
+    from maxim.runtime import loop_gates
+
+    src = inspect.getsource(loop_gates.pre_tick_gate)
+    assert 'state.data.get("processing_state", "awake") != "sleep"' in src
+
+
+def test_one_follow_up_predicate() -> None:
+    """Fold 5: one test for a tool's ``[ACTION_FOLLOWUP`` line, at every site this branch touches."""
+    import inspect
+
+    from maxim.runtime import agent_loop, loop_controller, loop_perception
+    from maxim.runtime.loop_perception import is_tool_followup
+
+    assert (
+        is_tool_followup("[ACTION_FOLLOWUP type=x]: y") and not is_tool_followup("yes") and not is_tool_followup(None)
+    )
+    for module in (loop_controller, loop_perception):
+        body = inspect.getsource(module).replace('return str(text or "").startswith("[ACTION_FOLLOWUP")', "")
+        assert 'startswith("[ACTION_FOLLOWUP")' not in body, module.__name__
+    assert 'startswith("[ACTION_FOLLOWUP")' not in inspect.getsource(agent_loop)

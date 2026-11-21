@@ -25,6 +25,7 @@ from maxim.runtime.loop_types import (
     PendingConfirmation,
     TimeoutRetry,
 )
+from maxim.utils.input_source import InputSource
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -349,15 +350,26 @@ class LoopController:
         book_machine_refusal: Callable[..., None],
         observation: Any,
         sim: Any,
+        answer_source: InputSource,
     ) -> bool:
         """The tick's input as the answer to whichever gating prompt is pending (#1185): the action confirmation,
         the timeout retry, then the plan approval. True when the input was the answer (consumed: the caller drops
         it, as the next turn it is not). A tool's ``[ACTION_FOLLOWUP`` result is never an answer to any prompt.
-        The callables are the run's (``LoopRun``), ``observation`` this tick's, ``sim`` the run's adapter."""
-        if cli_text.startswith("[ACTION_FOLLOWUP"):
+        The callables are the run's (``LoopRun``), ``observation`` this tick's, ``sim`` the run's adapter, and
+        ``answer_source`` who this tick's input came from (``UserInput.source``; required: these handlers run before
+        ``store_user_input``, so ``state.data["pending_user_input_source"]`` still names the previous input's)."""
+        from maxim.runtime.loop_perception import is_tool_followup
+
+        if is_tool_followup(cli_text):
             return False
         if self.handle_confirmation(
-            cli_text, execute_and_learn=execute_and_learn, book_refusal=book_refusal, observation=observation, sim=sim
+            cli_text,
+            execute_and_learn=execute_and_learn,
+            book_refusal=book_refusal,
+            book_machine_refusal=book_machine_refusal,
+            observation=observation,
+            sim=sim,
+            answer_source=answer_source,
         ):
             return True
         if self.handle_timeout_retry(cli_text, sim=sim):
@@ -369,6 +381,7 @@ class LoopController:
             book_machine_refusal=book_machine_refusal,
             observation=observation,
             sim=sim,
+            answer_source=answer_source,
         )
 
     # ── Phase: Handle confirmation input ─────────────────────────────────
@@ -379,12 +392,20 @@ class LoopController:
         *,
         execute_and_learn: Callable[..., ExecutionOutcome],
         book_refusal: Callable[..., None],
+        book_machine_refusal: Callable[..., None],
         observation: Any,
         sim: Any,
+        answer_source: InputSource,
     ) -> bool:
         """Process user input when a confirmation is pending.
 
         Returns True if the input was consumed (caller should skip further processing).
+
+        A "yes" is an approval, so it takes the one check every approval takes (#1185, corrected owner decision A):
+        ``AutonomyController.approved_action_denial(approver=answer_source)``. A pause or a forbid that landed while
+        the prompt waited refuses it, and so does a "yes" from the loop itself (the non-interactive auto-yes, an
+        adapter's default: ``InputSource.LOOP`` satisfies no reason that needs a person), typed, as a machine refusal
+        (no NAc), shown to the person; the plan prompt and this one can never disagree.
 
         A "yes" runs the parked action through the run's ``execute_and_learn`` (#1133), the SAME function
         the autonomous path calls, so a confirmed action learns exactly what it would have learned
@@ -418,6 +439,12 @@ class LoopController:
         if intent == "approve":
             logger.info("User confirmed action: %s", pc.tool_name)
             log_agentic("agent_loop", "user_confirmed", {"tool": pc.tool_name, "approved": True})
+            denial = self.autonomy_controller.approved_action_denial(
+                pc.action, confidence=pc.confidence, approver=answer_source
+            )
+            if denial is not None:
+                self._refuse_confirmed(pc, denial, book_machine_refusal=book_machine_refusal, sim=sim)
+                return True
             try:
                 outcome = execute_and_learn(
                     action=pc.action,
@@ -496,6 +523,121 @@ class LoopController:
             self.clear_pending_user_input()
             self._clear_confirmation_prompt()
             return True
+
+    def _refuse_confirmed(
+        self,
+        pc: PendingConfirmation,
+        denial: tuple[str, str],
+        *,
+        book_machine_refusal: Callable[..., None],
+        sim: Any,
+    ) -> None:
+        """A confirmed action ``approved_action_denial`` still refuses: refused typed through the approved path's
+        own refusal (``loop_planning.refuse_plan``: ``plan_refused``, the audit entry, the person told, a machine
+        refusal with no NAc), and the confirmation cleared."""
+        from maxim.runtime.loop_planning import refuse_plan
+
+        if pc.source is not None:
+            refuse_plan(
+                pc.source,
+                reason=denial[0],
+                detail=denial[1],
+                autonomy_controller=self.autonomy_controller,
+                book_machine_refusal=book_machine_refusal,
+                executor=self.executor,
+                state=self.state,
+                sim=sim,
+            )
+        else:  # a confirmation built outside the loop: no proposal to book, so it is only reported
+            logger.warning("Confirmed action %s refused (%s): %s", pc.tool_name, denial[0], denial[1])
+        self.pending_confirmation = None
+        self.clear_pending_user_input()
+        self.pending_proposal = None
+        self._clear_confirmation_prompt()
+
+    def park_confirmation(self, action: dict[str, Any], *, sim: Any) -> None:
+        """Park ``pending_proposal`` behind the SUPERVISED confirmation prompt (moved out of
+        ``_run_agentic_loop_body``'s §4, rule T for #1185): the sim response policy answers it, or the prompt is
+        shown, or (non-interactive) the policy's auto-yes answers it. The answer arrives as the next tick's input."""
+        # The typed record keeps the proposal as its ``source``, so the confirmed action is
+        # credited to the situation it was proposed in (#1133; the proposal itself is cleared
+        # below, as for every non-executed branch).
+        _pending = PendingConfirmation.from_proposal(self.pending_proposal)
+        tool_name = _pending.tool_name
+        params = action.get("params", {})
+
+        # In sim mode, auto-resolve via response policy instead of blocking
+        sim_response = sim.resolve_confirmation(_pending.policy_view())
+        if sim_response is not None:
+            # Inject the response as if the user typed it
+            sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
+            self.pending_confirmation = _pending
+            self.state.data["pending_loop_reply"] = sim_response
+            self.state.data["pending_loop_reply_source"] = sim.answer_source().value  # the sim's, or the loop's
+        else:
+            # Production mode: display prompt if interactive, auto-resolve if not
+            from maxim.simulation.sim_logger import should_prompt, display_scene
+
+            if should_prompt("confirmation"):
+                display_scene(f"\n  Action requires confirmation: {tool_name}")
+                param_lines = []
+                for key, value in params.items():
+                    param_lines.append(f"    {key}: {str(value)}")
+                if param_lines:
+                    display_scene("\n".join(param_lines))
+                if self.pending_proposal.reasoning:
+                    display_scene(f"  Reasoning: {self.pending_proposal.reasoning}")
+                # Show confirmation prompt in the input panel so typed
+                # characters are visible with question context.
+                try:
+                    from maxim.simulation.sim_logger import get_active_display
+
+                    _conf_display = get_active_display()
+                    if _conf_display is not None:
+                        _conf_display.set_prompt(f"Confirm {tool_name}? Type 'yes' or 'no'\n\n> ")
+                        _conf_display.set_urgent(True)
+                except Exception:
+                    log_swallowed_exception()  # the input panel is display only; the scene line still prompts
+                    display_scene("  Type 'yes' or 'no' to confirm/reject:")
+            else:
+                # Non-interactive: the loop answers itself, a MACHINE "yes" (#1185): it satisfies no reason that
+                # needs a person, so handle_confirmation refuses it typed (needs_person) instead of running it
+                self.state.data["pending_loop_reply"] = "yes"
+                self.state.data["pending_loop_reply_source"] = InputSource.LOOP.value
+                sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
+
+            self.pending_confirmation = _pending
+
+    def queue_for_approval(self, action: dict[str, Any], *, confidence: float, sim: Any) -> None:
+        """Queue ``pending_proposal`` for approval at PLANNING (moved out of ``_run_agentic_loop_body``'s §4, rule T
+        for #1185). An embedder's ``proposal_queue.approve`` approves it, or, with no person to ask
+        (``no_person_to_ask``), the MACHINE auto-approve (#1185 owner decision 2026-11-21): it lifts the PLANNING
+        gate only, so the drain refuses what needs a person (``needs_person``)."""
+        from maxim.agents.autonomy import Proposal
+
+        proposal = Proposal(
+            id=self.pending_proposal.request_id,
+            action=action,
+            reasoning=self.pending_proposal.reasoning,
+            confidence=confidence,
+            strategy_used=self.pending_proposal.strategy_used,
+            citations=self.pending_proposal.citations,
+            source=self.pending_proposal,  # its situation is credited at approval (#1083)
+        )
+        self.autonomy_controller.proposal_queue.submit(proposal)
+        self.autonomy_controller.log_action(
+            action_type="proposed",
+            action=action,
+            reasoning=self.pending_proposal.reasoning,
+            mode=operational_mode(self.executor, self.state),
+            confidence=confidence,
+        )
+        if no_person_to_ask():
+            self.autonomy_controller.proposal_queue.approve(
+                proposal.id, approved_by="auto:non-interactive", source=InputSource.LOOP
+            )
+            sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING, machine): {action.get('tool_name')}")
+        self.pending_proposal = None
 
     # ── Phase: Handle timeout retry ──────────────────────────────────────
 
@@ -597,9 +739,21 @@ class LoopController:
             sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
             if classify_yes_no(sim_plan_response) == "yes":
                 logger.info("Sim mode: plan auto-approved, executing")
-                self._run_approved_plan(proposal, approved_by="sim:response_policy", observation=observation, **run)
+                self._run_approved_plan(
+                    proposal,
+                    approved_by="sim:response_policy",
+                    approver=InputSource.SIM,
+                    observation=observation,
+                    **run,
+                )
             else:
                 logger.info("Sim mode: plan auto-rejected")
+            return True
+        if no_person_to_ask():  # nobody would answer a parked plan: the machine approval, PLANNING gate only
+            logger.info("Non-interactive: plan machine-approved")
+            self._run_approved_plan(
+                proposal, approved_by="auto:non-interactive", approver=InputSource.LOOP, observation=observation, **run
+            )
             return True
         if self.pending_plan_proposal is not None:
             from maxim.runtime.loop_planning import AWAITING_HUMAN, refuse_plan
@@ -623,7 +777,7 @@ class LoopController:
             "plan_awaiting_approval",
             {
                 "tool": action.get("tool_name"),
-                "params": action.get("params", {}),
+                "params": _params_text(action)[:200],  # bounded: a write_file body must not flood the stream
                 "plan_preview": proposal.plan_text[:100] if proposal.plan_text else None,
             },
         )
@@ -635,15 +789,9 @@ class LoopController:
     def _plan_prompt(plan: LLMProposal) -> str:
         """What the person approves: the tool and params that will run (B2's half: the model's prose is shown as
         its description, never as what runs)."""
-        import json
-
         action = plan.action or {}
-        try:
-            params = json.dumps(action.get("params", {}), sort_keys=True, default=str)
-        except (TypeError, ValueError):
-            params = repr(action.get("params", {}))
         return (
-            f"[Awaiting approval] Run {action.get('tool_name') or 'unknown'} with {params}\n"
+            f"[Awaiting approval] Run {action.get('tool_name') or 'unknown'} with {_params_text(action)}\n"
             f"  The model's description: {plan.plan_text}\n"
             "Type 'yes' to approve, 'no' to cancel, or describe changes."
         )
@@ -653,13 +801,15 @@ class LoopController:
         plan: LLMProposal,
         *,
         approved_by: str,
+        approver: InputSource,
         execute_and_learn: Callable[..., ExecutionOutcome],
         book_machine_refusal: Callable[..., None],
         observation: Any,
         sim: Any,
     ) -> None:
-        """The one approved-plan path, for a person's "yes" and the sim policy's (owner decision B): one
-        ``loop_planning.execute_approved_plan``; its follow-up, if any, is the loop's next."""
+        """The one approved-plan path, for a person's "yes", the sim policy's (owner decision B) and the
+        non-interactive machine approval (``approver=InputSource.LOOP``): one ``loop_planning.execute_approved_plan``; its
+        follow-up, if any, is the loop's next."""
         from maxim.runtime.loop_planning import execute_approved_plan
 
         outcome = execute_approved_plan(
@@ -672,6 +822,7 @@ class LoopController:
             state=self.state,
             sim=sim,
             approved_by=approved_by,
+            approver=approver,
         )
         if outcome is not None and outcome.followup is not None:
             self.pending_action_followup = outcome.followup
@@ -685,6 +836,7 @@ class LoopController:
         book_machine_refusal: Callable[..., None],
         observation: Any,
         sim: Any,
+        answer_source: InputSource,
     ) -> bool:
         """Process user input when a plan proposal is awaiting approval.
 
@@ -731,6 +883,7 @@ class LoopController:
             self._run_approved_plan(
                 plan,
                 approved_by="human:plan_prompt",
+                approver=answer_source,
                 execute_and_learn=execute_and_learn,
                 book_machine_refusal=book_machine_refusal,
                 observation=observation,
@@ -811,22 +964,20 @@ class LoopController:
         except Exception:
             log_swallowed_exception()  # a display that cannot show the prompt must not stop the loop (#1134)
 
-    def settle_pending_modification(self, *, llm_reads_it: bool) -> bool:
+    def settle_pending_modification(self, *, llm_reads_it: bool, sim: Any) -> bool:
         """A change the person asked for at a confirmation or plan prompt (``state.data["pending_modification"]``,
         #1185): True when it should wake the loop.
 
         Only the §6 LLM submit reads it (once: it pops it into the request, beside the original action, the shape
-        ``prompt_builder.build_modification_section`` renders). Where that submit runs (``llm_reads_it``: an LLM
-        worker, not substrate-primary) it wakes the loop until then. Anywhere else nothing would ever read it, so it
-        must not idle-wake the loop forever: the person is told plainly that this mode cannot apply a change, and it
-        is cleared."""
+        ``prompt_builder.build_modification_section`` renders). Where that submit can read it (``llm_reads_it``: an
+        LLM worker, not substrate-primary, not asleep; ``loop_gates`` decides) it wakes the loop until then.
+        Anywhere else nothing would ever read it, so it must not keep the loop awake: the person is told plainly,
+        on the prompts' surfaces (``_show_prompt``), that this mode cannot apply a change, and it is cleared."""
         mod = self.state.data.get("pending_modification")
         if not mod:
             return False
         if llm_reads_it:
             return True
-        from maxim.simulation.sim_logger import display_status
-
         self.state.data.pop("pending_modification", None)
         tool = str(mod.get("original_tool_name") or "unknown")
         log_agentic(
@@ -835,7 +986,7 @@ class LoopController:
             {"tool": tool, "modification": str(mod.get("user_modification") or "")[:100]},
             level="WARNING",
         )
-        display_status(f"This mode can't apply a change to the proposed action ({tool}); the action was not run.")
+        self._show_prompt(f"This mode can't apply a change to the proposed action ({tool}); it was not run.", sim=sim)
         return False
 
     # ── Phase: Store user input in state and memory ──────────────────────
@@ -958,7 +1109,9 @@ def is_unread_input(line: Any, processed_cli_inputs: Any) -> bool:
     The triggering-input scan's own rules (the ``SKIP_LLM_COMMANDS`` list, a voice input without its wake word) are
     not applied: they mark such inputs processed as the scan meets them, and a planning-liveness loop's inputs are
     the narrator's CLI lines, which those rules never skip (its operator text arrives prefixed ``USER GUIDANCE:``)."""
-    return bool(line) and line not in processed_cli_inputs and not str(line).startswith("[ACTION_FOLLOWUP")
+    from maxim.runtime.loop_perception import is_tool_followup
+
+    return bool(line) and line not in processed_cli_inputs and not is_tool_followup(str(line))
 
 
 def _unread_inputs(memory: Any, processed_cli_inputs: Any) -> list[str]:
@@ -1149,3 +1302,21 @@ def _handle_planning_transport_failure(
     )
     ctrl.last_llm_submit_time = time.time()
     return False
+
+
+def no_person_to_ask() -> bool:
+    """True when no person can answer a gating prompt: the run is non-interactive (``--interactive false``, the
+    sim logger's ``InteractiveMode.OFF``). Its approvals are then the MACHINE auto-approve (#1185)."""
+    from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
+
+    return get_interactive_mode() is InteractiveMode.OFF
+
+
+def _params_text(action: dict[str, Any]) -> str:
+    """An action's params as one line of JSON (repr when not serialisable), for the plan prompt and its event."""
+    import json
+
+    try:
+        return json.dumps(action.get("params", {}), sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        return repr(action.get("params", {}))

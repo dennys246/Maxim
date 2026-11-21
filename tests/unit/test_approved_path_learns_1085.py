@@ -208,22 +208,57 @@ def test_an_approved_blocked_action_is_refused_typed_and_not_executed(monkeypatc
     ("policy", "tool", "params"),
     [
         ({"allowed_tools": {"other"}}, TOOL, {"x": 1}),
-        ({"min_confidence_autonomous": 0.95}, TOOL, {"x": 1}),
         ({}, "write_file", {"path": "/definitely/outside/the/workspace.txt", "content": "x"}),
     ],
-    ids=["allowed_tools", "confidence", "cwd_write"],
+    ids=["allowed_tools", "cwd_write"],
 )
-def test_a_drained_approval_the_policy_refuses_is_not_permitted(monkeypatch, tmp_path, policy, tool, params):
-    """#1185 owner decision A, extended to the drain (2026-11-21), replacing the 2026-10-09 rule that an approval
-    satisfied every "needs approval" check: an approval lifts the PLANNING level gate only, so the policy's
-    ``allowed_tools`` list, confidence threshold and sandbox/CWD rules still refuse a drained entry, typed
-    ``not_permitted``, booked as a machine refusal (no NAc)."""
+def test_an_approved_confirmable_tool_executes(monkeypatch, tmp_path, policy, tool, params):
+    """Owner decision 2026-10-09, kept by #1185's corrected decision A (2026-11-21): ``allowed_tools`` and the CWD
+    write rule are "needs approval" checks, which the embedder's approval satisfies, so the approved entry RUNS."""
     obs = run_once(monkeypatch, tmp_path, tool=tool, params=params, level="planning", policy=policy or None)
+    assert [e["_tool"] for e in obs.executed] == [tool]
+    assert _refusals(obs) == []
+
+
+def test_an_approved_tool_outside_allowed_tools_learns_with_parity(monkeypatch, tmp_path):
+    auto = run_once(monkeypatch, tmp_path / "auto", params={"x": 1})
+    monkeypatch.undo()
+    approved = run_once(
+        monkeypatch, tmp_path / "approved", params={"x": 1}, level="planning", policy={"allowed_tools": {"other"}}
+    )
+    assert [credit_view(kw, approved) for kw in approved.outcomes] == [credit_view(kw, auto) for kw in auto.outcomes]
+    assert approved.plan_outcomes == auto.plan_outcomes
+
+
+def test_a_drained_approval_below_the_confidence_floor_is_not_permitted(monkeypatch, tmp_path):
+    """#1185 corrected decision A: the confidence floor still refuses an approved entry, typed ``not_permitted``,
+    booked as a machine refusal (no NAc)."""
+    obs = run_once(monkeypatch, tmp_path, params={"x": 1}, level="planning", policy={"min_confidence_autonomous": 0.95})
     assert obs.executed == []
     assert [d["reason"] for d in _refusals(obs)] == ["not_permitted"]
     assert obs.nac_observations == []
-    [booked] = [kw for kw in obs.all_outcomes if kw["tool_name"] == tool]
+    [booked] = [kw for kw in obs.all_outcomes if kw["tool_name"] == TOOL]
     assert booked["success"] is False and booked.get("nac") is None
+
+
+def test_a_machine_drained_approval_refuses_what_needs_a_person(monkeypatch, tmp_path):
+    """#1185: the non-interactive auto-approve is the loop's own (``InputSource.LOOP``): it lifts the PLANNING gate
+    only, so an allow-list miss is refused ``needs_person`` (a machine refusal, no NAc), and a tool that needs no
+    person runs."""
+    refused = run_once(
+        monkeypatch,
+        tmp_path / "r",
+        params={"x": 1},
+        level="planning",
+        policy={"allowed_tools": {"other"}},
+        embedder_approves=False,
+    )
+    assert refused.executed == []
+    assert [d["reason"] for d in _refusals(refused)] == ["needs_person"]
+    assert refused.nac_observations == []
+    monkeypatch.undo()
+    ran = run_once(monkeypatch, tmp_path / "ok", params={"x": 1}, level="planning", embedder_approves=False)
+    assert [e["_tool"] for e in ran.executed] == [TOOL]
 
 
 # ── (d) a machine refusal books no NAc ───────────────────────────────────────────────────────────────
@@ -280,7 +315,6 @@ def test_an_approved_write_file_is_not_retried_with_overwrite(monkeypatch, tmp_p
         params=dict(_WRITE),
         fail_unless_overwrite=True,
         level="planning",
-        policy={"cwd_write_requires_approval": False},  # #1185 decision A: else the CWD-write rule refuses it
     )
     assert obs.executed == [{"_tool": "write_file", **_WRITE}]
     assert [(kw["success"], kw["error"]) for kw in obs.outcomes] == [(False, "File already exists: a.txt")]

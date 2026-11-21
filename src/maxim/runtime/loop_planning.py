@@ -17,11 +17,12 @@ Owner decisions (2026-10-08, and 2026-10-09 after the review):
   execution: the critical safety constraints and the pause (``approval_blocker``, the non-level half of
   ``can_execute_action``) and the supervision policy's hard denials (``SupervisionPolicy.hard_deny``: forbidden
   prefixes, categories and tools; owner decision S7). A blocked entry is refused (``blocked``) and not executed.
-  Then ``AutonomyController.approved_plan_denial`` (#1185 owner decision A, 2026-11-21, which replaced the
-  2026-10-09 rule that an approval satisfied every "needs approval" check): the approval satisfies only the level
-  and ``requires_confirmation``; the ``allowed_tools`` list, confidence and the sandbox/CWD rules still apply, and
-  an entry they refuse is refused (``not_permitted``). The same step serves a plan approved at the plan-approval
-  prompt (``execute_approved_plan``). **The pause check is narrow:**
+  These are the first half of ``AutonomyController.approved_action_denial``, the one check every approval takes
+  (#1185 corrected owner decision A, 2026-11-21): a person's approval also satisfies every confirmable reason (the
+  ``allowed_tools`` list, ``requires_confirmation``, the CWD-write and sandbox-execute rules: the 2026-10-09 rule,
+  kept); the confidence floor still refuses (``not_permitted``); a MACHINE approval (the non-interactive
+  auto-approve, ``Proposal.approver`` = ``InputSource.LOOP``) lifts the PLANNING gate only, so a reason left for a person refuses
+  (``needs_person``). The same step serves a plan approved at the plan-approval prompt (``execute_approved_plan``). **The pause check is narrow:**
   while the controller is paused the loop's gate idles and this drain does not run at all, so the check catches
   only a pause landing after this tick's gate (later in the tick, or during the drain). Approved entries do not
   expire, and a later ``resume()`` would run them; that is #1185's.
@@ -53,7 +54,9 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from maxim.agents.autonomy import APPROVAL_BLOCKED, APPROVAL_NEEDS_PERSON, APPROVAL_NOT_PERMITTED
 from maxim.runtime.loop_state import operational_mode
+from maxim.utils.input_source import InputSource
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -116,12 +119,14 @@ _WIRE1_HIGH_PHRASE = "unpredictable from prior experience"
 _WIRE1_LOW_PHRASE = "reliable from prior experience"
 
 # Typed refusal reasons (the ``plan_refused`` event's ``reason`` and the entry's ``rejected_reason``).
-BLOCKED = "blocked"
 DRAIN_ABORTED = "drain_aborted"
 NO_ACTION = "no_action"
-# #1185: a plan approved at the plan-approval prompt that the supervision policy still refuses (owner decision A),
-# and a plan proposed while another waits for the person's answer (S3: the waiting plan keeps the slot).
-NOT_PERMITTED = "not_permitted"
+# #1185: an approved action the safety blocker, the confidence floor or (for a machine approval) a person-only
+# reason still refuses (``AutonomyController.approved_action_denial``, the one check), and a plan proposed while
+# another waits for the person's answer (S3: the waiting plan keeps the slot).
+BLOCKED = APPROVAL_BLOCKED
+NOT_PERMITTED = APPROVAL_NOT_PERMITTED
+NEEDS_PERSON = APPROVAL_NEEDS_PERSON
 AWAITING_HUMAN = "awaiting_human"
 
 
@@ -187,16 +192,18 @@ def execute_approved_plan(
     state: Any,
     sim: Any,
     approved_by: str,
+    approver: InputSource,
 ) -> ExecutionOutcome | None:
     """Execute an approved plan once (#1185 Surface, owner decisions 2026-11-21): a person's "yes" at the
     plan-approval prompt, or the sim response policy's.
 
-    The drain's per-entry step (``_drain_one``: ``approved_action_blocker``, then ``approved_plan_denial``, then
-    one ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in). A refused plan
-    is refused typed (``blocked`` / ``not_permitted``) and booked as a machine refusal (no NAc). ``None`` when
-    refused.
+    The drain's per-entry step (``_drain_one``: ``approved_action_denial``, then one
+    ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in). ``approver``: who
+    approved it; ``InputSource.LOOP`` (the non-interactive auto-approve) lifts the PLANNING gate only. A refused plan
+    is refused typed (``blocked`` / ``not_permitted`` / ``needs_person``) and booked as a machine refusal (no NAc).
+    ``None`` when refused.
     """
-    proposal = _plan_record(plan, status="approved", approved_by=approved_by)
+    proposal = _plan_record(plan, status="approved", approved_by=approved_by, approver=approver)
     refuser = _Refuser(
         autonomy_controller=autonomy_controller,
         book_machine_refusal=book_machine_refusal,
@@ -236,7 +243,9 @@ def refuse_plan(
     refuser.refuse(_plan_record(plan, status="pending", approved_by=None), reason=reason, detail=detail)
 
 
-def _plan_record(plan: LLMProposal, *, status: str, approved_by: str | None) -> Proposal:
+def _plan_record(
+    plan: LLMProposal, *, status: str, approved_by: str | None, approver: InputSource = InputSource.UNKNOWN
+) -> Proposal:
     """The queue's record of a plan from the plan-approval prompt, so it takes the drain's step and refusals."""
     from maxim.agents.autonomy import Proposal
 
@@ -250,6 +259,7 @@ def _plan_record(plan: LLMProposal, *, status: str, approved_by: str | None) -> 
         status=status,
         approved_by=approved_by,
         source=plan,
+        approver=approver,
     )
 
 
@@ -264,21 +274,20 @@ def _drain_one(
     """One approved entry, drained or approved at the plan prompt: refuse it (typed) or execute it. ``None`` when it
     was refused.
 
-    One rule for every human approval (#1185, owner decision A, extended to the drain 2026-11-21): the approval
-    lifts the PLANNING level gate only. ``approved_action_blocker`` (the pause, the critical safety constraints, the
-    policy's hard denials) refuses ``blocked``; ``approved_plan_denial`` (the policy's ``allowed_tools``,
-    confidence and sandbox/CWD rules, the confirmation satisfied) refuses ``not_permitted``."""
+    One check for every approval (#1185, corrected owner decision A, 2026-11-21):
+    ``AutonomyController.approved_action_denial``. A person's approval satisfies every confirmable reason (outside
+    ``allowed_tools``, a CWD write, a sandbox execute), as a SUPERVISED confirm-yes does; the safety blocker refuses
+    ``blocked`` and the confidence floor ``not_permitted``; an approval by the loop itself (``Proposal.approver``)
+    lifts the PLANNING gate only, so a reason left for a person refuses ``needs_person``."""
     action = proposal.action
     if not action:
         refuser.refuse(proposal, reason=NO_ACTION, detail="the approved proposal carries no action")
         return None
-    blocker = autonomy_controller.approved_action_blocker(action)
-    if blocker is not None:
-        refuser.refuse(proposal, reason=BLOCKED, detail=blocker)
-        return None
-    denial = autonomy_controller.approved_plan_denial(action, confidence=proposal.confidence)
+    denial = autonomy_controller.approved_action_denial(
+        action, confidence=proposal.confidence, approver=proposal.approver
+    )
     if denial is not None:
-        refuser.refuse(proposal, reason=NOT_PERMITTED, detail=denial)
+        refuser.refuse(proposal, reason=denial[0], detail=denial[1])
         return None
     return execute_and_learn(
         action=action,
@@ -306,6 +315,15 @@ def _abort_drain(queue: Any, exc: BaseException, *, refuser: _Refuser) -> None:
             log_swallowed_exception(site="loop_planning.py:_abort_drain:drain_aborted")
 
 
+def refusal_message(tool_name: str, reason: str, detail: str) -> str:
+    """What the person is told when an approved (or waiting) action does not run (#1185). Never "requires
+    approval": a person's approval satisfies every such reason, and a machine approval's is worded as
+    ``NEEDS_PERSON_DETAIL``."""
+    if reason == AWAITING_HUMAN:
+        return f"A new plan for {tool_name} was set aside: {detail}."
+    return f"{tool_name} was approved but not run: {detail}."
+
+
 def _reject(proposal: Proposal, reason: str) -> None:
     proposal.status = "rejected"
     proposal.rejected_reason = reason
@@ -320,6 +338,14 @@ class _Refuser:
     executor: Any
     state: Any
     sim: Any
+
+    def _show(self, text: str) -> None:
+        """A refusal on the human path is the person's to see (#1185): the status line and the sim's channel, the
+        surfaces the prompts use."""
+        from maxim.simulation.sim_logger import display_status
+
+        display_status(text)
+        self.sim.emit_prompt(text)
 
     def refuse(self, proposal: Proposal, *, reason: str, detail: str) -> None:
         """Refuse one drained entry, typed: reject it, then report and book it (#1185 S5's order)."""
@@ -338,6 +364,7 @@ class _Refuser:
         )
         logger.warning("Approved proposal %s refused (%s): %s -- %s", proposal.id, reason, tool_name, detail)
         self.sim.log("PIPELINE", f"Approved proposal refused ({reason}): {tool_name} -- {detail}")
+        self._show(refusal_message(tool_name, reason, detail))
         self.autonomy_controller.log_action(
             action_type="rejected",
             action=proposal.action,

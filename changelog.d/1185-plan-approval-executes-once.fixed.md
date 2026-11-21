@@ -6,13 +6,20 @@
   - The prompt shows the tool and parameters that will run, with the model's description labelled as such.
   - While a plan waits for its answer, any new plan is refused (`awaiting_human`), so the answer always applies
     to the plan that was shown.
-  - The approval stands in for the SUPERVISED confirmation (no second prompt), but the supervision policy's
-    `allowed_tools`, confidence and sandbox/CWD rules still apply. Forbidden tools, the pause and the critical
-    safety constraints still refuse. Each refusal is typed and booked with no aversion learned.
-  - The same rule now applies to an approval drained from the PLANNING proposal queue (an embedder's
-    `proposal_queue.approve`, or the non-interactive auto-approval). Before, such an approval ran even when the
-    policy's allow-list, confidence threshold or sandbox/CWD rules refused the tool; it is now refused
-    `not_permitted`.
+  - One rule for every approval (a plan approved at the prompt, an entry drained from the PLANNING queue, and a
+    "yes" at a SUPERVISED confirmation): a person's approval satisfies everything it is asked for (outside the
+    allow-list, a write outside the workspace, a sandbox execute), as a confirmation "yes" always did. The pause,
+    forbidden tools and the confidence floor still refuse it. A confirmation "yes" is now checked too, so a pause
+    or a forbid that lands while it waits is honoured. Each refusal is typed, shown to the person, and booked with
+    no aversion learned; none is worded "requires approval".
+  - **Headless runs can no longer do what needs a person.** With `--interactive false` the loop's own "yes" is a
+    machine approval: a plan is decided at once instead of being parked for nobody (each later plan used to be
+    refused while the first waited), and at PLANNING an allow-listed tool runs while anything else is refused
+    "it needs a person's approval, and this run is non-interactive". At SUPERVISED, the non-interactive auto-yes
+    to a confirmation is refused the same way instead of running the action. (The non-interactive PLANNING
+    auto-approve had never fired; it now does, under this rule.)
+  - The default supervision policy's confidence floor is 0.7 (was 0.8), the router's default proposal confidence,
+    so the default policy no longer refuses the default proposal.
   - A simulation's response-policy "yes" now takes the same path, and counts as human-involved in the audit log
     as a confirmation's auto-yes already did.
 - **A change request at a confirmation or plan prompt is no longer stranded** (#1185): the answer was stored with

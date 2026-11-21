@@ -1320,6 +1320,9 @@ def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
             "timeout_s": timeout_s,
         }
         state.data["pending_loop_reply"] = sim_timeout_response
+        state.data["pending_loop_reply_source"] = (
+            sim.answer_source().value
+        )  # the sim's policy, or the loop's own (#1185)
     else:
         state.data["pending_timeout_retry"] = {
             "original_request": action.get("_original_request"),

@@ -16,8 +16,9 @@ observations hold whether the dispatch lives inline in ``agent_loop`` or in ``to
 - the controller, captured at construction, for the follow-up it is left holding.
 
 ``level="supervised"`` routes the proposal through the SUPERVISED confirmation path: the probe tool is
-in ``requires_confirmation`` and interactive mode is OFF, so the loop answers "yes" itself
-(``should_prompt("confirmation")`` is False) and the answer is handled on the next tick.
+in ``requires_confirmation``; a person types "yes" at the prompt (``person_confirms``, the default; #1185: the
+loop's own non-interactive "yes" satisfies no reason that needs a person, so ``person_confirms=False`` is refused
+``needs_person``) and the answer is handled on the next tick.
 
 ``level="planning"`` routes it through the PLANNING queue (#1085): the loop queues every proposal, and an
 EMBEDDER approves it (the ``test_approved_proposal_situation_1083`` pattern: ``proposal_queue.submit`` is
@@ -28,7 +29,8 @@ controller right after the approval (``emergency_halt``), before the loop drains
 ``plan_text`` makes the proposal a plan that ``requires_approval`` (#1185): the loop parks it behind the
 plan-approval prompt, and ``answers`` are the person's replies, typed into the interactive mailbox
 (``pending_cli_input``): the first once the plan is shown (``plan_awaiting_approval``; or once ``answer_on``
-fires), each later one once the previous answer was read (``plan_approval_check``). ``plan_every``: every proposal
+fires), each later one once the previous answer was read (``plan_approval_check``); they need ``interactive=True``, since a non-interactive run machine-approves a plan
+rather than park it for nobody (#1185). ``plan_every``: every proposal
 (``then_propose``'s too) is such a plan. ``sim_plan_answer``: the sim response policy answers the plan prompt.
 
 The mode (#963): ``state_mode`` is the loop state's ``"mode"`` (``None`` leaves it unset), ``grant`` the operator's
@@ -208,7 +210,7 @@ def run_once(
     level: str = "autonomous",
     display_raises: bool = False,
     capture_raises: bool = False,
-    then_propose: str | None = None,
+    then_propose: str | tuple[str, ...] | None = None,
     submit_interval: float | None = None,
     max_steps: int = 6,
     fail_unless_overwrite: bool = False,
@@ -229,6 +231,9 @@ def run_once(
     answer_on: str = "plan_awaiting_approval",
     plan_every: bool = False,
     sim_plan_answer: str | None = None,
+    interactive: bool | None = None,
+    embedder_approves: bool = True,
+    person_confirms: bool = True,
 ) -> Observed:
     """Run the loop until the one proposal has been executed (and, supervised, confirmed).
 
@@ -293,15 +298,16 @@ def run_once(
                 obs.deliberation_resets.append(1)
 
         registry.register(_Think())
-    if then_propose is not None:
+    later = (then_propose,) if isinstance(then_propose, str) else tuple(then_propose or ())
+    for later_name in later:
 
         class _Second(Tool):
-            name = then_propose
+            name = later_name
             description = "stub"
             input_schema: dict = {}
 
             def execute(self, **kwargs: Any) -> Any:
-                obs.executed.append({"_tool": then_propose, **kwargs})
+                obs.executed.append({"_tool": type(self).name, **kwargs})
                 return ToolOutput(success=True, output="second")
 
         registry.register(_Second())
@@ -311,7 +317,7 @@ def run_once(
 
     proposed: list[int] = []
 
-    queue = [tool] if then_propose is None else [tool, then_propose]
+    queue = [tool, *later]
 
     def _propose(**_kw: Any) -> Any:
         if len(proposed) >= len(queue):
@@ -380,7 +386,22 @@ def run_once(
 
     monkeypatch.setattr(LoopController, "__init__", _init)
 
-    monkeypatch.setattr(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF)
+    if level == "supervised" and person_confirms:
+        real_park = LoopController.park_confirmation
+
+        def _park_then_person_confirms(self: Any, *a: Any, **k: Any) -> None:
+            real_park(self, *a, **k)
+            state.data["pending_cli_input"] = "yes"  # the person types "yes" at the shown confirmation prompt
+
+        monkeypatch.setattr(LoopController, "park_confirmation", _park_then_person_confirms)
+
+    # A person is there (interactive ON) when a test says so, when an embedder approves the PLANNING queue, or when a
+    # person answers the SUPERVISED confirmation; otherwise the run is non-interactive and the loop answers itself
+    # (its machine approvals and auto-yes, #1185).
+    if interactive is None:
+        interactive = (level == "planning" and embedder_approves) or (level == "supervised" and person_confirms)
+    mode = sim_logger.InteractiveMode.ON if interactive else sim_logger.InteractiveMode.OFF
+    monkeypatch.setattr(sim_logger, "_interactive_mode", mode)
     if sim_plan_answer is not None:
         from maxim.runtime.sim_adapter import NullSimulationAdapter
 
@@ -420,7 +441,10 @@ def run_once(
                 if pause_on_approve:
                     controller.emergency_halt("probe: paused after the approval")
 
-        monkeypatch.setattr(pq, "submit", _submit_then_approve)
+        if embedder_approves:  # else only the loop's own non-interactive machine approval approves (#1185)
+            monkeypatch.setattr(pq, "submit", _submit_then_approve)
+        else:
+            monkeypatch.setattr(pq, "submit", lambda p: (real_submit(p), obs.submitted.append(p)))
     else:
         raise ValueError(level)
     obs.autonomy = controller

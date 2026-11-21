@@ -1413,8 +1413,8 @@ def _report_scenario_validation(
         print(f"  [{status}] {desc}")
         if not r.passed and r.detail:
             print(f"         {r.detail}")
-    print(f"\nActions recorded: {len(sim_sink.actions)}")
-    for a in sim_sink.actions[:20]:
+    print(f"\nActions recorded: {len(sim_sink.agent_actions)}")
+    for a in sim_sink.agent_actions[:20]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         print(f"  {tag} {a.tool_name}")
 
@@ -1423,7 +1423,7 @@ def _report_scenario_validation(
         report = {
             "scenario": scenario_name,
             "passed": passed,
-            "action_count": len(sim_sink.actions),
+            "action_count": len(sim_sink.agent_actions),
             "expectations_met": [r.expectation.description or r.expectation.type for r in results if r.passed],
             "expectations_failed": [
                 f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in results if not r.passed

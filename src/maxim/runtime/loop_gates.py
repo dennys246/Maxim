@@ -166,7 +166,12 @@ def pre_tick_gate(
     #   - Carried live percept / awaited LLM job / substrate tick due (see _loop_is_idle)
     # A change the person asked for (#1185): wakes the loop where the LLM submit reads it, else it is told and cleared
     _has_modification = ctrl.settle_pending_modification(
-        llm_reads_it=llm_worker is not None and aut_mode != "substrate-primary"
+        llm_reads_it=(  # where the section 6 submit can read it: an LLM worker, not substrate-primary, not asleep
+            llm_worker is not None
+            and aut_mode != "substrate-primary"
+            and state.data.get("processing_state", "awake") != "sleep"
+        ),
+        sim=sim,
     )
     _has_pending_input = bool(
         _has_modification

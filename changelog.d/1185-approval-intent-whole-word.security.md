@@ -9,10 +9,18 @@
   - a re-asked prompt is shown again (in a simulation, on the simulated person's channel too) and the reply is
     not sent to the model as a new turn;
   - the timeout-retry prompt reads yes, a whole number of minutes from 1 to 10, or no, and asks again for
-    anything else; it no longer offers "skip", and "skip", "ok" and "sure" are no longer answers;
+    anything else; it no longer offers "skip", and "skip", "ok" and "sure" are no longer answers. A
+    non-interactive production run that hits a timeout therefore re-asks on every input, voice included, until
+    one is yes, no or 1-10;
   - a tool result that arrives while a prompt is waiting is never read as its answer;
   - in a simulation, the response policy's answer to a pending confirmation is no longer dropped when the
-    narrator's next sentence arrives in the same tick; the answer goes first and the sentence is the next turn.
+    narrator's next sentence arrives in the same tick; the answer goes first and the sentence is the next turn,
+    with its memory record and recall cue kept;
+  - inputs that arrive together are taken one per tick, oldest first: newer input no longer overtakes words
+    waiting behind a prompt's answer, and a voice turn that arrives with typed input is no longer dropped;
+  - a re-asked prompt shown to a simulated person no longer counts as an action: action totals, tool counts,
+    success rates and the per-turn action budget leave out every loop-made marker (`ActionRecord.is_synthetic`),
+    which also takes the "LLM unavailable" marker out of a report's totals.
 - **A failing simulation response policy no longer approves** (#1723): `SimulationAdapter.resolve_plan_approval`,
   `resolve_confirmation` and `resolve_timeout_retry` swallowed any error from the bridge's policy and answered
   "yes"; the error now propagates.

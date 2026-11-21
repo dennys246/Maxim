@@ -113,6 +113,9 @@ class _Sim:
     def log(self, category: str, msg: str, data: dict | None = None) -> None:
         self.lines.append(f"{category}:{msg}")
 
+    def emit_prompt(self, text: str) -> None:  # a refusal is shown on the sim's channel too (#1185)
+        self.lines.append(f"PROMPT:{text}")
+
 
 def _drain(ctrl: AutonomyController, eal: Any, booked: list[dict[str, Any]]) -> Any:
     return loop_planning.drain_approved(

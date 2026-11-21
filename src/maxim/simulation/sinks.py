@@ -98,6 +98,13 @@ class ActionRecord:
     # #1261: the words a successful speech call delivered (InstrumentedExecutor).
     utterance: str | None = None
 
+    @property
+    def is_synthetic(self) -> bool:
+        """A marker the loop records, not an action the agent took (#1185): a ``_``-prefixed tool name
+        (``_gating_prompt``, ``_llm_unavailable``, ``_deliberation_noop``). It still shows the bridge activity (the
+        settle loop, a turn's words), but every count, budget and success rate leaves it out."""
+        return self.tool_name.startswith("_")
+
 
 @runtime_checkable
 class ActionSink(Protocol):
@@ -180,6 +187,12 @@ class RecordingSink:
     def actions(self) -> list[ActionRecord]:
         with self._lock:
             return list(self._actions)
+
+    @property
+    def agent_actions(self) -> list[ActionRecord]:
+        """The actions the agent took, synthetic markers left out (``ActionRecord.is_synthetic``, #1185): what
+        every count and success rate reads."""
+        return [a for a in self.actions if not a.is_synthetic]
 
     def find_blocked(self, tool_pattern: str | None = None, reason_contains: str | None = None) -> list[ActionRecord]:
         """Find blocked actions: by FearAgent, or by autonomy at a turn's rejection cap (#1413, ``block_reason``

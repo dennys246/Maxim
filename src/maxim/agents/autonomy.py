@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.utils.input_source import HUMAN_APPROVERS, InputSource
+
 if TYPE_CHECKING:  # llm_types imports this module at runtime: a runtime import here would be circular
     from maxim.agents.llm_types import LLMProposal
 
@@ -79,6 +81,44 @@ class ApprovalPattern:
         return True
 
 
+# The typed outcome of an autonomy check (#1185 corrected decision A, 2026-11-21): ``allow`` runs; ``confirm`` is a
+# reason a HUMAN approval satisfies (the tool is outside ``allowed_tools``, it requires confirmation, a CWD write,
+# a sandbox execute, the PLANNING level); ``refuse`` is a reason no approval lifts (the pause, a forbid, the
+# confidence floor). Replaces the substring match on "requires confirmation" / "requires approval".
+VERDICT_ALLOW = "allow"
+VERDICT_CONFIRM = "confirm"
+VERDICT_REFUSE = "refuse"
+
+# Why an APPROVED action is still refused (``AutonomyController.approved_action_denial``), the typed
+# ``plan_refused`` reasons: the safety blocker, the confidence floor, and a reason only a person may satisfy when the
+# approval was a machine's (the non-interactive auto-approve).
+APPROVAL_BLOCKED = "blocked"
+APPROVAL_NOT_PERMITTED = "not_permitted"
+APPROVAL_NEEDS_PERSON = "needs_person"
+NEEDS_PERSON_DETAIL = "it needs a person's approval, and this run is non-interactive"
+
+
+@dataclass(frozen=True)
+class ActionVerdict:
+    """One autonomy check's outcome: ``kind`` (``VERDICT_*``), the reason (``None`` when allowed) and, for a
+    ``confirm``, who may satisfy it (``satisfied_by``: the approver sources whose "yes" lifts it; today every
+    confirmable reason is ``HUMAN_APPROVERS``, and a reason only a person may lift would be ``{OPERATOR}``).
+
+    Runtime-ephemeral (returned and read in one call), so CC3 does not apply."""
+
+    kind: str
+    reason: str | None = None
+    satisfied_by: frozenset[InputSource] = frozenset()
+
+    @property
+    def allowed(self) -> bool:
+        return self.kind == VERDICT_ALLOW
+
+    @property
+    def needs_confirmation(self) -> bool:
+        return self.kind == VERDICT_CONFIRM
+
+
 @dataclass
 class Proposal:
     """A proposed action awaiting approval."""
@@ -99,6 +139,9 @@ class Proposal:
     # ``cluster_margins`` for #1085) from it, so nothing is copied and nothing can drift.
     # ``None`` for a Proposal built outside the loop. Not persisted (``to_dict`` omits the queue).
     source: LLMProposal | None = None
+    # Who approved it (#1185): an embedder's ``approve`` is a person's; the non-interactive auto-approve is the
+    # loop's own, which lifts only the PLANNING gate (``approved_action_denial(approver=)``).
+    approver: InputSource = InputSource.OPERATOR
 
 
 @dataclass
@@ -270,7 +313,10 @@ class SupervisionPolicy:
     forbidden_tools: set[str] = field(default_factory=set)
 
     # Confidence thresholds
-    min_confidence_autonomous: float = 0.8
+    # 0.7 (#1185, 2026-11-21; was 0.8 with no recorded reason): the router's default proposal confidence
+    # (``router.py`` fills a missing one with 0.7) and the value the CLI and the embodied runtime already pass, so
+    # the default policy does not refuse the default proposal at the confidence floor.
+    min_confidence_autonomous: float = 0.7
     min_confidence_with_explanation: float = 0.5
 
     # Impact limits
@@ -293,10 +339,10 @@ class SupervisionPolicy:
     def hard_deny(self, action: dict[str, Any]) -> str | None:
         """The policy's HARD denials, or ``None`` (#1085, owner decisions S7 and 2026-10-09): the forbidden
         prefixes, the forbidden categories and the forbidden tools. An approval does not lift these (it lifts only
-        the level), so a drained PLANNING approval is checked against them; ``can_execute`` calls this first. Of
-        its other checks an approval satisfies only ``requires_confirmation``; the ``allowed_tools`` list,
-        confidence and the sandbox/CWD write and execute rules still apply to it (#1185 owner decision A,
-        ``AutonomyController.approved_plan_denial``)."""
+        the level), so every approval is checked against them; ``verdict`` calls this first. Of its other checks the
+        confidence floor also refuses an approved action, while the ``confirm`` reasons (``allowed_tools``,
+        ``requires_confirmation``, the CWD-write and sandbox-execute rules) are what a person's approval satisfies
+        (#1185 corrected owner decision A, ``AutonomyController.approved_action_denial``)."""
         tool_name = str(action.get("tool_name", "") or "")
 
         # Check forbidden prefixes
@@ -313,27 +359,25 @@ class SupervisionPolicy:
             return f"Tool '{tool_name}' is forbidden"
         return None
 
-    def can_execute(
-        self, action: dict[str, Any], *, confidence: float | None = None, confirmed: bool = False
-    ) -> tuple[bool, str | None]:
-        """Check if action can be executed autonomously (the hard denials are ``hard_deny``'s).
-
-        ``confirmed``: a person already confirmed this action (a plan approved at the plan-approval prompt, #1185
-        owner decision A), so ``requires_confirmation`` is satisfied; every other check still applies."""
+    def verdict(self, action: dict[str, Any], *, confidence: float | None = None) -> ActionVerdict:
+        """The SUPERVISED policy's typed verdict (#1185 corrected decision A): ``refuse`` for the hard denials
+        (``hard_deny``) and the confidence floor, which no approval lifts; ``confirm`` for the reasons a person's
+        approval satisfies (outside ``allowed_tools``, ``requires_confirmation``, a CWD write, a sandbox execute);
+        else ``allow``."""
         tool_name = str(action.get("tool_name", "") or "")
 
         denied = self.hard_deny(action)
         if denied is not None:
-            return False, denied
-
-        if self.allowed_tools and tool_name not in self.allowed_tools:
-            return False, f"Tool '{tool_name}' requires approval"
+            return ActionVerdict(VERDICT_REFUSE, denied)
 
         if confidence is not None and confidence < self.min_confidence_autonomous:
-            return False, f"Confidence {confidence:.2f} below threshold"
+            return ActionVerdict(VERDICT_REFUSE, f"Confidence {confidence:.2f} below threshold")
 
-        if tool_name in self.requires_confirmation and not confirmed:
-            return False, f"Tool '{tool_name}' requires confirmation"
+        if self.allowed_tools and tool_name not in self.allowed_tools:
+            return ActionVerdict(VERDICT_CONFIRM, f"Tool '{tool_name}' requires approval", HUMAN_APPROVERS)
+
+        if tool_name in self.requires_confirmation:
+            return ActionVerdict(VERDICT_CONFIRM, f"Tool '{tool_name}' requires confirmation", HUMAN_APPROVERS)
 
         # Check sandbox/filesystem-specific policies
         params = action.get("params", {})
@@ -345,15 +389,20 @@ class SupervisionPolicy:
 
             if is_path_in_workspace(path):
                 if self.sandbox_write_auto_approve:
-                    return True, None
+                    return ActionVerdict(VERDICT_ALLOW)
             elif self.cwd_write_requires_approval:
-                return False, "CWD write requires approval in supervised mode"
+                return ActionVerdict(VERDICT_CONFIRM, "CWD write requires approval in supervised mode", HUMAN_APPROVERS)
 
         if tool_name == "execute_file":
             if self.sandbox_execute_requires_approval:
-                return False, "Sandbox execution requires approval"
+                return ActionVerdict(VERDICT_CONFIRM, "Sandbox execution requires approval", HUMAN_APPROVERS)
 
-        return True, None
+        return ActionVerdict(VERDICT_ALLOW)
+
+    def can_execute(self, action: dict[str, Any], *, confidence: float | None = None) -> tuple[bool, str | None]:
+        """Check if action can be executed autonomously: ``verdict``, as ``(allowed, reason)``."""
+        v = self.verdict(action, confidence=confidence)
+        return v.allowed, v.reason
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -382,13 +431,17 @@ class ProposalQueue:
             self._prune_expired()
             return [p for p in self._pending if p.status == "pending"]
 
-    def approve(self, proposal_id: str, approved_by: str = "human") -> bool:
-        """Approve a proposal."""
+    def approve(
+        self, proposal_id: str, approved_by: str = "human", *, source: InputSource = InputSource.OPERATOR
+    ) -> bool:
+        """Approve a proposal. ``source``: who approved it (#1185); the non-interactive auto-approve passes
+        ``InputSource.LOOP``, which lifts only the PLANNING gate (``Proposal.approver``)."""
         with self._lock:
             for proposal in self._pending:
                 if proposal.id == proposal_id and proposal.status == "pending":
                     proposal.status = "approved"
                     proposal.approved_by = approved_by
+                    proposal.approver = source
                     return True
             return False
 
@@ -687,56 +740,68 @@ class AutonomyController:
 
         Approval lifts only the level: the pause and the critical safety constraints (``approval_blocker``) and the
         supervision policy's hard denials (``SupervisionPolicy.hard_deny``: forbidden prefixes, categories and
-        tools) still refuse. Every approved entry (the drain's and the plan prompt's, ``loop_planning._drain_one``)
-        checks this, then ``approved_plan_denial``; ``can_execute_action`` is untouched by it.
+        tools) still refuse. ``approved_action_denial``, the one check every approval takes, starts with this;
+        ``can_execute_action`` is untouched by it.
         """
         return self.approval_blocker(action) or self.supervision_policy.hard_deny(action)
 
-    def approved_plan_denial(self, action: dict[str, Any], *, confidence: float | None) -> str | None:
-        """Why an action a person APPROVED (a drained PLANNING entry, or a plan approved at the plan-approval prompt)
-        may still not run, beyond ``approved_action_blocker``, or ``None`` (#1185, owner decision A, 2026-11-21).
+    def approved_action_denial(
+        self, action: dict[str, Any], *, confidence: float | None, approver: InputSource
+    ) -> tuple[str, str] | None:
+        """Why an APPROVED action may still not run, as ``(reason, detail)``, or ``None`` (#1185, corrected owner
+        decision A, 2026-11-21). The one check every approval takes: a drained PLANNING entry, a plan approved at
+        the plan-approval prompt, and a SUPERVISED confirmation's "yes".
 
-        The approval lifts the PLANNING level gate only, and counts as the SUPERVISED confirmation (no second
-        prompt). So at PLANNING and SUPERVISED the supervision policy's other checks still apply (the
-        ``allowed_tools`` list, the confidence threshold, the sandbox/CWD write and execute rules), as
-        ``can_execute_action`` applies them at SUPERVISED; at AUTONOMOUS only ``approved_action_blocker``'s
-        checks do, as for an unapproved action. An always-allowed tool passes, as in ``can_execute_action``.
+        - ``approved_action_blocker`` (the pause, the critical safety constraints, the policy's hard denials):
+          ``APPROVAL_BLOCKED``.
+        - The level's verdict, the PLANNING gate lifted (``_level_verdict(approved=True)``): a ``refuse`` (the
+          confidence floor) is ``APPROVAL_NOT_PERMITTED``; a ``confirm`` reason is satisfied when ``approver`` is in
+          its ``satisfied_by`` (a person or the sim's policy, as a SUPERVISED confirm-yes is), and otherwise (the
+          loop's own reply, the non-interactive auto-approve: it lifts the PLANNING gate only) is
+          ``APPROVAL_NEEDS_PERSON``.
         """
-        if str(action.get("tool_name", "") or "") in self.ALWAYS_ALLOWED_TOOLS:
-            return None
-        if self.current_level in (AutonomyLevel.PLANNING, AutonomyLevel.SUPERVISED):
-            ok, reason = self.supervision_policy.can_execute(action, confidence=confidence, confirmed=True)
-            return None if ok else reason
+        blocker = self.approved_action_blocker(action)
+        if blocker is not None:
+            return APPROVAL_BLOCKED, blocker
+        verdict = self._level_verdict(action, confidence=confidence, approved=True)
+        if verdict.kind == VERDICT_REFUSE:
+            return APPROVAL_NOT_PERMITTED, str(verdict.reason)
+        if verdict.kind == VERDICT_CONFIRM and approver not in verdict.satisfied_by:
+            return APPROVAL_NEEDS_PERSON, NEEDS_PERSON_DETAIL
         return None
 
-    def can_execute_action(self, action: dict[str, Any], confidence: float | None = None) -> tuple[bool, str | None]:
-        """Check if an action can be executed at current autonomy level.
-
-        The non-level checks are ``approval_blocker``'s (pause, critical safety constraints); the level
-        checks follow it.
-        """
+    def _level_verdict(self, action: dict[str, Any], *, confidence: float | None, approved: bool) -> ActionVerdict:
+        """The level checks after ``approval_blocker``: an always-allowed tool runs; PLANNING needs approval (an
+        approved action is then judged by the SUPERVISED policy, the PLANNING gate being what it lifted);
+        SUPERVISED is the policy's verdict; AUTONOMOUS runs."""
         level = self.current_level
         tool_name = str(action.get("tool_name", "") or "")
-
-        blocker = self.approval_blocker(action, level=level)
-        if blocker is not None:
-            return False, blocker
-
-        # Always-allowed tools bypass the level checks (PLANNING approval,
-        # SUPERVISED policy) — safe for immediate execution once the hard
-        # constraints above have passed.
         if tool_name in self.ALWAYS_ALLOWED_TOOLS:
-            return True, None
+            return ActionVerdict(VERDICT_ALLOW)
+        if level == AutonomyLevel.PLANNING and not approved:
+            return ActionVerdict(
+                VERDICT_CONFIRM,
+                "PLANNING mode requires human approval for all actions",
+                frozenset(InputSource),  # the PLANNING gate: any approval lifts it, a machine's included
+            )
+        if level in (AutonomyLevel.PLANNING, AutonomyLevel.SUPERVISED):
+            return self.supervision_policy.verdict(action, confidence=confidence)
+        return ActionVerdict(VERDICT_ALLOW)
 
-        # Level-specific checks
-        if level == AutonomyLevel.PLANNING:
-            return False, "PLANNING mode requires human approval for all actions"
+    def action_verdict(self, action: dict[str, Any], confidence: float | None = None) -> ActionVerdict:
+        """The typed autonomy check at the current level (#1185): ``approval_blocker`` (pause, critical safety
+        constraints) refuses first, then ``_level_verdict``. ``can_execute_action`` is its ``(allowed, reason)``."""
+        blocker = self.approval_blocker(action, level=self.current_level)
+        if blocker is not None:
+            return ActionVerdict(VERDICT_REFUSE, blocker)
+        return self._level_verdict(action, confidence=confidence, approved=False)
 
-        if level == AutonomyLevel.SUPERVISED:
-            return self.supervision_policy.can_execute(action, confidence=confidence)
-
-        # AUTONOMOUS - only safety constraints apply
-        return True, None
+    def can_execute_action(self, action: dict[str, Any], confidence: float | None = None) -> tuple[bool, str | None]:
+        """Check if an action can be executed at current autonomy level: ``action_verdict`` as
+        ``(allowed, reason)``. The non-level checks are ``approval_blocker``'s (pause, critical safety
+        constraints); the level checks follow it."""
+        v = self.action_verdict(action, confidence=confidence)
+        return v.allowed, v.reason
 
     def log_action(
         self,

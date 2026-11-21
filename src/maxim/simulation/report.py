@@ -434,8 +434,7 @@ def build_report(
     if session_id is None:
         session_id = time.strftime("%Y%m%d_%H%M%S")
 
-    all_actions = bridge.get_all_actions()
-    blocked = [a for a in all_actions if a.blocked]
+    all_actions, blocked = bridge.get_agent_actions(), [a for a in bridge.get_agent_actions() if a.blocked]
 
     # Tool usage breakdown
     tool_counts: dict[str, int] = {}

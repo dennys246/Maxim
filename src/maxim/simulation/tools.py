@@ -378,7 +378,7 @@ class ObserveActionsTool(Tool):
         return ToolOutput(
             success=True,
             output={
-                "total_actions": len(self._bridge.get_all_actions()),
+                "total_actions": len(self._bridge.get_agent_actions()),
                 "returned": len(summaries),
                 "since_index": since,
                 "actions": summaries,
@@ -411,7 +411,7 @@ class CheckCompletionTool(Tool):
         self._continuous = continuous
 
     def execute(self, **kwargs: Any) -> ToolOutput:
-        actions = self._bridge.get_all_actions()
+        actions = self._bridge.get_agent_actions()
         turn_count = self._bridge.turn_count
 
         # Build a summary for self-assessment (no LLM needed for basic checks)
@@ -475,7 +475,7 @@ class AnalyzeResultsTool(Tool):
         self._llm = llm
 
     def execute(self, **kwargs: Any) -> ToolOutput:
-        actions = self._bridge.get_all_actions()
+        actions = self._bridge.get_agent_actions()
         focus = kwargs.get("focus", "all")
 
         # Group by tool
@@ -1778,6 +1778,6 @@ class FinishSimulationTool(Tool):
                 "reason": reason,
                 "summary": summary,
                 "total_turns": self._bridge.turn_count,
-                "total_actions": len(self._bridge.get_all_actions()),
+                "total_actions": len(self._bridge.get_agent_actions()),
             },
         )

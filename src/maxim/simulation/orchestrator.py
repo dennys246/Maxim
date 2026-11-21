@@ -2504,10 +2504,7 @@ def start_simulation_mode(
                 )
                 display_status(f"New goal: {new_goal}")
         elif line.lower() == "/status":
-            display_status(f"Turns: {bridge.turn_count}")
-            display_status(f"Actions: {len(bridge.get_all_actions())}")
-            blocked = [a for a in bridge.get_all_actions() if a.blocked]
-            display_status(f"Blocked: {len(blocked)}")
+            _display_status_counts(bridge, display_status)
         elif line.lower() == "/report":
             orchestrator_source.inject_cli(
                 "Generate an interim report of your findings so far "
@@ -2823,3 +2820,12 @@ def start_simulation_mode(
         )
     show_report = not _is_interactive or _tail.stop is not None
     return finish_run(_tail, report, report_dir, duration, finish_reason, show_report=show_report)
+
+
+def _display_status_counts(bridge: Any, display_status: Any) -> None:
+    """The ``/status`` command's counts (moved out of ``start_simulation_mode``, rule T for #1185): turns, the
+    agent's actions and how many were blocked, synthetic markers left out (``ActionRecord.is_synthetic``)."""
+    display_status(f"Turns: {bridge.turn_count}")
+    actions = bridge.get_agent_actions()
+    display_status(f"Actions: {len(actions)}")
+    display_status(f"Blocked: {len([a for a in actions if a.blocked])}")

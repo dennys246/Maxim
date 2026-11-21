@@ -45,6 +45,7 @@ from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import (
     context_addresses_the_llm,
+    is_tool_followup,
     perceive,
     percept_enrichment_context,
     percept_text,
@@ -1166,12 +1167,11 @@ def _run_agentic_loop_body(
     """
     from maxim.agents.autonomy import (
         AutonomyLevel,
-        Proposal,
         check_hard_stop,
     )
     from maxim.agents.llm_worker import ModeInfo
     from maxim.modes.definitions import get_mode
-    from maxim.runtime.loop_types import ActionFollowup, PendingConfirmation
+    from maxim.runtime.loop_types import ActionFollowup
 
     # The setup block (1.3.2 decomposition, slice 1): built once, unpacked into the local names the
     # body below has always read. ``ctrl`` stays the only mutable carrier (runtime/loop_setup.py).
@@ -1354,7 +1354,7 @@ def _run_agentic_loop_body(
         seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
 
         # The tick's input, read ONCE from every channel and memorized as it arrives (Session R): §1.2 enriches it
-        _user_input = take_user_input(observation, state, agent)
+        _user_input = take_user_input(observation, state, agent, sim_mode=sim.is_sim_mode)
         transcript, hard_override, cli_input, is_agentic_voice_input, _addressed = _user_input[:5]
         _percept_enrichment_text = ""
         _percept_text_for_cycle = ""
@@ -1543,7 +1543,7 @@ def _run_agentic_loop_body(
             # When a new percept arrives from the orchestrator during this
             # loop, we must cancel the pending followup so the new input
             # gets submitted to the LLM instead.
-            if not cli_text.startswith("[ACTION_FOLLOWUP"):
+            if not is_tool_followup(cli_text):
                 ctrl.note_user_input(cli_text)  # a new user turn, whatever its channel (#1413)
                 if ctrl.pending_action_followup:
                     _preempted_tool = ctrl.pending_action_followup.tool
@@ -1581,6 +1581,7 @@ def _run_agentic_loop_body(
                 book_machine_refusal=_book_machine_refusal,
                 observation=observation,
                 sim=sim,
+                answer_source=_user_input.source,
             ):
                 cli_input = None  # the answer to a pending prompt, never a new turn (#1185)
                 continue
@@ -2223,7 +2224,8 @@ def _run_agentic_loop_body(
                 },
             )
 
-            can_execute, reason = autonomy_controller.can_execute_action(action, confidence=confidence)
+            _verdict = autonomy_controller.action_verdict(action, confidence=confidence)  # typed (#1185)
+            can_execute, reason = _verdict.allowed, _verdict.reason
 
             logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
 
@@ -2255,84 +2257,12 @@ def _run_agentic_loop_body(
                 ctrl.pending_proposal = None
 
             elif autonomy_controller.current_level == AutonomyLevel.PLANNING:
-                # Queue for human approval
-                proposal = Proposal(
-                    id=ctrl.pending_proposal.request_id,
-                    action=action,
-                    reasoning=ctrl.pending_proposal.reasoning,
-                    confidence=confidence,
-                    strategy_used=ctrl.pending_proposal.strategy_used,
-                    citations=ctrl.pending_proposal.citations,
-                    source=ctrl.pending_proposal,  # its situation is credited at approval (#1083)
-                )
-                autonomy_controller.proposal_queue.submit(proposal)
-                autonomy_controller.log_action(
-                    action_type="proposed",
-                    action=action,
-                    reasoning=ctrl.pending_proposal.reasoning,
-                    mode=operational_mode(executor, state),
-                    confidence=confidence,
-                )
-
-                # Non-interactive: auto-approve if safety constraints pass.
-                # Prevents the proposal queue from silently expiring with
-                # no human to approve. The agent acts on its own judgment.
-                from maxim.simulation.sim_logger import should_prompt
-
-                if not should_prompt("plan_approval"):
-                    autonomy_controller.proposal_queue.approve(proposal.id, approved_by="auto:non-interactive")
-                    sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING): {action.get('tool_name')}")
-
-                ctrl.pending_proposal = None
+                ctrl.queue_for_approval(action, confidence=confidence, sim=sim)  # Queue for human approval
 
             else:
-                # Check if this is a confirmation request (not a hard rejection)
-                # Autonomy controller may say "requires approval" or "requires confirmation"
-                if reason and ("requires confirmation" in reason.lower() or "requires approval" in reason.lower()):
-                    # The typed record keeps the proposal as its ``source``, so the confirmed action is
-                    # credited to the situation it was proposed in (#1133; the proposal itself is cleared
-                    # below, as for every non-executed branch).
-                    _pending = PendingConfirmation.from_proposal(ctrl.pending_proposal)
-                    tool_name = _pending.tool_name
-                    params = action.get("params", {})
-
-                    # In sim mode, auto-resolve via response policy instead of blocking
-                    sim_response = sim.resolve_confirmation(_pending.policy_view())
-                    if sim_response is not None:
-                        # Inject the response as if the user typed it
-                        sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
-                        ctrl.pending_confirmation = _pending
-                        state.data["pending_loop_reply"] = sim_response
-                    else:
-                        # Production mode: display prompt if interactive, auto-resolve if not
-                        from maxim.simulation.sim_logger import should_prompt, display_scene
-
-                        if should_prompt("confirmation"):
-                            display_scene(f"\n  Action requires confirmation: {tool_name}")
-                            param_lines = []
-                            for key, value in params.items():
-                                param_lines.append(f"    {key}: {str(value)}")
-                            if param_lines:
-                                display_scene("\n".join(param_lines))
-                            if ctrl.pending_proposal.reasoning:
-                                display_scene(f"  Reasoning: {ctrl.pending_proposal.reasoning}")
-                            # Show confirmation prompt in the input panel so typed
-                            # characters are visible with question context.
-                            try:
-                                from maxim.simulation.sim_logger import get_active_display
-
-                                _conf_display = get_active_display()
-                                if _conf_display is not None:
-                                    _conf_display.set_prompt(f"Confirm {tool_name}? Type 'yes' or 'no'\n\n> ")
-                                    _conf_display.set_urgent(True)
-                            except Exception:
-                                display_scene("  Type 'yes' or 'no' to confirm/reject:")
-                        else:
-                            # Non-interactive: auto-approve via supervision policy
-                            state.data["pending_loop_reply"] = "yes"
-                            sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
-
-                        ctrl.pending_confirmation = _pending
+                # A confirmation request (a reason a person's approval satisfies), not a hard rejection (#1185: typed)
+                if _verdict.needs_confirmation:
+                    ctrl.park_confirmation(action, sim=sim)
                 else:  # Hard rejection: booked, then fed back to the model or the turn ends (#1413, tool_dispatch)
                     _rejected = _book_hard_rejection(
                         proposal=ctrl.pending_proposal,
@@ -2416,7 +2346,7 @@ def _run_agentic_loop_body(
                     # create a minimal context to ensure the followup gets processed.
                     # This fixes the bug where search results were returned but not
                     # processed because memory.build_context() returned None.
-                    if ctrl.pending_action_followup and context is None:
+                    if (ctrl.pending_action_followup or state.data.get("pending_modification")) and context is None:
                         from maxim.agents.bus import StructuredContext
 
                         context = StructuredContext(
@@ -3032,7 +2962,7 @@ def _run_agentic_loop_body(
                         if submitted:
                             # Check if this is a followup submission
                             is_followup = context.cli_inputs and any(
-                                inp.startswith("[ACTION_FOLLOWUP") for inp in context.cli_inputs
+                                is_tool_followup(inp) for inp in context.cli_inputs
                             )
                             if is_followup:
                                 logger.info("Submitted followup to LLM for processing")
