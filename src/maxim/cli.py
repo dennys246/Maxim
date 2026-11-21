@@ -7,9 +7,12 @@ import threading
 from pathlib import Path
 import time
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from maxim.cli_parser import _build_parser
+
+if TYPE_CHECKING:
+    from maxim.exceptions import CliOptionsRefused
 from maxim.utils.data_management import build_home
 from maxim.utils.logging import configure_logging, log_exception
 
@@ -1129,6 +1132,70 @@ def _run_goal_sim(
     sys.exit(_simulation_result_exit_code(result))
 
 
+#: The goal-string sim's options (``_run_goal_sim`` and the embodiment it is handed) that the research protocol does
+#: not take: ``start_research_mode`` runs its own sim call, so each of these, passed explicitly with ``--research``
+#: under llm-primary (or ``--sim research``), would be dropped without a word (#1680). ``--sim-max-turns`` is not
+#: here: it is forwarded (``start_research_mode(max_turns=)``). ``sim_mode``'s default is SUPPRESS, so it is checked
+#: on its own in :func:`_research_refusal`. ``tests/unit/test_cli_research_options_1680.py`` pins that every option
+#: ``_run_goal_sim`` reads is either forwarded or listed here.
+_RESEARCH_DROPPED_OPTIONS = frozenset(
+    {
+        "embodiment",
+        "no_embodiment",
+        "deep_embodiment",
+        "sim_run_full_turns",
+        "continuous",
+        "no_sim_env",
+        "sandbox_image",
+        "sandbox_network",
+        "resume_sim",
+        "sim_script",
+    }
+)
+
+
+def _research_refusal(args: Any) -> CliOptionsRefused | None:
+    """The refusal for explicit options the research protocol would drop (None = it honours every one given)."""
+    from maxim.exceptions import CliOptionsRefused
+
+    parser = _build_parser()
+    defaults = vars(parser.parse_args([]))
+    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
+    dropped = [
+        flags.get(dest, dest)
+        for dest in defaults
+        if dest in _RESEARCH_DROPPED_OPTIONS and getattr(args, dest, defaults[dest]) != defaults[dest]
+    ]
+    if getattr(args, "sim_mode", None) not in (None, "generative"):  # the research protocol runs mode="research"
+        dropped.append("--sim-mode")
+    if not dropped:
+        return None
+    return CliOptionsRefused(
+        f"{', '.join(dropped)} cannot run with the research protocol (--research under llm-primary, or --sim "
+        "research): its sim call does not take them, so they would be dropped",
+        fix_hint=f"Drop {', '.join(dropped)}, or run the sim without --research.",
+    )
+
+
+def _run_research_from_cli(args: Any, goal: str, *, debug_raw: Any) -> NoReturn:
+    """Run the research protocol for ``goal`` and exit with its code; refuse (exit 2) the options it would drop."""
+    from maxim.simulation.research_orchestrator import start_research_mode
+
+    refusal = _research_refusal(args)
+    if refusal is not None:
+        raise refusal
+    result = start_research_mode(
+        goal=goal,
+        campaign=getattr(args, "campaign", None),
+        language_model=str(getattr(args, "language_model", "") or "").strip() or None,
+        aut_model=getattr(args, "aut_model", None),
+        debug=bool(debug_raw),
+        sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+        max_turns=_sim_turn_caps(args)["max_turns"],
+    )
+    sys.exit(_research_result_exit_code(result))
+
+
 def _sim_value_kind(value: str) -> str:
     """What a ``--sim`` value selects: ``"yaml"`` (a scenario or campaign file), the legacy aliases ``"agent"``,
     ``"research"`` and ``"benchmark"``, ``"interactive"`` (the REPL; ``--sim`` with no value), else ``"goal"`` (a goal
@@ -2192,20 +2259,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             # multi-agent paper-writing harness". Phase 0 of
             # docs/plans/grounded_language_acquisition.md.
             if _wants_research and _aut_mode_val != "substrate-primary":
-                # Generative + research report
-                from maxim.simulation.research_orchestrator import start_research_mode
-
-                campaign = getattr(args, "campaign", None)
-                language_model = str(getattr(args, "language_model", "") or "").strip() or None
-                result = start_research_mode(
-                    goal=goal,
-                    campaign=campaign,
-                    language_model=language_model,
-                    aut_model=getattr(args, "aut_model", None),
-                    debug=bool(_debug_raw),
-                    sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-                )
-                sys.exit(_research_result_exit_code(result))
+                _run_research_from_cli(args, goal, debug_raw=_debug_raw)  # Generative + research report; exits
             else:
                 _run_goal_sim(
                     args,
@@ -2295,22 +2349,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         # Check for research mode (legacy alias — deprecated, use --research flag)
         _sim_research = _is_legacy_research
         if _sim_research:
-            from maxim.simulation.research_orchestrator import start_research_mode
-
             goal = getattr(args, "sim_goal", None) or "investigate the research question"
-            debug = bool(_debug_raw)
-            campaign = getattr(args, "campaign", None)
-            language_model = str(getattr(args, "language_model", "") or "").strip() or None
-
-            result = start_research_mode(
-                goal=goal,
-                campaign=campaign,
-                language_model=language_model,
-                aut_model=getattr(args, "aut_model", None),
-                debug=debug,
-                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-            )
-            sys.exit(_research_result_exit_code(result))
+            _run_research_from_cli(args, goal, debug_raw=_debug_raw)  # exits
 
         # ── Auto-detect Roy curriculum YAMLs ──
         # A curriculum YAML has a top-level ``stages:`` list and chains
@@ -2973,8 +3013,13 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
-        from maxim.exceptions import ConfigDirUnreadable, LLMServerPortBusy, UserProfilesInvalid
+        from maxim.exceptions import CliOptionsRefused, ConfigDirUnreadable, LLMServerPortBusy, UserProfilesInvalid
 
+        if isinstance(e, CliOptionsRefused):  # options the selected run would drop, refused before it starts (#1680)
+            from maxim.utils.logging import user_warn
+
+            user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="cli", event="cli_options_refused")
+            return 2
         if isinstance(e, UserProfilesInvalid):  # a malformed profiles.yml, refused at run start (#1315 step 0a)
             from maxim.utils.logging import user_warn
 

@@ -510,6 +510,19 @@ class UserProfilesInvalid(ConfigurationError):
     fix_hint = "Fix the file, or move it aside, then run `maxim doctor` to check it."
 
 
+class CliOptionsRefused(ConfigurationError):
+    """Explicit CLI options the selected run cannot honour, refused before it starts instead of silently dropped.
+
+    Raised by ``cli.py::_research_refusal`` (#1680): ``--research`` under llm-primary runs the research protocol,
+    whose sim call takes none of the goal-string sim's embodiment, sim-mode, full-turn, sandbox or resume options.
+    ``fix_hint`` names the options to drop. The CLI prints both and exits 2.
+    """
+
+    def __init__(self, message: str, *, fix_hint: str) -> None:
+        super().__init__(message)
+        self.fix_hint = fix_hint
+
+
 class ComponentNotFoundError(ConfigurationError):
     """Requested SEM component template does not exist.
 

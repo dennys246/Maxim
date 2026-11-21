@@ -18,3 +18,8 @@
   0.5.
 - A sim's `record_experiment` / `query_experiments` tools are no longer dropped behind a debug log when building
   them fails: the failure raises.
+- `--research` under llm-primary (and `--sim research`) runs the research protocol, whose sim call took none of the
+  goal-string sim's options: an explicit `--embodiment`, `--no-embodiment`, `--deep-embodiment`, `--sim-mode`,
+  `--sim-run-full-turns`, `--continuous`, `--no-sim-env`, `--sandbox-image`, `--sandbox-network` or `--resume-sim`
+  was dropped without a word, and `--sim-max-turns` was ignored (50 turns). Those options are now refused before the
+  run starts (`CliOptionsRefused`, exit 2, naming them), and `--sim-max-turns` is forwarded.

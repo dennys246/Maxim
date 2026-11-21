@@ -427,15 +427,33 @@ def test_a_failure_after_the_report_names_the_session(exp41, tmp_path: Path, mon
     assert err.value.sims[0]["session_id"] == "sess_0" and "no actions.jsonl" in str(err.value)
 
 
-@pytest.mark.parametrize(("aut_mode", "research"), [("substrate-primary", True), ("llm-primary", False)])
+_ARGV_HEAD = ["BIN", "--sim", "cradle_pref_a"]
+_ARGV_TAIL = ["--embodiment", "e", "--interactive", "false", "--sim-max-turns", "3", "--seed", "42"]
+
+
+@pytest.mark.parametrize(
+    ("aut_mode", "aut_model", "expected"),
+    [
+        # Exp 42's argv exactly as origin/main built it before #1680: --research last, then --aut-model.
+        ("substrate-primary", None, [*_ARGV_HEAD, "--aut-mode", "substrate-primary", *_ARGV_TAIL, "--research"]),
+        (
+            "substrate-primary",
+            "am",
+            [*_ARGV_HEAD, "--aut-mode", "substrate-primary", *_ARGV_TAIL, "--research", "--aut-model", "am"],
+        ),
+        ("llm-primary", "am", [*_ARGV_HEAD, "--aut-mode", "llm-primary", *_ARGV_TAIL, "--aut-model", "am"]),
+    ],
+    ids=["substrate", "substrate-aut-model", "llm-primary"],
+)
 def test_exp42_asks_for_research_only_where_it_is_substrate_telemetry(
-    exp42, tmp_path: Path, monkeypatch, aut_mode: str, research: bool
+    exp42, tmp_path: Path, monkeypatch, aut_mode: str, aut_model, expected: list[str]
 ) -> None:
     """#1680: under llm-primary ``--research`` is the paper-writing protocol (its sim call drops the harness's
     embodiment, turn cap and arc routing, and a no-paper run exits 1); under substrate-primary it is the telemetry
-    the harness reads, and Exp 42's argv stays as it was."""
+    the harness reads, and Exp 42's argv is pinned whole, so "unchanged" is guarded."""
     run, _seen = _fake_sim()
     cmds = []
+    monkeypatch.setattr(exp42, "_resolve_maxim_binary", lambda: "BIN")
     monkeypatch.setattr(exp42.subprocess, "run", lambda cmd, **kw: cmds.append(cmd) or run(cmd, **kw))
     exp42._run_real(
         "cradle_pref_a",
@@ -447,5 +465,6 @@ def test_exp42_asks_for_research_only_where_it_is_substrate_telemetry(
         timeout_s=5,
         workdir=tmp_path / "w",
         aut_mode=aut_mode,
+        aut_model=aut_model,
     )
-    assert ("--research" in cmds[0]) is research
+    assert cmds == [expected]

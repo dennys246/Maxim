@@ -6,9 +6,16 @@
 > longer passes `--research` under `--aut-mode llm-primary`. The llm-primary fork (#391) inherited the flag from Exp 42,
 > where it means substrate telemetry; under llm-primary the CLI routes it to `start_research_mode` instead. That call
 > ran the sim without this plan's `--embodiment`, `--sim-max-turns` or the arc's generative routing (so the arms below
-> would not have run the declared dilemma as written), then wrote and reviewed a paper this plan does not measure; a
-> run with no paper now exits 1 and would have failed every row. No recorded run is affected: the arms were never
-> validly run. Exp 42 (substrate-primary) keeps `--research` and its argv unchanged.
+> would not have run the declared dilemma as written), then wrote and reviewed a paper this plan does not measure;
+> such a run exits 1 with no paper or a rejected review, so every such row would have failed. No recorded run is
+> affected: the arms were never validly run. Exp 42 (substrate-primary) keeps `--research` and its argv unchanged.
+> The CLI now refuses (exit 2) an explicit `--embodiment`, `--sim-mode`, `--sim-run-full-turns` and the other
+> options the research protocol cannot take, and forwards `--sim-max-turns`.
+>
+> **The 2026-07-15 session log below was diagnosed on a confounded vehicle.** Its harness launches ran under
+> llm-primary with `--research`, so each went through `start_research_mode`: no body attached and the arc not
+> routed. That alone accounts for "the AUT took 0 embodied actions" (item 2), whatever the 500s did, so neither the
+> contention nor the n_ctx explanation (items 2 and 3) was tested on the sim this plan declares.
 
 **Status:** PRE-REGISTERED + PREREQUISITES SHIPPED (2026-07-14, branch
 `exp/44-body-state-wiring`). Ready to run pending Phase 0 smoke.

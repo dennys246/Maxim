@@ -946,9 +946,9 @@ class BenchmarkRunner:
 
         Returns ``(paper_path, None)``, or ``(None, cause)`` when no LLM is usable, the ``consented_router`` idiom:
         ``cause`` is ``consented_router``'s (``LLM_DISABLED`` or one of ``LocalModelUnavailable.CAUSES``), or
-        :data:`PAPER_NO_TEXT` (the router returned no text for any section). Any other failure raises: a broad except here once turned a
-        constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so the paper step never worked
-        and nothing said why (#1680).
+        :data:`PAPER_NO_TEXT` (the router returned no text for any section). Any other failure raises: a broad
+        except here once turned a constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so
+        the paper step never worked and nothing said why (#1680).
         """
         from maxim.mesh.bus import LocalMessageBus
         from maxim.models.download import LLM_DISABLED, consented_router

@@ -33,8 +33,10 @@ MAX_REVISION_ROUNDS = 3
 class ResearchResult:
     """Result from a completed research protocol run.
 
-    ``review_verdict`` is ``"accept"``, ``"revise"`` or ``"reject"`` (the Reviewer's), ``"no_paper"`` (the Writer saved no paper, so nothing was reviewed; #1680), ``"aborted"`` (the underlying sim was not usable evidence, so neither ran) or ``"not_reviewed"`` (the default before a review). ``no_paper`` and ``reject`` exit 1 from the CLI
-    (``cli.py::_research_result_exit_code``).
+    ``review_verdict`` is ``"accept"``, ``"revise"`` or ``"reject"`` (the Reviewer's), ``"no_paper"`` (the Writer
+    saved no paper, so nothing was reviewed; #1680), ``"aborted"`` (the underlying sim was not usable evidence, so
+    neither ran) or ``"not_reviewed"`` (the default before a review). ``no_paper`` and ``reject`` exit 1 from the
+    CLI (``cli.py::_research_result_exit_code``).
     """
 
     goal: str
