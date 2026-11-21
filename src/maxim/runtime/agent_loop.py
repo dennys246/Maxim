@@ -1591,7 +1591,14 @@ def _run_agentic_loop_body(
             pending_prefetch = ctrl.pending_prefetch
 
             # Planning mode: check if this input is approval/rejection/modify
-            if ctrl.handle_plan_approval(cli_text, book_refusal=_book_refusal):
+            if ctrl.handle_plan_approval(
+                cli_text,
+                book_refusal=_book_refusal,
+                execute_and_learn=_execute_and_learn,
+                book_machine_refusal=_book_machine_refusal,
+                observation=observation,
+                sim=sim,
+            ):
                 cli_input = None  # the answer to the plan (approved, rejected or re-asked), never a new turn (#1185)
 
         hard_stop_reason = check_hard_stop(transcript, hard_override)
@@ -2203,39 +2210,8 @@ def _run_agentic_loop_body(
             # ───────────────────────────────────────────────────────────────
             # PLANNING MODE: Check if this proposal requires user approval
             # ───────────────────────────────────────────────────────────────
-            if getattr(ctrl.pending_proposal, "requires_approval", False) and ctrl.pending_proposal.plan_text:
-                # In sim mode, auto-resolve plan approval via response policy
-                sim_plan_response = sim.resolve_plan_approval(ctrl.pending_proposal.plan_text)
-                if sim_plan_response is not None:
-                    sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
-                    if sim_plan_response.lower() in ("yes", "y"):
-                        # Auto-approved — skip the approval flow, proceed to execution
-                        logger.info("Sim mode: plan auto-approved, executing")
-                    else:
-                        # Auto-rejected
-                        logger.info("Sim mode: plan auto-rejected")
-                        ctrl.pending_proposal = None
-                        continue
-                else:
-                    # Production mode: store and wait for real user
-                    logger.info("Proposal requires approval, showing plan to user")
-                    log_agentic(
-                        "agent_loop",
-                        "plan_awaiting_approval",
-                        {
-                            "tool": action.get("tool_name"),
-                            "plan_preview": ctrl.pending_proposal.plan_text[:100]
-                            if ctrl.pending_proposal.plan_text
-                            else None,
-                        },
-                    )
-
-                    state.data["pending_plan_text"] = ctrl.pending_proposal.plan_text
-                    state.data["pending_plan_tool"] = action.get("tool_name")
-
-                    ctrl.pending_plan_proposal = ctrl.pending_proposal
-                    ctrl.pending_proposal = None
-                    continue
+            if ctrl.gate_plan_approval(action, sim=sim):  # parked for the person, or the sim policy refused it
+                continue
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)
 

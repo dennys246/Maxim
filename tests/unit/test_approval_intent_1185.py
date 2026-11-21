@@ -181,19 +181,34 @@ def _proposal() -> LLMProposal:
 
 def _plan_controller():
     ctrl = _controller()
+    ctrl.autonomy_controller.approved_action_blocker.return_value = None
     ctrl.pending_plan_proposal = _proposal()
     return ctrl
+
+
+def _answer(ctrl, text: str, book=None, run=None) -> bool:
+    """``handle_plan_approval`` with the run's callables faked: ``run`` is ``execute_and_learn``."""
+    return ctrl.handle_plan_approval(
+        text,
+        book_refusal=book if book is not None else MagicMock(),
+        execute_and_learn=run if run is not None else MagicMock(return_value=MagicMock(followup=None)),
+        book_machine_refusal=MagicMock(),
+        observation={},
+        sim=MagicMock(),
+    )
 
 
 @pytest.mark.parametrize(
     "text", ["stop, don't run it", "not ok", "that is not fine", "no good", "No.", "yes no", "yes?", "ok", "\U0001f44e"]
 )
 def test_the_plan_handler_never_executes_a_non_yes(text: str) -> None:
-    """Through the real ``LoopController.handle_plan_approval``: anything but a plain yes never promotes the plan
-    to ``pending_proposal`` (the slot the loop executes)."""
+    """Through the real ``LoopController.handle_plan_approval``: anything but a plain yes never executes the plan
+    nor promotes it to ``pending_proposal`` (the slot the loop executes)."""
     ctrl = _plan_controller()
+    run = MagicMock()
     with patch("maxim.simulation.sim_logger.display_status"):
-        ctrl.handle_plan_approval(text, book_refusal=MagicMock())
+        _answer(ctrl, text, run=run)
+    run.assert_not_called()
     assert ctrl.pending_proposal is None
 
 
@@ -207,7 +222,7 @@ def test_the_plan_handler_reasks_on_unknown() -> None:
         patch("maxim.simulation.sim_logger.display_status") as status,
         patch("maxim.runtime.loop_controller.log_agentic") as log,
     ):
-        assert ctrl.handle_plan_approval("not ok", book_refusal=book) is True
+        assert _answer(ctrl, "not ok", book=book) is True
     assert ctrl.pending_proposal is None
     assert ctrl.pending_plan_proposal is not None
     assert "pending_user_input" not in ctrl.state.data
@@ -221,14 +236,17 @@ def test_the_plan_handler_reasks_on_unknown() -> None:
 def test_the_plan_handler_executes_a_plain_yes() -> None:
     ctrl = _plan_controller()
     plan = ctrl.pending_plan_proposal
-    assert ctrl.handle_plan_approval("Yes.", book_refusal=MagicMock()) is True
-    assert ctrl.pending_proposal is plan
+    run = MagicMock(return_value=MagicMock(followup=None))
+    assert _answer(ctrl, "Yes.", run=run) is True
+    run.assert_called_once()
+    assert run.call_args.kwargs["proposal"] is plan and run.call_args.kwargs["human_involved"] is True
+    assert ctrl.pending_proposal is None and ctrl.pending_plan_proposal is None
 
 
 def test_the_plan_handler_books_a_plain_no() -> None:
     ctrl = _plan_controller()
     book = MagicMock()
-    assert ctrl.handle_plan_approval("No.", book_refusal=book) is True
+    assert _answer(ctrl, "No.", book=book) is True
     assert ctrl.pending_plan_proposal is None
     assert book.call_args.kwargs["tool_name"] == "bash"
 
@@ -237,7 +255,7 @@ def test_a_plan_modification_reaches_the_next_submit() -> None:
     """The modify branch wrote ``plan_modification_context``, which nothing read. It now writes
     ``pending_modification``, the shape ``handle_confirmation`` writes and the §6 submit pops into the prompt."""
     ctrl = _plan_controller()
-    assert ctrl.handle_plan_approval("write the file to the other folder", book_refusal=MagicMock()) is False
+    assert _answer(ctrl, "write the file to the other folder") is False
     mod = ctrl.state.data["pending_modification"]
     assert mod["user_modification"] == "write the file to the other folder"
     assert mod["original_tool_name"] == "bash"

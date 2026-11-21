@@ -219,7 +219,14 @@ class TestPlanRejectToolName:
             requires_approval=True,
         )
         rec = MagicMock()
-        ctrl.handle_plan_approval("no", book_refusal=_run(ctrl, rec).book_refusal)
+        ctrl.handle_plan_approval(
+            "no",
+            book_refusal=_run(ctrl, rec).book_refusal,
+            execute_and_learn=_run(ctrl, rec).execute_and_learn,
+            book_machine_refusal=MagicMock(),
+            observation={},
+            sim=MagicMock(),
+        )
         rec.assert_called_once()
         return rec.call_args.kwargs["tool_name"]
 
@@ -262,7 +269,14 @@ class TestReviewPins:
             clusters=dict(_CLUSTERS),
         )
         rec = MagicMock()
-        ctrl.handle_plan_approval("no", book_refusal=_run(ctrl, rec).book_refusal)
+        ctrl.handle_plan_approval(
+            "no",
+            book_refusal=_run(ctrl, rec).book_refusal,
+            execute_and_learn=_run(ctrl, rec).execute_and_learn,
+            book_machine_refusal=MagicMock(),
+            observation={},
+            sim=MagicMock(),
+        )
         kw = rec.call_args.kwargs
         assert (kw["agent_id"], kw["cluster_id"], kw["clusters"]) == (_HUB, _CLUSTERS["interoception"], _CLUSTERS)
 

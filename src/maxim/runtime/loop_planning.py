@@ -2,7 +2,9 @@
 
 At ``AutonomyLevel.PLANNING`` the loop queues every proposal in ``AutonomyController.proposal_queue`` (section 4).
 ``drain_approved`` executes the entries an approver marked approved. Today that approver is an EMBEDDER calling
-``proposal_queue.approve``; this module opens no other approval route (the approval surface is #1185).
+``proposal_queue.approve``. The one other approval route is the person's "yes" at the plan-approval prompt
+(``LoopController.handle_plan_approval``, #1185 Surface), which runs the same per-entry step through
+``execute_approved_plan``; the rest of the approval surface (typed answers, canonical rendering) is #1185's.
 
 Owner decisions (2026-10-08, and 2026-10-09 after the review):
 
@@ -54,6 +56,7 @@ from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController, Proposal
+    from maxim.agents.llm_types import LLMProposal
     from maxim.runtime.loop_types import ActionFollowup
     from maxim.runtime.tool_dispatch import ExecutionOutcome
 
@@ -164,6 +167,54 @@ def drain_approved(
         if outcome is not None and outcome.followup is not None:
             followup = outcome.followup
     return followup
+
+
+def execute_approved_plan(
+    plan: LLMProposal,
+    *,
+    autonomy_controller: AutonomyController,
+    execute_and_learn: Callable[..., ExecutionOutcome],
+    book_machine_refusal: Callable[..., None],
+    executor: Any,
+    observation: Any,
+    state: Any,
+    sim: Any,
+) -> ExecutionOutcome | None:
+    """Execute a plan a person approved at the plan-approval prompt, once (#1185 Surface, owner decision 2026-11-21).
+
+    The same step a drained entry takes (``_drain_one``): ``approved_action_blocker`` first (approval lifts only
+    the level, S7), a blocked plan refused typed and booked as a machine refusal, else one
+    ``execute_and_learn(human_involved=True)`` keyed to the situation ``plan`` was proposed in. ``plan`` is the
+    object the person was shown and answered; it never re-enters ``ctrl.pending_proposal``, so the loop's plan gate
+    never parks it again. ``None`` when it was refused.
+    """
+    from maxim.agents.autonomy import Proposal
+
+    proposal = Proposal(
+        id=plan.request_id,
+        action=plan.action,
+        reasoning=plan.reasoning or "",
+        confidence=plan.confidence,
+        strategy_used=plan.strategy_used,
+        citations=list(plan.citations or []),
+        status="approved",
+        approved_by="human:plan_prompt",
+        source=plan,
+    )
+    refuser = _Refuser(
+        autonomy_controller=autonomy_controller,
+        book_machine_refusal=book_machine_refusal,
+        executor=executor,
+        state=state,
+        sim=sim,
+    )
+    return _drain_one(
+        proposal,
+        autonomy_controller=autonomy_controller,
+        execute_and_learn=execute_and_learn,
+        observation=observation,
+        refuser=refuser,
+    )
 
 
 def _drain_one(

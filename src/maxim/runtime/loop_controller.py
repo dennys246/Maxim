@@ -516,7 +516,53 @@ class LoopController:
 
     # ── Phase: Handle plan approval ──────────────────────────────────────
 
-    def handle_plan_approval(self, cli_text: str, *, book_refusal: Callable[..., None]) -> bool:
+    def gate_plan_approval(self, action: dict[str, Any], *, sim: Any) -> bool:
+        """The loop's plan gate (moved out of ``_run_agentic_loop_body``, rule T for #1185): a proposal that
+        ``requires_approval`` with a ``plan_text`` is resolved by the sim's response policy, or parked in
+        ``pending_plan_proposal`` for the person. True when the caller must skip execution this tick (parked, or
+        the policy refused it); False to execute it (no gate, or the policy approved it).
+        """
+        proposal = self.pending_proposal
+        if not (getattr(proposal, "requires_approval", False) and proposal.plan_text):
+            return False
+        # In sim mode, auto-resolve plan approval via response policy
+        sim_plan_response = sim.resolve_plan_approval(proposal.plan_text)
+        if sim_plan_response is not None:
+            sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
+            if sim_plan_response.lower() in ("yes", "y"):
+                # Auto-approved — skip the approval flow, proceed to execution
+                logger.info("Sim mode: plan auto-approved, executing")
+                return False
+            # Auto-rejected
+            logger.info("Sim mode: plan auto-rejected")
+            self.pending_proposal = None
+            return True
+        # Production mode: store and wait for real user
+        logger.info("Proposal requires approval, showing plan to user")
+        log_agentic(
+            "agent_loop",
+            "plan_awaiting_approval",
+            {
+                "tool": action.get("tool_name"),
+                "plan_preview": proposal.plan_text[:100] if proposal.plan_text else None,
+            },
+        )
+        self.state.data["pending_plan_text"] = proposal.plan_text
+        self.state.data["pending_plan_tool"] = action.get("tool_name")
+        self.pending_plan_proposal = proposal
+        self.pending_proposal = None
+        return True
+
+    def handle_plan_approval(
+        self,
+        cli_text: str,
+        *,
+        book_refusal: Callable[..., None],
+        execute_and_learn: Callable[..., ExecutionOutcome],
+        book_machine_refusal: Callable[..., None],
+        observation: Any,
+        sim: Any,
+    ) -> bool:
         """Process user input when a plan proposal is awaiting approval.
 
         Returns True if the input was consumed: an approval, a rejection or a re-ask is the answer to the plan,
@@ -525,6 +571,13 @@ class LoopController:
         ``state.data["pending_modification"]`` (the shape ``handle_confirmation`` writes and the §6 submit
         reads). A rejection is booked through ``book_refusal`` (``LoopRun.book_refusal``, the run's recorder),
         so it is required.
+
+        An approval executes the plan exactly once, here (#1185 Surface, owner decision 2026-11-21), through
+        ``loop_planning.execute_approved_plan``: the approval is bound to the object the person was shown (the
+        slot's ``pending_plan_proposal``), the slot is emptied BEFORE it runs, so a second "yes" finds nothing to
+        approve, and the plan never re-enters ``pending_proposal``, so the plan gate never parks it again.
+        ``execute_and_learn`` / ``book_machine_refusal`` are the run's (``LoopRun``); ``observation`` is this
+        tick's, ``sim`` the run's adapter.
         """
         from maxim.runtime.approval import detect_approval_intent
 
@@ -549,10 +602,24 @@ class LoopController:
                     else None,
                 },
             )
-            self.pending_proposal = self.pending_plan_proposal
-            self.pending_plan_proposal = None
+            from maxim.runtime.loop_planning import execute_approved_plan
+
+            plan = self.pending_plan_proposal  # the object that was shown: the approval answers this one only
+            self.pending_plan_proposal = None  # spent before it runs: a repeated "yes" approves nothing
             self.state.data.pop("pending_plan_text", None)
             self.clear_pending_user_input()
+            outcome = execute_approved_plan(
+                plan,
+                autonomy_controller=self.autonomy_controller,
+                execute_and_learn=execute_and_learn,
+                book_machine_refusal=book_machine_refusal,
+                executor=self.executor,
+                observation=observation,
+                state=self.state,
+                sim=sim,
+            )
+            if outcome is not None and outcome.followup is not None:
+                self.pending_action_followup = outcome.followup
             return True
 
         elif intent == "reject":

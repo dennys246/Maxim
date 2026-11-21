@@ -25,6 +25,11 @@ wrapped so the queued proposals are approved, in order, once ``approve_batch`` o
 ``forbid`` makes the probe tool a hard ``SafetyConstraints`` forbid; ``pause_on_approve`` pauses the
 controller right after the approval (``emergency_halt``), before the loop drains the queue.
 
+``plan_text`` makes the proposal a plan that ``requires_approval`` (#1185): the loop parks it behind the
+plan-approval prompt, and ``answers`` are the person's replies, typed into the interactive mailbox
+(``pending_cli_input``): the first once the plan is shown (``plan_awaiting_approval``), each later one once the
+previous answer was read (``plan_approval_check``).
+
 The mode (#963): ``state_mode`` is the loop state's ``"mode"`` (``None`` leaves it unset), ``grant`` the operator's
 launch grant set on the executor before the run, and ``grant_at[k]`` a grant set just before the k-th proposal
 (0-based) is handed to the loop, so between two ticks. ``Observed.followups`` holds every follow-up the loop was
@@ -218,6 +223,8 @@ def run_once(
     state_mode: str | None = "active",
     grant: str | None = None,
     grant_at: dict[int, str | None] | None = None,
+    plan_text: str | None = None,
+    answers: list[str] | None = None,
 ) -> Observed:
     """Run the loop until the one proposal has been executed (and, supervised, confirmed).
 
@@ -321,6 +328,8 @@ def run_once(
             triggering_input=TRIGGER,
             cluster_id=CLUSTERS["interoception"],
             clusters=dict(CLUSTERS),
+            plan_text=plan_text if name == tool else None,
+            requires_approval=plan_text is not None and name == tool,
         )
 
     real_record = tool_dispatch.record_outcome
@@ -343,9 +352,14 @@ def run_once(
     buffer = structured_logging.get_abstraction_buffer()
     real_append = buffer.append
 
+    pending_answers = list(answers or [])
+
     def _append(record: Any) -> Any:
         if getattr(record, "source", None) == "agent_loop":
             obs.events.append((record.event, dict(record.data or {})))
+            first_prompt = record.event == "plan_awaiting_approval" and not (record.data or {}).get("reask")
+            if pending_answers and (first_prompt or record.event == "plan_approval_check"):
+                state.data["pending_cli_input"] = pending_answers.pop(0)  # the person types the next reply
         return real_append(record)
 
     monkeypatch.setattr(buffer, "append", _append)
