@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import extra_import_names, required_extra_skip
+from tests.conftest import core_import_names, extra_import_names, required_extra_skip
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -121,6 +121,7 @@ def test_the_extras_import_names_come_from_pyproject():
     assert extra_import_names("console") == ("fastapi", "uvicorn", "websockets", "pydantic")
     assert extra_import_names("sign") == ("cryptography", "rfc8785")
     assert extra_import_names("tts") == ("piper", "sounddevice")  # piper-tts, mapped; sounddevice (#1437)
+    assert "yaml" in core_import_names() and "pyyaml" not in core_import_names()  # pyyaml, mapped (#1647)
     modules_of: dict[str, set[str]] = {}
     for module, dists in packages_distributions().items():
         for dist in dists:
@@ -129,9 +130,12 @@ def test_the_extras_import_names_come_from_pyproject():
     # (utils/optional_deps.py). Only the mapped names: a shared package (fastapi: comms and console) has one entry there.
     from maxim.utils.optional_deps import EXTRA_FOR_IMPORT
 
-    assert {imp: EXTRA_FOR_IMPORT.get(imp) for imp in _DIST_IMPORT_NAMES.values()} == {"piper": "tts"}
+    # ``yaml`` is core (pyyaml), so it has no extra.
+    assert {imp: EXTRA_FOR_IMPORT.get(imp) for imp in _DIST_IMPORT_NAMES.values()} == {"piper": "tts", "yaml": None}
     import_to_dist = {imp: dist for dist, imp in _DIST_IMPORT_NAMES.items()}
-    for name in extra_import_names("console") + extra_import_names("sign") + extra_import_names("tts"):
+    for name in (
+        extra_import_names("console") + extra_import_names("sign") + extra_import_names("tts") + core_import_names()
+    ):
         dist = import_to_dist.get(name, name)
         if dist in modules_of:  # installed: the requirement's own distribution provides the derived module
             assert name in modules_of[dist], (name, modules_of[dist])

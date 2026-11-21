@@ -28,7 +28,7 @@ from typing import Any, Callable
 import pytest
 
 from tests._child_env import isolation_env
-from tests.conftest import _optional_dependencies, extra_import_names
+from tests.conftest import _optional_dependencies, core_import_names, extra_import_names
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
@@ -45,9 +45,10 @@ EXTRA_OWNED: dict[str, str] = {
     "maxim.models.movement.motor_cortex": "training",
 }
 
-# The child reports each failure as data, so the verdict below can attribute it: ``missing`` is the dependency an
-# ImportError names (``OptionalDependencyError.import_name``, else ``ImportError.name``; a hand-written
-# ``ImportError("...")`` names none, so it attributes to nothing).
+# The child reports each failure as data, so the verdict below can attribute it. ``missing`` is the module that was
+# not found: the deepest ``ImportError.name`` along the ``__cause__`` chain (``require_optional_dependency("keras")``
+# with keras installed and tensorflow absent names ``tensorflow``, not ``keras``), else
+# ``OptionalDependencyError.import_name``. A hand-written ``ImportError("...")`` names none, so it attributes to nothing.
 _CHILD = (
     "import importlib, json, sys\n"
     "sys.path.insert(0, sys.argv[1])\n"
@@ -56,7 +57,12 @@ _CHILD = (
     "    try:\n"
     "        importlib.import_module(name)\n"
     "    except Exception as exc:\n"
-    "        missing = getattr(exc, 'import_name', None) or (exc.name if isinstance(exc, ImportError) else None)\n"
+    "        missing, link = None, exc\n"
+    "        while link is not None:\n"
+    "            if isinstance(link, ImportError) and link.name:\n"
+    "                missing = link.name\n"
+    "            link = link.__cause__\n"
+    "        missing = missing or getattr(exc, 'import_name', None)\n"
     "        fails[name] = {\n"
     "            'text': f'{type(exc).__name__}: {exc}'[:300],\n"
     "            'is_import_error': isinstance(exc, ImportError),\n"
@@ -87,11 +93,12 @@ def sweep_verdict(
 ) -> str | None:
     """Why ``module``'s fresh import is a defect, or ``None`` when it is acceptable. Pure, so the rule is testable.
 
-    An unlisted module must import. A listed module must import when every import name of its extra is installed;
-    when the extra is absent, its failure must be attributed to one of the extra's import names: an ImportError
-    naming it, or an exception the package itself defines (``utils/optional_deps.py::import_refused``'s package
-    rule). ``import_refused``'s blanket ImportError/OSError branch is not used here: it cannot say WHICH dependency
-    refused, and a listed module failing on anything else is a defect like any other."""
+    An unlisted module must import. A listed module must import when every import name of its extra is installed.
+    When the extra is absent (even partly), the one acceptable failure is an ImportError attributed to one of the
+    extra's import names that is NOT installed here. Anything else is a defect like any other: an error raised by an
+    installed package of the extra (``from keras.layers import Layr``, a keras ``ValueError`` at class definition)
+    proves that package is present, so it cannot be the extra's absence. ``utils/optional_deps.py::import_refused``
+    is not used: its blanket ImportError/OSError branch cannot say WHICH dependency refused."""
     if failure is None:
         return None
     extra = owned.get(module)
@@ -100,11 +107,8 @@ def sweep_verdict(
     own_names = extra_import_names(extra)
     if all(installed(n) for n in own_names):
         return f"{module}: fails with its extra [{extra}] installed: {failure['text']}"
-    names = {_top(n) for n in own_names}
-    if failure["is_import_error"]:
-        if _top(failure["missing"]) in names:
-            return None
-    elif _top(failure["type_module"]) in names:
+    missing = _top(failure["missing"])
+    if failure["is_import_error"] and missing in {_top(n) for n in own_names} and not installed(missing):
         return None
     return f"{module}: [{extra}] is absent, but this is not its refusal: {failure['text']}"
 
@@ -190,8 +194,13 @@ def test_a_listed_module_passes_on_its_extras_typed_refusal() -> None:
     assert sweep_verdict(_MOTOR, refusal, installed=_NOTHING_INSTALLED) is None
     declared = _failure("ModuleNotFoundError: No module named 'pydantic'", missing="pydantic")
     assert sweep_verdict("maxim.console.schemas", declared, installed=_NOTHING_INSTALLED) is None
-    own_error = _failure("RuntimeError: ...", missing=None, is_import_error=False, type_module="tensorflow.errors")
-    assert sweep_verdict(_MOTOR, own_error, installed=_NOTHING_INSTALLED) is None
+    # Partly installed: keras present, tensorflow absent. The typed refusal's cause names tensorflow, which is not.
+    keras_only = _failure("OptionalDependencyError: ... 'keras'", missing="tensorflow")
+    assert sweep_verdict(_MOTOR, keras_only, installed=_KERAS_ONLY) is None
+
+
+_KERAS_ONLY: Callable[[str], bool] = lambda name: name == "keras"  # noqa: E731
+_TF_ONLY: Callable[[str], bool] = lambda name: name == "tensorflow"  # noqa: E731
 
 
 @pytest.mark.parametrize(
@@ -209,6 +218,23 @@ def test_a_listed_module_failing_for_another_reason_fails(failure: dict) -> None
     assert sweep_verdict(_MOTOR, failure, installed=_NOTHING_INSTALLED) is not None
 
 
+@pytest.mark.parametrize(
+    ("failure", "installed"),
+    [
+        # (a) keras installed, tensorflow absent: a typo against the installed keras is a bug, not the extra's absence
+        (_failure("ImportError: cannot import name 'Layr' from 'keras.layers'", missing="keras.layers"), _KERAS_ONLY),
+        # (b) same: keras itself raised, so keras is present
+        (_failure("ValueError: ...", missing=None, is_import_error=False, type_module="keras.src.layers"), _KERAS_ONLY),
+        # (c) tensorflow installed, keras absent: tensorflow raised, so it is present and broken
+        (_failure("AttributeError: ...", missing=None, is_import_error=False, type_module="tensorflow"), _TF_ONLY),
+        # an ImportError naming an own package that IS installed
+        (_failure("ModuleNotFoundError: No module named 'keras'", missing="keras"), _KERAS_ONLY),
+    ],
+)
+def test_a_partly_installed_extra_accepts_only_a_missing_own_name(failure: dict, installed) -> None:
+    assert sweep_verdict(_MOTOR, failure, installed=installed) is not None
+
+
 def test_a_listed_module_must_import_when_its_extra_is_installed() -> None:
     refusal = _failure("OptionalDependencyError: motor_cortex: required dependency 'keras'", missing="keras")
     assert sweep_verdict(_MOTOR, refusal, installed=_EVERYTHING_INSTALLED) is not None
@@ -220,31 +246,24 @@ def test_extra_owned_names_real_extras() -> None:
     assert not unknown, f"EXTRA_OWNED names extras pyproject does not declare: {unknown}"
 
 
-# A requirement of [project.dependencies] whose distribution name is not its import name.
-_CORE_DIST_IMPORT_NAMES = {"pyyaml": "yaml"}
-
-
-def _core_import_names() -> set[str]:
-    import re
-    import tomllib
-
-    deps = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["dependencies"]
-    names = set()
-    for requirement in deps:
-        match = re.match(r"[A-Za-z0-9._-]+", requirement)
-        if match:
-            dist = re.sub(r"[-.]", "_", match.group(0).lower())
-            names.add(_CORE_DIST_IMPORT_NAMES.get(dist, dist))
-    return names
-
-
 def _module_level_dependencies(path: Path) -> set[str]:
-    """The top-level names ``path`` needs at import: its module-level ``import`` / ``from`` statements (inside a
-    module-level ``try``/``if`` too, never inside a function or class) and the first argument of a module-level
-    ``require_optional_dependency("...")``."""
+    """The top-level names ``path`` needs at import, from its module-level statements (inside a module-level
+    ``try``/``if``/``with`` too, never inside a function or class): ``import`` / ``from`` (absolute), and the
+    constant first argument of a ``require_optional_dependency(...)`` or ``importlib.import_module(...)`` call,
+    by name or attribute (``optional_deps.require_optional_dependency``), as a statement, an assignment, an
+    annotated assignment or a ``with`` item."""
     import ast
 
     found: set[str] = set()
+    loaders = {"require_optional_dependency", "import_module"}
+
+    def note_call(expr: ast.expr | None) -> None:
+        if not isinstance(expr, ast.Call) or not expr.args or not isinstance(expr.args[0], ast.Constant):
+            return
+        func = expr.func
+        called = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+        if called in loaders and isinstance(expr.args[0].value, str):
+            found.add(_top(expr.args[0].value))
 
     def visit(nodes: list[ast.stmt]) -> None:
         for node in nodes:
@@ -252,21 +271,18 @@ def _module_level_dependencies(path: Path) -> set[str]:
                 found.update(_top(alias.name) for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 found.add(_top(node.module))
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr)):
+                note_call(node.value)
+            elif isinstance(node, ast.With):
+                for item in node.items:
+                    note_call(item.context_expr)
+                visit(node.body)
             elif isinstance(node, (ast.Try, ast.If)):
                 visit(node.body)
                 visit(node.orelse)
                 for handler in getattr(node, "handlers", ()):
                     visit(handler.body)
                 visit(getattr(node, "finalbody", []))
-            if isinstance(node, (ast.Assign, ast.Expr)):
-                call = node.value
-                if (
-                    isinstance(call, ast.Call)
-                    and getattr(call.func, "id", None) == "require_optional_dependency"
-                    and call.args
-                    and isinstance(call.args[0], ast.Constant)
-                ):
-                    found.add(_top(call.args[0].value))
 
     visit(ast.parse(path.read_text()).body)
     return found
@@ -276,7 +292,7 @@ def test_each_extra_owned_module_imports_only_what_its_extra_declares() -> None:
     """The declaration the verdict relies on: every third-party name an extra-owned module needs at import is a
     DIRECT requirement of its extra (or of core). A name that arrives only transitively (pydantic through fastapi,
     until #1647 declared it) vanishes when the upstream drops it, and the sweep could not attribute its refusal."""
-    core = _core_import_names()
+    core = set(core_import_names())
     undeclared = {}
     for module, extra in EXTRA_OWNED.items():
         path = SRC / (module.replace(".", "/") + ".py")
@@ -287,19 +303,32 @@ def test_each_extra_owned_module_imports_only_what_its_extra_declares() -> None:
     assert not undeclared, f"extra-owned modules import names their extra does not declare: {undeclared}"
 
 
-def test_the_declaration_check_sees_module_level_imports_only(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("import os\nimport uvicorn.main\n", {"os", "uvicorn"}),
+        ("from pydantic import BaseModel\nfrom . import sibling\n", {"pydantic"}),
+        ("try:\n    import uvicorn\nexcept ImportError:\n    import cv2\n", {"uvicorn", "cv2"}),
+        ("if True:\n    import fastapi\n", {"fastapi"}),
+        ("keras = require_optional_dependency('keras', feature='x')\n", {"keras"}),
+        ("require_optional_dependency('keras')\n", {"keras"}),
+        ("keras: object = require_optional_dependency('keras')\n", {"keras"}),  # AnnAssign
+        ("keras = optional_deps.require_optional_dependency('keras')\n", {"keras"}),  # attribute call
+        ("yaml = importlib.import_module('yaml')\n", {"yaml"}),
+        ("with contextlib.suppress(Exception):\n    import rich\n", {"rich"}),  # with body
+        ("with importlib.import_module('cv2'):\n    pass\n", {"cv2"}),  # with item
+        ("def f():\n    import cv2\nclass C:\n    import torch\n", set()),  # function and class bodies: not import
+    ],
+)
+def test_the_declaration_check_sees_each_module_level_form(tmp_path: Path, source: str, expected: set[str]) -> None:
     probe = tmp_path / "probe.py"
-    probe.write_text(
-        "import os\nfrom pydantic import BaseModel\ntry:\n    import uvicorn.main\nexcept ImportError:\n    pass\n"
-        "keras = require_optional_dependency('keras', feature='x')\n"
-        "def f():\n    import cv2\n"
-    )
-    assert _module_level_dependencies(probe) == {"os", "pydantic", "uvicorn", "keras"}
+    probe.write_text(source)
+    assert _module_level_dependencies(probe) == expected
 
 
 def test_the_child_reports_what_the_verdict_attributes(tmp_path: Path) -> None:
     """The child's report, on real failures: a hand-written ImportError names nothing, a missing module names
-    itself, and the typed refusal names its import name."""
+    itself, the typed refusal names its import name, and a refusal caused by a deeper missing module names that."""
     pkg = tmp_path / "zz1647"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
@@ -308,6 +337,12 @@ def test_the_child_reports_what_the_verdict_attributes(tmp_path: Path) -> None:
     (pkg / "typed.py").write_text(
         "from maxim.utils.optional_deps import require_optional_dependency\n"
         "require_optional_dependency('zz_not_installed_1647', extra='training')\n"
+    )
+    # The package is present but ITS dependency is not (keras without tensorflow): the deepest name in the chain.
+    (pkg / "chained.py").write_text(
+        "from maxim.utils.optional_deps import OptionalDependencyError\n"
+        "try:\n    import zz_inner_1647\n"
+        "except ImportError as e:\n    raise OptionalDependencyError('zz_outer_1647', cause=e) from e\n"
     )
     env = _child_env(tmp_path)
     child = _CHILD.replace("sys.path.insert(0, sys.argv[1])\n", f"sys.path[:0] = [sys.argv[1], {str(SRC)!r}]\n")
@@ -318,7 +353,7 @@ def test_the_child_reports_what_the_verdict_attributes(tmp_path: Path) -> None:
             "-c",
             child,
             str(tmp_path),
-            json.dumps(["zz1647.plain", "zz1647.missing", "zz1647.typed"]),
+            json.dumps(["zz1647.plain", "zz1647.missing", "zz1647.typed", "zz1647.chained"]),
         ],
         capture_output=True,
         text=True,
@@ -330,4 +365,5 @@ def test_the_child_reports_what_the_verdict_attributes(tmp_path: Path) -> None:
     assert fails["zz1647.plain"]["missing"] is None
     assert fails["zz1647.missing"]["missing"] == "zz_not_installed_1647"
     assert fails["zz1647.typed"]["missing"] == "zz_not_installed_1647"
+    assert fails["zz1647.chained"]["missing"] == "zz_inner_1647"
     assert all(f["is_import_error"] for f in fails.values())
