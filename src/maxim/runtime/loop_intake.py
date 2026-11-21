@@ -25,7 +25,8 @@ was a constant local of the body read only here, so it is a module constant. The
 
 **Not bio-free yet.** B2's prerequisite ("the ``_llm_unavailable`` fallback leaves the body for a module with no bio
 imports") is met by this module's own imports, but ``loop_controller`` imports ``tool_dispatch``, whose bio imports
-are #1150; the strict red gate in ``tests/unit/test_loop_intake_characterization.py`` flips when #1150 lands.
+are #1150; the strict red gate
+``tests/unit/test_loop_intake_bio_free.py::test_importing_the_intake_leaf_loads_no_bio_module`` flips when #1150 lands.
 
 Characterization: ``tests/unit/test_loop_intake_characterization.py`` (written before the move, through the public
 ``run_agentic_loop``, and kept green by it).
@@ -112,12 +113,12 @@ def _drop_skipped_fallback(
     action_sink: Any,
     _planning_liveness_on: bool,
     _consecutive_llm_fallbacks: int,
-) -> tuple[int, bool]:
+) -> IntakeOutcome:
     """§2, sim mode: drop a proposal the adapter skips (a parse-failure fallback or an unregistered tool).
 
     The inline branch's body, moved verbatim: it counts the fallback, records an unregistered name in the executor's
     hallucinated-tool list, reschedules the turn under planning liveness, clears the pending user input and surfaces
-    ``_llm_unavailable`` to the action sink. Returns ``(consecutive_llm_fallbacks, liveness_exhausted)``; the caller
+    ``_llm_unavailable`` to the action sink. Returns the same ``IntakeOutcome`` as ``take_llm_proposal``; the caller
     sets its own ``new_proposal`` to None (the branch's assignment of it here rebinds only this function's local).
     """
     _planning_liveness_exhausted = False
@@ -201,7 +202,7 @@ def _drop_skipped_fallback(
             _consecutive_llm_fallbacks,
         )
         _consecutive_llm_fallbacks = 0  # Reset so we don't flood
-    return _consecutive_llm_fallbacks, _planning_liveness_exhausted
+    return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 
 
 def take_llm_proposal(
@@ -255,7 +256,7 @@ def take_llm_proposal(
             _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
         # In simulation mode, skip fallback proposals — wait for real LLM
         if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
-            _consecutive_llm_fallbacks, _dropped_exhausted = _drop_skipped_fallback(
+            _dropped = _drop_skipped_fallback(
                 new_proposal=new_proposal,
                 sim=sim,
                 ctrl=ctrl,
@@ -267,7 +268,8 @@ def take_llm_proposal(
                 _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
             )
             new_proposal = None  # dropped: the helper's own ``new_proposal = None`` is its local
-            _planning_liveness_exhausted = _planning_liveness_exhausted or _dropped_exhausted
+            _consecutive_llm_fallbacks = _dropped.consecutive_llm_fallbacks
+            _planning_liveness_exhausted = _planning_liveness_exhausted or _dropped.exhausted
         if new_proposal:
             _consecutive_llm_fallbacks = 0  # Real proposal arrived — LLM is back
             if callable(on_event):

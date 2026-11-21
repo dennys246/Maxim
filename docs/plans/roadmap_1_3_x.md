@@ -742,7 +742,7 @@ an extraction. **Function-specific pins** (an ordering or region inside one func
 owning slice in that module's docstring and are updated consciously by that slice: slice 1
 (`test_planning_liveness` gate definition and raise-after-teardown, `test_experience_clock` AST),
 slice 2 (`test_planning_liveness` idle-gate pins), slice 3 (`test_substrate_action_budget` §6b
-ordering), and the slice that moves §2 (`test_planning_liveness` proposal-time stamp; slice 4 moved §5, not §2).
+ordering), and the slice that moves §2 (`test_planning_liveness` proposal-time stamp; slice 4 moved §5, not §2; 1.3.6 slice 6 moved §2 and re-pointed it to `loop_intake.take_llm_proposal`).
 
 **Characterization owed before slices 4 and 5** (no gate pins this code today; the executor lens,
 slice 0): **slice 4** needs a PLANNING arm, or an extended `test_approved_proposal_situation_1083.py`,
@@ -1253,7 +1253,9 @@ they are ready, and the gate takes the next free number when it is done, still o
   - the mode readers [#960](https://github.com/dennys246/Maxim/issues/960), [#962](https://github.com/dennys246/Maxim/issues/962), [#1192](https://github.com/dennys246/Maxim/issues/1192), [#1193](https://github.com/dennys246/Maxim/issues/1193);
   - Entity save/load [#1159](https://github.com/dennys246/Maxim/issues/1159) and the sensor resolver [#1156](https://github.com/dennys246/Maxim/issues/1156).
 - **B2's code prerequisites are exit items** (owner decision 2026-10-17). The loop slices already make these cuts:
-  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports;
+  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports (moved by slice 6 into
+    `runtime/loop_intake.py`, whose own imports are bio-free; its import closure still reaches bio through
+    `loop_controller` -> `tool_dispatch`, held by the strict red gate `tests/unit/test_loop_intake_bio_free.py`);
   - `tool_dispatch.execute_and_learn` becomes importable without bio modules (#1150), and callable with `nac`,
     `hippocampus` and `memory_hub` set to `None`;
   - the `runtime` and `agents` package `__init__`s become lazy.

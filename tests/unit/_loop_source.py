@@ -41,7 +41,7 @@ wrapper), and every pin below reads the body:
   - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region): reads
     ``loop_intake._drop_skipped_fallback`` (the sim fallback drop) since slice 6.
   - ``test_console_tool_allowlist.py::TestRosterAdvertisesOnlyPermittedTools::test_agent_loop_filters_the_advertised_roster_through_permits``,
-    its ordering half (permits filter before ``last_surfaced_tools``) -- §6's request assembly (slice 7).
+    its ordering half (permits filter before ``last_surfaced_tools``) -- §6's request assembly (the slice that moves §6).
   - ``test_tool_output_framing.py`` and ``test_planning_liveness.py``: ``inspect.getsource`` of the
     module-level helpers ``_followup_synthetic_input`` (whichever slice moves it), ``_drop_stale_proposal``
     and ``_proposal_without_action_reason`` (read from ``loop_intake`` since slice 6; no re-export).
