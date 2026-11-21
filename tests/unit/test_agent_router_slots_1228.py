@@ -150,7 +150,7 @@ def test_a_bypassed_exec_agent_override_is_warned_once(
         MaximAgent(shared_router=_Router("big"))  # the override's own profile: nothing bypassed
     warned = [r for r in caplog.records if "agent_profiles.exec_agent" in r.getMessage()]
     assert len(warned) == 1, [r.getMessage() for r in warned]
-    assert len(reads) == 1  # read once per config generation, not per constructor
+    assert len(reads) == 1  # read once per llm.json identity, not per constructor
 
 
 def test_an_llm_json_edit_reaches_the_override_warning(
