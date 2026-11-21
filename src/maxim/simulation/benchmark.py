@@ -939,64 +939,61 @@ class BenchmarkRunner:
         Uses the existing WriterAgent pipeline from the research protocol.
         Converts benchmark metrics into experiment log entries.
 
-        Returns the paper path, or None if generation fails.
+        Returns the paper path, or None when no LLM is usable (no router, or every section's LLM call failed).
+        Any other failure raises: a broad except here once turned a constructor ``TypeError`` into a None that
+        the CLI reported as "LLM unavailable", so the paper step never worked and nothing said why (#1680).
         """
+        from maxim.mesh.bus import LocalMessageBus
+        from maxim.models.download import consented_router
+        from maxim.models.language.router import load_llm_config
+        from maxim.simulation.research_agents import WriterAgent
+        from maxim.simulation.research_tools import ExperimentLog
+
+        exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")
+
+        for model, mr in report.results.items():
+            metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
+            exp_log.record(
+                hypothesis=f"Model {model} performs well on {report.suite}",
+                method=f"Benchmark suite: {report.suite}, {report.runs_per_model} run(s)",
+                result=metrics_summary,
+                conclusion=f"Score: {mr.score:.2f}, passed: {mr.passed}",
+                tags=["benchmark", model],
+                metrics=mr.metrics,
+            )
+
+        # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
+        # (#1396 bullet 2): no paper rather than a router that refuses every call.
         try:
-            from maxim.mesh.bus import LocalMessageBus
-            from maxim.simulation.research_agents import WriterAgent
-            from maxim.simulation.research_tools import ExperimentLog
-
-            exp_log = ExperimentLog(session_dir=output_dir, nickname="benchmark")
-
-            for model, mr in report.results.items():
-                metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
-                exp_log.record(
-                    hypothesis=f"Model {model} performs well on {report.suite}",
-                    method=f"Benchmark suite: {report.suite}, {report.runs_per_model} run(s)",
-                    result=metrics_summary,
-                    conclusion=f"Score: {mr.score:.2f}, passed: {mr.passed}",
-                    tags=["benchmark", model],
-                    metrics=mr.metrics,
-                )
-
-            from maxim.models.download import consented_router
-            from maxim.models.language.router import load_llm_config
-
-            # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
-            # (#1396 bullet 2): no paper rather than a router that refuses every call.
-            try:
-                router, cause = consented_router(load_llm_config(), logger=logger)
-            except Exception:
-                logger.warning("No LLM available for paper generation")
-                return None
-            if router is None:
-                logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
-                return None
-
-            bus = LocalMessageBus()
-            writer = WriterAgent(
-                llm=router,
-                experiment_log=exp_log,
-                bus=bus,
-                session_dir=output_dir,
-            )
-
-            goal = (
-                f"Write a comparative analysis of {len(report.models)} LLM models "
-                f"benchmarked on the {report.suite} suite. "
-                f"Models tested: {', '.join(report.models)}. "
-                f"Include methodology, per-model results, and ranking analysis."
-            )
-
-            draft = writer.run(goal)
-            paper_path = output_dir / "paper.md"
-            draft.save(paper_path)
-            logger.info("Benchmark paper generated: %s", paper_path)
-            return paper_path
-
+            router, cause = consented_router(load_llm_config(), logger=logger)
         except Exception as e:
-            logger.warning("Paper generation failed: %s", e)
+            logger.warning("No LLM available for paper generation: %s", e)
             return None
+        if router is None:
+            logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
+            return None
+
+        writer = WriterAgent(
+            llm=router,
+            experiment_log=exp_log,
+            bus=LocalMessageBus(),
+            session_dir=output_dir,
+        )
+
+        goal = (
+            f"Write a comparative analysis of {len(report.models)} LLM models "
+            f"benchmarked on the {report.suite} suite. "
+            f"Models tested: {', '.join(report.models)}. "
+            f"Include methodology, per-model results, and ranking analysis."
+        )
+
+        draft = writer.run(goal)  # saves the draft to output_dir / "paper.md"
+        if not draft.sections:
+            logger.warning("No paper generated: the LLM returned no text for any section (see the Writer warnings)")
+            return None
+        paper_path = output_dir / "paper.md"
+        logger.info("Benchmark paper generated: %s", paper_path)
+        return paper_path
 
     # ── Phase 9: Tier 3 embodiment hooks ─────────────────────────
 

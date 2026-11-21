@@ -462,9 +462,6 @@ def test_the_paper_writer_takes_one_plain_router_and_never_asks(gate, fallback, 
     record) for a post-benchmark step; a missing model is no paper, not a router that refuses every call."""
     from maxim.simulation.benchmark import BenchmarkRunner
 
-    # ExperimentLog does not take write_paper's ``nickname=`` (a separate, pre-existing defect: the paper step fails
-    # before it reaches the router); stubbed so this test reaches the router build.
-    monkeypatch.setattr("maxim.simulation.research_tools.ExperimentLog", lambda **kw: SimpleNamespace(record=None))
     report = SimpleNamespace(results={}, suite="s", runs_per_model=1, models=[])
     assert BenchmarkRunner.write_paper(object.__new__(BenchmarkRunner), report, tmp_path) is None
     assert gate.calls == [(P, False)]

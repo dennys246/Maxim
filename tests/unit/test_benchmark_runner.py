@@ -1233,3 +1233,61 @@ def test_aggregation_records_how_many_thresholds_were_checked(tmp_path, scoring,
     runner._scoring = scoring
     run = RunResult(scenario="s", model="m", run_index=0, metrics={"memory_formation_rate": 2.0})
     assert runner._aggregate_runs("m", [run]).thresholds_checked == checked
+
+
+# ── write_paper end to end (#1680) ───────────────────────────────────
+
+
+class _StubProseLLM:
+    """Stands in for the LLM only: the WriterAgent's one call is ``_complete_text``."""
+
+    def __init__(self, text: str = "Stub prose.") -> None:
+        self.text = text
+        self.calls = 0
+
+    def _complete_text(self, system, prompt, max_tokens=1024, temperature=0.4):
+        self.calls += 1
+        if isinstance(self.text, BaseException):
+            raise self.text
+        return self.text, {}
+
+
+def _paper_report() -> BenchmarkReport:
+    mr = ModelResult(model="m1", metrics={"actions": 3.0}, score=0.5, passed=True)
+    return BenchmarkReport(timestamp="t", suite="s", models=["m1"], runs_per_model=1, results={"m1": mr})
+
+
+class TestWritePaper:
+    """The real ``write_paper`` path (real ExperimentLog, WriterAgent, PaperDraft), with only the router stubbed."""
+
+    def _runner(self, monkeypatch, llm):
+        monkeypatch.setattr("maxim.models.download.consented_router", lambda cfg, logger=None: (llm, None))
+        return object.__new__(BenchmarkRunner)
+
+    def test_writes_a_paper_from_the_benchmark_results(self, monkeypatch, tmp_path):
+        llm = _StubProseLLM()
+        path = self._runner(monkeypatch, llm).write_paper(_paper_report(), tmp_path)
+
+        assert path == tmp_path / "paper.md"
+        assert "Stub prose." in path.read_text(encoding="utf-8")
+        assert llm.calls > 0
+        # The benchmark results reached the experiment log the writer read, under the benchmark's nickname.
+        entries = (tmp_path / "experiments.jsonl").read_text(encoding="utf-8")
+        assert "benchmark.hippo.exp_001" in entries and "actions=3.00" in entries
+
+    def test_a_defect_in_the_paper_path_raises_instead_of_reading_as_no_llm(self, monkeypatch, tmp_path):
+        """#1680's TypeError was caught by a broad except and returned None, which the CLI reports as "LLM
+        unavailable". None means only that no LLM is usable; anything else must surface."""
+
+        def _broken(*a, **k):
+            raise TypeError("unexpected keyword argument")
+
+        monkeypatch.setattr("maxim.simulation.research_tools.ExperimentLog", _broken)
+        with pytest.raises(TypeError):
+            self._runner(monkeypatch, _StubProseLLM()).write_paper(_paper_report(), tmp_path)
+
+    def test_no_section_written_is_no_paper(self, monkeypatch, tmp_path):
+        """Every section's LLM call failing (WriterAgent swallows each one) must not report an empty paper as saved."""
+        llm = _StubProseLLM(RuntimeError("server 500"))
+        assert self._runner(monkeypatch, llm).write_paper(_paper_report(), tmp_path) is None
+        assert llm.calls > 0
