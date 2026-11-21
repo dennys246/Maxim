@@ -143,22 +143,52 @@ def _args_reads(func) -> set[str]:
     return names
 
 
-def _forwarded_reads(func) -> set[str]:
-    """``func``'s own reads plus those of each ``cli`` helper it hands ``args`` to (one level: ``_sim_max_turns``),
-    except the refusal itself, which reads the options it refuses."""
-    names = _args_reads(func)
-    for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(func)))):
+def _reads_in(node: ast.AST) -> set[str]:
+    """Every ``args.<name>`` / ``getattr(args, "<name>", ...)`` inside ``node``."""
+    names = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name) and sub.value.id == "args":
+            names.add(sub.attr)
         if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.args
-            and isinstance(node.args[0], ast.Name)
-            and node.args[0].id == "args"
-            and node.func.id != "_research_refusal"
-            and callable(getattr(cli, node.func.id, None))
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Name)
+            and sub.func.id == "getattr"
+            and len(sub.args) >= 2
+            and isinstance(sub.args[0], ast.Name)
+            and sub.args[0].id == "args"
+            and isinstance(sub.args[1], ast.Constant)
         ):
-            names |= _args_reads(getattr(cli, node.func.id))
+            names.add(sub.args[1].value)
     return names
+
+
+def _forwarded_from_source(source: str, namespace) -> set[str]:
+    """The options that reach ``start_research_mode``: read inside one of its keyword arguments, directly or through
+    a helper (looked up in ``namespace``) that is handed ``args`` there, whose RETURN value is that argument. A bare
+    read elsewhere in the function, or a helper whose result is dropped, forwards nothing."""
+    names: set[str] = set()
+    for call in ast.walk(ast.parse(textwrap.dedent(source))):
+        if not (
+            isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "start_research_mode"
+        ):
+            continue
+        for kw in call.keywords:
+            names |= _reads_in(kw.value)
+            for sub in ast.walk(kw.value):
+                if (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.args
+                    and isinstance(sub.args[0], ast.Name)
+                    and sub.args[0].id == "args"
+                    and callable(getattr(namespace, sub.func.id, None))
+                ):
+                    names |= _args_reads(getattr(namespace, sub.func.id))
+    return names
+
+
+def _forwarded_reads(func) -> set[str]:
+    return _forwarded_from_source(inspect.getsource(func), cli)
 
 
 #: Read by ``_main_impl`` for a goal-string sim before it dispatches (the embodiment ``_run_goal_sim`` is handed, and
@@ -169,9 +199,8 @@ _MAIN_IMPL_GOAL_SIM_READS = {"embodiment", "no_embodiment", "deep_embodiment", "
 _HONOURED_BY_DESIGN = {"sim_mode", "no_sim_env"}
 
 
-def test_every_goal_sim_option_is_forwarded_or_refused() -> None:
-    """A goal-sim option must be forwarded to the research protocol (read by ``_run_research_from_cli``) or refused
-    by it, never dropped: the drift that let --embodiment and --sim-max-turns vanish under --research (#1680)."""
+def _pin_missing(forwarded: set[str]) -> set[str]:
+    """The goal-sim options neither forwarded (``forwarded``), honoured by design, nor refused."""
     read = (
         _args_reads(cli._run_goal_sim)
         | _args_reads(cli._sim_turn_caps)
@@ -179,8 +208,13 @@ def test_every_goal_sim_option_is_forwarded_or_refused() -> None:
         | _args_reads(cli._cli_llm_profile)
         | _MAIN_IMPL_GOAL_SIM_READS
     )
-    forwarded = _forwarded_reads(cli._run_research_from_cli)
-    missing = read - forwarded - _HONOURED_BY_DESIGN - cli._RESEARCH_DROPPED_OPTIONS
+    return read - forwarded - _HONOURED_BY_DESIGN - cli._RESEARCH_DROPPED_OPTIONS
+
+
+def test_every_goal_sim_option_is_forwarded_or_refused() -> None:
+    """A goal-sim option must be forwarded to the research protocol (read by ``_run_research_from_cli``) or refused
+    by it, never dropped: the drift that let --embodiment and --sim-max-turns vanish under --research (#1680)."""
+    missing = _pin_missing(_forwarded_reads(cli._run_research_from_cli))
     assert not missing, f"the goal sim reads {sorted(missing)}: forward them to start_research_mode or refuse them"
 
 
@@ -204,3 +238,36 @@ def test_normalizing_twice_does_not_read_the_default_sim_mode_as_passed() -> Non
     normalize_args(explicit)
     normalize_args(explicit)
     assert explicit.sim_mode_explicit is True and isinstance(cli._research_refusal(explicit), CliOptionsRefused)
+
+
+_SANDBOX_FORWARD = '        sandbox_backend=getattr(args, "sandbox_backend", "auto"),\n'
+
+
+def _probe_source(extra_statement: str) -> str:
+    """``_run_research_from_cli`` without its ``sandbox_backend=`` forward, plus ``extra_statement`` before the call."""
+    source = textwrap.dedent(inspect.getsource(cli._run_research_from_cli))
+    assert _SANDBOX_FORWARD.strip() in source
+    lines = [line for line in source.splitlines(keepends=True) if line.strip() != _SANDBOX_FORWARD.strip()]
+    i = next(k for k, line in enumerate(lines) if "result = start_research_mode(" in line)
+    return "".join(lines[:i] + [f"    {extra_statement}\n"] + lines[i:])
+
+
+def test_the_pin_sees_sandbox_backend_forwarded_today() -> None:
+    assert "sandbox_backend" in _forwarded_reads(cli._run_research_from_cli)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    ["_peek(args)", 'getattr(args, "sandbox_backend", "auto")'],
+    ids=["helper-result-dropped", "bare-read"],
+)
+def test_a_read_that_never_reaches_the_call_is_not_forwarded(extra) -> None:
+    """The delta-6 probes: drop the forward and read the option some other way. The pin must not count it."""
+
+    def _peek(args):
+        return getattr(args, "sandbox_backend", "auto")
+
+    namespace = SimpleNamespace(_peek=_peek, _sim_max_turns=cli._sim_max_turns)
+    forwarded = _forwarded_from_source(_probe_source(extra), namespace)
+    assert "sandbox_backend" in _pin_missing(forwarded)  # the pin goes red on this source
+    assert "sim_max_turns" in forwarded  # a helper whose return IS a kwarg still counts
