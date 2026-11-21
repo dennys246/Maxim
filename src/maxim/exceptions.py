@@ -295,6 +295,36 @@ class ToolEffectRefused(MaximError):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Embodiment Errors
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class DamageRefused(MaximError, ValueError):
+    """Damage aimed at a body part that cannot carry it (#1719).
+
+    ``SpecModulator.apply_damage`` raises it for a modulator with no sub-sensors, which used to return ``1.0``
+    and drop the damage. How a partless body should take damage is open
+    (``docs/plans/deferred/reflex_layering.md`` §3); until it is decided, the call refuses. Also a
+    ``ValueError``, so it reads as bad input (like ``MotionRefused``).
+
+    Attributes:
+        modulator: The name of the part that refused.
+    """
+
+    def __init__(self, message: str, *, modulator: str) -> None:
+        super().__init__(message, context={"modulator": modulator})
+        self.modulator = modulator
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # A keyword-only init: rebuild through a helper so pickle and copy keep ``modulator``.
+        return (_rebuild_damage_refused, (self.message, self.modulator))
+
+
+def _rebuild_damage_refused(message: str, modulator: str) -> DamageRefused:
+    return DamageRefused(message, modulator=modulator)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Model Errors
 # ─────────────────────────────────────────────────────────────────────────────
 
