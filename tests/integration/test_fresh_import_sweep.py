@@ -53,14 +53,18 @@ EXTRA_OWNED: dict[str, str] = {
 #      wrapping an AttributeError, or a defect masked in ``__context__`` by a fallback import of an absent name).
 #   2. The top error must be the canonical refusal, ``OptionalDependencyError`` (by type name and module: the child
 #      must not import ``maxim.utils.optional_deps`` itself, or every module after it is no longer imported first),
-#      or a stdlib ImportError carrying its own ``.name``. A hand-written ``raise ImportError("...")`` names nothing
+#      or an ImportError whose ``.name`` is set (by the import machinery, or written on purpose as
+#      ``ImportError(..., name=...)``). A subclass of the refusal defined elsewhere fails the module check and is
+#      refused: fail closed. A hand-written ``raise ImportError("...")`` names nothing
 #      and is refused even when chained to a real missing module: CLAUDE.md's optional-deps rule bans that shape in
 #      src/maxim, and ``require_optional_dependency`` is the refusal to use.
 #   3. Then the DEEPEST ``.name`` in the chain wins, else the typed refusal's ``import_name``. Decision: the deepest
 #      link is what was actually not found. ``require_optional_dependency("keras")`` with keras installed and
 #      tensorflow absent raises ``OptionalDependencyError(keras)`` from ``ModuleNotFoundError(tensorflow)``: the
 #      extra is partly absent, and it is tensorflow that is missing. The same rule attributes an installed name raised
-#      from a missing own name (contrived) to the missing one; that is pinned by a test, not an accident.
+#      from a missing own name (contrived) to the missing one; that is pinned by a test, not an accident. A
+#      ``__context__`` link counts as deeper too, so a fallback import whose FIRST try names a non-own module is
+#      refused even when the extra is absent: a false red, never a false accept.
 _CHILD = (
     "import importlib, json, sys\n"
     "sys.path.insert(0, sys.argv[1])\n"
