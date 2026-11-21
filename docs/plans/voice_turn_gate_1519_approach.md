@@ -62,6 +62,20 @@ How a source is bound (S2):
 - An input's source is `provenance_of(observation.source)`, mapped to `Source`, at `take_user_input`. It is never
   read from which slot the text sat in. That is why `pending_voice_input` and `pending_cli_input` are not themselves
   trusted.
+- **Build scope (S2/S4, #1729): the source travels with EACH input, and every render of a voice input is
+  labelled.** #1519 labels only the FIRST prompt of a voice turn (`LLMRequest.triggering_input_source`, from the one
+  `pending_user_input_source` slot, which the latest input overwrites). Five renders are still unlabelled, and they
+  are in this build's scope, on #1185's `InputSource` (`src/maxim/utils/input_source.py`):
+  1. inputs held while a submit is in flight (voice, then typed: the slot keeps only the latest);
+  2. deliberation re-prompts, which pass `triggering_input=""`, so `prompt_builder` falls back to an unlabelled
+     `context.cli_inputs[-1]`;
+  3. follow-up prompts, which show a voice request's original query bare;
+  4. the #1048 deferred inputs under `=== New Instructions ===`;
+  5. conversation history: `context_pool.add_conversation_turn` records a voice turn as plain "User".
+
+  The source is carried in each `cli_inputs` entry, on `LLMProposal` and `ActionFollowup` (S4), with each deferred
+  input, and in each conversation turn. Every renderer labels a voice input. A human input whose source could not be
+  bound (`UNKNOWN`) renders as unverified, never as the operator. A real-path test covers each of the five renders.
 - A deferred input (#1048/#1451) stores its `Source` with its text in the deferred slot. A replanned turn keeps the
   source it arrived with.
 

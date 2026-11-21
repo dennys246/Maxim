@@ -11,10 +11,17 @@
     counts as the operator, shown defanged. Stored room-mic `voice` (any room-mic line naming the wake word) and
     `transcript` (owner decision 2026-11-21: anyone in the room or on a speakerphone can produce either) and every
     `comms:*` source are external, shown framed. One helper renders it all: `memory/text.py::frame_external`.
-  - A live voice request stays the turn's request, so voice still commands the robot, but its `=== User Request ===`
-    is labelled as heard on the room microphone from an unverified speaker, not typed by the operator. The loop
-    carries the source with the request (`LLMRequest.triggering_input_source`), never reading it from the text.
-    Gating effectful tools on a voice-sourced turn behind typed confirmation is designed, not built
+  - A live voice request stays the turn's request, so voice still commands the robot. On the FIRST prompt of a voice
+    turn, its `=== User Request ===` is labelled as heard on the room microphone from an unverified speaker, not
+    typed by the operator. The loop carries the source with the request (`LLMRequest.triggering_input_source`) and
+    never reads it from the text.
+  - Not labelled yet (tracked in #1729, the voice-gate PR, on #1185's `InputSource`):
+    - deliberation re-prompts;
+    - follow-up prompts;
+    - inputs held while a submit is in flight;
+    - the deferred `=== New Instructions ===`;
+    - conversation history.
+  - Gating effectful tools on a voice-sourced turn behind typed confirmation is designed, not built
     (`docs/plans/voice_turn_gate_1519_approach.md`).
   - Cloud redaction no longer turns a frame's closer into `[REDACTED_PATH]`. Only a COMPLETE frame counts, by the
     one pairing rule every frame consumer now shares (`content_safety.frame_spans`): an opener whose closer never
