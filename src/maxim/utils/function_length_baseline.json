@@ -201,7 +201,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1895
+      "lines": 1886
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -401,7 +401,8 @@
     "#1264 fold 3 (2026-11-16, rule T, no exemption): _run_agentic_loop_body 2144 -> 2140 (the loop timing to agent_loop._loop_timing and the teardown persist to agent_loop._persist_final_state, paying for the state_home parameter and its forward to build_loop_run); _main_impl 1241 -> 1236 (the --sim PainBus reuse to cli._reuse_bio_pain_bus_for_sim, paying for the --sim loop's state_home); start_simulation_mode 1910 -> 1900 (the sandbox and sim logging block, with its corrected D15 comment, to orchestrator._open_sim_workspace, paying for the AUT's and narrator's state_home); api.py::run 216 -> 208 (the agent build and its event bridge to api._build_run_agent, paying for the home_dir docstring fix). Rebased on #1396 bullet 2 (2026-11-17 merge of main): _main_impl 1200 -> 1195 and start_simulation_mode 1905 -> 1895, the same extractions.",
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
-    "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename."
+    "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
+    "start_simulation_mode tightened 1895 -> 1886 on 2026-11-21 (#1228, rule T): the AUT's fear gate moved to orchestrator._fear_gate_aut_executor (its FearAgent now on the AUT's router), paying for the AUT-side router hand-offs (the AUT's and the narrator's MaximAgent(shared_router=), the factory's fear_llm and the imagination designer's llm_router)."
   ],
   "touch_exemptions": [
     {

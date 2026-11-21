@@ -66,7 +66,12 @@ class MaximAgent(Agent):
         reset_on_startup: bool = False,
         capture_manager: CaptureManager | None = None,
         agent_id: str = "maxim",
+        shared_router: Any = None,
     ) -> None:
+        """``shared_router`` is the router this agent's cognition runs on, handed to its ExecAgent's goal proposals.
+        A caller that holds the agent's router passes it: without one, ExecAgent builds a private router lazily from
+        the process's ``load_llm_config()``, which in a dual-LLM sim serves the narrator's profile, not the AUT's
+        (#1228)."""
         super().__init__(name=name, enabled=enabled)
         self._agent_id = agent_id
 
@@ -110,6 +115,7 @@ class MaximAgent(Agent):
             self.memory,
             llm_profile=llm_profile,
             quantization=quantization,
+            shared_router=shared_router,
             agent_id=agent_id,
         )
 

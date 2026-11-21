@@ -1545,7 +1545,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent()
+        sub_agent = MaximAgent(shared_router=self._llm_router)  # goal proposals on the sub-AUT's router (#1228)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(
