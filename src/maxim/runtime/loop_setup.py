@@ -17,7 +17,7 @@ container aliases) stays a local of ``run_agentic_loop``.
 
 **Imports.** Helpers with a home outside ``agent_loop`` are imported from it directly
 (``bio_integration.bio_session``, ``loop_state.start_run_state``,
-``tool_dispatch.safe_agent_name``; each is the same object ``agent_loop`` re-binds). The five helpers
+``loop_state.safe_agent_name``; each is the same object ``agent_loop`` re-binds). The five helpers
 only the setup calls moved here with it, bodies verbatim (rule (a) of the roadmap's import-direction
 paragraph): ``_prepare_executor``, ``_planning_liveness_enabled_via_env``, ``_loop_bio_handles``,
 ``_build_loop_sensor_encoder``, ``_resolve_situation_cue`` (which imports the ``NO_SITUATION_CUE``
@@ -48,14 +48,13 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.runtime import tool_dispatch as _td
 from maxim.runtime.bio_integration import BioSession
-from maxim.runtime.loop_state import run_mode, start_run_state, tool_description_overlay
+from maxim.runtime.loop_state import run_mode, safe_agent_name, start_run_state, tool_description_overlay
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.runtime.tool_dispatch import (
     book_hard_rejection,
     book_machine_refusal,
     book_refusal,
     execute_and_learn,
-    safe_agent_name,
 )
 from maxim.utils.logging import log_swallowed_exception
 

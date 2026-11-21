@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 from maxim.decisions.causal_link import Valence
-from maxim.runtime.tool_dispatch import safe_agent_name, record_outcome
+from maxim.runtime.loop_state import safe_agent_name
+from maxim.runtime.tool_dispatch import record_outcome
 
 
 class TestSafeAgentName:

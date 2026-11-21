@@ -17,9 +17,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMProposal
-from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name, tool_to_run
 from maxim.runtime.dn_controller import DefaultNetworkController
-from maxim.runtime.loop_state import operational_mode
+from maxim.runtime.loop_state import operational_mode, safe_agent_name as _safe_agent_name, tool_to_run
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,

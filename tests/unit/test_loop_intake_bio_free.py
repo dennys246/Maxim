@@ -1,11 +1,11 @@
 """B2's prerequisite 1 (roadmap_1_3_x.md §1.3.6): the ``_llm_unavailable`` fallback leaves the loop's body for a
 module with no bio imports.
 
-Slice 6 moved it, with the rest of §2, into ``runtime/loop_intake.py``. Its OWN imports name no bio package (pinned
-below). Importing it still loads bio modules, only through ``loop_controller``'s import of ``safe_agent_name`` and
-``tool_to_run`` from ``tool_dispatch`` (whose own bio imports are #1150, B2's prerequisite 2). So the closure check is a
-strict red gate that flips when that import is cut: by the PR right after slice 6 that moves those two helpers to a
-bio-free leaf (owner decision 2026-11-21), or with #1150.
+Slice 6 moved it, with the rest of §2, into ``runtime/loop_intake.py``. Its OWN imports name no bio package, and since
+the PR right after slice 6 (owner decision 2026-11-21) neither does its import closure: ``loop_controller`` imported
+``safe_agent_name`` and ``tool_to_run`` from ``tool_dispatch`` (whose bio imports are #1150, B2's prerequisite 2), and
+both helpers moved verbatim to the bio-free ``loop_state``. Both checks below are now green; the closure check was a
+strict red gate until that move.
 """
 
 from __future__ import annotations
@@ -39,13 +39,6 @@ def test_the_intake_leaf_imports_no_bio_package_itself() -> None:
     assert bio == [], bio
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "loop_controller imports safe_agent_name/tool_to_run from tool_dispatch, which imports bio modules (#1150); "
-        "cut by the PR right after slice 6 (owner decision 2026-11-21)"
-    ),
-)
 def test_importing_the_intake_leaf_loads_no_bio_module() -> None:
     """A fresh interpreter (this process has the whole loop loaded), on this checkout's ``src``."""
     code = (

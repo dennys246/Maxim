@@ -23,11 +23,11 @@ the loop's own local, named as the body has always named it (``_loop_name``, ``_
 was a constant local of the body read only here, so it is a module constant. The block LOGS on the
 ``maxim.runtime.agent_loop`` logger (``logger`` below is that same object), so its records keep the loop's name.
 
-**Not bio-free yet.** B2's prerequisite ("the ``_llm_unavailable`` fallback leaves the body for a module with no bio
-imports") is met by this module's own imports. Its import closure reaches bio modules only through ``loop_controller``'s
-import of ``safe_agent_name`` and ``tool_to_run`` from ``tool_dispatch`` (whose own bio imports are #1150). The strict red
-gate ``tests/unit/test_loop_intake_bio_free.py::test_importing_the_intake_leaf_loads_no_bio_module`` flips when that
-import is cut: by the PR right after slice 6 that moves those two helpers (owner decision 2026-11-21), or with #1150.
+**Bio-free.** B2's prerequisite ("the ``_llm_unavailable`` fallback leaves the body for a module with no bio
+imports") is met: this module's own imports name no bio package, and its import closure loads none since
+``loop_controller`` imports ``safe_agent_name`` and ``tool_to_run`` from the bio-free ``loop_state`` instead of
+``tool_dispatch`` (whose bio imports are #1150). Guard:
+``tests/unit/test_loop_intake_bio_free.py::test_importing_the_intake_leaf_loads_no_bio_module`` (a fresh interpreter).
 
 Characterization: ``tests/unit/test_loop_intake_characterization.py`` (written before the move, through the public
 ``run_agentic_loop``, and kept green by it).

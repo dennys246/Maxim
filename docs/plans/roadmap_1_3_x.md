@@ -1253,10 +1253,10 @@ they are ready, and the gate takes the next free number when it is done, still o
   - the mode readers [#960](https://github.com/dennys246/Maxim/issues/960), [#962](https://github.com/dennys246/Maxim/issues/962), [#1192](https://github.com/dennys246/Maxim/issues/1192), [#1193](https://github.com/dennys246/Maxim/issues/1193);
   - Entity save/load [#1159](https://github.com/dennys246/Maxim/issues/1159) and the sensor resolver [#1156](https://github.com/dennys246/Maxim/issues/1156).
 - **B2's code prerequisites are exit items** (owner decision 2026-10-17). The loop slices already make these cuts:
-  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports (moved by slice 6 into
-    `runtime/loop_intake.py`, whose own imports are bio-free; its import closure still reaches bio through
-    `loop_controller` -> `tool_dispatch`, held by the strict red gate `tests/unit/test_loop_intake_bio_free.py`, cut by the follow-up PR that moves
-    `safe_agent_name` and `tool_to_run` to a bio-free leaf);
+  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports — **met**: slice 6
+    moved it into `runtime/loop_intake.py`, and the PR after it moved `safe_agent_name` and `tool_to_run` from
+    `tool_dispatch` to the bio-free `loop_state`, so the leaf's import closure loads no bio module (guard:
+    `tests/unit/test_loop_intake_bio_free.py`);
   - `tool_dispatch.execute_and_learn` becomes importable without bio modules (#1150), and callable with `nac`,
     `hippocampus` and `memory_hub` set to `None`;
   - the `runtime` and `agents` package `__init__`s become lazy.
