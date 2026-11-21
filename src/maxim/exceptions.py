@@ -541,10 +541,14 @@ class CampaignUnloadable(MaximError, ValueError):
     def __init__(self, *, campaign: str, reason: str) -> None:
         self.campaign = campaign
         self.reason = reason
-        # Name the campaign exactly once: always here, and never again from load_scenario's own
-        # "Scenario <path>: " prefix (it formats Path(campaign), so a raw substring test misses "./x.yaml").
-        prefix = f"Scenario {Path(campaign)}: "
-        detail = reason[len(prefix) :] if reason.startswith(prefix) else reason
+        # Name the campaign exactly once: always here, and never again as the reason's leading label. The loaders
+        # label their errors three ways: load_scenario's "Scenario <Path>: ", and load_campaign_turns' "<path>: "
+        # as given or Path-normalised (which drops "./"). A name inside a sentence ("not found: x") is left alone.
+        detail = reason
+        for prefix in (f"Scenario {Path(campaign)}: ", f"{campaign}: ", f"{Path(campaign)}: "):
+            if reason.startswith(prefix):
+                detail = reason[len(prefix) :]
+                break
         super().__init__(f"research campaign {campaign} cannot be loaded: {detail}")
 
     def __reduce__(self) -> tuple[Any, ...]:

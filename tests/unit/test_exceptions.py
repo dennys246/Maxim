@@ -243,6 +243,26 @@ class TestKeywordOnlyExceptionsRoundTrip:
         # load_scenario formats Path(campaign), which drops "./": still printed once.
         dotted = CampaignUnloadable(campaign="./x.yaml", reason="Scenario x.yaml: bad")
         assert str(dotted) == "research campaign ./x.yaml cannot be loaded: bad"
+        # load_campaign_turns labels its strict errors "<path>: " with the path as given.
+        for campaign in ("./notturn.yaml", "empty.yaml", "/abs/dir/c.yaml"):
+            turns = CampaignUnloadable(campaign=campaign, reason=f"{campaign}: percept 0 has no cli_input line")
+            assert str(turns) == f"research campaign {campaign} cannot be loaded: percept 0 has no cli_input line"
+        # ...and through the real loader, for a file with no turn at all.
+        import tempfile
+        from pathlib import Path as _P
+
+        from maxim.simulation.experiment import load_campaign_turns
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = _P(tmp) / "pain.yaml"
+            bad.write_text("percepts:\n  - type: pain_signal\n    intensity: 0.5\n")
+            try:
+                load_campaign_turns(str(bad), strict=True)
+            except ValueError as exc:
+                real = CampaignUnloadable(campaign=str(bad), reason=str(exc))
+                assert str(real).count(str(bad)) == 1, str(real)
+            else:  # pragma: no cover - the loader must refuse a pain-only file
+                raise AssertionError("strict load accepted a scenario with no cli_input line")
         # A short name that happens to occur inside the reason is still named.
         short = CampaignUnloadable(campaign="a", reason="percept 0 has a bad value")
         assert str(short).startswith("research campaign a cannot be loaded:")
