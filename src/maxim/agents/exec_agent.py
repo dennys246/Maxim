@@ -866,10 +866,10 @@ class ExecAgent(Agent):
             return  # Goal not from this agent or already expired
 
         contemplated = meta.get("contemplated", False)
-        # A goal whose tool call autonomy REFUSED (#1414): the tool never ran, so the outcome says nothing about
-        # whether contemplating it helped. Neither the stats nor NAc's contemplation link learn from it (owner
-        # decision 2026-11-21); the log line and acute staging below still see a failed goal, as memory, the goal
-        # metric and replanning do.
+        # A goal one of whose tool calls autonomy REFUSED (#1414): a refused call never ran, so the outcome says
+        # nothing about whether contemplating the goal helped. Neither the stats nor NAc's contemplation link learn
+        # from it (owner decisions 2026-11-21); the log line and acute staging below still see the goal's outcome
+        # (usually a failure; a SKIP goal can still succeed), as memory, the goal metric and replanning do.
         if not getattr(completed, "refused", False):
             if contemplated:
                 self._contemplation_stats["contemplated_total"] += 1

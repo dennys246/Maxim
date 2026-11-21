@@ -1081,9 +1081,10 @@ class GoalCompleted:
     success: bool
     result: Any = None
     error: str | None = None
-    # True when the goal ended because the loop's autonomy REFUSED its tool call (#1414): the tool never ran, so
-    # it is still a failed goal for memory, metrics and replanning, but not evidence about how the goal was drafted
-    # (ExecAgent's contemplation learning skips it; owner decision 2026-11-21).
+    # True when the loop's autonomy REFUSED one of the goal's tool calls (#1414): the refusal ended the goal, or it
+    # skipped a SKIP sub-goal and the goal went on. The goal keeps its outcome (a SKIP goal can still succeed) for
+    # memory, metrics and replanning, but a refused call is not evidence about how the goal was drafted, so
+    # ExecAgent's contemplation learning skips it (owner decisions 2026-11-21).
     refused: bool = False
 
 
