@@ -126,8 +126,9 @@ before S3a.
 
 **S0 result (2026-10-17): none in production.** Every `run_agentic_loop` caller's hub comes from
 `build_bio_stack`, which always builds a Hippocampus: `cli.py`, `console/handle.py`, `api.py` and the orchestrator AUT
-through `create_full_agent(with_bio_stack=True)` (which replaces the skeleton's memory with the bio-stack's, so even
-`remembers=False` keeps a Hippocampus); `run_minecraft_aut`, the embodied runtime and the three Q9 rigs through
+through `create_full_agent(with_bio_stack=True)` (which replaces the skeleton's memory with the bio-stack's; since
+#1225 `AgentConfig` refuses `remembers=False` or `learns=False` beside `with_bio_stack=True`, where it used to keep a
+Hippocampus in silence); `run_minecraft_aut`, the embodied runtime and the three Q9 rigs through
 `build_minecraft_aut`/`build_bio_stack`; the orchestrator's second loop call and `simulation/tools.py` pass no hub.
 `interactive.py::_run_scenario_turn` passes its caller's hub through and `run_interactive_sim` has no caller. The only
 NAc-without-Hippocampus is the bare `create_agent` path (`maxim.create.agent`, `create_npc_agent`, `maxim.load.agent`

@@ -49,6 +49,28 @@ from maxim.decisions.significance import CycleContext, SignificanceConfig, Signi
 from maxim.utils.logging import warn
 
 logger = logging.getLogger(__name__)
+
+
+class _NoRouter:
+    """The type of :data:`NO_ROUTER` (one instance)."""
+
+    def __repr__(self) -> str:
+        return "NO_ROUTER"
+
+
+# ``shared_router=NO_ROUTER``: this agent runs with no LLM, and never builds one of its own (#1228). ``None`` means
+# "build lazily from ``load_llm_config()``"; a router means "use this one".
+NO_ROUTER = _NoRouter()
+
+
+def agent_router(router: Any) -> Any:
+    """``shared_router=`` for a caller that holds its agent's router, or None when the run has no LLM: that router,
+    else :data:`NO_ROUTER`, so an agent of a run without an LLM never builds one of its own (#1228)."""
+    return NO_ROUTER if router is None else router
+
+
+# (agent_profiles.exec_agent override, the handed-in router's profile) pairs already warned about (#1228).
+_BYPASSED_OVERRIDES_WARNED: set[tuple[str, str]] = set()
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
 
@@ -82,7 +104,7 @@ class ExecAgent(Agent):
         quantization: str = "Q4_K_M",
         system_prompt: str | None = None,
         rate_limit_hz: float = 2.0,
-        shared_router: LLMRouter | None = None,
+        shared_router: LLMRouter | _NoRouter | None = None,
         shared_llm_worker: LLMWorker | None = None,
         agent_id: str | None = None,
     ) -> None:
@@ -120,12 +142,16 @@ class ExecAgent(Agent):
         self._llm: ChatLLMAgent | None = None
         self._llm_profile = llm_profile
         self._quantization = quantization
-        self._router: LLMRouter | None = shared_router
+        # A handed-in router is the one this agent runs on; NO_ROUTER: none, and none built; None: built lazily.
+        self._no_router = shared_router is NO_ROUTER
+        self._router: LLMRouter | None = None if isinstance(shared_router, _NoRouter) else shared_router
         # The profile whose model the last router build was refused (missing, not downloaded), or None (#1396):
         # a lazy "never" build does not rebuild and warn again on every goal; an "ask" build still asks.
         self._refused_profile: str | None = None
         self._refused_cause: str | None = None  # why (one of LocalModelUnavailable.CAUSES), for the CLI's typed refusal
         self._llm_worker: LLMWorker | None = shared_llm_worker
+        if self._router is not None:
+            self._warn_if_profile_override_bypassed(self._router)
         self._owns_llm_worker = shared_llm_worker is None  # Only stop if we created it
 
         # Rate limiting
@@ -170,7 +196,9 @@ class ExecAgent(Agent):
         self._bus.subscribe(GoalCompleted, self._on_goal_completed)
 
     def _ensure_llm(self) -> ChatLLMAgent | None:
-        """Lazy initialization of LLM."""
+        """Lazy initialization of LLM (never for an agent handed ``NO_ROUTER``, #1228)."""
+        if self._no_router:
+            return None
         if self._llm is None:
             try:
                 config = LLMAgentConfig(
@@ -186,7 +214,45 @@ class ExecAgent(Agent):
                 return None
         return self._llm
 
+    def adopt_router(self, router: LLMRouter, worker: LLMWorker | None = None) -> None:
+        """Run on ``router`` (and ``worker``) that this agent's runtime built after the agent: the robot runtime builds
+        its LLM after its ``MaximAgent`` (#1228; it used to set ``_router`` from outside). A router or worker this
+        agent already holds is kept; an adopted worker is not this agent's to stop."""
+        if self._router is None:
+            self._router = router
+            self._no_router = False
+            self._warn_if_profile_override_bypassed(router)
+        if worker is not None and self._llm_worker is None:
+            self._llm_worker = worker
+            self._owns_llm_worker = False
+
+    def _warn_if_profile_override_bypassed(self, router: Any) -> None:
+        """One WARNING per (override, router profile) pair when the config names an ``agent_profiles.exec_agent``
+        override that a handed-in router does not serve: the override applies only to a router this agent builds
+        itself (:meth:`_resolve_profile_override`), so a caller that hands one in bypasses it (#1228)."""
+        served = getattr(getattr(router, "cfg", None), "profile", None)
+        try:
+            override = self._resolve_profile_override(load_llm_config())
+        except Exception as e:  # an unreadable config is load_llm_config's to report on the build path
+            logger.debug("ExecAgent: could not read the config to check the exec_agent override: %s", e)
+            return
+        if not override or override == served:
+            return
+        key = (override, str(served))
+        if key in _BYPASSED_OVERRIDES_WARNED:
+            return
+        _BYPASSED_OVERRIDES_WARNED.add(key)
+        logger.warning(
+            "agent_profiles.exec_agent names %r, but this agent was handed a router serving %r: the override applies "
+            "only to a router ExecAgent builds itself, so it is not used here (#1228)",
+            override,
+            served,
+        )
+
     def _resolve_profile_override(self, cfg: Any) -> str | None:
+        """The ``agent_profiles.exec_agent`` (or ``executive``) override in ``cfg``, or None. It applies only to a
+        router this agent builds itself (:meth:`_ensure_router`); a router handed in (``shared_router=``,
+        :meth:`adopt_router`) is used as it is (#1228)."""
         profiles = getattr(cfg, "agent_profiles", {})
         if not isinstance(profiles, dict):
             return None
@@ -206,6 +272,8 @@ class ExecAgent(Agent):
         "never" refusal (#1343, #1396 bullet 2)."""
         if self._router is not None:
             return self._router
+        if self._no_router:  # handed NO_ROUTER: this agent runs without an LLM and builds none (#1228)
+            return None
         if consent == "never" and self._refused_profile is not None:
             return None
         try:

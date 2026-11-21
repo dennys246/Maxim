@@ -340,6 +340,15 @@ class AgenticRuntimeMixin:
             self._tool_pain_bridge = None
         return executor
 
+    @staticmethod
+    def _share_llm_with_exec_agent(agent: Any, llm_router: Any, llm_worker: Any) -> None:
+        """Hand the runtime's late-built LLM to the agent's ExecAgent (``ExecAgent.adopt_router``, #1228; it used to set
+        ExecAgent's private fields from here). Moved out of ``_start_agentic_runtime`` (rule T)."""
+        # Share LLM backend with ExecAgent to avoid loading a second model
+        # (cleanup #3: double LLM load fix)
+        if llm_worker is not None and hasattr(agent, "exec_agent"):
+            agent.exec_agent.adopt_router(llm_router, llm_worker)
+
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
 
@@ -359,6 +368,7 @@ class AgenticRuntimeMixin:
         try:
             from maxim.agents import MaximAgent
             from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
+            from maxim.agents.exec_agent import NO_ROUTER
             from maxim.agents.llm_worker import LLMWorker
             from maxim.environment import ReachyEnv
             from maxim.runtime import (
@@ -405,10 +415,11 @@ class AgenticRuntimeMixin:
                 capture_manager = None
 
         _t_mem = time.time()
-        agent = MaximAgent(
+        agent = MaximAgent(  # its LLM is built below and adopted (ExecAgent.adopt_router); none of its own (#1228)
             interests=list(getattr(self, "interests", []) or []),
             data_folder=str(getattr(self, "home_dir", "data") or "data"),
             capture_manager=capture_manager,
+            shared_router=NO_ROUTER,
         )
         env = ReachyEnv(repo_root=os.getcwd(), data_dir=str(getattr(self, "home_dir", "data") or "data"))
         state = build_state(max_steps=1_000_000)
@@ -924,15 +935,7 @@ class AgenticRuntimeMixin:
         self._lane_backend_manager = lane_backend_manager
         self.log.info("Bootstrap: LLM worker ready (%.1fms)", (time.time() - _t_llm) * 1000)
 
-        # Share LLM backend with ExecAgent to avoid loading a second model
-        # (cleanup #3: double LLM load fix)
-        if llm_worker is not None and hasattr(agent, "exec_agent"):
-            exec_agent = agent.exec_agent
-            if exec_agent._router is None:
-                exec_agent._router = llm_router
-            if exec_agent._llm_worker is None:
-                exec_agent._llm_worker = llm_worker
-                exec_agent._owns_llm_worker = False
+        self._share_llm_with_exec_agent(agent, llm_router, llm_worker)
 
         # Create FearAgent for safety gating (both DN movement and tool calls)
         fear_agent = None

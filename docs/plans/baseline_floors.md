@@ -36,7 +36,7 @@ and `RANDOM` ([e1_conflict_prereg.md](../experiments/e1_conflict_prereg.md)); B4
 ([b4_exp37_floors_prereg.md](../experiments/b4_exp37_floors_prereg.md)), both through the four-lens review (#1382;
 [lessons](../lessons/e1-b4-design-review.md)). *Then, after 1.3.2:*
 E1's prereg draft and four-lens review carry the twin and a floor-can-lose check from the start; B2 (bare LLM)
-still waits on the `start_simulation_mode` decomposition, and B0b on #1227/#1228.
+still waits on the `start_simulation_mode` decomposition, and B0b on #1227 (#1228 fixed 2026-11-21).
 
 Until B1, no ledger row, EARNED or STALE, had been compared with an agent that lacks the bio layers. "Earned"
 today means beating one of Maxim's own ablations: Exp 60's control is FEAR vs ABLATED (fear subscriber
@@ -107,7 +107,7 @@ Every result row names exactly one arm. The row-level `arm` the harnesses alread
 | `full` | both | The current default | Whole-stack gain | Today |
 | `tabular_q` | substrate | Tabular Q-learner keyed on the live agent's EC cluster ids × action, exploration declared | The substrate-path floor | B1 |
 | `random` | substrate | Uniform over the selectable actions | Sanity floor | B1 |
-| `+memory`, `+valence` | LLM | Ladder rungs | One layer each | **Deferred**: typed `build_bio_stack` flags first, plus the overwrite fix (§Side findings 1) |
+| `+memory`, `+valence` | LLM | Ladder rungs | One layer each | **Deferred**: typed `build_bio_stack` flags first (the overwrite is a typed refusal since #1225, §Side findings 1) |
 
 `maxim_all_off`'s prompt must settle two sections that fire with zero bio signal: `pfc_preamble` (fires
 whenever `simulation.sim_logger._sim_active` is set; suppressed by the existing
@@ -257,7 +257,10 @@ B0 and B1 are done (2026-10-14). B2 → B3 → B4 are serial.
 1. **`create_full_agent` ignores `remembers`/`learns` when `with_bio_stack=True`.** It sets
    `instance.hippocampus = bio.hippocampus` and `instance.nac = bio.nac` whatever the config says (the
    "Full bio-stack if remembers=True and learns=True" docstring is `create_npc_agent`'s). A silent no-op of
-   the class CLAUDE.md says to push into the type. Blocks the `+memory` rung.
+   the class CLAUDE.md says to push into the type. Blocks the `+memory` rung. **#1225 (2026-11-21):** the
+   contradiction is now refused where the config is built (`AgentConfig.__post_init__` and again in
+   `create_full_agent`, `AgentConfigContradiction`), so it is no longer silent; the `+memory` rung still waits on
+   typed `build_bio_stack` flags.
 2. **Four `MAXIM_DISABLE_*` vars have no reader in `src/` or `tests/`:** `MAXIM_DISABLE_PFC_PREAMBLE`,
    `MAXIM_DISABLE_ACTING_COACH`, `MAXIM_DISABLE_SIM_SANDBOX_TEXT`, `MAXIM_NO_DEFAULT_PERSONA`. They are kept
    on purpose in `scripts/run_v1_phases.sh` for the Exp 12 reproduction

@@ -282,7 +282,7 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
     # #1538: the AUT's own router build (``aut_model``), recorded per build (``router_builds``): the ``profile=`` it was
     # handed and the ``MAXIM_LLM_PROFILE`` it saw. The operator's profile is in the env, as ``maxim config`` puts it.
     "aut_router": {"max_turns": 10, "aut_model": "orch-golden-aut", "record_builds": True, "env": OPERATOR_PROFILE_ENV},
-    # ... and the AUT's build raises (an unknown profile, say): the run falls back to the shared router.
+    # ... and the AUT's build raises (an unknown profile, say): the run refuses, AutRouterUnavailable (#1228, B).
     "aut_build_fails": {
         "max_turns": 10,
         "aut_model": AUT_BUILD_FAILS,

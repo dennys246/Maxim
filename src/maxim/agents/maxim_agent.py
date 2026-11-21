@@ -66,12 +66,18 @@ class MaximAgent(Agent):
         reset_on_startup: bool = False,
         capture_manager: CaptureManager | None = None,
         agent_id: str = "maxim",
-        shared_router: Any = None,
+        shared_router: Any,
     ) -> None:
-        """``shared_router`` is the router this agent's cognition runs on, handed to its ExecAgent's goal proposals.
-        A caller that holds the agent's router passes it: without one, ExecAgent builds a private router lazily from
-        the process's ``load_llm_config()``, which in a dual-LLM sim serves the narrator's profile, not the AUT's
-        (#1228)."""
+        """``shared_router`` (REQUIRED, keyword-only, #1228) is the router this agent's ExecAgent runs on, a choice every
+        caller states: a router (the one its runtime built, so no second one is built), ``exec_agent.NO_ROUTER`` (no
+        LLM, and none built), or ``None`` (ExecAgent builds its own lazily from ``load_llm_config()``, as the CLI's
+        agentic path does to ask for download consent). A router handed in bypasses the ``agent_profiles.exec_agent``
+        override, which applies only to a router ExecAgent builds itself (a WARNING says so when they differ).
+
+        In the sim the ExecAgent goal-proposal path is dormant (``_worker_loop`` starts only from :meth:`on_start`,
+        which no production runtime calls), so no private router was ever built there; the AUT's ExecAgent slot now
+        holds the AUT's router all the same. Its default was None, so the dual-LLM AUT's slot would have built the
+        narrator's profile (#1228)."""
         super().__init__(name=name, enabled=enabled)
         self._agent_id = agent_id
 

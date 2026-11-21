@@ -37,7 +37,7 @@ from maxim.decisions.nac import require_agent_id
 
 from maxim.runtime.tool_policy import ToolPolicy
 
-from maxim.exceptions import StoreOverwriteRefused
+from maxim.exceptions import AgentConfigContradiction, StoreOverwriteRefused
 from maxim.utils.deadline import Deadline
 
 log = logging.getLogger(__name__)
@@ -119,10 +119,14 @@ class AgentConfig:
         require_agent_id(self.agent_id, where="AgentConfig.agent_id")
         if self.on_corrupt not in ("warn", "raise"):
             raise ValueError(f"AgentConfig.on_corrupt must be 'warn' or 'raise', got {self.on_corrupt!r}")
+        self.refuse_contradictions()
+
+    def refuse_contradictions(self) -> None:
+        """Raise ``AgentConfigContradiction`` when ``with_bio_stack=True`` sits beside ``remembers=False`` or
+        ``learns=False`` (#1225). Run at construction and again by ``create_full_agent``: the config is mutable, so a
+        flag set after construction would otherwise be undone in silence."""
         undone = tuple(name for name in ("remembers", "learns") if self.with_bio_stack and not getattr(self, name))
         if undone:
-            from maxim.exceptions import AgentConfigContradiction
-
             raise AgentConfigContradiction(
                 f"AgentConfig {self.agent_id!r}: with_bio_stack=True builds a Hippocampus and a NAc, so "
                 f"{' and '.join(f'{n}=False' for n in undone)} cannot be honoured beside it (#1225). Drop "
@@ -1028,6 +1032,7 @@ class AgentFactory:
         """
         if config.with_executor and tool_registry is None:
             raise ValueError("create_full_agent requires tool_registry when config.with_executor=True")
+        config.refuse_contradictions()  # again: a flag set after construction skipped __post_init__ (#1225)
 
         # Step 1: Memory subsystems (hippocampus, NAc, ATL, MemoryHub)
         # The session is DEFERRED here: `with_bio_stack=True` replaces

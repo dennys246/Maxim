@@ -1,9 +1,11 @@
 """#1228: in a dual-LLM run (``aut_model``) every AUT-side LLM consumer holds the AUT's own router.
 
-The AUT's FearAgent got the narrator's router (``create_full_agent(fear_llm=llm_router)`` and ``llm_for_fear =
-llm_router``), its imagination designer did too, and its ExecAgent was handed no router at all, so its goal proposals
-built a private one from ``load_llm_config()`` on the narrator's profile. Any "the AUT ran on model X" statement was
-then partly false.
+LIVE before the fix: the AUT's FearAgent gate (``llm_for_fear = llm_router``) and its imagination designer ran on the
+narrator's router, so any "the AUT ran on model X" statement was partly false. Also handed the AUT's router now: a
+spawned sub-simulation's agent (owner decision A) and the AUT's ExecAgent slot, whose goal-proposal path is dormant
+(``_worker_loop`` starts only from ``MaximAgent.on_start``, which no production runtime calls), so that slot held no
+router and built none; it now holds the AUT's. (The factory's ``fear_llm`` was a dead slot: the AUT config has
+``with_fear_gate=False``; the orchestrator no longer passes it.)
 
 Driven through the real ``start_simulation_mode`` by the harness's ``aut_llm_slots`` probe arm (the imagination arm's
 run, an embodied AUT, with ``aut_model`` set). Each build is a distinct ``_RouterView`` whose ``cfg.profile`` names the
@@ -38,8 +40,9 @@ def slots(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     from maxim.agents.exec_agent import ExecAgent
     from maxim.agents.fear_agent import FearAgent
     from maxim.simulation.entity_designer import EntityDesigner
+    from maxim.simulation.tools import SpawnSubSimulationTool
 
-    held: dict[str, list[str]] = {"ExecAgent": [], "FearAgent": [], "EntityDesigner": []}
+    held: dict[str, list[str]] = {"ExecAgent": [], "FearAgent": [], "EntityDesigner": [], "SpawnSubSimulationTool": []}
     mp = pytest.MonkeyPatch()
 
     def _spy(cls: Any, label: str, arg: str) -> None:
@@ -54,6 +57,7 @@ def slots(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     _spy(ExecAgent, "ExecAgent", "shared_router")
     _spy(FearAgent, "FearAgent", "llm")
     _spy(EntityDesigner, "EntityDesigner", "llm_router")
+    _spy(SpawnSubSimulationTool, "SpawnSubSimulationTool", "llm_router")
     try:
         trace = run_arm("aut_llm_slots", tmp_path_factory.mktemp("aut_llm_slots"))
     finally:
@@ -73,8 +77,14 @@ def test_the_aut_imagination_designer_holds_the_aut_router(slots: dict[str, Any]
     assert slots["held"]["EntityDesigner"] == ["aut"], slots["held"]
 
 
+def test_the_sub_simulation_tool_is_handed_the_aut_router(slots: dict[str, Any]) -> None:
+    """Owner decision A: a spawned sub-AUT is an agent under test (its slots: ``test_agent_router_slots_1228.py``)."""
+    assert slots["held"]["SpawnSubSimulationTool"] == ["aut"], slots["held"]
+
+
 def test_each_exec_agent_is_handed_its_own_agents_router(slots: dict[str, Any]) -> None:
-    """The AUT's MaximAgent is built first, the narrator's second: neither ExecAgent builds a private router."""
+    """The AUT's MaximAgent is built first, the narrator's second: each holds its own role's router (a dormant slot
+    in the sim, so this pins the hand-off, not a live call)."""
     assert slots["held"]["ExecAgent"] == ["aut", "shared"], slots["held"]
 
 

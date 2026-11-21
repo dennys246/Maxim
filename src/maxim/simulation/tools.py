@@ -1374,6 +1374,9 @@ class SpawnSubSimulationTool(Tool):
     returns a structured sub-report. The sub-AUT stays alive for potential
     extend_simulation follow-ups (lazy cleanup). The next spawn call tears
     down the previous sub-AUT.
+
+    ``llm_router`` is the router the sub-AUT runs on, all of it (its ExecAgent, FearAgent and LLMWorker): the
+    sub-AUT is an agent under test, so the orchestrator hands it the run's AUT router (owner decision A, #1228).
     """
 
     name = "spawn_sub_simulation"
@@ -1508,6 +1511,7 @@ class SpawnSubSimulationTool(Tool):
         import threading
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
         from maxim.agents.llm_worker import LLMWorker
+        from maxim.agents.exec_agent import agent_router
         from maxim.agents.maxim_agent import MaximAgent
         from maxim.environment.filesystem_env import FileSystemEnv
         from maxim.runtime.agent_loop import run_agentic_loop
@@ -1545,7 +1549,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent(shared_router=self._llm_router)  # goal proposals on the sub-AUT's router (#1228)
+        sub_agent = MaximAgent(shared_router=agent_router(self._llm_router))  # the sub-AUT's router (#1228)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(

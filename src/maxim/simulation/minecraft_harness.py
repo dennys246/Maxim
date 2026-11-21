@@ -404,6 +404,7 @@ def run_minecraft_aut(
     substrate_policy: "SubstratePolicy | None" = None,
 ) -> None:
     """Run one AUT's full agent loop (blocking; run each AUT on a thread)."""
+    from maxim.agents.exec_agent import NO_ROUTER
     from maxim.agents.maxim_agent import MaximAgent
     from maxim.environment.filesystem_env import FileSystemEnv
     from maxim.runtime.agent_loop import run_agentic_loop
@@ -412,7 +413,7 @@ def run_minecraft_aut(
 
     workspace = Path(aut.persistence_dir) / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-    agent = MaximAgent()
+    agent = MaximAgent(shared_router=NO_ROUTER)  # the Minecraft AUT runs no LLM of its own (#1228)
     if aut.bio.memory_hub is not None:
         agent.wire_memory_hub(aut.bio.memory_hub)
     state = RuntimeState()
