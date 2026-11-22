@@ -179,19 +179,22 @@ class TestRosterAdvertisesOnlyPermittedTools:
     def test_agent_loop_filters_the_advertised_roster_through_permits(self):
         import inspect
 
-        from maxim.runtime import loop_submit
+        from maxim.runtime import loop_request, loop_state
 
         from tests.unit._loop_source import loop_source
 
-        assert "available_tools = _advertisable_tools(available_tools, executor, autonomy_controller)" in loop_source()
-        assert "executor.permits(t)" in inspect.getsource(loop_submit._advertisable_tools)  # #1412: the one filter
+        assert (
+            "available_tools = _lstate._advertisable_tools(available_tools, executor, autonomy_controller)"
+            in loop_source()
+        )
+        assert "executor.permits(t)" in inspect.getsource(loop_state._advertisable_tools)  # #1412: the one filter
         # FUNCTION-SPECIFIC: both lines moved with §6's request assembly (slice 7b), the filter into
         # ``_surface_tools`` and the surfaced list into ``submit_tick``. The filter runs AFTER the roster is
         # final (SEM union + Wire 3) and BEFORE the surfaced list and the prompt's descriptions are taken.
-        surface = inspect.getsource(loop_submit._surface_tools)
+        surface = inspect.getsource(loop_request._surface_tools)
         assert surface.index("always_active_sem_tools(") < surface.index("get_disabled_affordances()")
         assert surface.index("get_disabled_affordances()") < surface.index("_advertisable_tools(available_tools")
-        tick = inspect.getsource(loop_submit.submit_tick)
+        tick = inspect.getsource(loop_request.submit_tick)
         assert tick.index("= _surface_tools(") < tick.index("last_surfaced_tools = list(available_tools)")
         assert tick.index("last_surfaced_tools = list(available_tools)") < tick.index("= _describe_surfaced_tools(")
 

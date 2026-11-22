@@ -28,11 +28,11 @@
   },
   {
     "pool": "measurement",
-    "file": "src/maxim/runtime/loop_submit.py",
+    "file": "src/maxim/runtime/loop_request.py",
     "qualname": "submit_tick",
     "moved_from": {"file": "src/maxim/runtime/agent_loop.py", "qualname": "_run_agentic_loop_body"},
     "date": "2026-11-22",
     "ref": "#1323",
-    "reason": "slice 7b: section 6's submit try (the 7a gate, the request assembly, the deliberation) left the loop body for loop_submit.submit_tick; its body now calls _tick_mode_info/_surface_tools/_describe_surfaced_tools/_submit_request/_deliberate in place of the inline text, so the try's AST changed; the handler (logger.warning 'Failed to submit context to LLM' + the DEBUG traceback) is verbatim and reports as before"
+    "reason": "slice 7b: section 6's submit try (the 7a gate, the request assembly, the deliberation) left the loop body for loop_request.submit_tick; its body now calls _tick_mode_info/_surface_tools/_describe_surfaced_tools/_submit_request/_deliberate in place of the inline text, so the try's AST changed; the handler (logger.warning 'Failed to submit context to LLM' + the DEBUG traceback) is verbatim and reports as before"
   }
 ]

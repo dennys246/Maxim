@@ -28,8 +28,8 @@ from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
 
 # Module reference: §4 reaches the roster filter through its home, the one binding a patch must hit.
-from maxim.runtime import loop_submit as _lsub
-from maxim.runtime.loop_submit import submit_tick
+from maxim.runtime import loop_state as _lstate
+from maxim.runtime.loop_request import submit_tick
 from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
@@ -1769,7 +1769,7 @@ def _run_agentic_loop_body(
                 # using it for system feedback risks silent overwrite of
                 # real input (cross-confirmed by both review lenses).
                 _other_tools = sorted(
-                    _lsub._advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
+                    _lstate._advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
                 )
                 _cap_msg = (
                     f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "

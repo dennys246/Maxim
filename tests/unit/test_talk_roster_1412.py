@@ -25,11 +25,11 @@ def _controller(forbidden: set[str]):
 
 
 def test_an_autonomy_forbidden_tool_is_not_advertised() -> None:
-    from maxim.runtime import loop_submit
+    from maxim.runtime import loop_state
 
     executor = SimpleNamespace(permits=lambda _t: True)
     tools = ["respond", "bash", "read_file", "write_file"]
-    shown = loop_submit._advertisable_tools(tools, executor, _controller({"bash", "write_file"}))
+    shown = loop_state._advertisable_tools(tools, executor, _controller({"bash", "write_file"}))
     assert shown == ["respond", "read_file"]
 
 
@@ -45,10 +45,10 @@ def test_both_roster_sites_in_the_loop_use_the_one_filter() -> None:
     """The prompt roster and the loop-cap message's "available tools" list: both advertise tools to the model."""
     from maxim.runtime import agent_loop
 
-    from maxim.runtime import loop_submit
+    from maxim.runtime import loop_request
 
     # The loop-cap message stays in the body (§4); the prompt roster moved with §6 (slice 7b).
-    src = inspect.getsource(agent_loop._run_agentic_loop_body) + inspect.getsource(loop_submit._surface_tools)
+    src = inspect.getsource(agent_loop._run_agentic_loop_body) + inspect.getsource(loop_request._surface_tools)
     assert src.count("_advertisable_tools(") == 2
     assert "executor.permits(t)" not in src
 
@@ -76,7 +76,7 @@ def _talk_executor():
 
 def test_the_real_talk_controller_hides_bash_from_the_roster_and_the_executor() -> None:
     """The composition pulse hit: console/handle.py's Talk controller, wired by the loop's own setup."""
-    from maxim.runtime import loop_submit
+    from maxim.runtime import loop_state
 
     executor, autonomy, registry = _talk_executor()
     assert "bash" in registry.list_all()  # the tool exists; Talk must still never be shown it
@@ -90,7 +90,7 @@ def test_the_real_talk_controller_hides_bash_from_the_roster_and_the_executor() 
         "bash"
     )  # control: no forbid wired
     assert not executor.permits("bash")
-    shown = loop_submit._advertisable_tools(registry.list_all(), executor, autonomy)
+    shown = loop_state._advertisable_tools(registry.list_all(), executor, autonomy)
     assert "bash" not in shown and "read_file" in shown
 
 

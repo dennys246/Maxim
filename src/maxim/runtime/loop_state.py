@@ -315,13 +315,29 @@ def operational_mode(executor: Any, state: Any) -> str:
     return mode
 
 
+def _advertisable_tools(tools: Any, executor: Any | None, autonomy_controller: Any | None) -> list[str]:
+    """The tools the model may be shown: only what will be let through.
+
+    A hard allow/deny list (``tools.allow``/``tools.deny``) used to gate at dispatch only, so the model kept
+    seeing, and choosing, tools that could only ever answer with a denial (bugs ledger D82): ``executor.permits``.
+    An autonomy hard forbid is the same class (#1412, Console Talk offered ``bash`` and then refused it):
+    ``AutonomyController.forbids_tool``, the static ``SafetyConstraints.forbidden_tools``, never the moment's pause.
+    """
+    return [
+        t
+        for t in tools
+        if (executor is None or executor.permits(t))
+        and (autonomy_controller is None or not autonomy_controller.forbids_tool(t))
+    ]
+
+
 def tool_description_overlay(executor: Any) -> Mapping[str, Mapping[str, Any]]:
     """The run's own tool descriptions, layered over ``modes.definitions.TOOL_DESCRIPTIONS`` (#1260).
 
     The agent's registry carries them: ``ToolRegistry.tool_descriptions()`` none, the narrator's
     ``SimToolRegistry.tool_descriptions()`` its own entries; never the process-global dict, which the AUT running
     beside the narrator reads too. Resolved ONCE, by ``loop_setup.build_loop_run`` (``LoopRun.tool_overlay``), and
-    handed to both readers: the prompt's tool section (``loop_submit._describe_tools_for_prompt``) and a tool's
+    handed to both readers: the prompt's tool section (``loop_request._describe_tools_for_prompt``) and a tool's
     follow-up type (``tool_dispatch.execute_and_learn`` -> ``get_tool_followup_type``). Both registries return
     module constants, so one read serves the run. No executor has no overlay. A registry without the method raises
     ``AttributeError``, and one returning a non-mapping a ``TypeError``: the run fails at setup, before any action."""

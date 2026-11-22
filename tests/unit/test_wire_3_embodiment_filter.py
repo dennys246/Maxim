@@ -338,7 +338,7 @@ class TestAgentLoopHookShape:
         """Bio-fidelity fold: annotation is felt-sensation phrase,
         not metric badge. ``feels strained`` for the upper band of
         the degraded range; numeric integrity goes to JSONL only."""
-        from maxim.runtime.loop_submit import _WIRE3_PHRASE_RE
+        from maxim.runtime.loop_request import _WIRE3_PHRASE_RE
 
         entity = _make_entity_with_modulators(
             {"arm": _StubModulator("arm", {"grasp": _aff()}, integrity=0.5)},
@@ -369,7 +369,7 @@ class TestAgentLoopHookShape:
         suffix, the description would accumulate. The hook's regex
         strip pins this even when the integrity (and thus the
         phrase) stays the same."""
-        from maxim.runtime.loop_submit import _WIRE3_PHRASE_RE
+        from maxim.runtime.loop_request import _WIRE3_PHRASE_RE
 
         entity = _make_entity_with_modulators(
             {"arm": _StubModulator("arm", {"grasp": _aff()}, integrity=0.5)},
@@ -406,7 +406,7 @@ class TestAgentLoopHookShape:
         band; without the regex strip both would accumulate as
         suffixes. The strip ensures the description ends with EXACTLY
         the current-tick phrase."""
-        from maxim.runtime.loop_submit import _WIRE3_PHRASE_RE
+        from maxim.runtime.loop_request import _WIRE3_PHRASE_RE
 
         modulator = _StubModulator("arm", {"grasp": _aff()}, integrity=0.55)
         entity = _make_entity_with_modulators({"arm": modulator})
