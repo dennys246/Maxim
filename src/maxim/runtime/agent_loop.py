@@ -2059,7 +2059,7 @@ def _run_agentic_loop_body(
                 # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)
                 _all_tools = _get_all_tools()
 
-                # Build context for LLM, submit it, deliberate (§6, runtime/loop_submit.py, slices 7a + 7b)
+                # Build context for LLM, submit it, deliberate (§6, runtime/loop_request.py; its gate: loop_submit, 7a)
                 _carry = submit_tick(
                     memory=memory,
                     ctrl=ctrl,
