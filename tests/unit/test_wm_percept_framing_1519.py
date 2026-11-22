@@ -1089,6 +1089,17 @@ def test_the_literal_fallback_does_not_claim_an_escape(tmp_path, edit_tool):
     assert path.read_text(encoding="utf-8") == "doc: <U+202E> there\n"
 
 
+def test_the_literal_fallback_note_counts_a_kept_raw_character(tmp_path, edit_tool):
+    """Delta-10: in the literal fallback, a raw format character the replaced text held is KEPT, and the note says
+    so rather than claiming it was written as visible text."""
+    path = tmp_path / "f.txt"
+    path.write_text("x <U+202E> y​ z\n", encoding="utf-8")
+    result = edit_tool.execute(path=str(path), old_text="<U+202E> y​", new_text="q​")
+    assert result.success, result
+    assert path.read_text(encoding="utf-8") == "x q​ z\n"
+    assert "1 format character(s) kept" in result.output and "visible" not in result.output, result.output
+
+
 def test_only_write_sandbox_file_appends():
     """Delta-9 fold 3: a tool with no ``append`` parameter never takes the append path (its BOM is kept), in the
     writers and in the fear gate."""

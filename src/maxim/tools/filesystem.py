@@ -501,8 +501,12 @@ def _mapped_edit(
     note = ""
     if old_real == old_text and old_text != unescape_format_characters(old_text):
         # The literal fallback: escapes typed in the new text are kept as the literal text they are, not escaped.
+        # Report what happened to the raw ones, from the restore's own accounting (a raw one the replaced text held is
+        # kept, not shown), so the note never claims an escape that did not happen.
         if has_format_character(new_text):
-            note = "; raw format character(s) in the new text written as visible <U+XXXX> text"
+            note = f"; {len(kept)} format character(s) kept from the replaced text"
+            if shown:
+                note += ", the others written as visible <U+XXXX> text"
     elif kept or shown:
         note = f"; {len(kept)} format character(s) kept from the replaced text"
         if shown:
