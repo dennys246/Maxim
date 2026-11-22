@@ -472,7 +472,8 @@ told apart from the refactor.
     `sim_log`, the hottest function on the path. That is design work, not a behaviour-preserving
     move, and each gets its own review.
   - If they do not fit in 1.3.2, they keep their home in [outstanding.md](outstanding.md) O12. They did not fit;
-    re-homed to 1.3.5 with the orchestrator slices (§1.3.5; owner decision 2026-10-18).
+    re-homed to 1.3.5 with the orchestrator slices (§1.3.5; owner decision 2026-10-18). *(2026-11-22, D1: they
+    ride the orchestrator line, which takes its number at its cut; §The orchestrator line.)*
 
 *1.4, by design.* Each needs an experiment or a mechanism review, not a hardening fix. Each is linked
 from the plan that owns it:
@@ -830,6 +831,10 @@ Owner decisions taken with this path (2026-10-16):
   free patch number when it is done. The labels "1.3.5" (the orchestrator) and "1.3.6" (loop phase 2) stay as the
   names of those lines, because other docs cite them; each release's actual number is assigned at its cut, in the
   order releases ship.
+- **1.3.5 is re-scoped (2026-11-22, [release_1_3_5.md](release_1_3_5.md) D1).** The orchestrator keeps its line but
+  no longer defines 1.3.5; 1.3.5 is its own lines (gates that hold, Overdrive's asks, fix groups, the peer mesh).
+  The orchestrator line takes whichever number it is ready for. B2's entry condition is still the
+  `start_simulation_mode` decomposition, so if the orchestrator line stalls, 1.4.0 slips.
 - **B3 runs Reflexion first** (2026-10-17), as one end-of-session reflection call. Episodic retrieval may follow as a
   second arm.
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** The B4 re-fire (L8's dose-response design) runs after the
@@ -861,7 +866,8 @@ Owner decisions taken with this path (2026-10-16):
 >   and #1288's lists. They still hold 1.4.0;
 > - small correctness fixes #982, #1153, #1155, #1163, #1225, and #1369, #1370, #1371;
 > - the recorded Session C moves #954, #984, #985, #988, #989, #1285, #1286, #1287, #1291, and
->   console_tunnel_hardening's PR 3 (admission control; did not ship, re-homed to 1.3.5 on 2026-10-29);
+>   console_tunnel_hardening's PR 3 (admission control; did not ship, re-homed to 1.3.5 on 2026-10-29; since
+>   2026-11-22, D6, it rides 1.3.5's peer-mesh line: the admission primitive in item 3, its console half a follow-on PR);
 > - the node_security remainder, fail-loud Stage 3 and M25 (the STALE/BROKEN-row release check; until it is
 >   built, the release session checks the ledger by hand and writes the `kind: "release"` clause).
 - **The release pipeline:** [#1372](https://github.com/dennys246/Maxim/issues/1372) (a tag-triggered,
@@ -873,12 +879,14 @@ Owner decisions taken with this path (2026-10-16):
 - **1.4.0 gate items outside the large functions:** [#1305](https://github.com/dennys246/Maxim/issues/1305) (owned RNGs), [#1263](https://github.com/dennys246/Maxim/issues/1263) (the thread guard and its
   parts outside `start_simulation_mode`; [#1016](https://github.com/dennys246/Maxim/issues/1016) folds into it), [#1264](https://github.com/dennys246/Maxim/issues/1264), [#1265](https://github.com/dennys246/Maxim/issues/1265), [#1267](https://github.com/dennys246/Maxim/issues/1267); plus #1123's three items and #1288's console and
   exec_agent lists (homed in §1.3.2). `932.resume-sim` is NOT here: it lives in the fenced `orchestrator.py`, so it
-  lands in 1.3.5 with the orchestrator slices (owner decision 2026-10-18; §1.3.5).
+  lands in 1.3.5 with the orchestrator slices (owner decision 2026-10-18; §1.3.5). *(2026-11-22, D1: that is the
+  orchestrator line, numbered at its cut.)*
 - **Small correctness fixes:** [#982](https://github.com/dennys246/Maxim/issues/982), [#1153](https://github.com/dennys246/Maxim/issues/1153), [#1155](https://github.com/dennys246/Maxim/issues/1155), [#1163](https://github.com/dennys246/Maxim/issues/1163), [#1225](https://github.com/dennys246/Maxim/issues/1225); the benchmark label [#1310](https://github.com/dennys246/Maxim/issues/1310) (its open question,
   whether `passed` should require the expectations, is the owner's).
 - **Recorded 1.3.3 moves** (release-readiness block above): #954, #984, #985, #988, #989, #1285–#1287, #1291,
   #1292 (F4, the device-app facade, after pulse v0.4.1), and console_tunnel_hardening's PR 3 (admission control),
-  whose revive trigger fired (PR 3 did not ship in 1.3.3; re-homed to 1.3.5, phone_device.md P0-2, 2026-10-29).
+  whose revive trigger fired (PR 3 did not ship in 1.3.3; re-homed to 1.3.5, phone_device.md P0-2, 2026-10-29;
+  since 2026-11-22, D6, homed in 1.3.5's peer-mesh line, item 3's admission primitive plus a console follow-on PR).
 - **Backlog:** M25 (the STALE/BROKEN-row release check that reads `kind: "release"` exceptions). While T1-2 stays
   STALE, M25 refuses each patch release unless it carries its own committed `kind: "release"` exception for T1-2
   (owner decision 2026-10-18, §Path to 1.4.0); writing that exception is each release session's job.
@@ -1214,10 +1222,11 @@ they are ready, and the gate takes the next free number when it is done, still o
   - **Pulse's four questions are decided:** STT on the leader first; listening after "Maxim"; a private `-dev` Space
     first; the 1.4 memory merge rides `migrate_agent_state` (whole or nothing, refuse on conflict).
 
-### 1.3.5, "The orchestrator"
-> **Re-scoped 2026-11-22 (owner decisions D1–D7 in [release_1_3_5.md](release_1_3_5.md)).** 1.3.5 ships its lines:
-> the gates that hold (#1185, #1519, atonia 10a/10b, #1414), Overdrive's unfenced asks, Overdrive as Maxim's test
-> world (paper), and fix groups. The orchestrator below stays a line and ships in whichever release it is ready for.
+### The orchestrator line (planned as 1.3.5; number at its cut)
+> **Re-scoped 2026-11-22 (owner decisions D1–D13 in [release_1_3_5.md](release_1_3_5.md)).** This heading read
+> `1.3.5, "The orchestrator"` until 2026-11-22 (no anchor links pointed at it). 1.3.5 ships its lines:
+> the gates that hold (#1185, #1519, atonia 10a/10b, #1414), Overdrive's unfenced asks, the Overdrive bridge as
+> engineering (game runs stay off the ledger), fix groups, and the peer mesh for Overdrive (the LLM on the Mac mini, the game on the laptop). The orchestrator below stays a line and ships in whichever release it is ready for.
 > Phone Phase 0 moves out (D6). The text below is the orchestrator line's scope. Its riders #1259, #1301, #1451,
 > #1453, #1454, #1457 and #1028 are closed, and the arms are done.
 
@@ -1248,15 +1257,20 @@ they are ready, and the gate takes the next free number when it is done, still o
   `_end_robot_run` and `_run_stopped_on`) and #1454's interim prompt fix (the post-sim prompt drops "(memory carries over)"; the
   report view and prompt moved to `orchestrator.py::_show_report_and_post_sim_prompt`, registered in
   `tests/unit/_orchestrator_source.py`'s `PARTS`). The `/new` slice restores the promise with the behaviour.
-- **Phone device, Phase 0** (owner decision 2026-10-29; [deferred/phone_device.md](deferred/phone_device.md) §Phase 0, register O22):
+- *(2026-11-22, release_1_3_5.md D6: Phone Phase 0 left 1.3.5 and is no longer homed in this line; its items'
+  new homes are in [deferred/phone_device.md](deferred/phone_device.md) and register O22. The bullet below is the
+  record.)*
+- ~~**Phone device, Phase 0**~~ (owner decision 2026-10-29, superseded 2026-11-22; [deferred/phone_device.md](deferred/phone_device.md) §Phase 0, register O22):
   the percept-wire trust boundary, console_tunnel_hardening's PR 3 (admission control; it did not ship in 1.3.3),
   the auth principal seam and the tunnel plan's M3 (both pulled forward from its PR 4), the TR11 amendment, device
   identity on the contract (with R3's 0.7.0 if unreleased, else its own minor bump), and an owner decision on #784.
   Outside the fence: none of it edits `orchestrator.py`, `agent_loop.py`, `cli.py` or NAc's selection path.
   Proposed owners per item are in the plan (S, V, H, R, pulse).
 - **Meets B2's entry condition** ([#1352](https://github.com/dennys246/Maxim/issues/1352), the bare LLM loop). B2's code
-  prerequisites land in 1.3.6.
-- **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied.
+  prerequisites land in 1.3.6. *(2026-11-22, D5: they stay exit items of the loop-phase-2 line, but may start beside
+  this line; §1.3.6.)*
+- **Exit:** `start_simulation_mode` and its descendants pass gate rule 4, and all five arms are satisfied. *(2026-11-22:
+  no phone work is part of this exit; D6.)*
 
 ### 1.3.6, "The loop, phase 2"
 - **`run_agentic_loop` and `execute_and_learn`** ([#1150](https://github.com/dennys246/Maxim/issues/1150)) to 1,000 lines or fewer
@@ -1273,7 +1287,10 @@ they are ready, and the gate takes the next free number when it is done, still o
     #1228 are homed in the B0b bullet below.)*
   - the mode readers [#960](https://github.com/dennys246/Maxim/issues/960), [#962](https://github.com/dennys246/Maxim/issues/962), [#1192](https://github.com/dennys246/Maxim/issues/1192), [#1193](https://github.com/dennys246/Maxim/issues/1193);
   - Entity save/load [#1159](https://github.com/dennys246/Maxim/issues/1159) and the sensor resolver [#1156](https://github.com/dennys246/Maxim/issues/1156).
-- **B2's code prerequisites are exit items** (owner decision 2026-10-17). The loop slices already make these cuts:
+- **B2's code prerequisites are exit items** (owner decision 2026-10-17). The loop slices already make these cuts
+  *(2026-11-22, release_1_3_5.md D5: all three stay exit items of this line, but may start early, beside the
+  orchestrator line. Session A keeps the loop line, including #1150 and the `_llm_unavailable` move; the lazy
+  `__init__`s may go to whoever Session A grants)*:
   - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports;
   - `tool_dispatch.execute_and_learn` becomes importable without bio modules (#1150), and callable with `nac`,
     `hippocampus` and `memory_hub` set to `None`;
@@ -1282,7 +1299,9 @@ they are ready, and the gate takes the next free number when it is done, still o
   [baseline_floors_b0.md](baseline_floors_b0.md)): a reliable attribution of LLM calls to the agent under test
   (#1227, `RequestContext.agent`; #1228, dual-LLM goal proposals on the narrator's model) and the `arm_effective`
   stamp built with it, before B4, so M46's floor check (model parity between arms) can pass (owner decision
-  2026-10-18).
+  2026-10-18). *(2026-11-22: #1227 and #1228, with #1225, moved to 1.3.5 line 5's "wrong model or wrong stores"
+  group ([release_1_3_5.md](release_1_3_5.md)); the `arm_effective` stamp is built with #1227 in that same work.
+  Wherever it lands, it is still owed **before B4**: that requirement stays in this B4 chain.)*
 - **When the fence lifts, file by file** (the fence lifts when 1.3.6's decomposition slices land — the point at
   which T0 can pass; owner decision 2026-10-18):
   - roadmap_1_4 Phase 0 items 1a, 2 and 4, built and run offline;
@@ -1307,6 +1326,8 @@ they are ready, and the gate takes the next free number when it is done, still o
 
 ### After 1.4.0, or when a 1.4 rung names them
 - **Design work:** [#1185](https://github.com/dennys246/Maxim/issues/1185), #922, #834 and #832 item 2 ([#1315](https://github.com/dennys246/Maxim/issues/1315) moved to 1.3.4 (the atonia gate), 2026-10-17).
+  *(2026-11-22: #1185 itself, plan approval as a gate, ships in 1.3.5 line 1; only its larger design follow-ons,
+  #922 and GrantAuthority, stay here.)*
 - **Mechanisms that enter through Phase 5 or the grounding line:** [#1026](https://github.com/dennys246/Maxim/issues/1026), [#1064](https://github.com/dennys246/Maxim/issues/1064), plus #784, #848, #880, #899,
   #1072–#1075, #1144, #1161, #1180, #1181, #816 (the reversible-compression half) and #819 (the eviction half).
   Beside them (proposed 2026-10-18): [#1137](https://github.com/dennys246/Maxim/issues/1137) (compression keeps only
@@ -1328,6 +1349,8 @@ they are ready, and the gate takes the next free number when it is done, still o
 3. **E1 may still fail BF2** after its redesign, leaving 1.4 without an Ambition-axis result.
 4. **T1-2 waits on B4 (#1354).** B4 waits on B2 (#1352) and B3 (#1353), which wait on 1.3.5 and 1.3.6. This is the
    longest chain to 1.4.0, longer than E1's. If B4 slips, 1.4.0 slips (owner decision).
+   *(2026-11-22, D1: "1.3.5" here means the orchestrator line, which no longer defines 1.3.5. B2's entry condition
+   is still the `start_simulation_mode` decomposition, so if the orchestrator line stalls, 1.4.0 slips.)*
    - B4's four-lens design review ran in Session E's lane (v1 2026-10-18, folded into DRAFT v2 by #1382).
      The delta at freeze gets its own round. Only the run waits.
 5. **Plan text drifts without a lint** (M2, M36). Each patch release re-reads its plans as part of its release
@@ -1356,7 +1379,9 @@ they are ready, and the gate takes the next free number when it is done, still o
   → 1.3.4  the robot and recall fixes (owner decision 2026-10-24; recall code DONE 2026-10-28,
            its claim waits on #1476)
   ‖ the atonia gate (advisor mode, #1315) on its own clock; it takes the next free number
-  → 1.3.5  the orchestrator (characterization arms, then the start_simulation_mode slices)
+  → 1.3.5  re-scoped 2026-11-22 (D1): gates that hold, Overdrive's asks, fix groups, the peer mesh
+  ‖ the orchestrator line (characterization arms, then the start_simulation_mode slices); planned
+           as 1.3.5, it takes the number it is ready for; B2 waits on it, so 1.4.0 slips if it stalls
   → 1.3.6  loop phase 2 (run_agentic_loop, execute_and_learn); the fence lifts when 1.3.6's
            decomposition slices land — the point at which T0 can pass; then B2 → B3 → B4
   → 1.4    Phase 0 instrument on the decomposed loop, then Exp 62 → E1 → …
