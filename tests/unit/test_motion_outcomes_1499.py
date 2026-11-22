@@ -2121,3 +2121,43 @@ def test_the_motion_lint_flags_a_reachy_mini_built_without_auto_yaw_off(tmp_path
         ("scripts/planted_yaw.py", 8),
         ("src/tests/planted_move.sh", 3),
     ], findings
+
+
+def test_the_motion_lint_flags_a_no_media_handle_its_file_never_undoes(tmp_path, monkeypatch):
+    """#1712 rule 4: a no_media connect releases the daemon's media past the process; its file must undo it."""
+    lint = _motion_lint(monkeypatch)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "leaks.py").write_text(
+        "a = ReachyMini(media_backend='no_media', automatic_body_yaw=False)\n"  # 1: flagged
+        "b = ReachyMini(media_backend=backend, automatic_body_yaw=False)\n"  # 2: flagged (non-literal)
+        "c = ReachyMini(**kw, automatic_body_yaw=False)\n"  # 3: flagged (splat)
+        "d = ReachyMini(media_backend='default', automatic_body_yaw=False)\n"  # 4: fine
+        "e = ReachyMini(automatic_body_yaw=False)\n"  # 5: fine (the SDK default never releases)
+        "# TODO: release_mini(a) and a.__exit__(None, None, None)\n"  # a comment is not an undo
+        "lock.__exit__(None, None, None)\n"  # another object's __exit__ is not an undo
+        "s = 'release_mini(a)'\n"  # nor is a string
+        "f = ReachyMini(*args, automatic_body_yaw=False)\n"  # 9: flagged (a positional splat)
+    )
+    (scripts / "undoes.py").write_text(
+        "m = ReachyMini(media_backend='no_media', automatic_body_yaw=False)\nself.mini.__exit__(None, None, None)\n"
+    )
+    (scripts / "with_block.py").write_text(
+        "with ReachyMini(media_backend='no_media', automatic_body_yaw=False) as mini:\n    pass\n"
+    )
+    (scripts / "helper.py").write_text(
+        "m = ReachyMini(media_backend='no_media', automatic_body_yaw=False)\nsmoke.release_mini(m)\n"
+    )
+    (scripts / "leak.sh").write_text(
+        "python - <<'PY'\nm = ReachyMini(media_backend='no_media', automatic_body_yaw=False)\nPY\n"
+    )
+    found = sorted((f.path, f.line) for f in lint.scan(tmp_path) if f.kind == "media_undo")
+    assert found == [
+        ("scripts/leak.sh", 2),
+        ("scripts/leaks.py", 1),
+        ("scripts/leaks.py", 2),
+        ("scripts/leaks.py", 3),
+        ("scripts/leaks.py", 9),
+    ]
+    repo = lint.Path(__file__).resolve().parents[2]
+    assert [f for f in lint.scan(repo) if f.kind == "media_undo"] == []
