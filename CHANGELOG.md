@@ -33,11 +33,11 @@ migration.
   `maxim --tts` speaks (#1437). No non-finite, instant, too-fast or mid-path-unsafe command reaches a motor (#1496,
   #1499), and a move's outcome reaches the model. Inbound comms reach it, framed as untrusted data (#1466, #1481). The controller gives the camera
   back and closes its SDK client on disconnect (#1704, #1712), and a fresh pose read gets its full deadline (#1706).
-  **Known oddity, under investigation:** on our test unit the head stops near +56° of yaw on one side and about −50°
-  on the other, short of the ±65° clamp ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The code behind
+  **Known oddity, under investigation:** on our test unit the head stops near 56° of yaw, short of the ±65° clamp,
+  and in later joint checks only about 50° on the negative side ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The code behind
   it is sound by its tests: the clamp matches Pollen's documented ±65° limit, the SDK's default (analytical)
   kinematics solve to 65°, and the clamp and path tests pass. Whether the shortfall is this unit's mechanism (two of
-  its six head motors were replaced, and the errors behave like friction) or the head's real range with the body
+  its six head motors were replaced, and the errors behave like friction or weak holding torque) or the head's real range with the body
   held (Pollen's Placo model caps head-to-body yaw at 55°) is open with Pollen. The full embodied run on the robot is
   still owed ([#1708](https://github.com/dennys246/Maxim/issues/1708)).
 - **Recall:** what a person says is now stored, and a later question that shares a word with it can recall it, framed
