@@ -1100,6 +1100,17 @@ def test_the_literal_fallback_note_counts_a_kept_raw_character(tmp_path, edit_to
     assert "1 format character(s) kept" in result.output and "visible" not in result.output, result.output
 
 
+def test_the_literal_fallback_leaves_typed_escapes_as_typed(tmp_path, edit_tool):
+    """Delta-11: in the literal fallback an escape typed in the new text stays literal and never takes the replaced
+    text's slot; the raw character the replaced text held is the one kept."""
+    path = tmp_path / "f.txt"
+    path.write_text("x <U+202E> y​ z\n", encoding="utf-8")
+    result = edit_tool.execute(path=str(path), old_text="<U+202E> y​", new_text="<U+200B>q​")
+    assert result.success, result
+    assert path.read_text(encoding="utf-8") == "x <U+200B>q​ z\n"
+    assert "1 format character(s) kept" in result.output and "visible" not in result.output, result.output
+
+
 def test_only_write_sandbox_file_appends():
     """Delta-9 fold 3: a tool with no ``append`` parameter never takes the append path (its BOM is kept), in the
     writers and in the fear gate."""

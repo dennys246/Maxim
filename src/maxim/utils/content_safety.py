@@ -386,7 +386,9 @@ def unescape_format_characters(text: str) -> str:
 _ESCAPE_OR_FORMAT = re.compile(rf"<U\+([0-9A-F]{{4,6}})>|([{_ZW}])")
 
 
-def restore_format_characters(text: str, *, present_in: str = "") -> tuple[str, list[str], list[str]]:
+def restore_format_characters(
+    text: str, *, present_in: str = "", escapes_literal: bool = False
+) -> tuple[str, list[str], list[str]]:
     """``text`` as it may be WRITTEN (#1519, owner decisions 2026-11-21: restore only what was there; raw format
     characters follow the same rule as escapes). ``present_in`` is what the write replaces (an edit's matched old
     text, real characters; empty for a new write).
@@ -396,8 +398,10 @@ def restore_format_characters(text: str, *, present_in: str = "") -> tuple[str, 
     one of that code point, counted per code point; otherwise it is written as its visible ``<U+XXXX>`` text. So no
     write can introduce a bidi control (U+202A-202E, U+2066-2069) or any other invisible character that the replaced
     text did not hold: legitimate RTL or joiner text must come from the replaced text, or be written through bash.
-    Any other ``<U+...>`` is left as written. Returns the text, the format characters kept real, and the ones
-    written as visible text (both as ``<U+XXXX>``)."""
+    Any other ``<U+...>`` is left as written. With ``escapes_literal`` (``edit_file``'s literal fallback, where the
+    typed text matched the file as written) every format-character escape is left exactly as typed (``<U+003C>`` is
+    still ``<``), so only RAW format characters compete for ``present_in``'s budget. Returns the text, the format characters kept real, and the ones written as
+    visible text (both as ``<U+XXXX>``)."""
     from collections import Counter
 
     budget = Counter(c for c in present_in if _ZERO_WIDTH.fullmatch(c))
@@ -408,7 +412,7 @@ def restore_format_characters(text: str, *, present_in: str = "") -> tuple[str, 
         char = m.group(2) if m.group(2) is not None else _escaped_char(m)
         if char == "<":
             return "<"
-        if char is None:
+        if char is None or (escapes_literal and m.group(2) is None):
             return m.group(0)
         escape = f"<U+{ord(char):04X}>"
         if budget[char] > 0:
