@@ -26,7 +26,10 @@ from maxim.runtime.bio_integration import (
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
-from maxim.runtime.loop_submit import _advertisable_tools, _wait_for_proposal, submit_tick
+
+# Module reference: §4 reaches the roster filter through its home, the one binding a patch must hit.
+from maxim.runtime import loop_submit as _lsub
+from maxim.runtime.loop_submit import submit_tick
 from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
@@ -334,6 +337,38 @@ def run_agent_loop(
 # ─────────────────────────────────────────────────────────────────────────
 # PFC Deliberation Cycle
 # ─────────────────────────────────────────────────────────────────────────
+
+
+def _wait_for_proposal(
+    llm_worker: Any,
+    stop_event: Any,
+    timeout: float = 300.0,
+    ctrl: Any | None = None,
+) -> Any:
+    """Block until LLM responds, checking stop_event every 100ms.
+
+    Returns LLMProposal or None on timeout/cancellation.
+
+    ``ctrl`` (optional) is stamped with ``last_proposal_time`` when a proposal
+    arrives. This path consumes proposals OUTSIDE section 2's poll, so without
+    the stamp the planning-liveness backstop would see "submitted, nothing
+    came back" after every deliberation tick and requeue a turn the
+    deliberation had deliberately declined to act on — an extra, unsolicited
+    action in a loop whose actions/turn is a measured quantity (pre-merge
+    review, executor lens F3).
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if stop_event is not None and stop_event.is_set():
+            return None
+        proposal = llm_worker.get_latest_proposal()
+        if proposal is not None:
+            if ctrl is not None:
+                ctrl.last_proposal_time = time.time()
+            return proposal
+        time.sleep(0.1)
+    logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
+    return None
 
 
 def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
@@ -1734,7 +1769,7 @@ def _run_agentic_loop_body(
                 # using it for system feedback risks silent overwrite of
                 # real input (cross-confirmed by both review lenses).
                 _other_tools = sorted(
-                    _advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
+                    _lsub._advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
                 )
                 _cap_msg = (
                     f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
@@ -2064,6 +2099,7 @@ def _run_agentic_loop_body(
                     _is_novel_thought=_is_novel_thought,
                     _salience_c1=locals().get("_salience_c1"),
                     _run_deliberation_cycles=_run_deliberation_cycles,
+                    _wait_for_proposal=_wait_for_proposal,
                     last_surfaced_tools=last_surfaced_tools,
                     pending_prefetch=pending_prefetch,
                 )

@@ -4,7 +4,7 @@ deliberation after it (1.3.6 loop phase 2, slices 7a and 7b).
 ``submit_tick`` is §6's whole submit ``try`` as one pass of ``agent_loop.run_agentic_loop`` runs it, moved verbatim
 from the loop's body in pieces so each function stays at 200 lines or fewer (owner decision 2026-11-21). The body
 calls it once per due submit and keeps the guard in front of it (substrate-primary, a worker, no pending proposal,
-nothing held, the submit interval) and the tool snapshot ``_all_tools``.
+nothing held and the run not stopped, the submit interval) and the tool snapshot ``_all_tools``.
 
 First half (slice 7a), ``prepare_submission``:
 
@@ -32,15 +32,17 @@ Second half (slice 7b), given a context:
 
 A raise anywhere in the ``try`` is logged (WARNING plus a DEBUG traceback) and the pass goes on, as inline. By rule (a)
 the helpers called only from this code moved here too: ``_take_deferred_inputs``, ``_followup_synthetic_input``,
-``_triggering_input``, ``_describe_tools_for_prompt`` with ``_thaw``, and ``_WIRE3_PHRASE_RE``. Two helpers moved here
-that the body still calls: ``_advertisable_tools`` (§4's loop-cap message) and ``_wait_for_proposal``
-(``_run_deliberation_cycles``); the body imports them, and no other src module does.
+``_triggering_input``, ``_describe_tools_for_prompt`` with ``_thaw``, and ``_WIRE3_PHRASE_RE``. One helper moved here
+that the body still calls: ``_advertisable_tools`` (§4's loop-cap message), which the body reaches through the module
+reference ``agent_loop._lsub``, so there is ONE binding for a patch to hit (no other src module imports it).
 
 **Why ``_run_deliberation_cycles`` stays in ``agent_loop``.** It is pinned over 200 lines and listed in the 1.4.0
-release gate's ``debt_snapshot`` (``scripts/release_gates.json``); moved, it would need an ``accepted_new_debt`` record,
-which is the owner's call. Rule (c) forbids importing ``agent_loop`` here, so the body passes it in as the keyword
-``_run_deliberation_cycles`` (and its ``LoopRun`` novelty check as ``_is_novel_thought``), under the names the moved text
-already calls.
+release gate's ``debt_snapshot`` (``scripts/release_gates.json``); moved verbatim, it would need an
+``accepted_new_debt`` record, which is the owner's call (a later slice that also splits it to 200 lines or fewer leaves
+no baseline entry and needs none). Rule (c) forbids importing ``agent_loop`` here, so the body passes it in as the
+keyword ``_run_deliberation_cycles``, with ``_wait_for_proposal`` (which stays beside it: cycles 2+ inside it and cycle
+1 in ``_deliberate`` read the same one function) and its ``LoopRun`` novelty check as ``_is_novel_thought``, under the
+names the moved text already calls.
 
 **What it returns.** ``SubmitCarry``: the two body locals §6 rebinds that a LATER pass reads, ``last_surfaced_tools``
 (§2's ``record_surfaced_but_unused``) and ``pending_prefetch`` (None once consumed; the body reassigns it only on a pass
@@ -65,11 +67,11 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 import re
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maxim.agents.bus import StreamEvent
 from maxim.runtime.loop_controller import is_unread_input, take_replan_inputs
@@ -78,6 +80,9 @@ from maxim.runtime.loop_planning import annotate_tool_variance
 from maxim.runtime.loop_state import operational_mode
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
+
+if TYPE_CHECKING:
+    from maxim.agents.llm_worker import ModeInfo
 
 # The SAME logger object as ``agent_loop.logger`` (logging returns one logger per name), so records keep
 # the ``maxim.runtime.agent_loop`` name.
@@ -656,6 +661,7 @@ def submit_tick(
     _is_novel_thought: Callable[[str], bool],
     _salience_c1: float | None,
     _run_deliberation_cycles: Callable[..., Any],
+    _wait_for_proposal: Callable[..., Any],
     last_surfaced_tools: list[str],
     pending_prefetch: Any,
 ) -> SubmitCarry:
@@ -795,6 +801,7 @@ def submit_tick(
                 _is_novel_thought=_is_novel_thought,
                 _salience_c1=_salience_c1,
                 _run_deliberation_cycles=_run_deliberation_cycles,
+                _wait_for_proposal=_wait_for_proposal,
             )
 
     except Exception as e:
@@ -811,7 +818,7 @@ def _tick_mode_info(
     state: Any,
     _all_tools: set[str],
     _max_response_tokens_override: int | None,
-) -> Any:
+) -> ModeInfo:
     """The pass's ``ModeInfo``: the operational mode's definition, its tools, the response-token override."""
     from maxim.agents.llm_worker import ModeInfo
     from maxim.modes.definitions import get_mode
@@ -898,7 +905,8 @@ def _surface_tools(
     #
     # NOTE on `last_surfaced_tools`: post-filter is
     # intentional. The learned tool-relevance index
-    # at line ~1700 calls `record_surfaced_but_unused`
+    # (§2, ``loop_intake.take_llm_proposal``, on the
+    # next pass) calls `record_surfaced_but_unused`
     # — disabled tools weren't surfaced, so they
     # don't decay. Future: if a disabled tool
     # recovers, the relevance index resumes decay
@@ -1161,6 +1169,7 @@ def _deliberate(
     _is_novel_thought: Callable[[str], bool],
     _salience_c1: float | None,
     _run_deliberation_cycles: Callable[..., Any],
+    _wait_for_proposal: Callable[..., Any],
 ) -> None:
     """PFC multi-cycle deliberation after a submit (section 1.2's gate passed)."""
     # ── PFC multi-cycle deliberation ──────────────────
@@ -1242,38 +1251,6 @@ def _deliberate(
                 sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
                 if thought_gate is not None:
                     thought_gate.reset_refractory(step_num)
-
-
-def _wait_for_proposal(
-    llm_worker: Any,
-    stop_event: Any,
-    timeout: float = 300.0,
-    ctrl: Any | None = None,
-) -> Any:
-    """Block until LLM responds, checking stop_event every 100ms.
-
-    Returns LLMProposal or None on timeout/cancellation.
-
-    ``ctrl`` (optional) is stamped with ``last_proposal_time`` when a proposal
-    arrives. This path consumes proposals OUTSIDE section 2's poll, so without
-    the stamp the planning-liveness backstop would see "submitted, nothing
-    came back" after every deliberation tick and requeue a turn the
-    deliberation had deliberately declined to act on — an extra, unsolicited
-    action in a loop whose actions/turn is a measured quantity (pre-merge
-    review, executor lens F3).
-    """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if stop_event is not None and stop_event.is_set():
-            return None
-        proposal = llm_worker.get_latest_proposal()
-        if proposal is not None:
-            if ctrl is not None:
-                ctrl.last_proposal_time = time.time()
-            return proposal
-        time.sleep(0.1)
-    logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
-    return None
 
 
 def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:

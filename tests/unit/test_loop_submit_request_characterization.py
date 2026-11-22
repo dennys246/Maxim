@@ -87,9 +87,11 @@ class _Worker:
     """Records each ``submit_context``. ``answers[n]`` is the proposal the first poll after the n-th submit returns
     (``None``: nothing); ``accept`` is what ``submit_context`` answers."""
 
-    def __init__(self, answers: list[Any] | None = None, accept: bool = True, stop: Any = None) -> None:
+    def __init__(
+        self, answers: list[Any] | None = None, accept: bool = True, stop: Any = None, raise_on: int | None = None
+    ) -> None:
         self.submits: list[dict[str, Any]] = []
-        self.answers, self.accept, self.stop = list(answers or []), accept, stop
+        self.answers, self.accept, self.stop, self.raise_on = list(answers or []), accept, stop, raise_on
         self._owed: list[Any] = []
 
     def latest_attempt_state(self) -> Any:
@@ -108,6 +110,8 @@ class _Worker:
             self._owed.append(self.answers[n])
         if self.stop is not None:  # the run stops while the submit is in flight
             self.stop.set()
+        if n == self.raise_on:  # recorded, then the submit itself raises
+            raise RuntimeError("submit boom")
         return self.accept
 
     def requeue_request(self, *_a: Any, **_k: Any) -> bool:
@@ -252,6 +256,7 @@ def _run(
     stop_event: threading.Event | None = None,
     nac: Any = None,
     observations: dict[int, dict[str, Any]] | None = None,
+    raise_on_log: str | None = None,
 ) -> SimpleNamespace:
     """Run the real loop for ``steps`` passes (slice 7a's driver, with the 7b collaborators passed in)."""
     import maxim.simulation.sim_logger as sim_logger
@@ -340,6 +345,8 @@ def _run(
 
         def log(self, category: str, msg: str, data: dict | None = None) -> None:
             obs.adapter_logs.append((category, msg))
+            if raise_on_log is not None and msg.startswith(raise_on_log):
+                raise RuntimeError(f"sim log boom: {msg}")
 
     def _tool(tool_name: str) -> Tool:
         class _Probe(Tool):
@@ -544,6 +551,17 @@ def test_a_new_inputs_prefetch_replaces_the_carried_one(monkeypatch, tmp_path):
     assert spy.formatted == [r for _t, r in spy.results] and obs.ctrl.pending_prefetch is spy.results[1][1]
 
 
+def test_a_prefetch_consumed_by_a_submit_that_raised_is_not_submitted_again(monkeypatch, tmp_path):
+    """Carried value after a raise: the submit carrying the prefetch raises (logged, the pass goes on), yet the body's
+    local was already dropped, so the next submit carries no prefetch and the prefetch is formatted once (review fold,
+    executor lens: the carry is returned after the ``except``)."""
+    spy = _prefetch_spy(monkeypatch)
+    worker = _Worker(raise_on=0)
+    obs = _run(monkeypatch, tmp_path, inputs={0: "open notes.txt"}, hooks={1: _followup_hook}, worker=worker, steps=3)
+    assert [s["kw"]["prefetch_context"] for s in obs.worker.submits] == ["PREFETCH#1", ""]
+    assert len(spy.formatted) == 1
+
+
 # ── carried value 1: the surfaced tools ──────────────────────────────────────
 
 
@@ -579,6 +597,32 @@ def test_the_next_pass_learns_from_the_tools_this_submit_surfaced(monkeypatch, t
     assert sorted(surfaced) == [PROBE2, PROBE]
     assert index.calls == [("g1", list(surfaced), PROBE)]
     assert obs.ctrl.last_surfaced_tools == []
+
+
+def test_a_raise_after_the_submit_still_carries_its_surfaced_tools(monkeypatch, tmp_path):
+    """Carried value after a raise: the submit went out, then its sim log raised (logged, the pass goes on); the next
+    pass's §2 still records THIS submit's roster surfaced-but-unused (review fold, executor lens)."""
+    index = _ToolIndex()
+
+    def _bridge(executor: Any) -> None:
+        executor._tool_pain_bridge = SimpleNamespace(_tool_index=index)
+
+    worker = _Worker(answers=[_proposal(tool=PROBE)])
+    obs = _run(
+        monkeypatch,
+        tmp_path,
+        inputs={0: "hi"},
+        worker=worker,
+        executor_hook=_bridge,
+        extra_tools=(PROBE2,),
+        state_data={"active_goal": "g1"},
+        raise_on_log="LLM submit:",
+        steps=3,
+    )
+    assert ("EXEC", "LLM submit: hi") in obs.adapter_logs  # the raise point was reached
+    surfaced = _kw(obs)["available_tools"]
+    assert sorted(surfaced) == [PROBE2, PROBE]
+    assert index.calls == [("g1", list(surfaced), PROBE)]
 
 
 def test_before_any_submit_nothing_is_recorded_surfaced(monkeypatch, tmp_path):
