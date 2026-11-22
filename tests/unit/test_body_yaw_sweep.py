@@ -259,3 +259,17 @@ def test_the_dry_run_entry_point_runs_both_modes(sweep, monkeypatch):
 def test_the_fake_starts_where_a_run_needs_it():
     d = FakeDaemon()
     assert d.control_mode == "enabled" and d.body == 0.0
+
+
+def test_a_failed_connect_whose_disconnect_raises_still_exits_2(sweep, monkeypatch):
+    """#1712: the cleanup disconnect raising must not replace 'could not start' (2) with the exception's exit 1."""
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    monkeypatch.setattr(ReachyMiniController, "connect", lambda self, timeout=30.0: False)
+    monkeypatch.setattr(
+        ReachyMiniController, "disconnect", lambda self: (_ for _ in ()).throw(RuntimeError("tunnel gone"))
+    )
+    with pytest.raises(SystemExit) as exited:
+        with sweep._robot_controller("10.42.0.1", "no_media"):
+            pass
+    assert exited.value.code == 2

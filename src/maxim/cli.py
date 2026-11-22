@@ -3058,12 +3058,24 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
-        from maxim.exceptions import CliOptionsRefused, ConfigDirUnreadable, LLMServerPortBusy, UserProfilesInvalid
+        from maxim.exceptions import (
+            CampaignUnloadable,
+            CliOptionsRefused,
+            ConfigDirUnreadable,
+            LLMServerPortBusy,
+            UserProfilesInvalid,
+        )
 
         if isinstance(e, CliOptionsRefused):  # options the selected run would drop, refused before it starts (#1680)
             from maxim.utils.logging import user_warn
 
             user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="cli", event="cli_options_refused")
+            return 2
+        if isinstance(e, CampaignUnloadable):  # --research --campaign that cannot be scripted turns (#1621)
+            from maxim.utils.logging import user_warn
+
+            logging.getLogger(__name__).debug("research campaign unloadable", exc_info=True)
+            user_warn(f"{e}\n    → {e.fix_hint}", source="research", event="campaign_unloadable")
             return 2
         if isinstance(e, UserProfilesInvalid):  # a malformed profiles.yml, refused at run start (#1315 step 0a)
             from maxim.utils.logging import user_warn

@@ -218,7 +218,6 @@ def test_every_goal_sim_option_is_forwarded_or_refused() -> None:
     assert not missing, f"the goal sim reads {sorted(missing)}: forward them to start_research_mode or refuse them"
 
 
-@pytest.mark.xfail(strict=True, reason="#1680: CliOptionsRefused adopts _rebuild_with_state after #1621 merges")
 def test_the_refusal_round_trips_through_pickle() -> None:
     refusal = CliOptionsRefused("--embodiment cannot run", fix_hint="Drop --embodiment.")
     back = pickle.loads(pickle.dumps(refusal))
