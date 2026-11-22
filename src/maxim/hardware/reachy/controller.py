@@ -576,6 +576,7 @@ class ReachyMiniController(RobotController):
                     status.get("state", "?"),
                 )
 
+            self._warn_if_media_already_released(status, self._host or probe_host)
             logger.info("Connecting to Reachy Mini: %s (mode=%s)", self._robot_name, effective_mode)
 
             connect_host = "127.0.0.1" if effective_mode == "localhost_only" else probe_host
@@ -652,7 +653,9 @@ class ReachyMiniController(RobotController):
             logger.error("Failed to connect to Reachy Mini: %s", e)
             # A connect that fails after its SDK handle released the media undoes the release (#1704).
             if self._mini is not None and self._media_released_by_connect:
-                self._reacquire_media()
+                self._reacquire_media(during="a failed connect")
+            # Drop the failed connect's handle (#1712): a later disconnect must not retry its re-acquire on it.
+            self._drop_handle()
             self._stop_ssh_tunnel()
             self._update_state(
                 connection_state=RobotConnectionState.ERROR,
@@ -699,7 +702,7 @@ class ReachyMiniController(RobotController):
             )
         return False
 
-    def _reacquire_media(self) -> None:
+    def _reacquire_media(self, *, during: str = "disconnect") -> None:
         """Re-acquire the daemon's media this controller's connect released (#1704), as the SDK's ``__exit__`` does.
 
         The SDK's ``acquire_media()`` POSTs ``/api/media/acquire`` (10 s timeout) and then rebuilds its media
@@ -710,14 +713,55 @@ class ReachyMiniController(RobotController):
         try:
             self._mini.acquire_media()
         except Exception as e:  # noqa: BLE001 - any SDK/transport failure: report it; ownership carries over
-            logger.warning("acquire_media() raised during disconnect: %s", e)
+            logger.warning("acquire_media() raised during %s: %s", during, e)
         if getattr(self._mini, "media_released", None) is False:
             self._media_released_by_connect = False
             return
         logger.warning(
-            "The daemon's media could not be confirmed re-acquired on disconnect: if GET /api/daemon/status "
+            "The daemon's media could not be confirmed re-acquired during %s: if GET /api/daemon/status "
             "shows media_released: true, every later camera client fails to connect until "
-            "POST /api/media/acquire (#1704)."
+            "POST /api/media/acquire (#1704).",
+            during,
+        )
+
+    def _drop_handle(self) -> None:
+        """Close the SDK handle's WebSocket client and forget the handle and its stream wrappers (#1712).
+
+        The controller is the handle's only long-lived holder (``Selfy.mini`` reads through ``self.mini``; the
+        stream wrappers are dropped here), so it closes the client the SDK's ``__exit__`` would, rather than
+        leave its thread to ``ReachyMini.__del__``, which runs only once no frame still holds the handle.
+        ``client.disconnect()`` sets a stop event and closes the socket, so it is idempotent and never blocks,
+        and ``__del__`` calling it again is harmless. ``media_manager.close()`` is NOT mirrored: the media
+        lifecycle owner closes it, after stopping the speaker (#1435).
+        """
+        mini, self._mini = self._mini, None
+        self._video_stream = None
+        self._audio_stream = None
+        self._resolved_host = None
+        close = getattr(getattr(mini, "client", None), "disconnect", None)
+        if callable(close):
+            try:
+                close()
+            except Exception as e:  # noqa: BLE001 - any SDK/transport failure: report it; the handle is gone anyway
+                logger.warning("The SDK client's disconnect() raised: %s (#1712)", e)
+
+    def _warn_if_media_already_released(self, status: dict | None, host: str | None) -> None:
+        """Name the fix when the daemon's media is released before a connect that needs the camera (#1712).
+
+        A ``no_media`` client that died without re-acquiring (SIGKILL, power loss on the client side) leaves
+        the daemon released, and the SDK never re-acquires for a camera backend, so the media connect fails
+        later with a bare ``Errno 61``. A ``no_media`` connect needs nothing and is not warned.
+        """
+        if not isinstance(status, dict) or status.get("media_released") is not True:
+            return
+        if str(self._media_backend).lower() == "no_media":
+            return
+        logger.warning(
+            "The daemon reports media_released: true before this connect (media_backend=%s): another client "
+            "holds the camera, or a no_media client exited without re-acquiring it (e.g. killed). The camera "
+            "connect will fail (Errno 61) until POST http://%s:8000/api/media/acquire (#1712).",
+            self._media_backend,
+            host or "<robot>",
         )
 
     def disconnect(self) -> None:
@@ -730,8 +774,8 @@ class ReachyMiniController(RobotController):
         # Before the tunnel stops: under tunnel=True the SDK client's host is the tunnel's 127.0.0.1 end (#1704).
         if self._mini is not None and self._media_released_by_connect:
             self._reacquire_media()
-        self._stop_ssh_tunnel()
         if self._mini is None:
+            self._stop_ssh_tunnel()
             return
 
         try:
@@ -741,18 +785,17 @@ class ReachyMiniController(RobotController):
             if self._audio_stream:
                 self._audio_stream.stop()
 
-            # Drop the handle. Not mirrored from the SDK's __exit__: media_manager.close() (the media
-            # lifecycle owner closes it, after stopping the speaker, #1435) and client.disconnect()
-            # (the WS client closes in ReachyMini.__del__, once no other holder keeps the handle: #1712).
-            self._mini = None
-            self._video_stream = None
-            self._audio_stream = None
-            self._resolved_host = None
-
         except Exception as e:
             logger.error("Error during disconnect: %s", e)
 
         finally:
+            # The handle goes whatever the stream stops did (#1712: a handle kept past a raising stop would be
+            # re-used by the next connect's failure path). Then the tunnel, which the client may still ride.
+            self._drop_handle()
+            # Again, after the swap (#1712): a chunk that timed out during the re-acquire or the stream stops
+            # still held its handle, so it latched; from here on a timeout takes _run_move's dropped-handle branch.
+            self._unsettled = None
+            self._stop_ssh_tunnel()
             # A reconnect finds the robot wherever it is now — stale
             # commanded values from the previous connection must not
             # masquerade as its pose. In the finally block so a raising
@@ -1229,6 +1272,7 @@ class ReachyMiniController(RobotController):
                     chunks_planned=n,
                     chunks_done=done,
                 )
+            sent_on = self._mini  # the handle this chunk goes out on (#1712: a disconnect drops it mid-chunk)
             try:
                 if k > 1:
                     self._recheck_before_chunk(previous, chunk)
@@ -1263,6 +1307,13 @@ class ReachyMiniController(RobotController):
                     return MotionOutcome.refused(e.kind, e.reason, chunks_planned=n)
                 return self._partial(f"chunk {k}/{n}: {e.reason}", total, n, done)
             except TimeoutError as e:
+                if self._mini is not sent_on:
+                    # A disconnect dropped the handle this chunk went out on and closed its client (#1712), so
+                    # the completion could never arrive. Its disconnect already reset the settle state for the
+                    # next connection, which reads the robot afresh: latching here would refuse that
+                    # connection's first move. Identity, not None: a reconnect may have installed a new handle.
+                    # An abort or a sleep keeps the handle, so a genuine timeout under either still latches (F4).
+                    return self._partial(f"chunk {k}/{n} cut off by a disconnect ({e})", total, n, done)
                 # F4: the daemon may still be moving. Refuse until it settles.
                 self._unsettled = (chunk, None, None)
                 return self._partial(f"chunk {k}/{n} timed out ({e}); waiting for the robot to settle", total, n, done)
