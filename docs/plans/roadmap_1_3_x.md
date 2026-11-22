@@ -1223,7 +1223,7 @@ they are ready, and the gate takes the next free number when it is done, still o
     first; the 1.4 memory merge rides `migrate_agent_state` (whole or nothing, refuse on conflict).
 
 ### The orchestrator line (planned as 1.3.5; number at its cut)
-> **Re-scoped 2026-11-22 (owner decisions D1–D13 in [release_1_3_5.md](release_1_3_5.md)).** This heading read
+> **Re-scoped 2026-11-22 (owner decisions D1–D18 in [release_1_3_5.md](release_1_3_5.md)).** This heading read
 > `1.3.5, "The orchestrator"` until 2026-11-22 (no anchor links pointed at it). 1.3.5 ships its lines:
 > the gates that hold (#1185, #1519, atonia 10a/10b, #1414), Overdrive's unfenced asks, the Overdrive bridge as
 > engineering (game runs stay off the ledger), fix groups, and the peer mesh for Overdrive (the LLM on the Mac mini, the game on the laptop). The orchestrator below stays a line and ships in whichever release it is ready for.

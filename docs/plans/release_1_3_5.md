@@ -1,7 +1,7 @@
 # 1.3.5: what ships, what rides along, and the work toward Overdrive
 
 **Status:** proposed 2026-11-22, the day 1.3.4 shipped. The owner took decisions D1–D13, #1601 and #1737 the same
-day, as did M97. D14 is open. A three-lens review round (executor, architecture, wire integrity) and a delta round
+day, as did M97. D14 and the third batch were decided later the same day. A three-lens review round (executor, architecture, wire integrity) and a delta round
 ran the same day, and their findings are folded in. Numbers were read on `origin/main` b98954f7 (v1.3.4) and from `gh` on 2026-11-22. Re-check any number before
 citing it later.
 
@@ -114,10 +114,17 @@ goes to the lines below.
   Overdrive's canary for Maxim's embedder surface. A red or missing run will be listed in the release check once backlog
   row M97 is built; until then the read is on the checklist. Owner, 2026-11-22.
 
-**Open:**
-- **D14.** The 2026-10-18 per-patch T1-2 amendment covers 1.3.3 to 1.3.6. Under D1, the orchestrator line and the
-  loop line take numbers after 1.3.5, so a 1.3.7 before 1.4.0 is possible. Should the amendment be extended, or may
-  a 1.3.7 not ship with T1-2 STALE? This plan decides neither.
+**Third batch (owner, 2026-11-22):**
+- **D14.** The 2026-10-18 per-patch T1-2 amendment covers 1.3.3 to 1.3.6. Under D1 a 1.3.7 before 1.4.0 is
+  possible. The amendment is **not** extended now. That is decided when a 1.3.7 is actually planned, because an
+  exception should not be granted before anyone needs it.
+- **D15.** The sessions table below is confirmed as written.
+- **D16. The proxy rule** (line 6 item 6): `NO_PROXY` is honoured on the backend call path, where an embedder
+  makes the call. The 2026-09-28 "the proxy wins" rule keeps holding for Maxim's own operator commands. Both are
+  pinned by tests.
+- **D17.** The owner grants one short rig window, about 30 minutes outside any experiment run, for line 6 item 1.
+  It runs from the laptop, before item 2 reaches the mini.
+- **D18.** An Overdrive session writes `maxim_response_2` from §Answers to Overdrive, through Overdrive's process.
 
 ## The lines
 
@@ -282,12 +289,12 @@ item 2 measures it):
 
 | # | Item | Closes / files | Size | Design pass |
 |---|---|---|---|---|
-| 1 | **Measure first:** N concurrent buffered and streamed calls against the mini's proxy (the 429 rate, latency and truncations), and what a client disconnect does to an upstream generation. It runs off the leader, in a rig window the owner grants under D12, and **before** item 2 reaches the mini, so #1609's truncations get a baseline. | answers the transport half of Overdrive's cancellation question | S | no |
+| 1 | **Measure first:** N concurrent buffered and streamed calls against the mini's proxy (the 429 rate, latency and truncations), and what a client disconnect does to an upstream generation. It runs off the leader, in the rig window D17 grants under D12, and **before** item 2 reaches the mini, so #1609's truncations get a baseline. | answers the transport half of Overdrive's cancellation question | S | no |
 | 2 | Spawn with `--interrupt_requests False`, plus a `_build_cmd` guard test. Reaching the mini takes `maxim peer update && maxim peer restart`, which needs `proxy.allow_remote_update`: an owner step. | #1609 | S | no |
 | 3 | **The shared admission primitive in `_check_admission`:** a bounded FIFO with a deadline instead of an instant 429; a cap that defaults to the upstream's real parallelism; capacity advertised on `/v1/models` or `/v1/debug/status`; per-client accounting; and D12's hold mark: while an experiment holds the leader, non-experiment clients are refused, naming the holder. The proxy cannot tell clients apart today, because `_check_admission` buckets by IP and every peer shares one cluster key. So the approach note must name how a client proves it is the experiment (a distinct key or principal, with #1632's key work), or D12 has no refusal path. Whether the leader should serve llama.cpp's own `llama-server` with parallel slots is decided from item 1's numbers. Then console_tunnel_hardening PR 3's console half (`limit_concurrency`, `ws_max_size`, the input cap, the `/api/pair/claim` rate limit) follows as a PR on this primitive (D6). | to file ("LeaderProxy: queueing admission and advertised capacity"); PR 3 | M | **yes, a gate**: an approach note first |
 | 4 | Keys: the server holds the mesh key, then show and rotate, then the creation lock | #1632, #1633, #1478 | M | yes for #1632 |
 | 5 | **The question, not the answer: how does an embedder make one backend call?** Overdrive's gateway resolves placement itself (its pushback, OD-A24) and builds the private `_MaximPeerBackend`. The design pass starts from the front-gate question: can a one-provider `LLMRouter` from `create.router` do it, once its router defects (the `_inference_lock` serialisation, per-read timeouts, no whole-call deadline) are fixed in the router? Only if not does a public factory get built, inside `models/language/` with an allow-listed importer, like the precedent `closed_local.py`. Two invariants are in play: CLAUDE.md's router-only LLM access (and [llm-router-only-access.md](../lessons/llm-router-only-access.md) with test.yml's "1.0 guard promotion" grep), and llm-routing.md's "placement rides on `provider_priority`, NOT a new resolver". An amendment to either needs a DECISIONS entry. #1737 is designed in the same note. | to file (OD-A24, OD-A14); #1737 | M | **yes** |
-| 6 | Decide, then pin with a test, that `NO_PROXY` is honoured on the backend path, and expose `strict_address_check` | to file (OD-I10) | S | owner decision on the proxy rule |
+| 6 | Pin with tests that `NO_PROXY` is honoured on the backend path and that the proxy wins for operator commands (D16), and expose `strict_address_check` | to file (OD-I10) | S | no (decided, D16) |
 | 7 | `peer connect` sets all three lanes, or says which it left local; plus a "Tailscale peer" troubleshooting page (the 8099 URL, the lanes, `doctor --as peer`, the one-generation fact) | to file | S | no |
 | 8 | Typed errors instead of empty content from `openai_compatible` backends | to file (OD-I9) | M | no; it may slip while the mini stays on `maxim_peer` |
 | 9 | Restart hygiene | #1627, #1613, #1498 item 3 | S each | no |
@@ -330,9 +337,7 @@ The last batch of answers went to Overdrive as `docs/design/reviews/maxim_respon
 | Phone Phase 0, except P0-2 | D6 |
 | The Exp 38 harm probe | still owed before any Exp 38 citation |
 
-## Sessions for 1.3.5 (proposed; the owner confirms)
-
-Only D9's two new sessions and Session A's line are owner decisions. The other rows are proposals.
+## Sessions for 1.3.5 (confirmed by the owner, D15)
 
 | Session | Owns | Shares (grant recorded here) |
 |---|---|---|
