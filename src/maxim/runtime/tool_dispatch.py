@@ -1309,6 +1309,41 @@ def _nobody_answers_a_timeout(sim: Any) -> bool:
     return no_person_to_ask() or (bool(sim.is_sim_mode) and sim.answer_source() is InputSource.LOOP)
 
 
+# How many times in a row the loop answers its own timeout-retry prompt "yes" before it answers "no" (owner decision
+# 2026-11-21). The count is ``state.data["machine_timeout_retries"]``; any LLM turn that is not a timeout resets it
+# (``note_llm_turn``).
+MACHINE_TIMEOUT_RETRIES = 2
+
+
+def _machine_timeout_answer(sim: Any, state: Any) -> str:
+    """The loop's own answer to a timeout-retry prompt nobody else can answer: "yes" while fewer than
+    ``MACHINE_TIMEOUT_RETRIES`` consecutive machine retries have run, then "no" (the turn fails visibly: a
+    ``timeout_retry_exhausted`` event, the person told, and in a sim the LLM-unavailable marker for the bridge)."""
+    retries = int(state.data.get("machine_timeout_retries", 0) or 0)
+    if retries < MACHINE_TIMEOUT_RETRIES:
+        state.data["machine_timeout_retries"] = retries + 1
+        return "yes"
+    from maxim.simulation.sim_logger import display_status
+
+    detail = f"the LLM timed out {retries + 1} times in a row; the loop stopped retrying (it answered its own prompt)"
+    log_agentic("agent_loop", "timeout_retry_exhausted", {"retries": retries, "detail": detail}, level="WARNING")
+    logger.warning("Timeout retry exhausted: %s", detail)
+    display_status(f"Giving up on this turn: {detail}.")
+    sim.report_llm_unavailable(detail)
+    return "no"
+
+
+def note_llm_turn(proposal: Any, state: Any, consecutive_failures: int) -> int:
+    """One LLM turn's effect on the loop's consecutive-LLM-failure count (the stall detector's liveness signal) and
+    on the machine's timeout-retry count (#1185, owner decision 2026-11-21). A timeout proposal (``llm_timeout``) is
+    a failed turn: it counts, instead of resetting the count as an answered turn does. Any other turn is the LLM
+    answering: both counts reset."""
+    if getattr(proposal, "reasoning", "") == "llm_timeout":
+        return consecutive_failures + 1
+    state.data.pop("machine_timeout_retries", None)
+    return 0
+
+
 def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
     """Store a succeeded timeout-retry prompt's state for the user's response (moved verbatim out of
     ``execute_and_learn``, #1315 item 3)."""
@@ -1322,9 +1357,10 @@ def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
     sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
     answer_source = sim.answer_source().value  # the sim's policy, or the loop's own (#1185)
     if sim_timeout_response is None and _nobody_answers_a_timeout(sim):
-        # A timeout retry is no approval gate (#1185): with nobody to ask, the loop retries with more time itself,
-        # as it always did, instead of parking a question every later input would be re-asked.
-        sim_timeout_response, answer_source = "yes", InputSource.LOOP.value
+        # A timeout retry is no approval gate (#1185): with nobody to ask, the loop answers it itself, capped
+        # (owner decision 2026-11-21): "yes" MACHINE_TIMEOUT_RETRIES times in a row, then "no", so a wedged LLM ends
+        # the turn visibly instead of retrying forever.
+        sim_timeout_response, answer_source = _machine_timeout_answer(sim, state), InputSource.LOOP.value
     if sim_timeout_response is not None:
         sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
         state.data["pending_timeout_retry"] = {
@@ -1333,6 +1369,7 @@ def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
         }
         state.data["pending_loop_reply"] = sim_timeout_response
         state.data["pending_loop_reply_source"] = answer_source
+        state.data["pending_loop_reply_for"] = "timeout_retry"  # LOOP_REPLY_FOR_SLOT: never a confirmation's answer
     else:
         state.data["pending_timeout_retry"] = {
             "original_request": action.get("_original_request"),

@@ -263,11 +263,15 @@ One does.*
   `37_heartbeat_1.1_qwen32b.jsonl` rows 14, 23, 28 and 37 (0-based; file lines 15, 24, 29 and 38; arms
   B-wire-a-off, C, B-nac-bias-off and B; seeds 44-46) and `38_results_deepseek.jsonl` row 55 (0-based; file line
   56; arm B, seed 47). `37_results_invalid_llm_outage.jsonl` is invalid anyway. Every other committed Exp 37/38/40
-  row has no marker and is comparable. **A re-run of those five rows reads differently**: one lower on
-  `tool_class_diversity`, and with a smaller `per_action_failure_rate` denominator. `compute_metrics` now leaves
+  row has no marker and is comparable. **Those five rows, recomputed under the new code, read differently**: one
+  lower on `tool_class_diversity`, and a HIGHER `per_action_failure_rate`, because its denominator loses the marker
+  (rows 14 and 28: 0.0769 → 0.0833; row 37: 0.0667 → 0.0714; deepseek row 55: 0.2308 → 0.25). Row 37's tail bin
+  may also move `primary_metric_repeat_failure_action_rate` from 0.25 to 0.333 and `time_to_safe_steady_state_turns`
+  from 1 to None, and the position-based metrics (first contact, time-to-first-warm-self) could move too. The raw
+  `actions.jsonl` for these trials is not committed, so none of these can be verified. `compute_metrics` now leaves
   the markers out once, at the top (`benchmark_cross_session.py`), so the per-action rate, the turn bins, first
-  contact and time-to-first-warm-self all count the agent's actions, consistent with `tool_usage`. **No committed
-  verdict changes**: the 2026-06-08 Qwen32B rows carry no markers, and T1-2 is already STALE.
+  contact and time-to-first-warm-self all count the agent's actions, consistent with `tool_usage`. **No verdict
+  changes**: the 2026-06-08 Qwen32B rows carry no markers, T1-2 is already STALE, and B4 refuses marker rows.
 - **B4** (`docs/experiments/b4_exp37_floors_prereg.md`): unaffected. A gated row needs `_llm_unavailable` = 0, and
   one voids the fire, so no row it can gate on carries a marker.
 - **The L8 re-fire** (the owed Exp 37 Qwen32B re-fire): it runs under B4's rule above, so it is comparable with

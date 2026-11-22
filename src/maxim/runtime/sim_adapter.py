@@ -265,6 +265,17 @@ class SimulationAdapter:
         itself is ``LOOP``."""
         return InputSource.SIM if self.response_policy is not None else InputSource.LOOP
 
+    def report_llm_unavailable(self, detail: str) -> None:
+        """Record the LLM-unavailable marker on the sim's action sink (#1185): the loop gave up on a turn whose LLM
+        kept timing out, and the bridge's settle loop must see it and end the turn, not wait out its timeout."""
+        if self.action_sink is None:
+            return
+        from maxim.simulation.sinks import LLM_UNAVAILABLE, ActionRecord
+
+        self.action_sink.record(
+            ActionRecord(timestamp=time.time(), tool_name=LLM_UNAVAILABLE, result_success=False, result_error=detail)
+        )
+
     def emit_prompt(self, text: str) -> None:
         """Put a gating prompt (a re-ask, a parked plan) on the sim's channel (#1185): the simulated person reads
         the AUT's words from the action sink (``ActionRecord.utterance``), never from the terminal."""
@@ -366,6 +377,9 @@ class NullSimulationAdapter:
 
     def answer_source(self) -> InputSource:
         return InputSource.LOOP  # production resolves nothing; were it to, the answer would be the loop's own
+
+    def report_llm_unavailable(self, detail: str) -> None:
+        return None  # production: the stop is on the status line and the event stream; there is no bridge
 
     def emit_prompt(self, text: str) -> None:
         return None  # production: the prompt is on the terminal and the input panel; there is no sim channel

@@ -362,7 +362,12 @@ class LoopController:
 
         if is_tool_followup(cli_text):
             return False
-        if self.handle_confirmation(
+        # The loop's own reply names the prompt it answers (#1185): a timeout retry's machine "yes" must never reach
+        # a confirmation pending at the same time (it would be refused there and strand the retry), and vice versa.
+        answers = self.state.data.pop("pending_loop_reply_for", None) if answer_source is InputSource.LOOP else None
+        if answers == "timeout_retry":
+            return self.handle_timeout_retry(cli_text, sim=sim)
+        confirmed = self.handle_confirmation(
             cli_text,
             execute_and_learn=execute_and_learn,
             book_refusal=book_refusal,
@@ -370,8 +375,9 @@ class LoopController:
             observation=observation,
             sim=sim,
             answer_source=answer_source,
-        ):
-            return True
+        )
+        if confirmed or answers == "confirmation":  # a confirmation's own reply answers nothing else
+            return confirmed
         if self.handle_timeout_retry(cli_text, sim=sim):
             return True
         return self.handle_plan_approval(
@@ -574,6 +580,7 @@ class LoopController:
             self.pending_confirmation = _pending
             self.state.data["pending_loop_reply"] = sim_response
             self.state.data["pending_loop_reply_source"] = sim.answer_source().value  # the sim's, or the loop's
+            self.state.data["pending_loop_reply_for"] = "confirmation"
         else:
             # Production mode: display prompt if interactive, auto-resolve if not
             from maxim.simulation.sim_logger import should_prompt, display_scene
@@ -604,6 +611,7 @@ class LoopController:
                 # needs a person, so handle_confirmation refuses it typed (needs_person) instead of running it
                 self.state.data["pending_loop_reply"] = "yes"
                 self.state.data["pending_loop_reply_source"] = InputSource.LOOP.value
+                self.state.data["pending_loop_reply_for"] = "confirmation"
                 sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
             self.pending_confirmation = _pending

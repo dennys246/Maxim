@@ -27,8 +27,9 @@ class InputSource(str, Enum):
 # Who may satisfy a reason that needs a human's approval (a confirmable autonomy reason). The loop's own reply
 # never does: a machine auto-approve lifts only the PLANNING gate. Listed member by member, never derived from the
 # enum, so adding a source can never lift a gate by accident. VOICE is NOT in it: a room microphone's "yes" must not
-# confirm a write, so a VOICE yes leaves the action parked (the gate note, S7); #1729 decides the set when it makes
-# voice its own source.
+# confirm a write, so a VOICE yes is refused (``needs_person``, booked as a machine refusal). Nothing produces VOICE
+# yet (voice turns enter as OPERATOR), so this protection is not live until #1729 makes voice its own source and
+# decides the set.
 HUMAN_APPROVERS: frozenset[InputSource] = frozenset({InputSource.OPERATOR, InputSource.SIM})
 # Who may lift the PLANNING level gate alone: any approval, a machine's included (the loop's own reply). Not VOICE
 # (above), SELF (the agent's own tool result) or UNKNOWN.
@@ -41,7 +42,7 @@ _WHO = {
     InputSource.UNKNOWN: "the prompt's answer came from no known person",
     InputSource.OPERATOR: "the operator's answer cannot satisfy it",
     InputSource.SIM: "the simulation's answer cannot satisfy it",
-    InputSource.VOICE: "a voice answer cannot approve it, so it stays parked until a person confirms",
+    InputSource.VOICE: "a voice answer cannot approve it, so it was refused",
 }
 
 

@@ -18,6 +18,7 @@ from maxim.runtime.tool_dispatch import (
     book_agent_fallback_failure,
     safe_agent_name as _safe_agent_name,
     execute_parallel_actions as _execute_parallel,
+    note_llm_turn,
 )
 
 # Extracted to bio_integration.py
@@ -1789,7 +1790,7 @@ def _run_agentic_loop_body(
                     )
                     _consecutive_llm_fallbacks = 0  # Reset so we don't flood
             if new_proposal:
-                _consecutive_llm_fallbacks = 0  # Real proposal arrived — LLM is back
+                _consecutive_llm_fallbacks = note_llm_turn(new_proposal, state, _consecutive_llm_fallbacks)  # #1185
                 if callable(on_event):
                     try:
                         on_event(StreamEvent("inference_end", {"has_proposal": True}))

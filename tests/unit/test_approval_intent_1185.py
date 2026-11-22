@@ -750,7 +750,7 @@ def test_a_needs_person_refusal_is_worded_from_its_cause_and_source() -> None:
         loop
         == "A tool outside the allow-list needs a person's approval; this run answered its own prompt, and no person did"
     )
-    assert "stays parked until a person confirms" in needs_person_detail("Unlocking the door", InputSource.VOICE)
+    assert "a voice answer cannot approve it, so it was refused" in needs_person_detail("Unlocking", InputSource.VOICE)
     assert "non-interactive" not in loop and "requires approval" not in loop
 
 
@@ -886,3 +886,103 @@ def test_a_sim_that_does_not_say_its_policy_is_refused() -> None:
         _build_sim_adapter(percept_source=object(), response_policy=None, **kwargs).answer_source() is InputSource.LOOP
     )
     assert _build_sim_adapter(percept_source=None, response_policy=RESPONSE_POLICY_UNSET, **kwargs).is_sim_mode is False
+
+
+# ── Delta 6: the machine retries twice, then stops; a timeout's answer finds its own prompt ──────────────
+
+
+def _wedged_turns(sim, n: int):
+    """``n`` LLM timeouts in a row under ``sim`` in OFF mode, each followed by the tick that reads the loop's own
+    answer. Returns the controller, the answers given, and the liveness count after each timeout proposal."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.tool_dispatch import _stash_timeout_retry, note_llm_turn
+    from maxim.simulation import sim_logger
+
+    ctrl = _controller()
+    ctrl.llm_worker = MagicMock()
+    answers, liveness, count = [], [], 0
+    timeout = MagicMock(reasoning="llm_timeout")
+    with (
+        patch.object(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF),
+        patch("maxim.simulation.sim_logger.display_status"),
+    ):
+        for _ in range(n):
+            count = note_llm_turn(timeout, ctrl.state, count)  # the timeout proposal arrives: a failed LLM turn
+            liveness.append(count)
+            _stash_timeout_retry({"_timeout_s": 30.0, "_original_request": object()}, sim, ctrl.state)
+            got = take_user_input({}, ctrl.state, MagicMock(), sim_mode=bool(sim.is_sim_mode))
+            answers.append(got.cli_input)
+            ctrl.answer_pending_prompt(
+                str(got.cli_input),
+                execute_and_learn=MagicMock(),
+                book_refusal=MagicMock(),
+                book_machine_refusal=MagicMock(),
+                observation={},
+                sim=sim,
+                answer_source=got.source,
+            )
+    return ctrl, answers, liveness
+
+
+@pytest.mark.parametrize("kind", ["headless", "sim_without_policy"])
+def test_a_wedged_llm_is_retried_twice_then_the_turn_stops(kind: str) -> None:
+    """Owner decision 2026-11-21: the loop answers its own timeout prompt "yes" at most twice in a row, then "no";
+    the stop is visible, and every timeout counts toward the loop's consecutive-LLM-failure count (liveness)."""
+    from maxim.runtime.sim_adapter import NullSimulationAdapter, SimulationAdapter
+    from maxim.simulation.sinks import LLM_UNAVAILABLE, RecordingSink
+
+    sink = RecordingSink()
+    sim = (
+        NullSimulationAdapter()
+        if kind == "headless"
+        else SimulationAdapter(percept_source=object(), action_sink=sink, response_policy=None)
+    )
+    with patch("maxim.runtime.tool_dispatch.log_agentic") as log:
+        ctrl, answers, liveness = _wedged_turns(sim, 3)
+    assert answers == ["yes", "yes", "no"]
+    assert ctrl.llm_worker.retry_with_timeout.call_count == 2  # retry, retry, then stop
+    assert liveness == [1, 2, 3]  # a timeout counts as a failed LLM turn; it no longer resets the count
+    assert [c.args[1] for c in log.call_args_list] == ["timeout_retry_exhausted"]
+    if kind == "sim_without_policy":
+        assert [a.tool_name for a in sink.actions] == [LLM_UNAVAILABLE]  # the bridge sees the stop
+
+
+def test_an_answered_llm_turn_resets_both_counts() -> None:
+    from maxim.runtime.tool_dispatch import note_llm_turn
+
+    state = MagicMock()
+    state.data = {"machine_timeout_retries": 2}
+    assert note_llm_turn(MagicMock(reasoning="clean the build"), state, 5) == 0
+    assert "machine_timeout_retries" not in state.data
+
+
+def test_a_timeouts_machine_yes_never_answers_a_pending_confirmation() -> None:
+    """Delta-6 fold 3: with a confirmation and a timeout retry both pending, the loop's own "yes" for the timeout
+    used to reach ``handle_confirmation`` first (it runs first), be refused there, and strand the retry."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.sim_adapter import NullSimulationAdapter
+    from maxim.runtime.tool_dispatch import _stash_timeout_retry
+    from maxim.simulation import sim_logger
+
+    ctrl = _confirm_controller()
+    ctrl.llm_worker = MagicMock()
+    sim = NullSimulationAdapter()
+    refused = MagicMock()
+    with (
+        patch.object(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF),
+        patch("maxim.simulation.sim_logger.display_status"),
+    ):
+        _stash_timeout_retry({"_timeout_s": 30.0, "_original_request": object()}, sim, ctrl.state)
+        got = take_user_input({}, ctrl.state, MagicMock(), sim_mode=False)
+        assert ctrl.answer_pending_prompt(
+            str(got.cli_input),
+            execute_and_learn=MagicMock(),
+            book_refusal=refused,
+            book_machine_refusal=refused,
+            observation={},
+            sim=sim,
+            answer_source=got.source,
+        )
+    ctrl.llm_worker.retry_with_timeout.assert_called_once()  # the timeout got its answer
+    assert ctrl.pending_confirmation is not None  # the confirmation was not touched, let alone refused
+    refused.assert_not_called()
