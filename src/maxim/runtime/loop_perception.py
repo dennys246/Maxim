@@ -119,6 +119,7 @@ class UserInput(NamedTuple):
     addressed: str
     own_capture_id: str = ""  # the record ``addressed`` became at arrival, "" if none: recall excludes it (#1573)
     source: InputSource = InputSource.UNKNOWN  # who it came from: the approver when it answers a prompt (#1185)
+    answers: str = ""  # the prompt the loop's own reply answers (LOOP_REPLY_FOR_SLOT), "" for any other input (#1185)
 
 
 # Where the loop puts a reply it makes itself (an auto-approved confirmation, a sim-resolved one, a timeout retry):
@@ -127,6 +128,9 @@ class UserInput(NamedTuple):
 # sim's, an auto-yes is the loop's own (#1185).
 LOOP_REPLY_SLOT = "pending_loop_reply"
 LOOP_REPLY_SOURCE_SLOT = "pending_loop_reply_source"
+# The prompt the loop's reply answers ("confirmation" / "timeout_retry"), set with it by every writer and taken with it,
+# so the reply is routed to its own prompt whoever made it, the sim's policy or the loop (#1185 delta 7).
+LOOP_REPLY_FOR_SLOT = "pending_loop_reply_for"
 # Where a tick's other inputs wait, oldest first, behind the one it takes (#1185): the loop's own reply answers a
 # pending gating prompt first, and an observation, a typed line and a voice turn that arrive together are taken
 # one per tick. Each entry keeps its words, ``source``, ``addressed`` and ``own_capture_id``: it was memorized on
@@ -164,6 +168,7 @@ def take_user_input(observation: Any, state: Any, agent: Any, *, sim_mode: bool)
     transcript, hard_override, obs_cli = _observation_fields(observation)
     loop_reply = state.data.pop("pending_loop_reply", None)  # LOOP_REPLY_SLOT
     loop_source = state.data.pop("pending_loop_reply_source", None) or InputSource.LOOP.value  # LOOP_REPLY_SOURCE_SLOT
+    loop_answers = str(state.data.pop("pending_loop_reply_for", None) or "")  # LOOP_REPLY_FOR_SLOT
 
     arrivals: list[dict[str, Any]] = []
     if obs_cli:
@@ -201,6 +206,7 @@ def take_user_input(observation: Any, state: Any, agent: Any, *, sim_mode: bool)
         taken["addressed"],
         taken["own_capture_id"],
         InputSource(taken["source"]),
+        loop_answers if loop_reply else "",
     )
 
 

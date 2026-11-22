@@ -1318,7 +1318,9 @@ MACHINE_TIMEOUT_RETRIES = 2
 def _machine_timeout_answer(sim: Any, state: Any) -> str:
     """The loop's own answer to a timeout-retry prompt nobody else can answer: "yes" while fewer than
     ``MACHINE_TIMEOUT_RETRIES`` consecutive machine retries have run, then "no" (the turn fails visibly: a
-    ``timeout_retry_exhausted`` event, the person told, and in a sim the LLM-unavailable marker for the bridge)."""
+    ``timeout_retry_exhausted`` event, the person told, and in a sim the LLM-unavailable marker for the bridge).
+    The count is not reset by the "no": the LLM is taken as still wedged, so the next request's first timeout is
+    declined at once, until a turn the LLM answers resets it (``note_llm_turn``)."""
     retries = int(state.data.get("machine_timeout_retries", 0) or 0)
     if retries < MACHINE_TIMEOUT_RETRIES:
         state.data["machine_timeout_retries"] = retries + 1
@@ -1336,9 +1338,10 @@ def _machine_timeout_answer(sim: Any, state: Any) -> str:
 def note_llm_turn(proposal: Any, state: Any, consecutive_failures: int) -> int:
     """One LLM turn's effect on the loop's consecutive-LLM-failure count (the stall detector's liveness signal) and
     on the machine's timeout-retry count (#1185, owner decision 2026-11-21). A timeout proposal (``llm_timeout``) is
-    a failed turn: it counts, instead of resetting the count as an answered turn does. Any other turn is the LLM
-    answering: both counts reset."""
-    if getattr(proposal, "reasoning", "") == "llm_timeout":
+    a failed turn: it counts, instead of resetting the count as an answered turn does, and so is a parse failure
+    (``llm_fallback``: no usable answer; outside a sim it reaches here, where the null adapter keeps it). Any other
+    turn is the LLM answering: both counts reset."""
+    if getattr(proposal, "reasoning", "") in ("llm_timeout", "llm_fallback"):
         return consecutive_failures + 1
     state.data.pop("machine_timeout_retries", None)
     return 0

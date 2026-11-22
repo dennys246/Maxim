@@ -1604,6 +1604,7 @@ def _run_agentic_loop_body(
                 observation=observation,
                 sim=sim,
                 answer_source=_user_input.source,
+                answers=_user_input.answers,
             ):
                 cli_input = None  # the answer to a pending prompt, never a new turn (#1185)
                 continue
@@ -1760,9 +1761,7 @@ def _run_agentic_loop_body(
                 # has_pending_llm_input guard (30s timeout) prevents
                 # propose_intent from running AND prevents the bridge
                 # send_and_wait from timing out, causing a 120s stall.
-                state.data.pop("pending_user_input", None)
-                state.data.pop("pending_user_input_time", None)
-                state.data.pop("pending_user_input_source", None)
+                ctrl.clear_pending_user_input()
 
                 # Stall detection: after N consecutive LLM failures, record a
                 # synthetic action so the bridge's settle loop detects activity

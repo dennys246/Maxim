@@ -338,14 +338,14 @@ def test_a_punctuated_yes_at_a_timeout_prompt_retries() -> None:
     """Before: the timeout handler matched the raw lowercased text, so "Yes." fell through to normal processing."""
     ctrl = _timeout_controller()
     with patch("maxim.simulation.sim_logger.display_status"):
-        assert ctrl.handle_timeout_retry("Yes.", sim=MagicMock()) is True
+        assert ctrl.handle_timeout_retry("Yes.", sim=MagicMock(), answer_source=InputSource.OPERATOR) is True
     assert ctrl.llm_worker.retry_with_timeout.call_args.args[1] == 120.0
 
 
 def test_a_punctuated_no_at_a_timeout_prompt_declines() -> None:
     ctrl = _timeout_controller()
     with patch("maxim.simulation.sim_logger.display_status"):
-        assert ctrl.handle_timeout_retry("No!", sim=MagicMock()) is True
+        assert ctrl.handle_timeout_retry("No!", sim=MagicMock(), answer_source=InputSource.OPERATOR) is True
     ctrl.llm_worker.retry_with_timeout.assert_not_called()
 
 
@@ -353,7 +353,9 @@ def test_a_punctuated_no_at_a_timeout_prompt_declines() -> None:
 def test_an_ambiguous_timeout_answer_does_not_retry(text: str) -> None:
     ctrl = _timeout_controller()
     with patch("maxim.simulation.sim_logger.display_status"):
-        assert ctrl.handle_timeout_retry(text, sim=MagicMock()) is True  # consumed: re-asked (decision C)
+        assert (
+            ctrl.handle_timeout_retry(text, sim=MagicMock(), answer_source=InputSource.OPERATOR) is True
+        )  # consumed: re-asked (decision C)
     assert ctrl.get_timeout_retry() is not None  # still pending
     ctrl.llm_worker.retry_with_timeout.assert_not_called()
 
@@ -415,6 +417,7 @@ def test_a_tool_follow_up_is_never_an_answer() -> None:
             observation={},
             sim=MagicMock(),
             answer_source=InputSource.OPERATOR,
+            answers="",
         )
         is False
     )
@@ -803,6 +806,7 @@ def _timeout_tick(sim, mode):
                     observation={},
                     sim=sim,
                     answer_source=got.source,
+                    answers=got.answers,
                 )
             )
     return ctrl, answer, handled
@@ -944,6 +948,7 @@ def _wedged_turns(sim, n: int):
                 observation={},
                 sim=sim,
                 answer_source=got.source,
+                answers=got.answers,
             )
     return ctrl, answers, liveness
 
@@ -1006,7 +1011,77 @@ def test_a_timeouts_machine_yes_never_answers_a_pending_confirmation() -> None:
             observation={},
             sim=sim,
             answer_source=got.source,
+            answers=got.answers,
         )
     ctrl.llm_worker.retry_with_timeout.assert_called_once()  # the timeout got its answer
     assert ctrl.pending_confirmation is not None  # the confirmation was not touched, let alone refused
     refused.assert_not_called()
+
+
+# ── Delta 7: the reply's prompt travels with the reply; a parse failure is a failed turn; the machine's "no" ───────
+
+
+def test_a_sim_policys_timeout_yes_never_runs_a_pending_confirmation() -> None:
+    """Delta-7 SHOULD-FIX: the prompt a reply answers was read only for the loop's own reply, so a SIM policy's
+    timeout "yes" went to ``handle_confirmation`` first, ran the parked action and stranded the retry. The prompt
+    now travels with the reply (``UserInput.answers``), whoever made it."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.sim_adapter import SimulationAdapter
+    from maxim.runtime.tool_dispatch import _stash_timeout_retry
+    from maxim.simulation.response_policy import ResponsePolicy
+
+    ctrl = _confirm_controller()
+    ctrl.llm_worker = MagicMock()
+    sim = SimulationAdapter(object(), response_policy=ResponsePolicy())
+    run = MagicMock()
+    with patch("maxim.simulation.sim_logger.display_status"):
+        _stash_timeout_retry({"_timeout_s": 30.0, "_original_request": object()}, sim, ctrl.state)
+        got = take_user_input({}, ctrl.state, MagicMock(), sim_mode=True)
+        assert (got.cli_input, got.source, got.answers) == ("yes", InputSource.SIM, "timeout_retry")
+        assert ctrl.answer_pending_prompt(
+            str(got.cli_input),
+            execute_and_learn=run,
+            book_refusal=MagicMock(),
+            book_machine_refusal=MagicMock(),
+            observation={},
+            sim=sim,
+            answer_source=got.source,
+            answers=got.answers,
+        )
+    ctrl.llm_worker.retry_with_timeout.assert_called_once()
+    run.assert_not_called()  # the parked action did not run on the timeout's "yes"
+    assert ctrl.pending_confirmation is not None
+    assert "pending_loop_reply_for" not in ctrl.state.data  # taken with its reply, never left stale
+
+
+def test_a_person_s_input_never_carries_a_loop_reply_s_prompt() -> None:
+    from maxim.runtime.loop_perception import take_user_input
+
+    state = MagicMock()
+    state.data = {"pending_cli_input": "yes"}
+    got = take_user_input({}, state, MagicMock(), sim_mode=False)
+    assert (got.cli_input, got.source, got.answers) == ("yes", InputSource.OPERATOR, "")
+
+
+def test_a_parse_failure_is_a_failed_llm_turn() -> None:
+    """Delta-7 NIT 2: outside a sim an ``llm_fallback`` proposal reaches ``note_llm_turn``; it is no usable answer,
+    so it counts and resets neither count."""
+    from maxim.runtime.tool_dispatch import note_llm_turn
+
+    state = MagicMock()
+    state.data = {"machine_timeout_retries": 2}
+    assert note_llm_turn(MagicMock(reasoning="llm_fallback"), state, 1) == 2
+    assert state.data["machine_timeout_retries"] == 2
+
+
+@pytest.mark.parametrize(("source", "told"), [(InputSource.LOOP, False), (InputSource.OPERATOR, True)])
+def test_the_machine_s_no_is_not_reported_as_a_person_s(source: InputSource, told: bool) -> None:
+    """Delta-7 NIT 4: the loop's own "no" (its retries ran out) already said it gave up; "Understood, skipping."
+    answers a person."""
+    from maxim.runtime.loop_types import TimeoutRetry
+
+    ctrl = _confirm_controller()
+    ctrl.set_timeout_retry(TimeoutRetry(original_request=object(), timeout_s=30.0))
+    with patch("maxim.simulation.sim_logger.display_status") as status:
+        assert ctrl.handle_timeout_retry("no", sim=MagicMock(), answer_source=source) is True
+    assert any("Understood" in str(c.args[0]) for c in status.call_args_list) is told

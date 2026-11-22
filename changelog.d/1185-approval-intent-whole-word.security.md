@@ -37,3 +37,7 @@
   `simulation.response_policy.ask_orchestrator()` never had a route to the orchestrator, so the loop answered in
   their place. Nothing constructed them. A response policy passed to `run_agentic_loop` without a
   `percept_source` is now a `TypeError` instead of being dropped.
+- **A sim policy's timeout "yes" no longer runs a parked action**: with a confirmation and a timeout retry both
+  pending, the reply was routed to its prompt only when the loop itself made it, so the policy's "yes" ran the parked
+  action and left the retry stranded. Every loop reply now carries the prompt it answers. A parse failure
+  (`llm_fallback`) counts as a failed LLM turn, and the loop's own "no" is no longer reported as a person's.

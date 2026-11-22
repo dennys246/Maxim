@@ -351,22 +351,25 @@ class LoopController:
         observation: Any,
         sim: Any,
         answer_source: InputSource,
+        answers: str,
     ) -> bool:
         """The tick's input as the answer to whichever gating prompt is pending (#1185): the action confirmation,
         the timeout retry, then the plan approval. True when the input was the answer (consumed: the caller drops
         it, as the next turn it is not). A tool's ``[ACTION_FOLLOWUP`` result is never an answer to any prompt.
         The callables are the run's (``LoopRun``), ``observation`` this tick's, ``sim`` the run's adapter, and
         ``answer_source`` who this tick's input came from (``UserInput.source``; required: these handlers run before
-        ``store_user_input``, so ``state.data["pending_user_input_source"]`` still names the previous input's)."""
+        ``store_user_input``, so ``state.data["pending_user_input_source"]`` still names the previous input's), and
+        ``answers`` the prompt the loop's own reply answers (``UserInput.answers``; required, "" for any other input:
+        a reply routed by the old order could answer the wrong prompt)."""
         from maxim.runtime.loop_perception import is_tool_followup
 
         if is_tool_followup(cli_text):
             return False
-        # The loop's own reply names the prompt it answers (#1185): a timeout retry's machine "yes" must never reach
-        # a confirmation pending at the same time (it would be refused there and strand the retry), and vice versa.
-        answers = self.state.data.pop("pending_loop_reply_for", None) if answer_source is InputSource.LOOP else None
+        # The loop's own reply names the prompt it answers (#1185), whoever made it (the sim's policy or the loop): a
+        # timeout retry's "yes" must never reach a confirmation pending at the same time (it would run the parked
+        # action, or be refused there, and strand the retry), and vice versa.
         if answers == "timeout_retry":
-            return self.handle_timeout_retry(cli_text, sim=sim)
+            return self.handle_timeout_retry(cli_text, sim=sim, answer_source=answer_source)
         confirmed = self.handle_confirmation(
             cli_text,
             execute_and_learn=execute_and_learn,
@@ -378,7 +381,7 @@ class LoopController:
         )
         if confirmed or answers == "confirmation":  # a confirmation's own reply answers nothing else
             return confirmed
-        if self.handle_timeout_retry(cli_text, sim=sim):
+        if self.handle_timeout_retry(cli_text, sim=sim, answer_source=answer_source):
             return True
         return self.handle_plan_approval(
             cli_text,
@@ -651,12 +654,14 @@ class LoopController:
 
     # ── Phase: Handle timeout retry ──────────────────────────────────────
 
-    def handle_timeout_retry(self, cli_text: str, *, sim: Any) -> bool:
+    def handle_timeout_retry(self, cli_text: str, *, sim: Any, answer_source: InputSource) -> bool:
         """Process user input when a timeout retry is pending.
 
         Returns True if the input was consumed. The answers are the gating prompts' yes/no (#1185, owner
         decision C): "yes" doubles the time limit, a whole number of minutes 1-10 sets it, "no" declines; anything
         else keeps the retry pending and asks again (``_reask``), as the confirmation and plan prompts do.
+        ``answer_source`` is who answered: the loop's own "no" (the capped retries ran out) already told the person
+        it gave up, so it is not reported as a person's decline.
         """
         tr = self.get_timeout_retry()
         if tr is None:
@@ -671,8 +676,11 @@ class LoopController:
         if answer == "no":
             from maxim.simulation.sim_logger import display_status
 
-            logger.info("User declined timeout retry")
-            display_status("Understood, skipping.")
+            if answer_source is InputSource.LOOP:
+                logger.info("Loop declined timeout retry (machine retries exhausted)")
+            else:
+                logger.info("%s declined timeout retry", answer_source.value)
+                display_status("Understood, skipping.")
             # The tick's input slots were read and popped by loop_perception.take_user_input; anything there now arrived
             # after that read and is the NEXT tick's (a person's input that waited behind a loop reply; Session R)
             self.clear_pending_user_input()
