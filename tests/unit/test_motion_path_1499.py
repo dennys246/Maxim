@@ -578,6 +578,43 @@ def test_an_sdk_timeout_mid_split_is_partial_and_blocks_until_settled(daemon):
     assert daemon.gotos() == []
 
 
+def test_a_timeout_a_disconnect_caused_leaves_no_settle_latch_for_the_next_connection(daemon):
+    """#1712: disconnect closes the SDK client, so an in-flight chunk's completion never arrives and goto_target
+    times out. The chunk went out, so it stays partial (the motor backend's contract), but the settle latch is not
+    set: the disconnect reset it, and latching would refuse the reconnected controller's first move."""
+    ctl = controller(daemon)
+    daemon.timeout_on_goto = 0
+    sdk_goto = daemon.goto_target
+
+    def goto_cut_off_by_a_disconnect(**kwargs):
+        # A disconnect (or a reconnect's new handle) lands while the SDK waits for the completion. The fake
+        # controller has no stream or tunnel state for a real disconnect(); its effect here is the handle swap.
+        ctl._mini = object()
+        return sdk_goto(**kwargs)
+
+    daemon.goto_target = goto_cut_off_by_a_disconnect
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "partial"
+    assert ctl._unsettled is None
+
+
+def test_a_genuine_timeout_under_an_abort_still_latches_until_settled(daemon):
+    """request_abort bumps the generation but keeps the handle and its client (a sleep's stop does too): the
+    daemon may still be moving, so F4's settle latch must hold (delta round, #1712)."""
+    ctl = controller(daemon)
+    daemon.timeout_on_goto = 0
+    sdk_goto = daemon.goto_target
+
+    def goto_timing_out_under_an_abort(**kwargs):
+        ctl.request_abort()
+        return sdk_goto(**kwargs)
+
+    daemon.goto_target = goto_timing_out_under_an_abort
+    out = ctl.goto_target(_target(head_yaw=D(10), duration=1.0))
+    assert not out and _kind(out) == "partial"
+    assert ctl._unsettled is not None
+
+
 def test_a_dropped_chunk_stops_the_split_as_partial(daemon):
     _place(daemon, body_deg=160)
     daemon.drop_next = 1
