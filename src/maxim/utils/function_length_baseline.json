@@ -397,7 +397,8 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
-    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted."
+    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
+    "#1680 (2026-11-21, rule T): _main_impl 1195 -> 1185 -> 1158 -> 1141 and start_simulation_mode 1895 -> 1877 across the review folds (the research dispatch to cli._run_research_from_cli, then the --sim-only checks to cli._validate_sim_only_flags; the commit messages from c7a1327a on give each step); start_research_mode 241 -> 226 on the branch, 241 -> 233 for #1621 on main, and the merged body measures 218"
   ],
   "touch_exemptions": [
     {
