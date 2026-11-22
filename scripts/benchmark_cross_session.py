@@ -835,7 +835,11 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     safe_target_actions = sum(1 for a in actions if _is_safe_on_target(a))
     approach_actions = sum(1 for a in actions if _is_approach(a))
     engagement_actions = sum(1 for a in actions if _is_engagement(a))
-    total_actions = len(actions) or 1
+    # The denominator counts the agent's actions only, as ``tool_usage`` (and so ``tool_class_diversity``) does
+    # since #1185: actions.jsonl stays complete, so its loop-made markers are left out here by name.
+    from maxim.simulation.sinks import SYNTHETIC_TOOL_NAMES
+
+    total_actions = sum(1 for a in actions if a.get("tool") not in SYNTHETIC_TOOL_NAMES) or 1
     per_action_rate = failure_actions / total_actions
 
     # exp37_metric_pivot.md (Path 2) PRIMARY metric: ratio of positive-

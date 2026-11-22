@@ -192,7 +192,7 @@ def test_a_machine_approval_refuses_what_needs_a_person(monkeypatch, tmp_path, p
     assert obs.executed == []
     [refused] = _events(obs, "plan_refused")
     assert refused["reason"] == "needs_person"
-    assert any("non-interactive" in t for t in shown), shown
+    assert any("needs a person's approval; this run answered its own prompt" in t for t in shown), shown
     assert not any("requires approval" in t for t in shown), shown
     assert obs.nac_observations == []
 

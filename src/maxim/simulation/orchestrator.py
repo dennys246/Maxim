@@ -2194,30 +2194,7 @@ def start_simulation_mode(
                     # keeps injecting into (and finishing) the underlying
                     # ConversationalSource child, so termination is unchanged.
                     # Default OFF → byte-identical (bare bridge.percept_source).
-                    from maxim.simulation.audio_orient_wiring import audio_orient_enabled
-
-                    _aut_percept_source = bridge.percept_source
-                    if audio_orient_enabled():
-                        from maxim.simulation.audio_orient_wiring import (
-                            build_audio_composite,
-                            default_sim_doa_reader,
-                            sim_audio_salience_novelty,
-                        )
-
-                        _aud_sal, _aud_nov = sim_audio_salience_novelty()
-                        _aut_percept_source = build_audio_composite(
-                            bridge.percept_source,
-                            default_sim_doa_reader(),
-                            agent_id=_aut_agent_id,
-                            salience=_aud_sal,
-                            novelty=_aud_nov,
-                        )
-                        logger.info(
-                            "audio-orient channel attached to AUT percept source "
-                            "(synthetic DoA reader, salience=%.2f novelty=%.2f)",
-                            _aud_sal,
-                            _aud_nov,
-                        )
+                    _aut_percept_source = _aut_percept_source_for(bridge, _aut_agent_id)
                     run_agentic_loop(
                         aut_agent,
                         aut_env,
@@ -2234,6 +2211,7 @@ def start_simulation_mode(
                         stop_event=stop_event,
                         target_hz=2.0,
                         percept_source=_aut_percept_source,
+                        response_policy=bridge.response_policy,  # the sim's answers to gating prompts (#1185)
                         state_home=sim_tmpdir,  # the AUT's state file stays in the sim sandbox (#1264)
                         action_sink=bridge.action_sink,
                         pain_bus=aut_pain_bus,
@@ -2829,3 +2807,32 @@ def _display_status_counts(bridge: Any, display_status: Any) -> None:
     actions = bridge.get_agent_actions()
     display_status(f"Actions: {len(actions)}")
     display_status(f"Blocked: {len([a for a in actions if a.blocked])}")
+
+
+def _aut_percept_source_for(bridge: Any, agent_id: Any) -> Any:
+    """The AUT's percept source: the bridge's, or the audio-orient composite over it when opted in (moved verbatim
+    out of ``start_simulation_mode``, rule T for #1185, paying for the AUT loop's ``response_policy``)."""
+    from maxim.simulation.audio_orient_wiring import audio_orient_enabled
+
+    _aut_percept_source = bridge.percept_source
+    if audio_orient_enabled():
+        from maxim.simulation.audio_orient_wiring import (
+            build_audio_composite,
+            default_sim_doa_reader,
+            sim_audio_salience_novelty,
+        )
+
+        _aud_sal, _aud_nov = sim_audio_salience_novelty()
+        _aut_percept_source = build_audio_composite(
+            bridge.percept_source,
+            default_sim_doa_reader(),
+            agent_id=agent_id,
+            salience=_aud_sal,
+            novelty=_aud_nov,
+        )
+        logger.info(
+            "audio-orient channel attached to AUT percept source (synthetic DoA reader, salience=%.2f novelty=%.2f)",
+            _aud_sal,
+            _aud_nov,
+        )
+    return _aut_percept_source

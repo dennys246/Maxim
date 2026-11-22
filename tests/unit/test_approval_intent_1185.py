@@ -182,8 +182,6 @@ def _proposal() -> LLMProposal:
 
 def _plan_controller():
     ctrl = _controller()
-    ctrl.autonomy_controller.approved_action_blocker.return_value = None
-    ctrl.autonomy_controller.approved_plan_denial.return_value = None
     ctrl.pending_plan_proposal = _proposal()
     return ctrl
 
@@ -364,12 +362,20 @@ def test_an_ambiguous_timeout_answer_does_not_retry(text: str) -> None:
 
 
 def _bridge_adapter(policy):
-    from maxim.runtime.sim_adapter import SimulationAdapter
+    """The adapter exactly as production builds it (#1185 owner decision A): ``loop_setup._build_sim_adapter`` from
+    the bridge's PERCEPT SOURCE (never the bridge) and its response policy, passed explicitly."""
+    from maxim.runtime.loop_setup import _build_sim_adapter
     from maxim.simulation.bridge import SimulationBridge
 
-    bridge = SimulationBridge.__new__(SimulationBridge)
-    bridge.response_policy = policy
-    return SimulationAdapter(percept_source=bridge)
+    bridge = SimulationBridge(response_policy=policy)
+    return _build_sim_adapter(
+        percept_source=bridge.percept_source,
+        response_policy=bridge.response_policy,
+        action_sink=bridge.action_sink,
+        pain_bus=None,
+        sim_adapter=None,
+        executor=None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -476,7 +482,9 @@ def test_the_sim_adapter_puts_a_prompt_in_its_action_sink() -> None:
     from maxim.simulation.sinks import RecordingSink
 
     sink = RecordingSink()
-    SimulationAdapter(percept_source=None, action_sink=sink).emit_prompt("Confirm bash? Type 'yes' or 'no'.")
+    SimulationAdapter(percept_source=None, action_sink=sink, response_policy=None).emit_prompt(
+        "Confirm bash? Type 'yes' or 'no'."
+    )
     [record] = sink.actions
     assert record.utterance == "Confirm bash? Type 'yes' or 'no'."
     assert NullSimulationAdapter().emit_prompt("x") is None
@@ -520,7 +528,9 @@ def _bridge_with(actions: int, *, reasks: int):
     bridge = SimulationBridge(
         response_timeout=0.5, settle_s=0.1, aut_mode="substrate-primary", substrate_actions_per_turn=3
     )
-    adapter = SimulationAdapter(percept_source=bridge, action_sink=bridge.action_sink)
+    adapter = SimulationAdapter(
+        percept_source=bridge.percept_source, action_sink=bridge.action_sink, response_policy=bridge.response_policy
+    )
     for i in range(actions):
         bridge.action_sink.record(ActionRecord(timestamp=_time.time(), tool_name="probe", result_success=i % 2 == 0))
         for _ in range(reasks):
@@ -548,6 +558,7 @@ def test_re_asks_do_not_change_a_runs_action_counts() -> None:
 
     assert ActionRecord(timestamp=0.0, tool_name="_gating_prompt").is_synthetic
     assert not ActionRecord(timestamp=0.0, tool_name="respond").is_synthetic
+    assert not ActionRecord(timestamp=0.0, tool_name="_mcp_tool").is_synthetic  # by name, not by prefix (fold 7)
 
 
 def test_deferred_inputs_are_taken_oldest_first() -> None:
@@ -639,3 +650,123 @@ def test_one_follow_up_predicate() -> None:
         body = inspect.getsource(module).replace('return str(text or "").startswith("[ACTION_FOLLOWUP")', "")
         assert 'startswith("[ACTION_FOLLOWUP")' not in body, module.__name__
     assert 'startswith("[ACTION_FOLLOWUP")' not in inspect.getsource(agent_loop)
+
+
+# ── Delta 4 decision A: the sim's policy answers, passed explicitly ──────────────────────────────────
+
+
+@pytest.mark.parametrize("method", ["resolve_confirmation", "resolve_plan_approval"])
+def test_a_production_built_adapter_consults_the_sims_policy(method: str) -> None:
+    """In production the adapter is handed ``bridge.percept_source`` (a ``ConversationalSource``), so the old
+    ``isinstance(percept_source, SimulationBridge)`` lookup never found the policy and its own default "yes"
+    answered. Built as production builds it, the policy is consulted and the approver is the sim's."""
+    policy = MagicMock()
+    getattr(policy, method).return_value = "no"
+    adapter = _bridge_adapter(policy)
+    assert getattr(adapter, method)({} if method == "resolve_confirmation" else "plan") == "no"
+    getattr(policy, method).assert_called_once()
+    assert adapter.answer_source() is InputSource.SIM
+
+
+def test_an_adapter_with_no_policy_answers_nothing() -> None:
+    from maxim.runtime.sim_adapter import SimulationAdapter
+
+    adapter = SimulationAdapter(percept_source=object(), response_policy=None)
+    assert (
+        adapter.resolve_confirmation({}),
+        adapter.resolve_plan_approval("p"),
+        adapter.resolve_timeout_retry(1.0),
+    ) == (
+        None,
+        None,
+        None,
+    )
+    assert adapter.answer_source() is InputSource.LOOP  # a prompt it cannot answer is the loop's to settle
+
+
+def test_the_adapter_requires_the_policy_argument() -> None:
+    """Pushed into the type: a sim cannot forget it into the old silent default "yes"."""
+    from maxim.runtime.sim_adapter import SimulationAdapter
+
+    with pytest.raises(TypeError):
+        SimulationAdapter(object())  # type: ignore[call-arg]
+
+
+def test_a_sim_confirmation_yes_is_the_sims_and_runs() -> None:
+    """End to end at the controller: a SUPERVISED confirmation parked under a sim with an auto-approve policy is
+    answered by the policy (approver SIM, ``pending_loop_reply_source``), and that answer satisfies the confirmable
+    reason, so the action runs once."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.simulation.response_policy import auto_approve
+
+    ctrl = _controller()
+    ctrl.autonomy_controller = AutonomyController(
+        initial_level=AutonomyLevel.SUPERVISED,
+        supervision_policy=SupervisionPolicy(requires_confirmation={"bash"}, min_confidence_autonomous=0.0),
+    )
+    ctrl.pending_proposal = _proposal()
+    sim = _bridge_adapter(auto_approve())
+    ctrl.park_confirmation(ctrl.pending_proposal.action, sim=sim)
+    assert ctrl.state.data["pending_loop_reply_source"] == "sim"
+    taken = take_user_input({}, ctrl.state, MagicMock(), sim_mode=True)
+    assert (taken.cli_input, taken.source) == ("yes", InputSource.SIM)
+    run = MagicMock(return_value=MagicMock(followup=None))
+    with patch("maxim.simulation.sim_logger.display_status"), patch("maxim.simulation.sim_logger.display_action"):
+        assert ctrl.handle_confirmation(
+            taken.cli_input,
+            execute_and_learn=run,
+            book_refusal=MagicMock(),
+            book_machine_refusal=MagicMock(),
+            observation={},
+            sim=sim,
+            answer_source=taken.source,
+        )
+    run.assert_called_once()
+
+
+def test_the_verdict_names_who_may_satisfy_it() -> None:
+    """Fold 1: a ``confirm`` must name its approvers, an ``allow`` or a ``refuse`` none; the PLANNING gate's set is
+    listed, never the whole enum (fold 2)."""
+    from maxim.agents.autonomy import ActionVerdict, VerdictKind
+    from maxim.utils.input_source import HUMAN_APPROVERS, PLANNING_GATE_APPROVERS
+
+    with pytest.raises(ValueError):
+        ActionVerdict(VerdictKind.CONFIRM, "x")
+    with pytest.raises(ValueError):
+        ActionVerdict(VerdictKind.ALLOW, None, HUMAN_APPROVERS)
+    assert InputSource.VOICE in HUMAN_APPROVERS and InputSource.LOOP not in HUMAN_APPROVERS
+    assert InputSource.SELF not in PLANNING_GATE_APPROVERS and InputSource.UNKNOWN not in PLANNING_GATE_APPROVERS
+
+
+def test_a_needs_person_refusal_is_worded_from_its_cause_and_source() -> None:
+    """Fold 3: true for the loop's own answer and for a future voice-only reason alike."""
+    from maxim.utils.input_source import needs_person_detail
+
+    loop = needs_person_detail("A tool outside the allow-list", InputSource.LOOP)
+    assert (
+        loop
+        == "A tool outside the allow-list needs a person's approval; this run answered its own prompt, and no person did"
+    )
+    assert "voice answer" in needs_person_detail("Unlocking the door", InputSource.VOICE)
+    assert "non-interactive" not in loop and "requires approval" not in loop
+
+
+def test_a_registered_queue_approver_keeps_the_machine_away() -> None:
+    """Decision C: in a non-interactive run, the loop's machine auto-approve fires only when no embedder registered
+    to approve the queue; a registered embedder's proposals wait for it."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+    from maxim.simulation import sim_logger
+
+    for registered, expect in ((False, "approved"), (True, "pending")):
+        ctrl = _controller()
+        ctrl.autonomy_controller = AutonomyController(initial_level=AutonomyLevel.PLANNING)
+        if registered:
+            ctrl.autonomy_controller.proposal_queue.register_approver("embedder")
+        ctrl.pending_proposal = _proposal()
+        with patch.object(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF):
+            ctrl.queue_for_approval(ctrl.pending_proposal.action, confidence=0.9, sim=MagicMock())
+        [entry] = list(ctrl.autonomy_controller.proposal_queue._pending)
+        assert entry.status == expect, registered
+        if not registered:
+            assert entry.approver is InputSource.LOOP

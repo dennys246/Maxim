@@ -27,10 +27,13 @@ CHANGE = "write the file to the other folder"
 pytestmark = pytest.mark.timeout(60)
 
 
-def _llm_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks: int = 30) -> tuple[list[dict[str, Any]], list]:
-    """The real loop in LLM mode with a fake worker: the first submit returns a plan that requires approval; the
-    person answers it with a change request; every later submit is recorded."""
-    from maxim.agents.autonomy import AutonomyController, AutonomyLevel
+def _llm_loop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, start: str = "plan", ticks: int = 30
+) -> tuple[list[dict[str, Any]], list]:
+    """The real loop in LLM mode with a fake worker: the first submit returns a ``bash`` proposal behind a gating
+    prompt (``start``: a plan that requires approval, or a SUPERVISED confirmation); the person answers it with a
+    change request; every later submit is recorded."""
+    from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
     from maxim.agents.llm_types import LLMProposal
     from maxim.agents.perception_agent import PerceptionAgent
     from maxim.environment.filesystem_env import FileSystemEnv
@@ -39,6 +42,7 @@ def _llm_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks: int = 30
     from maxim.runtime.loop_controller import LoopController
     from maxim.runtime.state import RuntimeState
     from maxim.simulation import sim_logger
+    from maxim.tools.base import Tool
     from maxim.tools.registry import ToolRegistry
     from maxim.utils import structured_logging
 
@@ -61,7 +65,9 @@ def _llm_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks: int = 30
     def _append(record: Any) -> Any:
         if getattr(record, "source", None) == "agent_loop":
             events.append((record.event, dict(record.data or {})))
-            if record.event == "plan_awaiting_approval" and not (record.data or {}).get("reask"):
+            shown = record.event == "plan_awaiting_approval" and not (record.data or {}).get("reask")
+            asked = record.event == "autonomy_check" and (record.data or {}).get("can_execute") is False
+            if shown or asked:
                 state.data["pending_cli_input"] = CHANGE  # the person answers the shown plan with a change
                 for ctrl in ctrls:  # ... minutes later, as people do: the "submitted recently" wake has lapsed
                     ctrl.last_llm_submit_time = 0.0
@@ -100,8 +106,8 @@ def _llm_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks: int = 30
                 confidence=0.9,
                 mode_goal_achieved=False,
                 triggering_input="clean the build",
-                plan_text="delete the build dir",
-                requires_approval=True,
+                plan_text="delete the build dir" if start == "plan" else None,
+                requires_approval=start == "plan",
             )
 
         def submit_context(self, **kw: Any) -> bool:
@@ -127,14 +133,31 @@ def _llm_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *, ticks: int = 30
         def unsubscribe(self, *_a: Any, **_k: Any) -> None:
             return None
 
+    class _Bash(Tool):
+        name = "bash"
+        description = "stub"
+        input_schema: dict = {}
+
+        def execute(self, **kwargs: Any) -> Any:
+            raise AssertionError("a change request must never run the action")
+
+    registry = ToolRegistry()
+    registry.register(_Bash())
+    if start == "plan":
+        autonomy = AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS)
+    else:
+        autonomy = AutonomyController(
+            initial_level=AutonomyLevel.SUPERVISED,
+            supervision_policy=SupervisionPolicy(requires_confirmation={"bash"}, min_confidence_autonomous=0.0),
+        )
     AL.run_agentic_loop(
         PerceptionAgent(bus=_Bus()),
         _Env(str(tmp_path / "ws")),
         state,
         build_memory(),
         build_decision_engine(),
-        build_executor(ToolRegistry(), pain_bus=None, policy=TEST_POLICY),
-        autonomy_controller=AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
+        build_executor(registry, pain_bus=None, policy=TEST_POLICY),
+        autonomy_controller=autonomy,
         llm_worker=_Worker(),
         max_steps=ticks,
         target_hz=200.0,
@@ -148,9 +171,12 @@ def _inputs_of(submit: dict[str, Any]) -> list[str]:
     return [str(i) for i in (getattr(submit["context"], "cli_inputs", None) or [])]
 
 
-def test_in_llm_mode_a_change_request_is_submitted_once_with_the_original_action(monkeypatch, tmp_path):
-    submits, events = _llm_loop(monkeypatch, tmp_path)
-    assert [e for e, _ in events].count("plan_modify_requested") == 1
+@pytest.mark.parametrize("start", ["plan", "confirmation"])
+def test_in_llm_mode_a_change_request_is_submitted_once_with_the_original_action(monkeypatch, tmp_path, start):
+    """Both prompts' change requests: the plan prompt's (#1185) and the SUPERVISED confirmation's, stranded before."""
+    submits, events = _llm_loop(monkeypatch, tmp_path, start=start)
+    asked = "plan_modify_requested" if start == "plan" else "user_modification_request"
+    assert [e for e, _ in events].count(asked) == 1
     carrying = [s for s in submits if s.get("pending_modification")]
     assert len(carrying) == 1, [s.get("triggering_input") for s in submits]
     [mod_submit] = carrying

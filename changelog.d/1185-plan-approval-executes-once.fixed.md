@@ -14,16 +14,26 @@
     no aversion learned; none is worded "requires approval".
   - **Headless PLANNING runs now act, within the allow-list.** A headless (`--interactive false`) PLANNING run used
     to execute nothing, because its auto-approve was dead code. It now executes allow-listed tools and refuses
-    anything that needs a person ("it needs a person's approval, and this run is non-interactive"). The loop's own
-    "yes" is a machine approval: a plan is decided at once instead of being parked for nobody (each later plan used
-    to be refused while the first waited). At SUPERVISED, the non-interactive auto-yes to a confirmation is
-    refused the same way instead of running the action.
-  - At SUPERVISED the confidence floor is now checked before the allow-list, so a low-confidence action outside
-    the allow-list is a hard rejection, not a confirmation prompt.
-  - The default supervision policy's confidence floor is 0.7 (was 0.8), the router's default proposal confidence,
-    so the default policy no longer refuses the default proposal.
-  - A simulation's response-policy "yes" now takes the same path, and counts as human-involved in the audit log
-    as a confirmation's auto-yes already did.
+    anything that needs a person ("... needs a person's approval; this run answered its own prompt, and no person
+    did"). The loop's own "yes" is a machine approval: a plan is decided at once instead of being parked for nobody
+    (each later plan used to be refused while the first waited). At SUPERVISED, the non-interactive auto-yes to a
+    confirmation is refused the same way instead of running the action. An embedder that approves the PLANNING
+    queue itself registers as its approver (`ProposalQueue.register_approver`); its proposals then wait for it as
+    before, and its approvals count as a person's.
+  - Two confidence changes (owner-confirmed 2026-11-21):
+    - At SUPERVISED the confidence floor is now checked before the allow-list, so a low-confidence action outside
+      the allow-list is a hard rejection, not a confirmation prompt. Hard rejections book NAc, exactly as a
+      low-confidence allow-listed action already did.
+    - The default supervision policy's confidence floor is 0.7 (was 0.8), the router's default proposal
+      confidence, so the default policy no longer refuses the default proposal. This loosens the default for
+      `maxim.api` and the Console, which use the default policy.
+  - **A simulation's response policy now answers its gating prompts** (owner decision 2026-11-21). The loop was
+    handed the bridge's percept source, never the bridge, so the policy had never answered a confirmation or a
+    plan prompt; the adapter's own default "yes" did. Every sim now passes the bridge's policy explicitly
+    (`SimulationAdapter(response_policy=...)`, a required argument; `run_agentic_loop(response_policy=...)`). Its
+    "yes" takes the same approved path as a person's and counts as human-involved. An adapter with no policy (the
+    CLI scenario and interactive sims) answers nothing: what needs a person is refused, as in any run nobody
+    answers.
 - **A change request at a confirmation or plan prompt is no longer stranded** (#1185): the answer was stored with
   the original action, but nothing woke the loop or sent it, so it waited for the next unrelated input, and in
   substrate-primary mode nothing ever read it. With a model, it is now sent on the next turn, once, with the

@@ -136,7 +136,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2027
+      "lines": 2017
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -201,12 +201,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1892
-    },
-    {
-      "file": "src/maxim/simulation/report.py",
-      "qualname": "build_report",
-      "lines": 208
+      "lines": 1870
     },
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
@@ -406,7 +401,8 @@
     "_run_agentic_loop_body tightened 2138 -> 2114 on 2026-11-21 (#1185 Surface, rule T): the plan gate (the requires_approval check, the sim auto-resolve and the park) moved to LoopController.gate_plan_approval, paying for the handle_plan_approval call's new keywords (execute_and_learn, book_machine_refusal, observation, sim): an approved plan now executes once inside the handler through loop_planning.execute_approved_plan.",
     "_run_agentic_loop_body tightened 2114 -> 2109 on 2026-11-21 (#1185 delta round, rule T): the confirmation, timeout-retry and plan-approval calls became one LoopController.answer_pending_prompt call ahead of store_user_input (S9), paying for gate_plan_approval's new keywords; LLMWorker._process_request 225 -> 218: its timeout prompt moved to llm_worker._timeout_retry_message, paying for its new text.",
     "_run_agentic_loop_body tightened 2109 -> 2098 on 2026-11-21 (#1185, rule T): section 6's speech, maxim-keyword and hard-override meaningful-input checks moved to loop_perception.context_addresses_the_llm, paying for the requested-change trigger it now carries (pending_modification).",
-    "#1185 delta 3 (2026-11-21, rule T): _run_agentic_loop_body 2098 -> 2027 (section 4's PLANNING-queue block and SUPERVISED confirmation-park block moved to LoopController.queue_for_approval / park_confirmation, paying for the typed verdict, the answering source and the take_user_input sim_mode); run_interactive_sim 248 -> 244 (its /status block to interactive._show_status, paying for the agent-action count); start_simulation_mode 1895 -> 1892 (its /status counts to orchestrator._display_status_counts, likewise); build_report 209 -> 208 (its two action reads became one line on bridge.get_agent_actions)."
+    "#1185 delta 3 (2026-11-21, rule T): _run_agentic_loop_body 2098 -> 2027 (section 4's PLANNING-queue block and SUPERVISED confirmation-park block moved to LoopController.queue_for_approval / park_confirmation, paying for the typed verdict, the answering source and the take_user_input sim_mode); run_interactive_sim 248 -> 244 (its /status block to interactive._show_status, paying for the agent-action count); start_simulation_mode 1895 -> 1892 (its /status counts to orchestrator._display_status_counts, likewise); build_report 209 -> 208 (its two action reads became one line on bridge.get_agent_actions).",
+    "#1185 delta 4 (2026-11-21, rule T): _run_agentic_loop_body 2027 -> 2017 (section 4's autonomy-check log to agent_loop._log_autonomy_check, paying for the response_policy parameter and its forward to build_loop_run); start_simulation_mode 1892 -> 1870 (the AUT percept-source / audio-orient block to orchestrator._aut_percept_source_for, paying for the AUT loop's response_policy); build_report 208 -> 195, its entry removed (its tool-usage tally to report._tool_usage)."
   ],
   "touch_exemptions": [
     {

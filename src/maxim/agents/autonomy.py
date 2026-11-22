@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
-from maxim.utils.input_source import HUMAN_APPROVERS, InputSource
+from maxim.utils.input_source import HUMAN_APPROVERS, PLANNING_GATE_APPROVERS, InputSource, needs_person_detail
 
 if TYPE_CHECKING:  # llm_types imports this module at runtime: a runtime import here would be circular
     from maxim.agents.llm_types import LLMProposal
@@ -85,9 +85,17 @@ class ApprovalPattern:
 # reason a HUMAN approval satisfies (the tool is outside ``allowed_tools``, it requires confirmation, a CWD write,
 # a sandbox execute, the PLANNING level); ``refuse`` is a reason no approval lifts (the pause, a forbid, the
 # confidence floor). Replaces the substring match on "requires confirmation" / "requires approval".
-VERDICT_ALLOW = "allow"
-VERDICT_CONFIRM = "confirm"
-VERDICT_REFUSE = "refuse"
+class VerdictKind(str, Enum):
+    """An autonomy check's kind (``ActionVerdict.kind``)."""
+
+    ALLOW = "allow"
+    CONFIRM = "confirm"
+    REFUSE = "refuse"
+
+
+VERDICT_ALLOW = VerdictKind.ALLOW
+VERDICT_CONFIRM = VerdictKind.CONFIRM
+VERDICT_REFUSE = VerdictKind.REFUSE
 
 # Why an APPROVED action is still refused (``AutonomyController.approved_action_denial``), the typed
 # ``plan_refused`` reasons: the safety blocker, the confidence floor, and a reason only a person may satisfy when the
@@ -95,7 +103,6 @@ VERDICT_REFUSE = "refuse"
 APPROVAL_BLOCKED = "blocked"
 APPROVAL_NOT_PERMITTED = "not_permitted"
 APPROVAL_NEEDS_PERSON = "needs_person"
-NEEDS_PERSON_DETAIL = "it needs a person's approval, and this run is non-interactive"
 
 
 @dataclass(frozen=True)
@@ -106,9 +113,16 @@ class ActionVerdict:
 
     Runtime-ephemeral (returned and read in one call), so CC3 does not apply."""
 
-    kind: str
+    kind: VerdictKind
     reason: str | None = None
     satisfied_by: frozenset[InputSource] = frozenset()
+    # For a ``confirm``: what needs the approval, in plain words for the person ("a tool outside the allow-list").
+    cause: str = ""
+
+    def __post_init__(self) -> None:
+        """A ``confirm`` names who may satisfy it; ``allow`` and ``refuse`` name no one (#1185)."""
+        if (self.kind is VerdictKind.CONFIRM) != bool(self.satisfied_by):
+            raise ValueError(f"ActionVerdict {self.kind.value}: satisfied_by {sorted(self.satisfied_by)}")
 
     @property
     def allowed(self) -> bool:
@@ -374,10 +388,17 @@ class SupervisionPolicy:
             return ActionVerdict(VERDICT_REFUSE, f"Confidence {confidence:.2f} below threshold")
 
         if self.allowed_tools and tool_name not in self.allowed_tools:
-            return ActionVerdict(VERDICT_CONFIRM, f"Tool '{tool_name}' requires approval", HUMAN_APPROVERS)
+            return ActionVerdict(
+                VERDICT_CONFIRM,
+                f"Tool '{tool_name}' requires approval",
+                HUMAN_APPROVERS,
+                "A tool outside the allow-list",
+            )
 
         if tool_name in self.requires_confirmation:
-            return ActionVerdict(VERDICT_CONFIRM, f"Tool '{tool_name}' requires confirmation", HUMAN_APPROVERS)
+            return ActionVerdict(
+                VERDICT_CONFIRM, f"Tool '{tool_name}' requires confirmation", HUMAN_APPROVERS, f"{tool_name}"
+            )
 
         # Check sandbox/filesystem-specific policies
         params = action.get("params", {})
@@ -391,11 +412,18 @@ class SupervisionPolicy:
                 if self.sandbox_write_auto_approve:
                     return ActionVerdict(VERDICT_ALLOW)
             elif self.cwd_write_requires_approval:
-                return ActionVerdict(VERDICT_CONFIRM, "CWD write requires approval in supervised mode", HUMAN_APPROVERS)
+                return ActionVerdict(
+                    VERDICT_CONFIRM,
+                    "CWD write requires approval in supervised mode",
+                    HUMAN_APPROVERS,
+                    "A write outside the workspace",
+                )
 
         if tool_name == "execute_file":
             if self.sandbox_execute_requires_approval:
-                return ActionVerdict(VERDICT_CONFIRM, "Sandbox execution requires approval", HUMAN_APPROVERS)
+                return ActionVerdict(
+                    VERDICT_CONFIRM, "Sandbox execution requires approval", HUMAN_APPROVERS, "Running a file"
+                )
 
         return ActionVerdict(VERDICT_ALLOW)
 
@@ -418,6 +446,21 @@ class ProposalQueue:
         self._approved_patterns: list[ApprovalPattern] = []
         self._lock = threading.Lock()
         self._expiry_seconds = expiry_seconds
+        self._approvers: set[str] = set()
+
+    def register_approver(self, name: str) -> None:
+        """Declare that an embedder approves this queue itself (#1185 owner decision C, 2026-11-21): a REQUIRED,
+        explicit call, never inferred from listeners. With one registered, a non-interactive run leaves its
+        proposals queued for that approver (as before) instead of the loop's machine auto-approve, and the
+        embedder's ``approve`` is a person's (``InputSource.OPERATOR``, the default source)."""
+        with self._lock:
+            self._approvers.add(name)
+
+    @property
+    def has_approver(self) -> bool:
+        """Whether an embedder registered to approve this queue (``register_approver``)."""
+        with self._lock:
+            return bool(self._approvers)
 
     def submit(self, proposal: Proposal) -> None:
         """Queue proposal for human review."""
@@ -767,7 +810,7 @@ class AutonomyController:
         if verdict.kind == VERDICT_REFUSE:
             return APPROVAL_NOT_PERMITTED, str(verdict.reason)
         if verdict.kind == VERDICT_CONFIRM and approver not in verdict.satisfied_by:
-            return APPROVAL_NEEDS_PERSON, NEEDS_PERSON_DETAIL
+            return APPROVAL_NEEDS_PERSON, needs_person_detail(verdict.cause or "This action", approver)
         return None
 
     def _level_verdict(self, action: dict[str, Any], *, confidence: float | None, approved: bool) -> ActionVerdict:
@@ -782,7 +825,8 @@ class AutonomyController:
             return ActionVerdict(
                 VERDICT_CONFIRM,
                 "PLANNING mode requires human approval for all actions",
-                frozenset(InputSource),  # the PLANNING gate: any approval lifts it, a machine's included
+                PLANNING_GATE_APPROVERS,  # the PLANNING gate: any approval lifts it, a machine's included
+                "Any action at PLANNING",
             )
         if level in (AutonomyLevel.PLANNING, AutonomyLevel.SUPERVISED):
             return self.supervision_policy.verdict(action, confidence=confidence)

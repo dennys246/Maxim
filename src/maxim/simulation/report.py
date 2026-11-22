@@ -397,6 +397,26 @@ def _provider_failures(llm_router: Any | None) -> dict[str, dict[str, Any]]:
     return provider_failures
 
 
+def _tool_usage(all_actions: list[Any]) -> tuple[dict[str, int], dict[str, float], list[str]]:
+    """The report's tool usage breakdown: counts, success rates and the words said (moved verbatim out of
+    ``build_report``, rule T for #1185). ``all_actions`` is the agent's (synthetic markers left out)."""
+    tool_counts: dict[str, int] = {}
+    tool_successes: dict[str, int] = {}
+    response_texts: list[str] = []
+
+    for a in all_actions:
+        tool_counts[a.tool_name] = tool_counts.get(a.tool_name, 0) + 1
+        if a.result_success:
+            tool_successes[a.tool_name] = tool_successes.get(a.tool_name, 0) + 1
+        if a.utterance:  # the words, not respond's receipt (#1261)
+            response_texts.append(a.utterance[:500])
+
+    tool_rates = {}
+    for tool, count in tool_counts.items():
+        tool_rates[tool] = round(tool_successes.get(tool, 0) / count, 3) if count else 0.0
+    return tool_counts, tool_rates, response_texts
+
+
 def build_report(
     *,
     goal: str,
@@ -434,23 +454,10 @@ def build_report(
     if session_id is None:
         session_id = time.strftime("%Y%m%d_%H%M%S")
 
-    all_actions, blocked = bridge.get_agent_actions(), [a for a in bridge.get_agent_actions() if a.blocked]
+    all_actions = bridge.get_agent_actions()  # synthetic markers left out (#1185)
+    blocked = [a for a in all_actions if a.blocked]
 
-    # Tool usage breakdown
-    tool_counts: dict[str, int] = {}
-    tool_successes: dict[str, int] = {}
-    response_texts: list[str] = []
-
-    for a in all_actions:
-        tool_counts[a.tool_name] = tool_counts.get(a.tool_name, 0) + 1
-        if a.result_success:
-            tool_successes[a.tool_name] = tool_successes.get(a.tool_name, 0) + 1
-        if a.utterance:  # the words, not respond's receipt (#1261)
-            response_texts.append(a.utterance[:500])
-
-    tool_rates = {}
-    for tool, count in tool_counts.items():
-        tool_rates[tool] = round(tool_successes.get(tool, 0) / count, 3) if count else 0.0
+    tool_counts, tool_rates, response_texts = _tool_usage(all_actions)  # Tool usage breakdown
 
     # AUT cognitive state
     aut_memories = 0

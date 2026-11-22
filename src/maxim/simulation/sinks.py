@@ -37,6 +37,13 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
+# The loop's own records, not actions the agent took (``ActionRecord.is_synthetic``, #1185).
+GATING_PROMPT = "_gating_prompt"  # a gating prompt shown to a simulated person (``SimulationAdapter.emit_prompt``)
+LLM_UNAVAILABLE = "_llm_unavailable"  # the agent loop's LLM-stall marker (it breaks the bridge's settle loop)
+DELIBERATION_NOOP = "_deliberation_noop"  # ``RecordingSink.record_noop``'s marker
+SYNTHETIC_TOOL_NAMES: frozenset[str] = frozenset({GATING_PROMPT, LLM_UNAVAILABLE, DELIBERATION_NOOP})
+
+
 @dataclass(frozen=True)
 class ActionRecord:
     """Captured output action from the agent pipeline.
@@ -100,10 +107,10 @@ class ActionRecord:
 
     @property
     def is_synthetic(self) -> bool:
-        """A marker the loop records, not an action the agent took (#1185): a ``_``-prefixed tool name
-        (``_gating_prompt``, ``_llm_unavailable``, ``_deliberation_noop``). It still shows the bridge activity (the
-        settle loop, a turn's words), but every count, budget and success rate leaves it out."""
-        return self.tool_name.startswith("_")
+        """A marker the loop records, not an action the agent took (#1185): one of ``SYNTHETIC_TOOL_NAMES``, by
+        name (never a ``_`` prefix, so a dynamic or MCP tool named ``_x`` still counts). It still shows the bridge
+        activity (the settle loop, a turn's words), but every count, budget and success rate leaves it out."""
+        return self.tool_name in SYNTHETIC_TOOL_NAMES
 
 
 @runtime_checkable
@@ -226,7 +233,7 @@ class RecordingSink:
         self.record(
             ActionRecord(
                 timestamp=_time.time(),
-                tool_name="_deliberation_noop",
+                tool_name=DELIBERATION_NOOP,
                 result_success=True,
                 result_output=reason or "deliberation tick — no externalized output",
             )

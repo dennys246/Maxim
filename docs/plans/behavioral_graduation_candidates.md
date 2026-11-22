@@ -244,16 +244,38 @@ update.
 
 ### Trigger walk — 2026-11-21, #1185 (synthetic action records leave every count)
 
-`ActionRecord.is_synthetic` (a `_`-prefixed tool name: `_gating_prompt`, `_llm_unavailable`, `_deliberation_noop`) now
-keeps loop-made markers out of every count a run reports (owner decision 2026-11-21): the report's `total_actions`,
+`ActionRecord.is_synthetic` (by name: `_gating_prompt`, `_llm_unavailable`, `_deliberation_noop`) now keeps
+loop-made markers out of every count a run reports (owner decision 2026-11-21): the report's `total_actions`,
 `tool_usage` and `tool_success_rates`, the substrate action budget (`SimulationBridge.substrate_action_allowed`), the
-stall detector, validation's action-count and variance checks, and the cli / interactive / orchestrator totals.
-`actions.jsonl` stays complete. **A run that recorded any such marker is not comparable on those numbers with a report
-from before c95a35c8.** Rows checked: no T1 row's metric is an action count or a tool success rate. T1-8 cites "~60
-near-balanced turn actions per mother-turn" as apparatus context for its plateau, not as its metric, and T1-13 cites
-`tool_success_rates` inside a walk note about the statistician; neither row's gate reads the changed numbers, and
-substrate-primary runs record no such markers (no production caller of `record_noop`; `_llm_unavailable` is LLM-mode
-only), so no row's trigger fires and no re-run is owed. Re-check this if a row ever adopts a report action count or
+bridge's settle cap and spinner, the stall detector, validation's action-count and variance checks, and the cli /
+interactive / orchestrator totals. `actions.jsonl` stays complete. **A run that recorded any such marker is not
+comparable on those numbers with a report from before c95a35c8.** Markers arise at a gating prompt (which no T1
+harness raises) and on an LLM stall (`_llm_unavailable`, LLM-mode AUTs only).
+
+*Corrected 2026-11-21 (delta-4 review): the first version of this note said no T1 row's metric reads these numbers.
+One does.*
+
+- **T1-2** (Exp 37, already STALE): its corroborating metric `tool_class_diversity` is
+  `len(report["tool_usage"])` (`scripts/benchmark_cross_session.py`, read by `scripts/analyze_exp37.py`
+  `CORROBORATING_METRICS`), and `per_action_rate` divides by the `actions.jsonl` record count. The committed rows
+  were computed with markers included. Five carry a `_llm_unavailable` key in `tool_usage`, so their
+  `tool_class_diversity` counts it: `37_heartbeat_1.1_qwen32b.jsonl` rows 14, 23, 28 and 37 (arms B-wire-a-off, C,
+  B-nac-bias-off and B; seeds 44-46) and `38_results_deepseek.jsonl` row 55 (arm B, seed 47).
+  `37_results_invalid_llm_outage.jsonl` is invalid anyway. Every other committed Exp 37/38/40 row has no marker and
+  is comparable. A re-run of a marker row under the new code reads one lower on `tool_class_diversity`.
+  `per_action_rate`'s denominator now leaves the markers out too (`benchmark_cross_session.py`), so the two stay
+  consistent.
+- **B4** (`docs/experiments/b4_exp37_floors_prereg.md`): unaffected. A gated row needs `_llm_unavailable` = 0, and
+  one voids the fire, so no row it can gate on carries a marker.
+- **The L8 re-fire** (the owed Exp 37 Qwen32B re-fire): it runs under B4's rule above, so it is comparable with
+  B4's floors. It is not comparable with the four heartbeat marker rows above on `tool_class_diversity`.
+- **`docs/experiments/narrator_defects_reassessment.md`'s `tool_usage` recount**: it was recomputed from the
+  committed files, which include markers. It stands as a statement about those records. It is not comparable with a
+  recount from post-c95a35c8 reports in the arms that had an `_llm_unavailable`.
+- T1-8 cites "~60 near-balanced turn actions per mother-turn" as apparatus context, not as its metric, and T1-13
+  cites `tool_success_rates` inside a walk note about the statistician. Neither gate reads the changed numbers.
+
+No row's trigger fires, so no re-run is owed. Re-check this if a row adopts a report action count, `tool_usage` or a
 success rate as its metric.
 
 ### Trigger walk — 2026-11-09, #1620 (the content keys converge a word's inflections)

@@ -401,6 +401,23 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     return held
 
 
+def _log_autonomy_check(action: dict[str, Any], can_execute: bool, reason: Any, confidence: Any) -> None:
+    """§4's autonomy-check log line and event (moved verbatim out of ``_run_agentic_loop_body``, rule T for #1185)."""
+    logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
+
+    # Log autonomy check
+    log_agentic(
+        "agent_loop",
+        "autonomy_check",
+        {
+            "tool": action.get("tool_name"),
+            "can_execute": can_execute,
+            "reason": reason if not can_execute else None,
+            "confidence": confidence,
+        },
+    )
+
+
 def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:
     """The input a §6 submit answers: the new input, else the follow-up's original query, else a pending plan
     modification's text (moved out of ``_run_agentic_loop_body``, rule T for #1451)."""
@@ -972,6 +989,7 @@ def run_agentic_loop(
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
+    response_policy: Any | None = None,  # the sim's ResponsePolicy (the bridge's); None: answers no prompt (#1185)
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
@@ -1049,6 +1067,7 @@ def run_agentic_loop(
             use_tool_prompting=use_tool_prompting,
             protocol_registry=protocol_registry,
             percept_source=percept_source,
+            response_policy=response_policy,
             action_sink=action_sink,
             pain_bus=pain_bus,
             imagination_trigger=imagination_trigger,
@@ -1115,6 +1134,7 @@ def _run_agentic_loop_body(
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
+    response_policy: Any | None = None,  # the sim's ResponsePolicy (the bridge's); None: answers no prompt (#1185)
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
@@ -1200,6 +1220,7 @@ def _run_agentic_loop_body(
         use_tool_prompting=use_tool_prompting,
         protocol_registry=protocol_registry,
         percept_source=percept_source,
+        response_policy=response_policy,
         action_sink=action_sink,
         pain_bus=pain_bus,
         aut_mode=aut_mode,
@@ -2227,19 +2248,7 @@ def _run_agentic_loop_body(
             _verdict = autonomy_controller.action_verdict(action, confidence=confidence)  # typed (#1185)
             can_execute, reason = _verdict.allowed, _verdict.reason
 
-            logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
-
-            # Log autonomy check
-            log_agentic(
-                "agent_loop",
-                "autonomy_check",
-                {
-                    "tool": action.get("tool_name"),
-                    "can_execute": can_execute,
-                    "reason": reason if not can_execute else None,
-                    "confidence": confidence,
-                },
-            )
+            _log_autonomy_check(action, can_execute, reason, confidence)  # moved out (rule T, #1185)
 
             if can_execute:
                 # Execute it and book what it teaches: ONE function for every path that runs an action

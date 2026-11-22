@@ -200,9 +200,10 @@ _POLICY = dict(
     requires_confirmation={"confirm_me"},
 )
 
-# (action, confidence) -> can_execute's (decision, message), as on ``main`` before hard_deny was extracted (the
-# same table passes against the pre-#1085 code). Order matters: a prefix beats a category beats a forbid beats
-# the allowed list beats confidence beats confirmation beats the write/execute rules.
+# (action, confidence) -> can_execute's (decision, message). Order matters: a prefix beats a category beats a
+# forbid beats confidence beats the allowed list beats confirmation beats the write/execute rules. (#1185 moved the
+# confidence floor ahead of the allowed list, a refusal no approval lifts, so a low-confidence tool outside the
+# list is refused, not asked about: the row with both below. Before, the allowed list came first.)
 _MATRIX = [
     ({"tool_name": "probe"}, 0.9, (True, None)),
     ({"tool_name": "pre_x"}, 0.9, (False, "Tool 'pre_x' blocked by prefix rule: pre_")),
@@ -210,6 +211,7 @@ _MATRIX = [
     ({"tool_name": "banned"}, 0.9, (False, "Tool 'banned' is forbidden")),
     ({"tool_name": "elsewhere"}, 0.9, (False, "Tool 'elsewhere' requires approval")),
     ({"tool_name": "slow_tool"}, 0.1, (False, "Confidence 0.10 below threshold")),
+    ({"tool_name": "elsewhere"}, 0.1, (False, "Confidence 0.10 below threshold")),  # both: the floor wins
     ({"tool_name": "confirm_me"}, 0.9, (False, "Tool 'confirm_me' requires confirmation")),
     (
         {"tool_name": "write_file", "params": {"path": "/etc/x"}},

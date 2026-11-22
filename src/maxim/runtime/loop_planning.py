@@ -318,7 +318,7 @@ def _abort_drain(queue: Any, exc: BaseException, *, refuser: _Refuser) -> None:
 def refusal_message(tool_name: str, reason: str, detail: str) -> str:
     """What the person is told when an approved (or waiting) action does not run (#1185). Never "requires
     approval": a person's approval satisfies every such reason, and a machine approval's is worded as
-    ``NEEDS_PERSON_DETAIL``."""
+    ``utils/input_source.py::needs_person_detail`` (from the cause and who approved)."""
     if reason == AWAITING_HUMAN:
         return f"A new plan for {tool_name} was set aside: {detail}."
     return f"{tool_name} was approved but not run: {detail}."

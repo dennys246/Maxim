@@ -158,7 +158,8 @@ def take_user_input(observation: Any, state: Any, agent: Any, *, sim_mode: bool)
     One input is taken per tick (#1185): the loop's own reply first (``LOOP_REPLY_SLOT``, the answer to a pending
     prompt; a person's mailbox input then waits in its slot), else the oldest waiting entry in
     ``DEFERRED_INPUT_SLOT``, then this tick's arrivals in channel order. Every arrival not taken waits there (FIFO),
-    so nothing is dropped, a voice turn included, and a steady stream cannot overtake older words.
+    a voice turn included, so a steady stream cannot overtake older words. One input is still dropped, unchanged:
+    a person's ``pending_cli_input`` that arrives in the same tick as an observation's ``cli_input`` is discarded.
     """
     transcript, hard_override, obs_cli = _observation_fields(observation)
     loop_reply = state.data.pop("pending_loop_reply", None)  # LOOP_REPLY_SLOT

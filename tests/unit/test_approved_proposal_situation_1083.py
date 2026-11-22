@@ -12,8 +12,9 @@ situation key as the autonomous path. Deleting the ``source=`` assignment fails 
 Driven through the real loop: substrate-primary (so no LLM worker is needed) with the substrate
 proposer replaced by one that returns a proposal carrying clusters, and a PLANNING controller
 whose queue is approved the moment the loop submits to it — standing in for the human (or
-embedder) who calls ``proposal_queue.approve``. The loop's own non-interactive auto-approve cannot
-serve: ``plan_approval`` is a critical context, so ``should_prompt`` is True in every mode.
+embedder) who calls ``proposal_queue.approve``. The loop's own non-interactive auto-approve is a MACHINE approval
+(#1185): it lifts only the PLANNING gate and fires only when no embedder registered to approve the queue
+(``ProposalQueue.register_approver``), so it cannot stand in for a person here.
 """
 
 from __future__ import annotations
@@ -89,6 +90,7 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
     controller = AutonomyController()
     assert controller.current_level == AutonomyLevel.PLANNING
     queue = controller.proposal_queue
+    queue.register_approver("test:operator")  # the operator approves the queue (#1185 decision C)
     real_submit = queue.submit
 
     def _submit_and_approve(proposal):

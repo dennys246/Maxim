@@ -23,6 +23,8 @@
     every loop-made marker (`ActionRecord.is_synthetic`: `_gating_prompt`, `_llm_unavailable`,
     `_deliberation_noop`) is left out. A run that recorded any such marker is not comparable on those numbers with
     earlier reports; `actions.jsonl` stays complete.
-- **A failing simulation response policy no longer approves** (#1723): `SimulationAdapter.resolve_plan_approval`,
-  `resolve_confirmation` and `resolve_timeout_retry` swallowed any error from the bridge's policy and answered
-  "yes"; the error now propagates.
+- **A simulation adapter no longer answers "yes" on its own** (#1723): `SimulationAdapter.resolve_plan_approval`,
+  `resolve_confirmation` and `resolve_timeout_retry` answered "yes" whenever the bridge's policy could not be
+  reached, which in production was always (the adapter was handed the bridge's percept source, never the bridge),
+  and also swallowed any error from the policy into that "yes". They now ask the policy the sim passes explicitly,
+  a failing policy's error propagates, and an adapter with no policy answers nothing.

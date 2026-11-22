@@ -378,7 +378,10 @@ class ObserveActionsTool(Tool):
         return ToolOutput(
             success=True,
             output={
-                "total_actions": len(self._bridge.get_agent_actions()),
+                # ``total_actions`` is the history's length, the space ``since_index`` and each ``index`` count in
+                # (markers included: the AUT's re-asked prompts are in it); ``agent_actions`` leaves the markers out.
+                "total_actions": len(self._bridge.get_all_actions()),
+                "agent_actions": len(self._bridge.get_agent_actions()),
                 "returned": len(summaries),
                 "since_index": since,
                 "actions": summaries,
@@ -1610,6 +1613,7 @@ class SpawnSubSimulationTool(Tool):
                     stop_event=self._stop_event,
                     target_hz=2.0,
                     percept_source=sub_bridge.percept_source,
+                    response_policy=sub_bridge.response_policy,  # the sim's answers to gating prompts (#1185)
                     action_sink=sub_bridge.action_sink,
                     state_home=self._sim_tmpdir,  # the parent sim's sandbox: the state file goes with it (#1264)
                 )

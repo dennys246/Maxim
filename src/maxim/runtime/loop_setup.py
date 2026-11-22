@@ -245,14 +245,22 @@ def _resolve_situation_cue(memory_hub: Any) -> Any:
 
 
 def _build_sim_adapter(
-    *, percept_source: Any, action_sink: Any, pain_bus: Any, sim_adapter: Any, executor: Any
+    *,
+    percept_source: Any,
+    response_policy: Any,
+    action_sink: Any,
+    pain_bus: Any,
+    sim_adapter: Any,
+    executor: Any,
 ) -> SimulationAdapter | NullSimulationAdapter:
     # Create simulation adapter (Phase 4: isolate sim concerns)
     from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
 
     sim: SimulationAdapter | NullSimulationAdapter
     if percept_source is not None:
-        sim = SimulationAdapter(percept_source, action_sink, pain_bus)
+        # The sim's response policy, passed explicitly (#1185 owner decision A): the loop is handed the bridge's
+        # percept source, never the bridge, so the adapter could not find the policy itself.
+        sim = SimulationAdapter(percept_source, action_sink, pain_bus, response_policy=response_policy)
         # Wire tool registry for deregistered-tool filtering in should_skip_fallback_proposal
         if executor is not None and hasattr(executor, "registry"):
             sim._tool_registry = executor.registry
@@ -502,6 +510,7 @@ def build_loop_run(
     use_tool_prompting: bool,
     protocol_registry: Any | None,
     percept_source: Any | None,
+    response_policy: Any | None,
     action_sink: Any | None,
     pain_bus: Any | None,
     aut_mode: str,
@@ -534,6 +543,7 @@ def build_loop_run(
 
     sim = _build_sim_adapter(
         percept_source=percept_source,
+        response_policy=response_policy,
         action_sink=action_sink,
         pain_bus=pain_bus,
         sim_adapter=sim_adapter,

@@ -36,11 +36,16 @@ callers; do not rename without a deprecation cycle.
 
 Sim-specific coupling lives in two places intentionally:
 - ``resolve_confirmation`` / ``resolve_plan_approval`` /
-  ``resolve_timeout_retry`` use ``isinstance(...,SimulationBridge)`` to
-  reach the bridge's ``response_policy``. A non-sim adapter without a
-  bridge falls through to the default ``return "yes"`` (auto-approve)
-  or ``return None`` (no-resolve), both of which are sensible defaults
-  for an external adapter that handles confirmations itself.
+  ``resolve_timeout_retry`` ask the sim's response policy, which every
+  sim passes to the adapter explicitly (``response_policy=``, a REQUIRED
+  keyword; #1185 owner decision A, 2026-11-21). The loop is handed the
+  bridge's ``percept_source`` (a ``ConversationalSource``), never the
+  ``SimulationBridge``, so the earlier ``isinstance(percept_source,
+  SimulationBridge)`` lookup never matched in production and the policy
+  never answered a prompt (CC8, pre-existing); the adapter's own default
+  "yes" answered instead. An adapter with no policy (``None``) answers
+  nothing: its prompts are the loop's to settle (``answer_source()`` is
+  ``LOOP``), and a reason that needs a person is refused.
 - ``_tool_registry`` is set by the orchestrator for deregistered-tool
   filtering; non-sim adapters leave it ``None`` and skip the filter.
 """
@@ -50,11 +55,13 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING, Any
 
 from maxim.utils.input_source import InputSource
-from typing import Any
-
 from maxim.utils.structured_logging import log_agentic
+
+if TYPE_CHECKING:
+    from maxim.simulation.response_policy import ResponsePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +74,12 @@ class SimulationAdapter:
         percept_source: Any,
         action_sink: Any | None = None,
         pain_bus: Any | None = None,
+        *,
+        response_policy: ResponsePolicy | None,
     ) -> None:
+        # The sim's response policy (the bridge's), or None: answers no gating prompt. Required, so a sim cannot
+        # forget it into the old silent default "yes" (#1185).
+        self.response_policy = response_policy
         self.percept_source = percept_source
         self.action_sink = action_sink
         self.pain_bus = pain_bus
@@ -220,65 +232,40 @@ class SimulationAdapter:
         return False
 
     def resolve_confirmation(self, confirmation: dict[str, Any]) -> str | None:
-        """Auto-resolve confirmation prompts using the bridge's response policy.
-
-        CC8 audit (2026-04-29): the ``isinstance`` check below is the
-        orchestrator-coupled escape hatch documented in the module
-        docstring. A non-sim adapter (no ``SimulationBridge``) falls
-        through to the default ``"yes"`` — it owns confirmation
-        resolution itself and does not need to plug into the bridge's
-        response policy. A previous draft probed
-        ``self.percept_source._bridge`` as a fallback for a
-        ``ConversationalSource``-with-policy shape that was never
-        actually wired (no producer ever set ``_bridge`` on a percept
-        source); the dead branch was removed during the CC8 fold round.
-        """
-        from maxim.simulation.bridge import SimulationBridge
-
-        # A failing response policy raises (#1723): it used to fall through to the "yes" below, so any
-        # error in the bridge's policy approved the action.
-        if isinstance(self.percept_source, SimulationBridge):
-            return self.percept_source.response_policy.resolve_confirmation(confirmation)
-        # Default: auto-approve in sim mode
-        return "yes"
+        """The sim policy's answer to a confirmation prompt, or ``None`` (no policy). A failing policy raises
+        (#1723): it used to fall through to a default "yes", so any error in it approved the action."""
+        if self.response_policy is None:
+            return None
+        return self.response_policy.resolve_confirmation(confirmation)
 
     def resolve_plan_approval(self, plan_text: str | None) -> str | None:
-        """Auto-resolve plan approval prompts."""
-        from maxim.simulation.bridge import SimulationBridge
+        """The sim policy's answer to a plan-approval prompt, or ``None`` (no policy). A failing policy raises."""
+        if self.response_policy is None:
+            return None
+        return self.response_policy.resolve_plan_approval(plan_text)
 
-        # A failing response policy raises (#1723): it used to fall through to the "yes" below, so any
-        # error in the bridge's policy approved the action.
-        if isinstance(self.percept_source, SimulationBridge):
-            return self.percept_source.response_policy.resolve_plan_approval(plan_text)
-        return "yes"
+    def resolve_timeout_retry(self, timeout_s: float) -> str | None:
+        """The sim policy's answer to a timeout-retry prompt, or ``None`` (no policy). A failing policy raises."""
+        if self.response_policy is None:
+            return None
+        return self.response_policy.resolve_timeout_retry(timeout_s)
 
     def answer_source(self) -> InputSource:
-        """Who a ``resolve_*`` answer comes from (#1185): the bridge's response policy is the sim's (human-involved,
-        owner decision B); the default "yes" an adapter with no bridge returns is the loop's own."""
-        from maxim.simulation.bridge import SimulationBridge
-
-        return InputSource.SIM if isinstance(self.percept_source, SimulationBridge) else InputSource.LOOP
+        """Who a ``resolve_*`` answer comes from, the one place both prompts read it (#1185): the sim's policy is
+        ``SIM`` (human-involved, owner decision B); with no policy nothing answers, and a prompt the loop settles
+        itself is ``LOOP``."""
+        return InputSource.SIM if self.response_policy is not None else InputSource.LOOP
 
     def emit_prompt(self, text: str) -> None:
         """Put a gating prompt (a re-ask, a parked plan) on the sim's channel (#1185): the simulated person reads
         the AUT's words from the action sink (``ActionRecord.utterance``), never from the terminal."""
         if self.action_sink is None:
             return
-        from maxim.simulation.sinks import ActionRecord
+        from maxim.simulation.sinks import GATING_PROMPT, ActionRecord
 
         self.action_sink.record(
-            ActionRecord(timestamp=time.time(), tool_name="_gating_prompt", result_success=True, utterance=text)
+            ActionRecord(timestamp=time.time(), tool_name=GATING_PROMPT, result_success=True, utterance=text)
         )
-
-    def resolve_timeout_retry(self, timeout_s: float) -> str | None:
-        """Auto-resolve timeout retry prompts."""
-        from maxim.simulation.bridge import SimulationBridge
-
-        # A failing response policy raises (#1723): it used to fall through to the "yes" below, so any
-        # error in the bridge's policy approved the action.
-        if isinstance(self.percept_source, SimulationBridge):
-            return self.percept_source.response_policy.resolve_timeout_retry(timeout_s)
-        return "yes"
 
 
 class NullSimulationAdapter:

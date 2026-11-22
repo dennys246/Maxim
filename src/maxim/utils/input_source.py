@@ -16,7 +16,8 @@ from enum import Enum
 class InputSource(str, Enum):
     """Who an input came from."""
 
-    OPERATOR = "operator"  # a person: the interactive CLI / API / robot mailbox, a wake-word voice turn
+    OPERATOR = "operator"  # a person: the interactive CLI / API / robot mailbox
+    VOICE = "voice"  # a person by voice (a wake-word turn); reserved for the voice-turn gate (#1519), no reader yet
     SIM = "sim"  # a simulation: its narrator's words, or its response policy's answer (human-involved, decision B)
     LOOP = "loop"  # the loop answering itself: the non-interactive auto-yes, an adapter's default "yes"
     SELF = "self"  # the agent's own tool result (an ``[ACTION_FOLLOWUP`` line)
@@ -24,5 +25,25 @@ class InputSource(str, Enum):
 
 
 # Who may satisfy a reason that needs a human's approval (a confirmable autonomy reason). The loop's own reply
-# never does: a machine auto-approve lifts only the PLANNING gate.
-HUMAN_APPROVERS: frozenset[InputSource] = frozenset({InputSource.OPERATOR, InputSource.SIM})
+# never does: a machine auto-approve lifts only the PLANNING gate. Listed member by member, never derived from the
+# enum, so adding a source can never lift a gate by accident.
+HUMAN_APPROVERS: frozenset[InputSource] = frozenset({InputSource.OPERATOR, InputSource.SIM, InputSource.VOICE})
+# Who may lift the PLANNING level gate alone: any approval, a machine's included (the loop's own reply). Not SELF
+# (the agent's own tool result) and not UNKNOWN.
+PLANNING_GATE_APPROVERS: frozenset[InputSource] = HUMAN_APPROVERS | frozenset({InputSource.LOOP})
+
+# How an approver that cannot satisfy a reason is named to the person (``needs_person_detail``).
+_WHO = {
+    InputSource.LOOP: "this run answered its own prompt, and no person did",
+    InputSource.SELF: "the agent's own output answered the prompt, and no person did",
+    InputSource.UNKNOWN: "the prompt's answer came from no known person",
+    InputSource.OPERATOR: "the operator's answer cannot satisfy it",
+    InputSource.SIM: "the simulation's answer cannot satisfy it",
+    InputSource.VOICE: "a voice answer cannot satisfy it",
+}
+
+
+def needs_person_detail(cause: str, approver: InputSource) -> str:
+    """Why an approved action needs a person, from its cause and who approved it (#1185): true for the loop's own
+    non-interactive answer, an interactive run nobody answered, and a future voice-only reason alike."""
+    return f"{cause} needs a person's approval; {_WHO.get(approver, 'no person approved it')}"
