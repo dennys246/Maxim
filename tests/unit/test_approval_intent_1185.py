@@ -888,6 +888,28 @@ def test_a_sim_that_does_not_say_its_policy_is_refused() -> None:
     assert _build_sim_adapter(percept_source=None, response_policy=RESPONSE_POLICY_UNSET, **kwargs).is_sim_mode is False
 
 
+def test_a_policy_without_a_sim_is_refused_not_dropped() -> None:
+    """Delta-6 review: a ``response_policy`` given without a ``percept_source`` is no sim, so the policy would be
+    dropped without a word; it is a ``TypeError`` instead."""
+    from maxim.runtime.loop_setup import _build_sim_adapter
+    from maxim.simulation.response_policy import auto_approve
+
+    kwargs = dict(action_sink=None, pain_bus=None, sim_adapter=None, executor=None)
+    with pytest.raises(TypeError, match="no sim"):
+        _build_sim_adapter(percept_source=None, response_policy=auto_approve(), **kwargs)
+    assert _build_sim_adapter(percept_source=None, response_policy=None, **kwargs).is_sim_mode is False
+
+
+def test_an_ask_orchestrator_policy_is_refused_until_it_has_a_route() -> None:
+    """Delta-6 review: the loop reads a policy's None as "no answer" and answers itself in OFF mode, so a policy
+    that defers to the orchestrator would be overridden; the adapter refuses it."""
+    from maxim.runtime.sim_adapter import SimulationAdapter
+    from maxim.simulation.response_policy import ask_orchestrator
+
+    with pytest.raises(ValueError, match="ASK_ORCHESTRATOR"):
+        SimulationAdapter(object(), response_policy=ask_orchestrator())
+
+
 # ── Delta 6: the machine retries twice, then stops; a timeout's answer finds its own prompt ──────────────
 
 

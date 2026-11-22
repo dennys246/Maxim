@@ -273,6 +273,11 @@ def _build_sim_adapter(
             "run_agentic_loop(percept_source=...) is a sim: pass response_policy= explicitly, the sim's "
             "ResponsePolicy (the bridge's), or None with the reason it has none (#1185)"
         )
+    if percept_source is None and response_policy is not RESPONSE_POLICY_UNSET and response_policy is not None:
+        raise TypeError(
+            "run_agentic_loop(response_policy=...) answers a sim's gating prompts, and a run without percept_source= "
+            "is no sim: the policy would be dropped (#1185)"
+        )
     if percept_source is not None:
         # The sim's response policy, passed explicitly (#1185 owner decision A): the loop is handed the bridge's
         # percept source, never the bridge, so the adapter could not find the policy itself.
