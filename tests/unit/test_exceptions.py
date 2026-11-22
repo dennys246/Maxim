@@ -194,3 +194,75 @@ class TestCatchAllMaximError:
         for error in errors:
             with pytest.raises(MaximError):
                 raise error
+
+
+class TestKeywordOnlyExceptionsRoundTrip:
+    """Exceptions whose ``__init__`` takes keyword-only fields pickle and copy faithfully (#1621 delta review):
+    the default ``BaseException.__reduce__`` calls ``cls(*args)``, which a keyword-only ``__init__`` refuses with a
+    ``TypeError``, so such an error could not cross a process boundary or be copied."""
+
+    @staticmethod
+    def _cases() -> list[BaseException]:
+        from pathlib import Path
+
+        from maxim.exceptions import CampaignUnloadable, KeyFileUnusable
+        from maxim.tunnel.keys import LeaderKeyError, LeaderKeyMissing, LocalServerKeyError
+
+        key = Path("/tmp/k")
+        return [
+            CampaignUnloadable(campaign="c.yaml", reason="c.yaml: percept 1 has no cli_input line"),
+            KeyFileUnusable(path=key, reason="mode 0644", fix_hint="chmod 600"),
+            LeaderKeyError(path=key, reason="empty"),  # a subclass with its own keyword-only __init__
+            LeaderKeyMissing(path=key),  # narrows the signature to path= only
+            LocalServerKeyError(path=key, reason="empty"),  # rewrites message and args after __init__
+        ]
+
+    @pytest.mark.parametrize("how", ["pickle", "copy", "deepcopy"])
+    def test_round_trip_keeps_type_message_and_fields(self, how: str) -> None:
+        import copy
+        import pickle
+
+        rebuild = {
+            "pickle": lambda e: pickle.loads(pickle.dumps(e)),
+            "copy": copy.copy,
+            "deepcopy": copy.deepcopy,
+        }[how]
+        for error in self._cases():
+            again = rebuild(error)
+            assert type(again) is type(error)
+            assert str(again) == str(error) and again.args == error.args
+            assert again.__dict__ == error.__dict__
+
+    def test_campaign_unloadable_names_its_path_once(self) -> None:
+        from maxim.exceptions import CampaignUnloadable
+
+        named = CampaignUnloadable(campaign="c.yaml", reason="Scenario c.yaml: bad")
+        assert str(named).count("c.yaml") == 1 and str(named).endswith(": bad")
+        unnamed = CampaignUnloadable(campaign="c.yaml", reason="percept 0 is not a mapping")
+        assert str(unnamed).count("c.yaml") == 1
+        # load_scenario formats Path(campaign), which drops "./": still printed once.
+        dotted = CampaignUnloadable(campaign="./x.yaml", reason="Scenario x.yaml: bad")
+        assert str(dotted) == "research campaign ./x.yaml cannot be loaded: bad"
+        # load_campaign_turns labels its strict errors "<path>: " with the path as given.
+        for campaign in ("./notturn.yaml", "empty.yaml", "/abs/dir/c.yaml"):
+            turns = CampaignUnloadable(campaign=campaign, reason=f"{campaign}: percept 0 has no cli_input line")
+            assert str(turns) == f"research campaign {campaign} cannot be loaded: percept 0 has no cli_input line"
+        # ...and through the real loader, for a file with no turn at all.
+        import tempfile
+        from pathlib import Path as _P
+
+        from maxim.simulation.experiment import load_campaign_turns
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = _P(tmp) / "pain.yaml"
+            bad.write_text("percepts:\n  - type: pain_signal\n    intensity: 0.5\n")
+            try:
+                load_campaign_turns(str(bad), strict=True)
+            except ValueError as exc:
+                real = CampaignUnloadable(campaign=str(bad), reason=str(exc))
+                assert str(real).count(str(bad)) == 1, str(real)
+            else:  # pragma: no cover - the loader must refuse a pain-only file
+                raise AssertionError("strict load accepted a scenario with no cli_input line")
+        # A short name that happens to occur inside the reason is still named.
+        short = CampaignUnloadable(campaign="a", reason="percept 0 has a bad value")
+        assert str(short).startswith("research campaign a cannot be loaded:")

@@ -42,7 +42,7 @@ class _LLMStub:
 
 class _CarryoverStub:
     @staticmethod
-    def get_prompt_text() -> str:
+    def get_prompt_body() -> str:
         return ""
 
 
