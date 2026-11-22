@@ -678,9 +678,27 @@ def note_system_outcome(recent_outcomes: list[Any], max_recent: int, tool: str, 
     """Tell the agent, through the recent outcomes its next prompt shows, why its call did not run: the
     consecutive-same-tool cap (moved out of the loop's body) and a run-ending answer set aside (#1451). A failed outcome
     of ``tool`` carrying a ``SYSTEM:`` message; the list is trimmed to its newest ``max_recent``. Never
-    ``pending_cli_input``: that single-slot user-input channel would overwrite real input."""
+    ``pending_cli_input``: that single-slot user-input channel would overwrite real input.
+
+    The note is SYSTEM-WRITTEN guidance (``system_note``), shown unframed (#1519): it is an instruction, so it must
+    never carry outside text, and that is checked here: a ``SYSTEM:`` line with no frame-marker shape and no line
+    break, so a tool name cannot smuggle a frame or a section header into trusted text."""
+    from maxim.utils.content_safety import defang_frame_markers
+
+    if not message.startswith("SYSTEM: ") or "\n" in message or "\r" in message:
+        raise ValueError(f"a system outcome note is one 'SYSTEM: ' line, got {message[:80]!r}")
+    if defang_frame_markers(message)[1]:
+        raise ValueError(f"a system outcome note carries a frame-marker shape: {message[:80]!r}")
     recent_outcomes.append(
-        {"tool": tool, "tool_name": tool, "success": False, "result": message, "error": error, "timestamp": time.time()}
+        {
+            "tool": tool,
+            "tool_name": tool,
+            "success": False,
+            "result": message,
+            "error": error,
+            "timestamp": time.time(),
+            "system_note": True,
+        }
     )
     if len(recent_outcomes) > max_recent:
         recent_outcomes.pop(0)

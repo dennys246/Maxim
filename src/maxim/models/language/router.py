@@ -140,9 +140,10 @@ def _neutralize_stray_frame_markers(text: str) -> str:
     remove instructions; balanced frames are untouched). The prompt builders drop partial frames before this; a
     marker that reaches here is a cut site they missed, so the first one is logged and the rest counted."""
     global _stray_frame_markers
-    if not text or "TOOL_OUTPUT" not in text:
+    from maxim.utils.content_safety import defang_frame_markers, may_hold_marker
+
+    if not text or not may_hold_marker(text):  # zero-width characters ignored (#1519): ``TOO\u200bL_OUTPUT`` too
         return text
-    from maxim.utils.content_safety import defang_frame_markers
 
     text, n = defang_frame_markers(text, unbalanced_only=True)
     if n:

@@ -1055,12 +1055,18 @@ def _request_source_label(request: Any) -> str:
     return VOICE_REQUEST_LABEL if source == "voice" else ""
 
 
-def _outcome_result(tool: str, result: str) -> str:
-    """A recent outcome's result text, framed as its follow-up is (#1519; ``agent_loop`` frames a follow-up the same
-    way): a tool's output is data, never instructions, and a network tool's is external."""
-    from maxim.modes.definitions import NETWORK_TOOLS
+def _outcome_result(outcome: dict[str, Any], result: str) -> str:
+    """A recent outcome's result text. A tool's is framed as its follow-up is (#1519: the one predicate,
+    ``modes.definitions.output_is_external``, with the ``untrusted_output`` the outcome was recorded with): data,
+    never instructions. A system-written note (``loop_controller.note_system_outcome``: ``system_note``) is the
+    agent's own guidance, checked there to carry no outside text, so it is shown as written."""
+    from maxim.modes.definitions import output_is_external
 
-    return frame_tool_output(tool, result, external=tool in NETWORK_TOOLS or tool == "batched_exploration")
+    if outcome.get("system_note"):
+        return result
+    tool = str(outcome.get("tool", "?"))
+    external = output_is_external(tool, untrusted_output=bool(outcome.get("untrusted_output")))
+    return frame_tool_output(tool, result, external=external)
 
 
 def _deferred_section(request: Any) -> str:
@@ -1914,7 +1920,7 @@ class PromptBuilder:
                 success = "succeeded" if outcome.get("success") else "failed"
                 result = str(outcome.get("result") or "")[:50]
                 outcome_lines.append(
-                    f"- {tool}: {success}" + (f" ({_outcome_result(str(tool), result)})" if result else "")
+                    f"- {tool}: {success}" + (f" ({_outcome_result(outcome, result)})" if result else "")
                 )
             budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT, source="data")
 

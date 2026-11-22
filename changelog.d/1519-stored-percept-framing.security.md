@@ -1,5 +1,5 @@
-- **Stored outside text reaches a prompt only inside an untrusted-content frame, and a live voice request is labelled**
-  (#1519, #1516 F15). Framing covers stored and recapped text; the turn's own live request is labelled, not framed.
+- **Stored outside text reaches a prompt only inside an untrusted-content frame, and a live voice request is labelled
+  on its first prompt** (#1519, #1516 F15). Framing covers stored and recapped text; the turn's own live request is labelled, not framed.
   - Live routes closed: a recalled episode's goal and the ATL names under "Related concepts" (enrichment, so the
     enrichment section, working-memory thoughts and the deliberation transcript), a tool's result text in
     `recent_outcomes`, and the file names in the CWD listing.
@@ -32,5 +32,11 @@
     (`content_safety.is_section_header`: `=== Name ===` or `NAME:`) calls a header, and the redactor finds its
     sections with that same predicate and splitter. A private-shaped header INSIDE a complete frame is no longer
     redacted: the framed body is external text, not the agent's private section.
+  - Stored records holding a frame written before this change, whose body had a bare `NAME:` line, lose their keyed
+    text: the pairing rule refuses such a frame, so the whole value keys to nothing (accepted, fail-closed, owner
+    decision 2026-11-21). New records are quoted correctly.
+  - A recent outcome's result is framed as its follow-up is: external for a network tool or for a tool that replays
+    stored text (`untrusted_output`). A system-written note (`SYSTEM: …`) is shown unframed as the agent's own
+    guidance, and is checked to carry no outside text.
   - A truncated CWD listing is cut inside its frame, so no file name is ever shown outside it.
   - The enrichment log's ATL line carries concept ids, not names.

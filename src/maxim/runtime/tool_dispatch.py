@@ -217,6 +217,13 @@ def gate_refusal_of(result: Any) -> ToolErrorKind | None:
     return kind if isinstance(kind, ToolErrorKind) and kind in GATE_REFUSAL_KINDS else None
 
 
+def _append_recent_outcome(recent_outcomes: list[dict[str, Any]], max_recent: int, entry: dict[str, Any]) -> None:
+    """One outcome onto the prompt's recent outcomes, trimmed to the newest ``max_recent``."""
+    recent_outcomes.append(entry)
+    if len(recent_outcomes) > max_recent:
+        recent_outcomes.pop(0)
+
+
 def record_outcome(
     *,
     agent_id: str,
@@ -243,9 +250,11 @@ def record_outcome(
     outcome_valence: "_V | None" = None,
     bridge_booked: str | None,
     refused: ToolErrorKind | None,
+    untrusted_output: bool = False,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
+    ``untrusted_output``: the tool that ran replays stored text, so the prompt frames its result external (#1519).
     ``bridge_booked``: the signature the tool-pain bridge booked THIS failure under (``ToolOutput.nac_failure_booked``,
     #1200 Stage 2); see ``_observe_tool_result``. REQUIRED (TF8): forgetting it is a ``TypeError``, not a double count.
 
@@ -295,17 +304,8 @@ def record_outcome(
         )
     nac = _learning_nac(nac, refused)
     ts = time.time()
-    recent_outcomes.append(
-        {
-            "tool": tool_name,
-            "success": success,
-            "result": result_summary,
-            "error": error,
-            "timestamp": ts,
-        }
-    )
-    if len(recent_outcomes) > max_recent:
-        recent_outcomes.pop(0)
+    entry = {"tool": tool_name, "success": success, "result": result_summary, "error": error, "timestamp": ts}
+    _append_recent_outcome(recent_outcomes, max_recent, {**entry, "untrusted_output": bool(untrusted_output)})
 
     if llm_worker is not None:
         llm_worker.record_outcome(
@@ -900,6 +900,7 @@ def execute_parallel_actions(
             drive_relief_channel=pr.get("_drive_relief_channel"),
             # #1200 Stage 2: the signature the bridge booked a failure under (rejected / raised entries: None).
             bridge_booked=pr.get("_failure_booked"),
+            untrusted_output=bool(getattr(tool_to_run(executor, pr["tool"]), "untrusted_output", False)),
             # #1315 item 3: a gate refusal books no NAc. The autonomy rejection above stays a booked negative
             # (pre-existing, inconsistent with #1185; #1550).
             refused=pr.get("_refused"),
@@ -987,6 +988,16 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
     if error_msg:
         return f"[ERROR: {str(error_msg)[:limit]}]"
     return None
+
+
+def _followup_type_and_text(tool_name: str, current_mode: str, overlay: Any, output: Any, result: Any) -> tuple:
+    """The follow-up type a completed tool queues and its result text, more of it (up to 3000 characters) for a tool
+    whose follow-up processes the result (moved out of ``execute_and_learn``, rule T for #1519)."""
+    from maxim.modes.definitions import get_tool_followup_type
+
+    followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
+    result_limit = 3000 if followup_type in ("process", "respond", "engage") else 100
+    return followup_type, _followup_result_text(tool_name, output, result, result_limit)
 
 
 def book_refusal(
@@ -1503,14 +1514,7 @@ def execute_and_learn(
         if tool_name != "think":
             _reset_deliberation(executor)
 
-        from maxim.modes.definitions import get_tool_followup_type
-
-        followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
-
-        # Store more result for tools that need processing (up to 3000 chars)
-        needs_processing = followup_type in ("process", "respond", "engage")
-        result_limit = 3000 if needs_processing else 100
-        result_str = _followup_result_text(tool_name, output, result, result_limit)
+        followup_type, result_str = _followup_type_and_text(tool_name, current_mode, overlay, output, result)
 
         rec_outcome(
             agent_id=agent_id,
@@ -1530,6 +1534,7 @@ def execute_and_learn(
             clusters=getattr(proposal, "clusters", None),
             bridge_booked=getattr(result, "nac_failure_booked", None),
             refused=gate_refusal_of(result),
+            untrusted_output=bool(getattr(tool_to_run(executor, tool_name), "untrusted_output", False)),
             embodiment_failed=_embodiment_failed,
             drive_potential_diff=_drive_potential_diff,
             drive_credit_withheld=_drive_credit_withheld,

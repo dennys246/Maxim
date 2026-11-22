@@ -415,12 +415,20 @@ _FRAME_MARKER = re.compile(r"<<(/?)TOOL_OUTPUT id=([0-9a-f]+)(?: [^\n]*?)?>>")
 # Zero-width characters anywhere in the ``<<`` and the ``/`` count as part of the shape (#1519): stripped there, in
 # that span only, never elsewhere in the text (a ZWJ emoji or a Persian ZWNJ in the user's words stays whole).
 _ZW = "\u200b-\u200f\u2060\ufeff"
-_MARKER_LIKE = re.compile(rf"<[{_ZW}]*<([\s{_ZW}]*/?[\s{_ZW}]*)tool[\W_]*output", re.IGNORECASE)
+_TOOL_WORD = f"[{_ZW}]*".join("tool")
+_OUTPUT_WORD = f"[{_ZW}]*".join("output")
+_MARKER_LIKE = re.compile(rf"<[{_ZW}]*<([\s{_ZW}]*/?[\s{_ZW}]*){_TOOL_WORD}[\W_]*{_OUTPUT_WORD}", re.IGNORECASE)
 
 
 # The same shape carried through the whole marker to its ``>>`` on that line (the id, the header fields): a zero-width
 # character anywhere in it, after ``output`` too, marks a disguised marker (#1519).
-_MARKER_SHAPE = re.compile(rf"{_MARKER_LIKE.pattern}([^\n<>]*(?:>>)?)", re.IGNORECASE)
+_MARKER_SHAPE = re.compile(rf"{_MARKER_LIKE.pattern}([^\n<>]*(?:>[{_ZW}]*>)?)", re.IGNORECASE)
+
+
+def may_hold_marker(text: str) -> bool:
+    """A cheap test before a marker scan: whether ``text`` could hold a marker shape once zero-width characters are
+    ignored (#1519: ``TOO\u200bL_OUTPUT`` must not skip the scan)."""
+    return "OUTPUT" in _ZERO_WIDTH.sub("", text).upper()
 
 
 def _defanged_marker(m: re.Match[str]) -> str:
@@ -459,7 +467,13 @@ def frame_spans(text: str) -> tuple[list[tuple[int, int]], list[re.Match[str]], 
     repeated before its closer orphans the earlier one) and no line between them is a section header
     (``is_section_header``, on lines split by ``split_lines``): a real body never holds one, so an
     opener written in unframed text with a live id cannot pair with that id's real closer further down and claim
-    the sections between. A refused pair is two orphans: fail-closed."""
+    the sections between. A refused pair is two orphans: fail-closed. The lines checked are every line of the text
+    between the opener and its closer, so the rest of the opener's own line and the start of the closer's line are
+    checked too (a header-shaped remainder refuses the pair).
+
+    Accepted, fail-closed (owner decision 2026-11-21): a frame stored by code before #1519 never quoted a ``NAME:``
+    body line, so such a legacy frame is refused, and text holding it keys to nothing (``drop_unbalanced_frames``
+    drops it whole). New frames are quoted correctly. Narrowing the rule would reopen the forged-opener leak."""
     open_by_id: dict[str, re.Match[str]] = {}
     orphan_openers: list[re.Match[str]] = []
     orphan_closers: list[re.Match[str]] = []

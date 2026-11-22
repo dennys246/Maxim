@@ -938,11 +938,11 @@ def _followup_synthetic_input(followup: Any) -> str:
     external, and so is a tool that declares ``untrusted_output`` (recalled or stored text). The query
     is quoted so it cannot shift the parser's ``']: `` split.
     """
-    from maxim.modes.definitions import NETWORK_TOOLS
+    from maxim.modes.definitions import output_is_external
     from maxim.utils.content_safety import frame_tool_output
 
     tool = followup.tool
-    external = tool in NETWORK_TOOLS or tool == "batched_exploration" or followup.untrusted_output
+    external = output_is_external(tool, untrusted_output=followup.untrusted_output)
     result = frame_tool_output(tool, followup.result or "", external=external)
     query = str(followup.original_query or "").replace("'", "\u2019")
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
