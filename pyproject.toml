@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymaxim"
-version = "1.3.3"
+version = "1.3.4"
 description = "Bio-inspired LLM agent harness with embodied sensation, homeostatic drives, and experience-grounded persistent context across sessions without fine-tuning."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -100,6 +100,11 @@ console = [
     # what uvicorn[standard] 0.29 requires. Guarded by the R2 extras matrix's console cells
     # (tests/unit/test_console_ws_real_uvicorn.py, in a venv holding only this extra).
     "websockets>=10.4,<18",
+    # console/schemas.py imports pydantic directly (its wire models), and uses the v2 API (model_dump,
+    # model_validate), so it is declared, not left to arrive through fastapi (whose own range still admits pydantic 1;
+    # #1647, development-flow-speed.md §7). 2.7 is the floor the CI-pinned contract generator (fastapi 0.127,
+    # .github/constraints/console.txt) requires, and it also resolves with the fastapi floor (0.110).
+    "pydantic>=2.7,<3.0",
 ]
 # Hivemind bundle signing + verification (1.2 P2P Slice A) — ed25519 release
 # signatures. Asymmetric: a Queen signs with a private key, any consumer verifies

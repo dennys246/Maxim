@@ -626,7 +626,7 @@ These were not put to the owner as separate questions. Each is the fail-closed o
    pulse: store the head and body targets atomically (one assignment, or a lock the control loop also takes), and
    serve `target_body_yaw` in `FullState`. #1563 stays open, labelled upstream, out of the 1.3.4 cut.
 
-#1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item).
+#1499 closes on PR 3. 1.3.4 does not publish until all three have merged (exit item; met: all three merged, #1499 closed).
 
 **The hardware check names its first head-motion run as the body-yaw test** (pulse, 2026-11-01). Pulse's robot
 install (app 0.4.6, pymaxim 1.3.3) verified that the SDK opens with `automatic_body_yaw=False`. But nothing has moved

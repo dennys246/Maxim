@@ -9,8 +9,8 @@ served from a registry cache) is carried on the object that holds it (``source_i
 
 The list shows what is covered; a loader that does not use ``read_recorded`` is not in it, and neither is a world
 the narrator generates at run time or ``simulation_generator.py``'s output. Scenarios that callers load before
-the sim and hand over as plain turn dicts (``pre_campaign_turns``: ``api.simulate(scenario=...)``, the
-``--research`` path, ``experiment.load_campaign_turns``) are not listed; their CONTENT enters the sim's
+the sim and hand over as plain turn dicts (``pre_campaign_turns``: ``api.imagine(scenario=...)``, the
+``--research`` path and ``--sim-script``, all through ``experiment.load_campaign_turns``) are not listed; their CONTENT enters the sim's
 ``scenario_sha256`` instead (``simulation/serving_provenance.py``). The record grows for the process's lifetime
 (one small entry per load or cache hit); a sim reads only its own window of it.
 """

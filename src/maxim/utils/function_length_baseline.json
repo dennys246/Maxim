@@ -4,11 +4,6 @@
   "threshold": 200,
   "entries": [
     {
-      "file": "src/maxim/agents/llm_worker.py",
-      "qualname": "LLMWorker._process_request",
-      "lines": 225
-    },
-    {
       "file": "src/maxim/api.py",
       "qualname": "run",
       "lines": 201
@@ -211,7 +206,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 241
+      "lines": 233
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -402,6 +397,7 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
+    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
     "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged."
   ],
   "touch_exemptions": [

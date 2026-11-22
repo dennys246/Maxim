@@ -112,11 +112,11 @@ def test_a_section_added_from_cut_text_never_shows_a_partial_frame_and_budgets_t
 
     b = _budgeter()
     cut = _sample()[: len(_sample()) - 20]
-    b.add("bio_enrichment", cut, SectionPriority.IMPORTANT, source="data")
+    b.add("bio_enrichment", cut, SectionPriority.IMPORTANT, source="data", header=None)
     [section] = b._sections
     assert not _leaks(section.content)
     whole = _budgeter()
-    whole.add("bio_enrichment", _sample(), SectionPriority.IMPORTANT, source="data")
+    whole.add("bio_enrichment", _sample(), SectionPriority.IMPORTANT, source="data", header=None)
     [framed] = whole._sections
     assert framed.content.startswith(TOOL_OUTPUT_RULE)
     assert framed.token_count == _Chars().count_tokens(framed.content)  # the rule is in the budget (N4)
@@ -135,6 +135,7 @@ def test_a_truncator_that_cuts_through_a_frame_cannot_leave_its_body() -> None:
         min_tokens=1,
         truncate_fn=lambda c, m: c[: m * 4],  # a raw character cut
         source="data",
+        header=None,
     )
     prompt, _ = b.build()
     assert not _leaks(prompt)
