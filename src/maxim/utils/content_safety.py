@@ -326,18 +326,23 @@ def check_url_safety(url: str) -> tuple[bool, str | None]:
 _FRAME_TOKEN = re.compile(r"tool[\W_]*output", re.IGNORECASE)
 
 
-def _format_char_class() -> str:
-    """Every Unicode FORMAT character (general category ``Cf``: zero-width spaces and joiners, bidi controls, the soft
-    hyphen, the Mongolian vowel separator, invisible operators, tag characters...), as one regex character class body,
-    escaped. Built from the Unicode database, never a hand list (#1519), so ``_ZERO_WIDTH`` and the marker shapes'
-    ``_ZW`` are one set. One scan at import."""
-    import sys
-    import unicodedata
-
-    return "".join(re.escape(chr(c)) for c in range(sys.maxunicode + 1) if unicodedata.category(chr(c)) == "Cf")
-
-
-_ZW = _format_char_class()
+# Every Unicode FORMAT character (general category ``Cf``: zero-width spaces and joiners, bidi controls, the soft
+# hyphen, the Mongolian vowel separator, invisible operators, tag characters...), as inclusive code-point ranges.
+# Precomputed from the Unicode database (Unicode 15.0.0, CPython 3.12) so no process pays a scan at import (#1519).
+# ``tests/unit/test_wm_percept_framing_1519.py::test_format_characters_are_one_set_from_the_unicode_database`` pins it
+# equal to the running interpreter's ``Cf``: when a Python/Unicode upgrade adds one, that test goes red. Regenerate:
+#   python -c "import sys,unicodedata as u;r=[];[r[-1].__setitem__(1,c) if r and r[-1][1]==c-1 else r.append([c,c])
+#   for c in range(sys.maxunicode+1) if u.category(chr(c))=='Cf'];print(r)"
+_FORMAT_CHAR_RANGES: tuple[tuple[int, int], ...] = (
+    (0x00AD, 0x00AD), (0x0600, 0x0605), (0x061C, 0x061C), (0x06DD, 0x06DD), (0x070F, 0x070F), (0x0890, 0x0891),
+    (0x08E2, 0x08E2), (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD), (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001), (0xE0020, 0xE007F),
+)  # fmt: skip
+# One regex character-class body for every format character: ``_ZERO_WIDTH`` and the marker shapes' ``_ZW`` share it.
+_ZW = "".join(
+    re.escape(chr(a)) if a == b else f"{re.escape(chr(a))}-{re.escape(chr(b))}" for a, b in _FORMAT_CHAR_RANGES
+)
 _ZERO_WIDTH = re.compile(f"[{_ZW}]")
 
 
