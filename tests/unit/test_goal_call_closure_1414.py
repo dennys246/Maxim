@@ -443,3 +443,21 @@ def test_a_goal_that_went_on_past_a_refused_skip_sub_goal_is_marked_refused(seco
     later = goal_agent.propose_intent(state=None, memory=None)
     assert goal_agent.close_tool_call(later["tool_call_id"], True, "ok", None) is True
     assert done[-1].refused is False  # the mark belongs to the goal it was set on, never the next one
+
+
+def test_goal_outcomes_share_one_bounded_statistician_series() -> None:
+    """#1414 makes goals complete on §3, and the statistician kept one series and one detector per goal id: a series
+    that never recurs, never reaches ``min_observations`` and only grows. Every goal outcome now lands in one
+    ``goal:success`` series, bounded by the window."""
+    from maxim.agents.bus import AgentBus, GoalCompleted
+    from maxim.agents.statistician_agent import StatisticianAgent
+
+    from unittest.mock import MagicMock
+
+    bus = AgentBus()
+    stats = StatisticianAgent(bus, MagicMock(), window_size=20)  # ips: unused on this path
+    for i in range(stats._window_size + 25):
+        bus.publish(GoalCompleted(goal_id=f"g{i}", success=i % 2 == 0))
+    goal_series = [name for name in stats._metric_series if name.startswith("goal:")]
+    assert goal_series == ["goal:success"]
+    assert len(stats._metric_series["goal:success"]) == stats._window_size

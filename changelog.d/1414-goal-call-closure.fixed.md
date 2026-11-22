@@ -9,4 +9,7 @@
     everything else sees the goal's outcome.
   - **RETRY sub-goals retry.** A launch counted twice toward `max_retries`, so a RETRY sub-goal never retried; it
     now gets `max_retries` launches.
+  - The statistician records every goal outcome in one `goal:success` series. It kept one series and one
+    detector per goal id, which never recur, so they never reached a detector's minimum and only grew, in
+    memory and in its saved state. Goals now complete, so that growth would have been live.
   - Still no `ToolResult` is published by any dispatcher (#1727).
