@@ -8,16 +8,16 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 73.0,
-      "missing": 1080
+      "percent": 74.3,
+      "missing": 1056
     },
     "maxim/advisor": {
       "percent": 98.9,
       "missing": 8
     },
     "maxim/agents": {
-      "percent": 70.3,
-      "missing": 2034
+      "percent": 71.8,
+      "missing": 1925
     },
     "maxim/analysis": {
       "percent": 86.9,
@@ -88,8 +88,8 @@
       "missing": 60
     },
     "maxim/inference": {
-      "percent": 23.5,
-      "missing": 536
+      "percent": 26.0,
+      "missing": 525
     },
     "maxim/integration": {
       "percent": 74.6,
@@ -108,8 +108,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 64.9,
-      "missing": 2235
+      "percent": 65.9,
+      "missing": 2194
     },
     "maxim/modes": {
       "percent": 80.6,
@@ -128,8 +128,8 @@
       "missing": 368
     },
     "maxim/prompts": {
-      "percent": 88.4,
-      "missing": 36
+      "percent": 91.2,
+      "missing": 31
     },
     "maxim/proprioception": {
       "percent": 78.2,
@@ -186,8 +186,8 @@
       "missing": 267
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 75.7,
-      "missing": 250
+      "percent": 76.7,
+      "missing": 245
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
