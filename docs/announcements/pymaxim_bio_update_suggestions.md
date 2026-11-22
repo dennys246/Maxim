@@ -1,4 +1,50 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24 · 1.3.4 refresh 2026-11-22)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24 · 1.3.4 refresh 2026-11-22 · #1461 caveats 2026-11-22)
+
+## #1461 caveats — 2026-11-22 (the #1301 re-assessment on the site; not a release refresh)
+
+**Framing rule.** [`narrator_defects_reassessment.md`](../experiments/narrator_defects_reassessment.md) (recorded
+2026-10-25, #1301) re-assessed every narrator-driven claim recorded before the #1260 and #1261 fixes. **No ledger
+row changes status.** The site marks each affected claim where it is stated, with a dated note in the record's own
+outcome: **withdrawn** (not supported until re-run on the fixed path, #1461), **bounded** (with the record's
+caveat), or left alone when the record says **unaffected**. Nothing is caveated that the record does not cover.
+The 1.3.4 refresh (Maxim-web #41) already recorded the re-assessment on `/research/evidence/`; this pass reaches
+every other page. Site fix: **maxim-web `docs/1461-caveats`
+([#42](https://github.com/dennys246/Maxim-web/pull/42))**. This section is its engine companion.
+
+**Engine truth, read from the files, not from memory.** `narrator_defects_reassessment.md` at `origin/main` (its
+three outcome tables and "What is owed"), and CHANGELOG `[1.3.4]` § Changed, the "Evidence re-assessment" entry.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/` (homepage) | "tested across four frontier models and dominated in all of them" | Public surfaces, CHANGELOG 1.0.0 row | Dominance at GPT-4o, DeepSeek-V3 and R1; Sonnet's verdict on first contact alone; links the evidence page's dated entry |
+| `/research/experiments/roy-harness/` | Sonnet +0.40 SD in the Exp 38 table; "all five models" with no qualifier; Exp 37, 40, 44 and the Roy nulls uncaveated | T1-2 rows; Exp 40, Exp 44, Exp 18, Roy-1a/3 and Exp 30/33/34 rows | A dated caution box (withdrawn, bounded, unaffected for this page). Sonnet's interaction and three ablation values withdrawn (A 0.67 over 3 of 5 trials, B 1.00). Exp 37 bounded with the post hoc +1.43 → +1.32 and +2.11 → +1.81. Exp 40 bounded (45 `respond` calls). Exp 44 bounded (the 44b planning prompts). Exp 18's `respond` counts withdrawn and its tool shift bounded. Roy-1a, Roy-3 and Exp 30/33/34 bounded, without citing their salience, episode or `respond` counts; Exp 32's `respond` count withdrawn; Exp 29 unaffected. L6 and L8 bounded |
+| `/research/experiments/cross-session-learning/` | "memory survival 1.0, behavioural recall 0" as shown directly; Exp 12 "clean pass" with the Acting Coach count only confounded; the August heartbeat counts uncaveated | Hippocampal recall, Exp 12, T1-1 heartbeat and T1-2 rows | Hippocampal recall: memory half stands, behavioural half withdrawn, with the record's counter-evidence (Run #1 / Run #2, direct injection). Exp 12's 7/7 bounded and its Acting Coach count withdrawn. Heartbeat counts bounded (follow-up episodes; all 7 `respond` calls outage fallbacks). Exp 37 bounded |
+| `/research/evidence/` | Exp 12 7/7, the heartbeat, the counter-prior null and the hippocampal entry uncaveated in place | As above | Dated notes in place; the summary table names Sonnet's withdrawal |
+| `/research/cradle/`, `/research/limits/` | Exp 11 uncaveated; L6 and L8 uncaveated | Exp 11/08/e0 row; L6 and L8 rows | Exp 11: infrastructure stands, behavioural observations ran with the defect. L6 bounded by the prompt line only; L8's drift comparison bounded (6 → 32 `respond` calls) |
+| `/systems/anterior-temporal-lobe/`, `/systems/nucleus-accumbens/`, `/embodiment/sem-protocol/` | "across four frontier models" | Public surfaces row | GPT-4o, DeepSeek-V3 and R1, bounded; Sonnet on first contact alone |
+| `/research/experiments/<slug>/` (manifest) | No re-assessment on the experiment pages | Each experiment's row | Dated outcomes on Exp 10, 12, 16, 18, 23, 30, 32, 33, 34, 37 (both), 38, 40, 44, 44b, 11, 08 component damage, e0, hippocampal recall and sem_tool_discovery_s1 |
+
+**Left uncaveated on purpose.** The substrate-primary Roy iterations, Exp 29, Exp 41/42/42b, Exp 09 and Exp 63's
+gates (the record: unaffected). `08_deliberation_system.md` (the record gives it no outcome). The Roy-2 / Exp 18
+test-time valence KS (KS = 0.291, p = 0.023): the record's Exp 18 row does not address it, and the owner ruled
+2026-11-22 to leave it uncaveated.
+
+### Acceptance checks — #1461 caveats
+
+- [x] Every claim the record withdraws is marked withdrawn where the site states it, naming #1461.
+- [x] Every bounded claim on the site carries the record's caveat, with its numbers.
+- [x] Nothing the record marks unaffected, or does not cover, carries a caveat.
+- [x] No status changes on the site.
+- [x] `pnpm build` clean; experiments manifest valid; every internal href and fragment in `dist/` resolves (0 broken).
+- [x] A different reader checked 51 caveats against the record. Its 9 findings are folded: 3 missed citations
+  (homepage, Exp 10, the Exp 12 table row) and 6 misstatements ("three frontier models" dropped Sonnet; Exp 29
+  swept into the Roy nulls; "every 44b prompt" for planning prompts; Exp 11's counts; an uncovered Exp 08 entry;
+  "one value" for four).
+- [ ] **After merge/deploy:** spot-check `/`, `/research/experiments/roy-harness/`, `/research/experiments/exp-38/`
+  and `/research/experiments/cross-session-learning/` live.
+- [ ] **Trigger (from the record):** any new citation of a withdrawn result waits for its #1461 re-run on the fixed path.
 
 ## 1.3.4 refresh — 2026-11-22 ("Robot and recall"; PyPI `upload_time` 2026-11-22T19:02Z, signed tag `v1.3.4` @ `b98954f7`)
 
