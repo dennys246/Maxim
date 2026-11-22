@@ -65,10 +65,10 @@ class TestPromptBudgeter:
     def test_all_sections_fit_large_budget(self):
         """With a large budget, nothing is dropped."""
         b = _make_budgeter(total=10000)
-        b.add("mandatory", "Hello world", SectionPriority.MANDATORY, source="data")
-        b.add("critical", "Tools list here", SectionPriority.CRITICAL, source="data")
-        b.add("important", "Conversation history", SectionPriority.IMPORTANT, source="data")
-        b.add("nice", "Foundational context", SectionPriority.NICE_TO_HAVE, source="data")
+        b.add("mandatory", "Hello world", SectionPriority.MANDATORY, source="data", header=None)
+        b.add("critical", "Tools list here", SectionPriority.CRITICAL, source="data", header=None)
+        b.add("important", "Conversation history", SectionPriority.IMPORTANT, source="data", header=None)
+        b.add("nice", "Foundational context", SectionPriority.NICE_TO_HAVE, source="data", header=None)
 
         text, dropped = b.build()
         assert dropped == []
@@ -78,9 +78,11 @@ class TestPromptBudgeter:
     def test_nice_to_have_dropped_when_over_budget(self):
         """NICE_TO_HAVE sections are dropped first under budget pressure."""
         b = _make_budgeter(total=6)  # 6 word budget
-        b.add("mandatory", "Hello world", SectionPriority.MANDATORY, source="data")  # 2 words
-        b.add("critical", "Tools list here", SectionPriority.CRITICAL, source="data")  # 3 words
-        b.add("nice", "Foundational context extras", SectionPriority.NICE_TO_HAVE, source="data")  # 3 words
+        b.add("mandatory", "Hello world", SectionPriority.MANDATORY, source="data", header=None)  # 2 words
+        b.add("critical", "Tools list here", SectionPriority.CRITICAL, source="data", header=None)  # 3 words
+        b.add(
+            "nice", "Foundational context extras", SectionPriority.NICE_TO_HAVE, source="data", header=None
+        )  # 3 words
 
         text, dropped = b.build()
         assert "nice" in dropped
@@ -90,9 +92,9 @@ class TestPromptBudgeter:
     def test_mandatory_survives_extreme_pressure(self):
         """MANDATORY sections survive even with tiny budget."""
         b = _make_budgeter(total=3)  # Only 3 word budget
-        b.add("mandatory", "User request here", SectionPriority.MANDATORY, source="data")  # 3 words
-        b.add("critical", "identity info here", SectionPriority.CRITICAL, source="data")  # 3 words
-        b.add("nice", "extra fluff", SectionPriority.NICE_TO_HAVE, source="data")  # 2 words
+        b.add("mandatory", "User request here", SectionPriority.MANDATORY, source="data", header=None)  # 3 words
+        b.add("critical", "identity info here", SectionPriority.CRITICAL, source="data", header=None)  # 3 words
+        b.add("nice", "extra fluff", SectionPriority.NICE_TO_HAVE, source="data", header=None)  # 2 words
 
         text, dropped = b.build()
         assert "User request here" in text
@@ -109,7 +111,7 @@ class TestPromptBudgeter:
             return " ".join(words[:max_tokens])
 
         b = _make_budgeter(total=8, counter=counter)
-        b.add("mandatory", "Hello world", SectionPriority.MANDATORY, source="data")  # 2 words
+        b.add("mandatory", "Hello world", SectionPriority.MANDATORY, source="data", header=None)  # 2 words
         b.add(
             "important_big",
             "One two three four five six seven",  # 7 words
@@ -118,6 +120,7 @@ class TestPromptBudgeter:
             min_tokens=2,
             truncate_fn=truncate_fn,
             source="data",
+            header=None,
         )
 
         text, dropped = b.build()
@@ -130,9 +133,9 @@ class TestPromptBudgeter:
     def test_empty_sections_silently_ignored(self):
         """Adding empty content does not create a section."""
         b = _make_budgeter(total=100)
-        b.add("empty1", "", SectionPriority.MANDATORY, source="data")
-        b.add("empty2", "   ", SectionPriority.MANDATORY, source="data")
-        b.add("real", "actual content", SectionPriority.MANDATORY, source="data")
+        b.add("empty1", "", SectionPriority.MANDATORY, source="data", header=None)
+        b.add("empty2", "   ", SectionPriority.MANDATORY, source="data", header=None)
+        b.add("real", "actual content", SectionPriority.MANDATORY, source="data", header=None)
 
         text, dropped = b.build()
         assert dropped == []
@@ -141,10 +144,10 @@ class TestPromptBudgeter:
     def test_insertion_order_preserved(self):
         """After budget cuts, surviving sections maintain their original order."""
         b = _make_budgeter(total=20)
-        b.add("section_a", "AAA first", SectionPriority.MANDATORY, source="data")  # inserted first
-        b.add("section_b", "BBB second", SectionPriority.NICE_TO_HAVE, source="data")  # inserted second
-        b.add("section_c", "CCC third", SectionPriority.CRITICAL, source="data")  # inserted third
-        b.add("section_d", "DDD fourth", SectionPriority.MANDATORY, source="data")  # inserted fourth
+        b.add("section_a", "AAA first", SectionPriority.MANDATORY, source="data", header=None)  # inserted first
+        b.add("section_b", "BBB second", SectionPriority.NICE_TO_HAVE, source="data", header=None)  # inserted second
+        b.add("section_c", "CCC third", SectionPriority.CRITICAL, source="data", header=None)  # inserted third
+        b.add("section_d", "DDD fourth", SectionPriority.MANDATORY, source="data", header=None)  # inserted fourth
 
         text, dropped = b.build()
         # All should fit
@@ -180,12 +183,12 @@ class TestPromptBudgeter:
         # Budget = 2048 - 512 - 100 = 1436 tokens
 
         # MANDATORY (~50 tokens)
-        b.add("instructions", "Respond with JSON. " * 10, SectionPriority.MANDATORY, source="data")
-        b.add("user_request", "What is the weather?", SectionPriority.MANDATORY, source="data")
+        b.add("instructions", "Respond with JSON. " * 10, SectionPriority.MANDATORY, source="data", header=None)
+        b.add("user_request", "What is the weather?", SectionPriority.MANDATORY, source="data", header=None)
 
         # CRITICAL (~200 tokens)
-        b.add("identity", "You are Maxim. " * 50, SectionPriority.CRITICAL, source="data")
-        b.add("tools", "tool_a: does stuff. " * 40, SectionPriority.CRITICAL, source="data")
+        b.add("identity", "You are Maxim. " * 50, SectionPriority.CRITICAL, source="data", header=None)
+        b.add("tools", "tool_a: does stuff. " * 40, SectionPriority.CRITICAL, source="data", header=None)
 
         # IMPORTANT (~500 tokens)
         b.add(
@@ -196,11 +199,14 @@ class TestPromptBudgeter:
             min_tokens=30,
             truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
             source="data",
+            header=None,
         )
 
         # NICE_TO_HAVE (~800 tokens) — should get dropped on small models
-        b.add("foundational", "Constitution principles. " * 100, SectionPriority.NICE_TO_HAVE, source="data")
-        b.add("agent_states", "Agent1: idle. " * 80, SectionPriority.NICE_TO_HAVE, source="data")
+        b.add(
+            "foundational", "Constitution principles. " * 100, SectionPriority.NICE_TO_HAVE, source="data", header=None
+        )
+        b.add("agent_states", "Agent1: idle. " * 80, SectionPriority.NICE_TO_HAVE, source="data", header=None)
 
         text, dropped = b.build()
         # At least some NICE_TO_HAVE should be dropped
@@ -217,8 +223,8 @@ class TestBuildSegmented:
 
     def test_partitions_by_cacheable_flag(self):
         b = _make_budgeter(total=1000)
-        b.add("identity", "stable identity", SectionPriority.CRITICAL, cacheable=True, source="data")
-        b.add("user_request", "dynamic request", SectionPriority.MANDATORY, cacheable=False, source="data")
+        b.add("identity", "stable identity", SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+        b.add("user_request", "dynamic request", SectionPriority.MANDATORY, cacheable=False, source="data", header=None)
         stable, dynamic, dropped = b.build_segmented()
         assert "stable identity" in stable
         assert "stable identity" not in dynamic
@@ -232,9 +238,23 @@ class TestBuildSegmented:
 
         def _build(dynamic_words: int) -> str:
             b = _make_budgeter(total=10000)
-            b.add("identity", "you are a body in a world", SectionPriority.CRITICAL, cacheable=True, source="data")
-            b.add("tools", "tool_a does things", SectionPriority.CRITICAL, cacheable=True, source="data")
-            b.add("obs", "observed " * dynamic_words, SectionPriority.IMPORTANT, cacheable=False, source="data")
+            b.add(
+                "identity",
+                "you are a body in a world",
+                SectionPriority.CRITICAL,
+                cacheable=True,
+                source="data",
+                header=None,
+            )
+            b.add("tools", "tool_a does things", SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+            b.add(
+                "obs",
+                "observed " * dynamic_words,
+                SectionPriority.IMPORTANT,
+                cacheable=False,
+                source="data",
+                header=None,
+            )
             stable, _dynamic, _dropped = b.build_segmented()
             return stable
 
@@ -245,8 +265,15 @@ class TestBuildSegmented:
         the stable bucket is capped at 70% of budget."""
         b = _make_budgeter(total=100)  # prompt_budget = 100
         # 200-token stable section would consume everything if uncapped.
-        b.add("big_stable", "word " * 200, SectionPriority.CRITICAL, cacheable=True, source="data")
-        b.add("user_request", "the actual question", SectionPriority.MANDATORY, cacheable=False, source="data")
+        b.add("big_stable", "word " * 200, SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+        b.add(
+            "user_request",
+            "the actual question",
+            SectionPriority.MANDATORY,
+            cacheable=False,
+            source="data",
+            header=None,
+        )
         stable, dynamic, dropped = b.build_segmented()
         # Stable capped at 70 tokens → the 200-token section doesn't fit, dropped.
         assert "big_stable" in dropped
@@ -255,10 +282,10 @@ class TestBuildSegmented:
 
     def test_emit_preserves_insertion_order_within_each_segment(self):
         b = _make_budgeter(total=10000)
-        b.add("s_first", "alpha", SectionPriority.NICE_TO_HAVE, cacheable=True, source="data")
-        b.add("d_first", "one", SectionPriority.NICE_TO_HAVE, cacheable=False, source="data")
-        b.add("s_second", "beta", SectionPriority.MANDATORY, cacheable=True, source="data")
-        b.add("d_second", "two", SectionPriority.MANDATORY, cacheable=False, source="data")
+        b.add("s_first", "alpha", SectionPriority.NICE_TO_HAVE, cacheable=True, source="data", header=None)
+        b.add("d_first", "one", SectionPriority.NICE_TO_HAVE, cacheable=False, source="data", header=None)
+        b.add("s_second", "beta", SectionPriority.MANDATORY, cacheable=True, source="data", header=None)
+        b.add("d_second", "two", SectionPriority.MANDATORY, cacheable=False, source="data", header=None)
         stable, dynamic, _ = b.build_segmented()
         # Insertion order preserved even though priorities differ.
         assert stable.index("alpha") < stable.index("beta")
@@ -266,7 +293,7 @@ class TestBuildSegmented:
 
     def test_all_dynamic_yields_empty_stable(self):
         b = _make_budgeter(total=1000)
-        b.add("user_request", "hi", SectionPriority.MANDATORY, cacheable=False, source="data")
+        b.add("user_request", "hi", SectionPriority.MANDATORY, cacheable=False, source="data", header=None)
         stable, dynamic, _ = b.build_segmented()
         assert stable == ""
         assert "hi" in dynamic
@@ -277,11 +304,19 @@ class TestBuildSegmented:
         END of the stable prefix, behind every never-changing section — no
         matter where the builder inserted it."""
         b = PromptBudgeter(total_budget=10_000, response_reserve=0, token_counter=_ExactCounter(), builder_gate=None)
-        b.add("identity", "IDENTITY", SectionPriority.CRITICAL, cacheable=True, source="data")
-        b.add("tools", "TOOLS-ENCOUNTER-1", SectionPriority.CRITICAL, cacheable=True, phase_scoped=True, source="data")
-        b.add("guidance", "GUIDANCE", SectionPriority.IMPORTANT, cacheable=True, source="data")
-        b.add("foundational", "FOUNDATIONAL", SectionPriority.NICE_TO_HAVE, cacheable=True, source="data")
-        b.add("observation", "OBS", SectionPriority.IMPORTANT, source="data")
+        b.add("identity", "IDENTITY", SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+        b.add(
+            "tools",
+            "TOOLS-ENCOUNTER-1",
+            SectionPriority.CRITICAL,
+            cacheable=True,
+            phase_scoped=True,
+            source="data",
+            header=None,
+        )
+        b.add("guidance", "GUIDANCE", SectionPriority.IMPORTANT, cacheable=True, source="data", header=None)
+        b.add("foundational", "FOUNDATIONAL", SectionPriority.NICE_TO_HAVE, cacheable=True, source="data", header=None)
+        b.add("observation", "OBS", SectionPriority.IMPORTANT, source="data", header=None)
         stable, dynamic, dropped = b.build_segmented()
         assert stable == "IDENTITY\n\nGUIDANCE\n\nFOUNDATIONAL\n\nTOOLS-ENCOUNTER-1"
         assert dynamic == "OBS"
@@ -292,9 +327,17 @@ class TestBuildSegmented:
             b = PromptBudgeter(
                 total_budget=10_000, response_reserve=0, token_counter=_ExactCounter(), builder_gate=None
             )
-            b.add("identity", "IDENTITY", SectionPriority.CRITICAL, cacheable=True, source="data")
-            b.add("tools", tools_text, SectionPriority.CRITICAL, cacheable=True, phase_scoped=True, source="data")
-            b.add("guidance", "GUIDANCE", SectionPriority.IMPORTANT, cacheable=True, source="data")
+            b.add("identity", "IDENTITY", SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+            b.add(
+                "tools",
+                tools_text,
+                SectionPriority.CRITICAL,
+                cacheable=True,
+                phase_scoped=True,
+                source="data",
+                header=None,
+            )
+            b.add("guidance", "GUIDANCE", SectionPriority.IMPORTANT, cacheable=True, source="data", header=None)
             return b.build_segmented()[0]
 
         one, two = _build("choose: attack, defend"), _build("choose: flee, bargain")
@@ -305,7 +348,7 @@ class TestBuildSegmented:
     def test_phase_scoped_requires_cacheable(self):
         b = PromptBudgeter(total_budget=10_000, response_reserve=0, token_counter=_ExactCounter(), builder_gate=None)
         with pytest.raises(ValueError, match="phase_scoped=True requires cacheable=True"):
-            b.add("tools", "TOOLS", SectionPriority.CRITICAL, phase_scoped=True, source="data")
+            b.add("tools", "TOOLS", SectionPriority.CRITICAL, phase_scoped=True, source="data", header=None)
 
     def test_truncation_keeps_the_phase_scoped_placement(self):
         # A truncated copy of a section must not silently lose its placement
@@ -313,7 +356,7 @@ class TestBuildSegmented:
         # reserve - 100 template overhead = 100 tokens; stable cap 70.
         b = PromptBudgeter(total_budget=200, response_reserve=0, token_counter=_ExactCounter(), builder_gate=None)
         identity, guidance, tools = "I " * 10, "G " * 10, "T " * 65
-        b.add("identity", identity.strip(), SectionPriority.MANDATORY, cacheable=True, source="data")
+        b.add("identity", identity.strip(), SectionPriority.MANDATORY, cacheable=True, source="data", header=None)
         b.add(
             "tools",
             tools.strip(),
@@ -324,8 +367,9 @@ class TestBuildSegmented:
             min_tokens=5,
             truncate_fn=lambda c, m: " ".join(c.split()[:m]),
             source="data",
+            header=None,
         )
-        b.add("guidance", guidance.strip(), SectionPriority.MANDATORY, cacheable=True, source="data")
+        b.add("guidance", guidance.strip(), SectionPriority.MANDATORY, cacheable=True, source="data", header=None)
         stable, _dynamic, dropped = b.build_segmented()
         assert dropped == []
         assert stable == identity.strip() + "\n\n" + guidance.strip() + "\n\n" + ("T " * 50).strip()
@@ -333,8 +377,8 @@ class TestBuildSegmented:
     def test_build_still_works_unsegmented(self):
         """Legacy build() ignores the cacheable flag and emits one string."""
         b = _make_budgeter(total=1000)
-        b.add("identity", "stable", SectionPriority.CRITICAL, cacheable=True, source="data")
-        b.add("req", "dynamic", SectionPriority.MANDATORY, cacheable=False, source="data")
+        b.add("identity", "stable", SectionPriority.CRITICAL, cacheable=True, source="data", header=None)
+        b.add("req", "dynamic", SectionPriority.MANDATORY, cacheable=False, source="data", header=None)
         text, dropped = b.build()
         assert "stable" in text and "dynamic" in text
         assert dropped == []
@@ -418,11 +462,11 @@ class TestTruncationHelpers:
 
 class TestReasoningCarryover:
     def test_record_and_retrieve(self):
-        """Basic record and get_prompt_text."""
+        """Basic record and get_prompt_body."""
         rc = ReasoningCarryover(max_entries=5)
         rc.record("internet_search", "User asked about weather", True, "Sunny 72F")
-        text = rc.get_prompt_text()
-        assert "Recent Decisions" in text
+        text = rc.get_prompt_body()
+        assert text.startswith("- internet_search:")
         assert "internet_search" in text
         assert "OK" in text
 
@@ -435,7 +479,7 @@ class TestReasoningCarryover:
         rc.record("tool_d", "reason_d", True, "result_d")
 
         assert len(rc) == 3
-        text = rc.get_prompt_text()
+        text = rc.get_prompt_body()
         assert "tool_a" not in text  # Evicted
         assert "tool_b" in text
         assert "tool_d" in text
@@ -443,7 +487,7 @@ class TestReasoningCarryover:
     def test_empty_returns_empty_string(self):
         """Empty carryover returns empty string."""
         rc = ReasoningCarryover()
-        assert rc.get_prompt_text() == ""
+        assert rc.get_prompt_body() == ""
 
     def test_clear(self):
         """clear() wipes the buffer."""
@@ -452,7 +496,7 @@ class TestReasoningCarryover:
         assert len(rc) == 1
         rc.clear()
         assert len(rc) == 0
-        assert rc.get_prompt_text() == ""
+        assert rc.get_prompt_body() == ""
 
     def test_prompt_line_formatting(self):
         """ReasoningEntry.to_prompt_line() produces expected format."""
@@ -494,7 +538,7 @@ class TestReasoningCarryover:
         def reader():
             for _ in range(50):
                 try:
-                    rc.get_prompt_text()
+                    rc.get_prompt_body()
                     _ = len(rc)
                 except Exception as e:
                     errors.append(f"read error: {e}")
@@ -517,11 +561,17 @@ class TestReasoningCarryover:
 # ── Mode-Aware Manifest & Guidance Tests ──────────────────────────────────
 
 
+def _manifest_text(**kw):
+    """The manifest sections as the prompt shows them (each header, then its neutralized body)."""
+    from maxim.agents.prompt_builder import build_workspace_manifest_sections
+    from maxim.utils.content_safety import render_headed_section
+
+    return "\n\n".join(render_headed_section(h, b) for h, b in build_workspace_manifest_sections(**kw))
+
+
 class TestModeAwareManifest:
     def test_workspace_manifest_passive_mode(self, tmp_path):
         """Passive mode shows workspace files and CWD read-only context."""
-        from maxim.agents.prompt_builder import build_workspace_manifest
-
         # Create a workspace inside tmp_path
         ws = tmp_path / ".maxim_workspace"
         ws.mkdir()
@@ -529,33 +579,29 @@ class TestModeAwareManifest:
         # Add a CWD file so CWD context section appears
         (tmp_path / "app.py").write_text("import os")
 
-        result = build_workspace_manifest(mode_name="passive", cwd=str(tmp_path))
+        result = _manifest_text(mode_name="passive", cwd=str(tmp_path))
         assert "EXISTING WORKSPACE" in result
         assert "hello.py" in result
         assert "proposed as plans" in result
 
     def test_workspace_manifest_active_mode(self, tmp_path):
         """Active mode shows workspace + CWD with 'requires approval' note."""
-        from maxim.agents.prompt_builder import build_workspace_manifest
-
         ws = tmp_path / ".maxim_workspace"
         ws.mkdir()
         (ws / "draft.py").write_text("x = 1")
         (tmp_path / "main.py").write_text("print('main')")
 
-        result = build_workspace_manifest(mode_name="active", cwd=str(tmp_path))
+        result = _manifest_text(mode_name="active", cwd=str(tmp_path))
         assert "EXISTING WORKSPACE" in result
         assert "requires approval" in result
 
     def test_workspace_manifest_singularity_mode(self, tmp_path):
         """Singularity mode shows full CWD tree with full access language."""
-        from maxim.agents.prompt_builder import build_workspace_manifest
-
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("print('main')")
         (tmp_path / "README.md").write_text("# Project")
 
-        result = build_workspace_manifest(mode_name="singularity", cwd=str(tmp_path))
+        result = _manifest_text(mode_name="singularity", cwd=str(tmp_path))
         assert "PROJECT DIRECTORY" in result
         assert "FULL read/write" in result
         assert ".maxim_workspace" not in result or "scratch" in result
@@ -563,21 +609,17 @@ class TestModeAwareManifest:
 
     def test_workspace_manifest_singularity_plan_hint(self, tmp_path):
         """Singularity with many files triggers PLAN FIRST hint."""
-        from maxim.agents.prompt_builder import build_workspace_manifest
-
         for i in range(6):
             (tmp_path / f"file{i}.py").write_text(f"# file {i}")
 
-        result = build_workspace_manifest(mode_name="singularity", cwd=str(tmp_path))
+        result = _manifest_text(mode_name="singularity", cwd=str(tmp_path))
         assert "PLAN FIRST" in result
 
     def test_workspace_manifest_empty_workspace(self, tmp_path):
         """Empty workspace returns CWD context only for active mode."""
-        from maxim.agents.prompt_builder import build_workspace_manifest
-
         (tmp_path / "app.py").write_text("import os")
 
-        result = build_workspace_manifest(mode_name="active", cwd=str(tmp_path))
+        result = _manifest_text(mode_name="active", cwd=str(tmp_path))
         assert "CWD Context" in result
         assert "EXISTING WORKSPACE" not in result
 

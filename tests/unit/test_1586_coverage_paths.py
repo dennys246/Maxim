@@ -4,7 +4,6 @@ campaign YAML load (its turns, its status line and its failure warning)."""
 
 from __future__ import annotations
 
-import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -86,59 +85,42 @@ def test_shared_router_is_none_when_the_fallback_config_is_disabled(monkeypatch:
 # --- research_orchestrator._load_campaign_turns ----------------------------------------------------------------------
 
 
-def test_load_campaign_turns_reads_percepts_with_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    percepts = [
-        {
-            "cli_input": "  first turn \n",
-            "metadata": {"phase": "p1", "experiment_role": "probe", "scenario_tag": "t1"},
-            "salience": 0.5,
-            "novelty": 0.2,
-        },
-        {"cli_input": ""},  # no text: skipped
-        {"other": "x"},  # no cli_input: skipped
-        {"cli_input": "second"},  # defaults
-    ]
+def test_load_campaign_turns_reads_its_turns_through_the_one_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    turns = [{"text": "first turn", "phase": "p1"}]
     loaded: dict[str, Any] = {}
 
-    def fake_load(path: Any) -> SimpleNamespace:
-        loaded["path"] = str(path)
-        return SimpleNamespace(percepts=percepts)
+    def fake_load(path: Any, **kw: Any) -> list[dict[str, Any]]:
+        loaded["path"], loaded["kw"] = str(path), kw
+        return turns
 
     statuses: list[str] = []
-    monkeypatch.setattr("maxim.simulation.scenario_source.load_scenario", fake_load)
+    monkeypatch.setattr("maxim.simulation.experiment.load_campaign_turns", fake_load)
     monkeypatch.setattr("maxim.simulation.sim_logger.display_status", statuses.append)
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
-    turns = _load_campaign_turns("camp.yaml")
-    assert loaded["path"] == "camp.yaml"
-    assert turns == [
-        {"text": "first turn", "phase": "p1", "role": "probe", "tag": "t1", "salience": 0.5, "novelty": 0.2},
-        {"text": "second", "phase": "", "role": "", "tag": "", "salience": 0.8, "novelty": 0.7},
-    ]
-    assert statuses == ["Loaded 2 campaign turns from camp.yaml"]
+    assert _load_campaign_turns("camp.yaml") is turns  # #1621: experiment.load_campaign_turns' dicts, unchanged
+    assert loaded == {"path": "camp.yaml", "kw": {"strict": True}}
+    assert statuses == ["Loaded 1 campaign turns from camp.yaml"]
 
 
-def test_load_campaign_turns_warns_and_returns_empty_on_a_bad_file(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    def boom(path: Any) -> None:
+def test_load_campaign_turns_raises_on_a_bad_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1621: an explicit campaign that fails to load is refused, never replaced by a free-form sim."""
+
+    def boom(path: Any, **_kw: Any) -> None:
         raise ValueError("bad yaml 1586")
 
-    monkeypatch.setattr("maxim.simulation.scenario_source.load_scenario", boom)
+    monkeypatch.setattr("maxim.simulation.experiment.load_campaign_turns", boom)
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
-    with caplog.at_level(logging.WARNING, logger="maxim.simulation.research_orchestrator"):
-        assert _load_campaign_turns("missing.yaml") == []
-    assert any(
-        "Failed to load campaign YAML" in r.getMessage() and "bad yaml 1586" in r.getMessage() for r in caplog.records
-    )
+    with pytest.raises(ValueError, match="bad yaml 1586"):
+        _load_campaign_turns("missing.yaml")
 
 
 def test_load_campaign_turns_without_a_campaign_loads_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
-    def never(path: Any) -> None:
-        raise AssertionError("load_scenario must not be called without a campaign")
+    def never(path: Any, **_kw: Any) -> None:
+        raise AssertionError("load_campaign_turns must not be called without a campaign")
 
-    monkeypatch.setattr("maxim.simulation.scenario_source.load_scenario", never)
+    monkeypatch.setattr("maxim.simulation.experiment.load_campaign_turns", never)
     from maxim.simulation.research_orchestrator import _load_campaign_turns
 
     assert _load_campaign_turns(None) == []

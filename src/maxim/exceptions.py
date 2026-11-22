@@ -47,6 +47,17 @@ class MaximError(Exception):
         return self.message
 
 
+def _rebuild_with_state(cls: type[BaseException], args: tuple[Any, ...], state: dict[str, Any]) -> BaseException:
+    """Rebuild an exception whose ``__init__`` takes keyword-only fields, for pickle and copy: ``cls.__new__`` plus
+    its ``args`` and attribute ``state``, without calling ``__init__`` (a subclass may narrow its signature, as
+    ``tunnel.keys.LeaderKeyMissing`` does). Used by the ``__reduce__`` of :class:`KeyFileUnusable` and
+    :class:`CampaignUnloadable`."""
+    obj = cls.__new__(cls, *args)
+    obj.args = args
+    obj.__dict__.update(state)
+    return obj
+
+
 class KeyFileUnusable(MaximError, RuntimeError):
     """A key file exists but cannot be used, so it is refused rather than read as absent or overwritten.
 
@@ -62,6 +73,10 @@ class KeyFileUnusable(MaximError, RuntimeError):
         self.reason = reason
         self.fix_hint = fix_hint
         super().__init__(message or f"key file unusable ({reason}): {path}")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fields (and subclasses that narrow them): rebuilt from state, so pickle and copy round-trip.
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
 
 
 class StopStillPending(MaximError, RuntimeError):
@@ -548,6 +563,37 @@ class UserProfilesInvalid(ConfigurationError):
     """
 
     fix_hint = "Fix the file, or move it aside, then run `maxim doctor` to check it."
+
+
+class CampaignUnloadable(MaximError, ValueError):
+    """Research mode's explicit campaign cannot be run as scripted turns: it is missing, malformed, or holds a
+    percept that is not a ``cli_input`` line (#1621). Raised by ``research_orchestrator._load_campaign_turns`` before
+    any session directory or LLM is built, so research never runs a free-form sim in its place. A ``ValueError``, so
+    ``maxim.research()`` callers catching that keep working; the CLI exits 2 with ``fix_hint``. ``campaign`` is the
+    path as given and ``reason`` the loader's message.
+    """
+
+    fix_hint = (
+        "Give --campaign a scenario whose percepts are all cli_input lines (one turn each); a scenario with other "
+        "percepts runs through `maxim --sim <scenario>`, and a DM campaign through `maxim --sim <campaign.yaml>`."
+    )
+
+    def __init__(self, *, campaign: str, reason: str) -> None:
+        self.campaign = campaign
+        self.reason = reason
+        # Name the campaign exactly once: always here, and never again as the reason's leading label. The loaders
+        # label their errors three ways: load_scenario's "Scenario <Path>: ", and load_campaign_turns' "<path>: "
+        # as given or Path-normalised (which drops "./"). A name inside a sentence ("not found: x") is left alone.
+        detail = reason
+        for prefix in (f"Scenario {Path(campaign)}: ", f"{campaign}: ", f"{Path(campaign)}: "):
+            if reason.startswith(prefix):
+                detail = reason[len(prefix) :]
+                break
+        super().__init__(f"research campaign {campaign} cannot be loaded: {detail}")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fields: rebuilt from state, so pickle and copy round-trip.
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
 
 
 class ComponentNotFoundError(ConfigurationError):
