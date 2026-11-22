@@ -408,7 +408,7 @@ def _triggering(new_cli_input: Any, followup_original_query: str, pending_modifi
     text is not the stored input (#1519: the prompt labels a voice request as heard on the room mic)."""
     modification = pending_modification.get("user_modification", "") if pending_modification else ""
     text = new_cli_input or followup_original_query or modification
-    data = getattr(state, "data", {})
+    data = state.data
     stored = new_cli_input and str(data.get("pending_user_input", "")).strip() == str(new_cli_input).strip()
     source = str(data.get("pending_user_input_source", "")) if stored else ""
     return {"triggering_input": text, "triggering_input_source": source}

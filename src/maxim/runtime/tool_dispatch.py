@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
+from maxim.modes.definitions import get_tool_followup_type
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
 from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import ActionFollowup
@@ -943,11 +944,13 @@ def execute_parallel_actions(
     return parallel_results, combined_results
 
 
-def _reset_deliberation(executor: Any) -> None:
-    """Reset ThinkTool deliberation state when a non-think action fires (L2).
+def _reset_deliberation(executor: Any, tool_name: str) -> None:
+    """Reset ThinkTool deliberation state when a non-think action fires (L2); a ``think`` keeps it.
 
     Single call site for both dispatch paths — prevents drift.
     """
+    if tool_name == "think":
+        return
     try:
         _registry = getattr(executor, "registry", None)
         if _registry is not None:
@@ -990,16 +993,12 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
     return None
 
 
-def _followup_type_and_text(
-    tool_name: str, current_mode: str, overlay: Any, output: Any, result: Any
-) -> tuple[str, str | None]:
-    """The follow-up type a completed tool queues and its result text, more of it (up to 3000 characters) for a tool
-    whose follow-up processes the result (moved out of ``execute_and_learn``, rule T for #1519)."""
-    from maxim.modes.definitions import get_tool_followup_type
-
-    followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
+def _followup_text_for(followup_type: str | None, tool_name: str, output: Any, result: Any) -> str | None:
+    """A completed tool's result text for its follow-up, more of it (up to 3000 characters) for a follow-up type that
+    processes the result (moved out of ``execute_and_learn``, rule T for #1519). The caller resolves the type itself,
+    from the one mode it reads per tick (rule E of ``lint_loop_mode_reads``)."""
     result_limit = 3000 if followup_type in ("process", "respond", "engage") else 100
-    return followup_type, _followup_result_text(tool_name, output, result, result_limit)
+    return _followup_result_text(tool_name, output, result, result_limit)
 
 
 def _audit_execution_error(
@@ -1541,10 +1540,10 @@ def execute_and_learn(
         current_mode = operational_mode(executor, state)
 
         # L2: Reset deliberation state when a non-think action fires.
-        if tool_name != "think":
-            _reset_deliberation(executor)
+        _reset_deliberation(executor, tool_name)
 
-        followup_type, result_str = _followup_type_and_text(tool_name, current_mode, overlay, output, result)
+        followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
+        result_str = _followup_text_for(followup_type, tool_name, output, result)
 
         rec_outcome(
             agent_id=agent_id,

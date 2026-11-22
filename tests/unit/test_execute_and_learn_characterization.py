@@ -64,6 +64,9 @@ def _expected(**overrides: Any) -> dict[str, Any]:
         "success": True,
         "tool_name": TOOL,
         "tool_params": {},
+        # #1519: the tool that ran declares no untrusted output (the stub tool), so the prompt frames its result as
+        # the agent's own.
+        "untrusted_output": False,
     }
     base.update(overrides)
     return base
