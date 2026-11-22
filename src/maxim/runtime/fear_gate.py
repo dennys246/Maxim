@@ -215,7 +215,9 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     (unescaped match or literal fallback) can write."""
     from maxim.utils.content_safety import (
         edit_review_text,
+        has_format_character,
         prepare_written_content,
+        unescape_format_characters,
     )
 
     # Bash commands
@@ -235,11 +237,13 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     # Edit file new text
     if tool_name == "edit_file":
         new_text = params.get("new_text", "")
-        typed_len = len(new_text) if isinstance(new_text, str) else 0
+        holds_format = False
         if isinstance(new_text, str) and new_text:
+            holds_format = has_format_character(unescape_format_characters(new_text))
             new_text = edit_review_text(new_text, str(params.get("old_text", "") or ""))
-        # The size cut-off reads the longer of the typed and reviewed text: the review turns escapes into single
-        # characters, so measuring it alone would skip a short edit whose written text is over the line (delta-13).
-        if new_text and max(typed_len, len(new_text)) > 10:
+        # An edit holding a format character (raw or escaped) is never trivial: it is always reviewed, because the
+        # review's length is not the written length (each budget-less real character may be written as an 8-character
+        # escape). Without one, the review IS the written text, so the size cut-off measures exactly (delta-14).
+        if new_text and (holds_format or len(new_text) > 10):
             return new_text
     return None

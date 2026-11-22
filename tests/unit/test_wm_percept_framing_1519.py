@@ -1137,6 +1137,22 @@ def test_a_short_review_still_reaches_the_fear_gate_when_the_written_edit_is_lon
     assert _extract_code_content("edit_file", params) == "\u202e\u202eab"
 
 
+@pytest.mark.parametrize("new_text", ["\u202e\u202e\u202e", "ab\u202e\u202e\u202e", "<U+202E>", "\u200b"])
+def test_an_edit_holding_a_format_character_always_reaches_the_fear_gate(new_text):
+    """Delta-14: the review's length is not the written length when format characters are involved (a budget-less
+    real character may be written as an 8-character escape), so such an edit is never skipped as trivial."""
+    from maxim.runtime.fear_gate import _extract_code_content
+
+    params = {"path": "f.txt", "old_text": "x<U+202E>y", "new_text": new_text}
+    assert _extract_code_content("edit_file", params) is not None
+
+
+def test_a_short_plain_edit_is_still_skipped_by_the_size_cut_off():
+    from maxim.runtime.fear_gate import _extract_code_content
+
+    assert _extract_code_content("edit_file", {"path": "f.txt", "old_text": "a", "new_text": "<U+003C>b"}) is None
+
+
 def test_only_write_sandbox_file_appends():
     """Delta-9 fold 3: a tool with no ``append`` parameter never takes the append path (its BOM is kept), in the
     writers and in the fear gate."""
