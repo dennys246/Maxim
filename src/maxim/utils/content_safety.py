@@ -330,7 +330,8 @@ _FRAME_TOKEN = re.compile(r"tool[\W_]*output", re.IGNORECASE)
 # hyphen, the Mongolian vowel separator, invisible operators, tag characters...), as inclusive code-point ranges.
 # Precomputed from the Unicode database (Unicode 15.0.0, CPython 3.12) so no process pays a scan at import (#1519).
 # ``tests/unit/test_wm_percept_framing_1519.py::test_format_characters_are_one_set_from_the_unicode_database`` pins it
-# equal to the running interpreter's ``Cf``: when a Python/Unicode upgrade adds one, that test goes red. Regenerate:
+# equal to the running interpreter's ``Cf`` on Unicode 15.0 or later (on an older Unicode, Python 3.10/3.11, it checks
+# the interpreter's set is inside this one): when a Python/Unicode upgrade adds one, that test goes red. Regenerate:
 #   python -c "import sys,unicodedata as u;r=[];[r[-1].__setitem__(1,c) if r and r[-1][1]==c-1 else r.append([c,c])
 #   for c in range(sys.maxunicode+1) if u.category(chr(c))=='Cf'];print(r)"
 _FORMAT_CHAR_RANGES: tuple[tuple[int, int], ...] = (
@@ -346,6 +347,29 @@ _ZW = "".join(
 _ZERO_WIDTH = re.compile(f"[{_ZW}]")
 
 
+_FORMAT_ESCAPE = re.compile(r"<U\+([0-9A-F]{4,6})>")
+
+
+def escape_format_characters(text: str) -> str:
+    """``text`` with every Unicode format (``Cf``) character shown as ``<U+XXXX>`` (four to six hex digits), so an
+    invisible character is visible in tool output (#1519, owner decision 2026-11-21). ZWJ (U+200D) and ZWNJ
+    (U+200C) are escaped too, the safer choice: they can hide inside an identifier as easily as in an emoji or a
+    Persian word, which stay legible (``family 👨<U+200D>👩``, ``می<U+200C>خواهم``)."""
+    return _ZERO_WIDTH.sub(lambda m: f"<U+{ord(m.group(0)):04X}>", text)
+
+
+def unescape_format_characters(text: str) -> str:
+    """The inverse of ``escape_format_characters``: each ``<U+XXXX>`` naming a format character becomes that
+    character again; any other ``<U+...>`` text is left as written. ``edit_file`` uses it, so an exact edit copied
+    from framed output matches the file's real bytes."""
+
+    def _back(m: re.Match[str]) -> str:
+        char = chr(int(m.group(1), 16)) if int(m.group(1), 16) <= 0x10FFFF else ""
+        return char if char and _ZERO_WIDTH.fullmatch(char) else m.group(0)
+
+    return _FORMAT_ESCAPE.sub(_back, text)
+
+
 def has_format_character(text: str) -> bool:
     """Whether ``text`` holds any Unicode format (``Cf``) character: invisible, so never in trusted text (#1519)."""
     return bool(_ZERO_WIDTH.search(text))
@@ -359,8 +383,9 @@ _TOOL_NAME_SAFE = re.compile(r"[^\w-]")
 
 def safe_tool_name(tool_name: object) -> str:
     """A tool name as a frame header or a trusted system note may show it (#1519): every character outside ``[\\w-]``
-    becomes ``_``, so a model-proposed name cannot carry a line break, a control, a frame marker or a header."""
-    return _TOOL_NAME_SAFE.sub("_", str(tool_name or "tool"))
+    becomes ``_``, so a model-proposed name cannot carry a line break, a control, a frame marker or a header, and
+    it is capped at 64 characters, so a long name cannot push a note's instruction out of the prompt's window."""
+    return _TOOL_NAME_SAFE.sub("_", str(tool_name or "tool"))[:64]  # capped: it must not fill a note's window
 
 
 # The one rule the follow-up prompts state ABOVE the framed content (instruction hierarchy): the
@@ -390,15 +415,23 @@ def frame_tool_output(tool_name: str, text: str, *, external: bool, nonce: str |
     Applied where a tool follow-up becomes prompt text (every producer of an ``ActionFollowup``
     converges there), never on the summaries NAc learns from. The markers carry a per-call random
     ``id`` the content has never seen, so it cannot forge the closer; and the content is NFKC-
-    normalised and stripped of zero-width characters before any ``tool output`` lookalike in it is
-    defanged. ``external`` marks content from outside the machine (web pages, search snippets).
+    normalised, any ``tool output`` lookalike in it (format characters inside the word included) is
+    defanged, and every remaining Unicode format character is made VISIBLE as ``<U+XXXX>``
+    (``escape_format_characters``; owner decision 2026-11-21, #1519): a soft hyphen, a bidi override
+    (Trojan Source), a tag character or a ZWJ/ZWNJ is shown, never silently stripped, so a coding
+    agent sees what the bytes hold and ``edit_file`` can map the escape back (``unescape_format_characters``).
+    ``external`` marks content from outside the machine (web pages, search snippets).
     """
     import secrets
     import unicodedata
 
     frame_id = nonce or secrets.token_hex(4)
     name = safe_tool_name(tool_name)
-    body = _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text))
+    body = unicodedata.normalize("NFKC", text)
+    # The marker word first, format characters inside it included, so defanging is unchanged (#1519) ...
+    body = _FRAME_TOKEN_ZW.sub("t-o", body)
+    # ... then every other format character is made visible, never stripped (owner decision 2026-11-21).
+    body = escape_format_characters(body)
     # Every line break ``str.splitlines`` honours becomes "\n" BEFORE control characters go (#1519): a U+2028 or a
     # \x1e must not hide a line from one reader and show it to another.
     body = _LINE_BREAK.sub("\n", body).translate(_CONTROL_DELETE)
@@ -450,6 +483,9 @@ _FRAME_MARKER = re.compile(r"<<(/?)TOOL_OUTPUT id=([0-9a-f]+)(?: [^\n]*?)?>>")
 # is the format-character class above.
 _TOOL_WORD = f"[{_ZW}]*".join("tool")
 _OUTPUT_WORD = f"[{_ZW}]*".join("output")
+# The bare marker word, format characters between its letters included: what a framed body's ``tool output``
+# lookalike is defanged by before its format characters are made visible.
+_FRAME_TOKEN_ZW = re.compile(rf"{_TOOL_WORD}[\W_]*{_OUTPUT_WORD}", re.IGNORECASE)
 _MARKER_LIKE = re.compile(rf"<[{_ZW}]*<([\s{_ZW}]*/?[\s{_ZW}]*){_TOOL_WORD}[\W_]*{_OUTPUT_WORD}", re.IGNORECASE)
 
 

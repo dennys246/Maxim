@@ -468,6 +468,25 @@ class ExecuteFileTool(Tool):
             return ToolResult(success=False, error=str(e))
 
 
+def _escaped_edit(
+    old_text: str, new_text: str, context_before: str | None, context_after: str | None
+) -> tuple[str, str, str | None, str | None] | None:
+    """The edit with every ``<U+XXXX>`` format-character escape mapped back to its character, or ``None`` when its
+    old text holds none (#1519): framed tool output shows a soft hyphen or a bidi control as ``<U+00AD>``, so an
+    exact edit copied from it still matches the file. Used only when the literal old text is not in the file, so a
+    file that really holds the escape text is edited as written."""
+    from maxim.utils.content_safety import unescape_format_characters
+
+    back = unescape_format_characters(old_text)
+    if back == old_text:
+        return None
+
+    def _opt(text: str | None) -> str | None:
+        return unescape_format_characters(text) if text is not None else None
+
+    return back, unescape_format_characters(new_text), _opt(context_before), _opt(context_after)
+
+
 class EditFileTool(Tool):
     """Replace specific text in a file.
 
@@ -533,6 +552,7 @@ class EditFileTool(Tool):
             expected = kwargs.get("expected_count", 1)
             context_before = kwargs.get("context_before")
             context_after = kwargs.get("context_after")
+            escaped = _escaped_edit(old_text, new_text, context_before, context_after)
 
             try:
                 validated_path = sanitize_path(_rebase_relative(raw_path, self._allowed_dirs))
@@ -547,6 +567,8 @@ class EditFileTool(Tool):
 
             try:
                 content = path.read_text(encoding="utf-8")
+                if escaped is not None and old_text not in content:  # the text was copied from framed output
+                    old_text, new_text, context_before, context_after = escaped
             except FileNotFoundError:
                 return ToolResult(
                     success=False,

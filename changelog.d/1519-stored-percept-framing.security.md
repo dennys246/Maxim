@@ -42,4 +42,10 @@
     line, no control or format character, no frame marker) is checked, so model output can neither forge it nor
     crash the run. Format characters are Unicode's whole `Cf` category, from the Unicode database.
   - A truncated CWD listing is cut inside its frame, so no file name is ever shown outside it.
+  - Invisible characters in tool output are made VISIBLE instead of stripped (owner decision 2026-11-21): every
+    Unicode format character (`Cf`: soft hyphens, bidi overrides such as U+202E, tag characters, ZWJ and ZWNJ) in a
+    framed body is shown as `<U+XXXX>`, its code point. A Trojan-Source bidi trick is therefore visible to a coding
+    agent. `edit_file` maps an escape copied from framed output back to the real character, so a read-then-exact
+    edit still matches. A family emoji or a Persian word stays legible (`👨<U+200D>👩`, `می<U+200C>خواهم`). Inside a
+    marker-shaped span they are still neutralized, so defanging is unchanged.
   - The enrichment log's ATL line carries concept ids, not names.

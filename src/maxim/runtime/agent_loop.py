@@ -2156,7 +2156,7 @@ def _run_agentic_loop_body(
                     f"SYSTEM: '{safe_tool_name(_this_tool)}' was called {_consecutive_same_tool_count} times "
                     f"with identical parameters — blocked to prevent a loop. "
                     f"Try a DIFFERENT tool or different parameters. "
-                    f"Available tools: {', '.join(map(safe_tool_name, _other_tools[:8])) if _other_tools else 'none'}"
+                    f"Available tools: {', '.join([t for t in _other_tools if safe_tool_name(t) == t][:8]) if _other_tools else 'none'}"
                 )
                 note_system_outcome(recent_outcomes, max_recent_outcomes, _this_tool, _cap_msg, "consecutive_tool_cap")
 
