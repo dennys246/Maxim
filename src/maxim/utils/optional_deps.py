@@ -101,6 +101,8 @@ EXTRA_FOR_IMPORT: dict[str, str] = {
     "twilio": "comms",
     "fastapi": "comms",
     "uvicorn": "comms",
+    # console (the Console's wire models, console/schemas.py)
+    "pydantic": "console",
     # semantic
     "sentence_transformers": "semantic",
     "spacy": "semantic",

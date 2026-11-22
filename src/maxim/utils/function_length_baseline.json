@@ -4,11 +4,6 @@
   "threshold": 200,
   "entries": [
     {
-      "file": "src/maxim/agents/llm_worker.py",
-      "qualname": "LLMWorker._process_request",
-      "lines": 218
-    },
-    {
       "file": "src/maxim/api.py",
       "qualname": "run",
       "lines": 201
@@ -206,7 +201,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 241
+      "lines": 233
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -397,6 +392,7 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
+    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
     "_run_agentic_loop_body tightened 2140 -> 2138 on 2026-11-21 (#1185, rule T): the plan-approval branch's nested pending-slot check and its comment became one line, since LoopController.handle_plan_approval now returns True exactly when the reply is the answer to the plan (approved, rejected or re-asked) and the controller clears the pending input itself.",
     "_run_agentic_loop_body tightened 2138 -> 2114 on 2026-11-21 (#1185 Surface, rule T): the plan gate (the requires_approval check, the sim auto-resolve and the park) moved to LoopController.gate_plan_approval, paying for the handle_plan_approval call's new keywords (execute_and_learn, book_machine_refusal, observation, sim): an approved plan now executes once inside the handler through loop_planning.execute_approved_plan.",
     "_run_agentic_loop_body tightened 2114 -> 2109 on 2026-11-21 (#1185 delta round, rule T): the confirmation, timeout-retry and plan-approval calls became one LoopController.answer_pending_prompt call ahead of store_user_input (S9), paying for gate_plan_approval's new keywords; LLMWorker._process_request 225 -> 218: its timeout prompt moved to llm_worker._timeout_retry_message, paying for its new text.",
