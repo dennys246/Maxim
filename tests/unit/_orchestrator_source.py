@@ -208,6 +208,10 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
     ("report.py", "_record_dict"): (
         "#997: the one serialization point both report writers share, reducing endpoint URLs; not orchestrator run code"
     ),
+    ("report.py", "_tool_usage"): (
+        "#1185: build_report's tool usage breakdown moved out verbatim (rule T, after the synthetic-marker filter "
+        "touched it); report assembly, not orchestrator run code"
+    ),
 }
 
 
