@@ -4,11 +4,6 @@
   "threshold": 200,
   "entries": [
     {
-      "file": "src/maxim/agents/llm_worker.py",
-      "qualname": "LLMWorker._process_request",
-      "lines": 225
-    },
-    {
       "file": "src/maxim/api.py",
       "qualname": "run",
       "lines": 201
