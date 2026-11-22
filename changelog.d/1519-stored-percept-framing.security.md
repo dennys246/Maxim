@@ -42,10 +42,19 @@
     line, no control or format character, no frame marker) is checked, so model output can neither forge it nor
     crash the run. Format characters are Unicode's whole `Cf` category, from the Unicode database.
   - A truncated CWD listing is cut inside its frame, so no file name is ever shown outside it.
-  - Invisible characters in tool output are made VISIBLE instead of stripped (owner decision 2026-11-21): every
+  - Invisible characters in tool output are made VISIBLE instead of stripped (owner decisions 2026-11-21): every
     Unicode format character (`Cf`: soft hyphens, bidi overrides such as U+202E, tag characters, ZWJ and ZWNJ) in a
-    framed body is shown as `<U+XXXX>`, its code point. A Trojan-Source bidi trick is therefore visible to a coding
-    agent. `edit_file` maps an escape copied from framed output back to the real character, so a read-then-exact
-    edit still matches. A family emoji or a Persian word stays legible (`👨<U+200D>👩`, `می<U+200C>خواهم`). Inside a
-    marker-shaped span they are still neutralized, so defanging is unchanged.
+    framed body is shown as `<U+XXXX>`, its code point, so a Trojan-Source bidi trick is visible to a coding agent.
+    The literal text `<U+` is itself shown as `<U+003C>U+`, so the escape is one-to-one: a literal `<U+202E>` in a
+    file and a real U+202E never look alike. A family emoji or a Persian word stays legible (`👨<U+200D>👩`,
+    `می<U+200C>خواهم`). Inside a marker-shaped span they are still neutralized, so defanging is unchanged.
+  - `edit_file` restores only what was there. Its old text and context fields are unescaped exactly, to match the
+    file's real bytes. Its new text may restore only format characters the matched old text held, counted per code
+    point; any other escape is written as its literal text and named in the success message, so an edit can never
+    introduce a bidi control or other invisible character. The success message also reports how many escapes it
+    restored. This is not a general read-then-exact-edit round trip: an edit cannot add a format character that
+    the replaced text did not hold.
+  - Every other file writer (`write_file`, `write_sandbox_file`, `create_sandbox_script`, `write_shared_output`)
+    writes escapes as their literal text, except a leading `<U+FEFF>`, which is restored as the real byte-order mark
+    (`content_safety.restore_leading_bom`). `bash` and heredoc text stays literal.
   - The enrichment log's ATL line carries concept ids, not names.

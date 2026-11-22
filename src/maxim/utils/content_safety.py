@@ -348,26 +348,74 @@ _ZERO_WIDTH = re.compile(f"[{_ZW}]")
 
 
 _FORMAT_ESCAPE = re.compile(r"<U\+([0-9A-F]{4,6})>")
+# The text ``<U+`` itself is escaped (its ``<`` as ``<U+003C>``), so the escape is ONE-TO-ONE: a literal ``<U+202E>``
+# in a file reads ``<U+003C>U+202E>``, a real U+202E reads ``<U+202E>``, and the two are never confused (#1519).
+_LITERAL_ESCAPE_OPENER = "<U+"
+_LT_ESCAPE = "<U+003C>"
 
 
 def escape_format_characters(text: str) -> str:
-    """``text`` with every Unicode format (``Cf``) character shown as ``<U+XXXX>`` (four to six hex digits), so an
-    invisible character is visible in tool output (#1519, owner decision 2026-11-21). ZWJ (U+200D) and ZWNJ
-    (U+200C) are escaped too, the safer choice: they can hide inside an identifier as easily as in an emoji or a
-    Persian word, which stay legible (``family 👨<U+200D>👩``, ``می<U+200C>خواهم``)."""
+    """``text`` with every Unicode format (``Cf``) character shown as ``<U+XXXX>`` (four to six hex digits), and
+    every literal ``<U+`` shown as ``<U+003C>U+``, so an invisible character is visible and the escape is one-to-one
+    (#1519, owner decisions 2026-11-21). ZWJ (U+200D) and ZWNJ (U+200C) are escaped too, the safer choice: they can
+    hide inside an identifier as easily as in an emoji or a Persian word, which stay legible
+    (``family 👨<U+200D>👩``, ``می<U+200C>خواهم``). ``unescape_format_characters`` inverts it exactly. Escaping
+    escaped text again is a faithful second level (its ``<U+`` becomes ``<U+003C>U+``), never a lossy one: true
+    idempotence would make a literal escape and a real character look alike."""
+    text = text.replace(_LITERAL_ESCAPE_OPENER, _LT_ESCAPE + "U+")
     return _ZERO_WIDTH.sub(lambda m: f"<U+{ord(m.group(0)):04X}>", text)
 
 
+def _escaped_char(token: re.Match[str]) -> str | None:
+    """The character an escape token stands for: ``<`` for ``<U+003C>``, a format character for its own code point,
+    ``None`` for any other ``<U+...>`` (never produced by ``escape_format_characters``)."""
+    code = int(token.group(1), 16)
+    if code == 0x3C:
+        return "<"
+    char = chr(code) if code <= 0x10FFFF else ""
+    return char if char and _ZERO_WIDTH.fullmatch(char) else None
+
+
 def unescape_format_characters(text: str) -> str:
-    """The inverse of ``escape_format_characters``: each ``<U+XXXX>`` naming a format character becomes that
-    character again; any other ``<U+...>`` text is left as written. ``edit_file`` uses it, so an exact edit copied
-    from framed output matches the file's real bytes."""
+    """The exact inverse of ``escape_format_characters``: ``<U+003C>`` becomes ``<`` and each ``<U+XXXX>`` naming a
+    format character becomes that character; any other ``<U+...>`` text is left as written."""
+    return _FORMAT_ESCAPE.sub(lambda m: (_escaped_char(m) or m.group(0)), text)
 
-    def _back(m: re.Match[str]) -> str:
-        char = chr(int(m.group(1), 16)) if int(m.group(1), 16) <= 0x10FFFF else ""
-        return char if char and _ZERO_WIDTH.fullmatch(char) else m.group(0)
 
-    return _FORMAT_ESCAPE.sub(_back, text)
+def restore_format_characters(text: str, *, present_in: str) -> tuple[str, list[str], list[str]]:
+    """``text`` (an edit's new text) with escapes restored only as far as ``present_in`` (the matched old text, real
+    characters) held them (#1519, owner decision 2026-11-21: restore only what was there). ``<U+003C>`` is always
+    ``<`` (it is plain text). A format character's escape is restored to the real character only while the old text
+    still has one of that code point unspent, counted per code point; any other is written as its literal escape
+    text, so an edit can never introduce a bidi control (U+202A-202E, U+2066-2069) or any other invisible character
+    that was not there. Returns the text, the escapes restored, and the escapes written literally."""
+    from collections import Counter
+
+    budget = Counter(c for c in present_in if _ZERO_WIDTH.fullmatch(c))
+    restored: list[str] = []
+    literal: list[str] = []
+
+    def _one(m: re.Match[str]) -> str:
+        char = _escaped_char(m)
+        if char == "<":
+            return "<"
+        if char is not None and budget[char] > 0:
+            budget[char] -= 1
+            restored.append(m.group(0))
+            return char
+        literal.append(m.group(0))
+        return m.group(0)
+
+    return _FORMAT_ESCAPE.sub(_one, text), restored, literal
+
+
+def restore_leading_bom(content: str) -> str:
+    """Written file content with a leading ``<U+FEFF>`` (a BOM copied from framed output) restored as the real BOM; any
+    other escape is written as its literal text (#1519, owner decision 2026-11-21). The ONE helper every file writer
+    calls (``write_file``, ``write_sandbox_file``, ``create_sandbox_script``, ``write_shared_output``); ``bash`` and
+    heredoc text stays literal."""
+    marker = "<U+FEFF>"
+    return "\ufeff" + content[len(marker) :] if content.startswith(marker) else content
 
 
 def has_format_character(text: str) -> bool:

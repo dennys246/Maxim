@@ -100,6 +100,8 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
+from maxim.utils.content_safety import restore_leading_bom
+
 from .base import Effect, Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
 
 
@@ -281,7 +283,7 @@ class WriteFileTool(Tool):
     def execute(self, **kwargs) -> ToolResult:
         try:
             raw_path = kwargs["path"]
-            content = kwargs["content"]
+            content = restore_leading_bom(kwargs["content"])  # a BOM copied from framed output stays a BOM (#1519)
             overwrite = kwargs.get("overwrite", False)
 
             # Check content size to prevent memory exhaustion
@@ -468,23 +470,34 @@ class ExecuteFileTool(Tool):
             return ToolResult(success=False, error=str(e))
 
 
-def _escaped_edit(
+def _mapped_edit(
     old_text: str, new_text: str, context_before: str | None, context_after: str | None
-) -> tuple[str, str, str | None, str | None] | None:
-    """The edit with every ``<U+XXXX>`` format-character escape mapped back to its character, or ``None`` when its
-    old text holds none (#1519): framed tool output shows a soft hyphen or a bidi control as ``<U+00AD>``, so an
-    exact edit copied from it still matches the file. Used only when the literal old text is not in the file, so a
-    file that really holds the escape text is edited as written."""
-    from maxim.utils.content_safety import unescape_format_characters
+) -> tuple[str, str, str | None, str | None, str]:
+    """The edit as it applies to the file's real bytes, and a note for the success message (#1519, owner decision
+    2026-11-21: restore only what was there). Framed tool output shows a format character as ``<U+XXXX>`` and a
+    literal ``<U+`` as ``<U+003C>U+`` (one-to-one), so the old text and the context fields are unescaped exactly to
+    match. The new text may restore only format characters the matched old text held, counted per code point
+    (``content_safety.restore_format_characters``): any other escape is written as its literal text, so the tool that
+    exposes a bidi control can never insert one."""
+    from maxim.utils.content_safety import restore_format_characters, unescape_format_characters
 
-    back = unescape_format_characters(old_text)
-    if back == old_text:
-        return None
+    old_real = unescape_format_characters(old_text)
+    before = unescape_format_characters(context_before) if context_before is not None else None
+    after = unescape_format_characters(context_after) if context_after is not None else None
+    new_real, restored, literal = restore_format_characters(new_text, present_in=old_real)
+    note = ""
+    if restored or literal:
+        note = f"; {len(restored)} format-character escape(s) restored"
+        if literal:
+            note += f", written literally (not in the replaced text): {', '.join(literal)}"
+    return old_real, new_real, before, after, note
 
-    def _opt(text: str | None) -> str | None:
-        return unescape_format_characters(text) if text is not None else None
 
-    return back, unescape_format_characters(new_text), _opt(context_before), _opt(context_after)
+def _with_note(result: ToolResult, note: str) -> ToolResult:
+    """A successful edit's result with the escape note appended (#1519); anything else unchanged."""
+    if note and result.success:
+        result.output = f"{result.output}{note}"
+    return result
 
 
 class EditFileTool(Tool):
@@ -552,7 +565,9 @@ class EditFileTool(Tool):
             expected = kwargs.get("expected_count", 1)
             context_before = kwargs.get("context_before")
             context_after = kwargs.get("context_after")
-            escaped = _escaped_edit(old_text, new_text, context_before, context_after)
+            old_text, new_text, context_before, context_after, note = _mapped_edit(
+                old_text, new_text, context_before, context_after
+            )
 
             try:
                 validated_path = sanitize_path(_rebase_relative(raw_path, self._allowed_dirs))
@@ -567,8 +582,6 @@ class EditFileTool(Tool):
 
             try:
                 content = path.read_text(encoding="utf-8")
-                if escaped is not None and old_text not in content:  # the text was copied from framed output
-                    old_text, new_text, context_before, context_after = escaped
             except FileNotFoundError:
                 return ToolResult(
                     success=False,
@@ -585,13 +598,16 @@ class EditFileTool(Tool):
             # Context-aware disambiguation: when context_before or context_after
             # is provided, search for the full pattern and replace only old_text.
             if context_before is not None or context_after is not None:
-                return self._replace_with_context(
-                    content,
-                    path,
-                    old_text,
-                    new_text,
-                    context_before or "",
-                    context_after or "",
+                return _with_note(
+                    self._replace_with_context(
+                        content,
+                        path,
+                        old_text,
+                        new_text,
+                        context_before or "",
+                        context_after or "",
+                    ),
+                    note,
                 )
 
             # Standard path: exact match without context
@@ -627,7 +643,7 @@ class EditFileTool(Tool):
 
             new_content = content.replace(old_text, new_text, expected)
             path.write_text(new_content, encoding="utf-8")
-            return ToolResult(success=True, output=f"Replaced {count} occurrence(s)")
+            return ToolResult(success=True, output=f"Replaced {count} occurrence(s){note}")
 
         except Exception as e:
             return ToolResult(success=False, error=str(e))
