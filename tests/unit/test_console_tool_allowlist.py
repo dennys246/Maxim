@@ -179,19 +179,21 @@ class TestRosterAdvertisesOnlyPermittedTools:
     def test_agent_loop_filters_the_advertised_roster_through_permits(self):
         import inspect
 
-        from maxim.runtime import agent_loop
+        from maxim.runtime import loop_submit
 
         from tests.unit._loop_source import loop_source
 
         assert "available_tools = _advertisable_tools(available_tools, executor, autonomy_controller)" in loop_source()
-        assert "executor.permits(t)" in inspect.getsource(agent_loop._advertisable_tools)  # #1412: the one filter
-        # FUNCTION-SPECIFIC (kept on run_agentic_loop's body; a slice that moves either line updates it):
-        src = inspect.getsource(agent_loop._run_agentic_loop_body)  # the loop's body since bounded_stop step 0
-        # The filter runs AFTER the roster is final (SEM union + Wire 3) and
-        # BEFORE the descriptions are collected for the prompt.
-        assert src.index("_advertisable_tools(available_tools") < src.index(
-            "last_surfaced_tools = list(available_tools)"
-        )
+        assert "executor.permits(t)" in inspect.getsource(loop_submit._advertisable_tools)  # #1412: the one filter
+        # FUNCTION-SPECIFIC: both lines moved with §6's request assembly (slice 7b), the filter into
+        # ``_surface_tools`` and the surfaced list into ``submit_tick``. The filter runs AFTER the roster is
+        # final (SEM union + Wire 3) and BEFORE the surfaced list and the prompt's descriptions are taken.
+        surface = inspect.getsource(loop_submit._surface_tools)
+        assert surface.index("always_active_sem_tools(") < surface.index("get_disabled_affordances()")
+        assert surface.index("get_disabled_affordances()") < surface.index("_advertisable_tools(available_tools")
+        tick = inspect.getsource(loop_submit.submit_tick)
+        assert tick.index("= _surface_tools(") < tick.index("last_surfaced_tools = list(available_tools)")
+        assert tick.index("last_surfaced_tools = list(available_tools)") < tick.index("= _describe_surfaced_tools(")
 
 
 class TestSimAgentsUntouched:

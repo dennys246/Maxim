@@ -321,7 +321,7 @@ def test_no_prompt_names_a_known_tool_outside_the_agents_roster(
     came from the builder's own text."""
     from maxim.agents.prompt_budgeter import PromptBudgeter
     from maxim.modes.definitions import OPERATIONAL_MODES, get_mode
-    from maxim.runtime.agent_loop import _describe_tools_for_prompt
+    from maxim.runtime.loop_submit import _describe_tools_for_prompt
     from maxim.utils import filesystem_policy
 
     _sim_session(monkeypatch, interactive=interactive)

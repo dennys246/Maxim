@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 #: dict by ``start_simulation_mode``, so the AUT beside the narrator read ``respond: NOT AVAILABLE`` and had its own
 #: ``respond`` followed up. Read-only all the way down (its entries and their ``params`` too, copied from the
 #: source below): the prompt's tool section thaws each entry into a fresh dict
-#: (``agent_loop._describe_tools_for_prompt``), so no reader can write the shared constant.
+#: (``loop_submit._describe_tools_for_prompt``), so no reader can write the shared constant.
 _NARRATOR_TOOL_DESCRIPTIONS_SOURCE: dict[str, dict[str, Any]] = {
     "send_message": {
         "description": "Send a message to the agent under test and wait for its response. "

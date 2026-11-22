@@ -321,7 +321,7 @@ def tool_description_overlay(executor: Any) -> Mapping[str, Mapping[str, Any]]:
     The agent's registry carries them: ``ToolRegistry.tool_descriptions()`` none, the narrator's
     ``SimToolRegistry.tool_descriptions()`` its own entries; never the process-global dict, which the AUT running
     beside the narrator reads too. Resolved ONCE, by ``loop_setup.build_loop_run`` (``LoopRun.tool_overlay``), and
-    handed to both readers: the prompt's tool section (``agent_loop._describe_tools_for_prompt``) and a tool's
+    handed to both readers: the prompt's tool section (``loop_submit._describe_tools_for_prompt``) and a tool's
     follow-up type (``tool_dispatch.execute_and_learn`` -> ``get_tool_followup_type``). Both registries return
     module constants, so one read serves the run. No executor has no overlay. A registry without the method raises
     ``AttributeError``, and one returning a non-mapping a ``TypeError``: the run fails at setup, before any action."""

@@ -27,7 +27,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from maxim.modes.definitions import TOOL_DESCRIPTIONS, get_tool_followup_type
-from maxim.runtime.agent_loop import _describe_tools_for_prompt
+from maxim.runtime.loop_submit import _describe_tools_for_prompt
 from maxim.runtime.loop_state import tool_description_overlay
 from maxim.simulation.tools import NARRATOR_TOOL_DESCRIPTIONS, SimToolRegistry
 from maxim.tools.registry import ToolRegistry

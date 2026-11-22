@@ -136,7 +136,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1603
+      "lines": 1225
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",

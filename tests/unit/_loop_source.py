@@ -41,10 +41,18 @@ wrapper), and every pin below reads the body:
   - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region): reads
     ``loop_intake._drop_skipped_fallback`` (the sim fallback drop) since slice 6.
   - ``test_console_tool_allowlist.py::TestRosterAdvertisesOnlyPermittedTools::test_agent_loop_filters_the_advertised_roster_through_permits``,
-    its ordering half (permits filter before ``last_surfaced_tools``) -- §6's request assembly (the slice that moves §6).
+    its ordering half (SEM union, then Wire 3, then the permits filter, before ``last_surfaced_tools`` and the
+    descriptions): reads ``loop_submit._surface_tools`` and ``loop_submit.submit_tick`` since slice 7b.
+  - ``test_talk_roster_1412.py::test_both_roster_sites_in_the_loop_use_the_one_filter`` (two ``_advertisable_tools(``
+    calls, no inline ``executor.permits(t)``): reads ``_run_agentic_loop_body`` (§4's loop-cap message) plus
+    ``loop_submit._surface_tools`` (§6's roster) since slice 7b.
   - ``test_tool_output_framing.py`` and ``test_planning_liveness.py``: ``inspect.getsource`` of the
     module-level helpers ``_followup_synthetic_input`` (read from ``loop_submit`` since slice 7a), ``_drop_stale_proposal``
     and ``_proposal_without_action_reason`` (read from ``loop_intake`` since slice 6; no re-export).
+
+Slice 7b (§6's request assembly and deliberation -> ``loop_submit.submit_tick``, 1.3.6) re-pointed the two roster
+pins above; its characterization, ``test_loop_submit_request_characterization.py``, is behavioural through the public
+entry.
 
 Slice 6 (§2 -> ``loop_intake.take_llm_proposal``, 1.3.6) re-pointed the two §2 pins above and added none: its
 characterization, ``test_loop_intake_characterization.py``, is behavioural through the public entry.
