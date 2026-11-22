@@ -169,6 +169,7 @@ def _run(
     nac: Any = None,
     sim_mode: bool = False,
     pipeline: Any = None,
+    planning_liveness: bool = False,
 ) -> SimpleNamespace:
     """Run the real loop for ``steps`` passes. ``inputs[k]`` is pass k's fresh CLI percept; ``amend(k, ctx)`` may edit
     (or replace, by returning) the context memory built on pass k; ``hooks[k](obs)`` runs at the start of pass k."""
@@ -277,6 +278,8 @@ def _run(
         kwargs["memory_hub"] = _Hub(nac)
     if pipeline is not None:
         kwargs["bio_enrichment_pipeline"] = pipeline
+    if planning_liveness:
+        kwargs["planning_liveness"] = True
     AL.run_agentic_loop(
         _Agent(),
         _Env(str(tmp_path / "ws")),
@@ -438,6 +441,20 @@ def test_a_follow_up_with_no_built_context_gets_a_minimal_one(monkeypatch, tmp_p
     assert _logs(caplog, "Created minimal context") == ["Created minimal context for pending action followup"]
 
 
+def test_with_planning_liveness_a_held_input_rides_the_follow_up(monkeypatch, tmp_path):
+    """#1048 through the seam: the held input reaches ``submit_context(deferred_inputs=...)`` beside the follow-up,
+    marked processed; without planning liveness nothing is held, and the input preempts the follow-up (#1721's shape)."""
+    held = {"hooks": {0: _set_followup()}, "amend": _ctx_add(cli_inputs=["held words"]), "steps": 2}
+    obs = _run(monkeypatch, tmp_path, planning_liveness=True, **held)
+    [sub] = obs.worker.submits
+    assert sub["kw"]["deferred_inputs"] == ["held words"] and sub["triggering_input"] == "what was asked"
+    assert len(sub["cli_inputs"]) == 1 and sub["cli_inputs"][0].startswith("[ACTION_FOLLOWUP")
+    assert list(obs.ctrl.processed_cli_inputs) == ["held words"]
+    obs = _run(monkeypatch, tmp_path / "off", **held)
+    [sub] = obs.worker.submits
+    assert sub["kw"]["deferred_inputs"] == [] and sub["cli_inputs"] == ["held words"]
+
+
 def test_with_no_built_context_a_fresh_input_is_marked_processed_unsent(monkeypatch, tmp_path):
     """Pinned as-is (#1722): nothing to submit into, yet the input is recorded processed."""
     obs = _run(monkeypatch, tmp_path, amend=lambda k, ctx: None, inputs={0: "lost"}, steps=2)
@@ -454,6 +471,9 @@ def test_asleep_only_a_wake_keyword_reaches_the_llm(monkeypatch, tmp_path, caplo
     assert _logs(caplog, "Sleep state") == ["Sleep state: skipping LLM (no wake keyword)"]
     obs = _run(monkeypatch, tmp_path / "w", inputs={0: "hey maxim are you up"}, state_data=asleep, steps=2)
     assert _brief(obs) == [(["hey maxim are you up"], "hey maxim are you up")]
+    assert [s["kw"]["is_sleeping"] for s in obs.worker.submits] == [True]  # the request says it was woken
+    obs = _run(monkeypatch, tmp_path / "awake", inputs={0: "hey maxim are you up"}, steps=2)
+    assert [s["kw"]["is_sleeping"] for s in obs.worker.submits] == [False]
 
 
 # ── Wire-A and W1 annotations ────────────────────────────────────────────────
@@ -528,10 +548,12 @@ def test_grayscale_needs_biases(monkeypatch, tmp_path):
     assert spy == [] and obs.worker.submits[0]["grayscale_tool_annotations"] is None
 
 
-def test_a_grayscale_value_error_is_logged_and_the_annotation_dropped(monkeypatch, tmp_path, caplog):
-    """The handler's ``grayscale_tool_annotations = None`` is unobservable (the field is only ever set after a build
-    succeeds), so deleting it changes nothing: an equivalent mutant, recorded here rather than pinned."""
-    _grayscale_spy(monkeypatch, ValueError("bad shape"))
+@pytest.mark.parametrize("error", [ValueError, AttributeError])
+def test_a_grayscale_value_error_is_logged_and_the_annotation_dropped(monkeypatch, tmp_path, caplog, error):
+    """Both caught types (the handler is ``except (AttributeError, ValueError)``). The handler's
+    ``grayscale_tool_annotations = None`` is unobservable (the field is only ever set after a build succeeds), so
+    deleting it changes nothing: an equivalent mutant, recorded here rather than pinned."""
+    _grayscale_spy(monkeypatch, error("bad shape"))
     obs = _run(monkeypatch, tmp_path, inputs={0: "hi"}, nac=_make_nac(BIASES, {}), steps=2)
     assert obs.worker.submits[0]["grayscale_tool_annotations"] is None
     assert "Grayscale tools annotation skipped: bad shape" in _logs(caplog, "Grayscale")

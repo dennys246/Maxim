@@ -388,7 +388,7 @@ def _wait_for_proposal(
 def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     """Whether this loop's previous planning job can still publish a proposal (one planning request in flight per
     narrator, #1048). Only loops with planning liveness (the sim narrator) wait; the AUT is unaffected. Inputs that
-    arrive meanwhile ride the next submit (``_take_deferred_inputs``)."""
+    arrive meanwhile ride the next submit (``loop_submit._take_deferred_inputs``)."""
     attempt_state = getattr(llm_worker, "latest_attempt_state", None)
     held = bool(liveness_on and callable(attempt_state) and _planning_attempt_is_active(attempt_state()))
     if callable(attempt_state) and held != _PLANNING_HELD.get(id(llm_worker), False):  # on a change: asked every tick
@@ -2160,7 +2160,7 @@ def _run_agentic_loop_body(
 
                 # Build context for LLM
                 try:
-                    _gate = prepare_submission(  # §6's first half, runtime/loop_submit.py (slice 7a)
+                    _submit = prepare_submission(  # §6's first half, runtime/loop_submit.py (slice 7a)
                         memory=memory,
                         ctrl=ctrl,
                         executor=executor,
@@ -2175,8 +2175,8 @@ def _run_agentic_loop_body(
                         _loop_agent_id=_loop_agent_id,
                         _planning_liveness_on=_planning_liveness_on,
                     )
-                    context, new_cli_input, is_sleeping = _gate.context, _gate.new_cli_input, _gate.is_sleeping
-                    followup_original_query, _deferred_inputs = _gate.followup_original_query, _gate.deferred_inputs
+                    context, new_cli_input, is_sleeping = _submit.context, _submit.new_cli_input, _submit.is_sleeping
+                    followup_original_query, _deferred_inputs = _submit.followup_original_query, _submit.deferred_inputs
 
                     if context:
                         # Get mode info -- the operator's grant wins, as at dispatch (#829; one reader, #963)
