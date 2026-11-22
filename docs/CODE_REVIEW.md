@@ -5,7 +5,11 @@ parallel, whose findings are folded into the same branch before the PR opens (CL
 `src/` change gets a pre-merge review round"; history in [lessons/review-round-discipline.md](lessons/review-round-discipline.md)). A
 `scripts/` change gets the round when it imports `maxim.*` or reads or writes records `src/` produces
 (`report.json`, JSONL, persisted stores). Each lens reports **BLOCKER / SHOULD-FIX / NIT** with a `file::symbol` and a
-concrete failure scenario. The table below summarises each lens; the review prompt carries its full brief.
+concrete failure scenario, and gives every finding a **disposition**: `FOLD` (the default), or `FILE: <reason>` where
+the reason is one of CLAUDE.md's "Filing is not fixing" list (`owner-decision`, `hardware`, `experiment`, `upstream`,
+`fenced:<who>`, `design-pass:<link>`, `too-large:<est. lines>`, `needs-repro:<what is ruled out>`, `gate-stop-rule`). A finding that shares the diff's root cause, or is another site of the
+same pattern, is always `FOLD`. The reader assigns the disposition, not the author; an author who disagrees asks
+the owner rather than filing. The table below summarises each lens; the review prompt carries its full brief.
 
 | Lens | Reads | Asks (summary) |
 |---|---|---|

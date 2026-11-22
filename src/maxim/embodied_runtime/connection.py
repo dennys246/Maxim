@@ -399,13 +399,8 @@ class ConnectionMixin:
                 except Exception as e:
                     warn("Failed to close media during reconnect: %s", e, logger=self.log)
 
-                for attr in ("disconnect", "close", "shutdown"):
-                    fn = getattr(old_mini, attr, None)
-                    if callable(fn):
-                        try:
-                            fn()
-                        except Exception:
-                            pass
+                # The SDK handle's WebSocket client is closed by the controller's reconnect below (its
+                # disconnect() runs _drop_handle, #1712). ReachyMini has no disconnect/close/shutdown of its own.
 
             # Use the RobotController's reconnect method
             if self._robot is None:
