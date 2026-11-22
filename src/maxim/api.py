@@ -951,8 +951,10 @@ def imagine(
             (default ``"generative"``). Free-form.
         persona: REMOVED in 1.1 (legacy alias for ``mode``) — accepted with
             a ``DeprecationWarning`` through 1.x, dropped in 1.2.
-        scenario: Path to YAML scenario file.  If provided, percepts are
-            loaded from the file and injected directly. Relative paths
+        scenario: Path to YAML scenario file.  If provided, each percept's
+            ``cli_input`` line is delivered to the agent as one turn; a
+            scenario with any other percept (or none) raises ``ValueError``
+            before the run starts (#1621, #1393). Relative paths
             resolve against the current working directory — pass an
             absolute path from async / pip-install / arbitrary-CWD
             callers (CC10, see ``docs/user/stable_api.md``).
@@ -1001,14 +1003,19 @@ def imagine(
     # Load pre-campaign turns from YAML scenario if provided
     pre_campaign_turns = None
     if scenario:
-        from maxim.simulation.scenario_source import load_scenario
-        from pathlib import Path as _Path
+        # The one scripted-turn loader (#1621): a hand parser here read ``text`` while scenarios carry ``cli_input``,
+        # so every turn reached the agent empty, silently.
+        from maxim.simulation.experiment import load_campaign_turns
 
-        scenario_def = load_scenario(_Path(scenario))
-        pre_campaign_turns = [
-            {"text": p.get("text", ""), "phase": p.get("phase", ""), "salience": p.get("salience", 0.8)}
-            for p in scenario_def.percepts
-        ]
+        # Strict (owner decision 2026-11-21): every percept must be a ``cli_input`` turn, since only lines reach the
+        # agent here; delivering other percepts (pain, vision) is #1393's.
+        try:
+            pre_campaign_turns = load_campaign_turns(str(scenario), strict=True)
+        except ValueError as exc:
+            raise ValueError(
+                f"{exc}. imagine(scenario=) delivers only cli_input lines, one per percept; a scenario with other "
+                "percepts runs through `maxim --sim <scenario>` (ScenarioSource), and delivering them here is #1393"
+            ) from exc
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
@@ -1782,7 +1789,11 @@ def research(
 
     Args:
         goal: Research question (e.g., ``"hippocampal recall under interference"``).
-        campaign: Optional campaign YAML for structured stimulus injection.
+        campaign: Optional campaign YAML for structured stimulus injection:
+            every percept must be a ``cli_input`` line, delivered as one turn.
+            A campaign that cannot be loaded or yields no turn raises
+            :class:`~maxim.exceptions.CampaignUnloadable` (a ``ValueError``)
+            before any run starts (#1621).
         model: LLM profile for the research orchestrator.
         aut_model: LLM profile for the agent under test (defaults to model).
         verbosity: Logging verbosity (0-3).

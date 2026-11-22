@@ -17,7 +17,7 @@
     },
     "maxim/agents": {
       "percent": 71.8,
-      "missing": 1925
+      "missing": 1936
     },
     "maxim/analysis": {
       "percent": 86.9,
@@ -176,14 +176,14 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 68.3,
-      "missing": 2067
+      "percent": 68.1,
+      "missing": 2095
     }
   },
   "files": {
     "src/maxim/models/language/router.py": {
-      "percent": 75.5,
-      "missing": 267
+      "percent": 78.8,
+      "missing": 233
     },
     "src/maxim/simulation/orchestrator.py": {
       "percent": 76.7,
