@@ -4,11 +4,6 @@
   "threshold": 200,
   "entries": [
     {
-      "file": "src/maxim/agents/llm_worker.py",
-      "qualname": "LLMWorker._process_request",
-      "lines": 225
-    },
-    {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
       "lines": 1182
@@ -201,7 +196,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 241
+      "lines": 233
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -392,6 +387,7 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
+    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
     "start_simulation_mode tightened 1895 -> 1886 on 2026-11-21 (#1228, rule T): the AUT's fear gate moved to orchestrator._fear_gate_aut_executor (its FearAgent now on the AUT's router), paying for the AUT-side router hand-offs (the AUT's and the narrator's MaximAgent(shared_router=), the factory's fear_llm and the imagination designer's llm_router).",
     "#1228 fold batch (2026-11-21, rule T): start_simulation_mode 1886 -> 1880 (the AUT's MaximAgent and its event bridge to orchestrator._aut_maxim_agent and the dead fear_llm slot removed, paying for agent_router, the sub-simulation tool's aut_router and the narrator's NO_ROUTER choice); _main_impl 1195 -> 1182 (the agentic MaximAgent build to cli._cli_agentic_agent, paying for its stated shared_router=None); AgenticRuntimeMixin._start_agentic_runtime 796 -> 790 (the ExecAgent hand-off to _share_llm_with_exec_agent, on the new ExecAgent.adopt_router, paying for shared_router=NO_ROUTER); api.py::run 201 -> 192 (the LLM worker start to api._start_run_worker, paying for the router handed to _build_run_agent) and report.py::build_report 209 -> 188 (the cost lookup to report._router_cost/_run_costs, with the AUT's own router), both entries removed: under the threshold.",
     "#1228 delta-round folds (2026-11-21, rule T): AgenticRuntimeMixin._start_agentic_runtime 790 -> 774 (the robot fear gate to _robot_fear_gate, carrying its stated pattern-only FearAgent and its INFO line, #1728) and start_simulation_mode 1880 -> 1879 (the agent_router import dropped: shared_router=None now means no LLM). These supersede the previous note's NO_ROUTER/agent_router wording: None means no LLM, exec_agent.BUILD_OWN the lazy build."
