@@ -1215,6 +1215,12 @@ they are ready, and the gate takes the next free number when it is done, still o
     first; the 1.4 memory merge rides `migrate_agent_state` (whole or nothing, refuse on conflict).
 
 ### 1.3.5, "The orchestrator"
+> **Re-scoped 2026-11-22 (owner decisions D1–D7 in [release_1_3_5.md](release_1_3_5.md)).** 1.3.5 ships its lines:
+> the gates that hold (#1185, #1519, atonia 10a/10b, #1414), Overdrive's unfenced asks, Overdrive as Maxim's test
+> world (paper), and fix groups. The orchestrator below stays a line and ships in whichever release it is ready for.
+> Phone Phase 0 moves out (D6). The text below is the orchestrator line's scope. Its riders #1259, #1301, #1451,
+> #1453, #1454, #1457 and #1028 are closed, and the arms are done.
+
 - **First the five characterization arms** (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) (landed 2026-10-24; their findings #1451–#1457; the two follow-ups owed before the #1259 fix and the stdin slice are in §"Characterization owed").
   **Then the `start_simulation_mode` slices** down to 1,000 lines or fewer, descendants included (gate rule 4;
   item `1323.functions-1000`).
