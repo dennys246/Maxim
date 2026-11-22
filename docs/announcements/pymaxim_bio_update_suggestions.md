@@ -1,4 +1,88 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24 · 1.3.4 refresh 2026-11-22)
+
+## 1.3.4 refresh — 2026-11-22 ("Robot and recall"; PyPI `upload_time` 2026-11-22T19:02Z, signed tag `v1.3.4` @ `b98954f7`)
+
+**Framing rule.** 1.3.4 ships the defects maxim-pulse found on a real Reachy Mini running 1.3.3, Talk's recall across
+sessions, and a stop that saves before it is killed. Some changes break on purpose, so the upgrade notes put the
+breaking changes first, each with its migration line as the CHANGELOG states it. Robot motion copy says only what
+the notes say (refusals before a motor moves, the path check, the fresh pose read) and claims no robot run passed;
+the full embodied run is owed (#1708) and the head-yaw oddity (#1707) is stated as the notes state it. Recall is
+"shares a word", not meaning (#1516). The site claims no more than `release_1_3_4.md` does. Security copy links the
+two advisories, published 2026-11-22 19:07Z, and gives their scope at the level the advisories give it. Release
+links: [GitHub Release](https://github.com/dennys246/Maxim/releases/tag/v1.3.4) ·
+[PyPI 1.3.4](https://pypi.org/project/pymaxim/1.3.4/) ·
+[GHSA-8r36-g3rm-mf85](https://github.com/dennys246/Maxim/security/advisories/GHSA-8r36-g3rm-mf85) ·
+[GHSA-7xgg-5cm6-g46f](https://github.com/dennys246/Maxim/security/advisories/GHSA-7xgg-5cm6-g46f). Site fix:
+**maxim-web `docs/1-3-4` ([#41](https://github.com/dennys246/Maxim-web/pull/41))**. This section is its engine
+companion.
+
+**Engine truth, read from the files at `v1.3.4`, not from memory.** `docs/announcements/release_1_3_4.md`, CHANGELOG
+`[1.3.4]` (its `### Breaking` and `### Security` sections, and the two entries marked Breaking under `### Changed`:
+#1338 and #1435), ledger rows T1-16, T1-2 and T1-13/14/15, `evidence_exceptions.json` `release-1.3.4-T1-2`, the
+notebook index rows for Exp 63, 63b and 63c, `narrator_defects_reassessment.md`, and both advisories' published
+text. Where the brief and the files disagreed, the files won: the release is **"Robot and recall"** (the brief
+said "The robot and recall fixes"), and the advisories scope both defects to the `strict` *and* `standard`
+policies (the brief said strict). GHSA-7xgg-5cm6-g46f's inbound-messages path exists only "since #1481", a 1.3.4
+fix, so the site's `<= 1.3.3` sentence names the follow-up tool-results path only. The site does not cite #1739,
+which neither the notes nor the CHANGELOG number.
+
+**Corrections owed since 1.3.3.**
+
+- **Typed payloads.** The 1.3.3 refresh said contract 0.7.0 would come in 1.3.4. It did not (owner decision
+  2026-11-02); the contract stays 0.6.0, and typed payloads (#1336) wait for a pulse release built for 0.7.0, as
+  the 1.3.4 notes say. No new target release is named.
+- **T1-16 was never shown stale on the site.** The site said "earned (narrow), 2026-10-04, Exp 63" through the
+  whole STALE window (2026-10-25 to 2026-11-13). It now carries the ledger status verbatim, the stale window, Exp
+  63b's NOT SHOWN, and the owner reading of BF2 behind the raise.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/getting-started/` | Current release 1.3.3 "Release pipeline", 2026-10-24 | `release_1_3_4.md` header; PyPI `upload_time` | 1.3.4 "Robot and recall", 2026-11-22 UTC, links to the Release, CHANGELOG and PyPI. A caution box lists the five breaks; a danger box after it links both advisories with "upgrade to 1.3.4". The release summary, the head-yaw oddity and the evidence line follow the notes. 1.3.3 moves to the release history |
+| `/installation/` | "Upgrading to 1.3.3" first; "typed payloads (0.7.0) are planned for 1.3.4" | `[1.3.4]` Breaking, Security, Changed; `release_1_3_4.md` | New **Upgrading to 1.3.4**: **Breaking first** (#1315 `ToolPolicy`, #1342 workspace, #1715 `pool_s`, #1338 `create.pool`/`create.router`, #1435 speakers), each with its migration; Hippocampus `_format_version` 1.2; Security (the advisories, then the notes' three items); the robot; recall; stopping (`maxim llm reap`); the atonia gate; the Console. The 1.3.3 typed-payload line corrected |
+| `/reference/cli/` | "1.3.3 bundles v0.4.2 … 0.7.0 planned for 1.3.4" | `[1.3.4]` Changed (v0.4.4 entry); the wheel's `maxim-ui.json` | 1.3.4 bundles v0.4.4 (`9af8a57`), contract 0.6.0; typed payloads did not come in 1.3.4 |
+| `/research/evidence/` | Cross-session persistence "earned (narrow), 2026-10-04, by Exp 63"; T1-2 exceptions through 1.3.3 | Ledger T1-16, T1-2; `evidence_exceptions.json`; `narrator_defects_reassessment.md`; `[1.3.4]` Changed (#1301/#1461) | T1-16 "EARNED 2026-11-13 (narrow: …)" copied whole, Exp 63c as evidence, the stale window, 63b NOT SHOWN, the BF2 owner reading, floor not measured, slot not established. T1-2 under `release-1.3.4-T1-2`. Dated entries: 2026-10-25 Exp 63 stale; 2026-10-25 the re-assessment (the six withdrawn results and the bounded list, as the CHANGELOG lists them); 2026-11-07; 2026-11-13/16 |
+| `/research/experiments/` (manifest, cross-session walkthrough) | Exp 63 earned and the line's best; no 63b or 63c | Notebook index rows | Exp 63 "stale since 2026-10-25, re-run by Exp 63b and 63c" (a new site status, "stale, re-run"; not "superseded", which no engine file says); 63b (not shown) and 63c (earned, narrow) added, with their own pages; the walkthrough section covers all three |
+| `/memory/engrams/` | "Evidence: Exp 63" | Ledger T1-16 | Exp 63c |
+| `/reference/components/` | Generated from the 1.3.3 wheel | The 1.3.4 wheel | Regenerated; 97 components, links pinned to `v1.3.4` |
+
+**Not in this refresh (owed).** The re-assessment withdraws or bounds results that site pages still quote in
+places outside the files above (Exp 12, Exp 18, Exp 32, Exp 38 Sonnet, the hippocampal-recall "behavioural recall
+0", sem_tool_discovery_s1, and the bounded list). The evidence page now records the withdrawal, but the
+per-page caveats are a follow-up sweep. Notebook entries still missing from the site manifest:
+`b4_exp37_floors_prereg.md`, `e1_conflict_prereg.md`, `grounding_census.md`, `narrator_defects_reassessment.md`,
+`reproduction.md`. The 2026-10-16 audit's grounding corrections are untouched.
+
+### Acceptance checks — 1.3.4
+
+- [x] Version line 1.3.4 "Robot and recall", 2026-11-22 (UTC upload time), in the `live-site-check` line format;
+  links to the Release, CHANGELOG and PyPI 1.3.4.
+- [x] Both advisories linked with "upgrade to 1.3.4", rated medium, `<= 1.3.3`, patched in 1.3.4; scope as the
+  advisories give it (cloud routing under `strict` or `standard`; local-only and `relaxed` unaffected; 7xgg's
+  inbound path stated as new in 1.3.4). The security copy is two site commits (`b148782`, `353aa1f`), droppable
+  together.
+- [x] Breaking changes lead the upgrade notes, each with its CHANGELOG migration line.
+- [x] Motion copy as the notes give it; no robot run claimed as passed; #1707 and #1708 stated.
+- [x] T1-16, T1-2 and T1-13/14/15 copied from the ledger with their scope (T1-13/14/15 as the notes put it, "floor
+  matched under BF2"; T1-16's claim keeps "a fixed script's, not a person's").
+- [x] Typed payloads: no 1.3.4 promise left (`git grep -n "0\.7\.0"`); no new target release named.
+- [x] **On the wheel:** clean venv, `pip install pymaxim==1.3.4` from PyPI. `ToolPolicy.unrestricted/only/deny`
+  exist; `Executor(tool_registry, *, policy: ToolPolicy, …)`; `TimeoutPolicy(connect_s, read_s, pool_s)`, no
+  `total_s`; `create.pool(*, max_workers, llm_router)`; `maxim.advisor` and `maxim.utils.audio.start_device_player`
+  import; `CONSOLE_CONTRACT_VERSION` = 0.6.0; `maxim-ui.json` `describe` v0.4.4 @ `9af8a57`, contract 0.6.0;
+  `maxim llm reap` and `maxim --tts` in `--help`. Components regenerated (`--label "pymaxim 1.3.4 (PyPI wheel)"`);
+  the 97 refs equal `ComponentRegistry().list_refs()`.
+- [x] `pnpm build` clean (159 pages); experiments manifest valid; every internal href and fragment in `dist/`
+  resolves, 0 broken (fragments compared percent-decoded).
+- [x] A different reader checked about 75 changed claims against the notes, CHANGELOG, ledger, notebook index,
+  exceptions file, both advisories and the wheel. Its 6 findings are folded: the 7xgg inbound scope; Breaking
+  before Security; Exp 63 "stale, re-run", not "superseded"; the T1-13/14/15 scope; the uncited #1739 dropped; the
+  Talk lead and T1-16 claim qualifiers.
+- [ ] **After merge/deploy:** re-crawl the live sitemap; confirm the version line via `live-site-check`;
+  spot-check `/getting-started/`, `/installation/#upgrading-to-134`, `#security`, `#breaking-changes` and
+  `/research/evidence/#cross-session-memory-persistence`.
+- [ ] **Human-only (carried):** visual, mobile and keyboard pass in a real browser, especially the new danger box.
 
 ## 1.3.3 refresh — 2026-10-24 ("Release pipeline"; PyPI `upload_time` 2026-10-24T00:00Z, signed tag `v1.3.3` @ `c9619217`)
 
