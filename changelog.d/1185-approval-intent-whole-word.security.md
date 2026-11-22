@@ -33,3 +33,7 @@
   reached, which in production was always (the adapter was handed the bridge's percept source, never the bridge),
   and also swallowed any error from the policy into that "yes". They now ask the policy the sim passes explicitly,
   a failing policy's error propagates, and an adapter with no policy answers nothing.
+- **`ResponsePolicy` ASK_ORCHESTRATOR is removed** (#1736): `PolicyType.ASK_ORCHESTRATOR` and
+  `simulation.response_policy.ask_orchestrator()` never had a route to the orchestrator, so the loop answered in
+  their place. Nothing constructed them. A response policy passed to `run_agentic_loop` without a
+  `percept_source` is now a `TypeError` instead of being dropped.

@@ -14,7 +14,7 @@ src/maxim/simulation/
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
     tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
-    response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
+    response_policy.py         # ResponsePolicy (auto-approve/reject/delayed)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)
     validation.py              # 15 expectation types (behavioral, metric, bio-system)
@@ -383,7 +383,6 @@ Four policies:
 | `AUTO_APPROVE` | Always yes (default) | Fast sim runs, no blocking |
 | `AUTO_REJECT` | Always no | Test refusal/cancellation paths |
 | `DELAYED` | Approve after N seconds | Test timeout handling |
-| `ASK_ORCHESTRATOR` | Defer to orchestrator | Full confirmation-flow testing |
 
 The bridge holds the policy (`SimulationBridge.response_policy`). The agent loop checks `sim.resolve_confirmation()`, `sim.resolve_plan_approval()`, and `sim.resolve_timeout_retry()` at each blocking point. Production mode (`NullSimulationAdapter`) returns `None` — wait for real user.
 

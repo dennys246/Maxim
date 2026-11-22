@@ -86,12 +86,6 @@ class SimulationAdapter:
     ) -> None:
         # The sim's response policy (the bridge's), or None: answers no gating prompt. Required, so a sim cannot
         # forget it into the old silent default "yes" (#1185).
-        from maxim.simulation.response_policy import PolicyType
-
-        if response_policy is not None and response_policy.policy == PolicyType.ASK_ORCHESTRATOR:
-            # The loop reads a policy's None as "no answer" and answers itself in OFF mode, so a policy meant to
-            # defer to the orchestrator would be overridden, never consulted: refused until a defer route exists.
-            raise ValueError("ResponsePolicy ASK_ORCHESTRATOR has no route to the orchestrator yet (#1736)")
         self.response_policy = response_policy
         self.percept_source = percept_source
         self.action_sink = action_sink
