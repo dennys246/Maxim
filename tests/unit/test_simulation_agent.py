@@ -481,8 +481,17 @@ class TestSpawnSubSimulationTool:
 
     @pytest.mark.slow
     def test_spawn_creates_sub_bridge(self, tmp_path):
-        """Spawn creates a sub-bridge (slow: bootstraps AUT)."""
-        from maxim.simulation.tools import SpawnSubSimulationTool
+        """Spawn creates a sub-bridge (slow: bootstraps AUT).
+
+        Dispatched the way the narrator dispatches it: a ``SimToolRegistry`` under an executor built by
+        ``build_executor`` with the policy the narrator's own ``AgentConfig`` carries (read from
+        ``simulation/orchestrator.py::_orchestrator_agent_config``, so a change there reaches this test). The tool
+        builds its child from the DISPATCHING executor's policy and refuses a direct ``tool.run`` (#1315 item 3;
+        that refusal is pinned by test_atonia_red_gates_effect_policy.py), so a direct call cannot reach the spawn
+        (#1647)."""
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.simulation.orchestrator import _orchestrator_agent_config
+        from maxim.simulation.tools import SimToolRegistry, SpawnSubSimulationTool
 
         stop = threading.Event()
         tool = SpawnSubSimulationTool(
@@ -491,9 +500,12 @@ class TestSpawnSubSimulationTool:
             parent_bridge=None,
             sim_tmpdir=str(tmp_path),
         )
+        registry = SimToolRegistry()
+        registry.register(tool)
+        executor = build_executor(registry, pain_bus=None, policy=_orchestrator_agent_config().policy)
 
-        result = tool.run(goal="test something")
-        assert result.success
+        result = executor.execute({"tool_name": "spawn_sub_simulation", "params": {"goal": "test something"}})
+        assert result.success, result.error
         assert result.output["goal"] == "test something"
         assert tool.active_sub_bridge is not None
 

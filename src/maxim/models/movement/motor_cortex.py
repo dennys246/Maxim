@@ -1,16 +1,27 @@
+"""The motor cortex: a ConvNeXt-Tiny movement regressor in keras, the ``training`` extra's own model.
+
+Importing this module needs keras: without it the import raises
+:class:`~maxim.utils.optional_deps.OptionalDependencyError` (``import_name="keras"``, ``extra="training"``) with the
+``pymaxim[training]`` hint, the typed refusal, never a plain ``ImportError`` (#1647). The fresh-import sweep
+(tests/integration/test_fresh_import_sweep.py) lists this module in ``EXTRA_OWNED`` and accepts exactly that refusal
+when the extra is absent. The error subclasses ``ImportError``, so the robot's handler around the motor load
+(``embodied_runtime/selfy.py``) still catches it.
+"""
+
 import os
 
-# Configure TensorFlow for RTX 5080 / Blackwell GPU compatibility
-# Set before TensorFlow initializes CUDA
+from maxim.utils import config
+from maxim.utils.optional_deps import require_optional_dependency
+
+# Configure TensorFlow for RTX 5080 / Blackwell GPU compatibility.
+# Set before TensorFlow initializes CUDA, which importing keras does.
 os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
 os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
 
-try:
-    import keras
-except ImportError as _e:
-    raise ImportError("motor_cortex requires keras. Install with: pip install 'pymaxim[training]'") from _e
-
-from maxim.utils import config
+# The typed refusal when keras is absent (#1647); once it passes, the plain import below cannot fail, and the type
+# checker reads ``keras`` as the module its classes subclass.
+require_optional_dependency("keras", feature="motor_cortex")
+import keras
 
 
 class LayerScale(keras.layers.Layer):
