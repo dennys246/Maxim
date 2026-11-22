@@ -100,7 +100,7 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
-from maxim.utils.content_safety import restore_leading_bom
+from maxim.utils.content_safety import prepare_written_content
 
 from .base import Effect, Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
 
@@ -283,7 +283,7 @@ class WriteFileTool(Tool):
     def execute(self, **kwargs) -> ToolResult:
         try:
             raw_path = kwargs["path"]
-            content = restore_leading_bom(kwargs["content"])  # a BOM copied from framed output stays a BOM (#1519)
+            content = prepare_written_content(kwargs["content"])  # format characters made visible (#1519)
             overwrite = kwargs.get("overwrite", False)
 
             # Check content size to prevent memory exhaustion
@@ -471,32 +471,41 @@ class ExecuteFileTool(Tool):
 
 
 def _mapped_edit(
-    old_text: str, new_text: str, context_before: str | None, context_after: str | None
+    content: str, old_text: str, new_text: str, context_before: str | None, context_after: str | None
 ) -> tuple[str, str, str | None, str | None, str]:
-    """The edit as it applies to the file's real bytes, and a note for the success message (#1519, owner decision
-    2026-11-21: restore only what was there). Framed tool output shows a format character as ``<U+XXXX>`` and a
-    literal ``<U+`` as ``<U+003C>U+`` (one-to-one), so the old text and the context fields are unescaped exactly to
-    match. The new text may restore only format characters the matched old text held, counted per code point
-    (``content_safety.restore_format_characters``): any other escape is written as its literal text, so the tool that
-    exposes a bidi control can never insert one."""
+    """The edit as it applies to ``content``'s real bytes, and a note for the success message (#1519, owner decisions
+    2026-11-21: restore only what was there; raw format characters follow the same rule as escapes).
+
+    Framed tool output shows a format character as ``<U+XXXX>`` and a literal ``<U+`` as ``<U+003C>U+`` (one-to-one),
+    so the old text and the context fields are unescaped exactly to match. When the unescaped old text is not in the
+    file but the text as typed is (a literal ``<U+202E>`` the file really holds), the typed text is used. The new
+    text may keep only format characters, raw or escaped, that the matched old text held, counted per code point
+    (``content_safety.restore_format_characters``): any other is written as visible ``<U+XXXX>`` text, so an edit can
+    never introduce a bidi control or any other invisible character."""
     from maxim.utils.content_safety import restore_format_characters, unescape_format_characters
 
-    old_real = unescape_format_characters(old_text)
-    before = unescape_format_characters(context_before) if context_before is not None else None
-    after = unescape_format_characters(context_after) if context_after is not None else None
-    new_real, restored, literal = restore_format_characters(new_text, present_in=old_real)
+    def _un(text: str | None) -> str | None:
+        return unescape_format_characters(text) if text is not None else None
+
+    old_real, before, after = unescape_format_characters(old_text), _un(context_before), _un(context_after)
+    if old_real not in content and old_text in content:  # the file really holds the text as typed
+        old_real, before, after = old_text, context_before, context_after
+    new_real, kept, shown = restore_format_characters(new_text, present_in=old_real)
     note = ""
-    if restored or literal:
-        note = f"; {len(restored)} format-character escape(s) restored"
-        if literal:
-            note += f", written literally (not in the replaced text): {', '.join(literal)}"
+    if kept or shown:
+        note = f"; {len(kept)} format character(s) kept from the replaced text"
+        if shown:
+            note += f", written as visible text (not in the replaced text): {', '.join(shown)}"
     return old_real, new_real, before, after, note
 
 
 def _with_note(result: ToolResult, note: str) -> ToolResult:
-    """A successful edit's result with the escape note appended (#1519); anything else unchanged."""
+    """A successful edit's result with the escape note appended (#1519); anything else unchanged. ``ToolResult`` is
+    frozen, so a copy carries the note."""
+    import dataclasses
+
     if note and result.success:
-        result.output = f"{result.output}{note}"
+        return dataclasses.replace(result, output=f"{result.output}{note}")
     return result
 
 
@@ -565,9 +574,6 @@ class EditFileTool(Tool):
             expected = kwargs.get("expected_count", 1)
             context_before = kwargs.get("context_before")
             context_after = kwargs.get("context_after")
-            old_text, new_text, context_before, context_after, note = _mapped_edit(
-                old_text, new_text, context_before, context_after
-            )
 
             try:
                 validated_path = sanitize_path(_rebase_relative(raw_path, self._allowed_dirs))
@@ -582,6 +588,9 @@ class EditFileTool(Tool):
 
             try:
                 content = path.read_text(encoding="utf-8")
+                old_text, new_text, context_before, context_after, note = _mapped_edit(
+                    content, old_text, new_text, context_before, context_after
+                )
             except FileNotFoundError:
                 return ToolResult(
                     success=False,

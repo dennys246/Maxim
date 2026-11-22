@@ -919,7 +919,7 @@ def test_an_edit_copied_from_framed_output_restores_a_format_character_that_was_
     path.write_text("co­op and ‫x‬\n", encoding="utf-8")
     assert _framed_line(path) == "co<U+00AD>op and <U+202B>x<U+202C>"
     result = edit_tool.execute(path=str(path), old_text="co<U+00AD>op", new_text="co<U+00AD>operate")
-    assert result.success and "1 format-character escape(s) restored" in result.output, result
+    assert result.success and "1 format character(s) kept from the replaced text" in result.output, result
     assert path.read_text(encoding="utf-8") == "co­operate and ‫x‬\n"
 
 
@@ -932,7 +932,7 @@ def test_an_edit_cannot_introduce_a_bidi_control_that_was_not_there(tmp_path, ed
     assert result.success, result
     written = path.read_text(encoding="utf-8")
     assert "‮" not in written and written == "a<U+202E>b\n", repr(written)
-    assert "written literally" in result.output and "<U+202E>" in result.output, result.output
+    assert "written as visible text" in result.output and "<U+202E>" in result.output, result.output
 
 
 def test_a_literal_and_a_real_bidi_escape_are_edited_unambiguously(tmp_path, edit_tool):
@@ -959,7 +959,7 @@ def test_context_field_escapes_match(tmp_path, edit_tool):
 
 def test_write_file_of_copied_bom_content_keeps_a_real_bom(tmp_path, monkeypatch):
     """Every other writer writes escapes literally, except a leading ``<U+FEFF>``, restored as the real BOM by one
-    helper (``content_safety.restore_leading_bom``)."""
+    helper (``content_safety.prepare_written_content``)."""
     from maxim.tools.filesystem import WriteFileTool
     from maxim.tools.sandbox import WriteSandboxFileTool
 
@@ -1000,3 +1000,68 @@ def test_safe_tool_name_is_capped_and_the_cap_lists_only_real_names():
     assert "[t for t in _other_tools if safe_tool_name(t) == t][:8]" in src
     assert "map(safe_tool_name, _other_tools" not in src
     ast.parse(src)
+
+
+# ── delta 8: a frozen ToolResult; raw format characters follow the escape rule; writers agree; literal fallback ─────
+
+
+def test_a_context_edit_carrying_an_escape_note_writes_once_and_reports_success(tmp_path, edit_tool):
+    """Delta-8 BLOCKER: ``ToolResult`` is frozen, so the note is added to a copy; a context edit whose new text holds an
+    escape changes the file once and reports success (it used to write and then fail)."""
+    path = tmp_path / "f.txt"
+    path.write_text("x­1\nz­1\n", encoding="utf-8")
+    result = edit_tool.execute(path=str(path), old_text="<U+00AD>1", new_text="<U+00AD>2", context_before="z")
+    assert result.success and "context-disambiguated" in result.output and "kept" in result.output, result
+    assert path.read_text(encoding="utf-8") == "x­1\nz­2\n"
+
+
+def test_a_raw_format_character_in_new_text_follows_the_escape_rule(tmp_path, edit_tool):
+    """Owner decision 2026-11-21: a raw U+202E typed into ``new_text`` with none in the old text is written as visible
+    ``<U+202E>`` text; a raw soft hyphen the old text held is kept."""
+    path = tmp_path / "f.txt"
+    path.write_text("a­b\n", encoding="utf-8")
+    assert edit_tool.execute(path=str(path), old_text="a<U+00AD>b", new_text="a­‮b").success
+    assert path.read_text(encoding="utf-8") == "a­<U+202E>b\n"
+
+
+def test_other_writers_show_raw_format_characters_keep_a_leading_bom_and_restore_lt(tmp_path, monkeypatch):
+    """Owner decisions 2026-11-21: ``write_file`` writes a raw bidi character as visible text, keeps a leading raw
+    BOM, and restores ``<U+003C>`` to ``<`` (so a read-then-rewrite of a literal ``<U+`` agrees with ``edit_file``);
+    an append keeps no BOM."""
+    from maxim.tools.filesystem import WriteFileTool
+    from maxim.tools.sandbox import WriteSandboxFileTool
+
+    monkeypatch.setattr(WriteFileTool, "FORBIDDEN_PATHS", ())
+    writer = WriteFileTool(allowed_dirs=[str(tmp_path)])
+    path = tmp_path / "w.txt"
+    assert writer.execute(path=str(path), content="﻿see <U+003C>U+202E> and ‮ here").success
+    assert path.read_text(encoding="utf-8") == "﻿see <U+202E> and <U+202E> here"
+    sandbox = tmp_path / "sb"
+    sandbox.mkdir()
+    tool = WriteSandboxFileTool(sandbox_dir=str(sandbox))
+    assert tool.execute(path="a.txt", content="start\n").success
+    assert tool.execute(path="a.txt", content="<U+FEFF>more\n", append=True).success
+    assert (sandbox / "a.txt").read_text(encoding="utf-8") == "start\n<U+FEFF>more\n"
+
+
+def test_a_typed_literal_escape_still_matches_a_file_holding_that_text(tmp_path, edit_tool):
+    """Delta-8 fold 4: when the unescaped old text is not in the file but the text as typed is, the typed text is
+    used; the escaped copy of the same text matches too."""
+    path = tmp_path / "f.txt"
+    path.write_text("doc: <U+202E> is the RLO escape\n", encoding="utf-8")
+    assert edit_tool.execute(path=str(path), old_text="<U+202E> is", new_text="<U+003C>U+202E> means").success
+    assert path.read_text(encoding="utf-8") == "doc: <U+202E> means the RLO escape\n"
+    assert edit_tool.execute(path=str(path), old_text="<U+003C>U+202E> means", new_text="<U+003C>U+202E> is").success
+    assert path.read_text(encoding="utf-8") == "doc: <U+202E> is the RLO escape\n"
+
+
+def test_the_fear_gate_reviews_the_text_that_will_be_written():
+    """Delta-8 NIT: the code review sees the restored text, not the escaped copy."""
+    from maxim.runtime.fear_gate import _extract_code_content
+
+    assert _extract_code_content("write_file", {"content": "print('<U+003C>U+0041>') ‮ x"}) == (
+        "print('<U+0041>') <U+202E> x"
+    )
+    assert _extract_code_content("edit_file", {"old_text": "a<U+00AD>b", "new_text": "a<U+00AD>b and more"}) == (
+        "a­b and more"
+    )

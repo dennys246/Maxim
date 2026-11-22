@@ -208,7 +208,14 @@ def _classify_action(tool_name: str) -> str:
 
 
 def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
-    """Extract code content from tool params for review."""
+    """Extract code content from tool params for review: the text that will actually be WRITTEN (#1519), restored by
+    the writers' own shared helpers (``content_safety.prepare_written_content`` / ``restore_format_characters``)."""
+    from maxim.utils.content_safety import (
+        prepare_written_content,
+        restore_format_characters,
+        unescape_format_characters,
+    )
+
     # Bash commands
     if tool_name == "bash" and "command" in params:
         return params["command"]
@@ -218,11 +225,16 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     # File writes that might contain code
     if tool_name in ("write_file", "create_sandbox_script", "write_sandbox_file"):
         content = params.get("content", "")
+        if isinstance(content, str) and content:
+            content = prepare_written_content(content, appending=bool(params.get("append", False)))
         if content and len(content) > 10:
             return content
     # Edit file new text
     if tool_name == "edit_file":
         new_text = params.get("new_text", "")
+        if isinstance(new_text, str) and new_text:
+            old = unescape_format_characters(str(params.get("old_text", "") or ""))
+            new_text = restore_format_characters(new_text, present_in=old)[0]
         if new_text and len(new_text) > 10:
             return new_text
     return None

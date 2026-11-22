@@ -16,7 +16,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from maxim.tools.base import Effect, Tool, ToolResult, git_dir_write_refusal
-from maxim.utils.content_safety import restore_leading_bom
+from maxim.utils.content_safety import prepare_written_content
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
@@ -195,7 +195,11 @@ class WriteSandboxFileTool(Tool):
     def execute(self, **kwargs: Any) -> ToolResult:
         path = kwargs.get("path")
         content = kwargs.get("content")
-        content = restore_leading_bom(content) if isinstance(content, str) else content  # #1519
+        content = (
+            prepare_written_content(content, appending=bool(kwargs.get("append", False)))
+            if isinstance(content, str)
+            else content
+        )  # #1519
 
         if not path:
             return ToolResult(success=False, error="Missing required parameter: path")
@@ -446,7 +450,11 @@ class CreateSandboxScriptTool(Tool):
     def execute(self, **kwargs: Any) -> ToolResult:
         name = kwargs.get("name")
         content = kwargs.get("content")
-        content = restore_leading_bom(content) if isinstance(content, str) else content  # #1519
+        content = (
+            prepare_written_content(content, appending=bool(kwargs.get("append", False)))
+            if isinstance(content, str)
+            else content
+        )  # #1519
         script_type = str(kwargs.get("script_type", "python") or "python").lower()
 
         if not name:
@@ -598,7 +606,11 @@ class WriteToSharedOutputsTool(Tool):
     def execute(self, **kwargs: Any) -> ToolResult:
         filename = kwargs.get("filename")
         content = kwargs.get("content")
-        content = restore_leading_bom(content) if isinstance(content, str) else content  # #1519
+        content = (
+            prepare_written_content(content, appending=bool(kwargs.get("append", False)))
+            if isinstance(content, str)
+            else content
+        )  # #1519
 
         if not filename:
             return ToolResult(success=False, error="Missing required parameter: filename")

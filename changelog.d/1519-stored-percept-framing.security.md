@@ -48,13 +48,17 @@
     The literal text `<U+` is itself shown as `<U+003C>U+`, so the escape is one-to-one: a literal `<U+202E>` in a
     file and a real U+202E never look alike. A family emoji or a Persian word stays legible (`👨<U+200D>👩`,
     `می<U+200C>خواهم`). Inside a marker-shaped span they are still neutralized, so defanging is unchanged.
-  - `edit_file` restores only what was there. Its old text and context fields are unescaped exactly, to match the
-    file's real bytes. Its new text may restore only format characters the matched old text held, counted per code
-    point; any other escape is written as its literal text and named in the success message, so an edit can never
-    introduce a bidi control or other invisible character. The success message also reports how many escapes it
-    restored. This is not a general read-then-exact-edit round trip: an edit cannot add a format character that
-    the replaced text did not hold.
-  - Every other file writer (`write_file`, `write_sandbox_file`, `create_sandbox_script`, `write_shared_output`)
-    writes escapes as their literal text, except a leading `<U+FEFF>`, which is restored as the real byte-order mark
-    (`content_safety.restore_leading_bom`). `bash` and heredoc text stays literal.
+  - No file write can introduce an invisible character that was not there (owner decisions 2026-11-21). The rule is
+    the same for a raw format character and for its `<U+XXXX>` escape:
+    - `edit_file` unescapes its old text and context fields exactly, to match the file's real bytes. If that text is
+      not in the file but the text as typed is (a file that really holds `<U+202E>` as text), it uses the typed text.
+    - Its new text may keep only the format characters the matched old text held, counted per code point. Any other,
+      raw or escaped, is written as visible `<U+XXXX>` text, and the success message names it.
+    - Every other writer (`write_file`, `write_sandbox_file`, `create_sandbox_script`, `write_shared_output`) writes
+      any format character as visible `<U+XXXX>` text. The one exception is a leading byte-order mark (raw, or
+      `<U+FEFF>`), which is kept as a real BOM when the write starts a file, but never on an append.
+    - Every writer restores `<U+003C>` to `<`, so a read-then-rewrite of a literal `<U+` agrees with `edit_file`.
+    - Legitimate right-to-left or joiner text must come from the text being replaced, or be written through `bash`,
+      whose text stays literal.
+    - The code review (fear gate) sees the text that will actually be written.
   - The enrichment log's ATL line carries concept ids, not names.

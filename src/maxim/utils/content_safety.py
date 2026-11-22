@@ -382,40 +382,60 @@ def unescape_format_characters(text: str) -> str:
     return _FORMAT_ESCAPE.sub(lambda m: (_escaped_char(m) or m.group(0)), text)
 
 
-def restore_format_characters(text: str, *, present_in: str) -> tuple[str, list[str], list[str]]:
-    """``text`` (an edit's new text) with escapes restored only as far as ``present_in`` (the matched old text, real
-    characters) held them (#1519, owner decision 2026-11-21: restore only what was there). ``<U+003C>`` is always
-    ``<`` (it is plain text). A format character's escape is restored to the real character only while the old text
-    still has one of that code point unspent, counted per code point; any other is written as its literal escape
-    text, so an edit can never introduce a bidi control (U+202A-202E, U+2066-2069) or any other invisible character
-    that was not there. Returns the text, the escapes restored, and the escapes written literally."""
+# An escape token or a raw format character: what ``restore_format_characters`` reads, in one left-to-right pass.
+_ESCAPE_OR_FORMAT = re.compile(rf"<U\+([0-9A-F]{{4,6}})>|([{_ZW}])")
+
+
+def restore_format_characters(text: str, *, present_in: str = "") -> tuple[str, list[str], list[str]]:
+    """``text`` as it may be WRITTEN (#1519, owner decisions 2026-11-21: restore only what was there; raw format
+    characters follow the same rule as escapes). ``present_in`` is what the write replaces (an edit's matched old
+    text, real characters; empty for a new write).
+
+    One left-to-right pass: ``<U+003C>`` is always ``<`` (the escape of plain text). A format character, written raw
+    or as its ``<U+XXXX>`` escape, is written as the real character only while ``present_in`` still holds an unspent
+    one of that code point, counted per code point; otherwise it is written as its visible ``<U+XXXX>`` text. So no
+    write can introduce a bidi control (U+202A-202E, U+2066-2069) or any other invisible character that the replaced
+    text did not hold: legitimate RTL or joiner text must come from the replaced text, or be written through bash.
+    Any other ``<U+...>`` is left as written. Returns the text, the format characters kept real, and the ones
+    written as visible text (both as ``<U+XXXX>``)."""
     from collections import Counter
 
     budget = Counter(c for c in present_in if _ZERO_WIDTH.fullmatch(c))
-    restored: list[str] = []
-    literal: list[str] = []
+    kept: list[str] = []
+    shown: list[str] = []
 
     def _one(m: re.Match[str]) -> str:
-        char = _escaped_char(m)
+        char = m.group(2) if m.group(2) is not None else _escaped_char(m)
         if char == "<":
             return "<"
-        if char is not None and budget[char] > 0:
+        if char is None:
+            return m.group(0)
+        escape = f"<U+{ord(char):04X}>"
+        if budget[char] > 0:
             budget[char] -= 1
-            restored.append(m.group(0))
+            kept.append(escape)
             return char
-        literal.append(m.group(0))
-        return m.group(0)
+        shown.append(escape)
+        return escape
 
-    return _FORMAT_ESCAPE.sub(_one, text), restored, literal
+    return _ESCAPE_OR_FORMAT.sub(_one, text), kept, shown
 
 
-def restore_leading_bom(content: str) -> str:
-    """Written file content with a leading ``<U+FEFF>`` (a BOM copied from framed output) restored as the real BOM; any
-    other escape is written as its literal text (#1519, owner decision 2026-11-21). The ONE helper every file writer
-    calls (``write_file``, ``write_sandbox_file``, ``create_sandbox_script``, ``write_shared_output``); ``bash`` and
-    heredoc text stays literal."""
-    marker = "<U+FEFF>"
-    return "\ufeff" + content[len(marker) :] if content.startswith(marker) else content
+def prepare_written_content(content: str, *, appending: bool = False) -> str:
+    """File content as every writer other than ``edit_file`` writes it (``write_file``, ``write_sandbox_file``,
+    ``create_sandbox_script``, ``write_shared_output``; #1519, owner decisions 2026-11-21). ``<U+003C>`` is restored
+    to ``<``, so a read-then-rewrite of a file holding a literal ``<U+`` agrees with ``edit_file``. Every other format
+    character, raw or escaped, is written as visible ``<U+XXXX>`` text (``restore_format_characters`` with nothing
+    replaced), except a leading byte-order mark (raw, or ``<U+FEFF>`` copied from framed output), kept as the real
+    BOM when the write starts a file; an append keeps no BOM, which would land mid-file. ``bash`` and heredoc text
+    stays literal."""
+    bom = ""
+    if not appending:
+        for lead in ("\ufeff", "<U+FEFF>"):
+            if content.startswith(lead):
+                bom, content = "\ufeff", content[len(lead) :]
+                break
+    return bom + restore_format_characters(content)[0]
 
 
 def has_format_character(text: str) -> bool:
