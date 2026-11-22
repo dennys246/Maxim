@@ -408,6 +408,22 @@ def test_motor_cortex_without_keras_refuses_typed_at_import():
     assert json.loads(proc.stdout.strip().splitlines()[-1]) == ["keras", "training", True]
 
 
+def test_motor_cortex_without_keras_refuses_typed_in_process(monkeypatch):
+    """The same refusal as the child-process test, in THIS process, so coverage (which does not follow a child
+    interpreter) measures the module's import lines: keras made unimportable, ``motor_cortex`` re-imported."""
+    import importlib
+
+    from maxim.utils.optional_deps import OptionalDependencyError
+
+    monkeypatch.setitem(sys.modules, "keras", None)  # ``import keras`` now raises ImportError
+    monkeypatch.delitem(sys.modules, _MOTOR, raising=False)  # restored afterwards if it was loaded
+    with pytest.raises(OptionalDependencyError) as raised:
+        importlib.import_module(_MOTOR)
+    assert (raised.value.import_name, raised.value.extra) == ("keras", "training")
+    assert "pymaxim[training]" in raised.value.fix_hint
+    assert isinstance(raised.value, ImportError)  # the robot's handler around the motor load still catches it
+
+
 def test_motor_cortex_with_keras_defines_its_classes_after_the_tf_env():
     """The with-keras half, against a stand-in keras (the real one costs minutes of TensorFlow start-up): the TF GPU
     defaults are set BEFORE keras is imported, the classes subclass keras's under their module-level names (what a
