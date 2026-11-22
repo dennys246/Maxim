@@ -72,7 +72,7 @@
       "missing": 96
     },
     "maxim/hardware": {
-      "percent": 84.4,
+      "percent": 85.4,
       "missing": 344
     },
     "maxim/harm": {
@@ -176,8 +176,8 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 66.8,
-      "missing": 2095
+      "percent": 68.3,
+      "missing": 2067
     }
   },
   "files": {
