@@ -314,7 +314,7 @@ All findings were folded into this branch.
 **Owner decisions:**
 - **T1-16 goes STALE**, re-run owed. This is the strict option. The judge must be rebuilt for the cue path first.
   A STALE row blocks the next release (1.3.4) until that re-run, or until a committed machine-readable exception
-  at the cut (M25).
+  at the cut (M25). **Met:** Exp 63c PASS 2026-11-13, T1-16 EARNED (narrow); #1476 closed 2026-11-21.
 - **A person's own "yes" is memorized.** The loop's own replies are not: they move to `LOOP_REPLY_SLOT`.
 
 **How the build differs from the text above:**
