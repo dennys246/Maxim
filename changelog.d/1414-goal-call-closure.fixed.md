@@ -11,5 +11,7 @@
     now gets `max_retries` launches.
   - The statistician records every goal outcome in one `goal:success` series. It kept one series and one
     detector per goal id, which never recur, so they never reached a detector's minimum and only grew, in
-    memory and in its saved state. Goals now complete, so that growth would have been live.
+    memory and in its saved state. Goals now complete, so that growth would have been live. The shared series
+    can reach a detector's minimum, so after enough goals a real `goal:success` pattern can now surface in the
+    statistical context, prompt suggestions and ATL promotion candidates.
   - Still no `ToolResult` is published by any dispatcher (#1727).
