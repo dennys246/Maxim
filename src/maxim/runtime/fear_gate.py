@@ -210,13 +210,12 @@ def _classify_action(tool_name: str) -> str:
 def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     """Extract code content from tool params for review: the text that will be WRITTEN, or a stricter version of it
     (#1519), restored by the writers' own shared helpers (``content_safety.prepare_written_content`` /
-    ``restore_format_characters``). Stricter because the gate has no file content: in ``edit_file``'s literal
-    fallback (the file holds ``<U+202E>`` as text), it reviews a real format character where the edit writes the
-    visible escape."""
+    ``edit_review_text``). Stricter for ``edit_file`` because the gate has no file content: it reviews every format
+    character the old text holds in either form as real, by position, a superset of what either branch of the edit
+    (unescaped match or literal fallback) can write."""
     from maxim.utils.content_safety import (
+        edit_review_text,
         prepare_written_content,
-        restore_format_characters,
-        unescape_format_characters,
     )
 
     # Bash commands
@@ -237,8 +236,7 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     if tool_name == "edit_file":
         new_text = params.get("new_text", "")
         if isinstance(new_text, str) and new_text:
-            old = unescape_format_characters(str(params.get("old_text", "") or ""))
-            new_text = restore_format_characters(new_text, present_in=old)[0]
+            new_text = edit_review_text(new_text, str(params.get("old_text", "") or ""))
         if new_text and len(new_text) > 10:
             return new_text
     return None

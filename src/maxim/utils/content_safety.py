@@ -400,8 +400,8 @@ def restore_format_characters(
     text did not hold: legitimate RTL or joiner text must come from the replaced text, or be written through bash.
     Any other ``<U+...>`` is left as written. With ``escapes_literal`` (``edit_file``'s literal fallback, where the
     typed text matched the file as written) every format-character escape is left exactly as typed (``<U+003C>`` is
-    still ``<``), so only RAW format characters compete for ``present_in``'s budget. Returns the text, the format characters kept real, and the ones written as
-    visible text (both as ``<U+XXXX>``)."""
+    still ``<``), so only RAW format characters compete for ``present_in``'s budget. Returns the text, the format
+    characters kept real, and the ones written as visible text (both as ``<U+XXXX>``)."""
     from collections import Counter
 
     budget = Counter(c for c in present_in if _ZERO_WIDTH.fullmatch(c))
@@ -423,6 +423,27 @@ def restore_format_characters(
         return escape
 
     return _ESCAPE_OR_FORMAT.sub(_one, text), kept, shown
+
+
+def edit_review_text(new_text: str, old_text: str) -> str:
+    """The text the fear gate reviews for an ``edit_file`` call it cannot see the file for (#1519 delta-12): a
+    superset, by position, of every text ``edit_file`` may write. A format character, raw or escaped, is reviewed as
+    the real character wherever ``old_text`` holds that code point in either form, with no per-code-point budget.
+    ``edit_file`` writes one real only when its matched old text (``old_text`` unescaped, or as typed in the literal
+    fallback) holds it, and both of those hold a subset of ``unescape_format_characters(old_text)``'s code points,
+    so the review never shows an escape where the edit writes the real character. ``<U+003C>`` is ``<``; anything
+    else is left as written."""
+    held = {c for c in unescape_format_characters(old_text) if _ZERO_WIDTH.fullmatch(c)}
+
+    def _one(m: re.Match[str]) -> str:
+        char = m.group(2) if m.group(2) is not None else _escaped_char(m)
+        if char == "<":
+            return "<"
+        if char is None:
+            return m.group(0)
+        return char if char in held else f"<U+{ord(char):04X}>"
+
+    return _ESCAPE_OR_FORMAT.sub(_one, new_text)
 
 
 def prepare_written_content(content: str, *, appending: bool = False) -> str:

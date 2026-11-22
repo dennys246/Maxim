@@ -481,7 +481,8 @@ def _mapped_edit(
     file but the text as typed is (a literal ``<U+202E>`` the file really holds), the typed text is used. The new
     text may keep only format characters, raw or escaped, that the matched old text held, counted per code point
     (``content_safety.restore_format_characters``): any other is written as visible ``<U+XXXX>`` text, so an edit can
-    never introduce a bidi control or any other invisible character."""
+    never introduce a bidi control or any other invisible character. In the literal fallback only RAW format
+    characters can be kept; an escape typed there stays the text it is."""
     from maxim.utils.content_safety import (
         has_format_character,
         restore_format_characters,

@@ -1111,6 +1111,24 @@ def test_the_literal_fallback_leaves_typed_escapes_as_typed(tmp_path, edit_tool)
     assert "1 format character(s) kept" in result.output and "visible" not in result.output, result.output
 
 
+def test_the_fear_gate_reviews_every_real_character_the_literal_fallback_writes(tmp_path, edit_tool):
+    """Delta-12: the gate cannot see the file, so it reviews a position-wise superset of either edit branch; where
+    the literal fallback writes a real format character, the reviewed text holds it real at the same place."""
+    from maxim.runtime.fear_gate import _extract_code_content
+
+    path = tmp_path / "f.txt"
+    path.write_text("A <U+202E>\u202e B\n", encoding="utf-8")
+    params = {"path": str(path), "old_text": "<U+202E>\u202e", "new_text": "<U+202E><U+202E>\u202epadpadpad"}
+    reviewed = _extract_code_content("edit_file", params)
+    assert edit_tool.execute(**params).success
+    written = path.read_text(encoding="utf-8")[2:-3]
+    assert written == "<U+202E><U+202E>\u202epadpadpad"
+    assert reviewed == "\u202e\u202e\u202epadpadpad"
+    for i, ch in enumerate(written.replace("<U+202E>", "\x00")):
+        if ch == "\u202e":
+            assert reviewed[i] == "\u202e"
+
+
 def test_only_write_sandbox_file_appends():
     """Delta-9 fold 3: a tool with no ``append`` parameter never takes the append path (its BOM is kept), in the
     writers and in the fear gate."""
