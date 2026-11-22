@@ -450,11 +450,7 @@ class CreateSandboxScriptTool(Tool):
     def execute(self, **kwargs: Any) -> ToolResult:
         name = kwargs.get("name")
         content = kwargs.get("content")
-        content = (
-            prepare_written_content(content, appending=bool(kwargs.get("append", False)))
-            if isinstance(content, str)
-            else content
-        )  # #1519
+        content = prepare_written_content(content, appending=False) if isinstance(content, str) else content  # #1519
         script_type = str(kwargs.get("script_type", "python") or "python").lower()
 
         if not name:
@@ -606,11 +602,7 @@ class WriteToSharedOutputsTool(Tool):
     def execute(self, **kwargs: Any) -> ToolResult:
         filename = kwargs.get("filename")
         content = kwargs.get("content")
-        content = (
-            prepare_written_content(content, appending=bool(kwargs.get("append", False)))
-            if isinstance(content, str)
-            else content
-        )  # #1519
+        content = prepare_written_content(content, appending=False) if isinstance(content, str) else content  # #1519
 
         if not filename:
             return ToolResult(success=False, error="Missing required parameter: filename")

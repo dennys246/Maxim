@@ -482,17 +482,28 @@ def _mapped_edit(
     text may keep only format characters, raw or escaped, that the matched old text held, counted per code point
     (``content_safety.restore_format_characters``): any other is written as visible ``<U+XXXX>`` text, so an edit can
     never introduce a bidi control or any other invisible character."""
-    from maxim.utils.content_safety import restore_format_characters, unescape_format_characters
+    from maxim.utils.content_safety import (
+        has_format_character,
+        restore_format_characters,
+        unescape_format_characters,
+    )
 
-    def _un(text: str | None) -> str | None:
-        return unescape_format_characters(text) if text is not None else None
+    def _matching(text: str | None) -> str | None:
+        """The text as it matches the file: unescaped, unless only the text as typed is in the file (a file that
+        really holds a literal ``<U+202E>``), applied to the old text and each context field alike."""
+        if text is None:
+            return None
+        real = unescape_format_characters(text)
+        return text if real not in content and text in content else real
 
-    old_real, before, after = unescape_format_characters(old_text), _un(context_before), _un(context_after)
-    if old_real not in content and old_text in content:  # the file really holds the text as typed
-        old_real, before, after = old_text, context_before, context_after
+    old_real, before, after = _matching(old_text), _matching(context_before), _matching(context_after)
     new_real, kept, shown = restore_format_characters(new_text, present_in=old_real)
     note = ""
-    if kept or shown:
+    if old_real == old_text and old_text != unescape_format_characters(old_text):
+        # The literal fallback: escapes typed in the new text are kept as the literal text they are, not escaped.
+        if has_format_character(new_text):
+            note = "; raw format character(s) in the new text written as visible <U+XXXX> text"
+    elif kept or shown:
         note = f"; {len(kept)} format character(s) kept from the replaced text"
         if shown:
             note += f", written as visible text (not in the replaced text): {', '.join(shown)}"

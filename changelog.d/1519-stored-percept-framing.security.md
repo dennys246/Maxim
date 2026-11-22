@@ -51,14 +51,18 @@
   - No file write can introduce an invisible character that was not there (owner decisions 2026-11-21). The rule is
     the same for a raw format character and for its `<U+XXXX>` escape:
     - `edit_file` unescapes its old text and context fields exactly, to match the file's real bytes. If that text is
-      not in the file but the text as typed is (a file that really holds `<U+202E>` as text), it uses the typed text.
+      not in the file but the text as typed is (a file that really holds `<U+202E>` as text), it uses the typed text;
+      each context field falls back the same way.
     - Its new text may keep only the format characters the matched old text held, counted per code point. Any other,
       raw or escaped, is written as visible `<U+XXXX>` text, and the success message names it.
     - Every other writer (`write_file`, `write_sandbox_file`, `create_sandbox_script`, `write_shared_output`) writes
       any format character as visible `<U+XXXX>` text. The one exception is a leading byte-order mark (raw, or
       `<U+FEFF>`), which is kept as a real BOM when the write starts a file, but never on an append.
     - Every writer restores `<U+003C>` to `<`, so a read-then-rewrite of a literal `<U+` agrees with `edit_file`.
-    - Legitimate right-to-left or joiner text must come from the text being replaced, or be written through `bash`,
-      whose text stays literal.
-    - The code review (fear gate) sees the text that will actually be written.
+    - So Arabic or Hebrew RLM/LRM marks, ZWJ emoji sequences or soft hyphens written via `write_file` (or, in an
+      `edit_file`, not present in the replaced text) are saved as visible `<U+XXXX>` text. Legitimate right-to-left
+      or joiner text must come from the text being replaced, or be written through `bash`, whose text stays literal.
+    - The code review (fear gate) sees the text that will be written, or a stricter version of it (it has no file
+      content, so in `edit_file`'s literal fallback it reviews a real format character where a visible escape is
+      written).
   - The enrichment log's ATL line carries concept ids, not names.

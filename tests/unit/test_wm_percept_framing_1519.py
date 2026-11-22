@@ -1065,3 +1065,41 @@ def test_the_fear_gate_reviews_the_text_that_will_be_written():
     assert _extract_code_content("edit_file", {"old_text": "a<U+00AD>b", "new_text": "a<U+00AD>b and more"}) == (
         "a­b and more"
     )
+
+
+# ── delta 9: the literal fallback's note and context fields; append only where it exists ───────────────────────────
+
+
+def test_a_context_field_typed_as_a_literal_escape_falls_back_too(tmp_path, edit_tool):
+    """Delta-9 fold 4: a context field typed as the literal ``<U+202E>`` the file holds matches, as the old text does."""
+    path = tmp_path / "f.txt"
+    path.write_text("a <U+202E> 1\nb <U+202E> 1\n", encoding="utf-8")
+    result = edit_tool.execute(path=str(path), old_text="1", new_text="2", context_before="b <U+202E> ")
+    assert result.success, result
+    assert path.read_text(encoding="utf-8") == "a <U+202E> 1\nb <U+202E> 2\n"
+
+
+def test_the_literal_fallback_does_not_claim_an_escape(tmp_path, edit_tool):
+    """Delta-9 fold 2: when the typed literal was used, an escape in the new text is kept as the literal it is, and the
+    success note does not say it was written as visible text."""
+    path = tmp_path / "f.txt"
+    path.write_text("doc: <U+202E> here\n", encoding="utf-8")
+    result = edit_tool.execute(path=str(path), old_text="<U+202E> here", new_text="<U+202E> there")
+    assert result.success and "visible" not in result.output, result
+    assert path.read_text(encoding="utf-8") == "doc: <U+202E> there\n"
+
+
+def test_only_write_sandbox_file_appends():
+    """Delta-9 fold 3: a tool with no ``append`` parameter never takes the append path (its BOM is kept), in the
+    writers and in the fear gate."""
+    from maxim.runtime.fear_gate import _extract_code_content
+
+    script = "<U+FEFF>print('hello world')"
+    assert _extract_code_content("create_sandbox_script", {"content": script, "append": True}).startswith("﻿")
+    assert _extract_code_content("write_sandbox_file", {"content": script, "append": True}).startswith("<U+FEFF>")
+    import inspect
+
+    from maxim.tools import sandbox
+
+    src = inspect.getsource(sandbox)
+    assert src.count('appending=bool(kwargs.get("append", False))') == 1

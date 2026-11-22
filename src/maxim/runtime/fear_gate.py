@@ -208,8 +208,11 @@ def _classify_action(tool_name: str) -> str:
 
 
 def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
-    """Extract code content from tool params for review: the text that will actually be WRITTEN (#1519), restored by
-    the writers' own shared helpers (``content_safety.prepare_written_content`` / ``restore_format_characters``)."""
+    """Extract code content from tool params for review: the text that will be WRITTEN, or a stricter version of it
+    (#1519), restored by the writers' own shared helpers (``content_safety.prepare_written_content`` /
+    ``restore_format_characters``). Stricter because the gate has no file content: in ``edit_file``'s literal
+    fallback (the file holds ``<U+202E>`` as text), it reviews a real format character where the edit writes the
+    visible escape."""
     from maxim.utils.content_safety import (
         prepare_written_content,
         restore_format_characters,
@@ -226,7 +229,8 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     if tool_name in ("write_file", "create_sandbox_script", "write_sandbox_file"):
         content = params.get("content", "")
         if isinstance(content, str) and content:
-            content = prepare_written_content(content, appending=bool(params.get("append", False)))
+            appending = tool_name == "write_sandbox_file" and bool(params.get("append", False))  # only it appends
+            content = prepare_written_content(content, appending=appending)
         if content and len(content) > 10:
             return content
     # Edit file new text
