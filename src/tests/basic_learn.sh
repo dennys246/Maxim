@@ -24,21 +24,19 @@ import types
 import numpy as np
 
 
-def _has_tf():
-    try:
-        import tensorflow  # noqa: F401
-        import keras  # noqa: F401
+# Import keras THROUGH motor_cortex: the module sets the TensorFlow GPU env defaults before keras loads, and refuses
+# with OptionalDependencyError when the training extra is absent (#1647). Only that refusal skips: any other
+# ImportError inside motor_cortex is a defect and fails the script.
+from maxim.utils.optional_deps import OptionalDependencyError, require_optional_dependency
 
-        return True
-    except Exception:
-        return False
+try:
+    from maxim.models.movement.motor_cortex import MotorCortex
 
-
-if not _has_tf():
-    print("[basic_learn] SKIP: tensorflow/keras not installed")
+    require_optional_dependency("tensorflow", feature="basic_learn")
+except OptionalDependencyError as e:
+    print("[basic_learn] SKIP: tensorflow/keras not installed:", e)
     raise SystemExit(0)
 
-from maxim.models.movement.motor_cortex import MotorCortex
 from maxim.utils import config as motor_config
 
 cfg = motor_config.build(motor_config.DEFAULT_SAVE_ROOT)
