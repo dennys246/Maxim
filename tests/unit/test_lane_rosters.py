@@ -9,6 +9,9 @@ caught only by the nightly, as "ran, not in the roster".
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from scripts import check_lane_roster as C
@@ -87,3 +90,79 @@ def test_a_module_skipped_at_collection_is_refused_from_real_collect_output(tmp_
     nodeids, problems = C.collect("slow", tmp_path)
     assert nodeids == ["tests/test_ok.py::test_ok"]
     assert any("test_gone.py" in p and "skipped or errored at collection" in p for p in problems), problems
+
+
+# The model-cache and slow lanes run `pytest tests/ -m <marker>`: pytest COLLECTS every module before `-m` deselects,
+# so a module that skips at import fails both lanes' roster checks ("module-level collection skipped"), marked or not.
+# The lanes install what they collect (.github/actions/model-cache-setup); this is the PR-time twin of that rule.
+_LANE_SETUP = C.REPO / ".github" / "actions" / "model-cache-setup" / "action.yml"
+_PIP_IMPORT_NAMES = {"pillow": "PIL"}  # a pip argument whose import name differs
+
+
+def _lane_installed_imports() -> set[str]:
+    """Top-level import names the nightly lanes' install step provides: its extras (read from pyproject.toml through
+    conftest's ``extra_import_names``) plus the bare packages on the same ``pip install -e ".[...]"`` line."""
+    import re
+
+    from tests.conftest import extra_import_names
+
+    match = re.search(r'pip install -e "\.\[([^\]]+)\]"([^\\\n]*)', _LANE_SETUP.read_text(encoding="utf-8"))
+    assert match, f'no `pip install -e ".[extras]"` line in {_LANE_SETUP}'
+    names = {n for extra in match.group(1).split(",") for n in extra_import_names(extra.strip())}
+    for pkg in match.group(2).split():
+        if not pkg.startswith("-"):
+            dist = re.sub(r"[-.]", "_", pkg.lower())
+            names.add(_PIP_IMPORT_NAMES.get(dist, dist))
+    return names
+
+
+def _module_level_importorskips(root: Path) -> list[tuple[str, str]]:
+    """``(file, import name)`` for every ``pytest.importorskip("<name>")`` that runs at module import (a top-level
+    expression or assignment) in a ``test_*.py`` under ``root/tests``."""
+    found = []
+    for path in sorted((root / "tests").rglob("test_*.py")):
+        for node in ast.parse(path.read_text(encoding="utf-8"), filename=str(path)).body:
+            call = node.value if isinstance(node, (ast.Expr, ast.Assign, ast.AnnAssign)) else None
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "importorskip"
+                and call.args
+                and isinstance(call.args[0], ast.Constant)
+            ):
+                found.append((str(path.relative_to(root)), str(call.args[0].value)))
+    return found
+
+
+def test_no_module_skips_at_collection_for_a_package_the_nightly_lanes_do_not_install():
+    """2026-10-31 → 11-21: tests/unit/test_reachy_sdk_contract_1499.py's module-level `importorskip("reachy_mini")`
+    turned the model-cache and slow nightlies red for three weeks; the lanes do not install the robot SDK, and the
+    module holds no lane test. A module gated on such a package skips its TESTS instead (a module `pytestmark` skipif,
+    imports inside the tests), so it still collects in the lanes. A repo-local module (a `scripts/` file the test puts
+    on sys.path) always imports."""
+    installed = _lane_installed_imports()
+    assert {"fastapi", "sentence_transformers", "cryptography", "spacy"} <= installed, installed  # the parse works
+
+    def repo_local(name: str) -> bool:
+        return any(any((C.REPO / top).rglob(f"{name}.py")) for top in ("scripts", "tests"))
+
+    offenders = [
+        f"{f}: importorskip({n!r})"
+        for f, n in _module_level_importorskips(C.REPO)
+        if n not in installed and not repo_local(n)
+    ]
+    assert not offenders, (
+        "these modules skip at collection for a package the nightly lanes do not install, which fails the "
+        "model-cache and slow roster checks; skip the tests instead (module pytestmark skipif) or install it in "
+        f".github/actions/model-cache-setup: {offenders}"
+    )
+
+
+def test_the_module_level_importorskip_scan_sees_top_level_calls_only(tmp_path):
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_x.py").write_text(
+        "import pytest\nsdk = pytest.importorskip('robot_sdk')\npytest.importorskip('other')\n\n"
+        "def test_y():\n    pytest.importorskip('inside')\n"
+    )
+    assert _module_level_importorskips(tmp_path) == [("tests/test_x.py", "robot_sdk"), ("tests/test_x.py", "other")]

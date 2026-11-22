@@ -21,6 +21,7 @@ toward +1 (source appears more to the right). DEFAULT here matches that:
 
 from __future__ import annotations
 
+import atexit
 import json
 import math
 import os
@@ -279,11 +280,15 @@ def connect_and_wake(host: str):
         automatic_body_yaw=False,  # daemon-global; the SDK defaults it on (#1499 O6)
     )
     print(f"[ok] connected (reachy-mini {sdk_ver}, ws://{host}:8000/ws/sdk)")
-    mini.enable_motors()
-    print("[motors] enable_motors() sent (torque on)")
-    time.sleep(0.5)
-    mini.wake_up()
-    time.sleep(1.0)
+    try:
+        mini.enable_motors()
+        print("[motors] enable_motors() sent (torque on)")
+        time.sleep(0.5)
+        mini.wake_up()
+        time.sleep(1.0)
+    except BaseException:
+        smoke.release_mini(mini)  # the caller never gets the handle: undo its no_media release here (#1712)
+        raise
     return mini, create_head_pose
 
 
@@ -292,7 +297,11 @@ class LiveRig:
 
     def __init__(self, host: str) -> None:
         self.host = host
+        # Before the connect: SIGTERM/SIGHUP would otherwise skip atexit, and connect_and_wake's own undo (#1712).
+        smoke.exit_on_hangup_and_term()
         self.mini, self._head_pose = connect_and_wake(host)
+        # The no_media connect released the daemon's media: every exit but SIGKILL re-acquires it (#1712).
+        atexit.register(self.close)
         self.reader: Reader = make_rest_reader(host)
         self.body_yaw = 0.0
         # The daemon may modulate a commanded body_yaw when automatic body yaw is
@@ -303,6 +312,13 @@ class LiveRig:
             print("[motion] automatic_body_yaw disabled (the orient loop owns the yaw axis)")
         except Exception as e:  # noqa: BLE001 - older daemons may not expose it
             print(f"[motion] set_automatic_body_yaw unavailable ({e}) — proceeding")
+
+    def close(self) -> None:
+        """Re-acquire the daemon's media and close the SDK handle (``live_1_smoke.release_mini``, #1712).
+
+        Registered with ``atexit`` at construction, so a caller need not call it; idempotent."""
+        mini, self.mini = self.mini, None
+        smoke.release_mini(mini)
 
     def _goto(self, **kwargs) -> None:
         """goto_target with recovery. TWO distinct transient failures seen live:
@@ -351,6 +367,9 @@ class LiveRig:
         """
         from reachy_mini import ReachyMini
 
+        # The dead session's no_media release and WS client (#1712). Its acquire POST can wait up to 10 s on a dead
+        # link, and the daemon re-acquires only for the new connect below to release again: correct, if slower.
+        smoke.release_mini(self.mini)
         time.sleep(2.0)
         self.mini = ReachyMini(
             host=self.host,
