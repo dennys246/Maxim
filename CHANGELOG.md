@@ -33,20 +33,25 @@ migration.
   `maxim --tts` speaks (#1437). No non-finite, instant, too-fast or mid-path-unsafe command reaches a motor (#1496,
   #1499), and a move's outcome reaches the model. Inbound comms reach it, framed as untrusted data (#1466, #1481). The controller gives the camera
   back and closes its SDK client on disconnect (#1704, #1712), and a fresh pose read gets its full deadline (#1706).
-  **Known oddity, under investigation:** on our test unit the head stops near 56° of yaw instead of the ±65° clamp
-  ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The SDK's own kinematics reach 65° and the clamp and
-  path tests pass; it appeared after that unit's head motors were replaced, and we are checking the motor alignment.
-  The full embodied run on the robot is still owed ([#1708](https://github.com/dennys246/Maxim/issues/1708)).
+  **Known oddity, under investigation:** on our test unit the head stops near +56° of yaw on one side and about −50°
+  on the other, short of the ±65° clamp ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The code behind
+  it is sound by its tests: the clamp matches Pollen's documented ±65° limit, the SDK's default (analytical)
+  kinematics solve to 65°, and the clamp and path tests pass. Whether the shortfall is this unit's mechanism (two of
+  its six head motors were replaced, and the errors behave like friction) or the head's real range with the body
+  held (Pollen's Placo model caps head-to-body yaw at 55°) is open with Pollen. The full embodied run on the robot is
+  still owed ([#1708](https://github.com/dennys246/Maxim/issues/1708)).
 - **Recall:** what a person says is now stored, and a later question that shares a word with it can recall it, framed
   as untrusted content (#1444, #1163, #1064, #1447, #1137). The claim is narrow: T1-16 is EARNED (narrow) on Exp
-  63c, a scripted resume whose cues reuse the words planted before it. Recall matches words (stemmed keys), not
+  63c, one scripted 8-turn resume on one model whose cues reuse the words planted before it; the bare-LLM floor is
+  not measured. Recall matches words (stemmed keys), not
   meaning: a question sharing no word with what was said, or only a spelling variant (#1516), recalls nothing.
 - **The bounded stop:** a stop saves memory first and finishes within the caller's deadline, inside the robot
   daemon's ~20 s kill window; SIGTERM saves too, and a forced stop kills only what maxim started (#1438, #1344).
   `maxim llm reap` cleans up a leftover server, at a terminal only.
 - **The atonia gate's first pieces ship, Experimental and not complete:** `maxim.advisor`, every tool's declared
-  effect, and a required `ToolPolicy` (breaking). The offline latch is not yet safe for operators, and there is no
-  `llm.offline` mode in this release (#1315 item 10).
+  effect, and a required `ToolPolicy` (breaking). The offline latch (`MAXIM_OFFLINE`) ships but is not yet safe for
+  operators (`MAXIM_OFFLINE=1 maxim doctor` crashes), and there is no `llm.offline` mode in this release (#1315
+  item 10's call-site refusals).
 - **The Console:** the wheel vendors maxim-pulse v0.4.4, contract 0.6.0, unchanged. **Correction to the 1.3.3
   notes:** typed payloads (R3, #1336, contract 0.7.0) did not come in 1.3.4; they wait for a pulse tag built for
   0.7.0.

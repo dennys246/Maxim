@@ -12,8 +12,8 @@ break on purpose; each is marked in the
 Read the Security section of the
 [CHANGELOG](https://github.com/dennys246/Maxim/blob/v1.3.4/CHANGELOG.md) first. In short:
 
-- **Sim records and HTTP logs no longer keep a URL's credentials, path or query**
-  ([#1404](https://github.com/dennys246/Maxim/issues/1404)).
+- **Sim records no longer keep a URL's credentials, path or query, and HTTP logs no longer keep its username and
+  password** ([#1404](https://github.com/dennys246/Maxim/issues/1404)).
 - **A page the model fetches can no longer hold the call open by sending slowly**: `fetch_url` takes a whole-request
   deadline ([#1715](https://github.com/dennys246/Maxim/issues/1715)).
 - **Cloud redaction renders private prompt sections by identity.**
@@ -28,7 +28,7 @@ Read the Security section of the
   ([#1436](https://github.com/dennys246/Maxim/issues/1436)).
 - **Motion safety.** No non-finite, out-of-range-duration or instant command reaches a motor
   ([#1496](https://github.com/dennys246/Maxim/issues/1496)), and no too-fast, wrongly-referenced or mid-path-unsafe
-  one either: a turn that would sweep the neck through 180° mid-move is split or refused
+  one either: a turn that would sweep the neck through about 180° mid-move is split or refused
   ([#1499](https://github.com/dennys246/Maxim/issues/1499)). A move's outcome reaches the model, not just "queued".
 - **Inbound comms reach the robot**: every comms endpoint had answered 422, so no inbound SMS reached it
   ([#1466](https://github.com/dennys246/Maxim/issues/1466)), and a message now reaches the model framed as untrusted
@@ -37,11 +37,13 @@ Read the Security section of the
   connection and closes its SDK client on disconnect
   ([#1704](https://github.com/dennys246/Maxim/issues/1704), [#1712](https://github.com/dennys246/Maxim/issues/1712)),
   and a fresh pose read gets its full deadline ([#1706](https://github.com/dennys246/Maxim/issues/1706)).
-- **Known oddity, under investigation.** On our test unit the head stops near 56° of yaw instead of reaching the ±65°
-  clamp ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The motion code behind it is sound: the SDK's own
-  kinematics reach 65°, and the clamp and path tests pass. It appeared after that unit's head motors were replaced,
-  and we are checking their alignment. The full embodied run on the robot is still owed
-  ([#1708](https://github.com/dennys246/Maxim/issues/1708)).
+- **Known oddity, under investigation.** On our test unit the head stops near +56° of yaw on one side and about −50°
+  on the other, short of the ±65° clamp ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The motion code
+  behind it is sound by its tests: its clamp matches Pollen's documented ±65° limit, the SDK's default (analytical)
+  kinematics solve to 65°, and the clamp and path tests pass. Whether the shortfall is this unit's mechanism (two of
+  its six head motors were replaced, and the errors behave like friction) or the head's real range with the body held
+  (Pollen's Placo model caps head-to-body yaw at 55°) is an open question with Pollen. The full embodied run on the
+  robot is still owed ([#1708](https://github.com/dennys246/Maxim/issues/1708)).
 
 ## Recall
 
@@ -55,7 +57,8 @@ Read the Security section of the
   what was said, or only a spelling variant, recalls nothing
   ([#1516](https://github.com/dennys246/Maxim/issues/1516)). The behavioural evidence is narrow: ledger row T1-16 is
   EARNED (narrow) on [Exp 63c](https://github.com/dennys246/Maxim/blob/v1.3.4/docs/experiments/exp63c_scripted_recall_prereg.md),
-  a scripted resume whose cues reuse the words planted before it. Under an LLM narrator (Exp 63b) no decisive turn
+  one scripted 8-turn resume on one model whose cues reuse the words planted before it. The raise is an owner reading
+  of BF2, and the agent's own model slot is not machine-established. Under an LLM narrator (Exp 63b) no decisive turn
   occurred, and the bare-LLM floor for this row is not yet measured.
 
 ## Stopping
@@ -71,12 +74,12 @@ Read the Security section of the
 - `maxim.advisor`, an observer that judges a batch of events and proposes but cannot act; every tool declares what it
   can cause; and every executor takes a required `ToolPolicy` (**breaking**: `permissions=` is removed)
   ([#1315](https://github.com/dennys246/Maxim/issues/1315)).
-- **The gate is not complete.** The offline latch is not yet safe for operators, and this release has no
-  `llm.offline` mode.
+- **The gate is not complete.** The offline latch (`MAXIM_OFFLINE`) ships but is not yet safe for operators
+  (`MAXIM_OFFLINE=1 maxim doctor` crashes), and this release has no `llm.offline` mode.
 
 ## The Console
 
-- **The wheel bundles the maxim-pulse Console v0.4.4** (contract 0.6.0, unchanged).
+- **The wheel bundles the maxim-pulse Console v0.4.4** (commit `9af8a57`; contract 0.6.0, unchanged).
 - **Correction to the 1.3.3 notes:** they said typed payloads would come in 1.3.4. They did not. Typed payloads (R3,
   [#1336](https://github.com/dennys246/Maxim/issues/1336), contract 0.7.0) wait for a pulse release built for 0.7.0.
 
@@ -90,7 +93,8 @@ Read the Security section of the
 
 - **Breaking changes**, each with its migration in the CHANGELOG: a required `ToolPolicy` on every executor;
   `maxim.run()`'s path-taking file tools reach only the run's workspace; `TimeoutPolicy.total_s` is renamed `pool_s`;
-  `create.pool` needs an LLM router; custom `ResponseOutput` speakers.
+  `create.pool` needs an LLM router, and `create.router` raises `ConfigurationError` instead of returning `None`;
+  custom `ResponseOutput` speakers.
 - **Hippocampus files** move to `_format_version` 1.2 (1.1 stores a tool result as data, not its repr; 1.2 keeps
   your words through compression). Older files load.
 

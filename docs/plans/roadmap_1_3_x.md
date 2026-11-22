@@ -1020,7 +1020,7 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 > #1436, #1437) and the motion-safety exit items (#1496, #1499, both met), plus the controller follow-ups #1704,
 > #1712, #1706; Session R's recall (#1444, #1163, #1064, #1447, #1137, #1153); Session H's bounded stop (#1438,
 > #1344, all PRs) and its routing and key fixes; the atonia gate's first pieces (#1315 items 1, 2, 3, 5, 6 and steps
-> 0a/0b, Experimental; item 10 and `llm.offline` are not in it); and a security fix merged before the cut. T1-16 is
+> 0a/0b, Experimental; item 10's call-site refusals and `llm.offline` are not in it); and a security fix merged before the cut. T1-16 is
 > EARNED (narrow) on Exp 63c (#1476 closed); T1-2 ships STALE under `release-1.3.4-T1-2`. Owner decisions at the cut
 > (2026-11-21/22): ship without the robot resolution, with a known-oddity note (#1707, the head stopping near 56° on
 > the test unit; #1708, the embodied run); no contract 0.7.0, so R3 and the seams that ride it wait; #1185 and #1519
