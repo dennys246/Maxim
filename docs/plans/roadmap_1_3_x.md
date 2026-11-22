@@ -1015,6 +1015,21 @@ them. Session V's atonia items do not hold the 1.3.3 cut; they are 1.3.4 (owner 
 
 ### 1.3.4, "The robot and recall fixes" (owner decision 2026-10-24)
 
+> **Released as v1.3.4 "Robot and recall" (2026-11-22 UTC;
+> [release_1_3_4.md](../announcements/release_1_3_4.md)).** The release ships: Session S's robot defects (#1435,
+> #1436, #1437) and the motion-safety exit items (#1496, #1499, both met), plus the controller follow-ups #1704,
+> #1712, #1706; Session R's recall (#1444, #1163, #1064, #1447, #1137, #1153); Session H's bounded stop (#1438,
+> #1344, all PRs) and its routing and key fixes; the atonia gate's first pieces (#1315 items 1, 2, 3, 5, 6 and steps
+> 0a/0b, Experimental; item 10 and `llm.offline` are not in it); and a security fix merged before the cut. T1-16 is
+> EARNED (narrow) on Exp 63c (#1476 closed); T1-2 ships STALE under `release-1.3.4-T1-2`. Owner decisions at the cut
+> (2026-11-21/22): ship without the robot resolution, with a known-oddity note (#1707, the head stopping near 56° on
+> the test unit; #1708, the embodied run); no contract 0.7.0, so R3 and the seams that ride it wait; #1185 and #1519
+> ride 1.3.5. Still open from this section's lines, carried to the next release where unfenced: R3
+> [#1336](https://github.com/dennys246/Maxim/issues/1336) with #1428 and #1431 (they need 0.7.0); #1430, #1418;
+> #1439 (the embodied-device plan); #1516 (recall follow-ups); #1707, #1708; Session H's #1031, #982, #988, #1123,
+> #1093, #1455, #954, #1246, #984, #1417, #1396, #1271, #1313, #1325, #1384, #1404; the `console/health.py` fixes
+> #1285, #1286, #1287, #1291; #1295; and #845 (1.3.6).
+
 **Why it comes first:** maxim-pulse's real-Reachy sessions on 1.3.3 found user-facing defects. The robot's speech
 is silent or slowed, its voice input is off, Talk forgets what the user said across sessions, and a stop can kill
 the memory save. The atonia gate still has five design passes ahead, so these would otherwise sit unreleased on
