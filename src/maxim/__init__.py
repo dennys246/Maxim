@@ -13,7 +13,7 @@ Public API (verb-based):
     maxim.introspect("causal")   # alias for observe
 """
 
-__version__ = "1.3.3"
+__version__ = "1.3.4"
 
 
 def _self_engage_offline() -> None:
