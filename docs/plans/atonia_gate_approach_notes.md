@@ -354,7 +354,7 @@ are **removed** in the same change. The factories take `AgentPermissions` as the
 > **As built (10a, 2026-11-03):** 1.4 went to `console.stop_budget_s` (#1438, bounded stop PR 1b), so `llm.offline`
 > takes 1.5 and #1431 takes the next free number.
 
-#1431 (`console.talk_tools`, Session S) ships in 1.3.4 and takes `CONFIG_FORMAT_VERSION` "1.4". The gate ships later,
+`CONFIG_FORMAT_VERSION` "1.4" was taken by #1438 PR 1b (`console.stop_budget_s`, shipped in 1.3.4); #1431 (`console.talk_tools`, Session S) did not ship in 1.3.4, and whichever of it and the gate lands first takes the next free minor. The gate ships later,
 so **`llm.offline` takes "1.5"**, with its own fixture entries and downgrade transition. If #1431 slips past the gate,
 the gate takes 1.4 instead, and whichever lands second rebases. Two claims on one version are never both shipped.
 
@@ -1479,7 +1479,7 @@ verbosity ≥1, which is noted.
 
 **Config:**
 - `llm.offline` goes in the SHAPE-FROZEN `LLMConfigSection`.
-- `CONFIG_FORMAT_VERSION` **1.5** (§1A.6): #1431 takes 1.4 in 1.3.4. It gets its own fixture entries and the #974
+- `CONFIG_FORMAT_VERSION` **the next free minor, 1.5 today** (§1A.6): 1.4 went to #1438 PR 1b in 1.3.4; if #1431 lands first it takes 1.5 and the gate the one after. It gets its own fixture entries and the #974
   downgrade.
 - No env alias, and the key stays off `_NON_SECURITY_FIELDS`.
 - It wins over every auto-download switch.
