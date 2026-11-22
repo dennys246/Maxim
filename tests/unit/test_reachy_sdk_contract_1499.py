@@ -1,4 +1,4 @@
-"""Contract pins between #1499's motion-path model and the real reachy-mini SDK (skipped without the ``reachy`` extra).
+"""Contract pins between #1499's motion-path model and the real reachy-mini SDK (its tests skip without the ``reachy`` extra).
 
 The unit lane has no SDK, so the controller's path sampler runs against a verbatim
 copy of ``linear_pose_interpolation`` (tests/unit/_reachy_fakes.py), the lifecycle
@@ -19,7 +19,15 @@ import math
 import numpy as np
 import pytest
 
-reachy_mini = pytest.importorskip("reachy_mini")
+from maxim.utils.optional_deps import optional_dependency_available
+
+# The TESTS skip, not the module: every SDK import is inside a test, so the module still collects without the SDK.
+# A module-level importorskip skipped at collection in the nightly lanes, which run `pytest tests/ -m <marker>` and
+# fail any module skipped at collection (scripts/check_lane_roster.py); they do not install the reachy extra, and
+# this module holds no lane test (model-cache and slow nightlies red 2026-10-31 to 2026-11-21).
+pytestmark = pytest.mark.skipif(
+    not optional_dependency_available("reachy_mini"), reason="the reachy extra is absent (reachy_mini does not import)"
+)
 
 
 def test_the_fake_interpolation_is_the_sdks():
