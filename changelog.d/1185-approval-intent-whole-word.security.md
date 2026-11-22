@@ -9,9 +9,9 @@
   - a re-asked prompt is shown again (in a simulation, on the simulated person's channel too) and the reply is
     not sent to the model as a new turn;
   - the timeout-retry prompt reads yes, a whole number of minutes from 1 to 10, or no, and asks again for
-    anything else; it no longer offers "skip", and "skip", "ok" and "sure" are no longer answers. A
-    non-interactive production run that hits a timeout therefore re-asks on every input, voice included, until
-    one is yes, no or 1-10;
+    anything else; it no longer offers "skip", and "skip", "ok" and "sure" are no longer answers. A timeout
+    retry is no approval: when nobody can answer (a non-interactive run, or a sim with no response policy), the
+    loop retries with more time itself, as before, and only a person in an interactive run is asked;
   - a tool result that arrives while a prompt is waiting is never read as its answer;
   - in a simulation, the response policy's answer to a pending confirmation is no longer dropped when the
     narrator's next sentence arrives in the same tick; the answer goes first and the sentence is the next turn,

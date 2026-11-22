@@ -390,6 +390,7 @@ def _run_scenario_turn(  # noqa: PLR0913
             state_home=run_tmpdir,  # the turn's state file stays in its sandbox, removed with it (#1264)
             stop_event=stop,
             percept_source=source,
+            response_policy=None,  # a scripted scenario turn has no response policy: the person answers prompts
             action_sink=sink,
             **kwargs,
         )

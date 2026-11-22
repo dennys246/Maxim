@@ -2696,6 +2696,7 @@ def start_simulation_mode(
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=orchestrator_source,
+                    response_policy=None,  # the narrator is no AUT: no policy answers its prompts (it runs AUTONOMOUS)
                     state_home=sim_tmpdir,  # the narrator's state file stays in the sim sandbox (#1264)
                     # Bugs ledger D13. THIS loop is the one that needs it: it has
                     # no action_sink and no percept producer between turns, so a
@@ -2712,28 +2713,7 @@ def start_simulation_mode(
         display_summary(["Simulation stopped by user"])
         _stop_by_operator(stop_event, operator_stop)
     except _PlanningLivenessExhausted as e:
-        # D13: the agent loop spent its bounded planning-retry budget and
-        # aborted through its normal teardown. Preserve the typed failure:
-        # provider/parse exhaustion is ``llm_wedged``, responsive but invalid
-        # planning is ``planning_failed``, and queue/worker exhaustion is
-        # ``worker_unavailable``.
-        _finish_status = getattr(e, "finish_status", "llm_wedged")
-        _liveness_msg = f"PLANNING LIVENESS EXHAUSTED [{_finish_status}] (bugs ledger D13): {e}"
-        logger.error(_liveness_msg)
-        _emit(f"🛑 {_liveness_msg}", "turn")
-        try:
-            bridge._spinner.update(f"🛑 {_finish_status} — aborting sim")
-        except Exception as spin_err:
-            logger.debug("spinner abort update failed: %s", spin_err)
-        if not bridge.finish_context:
-            bridge.finish_context.update(
-                {
-                    "status": _finish_status,
-                    "reason": str(e),
-                    "summary": _liveness_msg,
-                    "initiated_by": "planning_liveness",
-                }
-            )
+        _record_liveness_abort(e, bridge)
     except Exception as e:
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)
@@ -2836,3 +2816,32 @@ def _aut_percept_source_for(bridge: Any, agent_id: Any) -> Any:
             _aud_nov,
         )
     return _aut_percept_source
+
+
+def _record_liveness_abort(e: Any, bridge: Any) -> None:
+    """The narrator loop's planning-liveness abort (moved verbatim out of ``start_simulation_mode``, rule T for
+    #1185, paying for the narrator's explicit ``response_policy``)."""
+    from maxim.simulation.sim_logger import _emit
+
+    # D13: the agent loop spent its bounded planning-retry budget and
+    # aborted through its normal teardown. Preserve the typed failure:
+    # provider/parse exhaustion is ``llm_wedged``, responsive but invalid
+    # planning is ``planning_failed``, and queue/worker exhaustion is
+    # ``worker_unavailable``.
+    _finish_status = getattr(e, "finish_status", "llm_wedged")
+    _liveness_msg = f"PLANNING LIVENESS EXHAUSTED [{_finish_status}] (bugs ledger D13): {e}"
+    logger.error(_liveness_msg)
+    _emit(f"🛑 {_liveness_msg}", "turn")
+    try:
+        bridge._spinner.update(f"🛑 {_finish_status} — aborting sim")
+    except Exception as spin_err:
+        logger.debug("spinner abort update failed: %s", spin_err)
+    if not bridge.finish_context:
+        bridge.finish_context.update(
+            {
+                "status": _finish_status,
+                "reason": str(e),
+                "summary": _liveness_msg,
+                "initiated_by": "planning_liveness",
+            }
+        )

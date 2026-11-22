@@ -735,7 +735,9 @@ def test_the_verdict_names_who_may_satisfy_it() -> None:
         ActionVerdict(VerdictKind.CONFIRM, "x")
     with pytest.raises(ValueError):
         ActionVerdict(VerdictKind.ALLOW, None, HUMAN_APPROVERS)
-    assert InputSource.VOICE in HUMAN_APPROVERS and InputSource.LOOP not in HUMAN_APPROVERS
+    # VOICE is not a human approver yet: a room microphone's "yes" must not confirm a write (#1729 decides the set)
+    assert HUMAN_APPROVERS == {InputSource.OPERATOR, InputSource.SIM}
+    assert InputSource.VOICE not in PLANNING_GATE_APPROVERS
     assert InputSource.SELF not in PLANNING_GATE_APPROVERS and InputSource.UNKNOWN not in PLANNING_GATE_APPROVERS
 
 
@@ -748,7 +750,7 @@ def test_a_needs_person_refusal_is_worded_from_its_cause_and_source() -> None:
         loop
         == "A tool outside the allow-list needs a person's approval; this run answered its own prompt, and no person did"
     )
-    assert "voice answer" in needs_person_detail("Unlocking the door", InputSource.VOICE)
+    assert "stays parked until a person confirms" in needs_person_detail("Unlocking the door", InputSource.VOICE)
     assert "non-interactive" not in loop and "requires approval" not in loop
 
 
@@ -769,3 +771,118 @@ def test_off_mode_is_machine_approval_and_on_mode_waits_for_the_approver() -> No
         assert entry.status == expect, mode
         if mode is sim_logger.InteractiveMode.OFF:
             assert entry.approver is InputSource.LOOP
+
+
+# ── Delta 5: a timeout retry is no approval; the policy wiring ────────────────────────────────────────
+
+
+def _timeout_tick(sim, mode):
+    """An LLM timeout under ``sim`` in interactive ``mode``, then the loop's next two ticks: the timeout prompt's
+    answer (if the loop gives one) and a person's next words."""
+    from maxim.runtime.loop_perception import take_user_input
+    from maxim.runtime.loop_types import TimeoutRetry  # noqa: F401  (the stashed shape)
+    from maxim.runtime.tool_dispatch import _stash_timeout_retry
+    from maxim.simulation import sim_logger
+
+    ctrl = _controller()
+    ctrl.llm_worker = MagicMock()
+    with patch.object(sim_logger, "_interactive_mode", mode), patch("maxim.simulation.sim_logger.display_status"):
+        _stash_timeout_retry({"_timeout_s": 30.0, "_original_request": object()}, sim, ctrl.state)
+        answer = take_user_input({}, ctrl.state, MagicMock(), sim_mode=bool(sim.is_sim_mode))
+        handled = []
+        for got in (answer, take_user_input({"cli_input": "hello there"}, ctrl.state, MagicMock(), sim_mode=False)):
+            if got.cli_input is None:
+                handled.append(None)
+                continue
+            handled.append(
+                ctrl.answer_pending_prompt(
+                    str(got.cli_input),
+                    execute_and_learn=MagicMock(),
+                    book_refusal=MagicMock(),
+                    book_machine_refusal=MagicMock(),
+                    observation={},
+                    sim=sim,
+                    answer_source=got.source,
+                )
+            )
+    return ctrl, answer, handled
+
+
+@pytest.mark.parametrize("off", [True, False])
+def test_a_sim_with_no_policy_survives_a_timeout(off: bool) -> None:
+    """Delta-5 BLOCKER: the narrator, the CLI scenario, interactive turns and minecraft run with no policy. At base
+    their adapter answered a timeout "yes"; after #1185 it answered nothing, the prompt parked, and every later
+    input was re-asked. A timeout retry is no approval: with nobody to answer, the loop retries itself."""
+    from maxim.runtime.sim_adapter import SimulationAdapter
+    from maxim.simulation import sim_logger
+
+    sim = SimulationAdapter(percept_source=object(), response_policy=None)
+    mode = sim_logger.InteractiveMode.OFF if off else sim_logger.InteractiveMode.ON
+    ctrl, answer, handled = _timeout_tick(sim, mode)
+    assert (answer.cli_input, answer.source) == ("yes", InputSource.LOOP)
+    ctrl.llm_worker.retry_with_timeout.assert_called_once()
+    assert handled == [True, False]  # the retry consumed its answer; the next words are an ordinary turn
+
+
+def test_production_headless_survives_a_timeout_and_a_person_is_asked() -> None:
+    """The null adapter: in OFF mode the loop retries itself (mirroring the OFF-mode auto-yes); with interactive on
+    a person is asked (nothing is answered for them)."""
+    from maxim.runtime.sim_adapter import NullSimulationAdapter
+    from maxim.simulation import sim_logger
+
+    ctrl, answer, handled = _timeout_tick(NullSimulationAdapter(), sim_logger.InteractiveMode.OFF)
+    assert answer.cli_input == "yes" and answer.source is InputSource.LOOP
+    ctrl.llm_worker.retry_with_timeout.assert_called_once()
+    assert handled == [True, False]
+    ctrl, answer, _ = _timeout_tick(NullSimulationAdapter(), sim_logger.InteractiveMode.ON)
+    assert answer.cli_input is None  # parked for the person
+    assert ctrl.get_timeout_retry() is not None
+
+
+@pytest.mark.parametrize(
+    ("rel", "bridge"),
+    [
+        ("simulation/orchestrator.py", "bridge"),
+        ("simulation/tools.py", "sub_bridge"),
+        ("console/handle.py", "bridge"),
+    ],
+)
+def test_each_bridge_sim_passes_its_bridges_policy(rel: str, bridge: str) -> None:
+    """The sentinel catches a sim that forgets ``response_policy=``; this catches one that passes the wrong value:
+    each sim with a bridge hands its loop ``<bridge>.response_policy``."""
+    import ast
+    from pathlib import Path
+
+    import maxim
+
+    tree = ast.parse((Path(maxim.__file__).parent / rel).read_text())
+    passed = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "id", getattr(node.func, "attr", "")) == "run_agentic_loop"
+        ):
+            kw = {k.arg: k.value for k in node.keywords}
+            value = kw.get("response_policy")
+            if (
+                isinstance(value, ast.Attribute)
+                and value.attr == "response_policy"
+                and isinstance(value.value, ast.Name)
+                and value.value.id == bridge
+            ):
+                passed.append(node.lineno)
+    assert len(passed) == 1, f"{rel}: run_agentic_loop must take response_policy={bridge}.response_policy"
+
+
+def test_a_sim_that_does_not_say_its_policy_is_refused() -> None:
+    """Delta-5 item 2: ``run_agentic_loop`` / ``build_loop_run`` default to a sentinel, and a ``percept_source``
+    without an explicit ``response_policy=`` is a ``TypeError``, so a sim cannot lose its policy silently."""
+    from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, _build_sim_adapter
+
+    kwargs = dict(action_sink=None, pain_bus=None, sim_adapter=None, executor=None)
+    with pytest.raises(TypeError, match="response_policy"):
+        _build_sim_adapter(percept_source=object(), response_policy=RESPONSE_POLICY_UNSET, **kwargs)
+    assert (
+        _build_sim_adapter(percept_source=object(), response_policy=None, **kwargs).answer_source() is InputSource.LOOP
+    )
+    assert _build_sim_adapter(percept_source=None, response_policy=RESPONSE_POLICY_UNSET, **kwargs).is_sim_mode is False

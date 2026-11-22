@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.agents.llm_worker import LLMProposal
 from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name, tool_to_run
 from maxim.runtime.dn_controller import DefaultNetworkController
-from maxim.runtime.loop_state import operational_mode
+from maxim.runtime.loop_state import no_person_to_ask, operational_mode
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,
@@ -614,7 +614,7 @@ class LoopController:
         for #1185). An embedder's ``proposal_queue.approve`` approves it. In OFF mode (``interactive="off"``,
         ``no_person_to_ask``) the approval is the MACHINE's (owner decisions 2026-11-21): it lifts the PLANNING gate
         only, so the drain refuses what needs a person (``needs_person``). An embedder that wants to approve plans
-        itself runs with ``interactive`` on."""
+        itself runs with ``interactive`` on (a ``maxim.api`` queue-approval surface is #1734)."""
         from maxim.agents.autonomy import Proposal
 
         proposal = Proposal(
@@ -1304,14 +1304,6 @@ def _handle_planning_transport_failure(
     )
     ctrl.last_llm_submit_time = time.time()
     return False
-
-
-def no_person_to_ask() -> bool:
-    """True when no person can answer a gating prompt: the run is non-interactive (``--interactive false``, the
-    sim logger's ``InteractiveMode.OFF``). Its approvals are then the MACHINE auto-approve (#1185)."""
-    from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
-
-    return get_interactive_mode() is InteractiveMode.OFF
 
 
 def _params_text(action: dict[str, Any]) -> str:

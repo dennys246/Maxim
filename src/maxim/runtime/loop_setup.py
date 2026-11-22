@@ -244,6 +244,17 @@ def _resolve_situation_cue(memory_hub: Any) -> Any:
         return NO_SITUATION_CUE
 
 
+class _ResponsePolicyUnset:
+    """``run_agentic_loop(response_policy=)`` not given (#1185). A run with a ``percept_source`` is a sim, and a sim
+    must say whose answers its gating prompts get: its policy, or ``None`` with the reason it has none."""
+
+    def __repr__(self) -> str:
+        return "RESPONSE_POLICY_UNSET"
+
+
+RESPONSE_POLICY_UNSET: Any = _ResponsePolicyUnset()
+
+
 def _build_sim_adapter(
     *,
     percept_source: Any,
@@ -257,6 +268,11 @@ def _build_sim_adapter(
     from maxim.runtime.sim_adapter import SimulationAdapter, NullSimulationAdapter
 
     sim: SimulationAdapter | NullSimulationAdapter
+    if percept_source is not None and response_policy is RESPONSE_POLICY_UNSET:
+        raise TypeError(
+            "run_agentic_loop(percept_source=...) is a sim: pass response_policy= explicitly, the sim's "
+            "ResponsePolicy (the bridge's), or None with the reason it has none (#1185)"
+        )
     if percept_source is not None:
         # The sim's response policy, passed explicitly (#1185 owner decision A): the loop is handed the bridge's
         # percept source, never the bridge, so the adapter could not find the policy itself.

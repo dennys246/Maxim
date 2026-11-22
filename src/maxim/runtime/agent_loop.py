@@ -27,7 +27,7 @@ from maxim.runtime.bio_integration import (
     capture_loop_action,
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
-from maxim.runtime.loop_setup import build_loop_run
+from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
     inbound_comms_subscription,
@@ -989,7 +989,7 @@ def run_agentic_loop(
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
-    response_policy: Any | None = None,  # the sim's ResponsePolicy (the bridge's); None: answers no prompt (#1185)
+    response_policy: Any = RESPONSE_POLICY_UNSET,  # a sim's ResponsePolicy, or None: required with percept_source
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
@@ -1134,7 +1134,7 @@ def _run_agentic_loop_body(
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
-    response_policy: Any | None = None,  # the sim's ResponsePolicy (the bridge's); None: answers no prompt (#1185)
+    response_policy: Any = RESPONSE_POLICY_UNSET,  # a sim's ResponsePolicy, or None: required with percept_source
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
@@ -1767,12 +1767,12 @@ def _run_agentic_loop_body(
                 # synthetic action so the bridge's settle loop detects activity
                 # and exits instead of spinning for 120s.
                 if _consecutive_llm_fallbacks >= _LLM_STALL_THRESHOLD and action_sink is not None:
-                    from maxim.simulation.sinks import ActionRecord
+                    from maxim.simulation.sinks import LLM_UNAVAILABLE, ActionRecord
 
                     action_sink.record(
                         ActionRecord(
                             timestamp=time.time(),
-                            tool_name="_llm_unavailable",
+                            tool_name=LLM_UNAVAILABLE,
                             tool_args={},
                             result_success=False,
                             result_output=None,

@@ -257,14 +257,17 @@ One does.*
 
 - **T1-2** (Exp 37, already STALE): its corroborating metric `tool_class_diversity` is
   `len(report["tool_usage"])` (`scripts/benchmark_cross_session.py`, read by `scripts/analyze_exp37.py`
-  `CORROBORATING_METRICS`), and `per_action_rate` divides by the `actions.jsonl` record count. The committed rows
-  were computed with markers included. Five carry a `_llm_unavailable` key in `tool_usage`, so their
-  `tool_class_diversity` counts it: `37_heartbeat_1.1_qwen32b.jsonl` rows 14, 23, 28 and 37 (arms B-wire-a-off, C,
-  B-nac-bias-off and B; seeds 44-46) and `38_results_deepseek.jsonl` row 55 (arm B, seed 47).
-  `37_results_invalid_llm_outage.jsonl` is invalid anyway. Every other committed Exp 37/38/40 row has no marker and
-  is comparable. A re-run of a marker row under the new code reads one lower on `tool_class_diversity`.
-  `per_action_rate`'s denominator now leaves the markers out too (`benchmark_cross_session.py`), so the two stay
-  consistent.
+  `CORROBORATING_METRICS`), and its robustness metric `per_action_failure_rate` (`analyze_exp37.py`
+  `ROBUSTNESS_METRIC`) divided by the `actions.jsonl` record count. The committed rows were computed with markers
+  included. Five carry a `_llm_unavailable` key in `tool_usage`, so their `tool_class_diversity` counts it:
+  `37_heartbeat_1.1_qwen32b.jsonl` rows 14, 23, 28 and 37 (0-based; file lines 15, 24, 29 and 38; arms
+  B-wire-a-off, C, B-nac-bias-off and B; seeds 44-46) and `38_results_deepseek.jsonl` row 55 (0-based; file line
+  56; arm B, seed 47). `37_results_invalid_llm_outage.jsonl` is invalid anyway. Every other committed Exp 37/38/40
+  row has no marker and is comparable. **A re-run of those five rows reads differently**: one lower on
+  `tool_class_diversity`, and with a smaller `per_action_failure_rate` denominator. `compute_metrics` now leaves
+  the markers out once, at the top (`benchmark_cross_session.py`), so the per-action rate, the turn bins, first
+  contact and time-to-first-warm-self all count the agent's actions, consistent with `tool_usage`. **No committed
+  verdict changes**: the 2026-06-08 Qwen32B rows carry no markers, and T1-2 is already STALE.
 - **B4** (`docs/experiments/b4_exp37_floors_prereg.md`): unaffected. A gated row needs `_llm_unavailable` = 0, and
   one voids the fire, so no row it can gate on carries a marker.
 - **The L8 re-fire** (the owed Exp 37 Qwen32B re-fire): it runs under B4's rule above, so it is comparable with

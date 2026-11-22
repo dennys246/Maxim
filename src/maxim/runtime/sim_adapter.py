@@ -37,15 +37,22 @@ callers; do not rename without a deprecation cycle.
 Sim-specific coupling lives in two places intentionally:
 - ``resolve_confirmation`` / ``resolve_plan_approval`` /
   ``resolve_timeout_retry`` ask the sim's response policy, which every
-  sim passes to the adapter explicitly (``response_policy=``, a REQUIRED
-  keyword; #1185 owner decision A, 2026-11-21). The loop is handed the
+  sim states explicitly (``response_policy=``, a REQUIRED keyword here and
+  at ``run_agentic_loop`` whenever a ``percept_source`` is given; #1185
+  owner decision A, 2026-11-21): the bridge's policy for the orchestrator's
+  AUT, the sub-AUT and the console handle; ``None`` for the narrator, the
+  CLI ``--sim`` scenario, interactive scenario turns and the minecraft
+  harness, which have no bridge. The loop is handed the
   bridge's ``percept_source`` (a ``ConversationalSource``), never the
   ``SimulationBridge``, so the earlier ``isinstance(percept_source,
   SimulationBridge)`` lookup never matched in production and the policy
   never answered a prompt (CC8, pre-existing); the adapter's own default
   "yes" answered instead. An adapter with no policy (``None``) answers
   nothing: its prompts are the loop's to settle (``answer_source()`` is
-  ``LOOP``), and a reason that needs a person is refused.
+  ``LOOP``), and a reason that needs a person is refused in OFF mode (a
+  person is asked when interactive). A timeout retry is no approval: with
+  nobody to answer it, the loop retries itself
+  (``tool_dispatch._nobody_answers_a_timeout``).
 - ``_tool_registry`` is set by the orchestrator for deregistered-tool
   filtering; non-sim adapters leave it ``None`` and skip the filter.
 """
@@ -223,9 +230,11 @@ class SimulationAdapter:
         if isinstance(action, dict):
             tool_name = action.get("tool_name", "")
             if tool_name and self._tool_registry is not None:
+                from maxim.simulation.sinks import LLM_UNAVAILABLE
+
                 try:
                     available = self._tool_registry.list_all()
-                    if tool_name not in available and tool_name != "_llm_unavailable":
+                    if tool_name not in available and tool_name != LLM_UNAVAILABLE:
                         return True
                 except Exception:
                     pass

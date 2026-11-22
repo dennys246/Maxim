@@ -18,7 +18,8 @@
     did"). The loop's own "yes" is a machine approval: a plan is decided at once instead of being parked for nobody
     (each later plan used to be refused while the first waited). At SUPERVISED, the non-interactive auto-yes to a
     confirmation is refused the same way instead of running the action. OFF mode (`interactive="off"`) means
-    machine approval: an embedder that wants to approve plans itself runs with `interactive` on.
+    machine approval: an embedder that wants to approve plans itself runs with `interactive` on (a `maxim.api`
+    queue-approval surface is #1734).
   - Two confidence changes (owner-confirmed 2026-11-21):
     - At SUPERVISED the confidence floor is now checked before the allow-list, so a low-confidence action outside
       the allow-list is a hard rejection, not a confirmation prompt. Hard rejections book NAc, exactly as a
@@ -30,9 +31,10 @@
     handed the bridge's percept source, never the bridge, so the policy had never answered a confirmation or a
     plan prompt; the adapter's own default "yes" did. Every sim now passes the bridge's policy explicitly
     (`SimulationAdapter(response_policy=...)`, a required argument; `run_agentic_loop(response_policy=...)`). Its
-    "yes" takes the same approved path as a person's and counts as human-involved. An adapter with no policy (the
-    CLI scenario and interactive sims) answers nothing: what needs a person is refused, as in any run nobody
-    answers.
+    "yes" takes the same approved path as a person's and counts as human-involved. The sims with no policy (the
+    narrator loop, the CLI `--sim` scenario, interactive scenario turns and the minecraft harness) pass `None`,
+    explicitly: their adapter answers no confirmation or plan prompt. In OFF mode the loop then answers itself (what
+    needs a person is refused); with `interactive` on, a person is asked.
 - **A change request at a confirmation or plan prompt is no longer stranded** (#1185): the answer was stored with
   the original action, but nothing woke the loop or sent it, so it waited for the next unrelated input, and in
   substrate-primary mode nothing ever read it. With a model, it is now sent on the next turn, once, with the

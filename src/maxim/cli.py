@@ -1703,6 +1703,22 @@ def _reuse_bio_pain_bus_for_sim(args: Any, *, pain_bus: Any, hippocampus: Any, n
     args._sim_hippo = hippocampus
 
 
+def _cleanup_sim_sandbox(args: Any) -> None:
+    """Clean up simulation sandbox (but preserve the log): a --sim scenario's teardown (moved verbatim out of
+    ``_main_impl``, rule T for #1185, paying for its ``response_policy`` argument)."""
+    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
+    if sim_tmpdir is not None:
+        import shutil
+
+        original_cwd = getattr(args, "_sim_original_cwd", "/")
+        os.chdir(original_cwd)
+        try:
+            shutil.rmtree(str(sim_tmpdir))
+            print(f"  Sandbox cleaned up: {sim_tmpdir}")
+        except Exception as e:
+            print(f"  Warning: failed to clean sandbox: {e}")
+
+
 def _main_impl(argv: Sequence[str] | None = None) -> int:
     """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
@@ -2808,6 +2824,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         max_steps=epochs_value,
                         run_id=run_id,
                         percept_source=sim_source,
+                        response_policy=None,  # a scripted scenario has no response policy: it answers no prompt
                         action_sink=sim_sink,
                         pain_bus=getattr(args, "_sim_pain_bus", None) or _cli_pain_bus,
                         bio_enrichment_pipeline=_cli_bio_enrichment,
@@ -2831,18 +2848,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     if saved_log:
                         print(f"  Simulation log saved: {saved_log}")
 
-                    # Clean up simulation sandbox (but preserve the log)
-                    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
-                    if sim_tmpdir is not None:
-                        import shutil
-
-                        original_cwd = getattr(args, "_sim_original_cwd", "/")
-                        os.chdir(original_cwd)
-                        try:
-                            shutil.rmtree(str(sim_tmpdir))
-                            print(f"  Sandbox cleaned up: {sim_tmpdir}")
-                        except Exception as e:
-                            print(f"  Warning: failed to clean sandbox: {e}")
+                    _cleanup_sim_sandbox(args)  # Clean up simulation sandbox (but preserve the log)
 
                     return 0 if passed else 1
 

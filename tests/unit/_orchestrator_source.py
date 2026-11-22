@@ -137,6 +137,10 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("stdin_lines.py", "_blocking_line"),
     ("stdin_lines.py", "read_operator_lines"),
     ("stdin_lines.py", "stop_reader"),
+    # #1185 (2026-11-21, rule T): the /status counts, the AUT percept source, and the narrator's liveness abort
+    ("orchestrator.py", "_display_status_counts"),
+    ("orchestrator.py", "_aut_percept_source_for"),
+    ("orchestrator.py", "_record_liveness_abort"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one
