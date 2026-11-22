@@ -99,10 +99,10 @@ def test_a_scenario_that_fails_to_load_leaves_the_env_as_it_was(
 ) -> None:
     from maxim.api import imagine
 
-    def _bad(_path: Any) -> Any:
+    def _bad(_path: Any, **_kw: Any) -> Any:
         raise ValueError("bad scenario")
 
-    monkeypatch.setattr("maxim.simulation.scenario_source.load_scenario", _bad)
+    monkeypatch.setattr("maxim.simulation.experiment.load_campaign_turns", _bad)
     with pytest.raises(ValueError, match="bad scenario"):
         imagine("g", model=RUN_MODEL, scenario=str(tmp_path / "s.yaml"))
     assert _env() == {"MAXIM_LLM_PROFILE": OPERATOR, "MAXIM_LLM_ENABLED": None}
