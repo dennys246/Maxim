@@ -35,6 +35,7 @@ links the file today. Add a line here when you add a lesson.
 - [embodiment-tick-cycle.md](embodiment-tick-cycle.md) — The embodiment tick cycle lives in `Body.evaluate_failures()`, not percepts.py — embodiment.md
 - [env-var-autouse-scrubs.md](env-var-autouse-scrubs.md) — Opt-in env vars in hot startup paths need autouse scrubs — CLAUDE.md, ci-testing.md, runtime-tools.md
 - [experiment-prereg-precedes-data.md](experiment-prereg-precedes-data.md) — Gated experiment records come from a clean tree at a commit reachable from `main`, with the prereg on `main` first — simulation-experiments.md
+- [filing-is-not-fixing.md](filing-is-not-fixing.md) — Filing is not fixing: the no-band-aid rule covers deferral too (2026-11-21 open-issue audit) — CLAUDE.md
 - [format-version-contract.md](format-version-contract.md) — `_format_version` is the persistence-format contract for every JSON file Maxim writes — CLAUDE.md, persistence-config.md
 - [frozen-dataclass-forward-compat.md](frozen-dataclass-forward-compat.md) — Frozen dataclasses shipping in 1.0 are forward-compat-audited — CLAUDE.md, persistence-config.md
 - [green-pr-with-no-tests-run.md](green-pr-with-no-tests-run.md) — A PR can show every check green while the test suite never ran — CLAUDE.md, ci-testing.md
