@@ -752,21 +752,20 @@ def test_a_needs_person_refusal_is_worded_from_its_cause_and_source() -> None:
     assert "non-interactive" not in loop and "requires approval" not in loop
 
 
-def test_a_registered_queue_approver_keeps_the_machine_away() -> None:
-    """Decision C: in a non-interactive run, the loop's machine auto-approve fires only when no embedder registered
-    to approve the queue; a registered embedder's proposals wait for it."""
+def test_off_mode_is_machine_approval_and_on_mode_waits_for_the_approver() -> None:
+    """Owner decision 2026-11-21: in OFF mode (``interactive="off"``) the loop's machine auto-approve approves a
+    queued proposal (``InputSource.LOOP``); with ``interactive`` on, as an embedder that approves plans itself runs,
+    the proposal waits for that approver."""
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel
     from maxim.simulation import sim_logger
 
-    for registered, expect in ((False, "approved"), (True, "pending")):
+    for mode, expect in ((sim_logger.InteractiveMode.OFF, "approved"), (sim_logger.InteractiveMode.ON, "pending")):
         ctrl = _controller()
         ctrl.autonomy_controller = AutonomyController(initial_level=AutonomyLevel.PLANNING)
-        if registered:
-            ctrl.autonomy_controller.proposal_queue.register_approver("embedder")
         ctrl.pending_proposal = _proposal()
-        with patch.object(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.OFF):
+        with patch.object(sim_logger, "_interactive_mode", mode):
             ctrl.queue_for_approval(ctrl.pending_proposal.action, confidence=0.9, sim=MagicMock())
         [entry] = list(ctrl.autonomy_controller.proposal_queue._pending)
-        assert entry.status == expect, registered
-        if not registered:
+        assert entry.status == expect, mode
+        if mode is sim_logger.InteractiveMode.OFF:
             assert entry.approver is InputSource.LOOP

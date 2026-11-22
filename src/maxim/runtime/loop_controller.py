@@ -611,10 +611,10 @@ class LoopController:
 
     def queue_for_approval(self, action: dict[str, Any], *, confidence: float, sim: Any) -> None:
         """Queue ``pending_proposal`` for approval at PLANNING (moved out of ``_run_agentic_loop_body``'s §4, rule T
-        for #1185). An embedder's ``proposal_queue.approve`` approves it; with no person to ask
-        (``no_person_to_ask``) and no embedder registered to approve the queue (``ProposalQueue.register_approver``,
-        owner decision C), the MACHINE auto-approve does (#1185 owner decision 2026-11-21): it lifts the PLANNING
-        gate only, so the drain refuses what needs a person (``needs_person``)."""
+        for #1185). An embedder's ``proposal_queue.approve`` approves it. In OFF mode (``interactive="off"``,
+        ``no_person_to_ask``) the approval is the MACHINE's (owner decisions 2026-11-21): it lifts the PLANNING gate
+        only, so the drain refuses what needs a person (``needs_person``). An embedder that wants to approve plans
+        itself runs with ``interactive`` on."""
         from maxim.agents.autonomy import Proposal
 
         proposal = Proposal(
@@ -634,9 +634,10 @@ class LoopController:
             mode=operational_mode(self.executor, self.state),
             confidence=confidence,
         )
-        queue = self.autonomy_controller.proposal_queue
-        if no_person_to_ask() and not queue.has_approver:  # a registered embedder approves it instead (decision C)
-            queue.approve(proposal.id, approved_by="auto:non-interactive", source=InputSource.LOOP)
+        if no_person_to_ask():  # OFF mode: the machine approves (an embedder that approves runs with interactive on)
+            self.autonomy_controller.proposal_queue.approve(
+                proposal.id, approved_by="auto:non-interactive", source=InputSource.LOOP
+            )
             sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING, machine): {action.get('tool_name')}")
         self.pending_proposal = None
 

@@ -395,12 +395,11 @@ def run_once(
 
         monkeypatch.setattr(LoopController, "park_confirmation", _park_then_person_confirms)
 
-    # A person is there (interactive ON) when a test says so or when a person answers the SUPERVISED confirmation;
-    # otherwise the run is non-interactive and the loop answers itself (its machine approvals and auto-yes, #1185).
-    # At PLANNING the embedder registers as the queue's approver (``ProposalQueue.register_approver``), so the
-    # loop's machine auto-approve never fires while it approves.
+    # A person is there (interactive ON) when a test says so, when an embedder approves the PLANNING queue, or when a
+    # person answers the SUPERVISED confirmation; otherwise the run is non-interactive (OFF mode) and the loop answers
+    # itself (its machine approvals and auto-yes, #1185). An embedder that approves plans itself runs interactive.
     if interactive is None:
-        interactive = level == "supervised" and person_confirms
+        interactive = (level == "planning" and embedder_approves) or (level == "supervised" and person_confirms)
     mode = sim_logger.InteractiveMode.ON if interactive else sim_logger.InteractiveMode.OFF
     monkeypatch.setattr(sim_logger, "_interactive_mode", mode)
     if sim_plan_answer is not None:
@@ -430,8 +429,6 @@ def run_once(
             supervision_policy=SupervisionPolicy(**policy) if policy else None,
         )
         pq = controller.proposal_queue
-        if embedder_approves:
-            pq.register_approver("test:embedder")  # the embedder approves the queue (decision C): no machine approve
         real_submit = pq.submit
 
         def _submit_then_approve(proposal: Any) -> None:

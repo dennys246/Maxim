@@ -446,21 +446,6 @@ class ProposalQueue:
         self._approved_patterns: list[ApprovalPattern] = []
         self._lock = threading.Lock()
         self._expiry_seconds = expiry_seconds
-        self._approvers: set[str] = set()
-
-    def register_approver(self, name: str) -> None:
-        """Declare that an embedder approves this queue itself (#1185 owner decision C, 2026-11-21): a REQUIRED,
-        explicit call, never inferred from listeners. With one registered, a non-interactive run leaves its
-        proposals queued for that approver (as before) instead of the loop's machine auto-approve, and the
-        embedder's ``approve`` is a person's (``InputSource.OPERATOR``, the default source)."""
-        with self._lock:
-            self._approvers.add(name)
-
-    @property
-    def has_approver(self) -> bool:
-        """Whether an embedder registered to approve this queue (``register_approver``)."""
-        with self._lock:
-            return bool(self._approvers)
 
     def submit(self, proposal: Proposal) -> None:
         """Queue proposal for human review."""

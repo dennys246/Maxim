@@ -17,9 +17,8 @@
     anything that needs a person ("... needs a person's approval; this run answered its own prompt, and no person
     did"). The loop's own "yes" is a machine approval: a plan is decided at once instead of being parked for nobody
     (each later plan used to be refused while the first waited). At SUPERVISED, the non-interactive auto-yes to a
-    confirmation is refused the same way instead of running the action. An embedder that approves the PLANNING
-    queue itself registers as its approver (`ProposalQueue.register_approver`); its proposals then wait for it as
-    before, and its approvals count as a person's.
+    confirmation is refused the same way instead of running the action. OFF mode (`interactive="off"`) means
+    machine approval: an embedder that wants to approve plans itself runs with `interactive` on.
   - Two confidence changes (owner-confirmed 2026-11-21):
     - At SUPERVISED the confidence floor is now checked before the allow-list, so a low-confidence action outside
       the allow-list is a hard rejection, not a confirmation prompt. Hard rejections book NAc, exactly as a
