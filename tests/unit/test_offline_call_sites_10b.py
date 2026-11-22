@@ -8,6 +8,7 @@ disengages the latch after each test.
 
 from __future__ import annotations
 
+import os
 import threading
 import types
 from pathlib import Path
@@ -513,33 +514,94 @@ def test_an_llm_json_tier_profile_is_pinned(monkeypatch: pytest.MonkeyPatch) -> 
     assert not lane_backends._profile_is_pinned("phi-2", "large")  # another tier's override pins nothing here
 
 
-def test_the_cpu_fallback_default_is_not_a_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Owner decision V28: the GPU-less default Maxim exports itself falls back offline like any auto tier."""
-    monkeypatch.delenv("MAXIM_LLM_N_GPU_LAYERS", raising=False)  # configure_cpu_fallback_model sets it
+def _clear_env(monkeypatch: pytest.MonkeyPatch, *names: str) -> None:
+    """Unset ``names`` for one test so the restore is recorded: a bare ``delenv(raising=False)`` of an absent variable
+    records nothing, and a value the code under test then sets outlives the test (delta round 7, S3)."""
+    for name in names:
+        monkeypatch.setenv(name, "unset-by-test")
+        monkeypatch.delenv(name)
+
+
+def test_the_cli_cpu_fallback_default_reads_as_a_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Owner decision V31 (fail closed): on a GPU-less box the served model comes from load_llm_config, whose only
+    input for Maxim's default is MAXIM_LLM_PROFILE, so the default reads as pinned and offline a missing one refuses by
+    name. Flip it when #1737 builds the GPU-less router from the lane system."""
     import logging
 
     from maxim import cli_utils
     from maxim.runtime import lane_backends
 
-    monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
-    monkeypatch.setattr(lane_backends, "_MAXIMS_OWN_PROFILES", set())
+    _clear_env(monkeypatch, "MAXIM_LLM_PROFILE", "MAXIM_LLM_N_GPU_LAYERS")
     cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(tmp_path))
-    assert not lane_backends._profile_is_pinned("smollm-1.7b-instruct", "medium")
-    monkeypatch.setattr(lane_backends, "_MAXIMS_OWN_PROFILES", set())  # the operator's own MAXIM_LLM_PROFILE
+    assert os.environ["MAXIM_LLM_PROFILE"] == "smollm-1.7b-instruct"
+    assert os.environ["MAXIM_LLM_N_GPU_LAYERS"] == "0"
     assert lane_backends._profile_is_pinned("smollm-1.7b-instruct", "medium")
 
 
-def test_an_operator_profile_survives_the_cpu_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("MAXIM_LLM_N_GPU_LAYERS", raising=False)  # configure_cpu_fallback_model sets it
+def test_the_robot_cpu_fallback_default_reads_as_a_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """V31, the robot runtime's twin (#1602 is superseded: there is no marker to miss)."""
+    import logging
+
+    from maxim.embodied_runtime import agentic_runtime
+    from maxim.runtime import lane_backends
+
+    _clear_env(monkeypatch, "MAXIM_LLM_PROFILE", "MAXIM_LLM_N_GPU_LAYERS", "CUDA_VISIBLE_DEVICES")
+    monkeypatch.setattr(agentic_runtime, "is_gpu_available", lambda: False)
+    runtime = types.SimpleNamespace(home_dir=str(tmp_path), log=logging.getLogger("test"))
+    agentic_runtime.AgenticRuntimeMixin._apply_llm_backend_fallback(runtime)  # type: ignore[arg-type]
+    assert os.environ["MAXIM_LLM_PROFILE"] == "smollm-1.7b-instruct"
+    assert os.environ["MAXIM_LLM_N_GPU_LAYERS"] == "0"
+    assert lane_backends._profile_is_pinned("smollm-1.7b-instruct", "medium")
+
+
+def test_an_operator_profile_survives_either_cpu_fallback_unannounced(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     import logging
 
     from maxim import cli_utils
-    from maxim.runtime import lane_backends
+    from maxim.embodied_runtime import agentic_runtime
 
+    _clear_env(monkeypatch, "MAXIM_LLM_N_GPU_LAYERS", "CUDA_VISIBLE_DEVICES")
     monkeypatch.setenv("MAXIM_LLM_PROFILE", "phi-2")
-    monkeypatch.setattr(lane_backends, "_MAXIMS_OWN_PROFILES", set())
-    cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(tmp_path))
-    assert lane_backends._MAXIMS_OWN_PROFILES == set() and lane_backends._profile_is_pinned("phi-2", "medium")
+    monkeypatch.setattr(agentic_runtime, "is_gpu_available", lambda: False)
+    with caplog.at_level(logging.INFO):
+        cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(tmp_path))
+        runtime = types.SimpleNamespace(home_dir=str(tmp_path), log=logging.getLogger("test"))
+        agentic_runtime.AgenticRuntimeMixin._apply_llm_backend_fallback(runtime)  # type: ignore[arg-type]
+    assert os.environ["MAXIM_LLM_PROFILE"] == "phi-2"
+    assert os.environ["MAXIM_LLM_N_GPU_LAYERS"] == "0"
+    assert (
+        "smollm" not in capsys.readouterr().err and "smollm" not in caplog.text
+    )  # neither claims a model it did not set
+
+
+def test_a_re_walk_that_finds_no_model_on_disk_is_recorded_as_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """V27: the offline block is a claim. A re-walk that hands back the missing profile, or another that is not on
+    disk, gave the lane no model, and the record says so instead of naming a substitute (delta rounds 7 and 8)."""
+    from maxim.models import download
+    from maxim.runtime import lane_backends, lane_models
+    from maxim.runtime.worker_pool import LaneConfig
+
+    monkeypatch.setattr(lane_backends, "_profile_has_local_file", lambda p: False)
+    monkeypatch.setattr(download, "llm_models", lambda: {"phi-2": {}, "smollm-1.7b-instruct": {}})
+    _offline.engage("test")
+    caps = types.SimpleNamespace(has_gpu=False)
+    lanes = {"medium": LaneConfig(name="medium", max_workers=1, model_profile="phi-2")}
+    for handed_back in ("phi-2", "smollm-1.7b-instruct"):  # the missing profile itself; another that is missing too
+        monkeypatch.setattr(
+            lane_models,
+            "detect_tiers",
+            lambda caps, profile_available, profile=None, _p=handed_back: {
+                "medium": LaneConfig(name="medium", max_workers=1, model_profile=_p)
+            },
+        )
+        lane_backends._ensure_lane_profiles_available(dict(lanes), caps, None)
+    reasons = {d.reason for d in _offline.degraded()}
+    assert reasons == {"phi-2 is not on disk; lane medium has no model on disk"}, reasons
 
 
 def test_warmup_never_leaves_wait_ready_blocking_on_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:

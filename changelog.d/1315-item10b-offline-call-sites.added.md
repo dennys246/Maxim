@@ -6,9 +6,11 @@
   downloads (before any consent prompt), RTM vision weights, and a faster-whisper model that is not cached. Hugging
   Face loads (sentence-transformers, faster-whisper) pass `local_files_only` where the library takes it, and
   transformers loads local-only and never runs remote code offline.
-- **A missing model offline** (owner decisions V25, V28): a profile you chose (`--llm`, `llm.profile`, or a tier's
-  `model_profile` in llm.json) is refused by name and never swapped; an auto-detected tier, or the CPU-fallback
-  default Maxim picks without a GPU, falls back to a model already on disk, and the run records that as degraded.
+- **A missing model offline** (owner decisions V25, V28, V31): a profile you chose (`--llm`, `llm.profile`, or a
+  tier's `model_profile` in llm.json) is refused by name and never swapped; an auto-detected tier falls back to a
+  model already on disk, and the run records that as degraded (a lane left with no model is recorded as having
+  none). Without a GPU, Maxim's default model (`smollm-1.7b-instruct`) is set for the session like a profile you
+  chose, so offline a missing one is refused by name rather than replaced (#1737 tracks a fallback for it).
 - **An offline run says what it could not do** (owner decision V27): the sim's `report.json` provenance gains an
   `offline` block (the refusals, the exact count, and each degraded fallback), and `lane_decisions.jsonl` records
   `offline` and `offline_degraded`. A missing encoder or semantic model still falls back to hashing, now said once.

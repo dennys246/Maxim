@@ -1974,7 +1974,7 @@ def _ensure_lane_profiles_available(
             out[lane_name] = dataclasses.replace(cfg, model_profile=None)
             if auto_offline:
                 _offline.mark_degraded(
-                    "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} has no model"
+                    "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} has no model on disk"
                 )
             continue
         try:
@@ -1989,7 +1989,7 @@ def _ensure_lane_profiles_available(
             out[lane_name] = dataclasses.replace(cfg, model_profile=None)
             if auto_offline:
                 _offline.mark_degraded(
-                    "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} has no model"
+                    "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} has no model on disk"
                 )
             continue
         re_walked = True
@@ -2012,29 +2012,22 @@ def _ensure_lane_profiles_available(
             )
         if auto_offline:
             substitute = getattr(out.get(lane_name), "model_profile", None)
-            _offline.mark_degraded(
-                "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} runs {substitute}"
-            )
+            # The report's offline block is a claim (V27): a re-walk that hands back the missing profile, one that is
+            # not on disk either, or none, gave the lane no model, and the record says so (delta rounds 7 and 8).
+            runs = substitute and substitute != lane_profile and _profile_has_local_file(substitute)
+            ran = f"runs {substitute}" if runs else "has no model on disk"
+            _offline.mark_degraded("lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} {ran}")
 
     return out
-
-
-# Profiles Maxim chose itself and exported as MAXIM_LLM_PROFILE (the GPU-less CPU fallback, cli_utils), which read as
-# the env layer of llm.profile but are not the operator's pin (owner decision V28). Process-local: a child process
-# that inherits the variable reads it as pinned, which refuses rather than swaps (fail-closed).
-_MAXIMS_OWN_PROFILES: set[str] = set()
-
-
-def mark_profile_maxims_own(profile: str) -> None:
-    """Record that Maxim, not the operator, set ``MAXIM_LLM_PROFILE`` to ``profile``."""
-    _MAXIMS_OWN_PROFILES.add(profile)
 
 
 def _profile_is_pinned(profile: str, lane_name: str) -> bool:
     """Whether the operator chose ``profile`` for ``lane_name``, not tier detection: offline a pinned profile is never
     swapped (owner decisions V25, V28). Pinned: ``--llm`` / ``MAXIM_LLM_PROFILE`` or ``llm.profile`` in config.json
-    (``resolve_setting`` reads both), or the lane's own ``model_profile`` in llm.json ``tiers``. Not pinned: a
-    profile Maxim exported itself (:func:`mark_profile_maxims_own`)."""
+    (``resolve_setting`` reads both), or the lane's own ``model_profile`` in llm.json ``tiers``. Maxim's GPU-less
+    default, which the CPU fallbacks export as MAXIM_LLM_PROFILE, reads as pinned too: on a GPU-less box the served
+    model comes from ``load_llm_config``, whose only input for it is that env value, so offline a missing default
+    refuses by name rather than swapping (owner decision V31, fail closed; the redesign is #1737)."""
     from maxim.models.language.config import load_llm_config
     from maxim.runtime.config_loader import resolve_setting
 
@@ -2046,8 +2039,6 @@ def _profile_is_pinned(profile: str, lane_name: str) -> bool:
     override = tiers.get(lane_name) if isinstance(tiers, dict) else None
     if isinstance(override, dict) and override.get("model_profile") == profile:
         return True
-    if profile in _MAXIMS_OWN_PROFILES and os.environ.get("MAXIM_LLM_PROFILE", "").strip() == profile:
-        return False
     try:
         value, source = resolve_setting("llm.profile")
     except Exception as e:  # an unreadable config pins nothing here; the router build reports it on its own path

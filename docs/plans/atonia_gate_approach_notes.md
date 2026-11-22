@@ -1309,6 +1309,16 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > builds a router, worker router or `ChatLLMAgent` of its own; `_propose_goal` re-raises `SECURITY_REFUSALS` and the
 > proposal worker ends on one, said once. Separately, `write_paper` always fails today on `ExperimentLog(nickname=)`
 > (#1680, online too).
+> **V28's GPU-less half is withdrawn (V31, 2026-11-21).** #1602 was folded under "Filing is not fixing", and two
+> delta rounds then found a new failure mode each:
+> - Round 7 ([report](reviews/item10b/delta7.md)): the marked default still rode `MAXIM_LLM_PROFILE`, which `detect_tiers` and `_build_local_backend` read as the pin. Offline the re-walk served the missing model again, and the record said "lane small runs smollm".
+> - V30 then made it a tier preference. Round 8 ([executor](reviews/item10b/delta8-executor.md), [wire](reviews/item10b/delta8-wire.md)) found that a GPU-less box has no large lane, so the served model comes from `build_run_router`'s `load_llm_config` fallback, whose only input for the default is that env value. The robot would have built mistral-7b, or offline nothing. The loop change V30 needed also let the re-walk swap a pinned lane without refusing it.
+>
+> That made two divergent rounds, and the audit's answer is that the default can reach the served model only through the env until the GPU-less router is built from the lane system. The owner chose fail closed (**V31**):
+> - The marker (`_MAXIMS_OWN_PROFILES`) is removed. Both CPU fallbacks set the default as a pin, so offline a missing one refuses by name, and each announces the default only when it sets it.
+> - The re-walk record is truthful: a lane left on the missing profile, on another that is not on disk, or on none, "has no model on disk".
+> - The tests record their env restores (round 7, S3).
+> - The redesign is **#1737** (Deferred because: design-pass), and #1602 is superseded.
 >
 > Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`
