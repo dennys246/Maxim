@@ -131,7 +131,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2140
+      "lines": 2130
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -166,7 +166,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 342
+      "lines": 325
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -397,7 +397,8 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
-    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted."
+    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
+    "_run_agentic_loop_body tightened 2140 -> 2130 and execute_and_learn 342 -> 325 on 2026-11-22 (#1751, rule T): the two identical agentic tool_result blocks (each logged up to 100 chars of any tool's output to stdout) moved to tool_dispatch.log_tool_result, and execute_and_learn's goal_failed event (any tool's whole error) to tool_dispatch.log_tool_failure; both show a PRIVATE or SECRET tool's text by shape only."
   ],
   "touch_exemptions": [
     {
