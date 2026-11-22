@@ -235,8 +235,11 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     # Edit file new text
     if tool_name == "edit_file":
         new_text = params.get("new_text", "")
+        typed_len = len(new_text) if isinstance(new_text, str) else 0
         if isinstance(new_text, str) and new_text:
             new_text = edit_review_text(new_text, str(params.get("old_text", "") or ""))
-        if new_text and len(new_text) > 10:
+        # The size cut-off reads the longer of the typed and reviewed text: the review turns escapes into single
+        # characters, so measuring it alone would skip a short edit whose written text is over the line (delta-13).
+        if new_text and max(typed_len, len(new_text)) > 10:
             return new_text
     return None

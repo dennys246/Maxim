@@ -1129,6 +1129,14 @@ def test_the_fear_gate_reviews_every_real_character_the_literal_fallback_writes(
             assert reviewed[i] == "\u202e"
 
 
+def test_a_short_review_still_reaches_the_fear_gate_when_the_written_edit_is_long_enough():
+    """Delta-13: the size cut-off is not measured on the review alone, which shortens escapes into characters."""
+    from maxim.runtime.fear_gate import _extract_code_content
+
+    params = {"path": "f.txt", "old_text": "x<U+202E>y", "new_text": "<U+202E><U+202E>ab"}
+    assert _extract_code_content("edit_file", params) == "\u202e\u202eab"
+
+
 def test_only_write_sandbox_file_appends():
     """Delta-9 fold 3: a tool with no ``append`` parameter never takes the append path (its BOM is kept), in the
     writers and in the fear gate."""
