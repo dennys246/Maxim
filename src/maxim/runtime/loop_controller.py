@@ -699,7 +699,7 @@ def _warn_replan_off_once(obj: Any, lacks: str) -> None:
 
 def is_unread_input(line: Any, processed_cli_inputs: Any) -> bool:
     """THE test of an input the loop has heard but not yet submitted, shared by the follow-up's fold of held inputs
-    (``agent_loop._take_deferred_inputs``, #1048) and the re-plan (#1451). A synthetic follow-up line is not an input.
+    (``loop_submit._take_deferred_inputs``, #1048) and the re-plan (#1451). A synthetic follow-up line is not an input.
     The triggering-input scan's own rules (the ``SKIP_LLM_COMMANDS`` list, a voice input without its wake word) are
     not applied: they mark such inputs processed as the scan meets them, and a planning-liveness loop's inputs are
     the narrator's CLI lines, which those rules never skip (its operator text arrives prefixed ``USER GUIDANCE:``)."""

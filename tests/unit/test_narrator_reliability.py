@@ -286,7 +286,7 @@ def test_a_process_stop_request_holds_the_submit_of_a_loop_given_no_stop_event_1
 
 
 def test_an_input_held_behind_a_job_in_flight_rides_the_next_follow_up() -> None:
-    from maxim.runtime.agent_loop import _take_deferred_inputs
+    from maxim.runtime.loop_submit import _take_deferred_inputs
 
     checkpoint = "DIVERSITY CHECKPOINT (turn 3): vary your probes"
     context = SimpleNamespace(cli_inputs=[FOLLOWUP, checkpoint])
