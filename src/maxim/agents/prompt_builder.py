@@ -31,7 +31,7 @@ from maxim.agents.prompt_budgeter import (
 )
 from maxim.utils.coding_guidelines import build_coding_context
 from maxim.memory.text import frame_external, whole_frames
-from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section
+from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section, safe_tool_name
 
 if TYPE_CHECKING:
     pass
@@ -1916,7 +1916,7 @@ class PromptBuilder:
         if request.recent_outcomes:
             outcome_lines = ["=== Recent Action Outcomes ==="]
             for outcome in request.recent_outcomes[-3:]:
-                tool = outcome.get("tool", "?")
+                tool = safe_tool_name(outcome.get("tool", "?"))  # a model-proposed name, cleaned (#1519)
                 success = "succeeded" if outcome.get("success") else "failed"
                 result = str(outcome.get("result") or "")[:50]
                 outcome_lines.append(

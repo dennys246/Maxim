@@ -250,7 +250,7 @@ def record_outcome(
     outcome_valence: "_V | None" = None,
     bridge_booked: str | None,
     refused: ToolErrorKind | None,
-    untrusted_output: bool = False,
+    untrusted_output: bool,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -990,7 +990,9 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
     return None
 
 
-def _followup_type_and_text(tool_name: str, current_mode: str, overlay: Any, output: Any, result: Any) -> tuple:
+def _followup_type_and_text(
+    tool_name: str, current_mode: str, overlay: Any, output: Any, result: Any
+) -> tuple[str, str | None]:
     """The follow-up type a completed tool queues and its result text, more of it (up to 3000 characters) for a tool
     whose follow-up processes the result (moved out of ``execute_and_learn``, rule T for #1519)."""
     from maxim.modes.definitions import get_tool_followup_type
@@ -998,6 +1000,30 @@ def _followup_type_and_text(tool_name: str, current_mode: str, overlay: Any, out
     followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
     result_limit = 3000 if followup_type in ("process", "respond", "engage") else 100
     return followup_type, _followup_result_text(tool_name, output, result, result_limit)
+
+
+def _audit_execution_error(
+    autonomy_controller: Any,
+    action: dict[str, Any],
+    proposal: Any,
+    executor: Any,
+    state: Any,
+    confidence: float,
+    human_involved: bool,
+    error: Exception,
+) -> None:
+    """The autonomy audit entry for an action whose execution raised (moved out of ``execute_and_learn``, rule T for
+    #1519)."""
+    autonomy_controller.log_action(
+        action_type="executed",
+        action=action,
+        reasoning=proposal.reasoning,
+        mode=operational_mode(executor, state),
+        confidence=confidence,
+        outcome="error",
+        human_involved=human_involved,
+        error=str(error),
+    )
 
 
 def book_refusal(
@@ -1029,6 +1055,7 @@ def book_refusal(
         tool_name=tool_name,
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=error,
         reasoning=reasoning,
         recent_outcomes=recent_outcomes,
@@ -1071,6 +1098,7 @@ def book_machine_refusal(
         tool_name=tool_name,
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=error,
         reasoning=reasoning,
         recent_outcomes=recent_outcomes,
@@ -1146,6 +1174,7 @@ def book_hard_rejection(
         tool_name=tool_name,
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=rejection_msg,
         reasoning=proposal.reasoning or "",
         recent_outcomes=ctrl.recent_outcomes,
@@ -1298,6 +1327,7 @@ def book_agent_fallback_failure(
         tool_name=action["tool_name"],
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=str(e),
         reasoning=getattr(proposal, "reasoning", "") if proposal else "",
         recent_outcomes=recent_outcomes,
@@ -1629,16 +1659,7 @@ def execute_and_learn(
     except Exception as e:
         raised = str(e)
         _loop_logger.error(f"Action execution failed: {e}")
-        autonomy_controller.log_action(
-            action_type="executed",
-            action=action,
-            reasoning=proposal.reasoning,
-            mode=operational_mode(executor, state),
-            confidence=confidence,
-            outcome="error",
-            human_involved=human_involved,
-            error=str(e),
-        )
+        _audit_execution_error(autonomy_controller, action, proposal, executor, state, confidence, human_involved, e)
 
         # Track exception in recent_outcomes for LLM learning
         rec_outcome(
@@ -1646,6 +1667,7 @@ def execute_and_learn(
             tool_name=action.get("tool_name", "unknown"),
             success=False,
             result_summary=None,
+            untrusted_output=False,  # no result to frame
             error=str(e),
             reasoning=getattr(proposal, "reasoning", "") if proposal else "",
             recent_outcomes=recent_outcomes,

@@ -37,6 +37,9 @@
     decision 2026-11-21). New records are quoted correctly.
   - A recent outcome's result is framed as its follow-up is: external for a network tool or for a tool that replays
     stored text (`untrusted_output`). A system-written note (`SYSTEM: …`) is shown unframed as the agent's own
-    guidance, and is checked to carry no outside text.
+    guidance: any tool name in it, model-proposed or not, is cleaned to `[\w-]` first
+    (`content_safety.safe_tool_name`, also applied to every recent outcome's tool label), and the note's shape (one
+    line, no control or format character, no frame marker) is checked, so model output can neither forge it nor
+    crash the run. Format characters are Unicode's whole `Cf` category, from the Unicode database.
   - A truncated CWD listing is cut inside its frame, so no file name is ever shown outside it.
   - The enrichment log's ATL line carries concept ids, not names.

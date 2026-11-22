@@ -324,11 +324,39 @@ def check_url_safety(url: str) -> tuple[bool, str | None]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FRAME_TOKEN = re.compile(r"tool[\W_]*output", re.IGNORECASE)
-_ZERO_WIDTH = re.compile("[\u200b-\u200f\u2060\ufeff]")
+
+
+def _format_char_class() -> str:
+    """Every Unicode FORMAT character (general category ``Cf``: zero-width spaces and joiners, bidi controls, the soft
+    hyphen, the Mongolian vowel separator, invisible operators, tag characters...), as one regex character class body,
+    escaped. Built from the Unicode database, never a hand list (#1519), so ``_ZERO_WIDTH`` and the marker shapes'
+    ``_ZW`` are one set. One scan at import."""
+    import sys
+    import unicodedata
+
+    return "".join(re.escape(chr(c)) for c in range(sys.maxunicode + 1) if unicodedata.category(chr(c)) == "Cf")
+
+
+_ZW = _format_char_class()
+_ZERO_WIDTH = re.compile(f"[{_ZW}]")
+
+
+def has_format_character(text: str) -> bool:
+    """Whether ``text`` holds any Unicode format (``Cf``) character: invisible, so never in trusted text (#1519)."""
+    return bool(_ZERO_WIDTH.search(text))
+
+
 # C0/C1 controls except \t and \n: \x1e is the prompt SEGMENT delimiter the router splits the system
 # message on, so one such byte in a page would move page text into the system role (#823 round 2).
 _CONTROL_DELETE = dict.fromkeys([*range(0x00, 0x09), *range(0x0B, 0x20), *range(0x7F, 0xA0)])
 _TOOL_NAME_SAFE = re.compile(r"[^\w-]")
+
+
+def safe_tool_name(tool_name: object) -> str:
+    """A tool name as a frame header or a trusted system note may show it (#1519): every character outside ``[\\w-]``
+    becomes ``_``, so a model-proposed name cannot carry a line break, a control, a frame marker or a header."""
+    return _TOOL_NAME_SAFE.sub("_", str(tool_name or "tool"))
+
 
 # The one rule the follow-up prompts state ABOVE the framed content (instruction hierarchy): the
 # notice inside the frame sits next to the attacker's text, this one does not.
@@ -364,7 +392,7 @@ def frame_tool_output(tool_name: str, text: str, *, external: bool, nonce: str |
     import unicodedata
 
     frame_id = nonce or secrets.token_hex(4)
-    name = _TOOL_NAME_SAFE.sub("_", tool_name or "tool")
+    name = safe_tool_name(tool_name)
     body = _ZERO_WIDTH.sub("", unicodedata.normalize("NFKC", text))
     # Every line break ``str.splitlines`` honours becomes "\n" BEFORE control characters go (#1519): a U+2028 or a
     # \x1e must not hide a line from one reader and show it to another.
@@ -413,8 +441,8 @@ def outside_tool_output(text: str) -> str:
 _FRAME_MARKER = re.compile(r"<<(/?)TOOL_OUTPUT id=([0-9a-f]+)(?: [^\n]*?)?>>")
 # Anything shaped like a marker, real id or not, in any case or spacing: what ``defang_frame_markers`` neutralizes.
 # Zero-width characters anywhere in the ``<<`` and the ``/`` count as part of the shape (#1519): stripped there, in
-# that span only, never elsewhere in the text (a ZWJ emoji or a Persian ZWNJ in the user's words stays whole).
-_ZW = "\u200b-\u200f\u2060\ufeff"
+# that span only, never elsewhere in the text (a ZWJ emoji or a Persian ZWNJ in the user's words stays whole). ``_ZW``
+# is the format-character class above.
 _TOOL_WORD = f"[{_ZW}]*".join("tool")
 _OUTPUT_WORD = f"[{_ZW}]*".join("output")
 _MARKER_LIKE = re.compile(rf"<[{_ZW}]*<([\s{_ZW}]*/?[\s{_ZW}]*){_TOOL_WORD}[\W_]*{_OUTPUT_WORD}", re.IGNORECASE)

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
 from maxim.memory.text import Provenance
+from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
@@ -2152,10 +2153,10 @@ def _run_agentic_loop_body(
                     _advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
                 )
                 _cap_msg = (
-                    f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
+                    f"SYSTEM: '{safe_tool_name(_this_tool)}' was called {_consecutive_same_tool_count} times "
                     f"with identical parameters — blocked to prevent a loop. "
                     f"Try a DIFFERENT tool or different parameters. "
-                    f"Available tools: {', '.join(_other_tools[:8]) if _other_tools else 'none'}"
+                    f"Available tools: {', '.join(map(safe_tool_name, _other_tools[:8])) if _other_tools else 'none'}"
                 )
                 note_system_outcome(recent_outcomes, max_recent_outcomes, _this_tool, _cap_msg, "consecutive_tool_cap")
 

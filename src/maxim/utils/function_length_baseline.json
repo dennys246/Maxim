@@ -171,7 +171,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 336
+      "lines": 328
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -403,7 +403,7 @@
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
     "#1519 fold (2026-11-21, rule T, no exemption): _run_agentic_loop_body 2140 -> 2128 and _run_deliberation_cycles 235 -> 227: both THOUGHT writes into working memory moved to agent_loop._add_deliberation_thought, paying for the required provenance= keyword WorkingMemorySet.add now takes; then 227 -> 224 (delta round): the thoughts reader became one WMEntry.prompt_text call. Delta 2: _run_agentic_loop_body 2128 -> 2126, the submit's triggering input and its source built by agent_loop._triggering in one splat.",
-    "#1519 delta 4 (2026-11-21, rule T, no exemption): record_outcome 392 -> 385 (the recent-outcome append and trim to tool_dispatch._append_recent_outcome, paying for the untrusted_output keyword it records); execute_and_learn 342 -> 336 (the follow-up type and result text to tool_dispatch._followup_type_and_text, paying for passing untrusted_output)."
+    "#1519 delta 4 (2026-11-21, rule T, no exemption): record_outcome 392 -> 385 (the recent-outcome append and trim to tool_dispatch._append_recent_outcome, paying for the untrusted_output keyword it records); execute_and_learn 342 -> 336 (the follow-up type and result text to tool_dispatch._followup_type_and_text, paying for passing untrusted_output). Delta 5: execute_and_learn 336 -> 328 (the error branch's audit entry to tool_dispatch._audit_execution_error, paying for the now-required untrusted_output on its exception booking)."
   ],
   "touch_exemptions": [
     {
