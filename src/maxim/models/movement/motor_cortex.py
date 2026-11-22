@@ -18,7 +18,10 @@ from maxim.utils.optional_deps import require_optional_dependency
 os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
 os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
 
-keras = require_optional_dependency("keras", feature="motor_cortex")
+# The typed refusal when keras is absent (#1647); once it passes, the plain import below cannot fail, and the type
+# checker reads ``keras`` as the module its classes subclass.
+require_optional_dependency("keras", feature="motor_cortex")
+import keras
 
 
 class LayerScale(keras.layers.Layer):
