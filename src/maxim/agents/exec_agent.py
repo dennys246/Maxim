@@ -825,7 +825,10 @@ class ExecAgent(Agent):
 
         # Build CycleContext from available signals
         rpe_raw = 0.0
-        nac = self._nac
+        # A refused goal (#1414) made no contemplation observation (``_on_goal_completed`` skips it), so
+        # ``nac.last_rpe`` belongs to whatever NAc observed last, not to this goal: its surprise is 0.0 (no
+        # prediction was tested), never a stranger's (delta review, 2026-11-21).
+        nac = None if getattr(completed, "refused", False) else self._nac
         if nac is not None:
             try:
                 # Real Rescorla-Wagner prediction error, taken from the causal
@@ -857,9 +860,9 @@ class ExecAgent(Agent):
             energy_crossed_threshold=False,
             # D56 (b), INVESTIGATED 2026-09-02 and NOT changed here — the
             # ledger's "producer-side only" reading does not survive contact.
-            # `GoalCompleted` carries `success: bool` and nothing else, and its
-            # SOLE publisher (`agentic_goal_agent._complete_goal`) also takes
-            # only a bool, so there is no tier anywhere upstream to route. The
+            # `GoalCompleted` carries `success: bool` (plus, since #1414, a `refused` flag, which is not a tier), and its
+            # SOLE publisher (`agentic_goal_agent._complete_goal`) takes the same
+            # bool (and `refused`), so there is no tier anywhere upstream to route. The
             # fix is not a producer edit; it is a design call about whether "a
             # goal completed neutrally" is even meaningful — a goal was
             # achieved or it was not, unlike a tool action, which can be
@@ -966,35 +969,40 @@ class ExecAgent(Agent):
             return  # Goal not from this agent or already expired
 
         contemplated = meta.get("contemplated", False)
-        if contemplated:
-            self._contemplation_stats["contemplated_total"] += 1
-            if completed.success:
-                self._contemplation_stats["contemplated_success"] += 1
-        else:
-            self._contemplation_stats["uncontemplated_total"] += 1
-            if completed.success:
-                self._contemplation_stats["uncontemplated_success"] += 1
+        # A goal one of whose tool calls autonomy REFUSED (#1414): a refused call never ran, so the outcome says
+        # nothing about whether contemplating the goal helped. Neither the stats nor NAc's contemplation link learn
+        # from it (owner decisions 2026-11-21); the log line and acute staging below still see the goal's outcome
+        # (usually a failure; a SKIP goal can still succeed), as memory, the goal metric and replanning do.
+        if not getattr(completed, "refused", False):
+            if contemplated:
+                self._contemplation_stats["contemplated_total"] += 1
+                if completed.success:
+                    self._contemplation_stats["contemplated_success"] += 1
+            else:
+                self._contemplation_stats["uncontemplated_total"] += 1
+                if completed.success:
+                    self._contemplation_stats["uncontemplated_success"] += 1
 
-        # Feed outcome to NAc for causal learning
-        nac = self._nac
-        if nac is not None:
-            try:
-                from maxim.decisions.causal_link import Valence
+            # Feed outcome to NAc for causal learning
+            nac = self._nac
+            if nac is not None:
+                try:
+                    from maxim.decisions.causal_link import Valence
 
-                event_sig = "contemplation:refined" if meta.get("refined") else "contemplation:draft"
-                valence = Valence.POSITIVE if completed.success else Valence.NEGATIVE
-                delta = time.time() - meta.get("timestamp", time.time())
-                nac.observe(
-                    event_type="contemplation",
-                    event_signature=event_sig,
-                    outcome_type="goal_result",
-                    outcome_signature=f"goal:{completed.goal_id}:{valence.value}",
-                    outcome_valence=valence,
-                    delta_seconds=max(0.0, delta),
-                    context={"contemplated": contemplated, "refined": meta.get("refined", False)},
-                )
-            except Exception:
-                pass  # NAc observation is best-effort
+                    event_sig = "contemplation:refined" if meta.get("refined") else "contemplation:draft"
+                    valence = Valence.POSITIVE if completed.success else Valence.NEGATIVE
+                    delta = time.time() - meta.get("timestamp", time.time())
+                    nac.observe(
+                        event_type="contemplation",
+                        event_signature=event_sig,
+                        outcome_type="goal_result",
+                        outcome_signature=f"goal:{completed.goal_id}:{valence.value}",
+                        outcome_valence=valence,
+                        delta_seconds=max(0.0, delta),
+                        context={"contemplated": contemplated, "refined": meta.get("refined", False)},
+                    )
+                except Exception:
+                    pass  # NAc observation is best-effort
 
         log_structured(
             self.log,

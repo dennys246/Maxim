@@ -126,7 +126,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2140
+      "lines": 1927
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -390,7 +390,9 @@
     "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
     "start_simulation_mode tightened 1895 -> 1886 on 2026-11-21 (#1228, rule T): the AUT's fear gate moved to orchestrator._fear_gate_aut_executor (its FearAgent now on the AUT's router), paying for the AUT-side router hand-offs (the AUT's and the narrator's MaximAgent(shared_router=), the factory's fear_llm and the imagination designer's llm_router).",
     "#1228 fold batch (2026-11-21, rule T): start_simulation_mode 1886 -> 1880 (the AUT's MaximAgent and its event bridge to orchestrator._aut_maxim_agent and the dead fear_llm slot removed, paying for agent_router, the sub-simulation tool's aut_router and the narrator's NO_ROUTER choice); _main_impl 1195 -> 1182 (the agentic MaximAgent build to cli._cli_agentic_agent, paying for its stated shared_router=None); AgenticRuntimeMixin._start_agentic_runtime 796 -> 790 (the ExecAgent hand-off to _share_llm_with_exec_agent, on the new ExecAgent.adopt_router, paying for shared_router=NO_ROUTER); api.py::run 201 -> 192 (the LLM worker start to api._start_run_worker, paying for the router handed to _build_run_agent) and report.py::build_report 209 -> 188 (the cost lookup to report._router_cost/_run_costs, with the AUT's own router), both entries removed: under the threshold.",
-    "#1228 delta-round folds (2026-11-21, rule T): AgenticRuntimeMixin._start_agentic_runtime 790 -> 774 (the robot fear gate to _robot_fear_gate, carrying its stated pattern-only FearAgent and its INFO line, #1728) and start_simulation_mode 1880 -> 1879 (the agent_router import dropped: shared_router=None now means no LLM). These supersede the previous note's NO_ROUTER/agent_router wording: None means no LLM, exec_agent.BUILD_OWN the lazy build."
+    "#1228 delta-round folds (2026-11-21, rule T): AgenticRuntimeMixin._start_agentic_runtime 790 -> 774 (the robot fear gate to _robot_fear_gate, carrying its stated pattern-only FearAgent and its INFO line, #1728) and start_simulation_mode 1880 -> 1879 (the agent_router import dropped: shared_router=None now means no LLM). These supersede the previous note's NO_ROUTER/agent_router wording: None means no LLM, exec_agent.BUILD_OWN the lazy build.",
+    "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged.",
+    "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch."
   ],
   "touch_exemptions": [
     {
