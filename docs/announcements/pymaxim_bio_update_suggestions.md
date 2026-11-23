@@ -1,4 +1,134 @@
-# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24)
+# pymaxim.bio — website handoff (1.0.9 live audit 2026-08-19 · 1.1 audit 2026-08-25 · 1.1.4 refresh 2026-09-05 · 1.3.0 refresh 2026-09-19 · 1.3.1 refresh 2026-09-27 · 1.3.2 corrections 2026-10-15 · 1.3.2 refresh 2026-10-16 · 1.3.3 refresh 2026-10-24 · 1.3.4 refresh 2026-11-22 · #1461 caveats 2026-11-22)
+
+## #1461 caveats — 2026-11-22 (the #1301 re-assessment on the site; not a release refresh)
+
+**Framing rule.** [`narrator_defects_reassessment.md`](../experiments/narrator_defects_reassessment.md) (recorded
+2026-10-25, #1301) re-assessed every narrator-driven claim recorded before the #1260 and #1261 fixes. **No ledger
+row changes status.** The site marks each affected claim where it is stated, with a dated note in the record's own
+outcome: **withdrawn** (not supported until re-run on the fixed path, #1461), **bounded** (with the record's
+caveat), or left alone when the record says **unaffected**. Nothing is caveated that the record does not cover.
+The 1.3.4 refresh (Maxim-web #41) already recorded the re-assessment on `/research/evidence/`; this pass reaches
+every other page. Site fix: **maxim-web `docs/1461-caveats`
+([#42](https://github.com/dennys246/Maxim-web/pull/42))**. This section is its engine companion.
+
+**Engine truth, read from the files, not from memory.** `narrator_defects_reassessment.md` at `origin/main` (its
+three outcome tables and "What is owed"), and CHANGELOG `[1.3.4]` § Changed, the "Evidence re-assessment" entry.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/` (homepage) | "tested across four frontier models and dominated in all of them" | Public surfaces, CHANGELOG 1.0.0 row | Dominance at GPT-4o, DeepSeek-V3 and R1; Sonnet's verdict on first contact alone; links the evidence page's dated entry |
+| `/research/experiments/roy-harness/` | Sonnet +0.40 SD in the Exp 38 table; "all five models" with no qualifier; Exp 37, 40, 44 and the Roy nulls uncaveated | T1-2 rows; Exp 40, Exp 44, Exp 18, Roy-1a/3 and Exp 30/33/34 rows | A dated caution box (withdrawn, bounded, unaffected for this page). Sonnet's interaction and three ablation values withdrawn (A 0.67 over 3 of 5 trials, B 1.00). Exp 37 bounded with the post hoc +1.43 → +1.32 and +2.11 → +1.81. Exp 40 bounded (45 `respond` calls). Exp 44 bounded (the 44b planning prompts). Exp 18's `respond` counts withdrawn and its tool shift bounded. Roy-1a, Roy-3 and Exp 30/33/34 bounded, without citing their salience, episode or `respond` counts; Exp 32's `respond` count withdrawn; Exp 29 unaffected. L6 and L8 bounded |
+| `/research/experiments/cross-session-learning/` | "memory survival 1.0, behavioural recall 0" as shown directly; Exp 12 "clean pass" with the Acting Coach count only confounded; the August heartbeat counts uncaveated | Hippocampal recall, Exp 12, T1-1 heartbeat and T1-2 rows | Hippocampal recall: memory half stands, behavioural half withdrawn, with the record's counter-evidence (Run #1 / Run #2, direct injection). Exp 12's 7/7 bounded and its Acting Coach count withdrawn. Heartbeat counts bounded (follow-up episodes; all 7 `respond` calls outage fallbacks). Exp 37 bounded |
+| `/research/evidence/` | Exp 12 7/7, the heartbeat, the counter-prior null and the hippocampal entry uncaveated in place | As above | Dated notes in place; the summary table names Sonnet's withdrawal |
+| `/research/cradle/`, `/research/limits/` | Exp 11 uncaveated; L6 and L8 uncaveated | Exp 11/08/e0 row; L6 and L8 rows | Exp 11: infrastructure stands, behavioural observations ran with the defect. L6 bounded by the prompt line only; L8's drift comparison bounded (6 → 32 `respond` calls) |
+| `/systems/anterior-temporal-lobe/`, `/systems/nucleus-accumbens/`, `/embodiment/sem-protocol/` | "across four frontier models" | Public surfaces row | GPT-4o, DeepSeek-V3 and R1, bounded; Sonnet on first contact alone |
+| `/research/experiments/<slug>/` (manifest) | No re-assessment on the experiment pages | Each experiment's row | Dated outcomes on Exp 10, 12, 16, 18, 23, 30, 32, 33, 34, 37 (both), 38, 40, 44, 44b, 11, 08 component damage, e0, hippocampal recall and sem_tool_discovery_s1 |
+
+**Left uncaveated on purpose.** The substrate-primary Roy iterations, Exp 29, Exp 41/42/42b, Exp 09 and Exp 63's
+gates (the record: unaffected). `08_deliberation_system.md` (the record gives it no outcome). The Roy-2 / Exp 18
+test-time valence KS (KS = 0.291, p = 0.023): the record's Exp 18 row does not address it, and the owner ruled
+2026-11-22 to leave it uncaveated.
+
+### Acceptance checks — #1461 caveats
+
+- [x] Every claim the record withdraws is marked withdrawn where the site states it, naming #1461.
+- [x] Every bounded claim on the site carries the record's caveat, with its numbers.
+- [x] Nothing the record marks unaffected, or does not cover, carries a caveat.
+- [x] No status changes on the site.
+- [x] `pnpm build` clean; experiments manifest valid; every internal href and fragment in `dist/` resolves (0 broken).
+- [x] A different reader checked 51 caveats against the record. Its 9 findings are folded: 3 missed citations
+  (homepage, Exp 10, the Exp 12 table row) and 6 misstatements ("three frontier models" dropped Sonnet; Exp 29
+  swept into the Roy nulls; "every 44b prompt" for planning prompts; Exp 11's counts; an uncovered Exp 08 entry;
+  "one value" for four).
+- [ ] **After merge/deploy:** spot-check `/`, `/research/experiments/roy-harness/`, `/research/experiments/exp-38/`
+  and `/research/experiments/cross-session-learning/` live.
+- [ ] **Trigger (from the record):** any new citation of a withdrawn result waits for its #1461 re-run on the fixed path.
+
+## 1.3.4 refresh — 2026-11-22 ("Robot and recall"; PyPI `upload_time` 2026-11-22T19:02Z, signed tag `v1.3.4` @ `b98954f7`)
+
+**Framing rule.** 1.3.4 ships the defects maxim-pulse found on a real Reachy Mini running 1.3.3, Talk's recall across
+sessions, and a stop that saves before it is killed. Some changes break on purpose, so the upgrade notes put the
+breaking changes first, each with its migration line as the CHANGELOG states it. Robot motion copy says only what
+the notes say (refusals before a motor moves, the path check, the fresh pose read) and claims no robot run passed;
+the full embodied run is owed (#1708) and the head-yaw oddity (#1707) is stated as the notes state it. Recall is
+"shares a word", not meaning (#1516). The site claims no more than `release_1_3_4.md` does. Security copy links the
+two advisories, published 2026-11-22 19:07Z, and gives their scope at the level the advisories give it. Release
+links: [GitHub Release](https://github.com/dennys246/Maxim/releases/tag/v1.3.4) ·
+[PyPI 1.3.4](https://pypi.org/project/pymaxim/1.3.4/) ·
+[GHSA-8r36-g3rm-mf85](https://github.com/dennys246/Maxim/security/advisories/GHSA-8r36-g3rm-mf85) ·
+[GHSA-7xgg-5cm6-g46f](https://github.com/dennys246/Maxim/security/advisories/GHSA-7xgg-5cm6-g46f). Site fix:
+**maxim-web `docs/1-3-4` ([#41](https://github.com/dennys246/Maxim-web/pull/41))**. This section is its engine
+companion.
+
+**Engine truth, read from the files at `v1.3.4`, not from memory.** `docs/announcements/release_1_3_4.md`, CHANGELOG
+`[1.3.4]` (its `### Breaking` and `### Security` sections, and the two entries marked Breaking under `### Changed`:
+#1338 and #1435), ledger rows T1-16, T1-2 and T1-13/14/15, `evidence_exceptions.json` `release-1.3.4-T1-2`, the
+notebook index rows for Exp 63, 63b and 63c, `narrator_defects_reassessment.md`, and both advisories' published
+text. Where the brief and the files disagreed, the files won: the release is **"Robot and recall"** (the brief
+said "The robot and recall fixes"), and the advisories scope both defects to the `strict` *and* `standard`
+policies (the brief said strict). GHSA-7xgg-5cm6-g46f's inbound-messages path exists only "since #1481", a 1.3.4
+fix, so the site's `<= 1.3.3` sentence names the follow-up tool-results path only. The site does not cite #1739,
+which neither the notes nor the CHANGELOG number.
+
+**Corrections owed since 1.3.3.**
+
+- **Typed payloads.** The 1.3.3 refresh said contract 0.7.0 would come in 1.3.4. It did not (owner decision
+  2026-11-02); the contract stays 0.6.0, and typed payloads (#1336) wait for a pulse release built for 0.7.0, as
+  the 1.3.4 notes say. No new target release is named.
+- **T1-16 was never shown stale on the site.** The site said "earned (narrow), 2026-10-04, Exp 63" through the
+  whole STALE window (2026-10-25 to 2026-11-13). It now carries the ledger status verbatim, the stale window, Exp
+  63b's NOT SHOWN, and the owner reading of BF2 behind the raise.
+
+### Findings (route → claim before → truth source → fix)
+
+| Route | Before | Truth source | Fix |
+|---|---|---|---|
+| `/getting-started/` | Current release 1.3.3 "Release pipeline", 2026-10-24 | `release_1_3_4.md` header; PyPI `upload_time` | 1.3.4 "Robot and recall", 2026-11-22 UTC, links to the Release, CHANGELOG and PyPI. A caution box lists the five breaks; a danger box after it links both advisories with "upgrade to 1.3.4". The release summary, the head-yaw oddity and the evidence line follow the notes. 1.3.3 moves to the release history |
+| `/installation/` | "Upgrading to 1.3.3" first; "typed payloads (0.7.0) are planned for 1.3.4" | `[1.3.4]` Breaking, Security, Changed; `release_1_3_4.md` | New **Upgrading to 1.3.4**: **Breaking first** (#1315 `ToolPolicy`, #1342 workspace, #1715 `pool_s`, #1338 `create.pool`/`create.router`, #1435 speakers), each with its migration; Hippocampus `_format_version` 1.2; Security (the advisories, then the notes' three items); the robot; recall; stopping (`maxim llm reap`); the atonia gate; the Console. The 1.3.3 typed-payload line corrected |
+| `/reference/cli/` | "1.3.3 bundles v0.4.2 … 0.7.0 planned for 1.3.4" | `[1.3.4]` Changed (v0.4.4 entry); the wheel's `maxim-ui.json` | 1.3.4 bundles v0.4.4 (`9af8a57`), contract 0.6.0; typed payloads did not come in 1.3.4 |
+| `/research/evidence/` | Cross-session persistence "earned (narrow), 2026-10-04, by Exp 63"; T1-2 exceptions through 1.3.3 | Ledger T1-16, T1-2; `evidence_exceptions.json`; `narrator_defects_reassessment.md`; `[1.3.4]` Changed (#1301/#1461) | T1-16 "EARNED 2026-11-13 (narrow: …)" copied whole, Exp 63c as evidence, the stale window, 63b NOT SHOWN, the BF2 owner reading, floor not measured, slot not established. T1-2 under `release-1.3.4-T1-2`. Dated entries: 2026-10-25 Exp 63 stale; 2026-10-25 the re-assessment (the six withdrawn results and the bounded list, as the CHANGELOG lists them); 2026-11-07; 2026-11-13/16 |
+| `/research/experiments/` (manifest, cross-session walkthrough) | Exp 63 earned and the line's best; no 63b or 63c | Notebook index rows | Exp 63 "stale since 2026-10-25, re-run by Exp 63b and 63c" (a new site status, "stale, re-run"; not "superseded", which no engine file says); 63b (not shown) and 63c (earned, narrow) added, with their own pages; the walkthrough section covers all three |
+| `/memory/engrams/` | "Evidence: Exp 63" | Ledger T1-16 | Exp 63c |
+| `/reference/components/` | Generated from the 1.3.3 wheel | The 1.3.4 wheel | Regenerated; 97 components, links pinned to `v1.3.4` |
+
+**Not in this refresh (owed).** The re-assessment withdraws or bounds results that site pages still quote in
+places outside the files above (Exp 12, Exp 18, Exp 32, Exp 38 Sonnet, the hippocampal-recall "behavioural recall
+0", sem_tool_discovery_s1, and the bounded list). The evidence page now records the withdrawal, but the
+per-page caveats are a follow-up sweep. Notebook entries still missing from the site manifest:
+`b4_exp37_floors_prereg.md`, `e1_conflict_prereg.md`, `grounding_census.md`, `narrator_defects_reassessment.md`,
+`reproduction.md`. The 2026-10-16 audit's grounding corrections are untouched.
+
+### Acceptance checks — 1.3.4
+
+- [x] Version line 1.3.4 "Robot and recall", 2026-11-22 (UTC upload time), in the `live-site-check` line format;
+  links to the Release, CHANGELOG and PyPI 1.3.4.
+- [x] Both advisories linked with "upgrade to 1.3.4", rated medium, `<= 1.3.3`, patched in 1.3.4; scope as the
+  advisories give it (cloud routing under `strict` or `standard`; local-only and `relaxed` unaffected; 7xgg's
+  inbound path stated as new in 1.3.4). The security copy is two site commits (`b148782`, `353aa1f`), droppable
+  together.
+- [x] Breaking changes lead the upgrade notes, each with its CHANGELOG migration line.
+- [x] Motion copy as the notes give it; no robot run claimed as passed; #1707 and #1708 stated.
+- [x] T1-16, T1-2 and T1-13/14/15 copied from the ledger with their scope (T1-13/14/15 as the notes put it, "floor
+  matched under BF2"; T1-16's claim keeps "a fixed script's, not a person's").
+- [x] Typed payloads: no 1.3.4 promise left (`git grep -n "0\.7\.0"`); no new target release named.
+- [x] **On the wheel:** clean venv, `pip install pymaxim==1.3.4` from PyPI. `ToolPolicy.unrestricted/only/deny`
+  exist; `Executor(tool_registry, *, policy: ToolPolicy, …)`; `TimeoutPolicy(connect_s, read_s, pool_s)`, no
+  `total_s`; `create.pool(*, max_workers, llm_router)`; `maxim.advisor` and `maxim.utils.audio.start_device_player`
+  import; `CONSOLE_CONTRACT_VERSION` = 0.6.0; `maxim-ui.json` `describe` v0.4.4 @ `9af8a57`, contract 0.6.0;
+  `maxim llm reap` and `maxim --tts` in `--help`. Components regenerated (`--label "pymaxim 1.3.4 (PyPI wheel)"`);
+  the 97 refs equal `ComponentRegistry().list_refs()`.
+- [x] `pnpm build` clean (159 pages); experiments manifest valid; every internal href and fragment in `dist/`
+  resolves, 0 broken (fragments compared percent-decoded).
+- [x] A different reader checked about 75 changed claims against the notes, CHANGELOG, ledger, notebook index,
+  exceptions file, both advisories and the wheel. Its 6 findings are folded: the 7xgg inbound scope; Breaking
+  before Security; Exp 63 "stale, re-run", not "superseded"; the T1-13/14/15 scope; the uncited #1739 dropped; the
+  Talk lead and T1-16 claim qualifiers.
+- [ ] **After merge/deploy:** re-crawl the live sitemap; confirm the version line via `live-site-check`;
+  spot-check `/getting-started/`, `/installation/#upgrading-to-134`, `#security`, `#breaking-changes` and
+  `/research/evidence/#cross-session-memory-persistence`.
+- [ ] **Human-only (carried):** visual, mobile and keyboard pass in a real browser, especially the new danger box.
 
 ## 1.3.3 refresh — 2026-10-24 ("Release pipeline"; PyPI `upload_time` 2026-10-24T00:00Z, signed tag `v1.3.3` @ `c9619217`)
 
