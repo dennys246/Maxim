@@ -158,7 +158,7 @@ def _enclosing_functions(tree) -> dict[int, str]:
 def test_every_agentic_tool_result_event_goes_through_log_tool_result() -> None:
     """Structural guard for both callers (execute_and_learn, _run_agentic_loop_body), which a unit test cannot
     drive cheaply: re-adding the old inline ``log_agentic(..., "tool_result", {... str(output)[:100]})`` block
-    anywhere in src/maxim fails here. The repo-wide sweep of every log call is backlog M96."""
+    anywhere in src/maxim fails here. The repo-wide sweep of every log call is backlog M98."""
     import ast
     from pathlib import Path
 

@@ -1,6 +1,6 @@
 # Phone device — a phone (later a watch) as a sensing device and remote UI
 
-**Status:** PROPOSED 2026-10-29, plan only. **Phase 0 is homed in 1.3.5** (owner decision 2026-10-29, §Phase 0).
+**Status:** PROPOSED 2026-10-29, plan only. **Phase 0 is homed in 1.3.5** (owner decision 2026-10-29, §Phase 0). **Superseded 2026-11-22 (owner decision D6, [release_1_3_5.md](../release_1_3_5.md)): Phase 0 left 1.3.5.** P0-2 rides 1.3.5's peer-mesh line; P0-6 waits for contract 0.7.0 or its own minor bump; P0-8 (#784) stays owed to the owner; the rest move to the next release after 1.3.5 (unnumbered), owners still owed (§Phase 0's re-homing note).
 Phases 1–3 start **after the 1.4.0 cut**; nothing here holds 1.4.0. **Revive trigger for Phase 1:** 1.4.0 is
 published, Phase 0 has landed, and [embodied_device.md](../embodied_device.md) has built `embody()` (its step 4)
 and the leader STT route (its step 5).
@@ -31,7 +31,7 @@ device contract; `embody()`; the embodied census) · [console_tunnel_hardening.m
 | PD1 | **The phone attaches through `embody()` as a device, and is not a second robot body.** Its outputs (speaker, haptics, notifications) are in the embodied census, so the atonia gate can inhibit them. It never registers a `maxim.robots` controller: it has no motor command whose consequence Maxim senses. So M76's second-body tripwire, [second_body_staging.md](second_body_staging.md) and the microduck plan stay asleep. |
 | PD2 | **Remote reach is cloudflared only** for v1: one path to harden, and the one the tunnel plan was written for. `tailscale serve` is recorded as "not now, additive later", not as rejected. The bind rule is console_tunnel_hardening's, unchanged: **desktop `maxim serve` binds loopback only; a device embedder (the Reachy app) binds its own LAN interface under A9**, behind the Host/Origin allowlists (`build_app(extra_trusted_origins=…)`) and bearer auth, with Pollen's dashboard as its trust boundary. **A phone is always a client, never an embedder:** it reaches a desktop leader only through the tunnel. It may reach a robot's LAN console as a plain-HTTP client for the UI, but its sensors need a secure origin, so sensing waits for a TLS path on that console. Moving the robot behind the tunnel is not intended. |
 | PD3 | **Atonia with a device attached is planned now** (§Atonia with a device attached), so `embody()` and the gate are not redesigned later. It is designed now and built after the atonia gate ships and `embody()` exists. The pre-merge round found it is a larger reversal than first drafted (the open problems are recorded there); nothing here changes the gate as shipped. |
-| PD4 | **Phase 0 is homed in 1.3.5.** This re-homes console_tunnel_hardening's PR 3 (admission control), a recorded 1.3.3 move that did not ship. No remote reach ships before it. |
+| PD4 | **Phase 0 is homed in 1.3.5.** This re-homes console_tunnel_hardening's PR 3 (admission control), a recorded 1.3.3 move that did not ship. No remote reach ships before it. *(Superseded 2026-11-22, D6: Phase 0 left 1.3.5; PR 3 stays in 1.3.5 in its peer-mesh line; the other items' homes are in §Phase 0. No remote reach ships before Phase 0 still holds.)* |
 | PD5 | **The camera stays in scope** as user-directed perception ("look at this"), not as an orienting sensor: the agent cannot point it. Frames reach the operator's own leader only. |
 
 ## What the phone is, and what it is not
@@ -80,7 +80,18 @@ else's Maxim.
 | Watch heart rate | none | **Never interoception.** It is the user's physiology, an observation of another agent. Never written into drives, `vital_metrics` or `InteroceptiveOutcome` (G16, M78). |
 | Speaker, haptics, notifications | the social loop | Outputs under `embody()`'s census (PD1); inhibited under atonia. |
 
-## Phase 0 — 1.3.5 (PD4)
+## Phase 0 — re-homed 2026-11-22 (was "1.3.5 (PD4)")
+
+> **Re-homed 2026-11-22 (owner decision D6, [release_1_3_5.md](../release_1_3_5.md)): Phase 0 left 1.3.5**: it needs
+> contract 0.7.0, which has not shipped. The table below is the 2026-10-29 record; each item's home now:
+> - **P0-2** (tunnel PR 3, admission control) stays in 1.3.5, in its peer-mesh line (line 6): item 3 builds the
+>   shared admission primitive in `runtime/leader_proxy.py::_check_admission`, and PR 3's console half
+>   (`limit_concurrency`, `ws_max_size`, the input cap, the `/api/pair/claim` rate limit) follows as its own PR on it.
+> - **P0-6** (device identity on the contract) waits for contract 0.7.0 or its own minor bump.
+> - **P0-8** (the #784 decision) stays owed to the owner.
+> - **P0-1, P0-3, P0-4, P0-5, P0-7, P0-9, P0-10, P0-11 and P0-13** move to the next release after 1.3.5
+>   (unnumbered), with owners still owed. P0-12 was done in the plan PR.
+> - The "Owner (proposed)" column and the paragraph below it describe the old homing; no one holds these items yet.
 
 Ranked. "Lenses" names the reviewers that raised it independently. "Owner" is **proposed**: 1.3.5 is Session A's
 orchestrator release, and these items sit in other sessions' files, so each session confirms when it picks one up.
@@ -95,7 +106,7 @@ Nothing here edits `orchestrator.py`, `agent_loop.py`, `cli.py` or NAc's selecti
 | P0-5 | **A plan amendment only in 1.3.5:** thalamic_relay.md §11 records the phone as a named case for the open TR11 (a remote device's percepts carry a non-`experienced` kind: `reported`, or `narrated` + `caused_by`) and a remote-device / observed-other-agent `ReceptorClass`. The `test_receptor_census.py::CENSUS` row and the code land with GL3.B1 in 1.4, with the first producer (a row without a src site fails that test as STALE). | Keeps a user's speech and physiology out of interoception before GL3.B1 freezes its kinds | SHOULD-FIX | research, architecture, executor, wire | doc |
 | P0-6 | **Device identity on the console contract**: a device/origin id beside embodied_device step 1's `source=` (#1439), after that step lands. It rides R3's 0.7.0 ([#1336](https://github.com/dennys246/Maxim/issues/1336)) if that bump has not shipped, else its own minor bump (embodied_device.md's own rule). Contract today: `console/ui_bundle.py::CONSOLE_CONTRACT_VERSION` 0.6.0. M70's note to pulse covers the interim. | One contract bump instead of two where possible | SHOULD-FIX | architecture, executor, wire | S |
 | P0-7 | **Doc-only: embodied_device.md steps 1, 4 and 5 become device-generic.** The framed talk ingestion and the leader STT route take a device id; `embody()` takes a device adapter, not only a Reachy SDK; the census covers every effector across all attached devices; one owner per device. Decide whether `embody()` holds several devices at once. | The phone becomes an adapter, not a fork | SHOULD-FIX | architecture, pulse, research | doc (embodied_device's session) |
-| P0-8 | **Owner decision on [#784](https://github.com/dennys246/Maxim/issues/784)'s option** (the A4 gain inverts a place code), recorded on the issue before 1.3.5 closes. The fix still rides the grounding line, where roadmap_1_3_x.md parks it. | Location is exactly a place-coded sensor | SHOULD-FIX | research, executor | owner |
+| P0-8 | **Owner decision on [#784](https://github.com/dennys246/Maxim/issues/784)'s option** (the A4 gain inverts a place code), recorded on the issue before 1.3.5 closes (2026-11-22, D6: no longer tied to 1.3.5; the decision stays owed to the owner). The fix still rides the grounding line, where roadmap_1_3_x.md parks it. | Location is exactly a place-coded sensor | SHOULD-FIX | research, executor | owner |
 | P0-9 | **A privacy design for evidence**: a derived, quantized record schema for location and activity, and `scripts/lint_secrets.py` (M45) extended to coordinates. | Must precede the first capture, or M1's committed-evidence rule and privacy deadlock | SHOULD-FIX | research | H |
 | P0-10 | **Every declared SCN `event_type` has a producer or is marked reserved**: item 3 of [scn_event_producer_gap.md](scn_event_producer_gap.md). | Tests only; a tripwire before a phone producer arrives | SHOULD-FIX | research | R |
 | P0-11 | **Pulse kit groundwork** (a note to pulse; pulse owns it): reconnect on `visibilitychange` and `online` with catch-up from `/api/runs` in pulse: `facade/events.ts`; a size budget per profile (generalize pulse: `scripts/size-reachy.mjs`); an e2e device server that takes an origin and a TLS argument. | A hidden laptop tab has the reconnect problem today | SHOULD-FIX | pulse | pulse |
@@ -225,7 +236,9 @@ evidence (embodied_device §3).
 
 ## Fold decisions (pre-merge round, 2026-10-29; owner confirmed 2026-10-31)
 
-The folds took these choices, each the conservative reading; the owner confirmed all five on 2026-10-31:
+The folds took these choices, each the conservative reading; the owner confirmed all five on 2026-10-31.
+*(2026-11-22, D6: every "in 1.3.5" in items 1–3 now reads "with Phase 0", which moved to the next release after
+1.3.5, unnumbered; P0-8's decision stays owed to the owner. The choices themselves stand.)*
 1. **The tunnel plan's M3 (talk's tool gate) and the principal seam are pulled forward from tunnel PR 4 into 1.3.5** (P0-3, P0-4), with Phase 0's homing.
    PR 4's per-device tokens still fire with Phase 1.
 2. **P0-5 is a plan amendment in 1.3.5**; its census row and code wait for GL3.B1 (1.4).
