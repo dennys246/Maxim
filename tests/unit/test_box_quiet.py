@@ -8,6 +8,8 @@ critical or long-waiting check), pid reuse, and the lock/claim pair that stops t
 from __future__ import annotations
 
 import json
+import os
+import select
 import subprocess
 import sys
 import threading
@@ -324,7 +326,8 @@ def test_two_waiters_for_one_slot_never_start_together(tmp_path):
         "n=len(list(d.iterdir()))-1;(d/str(os.getpid())).unlink();sys.exit(n)"
     )
     cmd = [sys.executable, str(SCRIPT), "--state-dir", str(tmp_path / "s"), "--only-matching", str(marks), "wait",
-           "--kind", "check", "--poll-s", "0.05", "--", sys.executable, "-c", prog, str(marks)]  # fmt: skip
+           "--kind", "check", "--poll-s", "0.05", "--allow-duplicate", "--", sys.executable, "-c", prog, str(marks)]  # fmt: skip
+    # --allow-duplicate: the two waiters are identical on purpose (#1760 would refuse the second)
     waiters = [subprocess.Popen(cmd, stderr=subprocess.DEVNULL) for _ in range(2)]
     assert [w.wait(timeout=30) for w in waiters] == [0, 0]  # neither child ever saw the other running beside it
 
@@ -474,3 +477,140 @@ def test_a_fresh_non_critical_heavy_waiter_does_not_idle_the_box():
     assert B.may_start(light, [heavy, light], _now(suites=1), NOW)
     old = B.Ticket(False, NOW - int(B.DRAIN_AFTER_S * 1e9) - 1, 100, B.SUITE, "t0", 4)
     assert not B.may_start(light, [old, light], _now(suites=1), NOW)
+
+
+# --- #1760: a repeated waiter (the shell around a waiter killed, the waiter alive and queued, the caller re-queues)
+
+
+def _ticket_file(s: Path, pid: int, cmd: list[str], cwd: str, **extra) -> None:
+    t = B.Ticket(False, 1, pid, B.SUITE, "t0")
+    (s / "queue" / t.name).write_text(json.dumps({"critical": False, "queued_ns": 1, "pid": pid, "kind": "suite",
+                                                  "started": "t0", "cmd": cmd, "cwd": cwd, **extra}))  # fmt: skip
+
+
+RUN = ["bash", "scripts/suite_at_commit.sh", "80cf841f"]
+
+
+def test_a_live_ticket_or_claim_for_the_same_argv_and_cwd_is_a_duplicate(tmp_path):
+    s = _state(tmp_path)
+    _ticket_file(s, 4242, RUN, "/w/a")
+    (s / "claims" / "77.json").write_text(json.dumps({"pid": 77, "kind": "check", "started": "t0",
+                                                      "cmd": ["bash", "scripts/prepr.sh"], "cwd": "/w/a"}))  # fmt: skip
+    procs = [P(4242, 1, "python3 scripts/box_quiet.py wait -- x"), P(77, 1, "python3 scripts/prepr.py")]
+    assert "queued by waiter pid 4242" in B.duplicate_of(s, procs, tuple(RUN), "/w/a", 10**9)
+    assert "running as pid 77" in B.duplicate_of(s, procs, ("bash", "scripts/prepr.sh"), "/w/a", 0)
+    assert B.duplicate_of(s, procs, tuple(RUN), "/w/b", 0) is None  # another worktree
+    assert B.duplicate_of(s, procs, ("bash", "scripts/suite_at_commit.sh", "deadbeef"), "/w/a", 0) is None
+    assert B.duplicate_of(s, procs, (), "/w/a", 0) is None
+
+
+def test_a_dead_waiter_or_one_written_before_1760_is_never_a_duplicate(tmp_path):
+    s = _state(tmp_path)
+    _ticket_file(s, 4242, RUN, "/w/a")  # its pid is gone
+    t = B.Ticket(False, 2, 4343, B.SUITE, "t0")
+    (s / "queue" / t.name).write_text(
+        json.dumps({"critical": False, "queued_ns": 2, "pid": 4343, "kind": "suite", "started": "t0"})
+    )  # fmt: skip  (no cmd, no cwd)
+    (s / "claims" / "77.json").write_text(json.dumps({"pid": 77, "kind": "suite", "started": "t0"}))
+    procs = [P(4343, 1, "x"), P(77, 1, "y")]
+    assert B.duplicate_of(s, procs, tuple(RUN), "/w/a", 0) is None
+    assert B.duplicate_of(s, procs, tuple(RUN), "", 0) is None
+    assert [t.pid for t in B._load_queue(s, procs, prune=False)] == [4343]  # the dead one was pruned
+
+
+def test_a_ticket_with_a_malformed_cmd_is_unreadable_not_a_crash(tmp_path):
+    s = _state(tmp_path)
+    _ticket_file(s, 4242, RUN, "/w/a")
+    bad = B.Ticket(False, 3, 4444, B.SUITE, "t0")
+    (s / "queue" / bad.name).write_text(json.dumps({"critical": False, "queued_ns": 3, "pid": 4444, "kind": "suite",
+                                                    "started": "t0", "cmd": 5}))  # fmt: skip
+    procs = [P(4242, 1, "x"), P(4444, 1, "y")]
+    assert [t.pid for t in B._load_queue(s, procs, prune=False)] == [4242]
+    (s / "claims" / "4444.json").write_text(json.dumps({"pid": 4444, "kind": "suite", "started": "t0", "cmd": 5}))
+    assert B._load_claims(s, procs, prune=False) == {}  # unreadable, reported, not a crash
+
+
+def _line(proc: subprocess.Popen, timeout: float = 15.0) -> str:
+    """One stderr line, or a failure (never a hang) if the waiter wedges before printing it."""
+    ready, _, _ = select.select([proc.stderr], [], [], timeout)
+    assert ready, "the waiter printed nothing"
+    return proc.stderr.readline()
+
+
+def _orphan_waiter(state: Path, marker: str, cwd: Path) -> subprocess.Popen:
+    """A real waiter that stays queued: ``--only-matching`` counts a fake running check, so its own check never fits."""
+    return subprocess.Popen(
+        [sys.executable, str(SCRIPT), "--state-dir", str(state), "--only-matching", marker, "wait", "--kind", "check",
+         "--poll-s", "0.05", "--", sys.executable, "-c", "pass", marker],
+        cwd=cwd, stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+
+
+def test_a_repeated_waiter_is_refused_until_the_first_is_gone_and_allow_duplicate_overrides(tmp_path, monkeypatch):
+    """End to end on the real ps: the first waiter is held queued by a counted check (a sleeping ``prepr.py``-named
+    process the marker scopes in); the repeat from the same cwd is refused with DUPLICATE_EXIT and writes nothing."""
+    marker = f"box-quiet-1760-{tmp_path.name}"
+    blocker_py = tmp_path / "prepr.py"  # classified as a check by its own program name
+    blocker_py.write_text("import time; time.sleep(30)\n")
+    blocker = subprocess.Popen([sys.executable, str(blocker_py), marker])
+    s = tmp_path / "s"
+    first = _orphan_waiter(s, marker, tmp_path)
+    try:
+        assert "waiting to start a check" in _line(first)
+        monkeypatch.chdir(tmp_path)
+        argv = ["--state-dir", str(s), "--only-matching", marker, "wait", "--kind", "check", "--poll-s", "0.05", "--",
+                sys.executable, "-c", "pass", marker]  # fmt: skip
+        before = sorted(p.name for p in (s / "queue").iterdir())
+        assert B.main(argv) == B.DUPLICATE_EXIT
+        assert sorted(p.name for p in (s / "queue").iterdir()) == before  # the refusal queued nothing
+        sub = tmp_path / "other"
+        sub.mkdir()
+        monkeypatch.chdir(sub)  # the same command from another directory is not a repeat
+        assert B.duplicate_of(s, B.read_ps(), tuple(argv[argv.index("--") + 1 :]), os.path.realpath(sub), 0) is None
+        monkeypatch.chdir(tmp_path)
+        blocker.kill()
+        blocker.wait()
+        assert B.main(argv[:4] + ["wait", "--allow-duplicate"] + argv[5:]) == 0  # deliberate repeat runs
+    finally:
+        blocker.kill()
+        first.terminate()
+        first.wait(timeout=10)
+    assert B.main(argv) == 0  # the first waiter is gone: no longer a duplicate
+
+
+def test_status_names_each_entrys_directory_and_command(tmp_path, capsys):
+    s = _state(tmp_path)
+    _ticket_file(s, os.getpid(), RUN, "/w/a")
+    started = B._started(B.read_ps()).get(os.getpid(), "")
+    f = next((s / "queue").iterdir())
+    d = json.loads(f.read_text())
+    f.write_text(json.dumps({**d, "started": started}))
+    assert B.main(["--state-dir", str(s), "--only-matching", "nothing-here", "status"]) == 0
+    assert "in /w/a: bash scripts/suite_at_commit.sh 80cf841f" in capsys.readouterr().out
+
+
+def test_a_waiter_whose_child_already_runs_refuses_a_repeat_from_a_symlink_to_its_directory(tmp_path, monkeypatch):
+    """The other #1760 half: the orphan already started its child, so the match is the CLAIM. The first waiter runs
+    from a symlink to the directory the repeat runs from, and they are one directory (``getcwd`` is already physical on
+    POSIX; ``realpath`` keeps that true wherever it is not)."""
+    marker = f"box-quiet-1760-run-{tmp_path.name}"
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    s = tmp_path / "s"
+    cmd = [sys.executable, "-c", "import time; time.sleep(30)", marker]
+    first = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "--state-dir", str(s), "--only-matching", marker, "wait", "--kind", "check",
+         "--poll-s", "0.05", "--", *cmd],
+        cwd=link, stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        assert "started check pid" in _line(first)
+        assert list((s / "queue").glob("*.json")) == []  # it is a claim now, not a ticket
+        monkeypatch.chdir(real)
+        argv = ["--state-dir", str(s), "--only-matching", marker, "wait", "--kind", "check", "--", *cmd]
+        assert B.main(argv) == B.DUPLICATE_EXIT
+    finally:
+        first.terminate()
+        first.wait(timeout=10)
