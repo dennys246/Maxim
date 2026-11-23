@@ -1734,6 +1734,11 @@ class ResearchResult:
 
     **Experimental** (CC2). Field set may grow alongside the research
     orchestrator.
+
+    ``review`` is the protocol's verdict: ``"accept"``, ``"revise"`` or ``"reject"`` (the Reviewer's),
+    ``"no_paper"`` (the Writer saved no paper, so nothing was reviewed and ``paper_draft`` is empty; the cause is in
+    the session's ``research_result.json`` ``review_issues``; new in #1680), ``"aborted"`` (the underlying sim was
+    not usable evidence; see ``finish_reason``) or ``"not_reviewed"``.
     """
 
     goal: str = ""

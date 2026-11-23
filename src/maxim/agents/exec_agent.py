@@ -41,7 +41,7 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
-from maxim.models.download import consent_interactive, consented_router
+from maxim.models.download import LLM_DISABLED, consent_interactive, consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
@@ -216,10 +216,10 @@ class ExecAgent(Agent):
         except Exception as e:
             warn("Failed to load language model config: %s", e)
             return None
-        if not cfg.enabled:
-            return None
         asks = consent_interactive(None if consent == "ask" else False)  # the one thread rule (#1658)
         router, cause = consented_router(cfg, interactive=asks, logger=logger)
+        if cause == LLM_DISABLED:  # llm.json switches the LLM off: no router, and no refused model to report
+            return None
         if router is None:
             self._refused_profile = str(getattr(cfg, "profile", "") or getattr(cfg, "model_base", "")).strip() or "?"
             self._refused_cause = cause
