@@ -27,6 +27,7 @@ from maxim.runtime.bio_integration import (
     capture_loop_action,
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
+from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
 from maxim.runtime.loop_setup import build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
@@ -35,7 +36,6 @@ from maxim.runtime.loop_external import (
     submit_tick_context,
 )
 from maxim.runtime.loop_controller import (
-    _handle_planning_failure,
     is_unread_input,
     note_system_outcome,
     set_aside_run_end,
@@ -59,8 +59,7 @@ if TYPE_CHECKING:
     from maxim.agents.llm_worker import LLMWorker
     from maxim.utils.deadline import EndBound
 
-# Import LLM types for runtime use (multi-step action creation + exact job state)
-from maxim.agents.llm_worker import LLMProposal
+# The streaming event type (§4 tool_start/tool_end, §6 inference_start)
 from maxim.agents.bus import StreamEvent
 
 # Import Hippocampus and MemoryHub for episodic memory (optional)
@@ -436,44 +435,6 @@ def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: 
     if taken:
         logger.debug("Deferred inputs ride the follow-up: %s", [c[:60] for c in taken])
     return taken
-
-
-# A completed proposal that waited longer than this is dropped (#1048's cutoff).
-_STALE_PROPOSAL_AGE_S = 35.0
-
-
-def _drop_stale_proposal(proposal: Any, *, ctrl: Any, llm_worker: Any, sim: Any, liveness_on: bool) -> tuple[Any, bool]:
-    """Discard a proposal that sat in the result queue too long. The worker's ``_stale_threshold`` governs
-    request freshness; this guards completed proposals. Returns ``(proposal or None, liveness_exhausted)``.
-
-    D13: a dropped stale proposal is a consumed planning turn with nothing executed, so it is rescheduled, never
-    idled. With one planning request in flight per narrator this is close to unreachable (#1057 tracks re-planning
-    from the current context)."""
-    age = time.time() - proposal.timestamp
-    if age <= _STALE_PROPOSAL_AGE_S:
-        return proposal, False
-    logger.warning("Skipping stale LLM proposal (age=%.1fs, request_id=%s)", age, proposal.request_id)
-    sim.log("EXEC", f"DROPPED: stale proposal (age={age:.1f}s)")
-    exhausted = liveness_on and _handle_planning_failure(
-        ctrl,
-        llm_worker,
-        sim,
-        reason="stale_proposal_dropped",
-        original_request=proposal.original_request,
-        exhausted_status="planning_failed",
-    )
-    return None, bool(exhausted)
-
-
-def _proposal_without_action_reason(proposal: Any) -> str | None:
-    """Classify a parsed proposal that supplied no executable action."""
-    if getattr(proposal, "action", None) or getattr(proposal, "error", None):
-        return None
-    if not getattr(proposal, "ready_to_act", True):
-        return "proposal_not_ready_to_act"
-    if getattr(proposal, "mode_goal_achieved", False):
-        return "proposal_completed_without_action"
-    return "proposal_without_action"
 
 
 def _jaccard_similarity(keywords_a: set[str], keywords_b: set[str]) -> float:
@@ -1251,7 +1212,6 @@ def _run_agentic_loop_body(
     _last_heartbeat_time = [0.0]
     _loop_name = _safe_agent_name(agent)
     _consecutive_llm_fallbacks = 0  # Track consecutive LLM failures for stall detection
-    _LLM_STALL_THRESHOLD = 1  # Surface immediately — only one fallback per LLM request
     # D13 planning liveness: set when the bounded retry budget is spent; the
     # loop breaks through NORMAL teardown (state persist + bio session end)
     # and raises PlanningLivenessExhausted afterwards, so the sim aborts
@@ -1656,235 +1616,30 @@ def _run_agentic_loop_body(
         # ─────────────────────────────────────────────────────────────────
         # 2. CHECK FOR LLM PROPOSALS (non-blocking)
         # ─────────────────────────────────────────────────────────────────
-        if llm_worker:
-            new_proposal = llm_worker.get_latest_proposal()
-            if new_proposal is not None:
-                # D13 planning liveness: ANY proposal (even one dropped below
-                # as stale/fallback) proves the worker answered this submit —
-                # the await-expiry backstop keys on last_proposal_time <
-                # last_llm_submit_time.
-                ctrl.last_proposal_time = time.time()
-                ctrl.reset_planning_transport_failures()
-            # Sim-mode periodic traces
-            if sim.is_sim_mode and step_num % 20 == 0:
-                sim.log("PIPELINE", f"Loop step {step_num}, proposal={'YES' if new_proposal else 'none'}")
-            # Fire a trace the FIRST time a proposal is pulled so we
-            # can tie the llm_worker's "LLMProposal built" log to the
-            # agent loop actually consuming it.
-            if sim.is_sim_mode and new_proposal is not None:
-                _tool_name = new_proposal.action.get("tool_name") if isinstance(new_proposal.action, dict) else None
-                sim.log(
-                    "EXEC",
-                    f"Proposal consumed by {_loop_name}: tool={_tool_name} "
-                    f"age={time.time() - new_proposal.timestamp:.2f}s",
-                )
-            if new_proposal:
-                sim.log(
-                    "EXEC",
-                    f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}",
-                )
-
-                new_proposal, _stale_exhausted = _drop_stale_proposal(
-                    new_proposal, ctrl=ctrl, llm_worker=llm_worker, sim=sim, liveness_on=_planning_liveness_on
-                )
-                _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
-            # In simulation mode, skip fallback proposals — wait for real LLM
-            if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
-                _consecutive_llm_fallbacks += 1
-                logger.info(
-                    "Sim mode: skipping fallback proposal (%d consecutive)",
-                    _consecutive_llm_fallbacks,
-                )
-                sim.log("EXEC", f"DROPPED: fallback proposal (sim mode, #{_consecutive_llm_fallbacks})")
-                _fallback_original_request = new_proposal.original_request
-                # ``should_skip_fallback_proposal`` rejects for TWO different
-                # reasons and they are not the same defect (review round,
-                # executor lens F1). ``llm_fallback`` means the LLM never
-                # produced a usable answer — a lost planning turn. A proposal
-                # naming an unregistered tool is a RESPONSIVE model making a
-                # bad choice; calling that "wedged" would be a false
-                # diagnosis, and requeueing it byte-identically just
-                # reproduces the same bad name. Record the name through the
-                # existing hallucinated-tool channel so the retry can differ.
-                _is_parse_failure = getattr(new_proposal, "reasoning", "") == "llm_fallback"
-                if not _is_parse_failure:
-                    _bad_action = new_proposal.action if isinstance(new_proposal.action, dict) else {}
-                    _bad_tool = str(_bad_action.get("tool_name", "") or "")
-                    if _bad_tool:
-                        try:
-                            _hallucinated = getattr(executor, "_tools_hallucinated", None)
-                            if _hallucinated is not None and _bad_tool not in _hallucinated:
-                                _hallucinated.append(_bad_tool)
-                        except Exception as e:
-                            log_swallowed_exception(e, operation="record_hallucinated_tool")
-                new_proposal = None
-                # D13: pre-fix this drop was terminal — pending_action_followup
-                # was already cleared and the triggering input deduped when the
-                # failed request was BUILT, so nothing ever re-armed the loop
-                # (status 200 → parse failure → idle forever). Reschedule the
-                # turn, bounded. Both drop kinds must reschedule (either one
-                # left the loop with nothing to wake it), but they carry
-                # different reasons so the abort report names what actually
-                # happened.
-                if _planning_liveness_on and _handle_planning_failure(
-                    ctrl,
-                    llm_worker,
-                    sim,
-                    reason=("fallback_proposal_dropped" if _is_parse_failure else "unregistered_tool_proposed"),
-                    original_request=_fallback_original_request,
-                    failed_tool=None if _is_parse_failure else _bad_tool,
-                    exhausted_status="llm_wedged" if _is_parse_failure else "planning_failed",
-                ):
-                    _planning_liveness_exhausted = True
-                # Clear pending input so the loop doesn't block on a
-                # response that will never come.  Without this, the
-                # has_pending_llm_input guard (30s timeout) prevents
-                # propose_intent from running AND prevents the bridge
-                # send_and_wait from timing out, causing a 120s stall.
-                state.data.pop("pending_user_input", None)
-                state.data.pop("pending_user_input_time", None)
-                state.data.pop("pending_user_input_source", None)
-
-                # Stall detection: after N consecutive LLM failures, record a
-                # synthetic action so the bridge's settle loop detects activity
-                # and exits instead of spinning for 120s.
-                if _consecutive_llm_fallbacks >= _LLM_STALL_THRESHOLD and action_sink is not None:
-                    from maxim.simulation.sinks import ActionRecord
-
-                    action_sink.record(
-                        ActionRecord(
-                            timestamp=time.time(),
-                            tool_name="_llm_unavailable",
-                            tool_args={},
-                            result_success=False,
-                            result_output=None,
-                            result_error=f"LLM unavailable after {_consecutive_llm_fallbacks} consecutive failures",
-                        )
-                    )
-                    sim.log(
-                        "EXEC",
-                        f"LLM stall detected ({_consecutive_llm_fallbacks} failures) — surfacing to bridge",
-                    )
-                    logger.warning(
-                        "LLM stall: %d consecutive fallbacks dropped, surfacing _llm_unavailable to bridge",
-                        _consecutive_llm_fallbacks,
-                    )
-                    _consecutive_llm_fallbacks = 0  # Reset so we don't flood
-            if new_proposal:
-                _consecutive_llm_fallbacks = 0  # Real proposal arrived — LLM is back
-                if callable(on_event):
-                    try:
-                        on_event(StreamEvent("inference_end", {"has_proposal": True}))
-                    except Exception as e:
-                        log_swallowed_exception(e, operation="on_event:inference_end")
-                if new_proposal.action:
-                    tool_name = new_proposal.action.get("tool_name", "unknown")
-                    logger.info("LLM proposal received: tool=%s, confidence=%.2f", tool_name, new_proposal.confidence)
-                    sim.log("EXEC", f"LLM proposes: {tool_name} (confidence={new_proposal.confidence:.2f})")
-                    # Log to agentic stream
-                    log_agentic(
-                        "agent_loop",
-                        "llm_response",
-                        {
-                            "tool": tool_name,
-                            "confidence": round(new_proposal.confidence, 2),
-                            "reasoning": new_proposal.reasoning[:80] if new_proposal.reasoning else None,
-                            "has_plan": bool(getattr(new_proposal, "plan_text", None)),
-                            "requires_approval": getattr(new_proposal, "requires_approval", False),
-                        },
-                    )
-                    # D13: installing an executable proposal resets the
-                    # planning-failure streak — enforced by the property
-                    # setter on LoopController, so every install site
-                    # (including the multi-step and deliberation paths)
-                    # recovers, not just this one.
-                    ctrl.pending_proposal = new_proposal
-                    # Record surfaced-but-unused signal for learned tool index
-                    _bridge = getattr(executor, "_tool_pain_bridge", None)
-                    _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
-                    if _tidx and last_surfaced_tools:
-                        _goal = state.data.get("active_goal", "") or ""
-                        if _goal:
-                            _tidx.record_surfaced_but_unused(_goal, last_surfaced_tools, tool_name)
-                    # Clear pending user input now that LLM has responded
-                    state.data.pop("pending_user_input", None)
-                    state.data.pop("pending_user_input_time", None)
-                    state.data.pop("pending_user_input_source", None)
-                    # Queue any next_actions for sequential execution
-                    if new_proposal.next_actions:
-                        pending_next_actions.extend(new_proposal.next_actions)
-                        log_agentic(
-                            "agent_loop",
-                            "multi_step_queued",
-                            {"count": len(new_proposal.next_actions)},
-                        )
-                elif new_proposal.error:
-                    # Clear pending user input on error too
-                    state.data.pop("pending_user_input", None)
-                    state.data.pop("pending_user_input_time", None)
-                    state.data.pop("pending_user_input_source", None)
-                    logger.warning("LLM proposal error: %s", new_proposal.error)
-                    sim.log("EXEC", f"DROPPED: proposal error — {new_proposal.error}")
-                    log_agentic(
-                        "agent_loop",
-                        "error",
-                        {"context": "llm_proposal", "error": str(new_proposal.error)[:100]},
-                        level="WARNING",
-                    )
-                    # D13: an error proposal is also a consumed planning turn
-                    # with nothing executed. Shutdown is deliberate, not a
-                    # liveness failure.
-                    if (
-                        _planning_liveness_on
-                        and new_proposal.error != "shutdown"
-                        and _handle_planning_failure(
-                            ctrl,
-                            llm_worker,
-                            sim,
-                            reason=f"proposal_error:{str(new_proposal.error)[:60]}",
-                            original_request=new_proposal.original_request,
-                        )
-                    ):
-                        _planning_liveness_exhausted = True
-                elif _planning_liveness_on:
-                    # A syntactically valid response can still contain no
-                    # action and no error. Pre-fix this was stamped as
-                    # received and then ignored forever, permanently
-                    # disabling the idle backstop. Treat it as an explicit
-                    # non-executable planning outcome and retry boundedly.
-                    _no_action_reason = _proposal_without_action_reason(new_proposal)
-                    if _no_action_reason is not None:
-                        state.data.pop("pending_user_input", None)
-                        state.data.pop("pending_user_input_time", None)
-                        state.data.pop("pending_user_input_source", None)
-                        logger.warning("LLM proposal had no executable action: %s", _no_action_reason)
-                        sim.log("EXEC", f"DROPPED: {_no_action_reason}")
-                        if _handle_planning_failure(
-                            ctrl,
-                            llm_worker,
-                            sim,
-                            reason=_no_action_reason,
-                            original_request=new_proposal.original_request,
-                            exhausted_status="planning_failed",
-                        ):
-                            _planning_liveness_exhausted = True
+        _intake = take_llm_proposal(
+            llm_worker=llm_worker,
+            ctrl=ctrl,
+            sim=sim,
+            state=state,
+            executor=executor,
+            step_num=step_num,
+            action_sink=action_sink,
+            on_event=on_event,
+            last_surfaced_tools=last_surfaced_tools,
+            pending_next_actions=pending_next_actions,
+            _loop_name=_loop_name,
+            _planning_liveness_on=_planning_liveness_on,
+            _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
+        )  # §2, runtime/loop_intake.py (slice 6)
+        _planning_liveness_exhausted = _planning_liveness_exhausted or _intake.exhausted
+        _consecutive_llm_fallbacks = _intake.consecutive_llm_fallbacks
 
         # D13: retry budget spent inside section 2 — leave through the normal
         # teardown path (state persist + bio session end), then raise.
         if _planning_liveness_exhausted:
             break
 
-        # Check for queued next_actions if no pending proposal
-        if ctrl.pending_proposal is None and pending_next_actions:
-            next_action = pending_next_actions.pop(0)
-            ctrl.pending_proposal = LLMProposal(
-                request_id=f"next-{time.time_ns()}",
-                action=next_action,
-                reasoning="multi_step_continuation",
-                strategy_used="multi_step",
-                confidence=0.8,
-                mode_goal_achieved=False,
-            )
+        take_queued_next_action(ctrl=ctrl, pending_next_actions=pending_next_actions)
 
         # ─────────────────────────────────────────────────────────────────
         # 3. AGENT PROPOSE_INTENT FALLBACK (when no LLM worker or no pending proposal)

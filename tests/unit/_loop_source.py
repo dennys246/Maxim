@@ -36,16 +36,18 @@ wrapper), and every pin below reads the body:
     use of ``run.planning_liveness_on``); ``test_exhaustion_raises_after_teardown`` (raise after
     ``_end_bio_session``; the teardown and the raise stayed in the loop in slices 1 and 2 -- the gate
     returns ``GateOutcome.EXHAUSTED`` and the loop sets its flag -- so the pin is unchanged);
-    ``test_proposal_time_stamped_on_any_proposal`` -- the slice that moves §2 (the proposal poll stamps it);
-    NOT slice 4, which moved §5 (#1085) and left this pin untouched.
-  - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region) -- §2 is
-    LLM-primary, outside phase 1.
+    ``test_proposal_time_stamped_on_any_proposal`` (the proposal poll stamps it): reads
+    ``loop_intake.take_llm_proposal`` since slice 6 (§2, 1.3.6), and pins the stamp after the poll.
+  - ``test_planning_liveness.py::test_bad_tool_name_is_recorded_for_correction`` (§2 region): reads
+    ``loop_intake._drop_skipped_fallback`` (the sim fallback drop) since slice 6.
   - ``test_console_tool_allowlist.py::TestRosterAdvertisesOnlyPermittedTools::test_agent_loop_filters_the_advertised_roster_through_permits``,
-    its ordering half (permits filter before ``last_surfaced_tools``) -- §2, outside phase 1.
+    its ordering half (permits filter before ``last_surfaced_tools``) -- §6's request assembly (the slice that moves §6).
   - ``test_tool_output_framing.py`` and ``test_planning_liveness.py``: ``inspect.getsource`` of the
-    module-level helpers ``_followup_synthetic_input``, ``_drop_stale_proposal`` and
-    ``_proposal_without_action_reason`` -- whichever slice moves the helper (it is an attribute
-    lookup, so a re-export keeps it green).
+    module-level helpers ``_followup_synthetic_input`` (whichever slice moves it), ``_drop_stale_proposal``
+    and ``_proposal_without_action_reason`` (read from ``loop_intake`` since slice 6; no re-export).
+
+Slice 6 (§2 -> ``loop_intake.take_llm_proposal``, 1.3.6) re-pointed the two §2 pins above and added none: its
+characterization, ``test_loop_intake_characterization.py``, is behavioural through the public entry.
 
 Slice 5 (§1.1-§1.16 -> ``loop_perception.perceive``) added no function-specific pin: its characterization,
 ``test_loop_perception_characterization.py``, is behavioural through the public entry, and the §1.16 text
