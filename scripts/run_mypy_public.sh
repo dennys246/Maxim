@@ -30,6 +30,7 @@ FILES=(
     src/maxim/runtime/substrate_proposal.py
     src/maxim/runtime/loop_planning.py
     src/maxim/runtime/loop_perception.py
+    src/maxim/runtime/loop_intake.py
     src/maxim/runtime/loop_controller.py
     src/maxim/runtime/loop_state.py
     src/maxim/runtime/tool_dispatch.py
