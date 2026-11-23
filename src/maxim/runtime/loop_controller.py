@@ -667,8 +667,8 @@ class LoopController:
 # Module functions beside the LoopController counters they drive (record_planning_failure /
 # record_planning_transport_failure), moved from agent_loop.py with their bodies unchanged except that
 # they log through ``_loop_logger`` (this module's own ``logger`` is ``maxim.runtime.loop_controller``).
-# Callers: loop_gates.pre_tick_gate (the idle-gate backstop: both handlers) and agent_loop (section 2's
-# failure sites and _drop_stale_proposal: _handle_planning_failure).
+# Callers: loop_gates.pre_tick_gate (the idle-gate backstop: both handlers) and loop_intake (section 2's
+# failure sites and _drop_stale_proposal, moved from agent_loop in 1.3.6 slice 6: _handle_planning_failure).
 #
 # Kept for log continuity; a later slice may adopt the module's own logger. The handlers' records keep
 # the ``maxim.runtime.agent_loop`` name they have always had (the SAME object as agent_loop.logger).
