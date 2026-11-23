@@ -477,6 +477,10 @@ class NeuralSemanticLSH:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# Version 2 (#1685): string arrays only, so the file loads with pickle off. Version 1 wrote object arrays.
+_EMBEDDING_FILE_VERSION = 2
+
+
 @dataclass
 class EmbeddingStore:
     """Storage for memory embeddings.
@@ -606,40 +610,40 @@ class EmbeddingStore:
     # ─────────────────────────────────────────────────────────────────────────
 
     def save(self, path: str) -> None:
-        """Save embeddings to file.
+        """Save embeddings to file, atomically.
 
-        Uses numpy's compressed npz format for efficiency.
-        Embeddings are stored as a single stacked array.
+        Uses numpy's compressed npz format, version 2: the memory ids and the hashes' JSON are plain string arrays,
+        so ``load`` reads the file with pickle off (#1685). The bytes go through ``atomic_write_bytes``, so a kill
+        mid-write leaves the earlier file whole, and an empty store writes an empty file, so embeddings removed
+        during a session stay removed (#1531).
 
         Args:
             path: Path to save file (should end with .npz)
         """
+        import io
         import json as json_module
+
+        from maxim.utils.atomic_io import atomic_write_bytes
 
         # #1438: SNAPSHOT under the leaf lock (``np.stack`` copies the arrays), write the file outside it.
         with self._lock:
-            if not self._embeddings:
-                memory_ids: list[str] = []
-            else:
-                memory_ids = list(self._embeddings.keys())
+            memory_ids = list(self._embeddings.keys())
+            if memory_ids:
                 embeddings_array = np.stack([self._embeddings[mid] for mid in memory_ids])
-                # Prepare hashes as JSON (tuples aren't directly serializable in npz)
-                hashes_data = {mid: list(h) for mid, h in self._hashes.items()}
+            else:
+                embeddings_array = np.zeros((0, 0), dtype=np.float32)
+            # Prepare hashes as JSON (tuples aren't directly serializable in npz)
+            hashes_data = {mid: list(h) for mid, h in self._hashes.items()}
 
-        if not memory_ids:
-            logger.info("No embeddings to save")
-            return
-
-        hashes_json = json_module.dumps(hashes_data)
-
-        # Save to compressed npz
+        buf = io.BytesIO()
         np.savez_compressed(
-            path,
-            memory_ids=np.array(memory_ids, dtype=object),
+            buf,
+            memory_ids=np.array(memory_ids, dtype=str),
             embeddings=embeddings_array,
-            hashes_json=np.array([hashes_json], dtype=object),
-            version=np.array([1]),
+            hashes_json=np.array([json_module.dumps(hashes_data)], dtype=str),
+            version=np.array([_EMBEDDING_FILE_VERSION]),
         )
+        atomic_write_bytes(path, buf.getvalue())
 
         logger.info("Saved %d embeddings to %s", len(memory_ids), path)
 
@@ -659,16 +663,25 @@ class EmbeddingStore:
             return 0
 
         try:
-            data = np.load(path, allow_pickle=True)
+            # Pickle off (#1685): an object array in the file raises here instead of running code.
+            with np.load(path, allow_pickle=False) as data:
+                version = int(data["version"][0]) if "version" in data.files else 0
+                if version == 1:
+                    logger.warning(
+                        "Refusing the semantic embedding file %s: it is the old pickle-based format (version 1). "
+                        "Starting with an empty embedding cache; memories captured before now are not re-embedded, so "
+                        "they drop out of semantic search. The next save writes version %d.",
+                        path,
+                        _EMBEDDING_FILE_VERSION,
+                    )
+                    return 0
+                if version != _EMBEDDING_FILE_VERSION:
+                    logger.warning("Unknown embedding file version: %d", version)
+                    return 0
 
-            version = int(data.get("version", [0])[0])
-            if version != 1:
-                logger.warning("Unknown embedding file version: %d", version)
-                return 0
-
-            memory_ids = data["memory_ids"]
-            embeddings_array = data["embeddings"]
-            hashes_json = str(data["hashes_json"][0])
+                memory_ids = data["memory_ids"]
+                embeddings_array = data["embeddings"]
+                hashes_json = str(data["hashes_json"][0])
 
             # Parse outside the lock, merge under it (#1438)
             embeddings = {str(mid): embeddings_array[i] for i, mid in enumerate(memory_ids)}

@@ -219,7 +219,7 @@ class SalienceNetwork:
                 - bbox: (x, y, w, h) bounding box
             timestamp: Detection timestamp (defaults to now).
         """
-        now = timestamp or time.time()
+        now = timestamp if timestamp is not None else time.time()
 
         with self._lock:
             seen_ids: set[Any] = set()

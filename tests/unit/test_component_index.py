@@ -516,6 +516,26 @@ class TestPersistence:
         idx = ComponentIndex()
         assert idx.load("/nonexistent/path.npy") is False
 
+    def test_save_writes_the_matrix_atomically(self, index, tmp_path, monkeypatch):
+        """#1531's pattern: a kill mid-write of the matrix leaves the earlier cache whole."""
+        cache_path = tmp_path / "test_index.npy"
+        index.save(cache_path)
+        before = cache_path.read_bytes()
+
+        def _killed(*_a, **_k):
+            raise OSError("killed mid-write")
+
+        monkeypatch.setattr("maxim.utils.atomic_io.atomic_write_bytes", _killed)
+        index._embeddings = index._embeddings * 2.0
+        with pytest.raises(OSError):
+            index.save(cache_path)
+        assert cache_path.read_bytes() == before
+
+    def test_save_keeps_numpys_npy_suffix(self, index, tmp_path):
+        """A path without ``.npy`` gets it appended, as ``np.save`` did, so caches saved before still load."""
+        index.save(tmp_path / "bare")
+        assert (tmp_path / "bare.npy").exists()
+
     def test_save_empty_index(self, tmp_path):
         """Saving an empty index should not crash."""
         idx = ComponentIndex()

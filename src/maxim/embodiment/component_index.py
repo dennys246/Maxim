@@ -406,8 +406,16 @@ class ComponentIndex:
             refs = list(self._refs)
             signatures = list(self._signatures)
 
-        # Save embeddings (pure float array, no pickle needed)
-        np.save(str(save_path), embeddings)
+        # Save embeddings (pure float array, no pickle needed), atomically: a kill mid-write keeps the earlier cache
+        # whole (#1531's pattern). The ``.npy`` suffix is appended when missing, as ``np.save`` did.
+        import io
+
+        from maxim.utils.atomic_io import atomic_write_bytes
+
+        npy_path = save_path if save_path.suffix == ".npy" else save_path.with_name(save_path.name + ".npy")
+        buf = io.BytesIO()
+        np.save(buf, embeddings)
+        atomic_write_bytes(str(npy_path), buf.getvalue())
 
         # Save refs + signatures as JSON sidecar (no pickle)
         meta_path = save_path.with_suffix(".json")
