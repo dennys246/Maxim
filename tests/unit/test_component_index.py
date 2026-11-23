@@ -532,9 +532,16 @@ class TestPersistence:
         assert cache_path.read_bytes() == before
 
     def test_save_keeps_numpys_npy_suffix(self, index, tmp_path):
-        """A path without ``.npy`` gets it appended, as ``np.save`` did, so caches saved before still load."""
+        """A path without ``.npy`` gets it appended, as ``np.save`` did: the file lands where it always landed."""
         index.save(tmp_path / "bare")
         assert (tmp_path / "bare.npy").exists()
+
+    def test_load_refuses_a_matrix_that_does_not_match_its_refs(self, index, tmp_path):
+        """A kill between the two writes leaves a new matrix beside old refs; load rebuilds instead of misreading."""
+        cache_path = tmp_path / "test_index.npy"
+        index.save(cache_path)
+        np.save(cache_path, np.zeros((index._embeddings.shape[0] + 1, index._embeddings.shape[1]), dtype=np.float32))
+        assert ComponentIndex(cache_path=cache_path).load(cache_path) is False
 
     def test_save_empty_index(self, tmp_path):
         """Saving an empty index should not crash."""

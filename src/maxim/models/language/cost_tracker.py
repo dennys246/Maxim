@@ -45,7 +45,8 @@ class SpendRate:
     def update(self, amount_usd: float, now: float, alpha: float) -> None:
         if amount_usd <= 0:
             return
-        elapsed = max(1.0, now - self.last_update) if self.last_update else 1.0
+        # The sample count, not last_update, says whether there was an earlier sample: one at time 0.0 counts (#1684).
+        elapsed = max(1.0, now - self.last_update) if self.samples > 0 else 1.0
         rate_per_hour = amount_usd * 3600.0 / elapsed
         if self.samples <= 0:
             self.value = rate_per_hour

@@ -500,6 +500,10 @@ class EmbeddingStore:
     _embeddings: dict[str, np.ndarray] = field(default_factory=dict)
     _hashes: dict[str, tuple[int, ...]] = field(default_factory=dict)
     _lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
+    # May an EMPTY store overwrite the file (#1531)? Only once this store has a claim on it: it refused a version 1 file
+    # (owner decision 2026-11-23), or removed or cleared entries. (A store that loaded entries is not empty.) The path is machine-wide (#984), so
+    # a session that embedded nothing must not wipe another agent's save, or a file it could not read.
+    _may_save_empty: bool = field(default=False, init=False, repr=False, compare=False)
 
     def set(
         self,
@@ -526,7 +530,8 @@ class EmbeddingStore:
     def remove(self, memory_id: str) -> None:
         """Remove embedding for a memory."""
         with self._lock:
-            self._embeddings.pop(memory_id, None)
+            if self._embeddings.pop(memory_id, None) is not None:
+                self._may_save_empty = True
             self._hashes.pop(memory_id, None)
 
     def find_similar(
@@ -614,11 +619,13 @@ class EmbeddingStore:
 
         Uses numpy's compressed npz format, version 2: the memory ids and the hashes' JSON are plain string arrays,
         so ``load`` reads the file with pickle off (#1685). The bytes go through ``atomic_write_bytes``, so a kill
-        mid-write leaves the earlier file whole, and an empty store writes an empty file, so embeddings removed
-        during a session stay removed (#1531).
+        mid-write leaves the earlier file whole. An empty store writes an empty file only when it has a claim on the
+        file (``_may_save_empty``), so embeddings removed during a session stay removed, and a session that embedded
+        nothing leaves another agent's file alone (#1531, #984).
 
         Args:
-            path: Path to save file (should end with .npz)
+            path: Path to save file (should end with .npz). The file is written to exactly this path: unlike
+                ``np.savez``, no ``.npz`` is appended, so ``load(path)`` finds what ``save(path)`` wrote.
         """
         import io
         import json as json_module
@@ -628,6 +635,9 @@ class EmbeddingStore:
         # #1438: SNAPSHOT under the leaf lock (``np.stack`` copies the arrays), write the file outside it.
         with self._lock:
             memory_ids = list(self._embeddings.keys())
+            if not memory_ids and not self._may_save_empty:
+                logger.info("No embeddings to save; leaving %s as it is", path)
+                return
             if memory_ids:
                 embeddings_array = np.stack([self._embeddings[mid] for mid in memory_ids])
             else:
@@ -674,6 +684,8 @@ class EmbeddingStore:
                         path,
                         _EMBEDDING_FILE_VERSION,
                     )
+                    with self._lock:
+                        self._may_save_empty = True
                     return 0
                 if version != _EMBEDDING_FILE_VERSION:
                     logger.warning("Unknown embedding file version: %d", version)
@@ -702,6 +714,7 @@ class EmbeddingStore:
         with self._lock:
             self._embeddings.clear()
             self._hashes.clear()
+            self._may_save_empty = True
 
 
 __all__ = [

@@ -92,3 +92,28 @@ def test_none_still_means_the_wall_clock(tmp_path: Path) -> None:
     cost = tracker.record(provider="p", model=_MODEL, input_tokens=1, output_tokens=0)
     assert tracker.get_totals()["hourly"] == cost
     assert tracker.get_per_provider_totals("p")["hourly"] == cost
+
+
+def test_salience_network_reads_on_the_callers_clock() -> None:
+    """A detection made at 0.0 and read at 0.0 is brand new: fully novel and among the top salient."""
+    net = SalienceNetwork()
+    det = {"track_id": 7, "class_id": 0, "label": "cup", "confidence": 0.9, "bbox": (1, 1, 2, 2)}
+    net.update_from_detections([det], timestamp=0.0)
+    assert net.get_novelty(7, now=0.0) == 1.0
+    assert [o["track_id"] for o in net.get_top_salient(1, now=0.0)] == [7]
+    assert "cup" in net.to_context_str(now=0.0)
+    (near,) = net.get_objects_at_position((2.0, 2.0), now=0.0)
+    assert near["salience"] == net.get_salience(7, now=0.0)
+
+
+def test_spend_rate_starting_at_zero_matches_any_other_start() -> None:
+    """SpendRate read last_update == 0.0 as "no earlier sample", so a first sample at 0.0 doubled the next rate."""
+    from maxim.models.language.cost_tracker import SpendRate
+
+    def run(t0: float) -> float:
+        rate = SpendRate()
+        rate.update(1.0, t0, alpha=0.5)
+        rate.update(1.0, t0 + 3600.0, alpha=0.5)
+        return rate.value
+
+    assert run(0.0) == run(100.0)
