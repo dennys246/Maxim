@@ -156,8 +156,8 @@
       "missing": 292
     },
     "maxim/simulation": {
-      "percent": 77.9,
-      "missing": 2353
+      "percent": 78.9,
+      "missing": 2300
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -181,13 +181,17 @@
     }
   },
   "files": {
+    "src/maxim/agents/exec_agent_router.py": {
+      "percent": 96.5,
+      "missing": 2
+    },
     "src/maxim/models/language/router.py": {
       "percent": 78.8,
       "missing": 233
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 75.7,
-      "missing": 250
+      "percent": 76.8,
+      "missing": 244
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,

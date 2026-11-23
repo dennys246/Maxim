@@ -435,3 +435,47 @@ def test_the_cli_prints_a_backend_errors_fix_hint_once(which: str, monkeypatch: 
     assert type(err).__name__ in msg
     if which == "aut":
         assert "peer down" in msg
+
+
+def test_build_own_names_itself() -> None:
+    """The sentinel's repr is its public name, so a log line or a test failure that shows it reads ``BUILD_OWN``."""
+    import maxim.agents.exec_agent_router as R
+
+    assert repr(R.BUILD_OWN) == "BUILD_OWN"
+
+
+def test_override_in_reads_only_a_named_string_profile() -> None:
+    """``agent_profiles`` that is not a dict names no override; ``executive`` is the fallback key; blank is none."""
+    import maxim.agents.exec_agent_router as R
+
+    assert R.override_in(SimpleNamespace(agent_profiles=["exec_agent"])) is None
+    assert R.override_in(SimpleNamespace(agent_profiles={"executive": " big "})) == "big"
+    assert R.override_in(SimpleNamespace(agent_profiles={"exec_agent": "  "})) is None
+
+
+def test_no_llm_json_has_no_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no discovery candidate on disk the cache key is None (no file to watch), not an error."""
+    import maxim.agents.exec_agent_router as R
+    import maxim.models.language.config as C
+
+    monkeypatch.setattr(C, "_llm_config_candidates", lambda: [str(tmp_path / "absent.json"), ""])
+    assert R._llm_json_identity() is None
+
+
+def test_an_unreadable_config_names_no_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A config that cannot be read gives no override (the build path reports it), and the result is cached for that
+    llm.json identity, so a constructor does not re-read a broken file."""
+    import maxim.agents.exec_agent_router as R
+
+    calls: list[int] = []
+
+    def _broken(*_a: Any, **_k: Any) -> Any:
+        calls.append(1)
+        raise ValueError("bad llm.json")
+
+    monkeypatch.setattr(R, "load_llm_config", _broken)
+    monkeypatch.setattr(R, "_llm_json_identity", lambda: ("llm.json", 1, 2))
+    monkeypatch.setattr(R, "_OVERRIDE_READ", None)
+    assert R.configured_override() is None
+    assert R.configured_override() is None
+    assert calls == [1]
