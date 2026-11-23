@@ -4,7 +4,7 @@ Who this is for: anyone who re-runs a graduated experiment to re-validate a ledg
 
 The short version: **a re-run is a new experiment, and its result counts only if the bytes on `main` can show which code ran, that every attempt was declared, and that the instrument worked.**
 
-**Scope of the enforcement.** The checks named below are built into the O19 harness and verdict (`scripts/o19_rerun.py`, `scripts/o19_verdict.py`), which today cover only Exp 10 and Exp 09. For any other experiment the rules hold, but they are followed by attention until a generic re-run harness exists (mechanization backlog M27 in [outstanding.md](../plans/outstanding.md)). The prereg lint and the evidence gate apply to every experiment.
+**Scope of the enforcement.** The checks named below are built into the O19 harness and verdict (`scripts/o19_rerun.py`, `scripts/o19_verdict.py`), which cover only the campaigns in `o19_verdict.py`'s `PROTOCOL` table: Exp 10, Exp 09, and the Exp 63, 63b and 63c campaigns (T1-16). For any other experiment the rules hold, but they are followed by attention until a generic re-run harness exists (mechanization backlog M27 in [outstanding.md](../plans/outstanding.md)). The prereg lint and the evidence gate apply to every experiment.
 
 ## 1. A re-run is pre-registered like any experiment
 
