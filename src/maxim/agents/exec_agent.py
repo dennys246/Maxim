@@ -1124,7 +1124,7 @@ class ExecAgent(Agent):
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
 - Voice command: {_voice_command_text(p)}
-- Message: {stored_percept_text(p.source, p.content, limit=2000, keep_lines=True) or "(none)"}
+- Message: {stored_percept_text(p.source, p.content or "", limit=2000, keep_lines=True) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 

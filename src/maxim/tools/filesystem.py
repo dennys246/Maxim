@@ -489,15 +489,15 @@ def _mapped_edit(
         unescape_format_characters,
     )
 
-    def _matching(text: str | None) -> str | None:
+    def _matching(text: str) -> str:
         """The text as it matches the file: unescaped, unless only the text as typed is in the file (a file that
         really holds a literal ``<U+202E>``), applied to the old text and each context field alike."""
-        if text is None:
-            return None
         real = unescape_format_characters(text)
         return text if real not in content and text in content else real
 
-    old_real, before, after = _matching(old_text), _matching(context_before), _matching(context_after)
+    old_real = _matching(old_text)
+    before = None if context_before is None else _matching(context_before)
+    after = None if context_after is None else _matching(context_after)
     literal_fallback = old_real == old_text and old_text != unescape_format_characters(old_text)
     new_real, kept, shown = restore_format_characters(new_text, present_in=old_real, escapes_literal=literal_fallback)
     note = ""
