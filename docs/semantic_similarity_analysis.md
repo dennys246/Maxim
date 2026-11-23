@@ -186,11 +186,15 @@ ec._embedding_store.load("~/.maxim/util/semantic_embeddings.npz")
 
 ### File Format
 
-Uses numpy's compressed `.npz` format:
-- `memory_ids`: Array of memory IDs
+Uses numpy's compressed `.npz` format, version 2 (#1685). Every array is a string or a number, so the file loads with
+pickle off:
+- `memory_ids`: Array of memory IDs (strings)
 - `embeddings`: Stacked embedding vectors
-- `hashes_json`: Hash bits as JSON
-- `version`: Format version
+- `hashes_json`: Hash bits as JSON (one string)
+- `version`: Format version (`2`)
+
+A version 1 file (object arrays, readable only through pickle) is refused with one warning, and the cache starts
+empty. The save is atomic, and writes to exactly the given path (no `.npz` is appended).
 
 ## Graceful Degradation
 
