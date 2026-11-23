@@ -564,6 +564,14 @@ class LoopController:
         self.pending_proposal = None
         self._clear_confirmation_prompt()
 
+    def _proposal_in_hand(self) -> LLMProposal:
+        """``pending_proposal`` for a phase its caller reaches only with one (park_confirmation, queue_for_approval);
+        a missing one is a loop bug, raised as one rather than as an ``AttributeError`` on ``None`` (#1185)."""
+        proposal = self.pending_proposal
+        if proposal is None:
+            raise RuntimeError("loop phase reached with no pending proposal")
+        return proposal
+
     def park_confirmation(self, action: dict[str, Any], *, sim: Any) -> None:
         """Park ``pending_proposal`` behind the SUPERVISED confirmation prompt (moved out of
         ``_run_agentic_loop_body``'s §4, rule T for #1185): the sim response policy answers it, or the prompt is
@@ -571,7 +579,8 @@ class LoopController:
         # The typed record keeps the proposal as its ``source``, so the confirmed action is
         # credited to the situation it was proposed in (#1133; the proposal itself is cleared
         # below, as for every non-executed branch).
-        _pending = PendingConfirmation.from_proposal(self.pending_proposal)
+        proposal = self._proposal_in_hand()
+        _pending = PendingConfirmation.from_proposal(proposal)
         tool_name = _pending.tool_name
         params = action.get("params", {})
 
@@ -595,8 +604,8 @@ class LoopController:
                     param_lines.append(f"    {key}: {str(value)}")
                 if param_lines:
                     display_scene("\n".join(param_lines))
-                if self.pending_proposal.reasoning:
-                    display_scene(f"  Reasoning: {self.pending_proposal.reasoning}")
+                if proposal.reasoning:
+                    display_scene(f"  Reasoning: {proposal.reasoning}")
                 # Show confirmation prompt in the input panel so typed
                 # characters are visible with question context.
                 try:
@@ -628,20 +637,21 @@ class LoopController:
         itself runs with ``interactive`` on (a ``maxim.api`` queue-approval surface is #1734)."""
         from maxim.agents.autonomy import Proposal
 
+        llm_proposal = self._proposal_in_hand()
         proposal = Proposal(
-            id=self.pending_proposal.request_id,
+            id=llm_proposal.request_id,
             action=action,
-            reasoning=self.pending_proposal.reasoning,
+            reasoning=llm_proposal.reasoning,
             confidence=confidence,
-            strategy_used=self.pending_proposal.strategy_used,
-            citations=self.pending_proposal.citations,
-            source=self.pending_proposal,  # its situation is credited at approval (#1083)
+            strategy_used=llm_proposal.strategy_used,
+            citations=llm_proposal.citations,
+            source=llm_proposal,  # its situation is credited at approval (#1083)
         )
         self.autonomy_controller.proposal_queue.submit(proposal)
         self.autonomy_controller.log_action(
             action_type="proposed",
             action=action,
-            reasoning=self.pending_proposal.reasoning,
+            reasoning=llm_proposal.reasoning,
             mode=operational_mode(self.executor, self.state),
             confidence=confidence,
         )
@@ -746,7 +756,7 @@ class LoopController:
           they were shown.
         """
         proposal = self.pending_proposal
-        if not (getattr(proposal, "requires_approval", False) and proposal.plan_text):
+        if proposal is None or not (getattr(proposal, "requires_approval", False) and proposal.plan_text):
             return False
         self.pending_proposal = None  # from here the plan runs once, waits for the person, or is refused
         run = {"execute_and_learn": execute_and_learn, "book_machine_refusal": book_machine_refusal, "sim": sim}
