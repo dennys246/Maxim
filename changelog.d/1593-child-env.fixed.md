@@ -7,6 +7,10 @@
     `PYTHONPATH` entries inside the running interpreter's own site-packages. That covers the sub-sim harnesses,
     the local LLM server, pip calls, the matplotlib preflight, the tmpdir sandbox, host tools (`host_tool_env`)
     and `box_quiet`. Both re-execs now use `os.execve(..., child_env())`.
-  - `maxim doctor` fails when `maxim` runs from a checkout while another copy sits in site-packages, and says how
-    to remove it.
-  - A new CI lint (`scripts/lint_child_env.py`) ratchets the spawns not built on `child_env`.
+  - `maxim doctor` has a new "maxim install" check. It fails when `maxim` is imported from a site-packages copy
+    that no installed package claims, which is what a path-style editable install loses to. It also fails when
+    `maxim` runs from a checkout while another copy sits in site-packages, or when a child process started like
+    Maxim's own imports a different tree. Each failure says how to fix it.
+  - A new CI lint (`scripts/lint_child_env.py`) ratchets the spawns not built on `child_env`. The harness
+    provenance lint now also refuses a sub-sim environment built from `os.environ` outside `child_env`, so
+    `assert_repo_interpreter`'s probe and the real sub-sims cannot drift apart.

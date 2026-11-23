@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from maxim.doctor.platform_detect import PlatformInfo, detect_wsl_ip
@@ -2394,40 +2395,105 @@ def check_disk_space() -> CheckResult:
     )
 
 
-def check_maxim_install(site_dirs: tuple[str, ...] | None = None) -> CheckResult:
-    """Fail when ``maxim`` runs from a checkout while a ``maxim`` package also sits in site-packages (#1593).
+def _claimed_by_a_distribution(pkg_dir: Path) -> bool:
+    """True when an installed distribution's RECORD lists ``<pkg_dir>/__init__.py`` (a real, non-editable install)."""
+    from importlib import metadata
 
-    The process itself imports the checkout. A child, or a re-exec, whose environment did not come from
-    ``maxim.utils.child_env`` would import the site-packages copy instead: a ``.pth`` hook (the GStreamer
-    wheels') rewrites ``PYTHONPATH`` with site-packages first. That is how a stray pymaxim 1.3.2 shadowed the
-    rig's editable install from 2026-10-16 to 2026-11-03. A normal ``pip install`` (``maxim`` imported from
-    site-packages) is fine.
+    target = (pkg_dir / "__init__.py").resolve()
+    for dist in metadata.distributions():
+        for file in dist.files or ():
+            if file.name == "__init__.py" and file.parent.name == pkg_dir.name:
+                try:
+                    if dist.locate_file(file).resolve() == target:
+                        return True
+                except (OSError, RuntimeError, NotImplementedError):
+                    continue  # a distribution whose files cannot be located claims nothing
+    return False
+
+
+def _child_maxim_dir(timeout: float = 60.0) -> Path | str:
+    """Where a child started like Maxim's own spawns (``child_env()``) resolves ``maxim``; the error text on failure."""
+    import subprocess
+    import sys
+
+    from maxim.utils.child_env import child_env
+
+    try:
+        out = subprocess.run(
+            [sys.executable, "-c", "import maxim, sys; sys.stdout.write(maxim.__file__)"],
+            env=child_env(),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"{type(e).__name__}: {e}"
+    if out.returncode != 0 or not out.stdout.strip():
+        return (out.stderr or "no output").strip().splitlines()[-1][:200]
+    return Path(out.stdout.strip()).resolve().parent
+
+
+def check_maxim_install(site_dirs: tuple[str, ...] | None = None) -> CheckResult:
+    """Fail when the ``maxim`` this process or its children import is not the one meant to run (#1593).
+
+    Two ways it goes wrong:
+    - **A stray copy in site-packages.** No distribution's RECORD claims it (a ``pip install`` once left one on
+      the rig), or it shadows an editable install. A path-style editable install appends its ``src`` AFTER
+      site-packages, so the stray copy wins even in the top-level process. That is how pymaxim 1.3.2 ran on the
+      rig from 2026-10-16 to 2026-11-03.
+    - **A checkout whose children import something else.** ``maxim`` runs from a checkout (a ``PYTHONPATH``), and
+      a child started the way Maxim's spawns start it (``child_env()``) resolves another copy.
+
+    A normal ``pip install``, which some distribution's RECORD claims, is fine.
     """
     from pathlib import Path
 
     import maxim
     from maxim.utils.child_env import own_site_dirs
 
+    name = "maxim install"
     imported = Path(maxim.__file__).resolve().parent
     roots = [Path(d) for d in (own_site_dirs() if site_dirs is None else site_dirs)]
     if any(imported.is_relative_to(root) for root in roots):
-        return CheckResult(name="maxim install", status="ok", message=f"installed package at {imported}")
+        if _claimed_by_a_distribution(imported):
+            return CheckResult(name=name, status="ok", message=f"installed package at {imported}")
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=(
+                f"maxim is imported from {imported}, which no installed package claims; a stray copy there "
+                "shadows any editable install or checkout"
+            ),
+            fix=f"Move it aside (`mv {imported} {imported}.stray`), then reinstall: `pip install -e .` in the checkout",
+        )
     strays = [root / "maxim" for root in roots if (root / "maxim" / "__init__.py").is_file()]
-    if not strays:
-        return CheckResult(name="maxim install", status="ok", message=f"checkout at {imported}")
-    stray = strays[0]
-    return CheckResult(
-        name="maxim install",
-        status="fail",
-        message=(
-            f"maxim runs from {imported}, but another copy sits at {stray}; a child process or a restart "
-            "that inherits a .pth-rewritten PYTHONPATH would import that copy instead"
-        ),
-        fix=(
-            f"If `pip show pymaxim` lists a non-editable install, `pip uninstall pymaxim` and reinstall with "
-            f"`pip install -e .`; if no package claims {stray}, move it aside: `mv {stray} {stray}.stray`"
-        ),
-    )
+    if strays:
+        stray = strays[0]
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=(
+                f"maxim runs from {imported}, but another copy sits at {stray}; a child process or a restart "
+                "that inherits a .pth-rewritten PYTHONPATH would import that copy instead"
+            ),
+            fix=(
+                f"If `pip show pymaxim` lists a non-editable install, `pip uninstall pymaxim` and reinstall with "
+                f"`pip install -e .`; if no package claims {stray}, move it aside: `mv {stray} {stray}.stray`"
+            ),
+        )
+    child = _child_maxim_dir()
+    if isinstance(child, str):
+        return CheckResult(
+            name=name, status="warn", message=f"checkout at {imported}; a child could not import maxim: {child}"
+        )
+    if child != imported:
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=f"maxim runs from {imported}, but a child process imports {child}",
+            fix="Make the checkout the venv's install (`pip install -e .` there), or export PYTHONPATH=<checkout>/src (absolute)",
+        )
+    return CheckResult(name=name, status="ok", message=f"checkout at {imported}; children import the same tree")
 
 
 def check_ram_headroom() -> CheckResult:

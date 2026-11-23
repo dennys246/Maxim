@@ -36,8 +36,11 @@ __all__ = ["child_env", "own_site_dirs", "strip_own_site_dirs"]
 
 
 def own_site_dirs() -> tuple[str, ...]:
-    """The running interpreter's own site-packages directories, resolved (``site.getsitepackages()``)."""
+    """The running interpreter's own site-packages directories, resolved: ``site.getsitepackages()``, plus the
+    user site when it is enabled (a ``pip install --user`` puts a hook's entries there)."""
     dirs = [os.path.realpath(d) for d in site.getsitepackages()]
+    if site.ENABLE_USER_SITE:
+        dirs.append(os.path.realpath(site.getusersitepackages()))
     # A venv built without site.getsitepackages() support still has purelib under its prefix.
     purelib = os.path.join(sys.prefix, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}")
     dirs.append(os.path.realpath(os.path.join(purelib, "site-packages")))
@@ -52,18 +55,24 @@ def _inside(path: str, roots: tuple[str, ...]) -> bool:
 
 
 def strip_own_site_dirs(pythonpath: str, roots: tuple[str, ...] | None = None) -> str:
-    """``pythonpath`` without its entries inside ``roots`` (default :func:`own_site_dirs`), order kept."""
+    """``pythonpath`` without its entries inside ``roots`` (default :func:`own_site_dirs`), order kept.
+
+    An empty entry (``:/x``, ``/x:``) is kept: Python reads it as the working directory, so an operator's
+    ``export PYTHONPATH=$PYTHONPATH:/x`` keeps meaning what it meant."""
     roots = own_site_dirs() if roots is None else roots
-    kept = [entry for entry in pythonpath.split(os.pathsep) if entry and not _inside(entry, roots)]
+    kept = [entry for entry in pythonpath.split(os.pathsep) if not _inside(entry, roots)]
     return os.pathsep.join(kept)
 
 
 def child_env(environ: Mapping[str, str] | None = None, **overrides: str) -> dict[str, str]:
     """A copy of ``environ`` (default ``os.environ``) fit for a child process, with ``overrides`` applied last.
 
-    ``PYTHONPATH`` keeps every entry outside this interpreter's site-packages, in order. It is removed when
-    nothing is left, so an empty value never puts the child's working directory on its ``sys.path``. An override
-    is applied as given: a caller that sets ``PYTHONPATH`` gets exactly that value.
+    ``PYTHONPATH`` keeps every entry outside this interpreter's site-packages, in order, empty entries included.
+    When nothing is left the variable is removed (an empty ``PYTHONPATH`` and none mean the same to Python). An
+    override is applied as given: a caller that sets ``PYTHONPATH`` gets exactly that value.
+
+    Only THIS interpreter's site dirs are stripped. A ``PYTHONPATH`` that another venv's hook already rewrote,
+    before this process started, passes through unchanged.
     """
     env = dict(os.environ if environ is None else environ)
     if "PYTHONPATH" in env:

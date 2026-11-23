@@ -517,7 +517,7 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
 
 
 def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
-    """Restart the process in a new mode via os.execv.
+    """Restart the process in a new mode via os.execve, with ``child_env()`` (#1593).
 
     Two vocabularies (#829): an OPERATIONAL name (passive / active / singularity) re-execs with the SAME
     run mode and ``--operational-mode <name>``; any other name is a RUN mode (``--mode <name>``) and

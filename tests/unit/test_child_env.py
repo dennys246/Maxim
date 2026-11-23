@@ -9,6 +9,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+from maxim.doctor import checks
 from maxim.doctor.checks import check_maxim_install
 from maxim.utils.child_env import child_env, own_site_dirs, strip_own_site_dirs
 
@@ -30,6 +31,12 @@ def test_strip_drops_entries_inside_the_roots_and_keeps_the_rest_in_order():
     )
 
 
+def test_strip_keeps_empty_entries_which_python_reads_as_the_working_directory():
+    assert strip_own_site_dirs(os.pathsep.join(["", "/venv/lib/python3.12/site-packages", "/x"]), ROOTS) == (
+        os.pathsep.join(["", "/x"])
+    )
+
+
 def test_strip_does_not_match_a_sibling_that_only_shares_a_prefix():
     assert strip_own_site_dirs("/venv/lib/python3.12/site-packages-extra", ROOTS) == (
         "/venv/lib/python3.12/site-packages-extra"
@@ -39,7 +46,7 @@ def test_strip_does_not_match_a_sibling_that_only_shares_a_prefix():
 def test_child_env_removes_pythonpath_when_nothing_is_left():
     site_dir = own_site_dirs()[0]
     env = child_env({"PYTHONPATH": site_dir, "HOME": "/h"})
-    assert "PYTHONPATH" not in env  # an empty value would put the child's cwd on sys.path
+    assert "PYTHONPATH" not in env  # nothing left: removed, not set to ""
     assert env["HOME"] == "/h"
 
 
@@ -115,12 +122,153 @@ def test_doctor_fails_on_a_stray_site_packages_copy_beside_a_checkout(tmp_path: 
     assert result.fix and "pip uninstall pymaxim" in result.fix
 
 
-def test_doctor_is_ok_without_a_stray_copy(tmp_path: Path):
+def test_doctor_asks_a_child_and_is_ok_when_it_imports_the_same_tree(tmp_path: Path, monkeypatch):
+    import maxim
+
+    monkeypatch.setattr(checks, "_child_maxim_dir", lambda: Path(maxim.__file__).resolve().parent)
     assert check_maxim_install((_site(tmp_path, stray=False),)).status == "ok"
 
 
-def test_doctor_is_ok_for_a_normal_pip_install():
+def test_doctor_fails_when_a_child_imports_another_tree(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(checks, "_child_maxim_dir", lambda: tmp_path / "elsewhere" / "maxim")
+    result = check_maxim_install((_site(tmp_path, stray=False),))
+    assert result.status == "fail" and "a child process imports" in result.message
+
+
+def test_doctor_warns_when_a_child_cannot_import_maxim(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(checks, "_child_maxim_dir", lambda: "ModuleNotFoundError: No module named 'maxim'")
+    assert check_maxim_install((_site(tmp_path, stray=False),)).status == "warn"
+
+
+def test_doctor_runs_the_real_child_probe():
+    """No monkeypatch: the probe really spawns a child under child_env and reads back a directory."""
+    child = checks._child_maxim_dir()
+    assert isinstance(child, Path) and (child / "__init__.py").is_file()
+
+
+def _imported_from(monkeypatch, root: Path) -> None:
     import maxim
 
-    installed_root = str(Path(maxim.__file__).resolve().parent.parent)
-    assert check_maxim_install((installed_root,)).status == "ok"
+    pkg = root / "maxim"
+    pkg.mkdir(parents=True, exist_ok=True)
+    (pkg / "__init__.py").write_text("")
+    monkeypatch.setattr(maxim, "__file__", str(pkg / "__init__.py"))
+
+
+def test_doctor_fails_on_an_unclaimed_site_packages_copy_that_is_the_imported_one(tmp_path: Path, monkeypatch):
+    """A path-style editable install appends src AFTER site-packages, so a stray copy wins in the process itself."""
+    root = tmp_path / "site-packages"
+    _imported_from(monkeypatch, root)
+    monkeypatch.setattr(checks, "_claimed_by_a_distribution", lambda pkg_dir: False)
+    result = check_maxim_install((str(root),))
+    assert result.status == "fail" and "no installed package claims" in result.message
+
+
+def test_doctor_is_ok_for_an_installed_package_a_distribution_claims(tmp_path: Path, monkeypatch):
+    root = tmp_path / "site-packages"
+    _imported_from(monkeypatch, root)
+    monkeypatch.setattr(checks, "_claimed_by_a_distribution", lambda pkg_dir: True)
+    assert check_maxim_install((str(root),)).status == "ok"
+
+
+def test_claimed_by_a_distribution_reads_record_files(tmp_path: Path):
+    """The real RECORD reader: a directory no distribution lists is unclaimed."""
+    assert checks._claimed_by_a_distribution(tmp_path / "maxim") is False
+    import pytest as _pytest
+
+    pytest_dir = Path(_pytest.__file__).resolve().parent
+    assert checks._claimed_by_a_distribution(pytest_dir) is True
+
+
+def test_child_env_module_imports_only_the_standard_library():
+    """scripts/_child_env.py loads child_env.py by path so harnesses never import the maxim package. A maxim (or any
+    non-stdlib) import added to it would quietly import whichever maxim sys.path holds, the very gap it closes."""
+    import ast
+
+    source = Path(__file__).resolve().parents[2] / "src" / "maxim" / "utils" / "child_env.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    modules = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules |= {alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            modules.add((node.module or "").split(".")[0])
+    assert modules <= set(sys.stdlib_module_names) | {"__future__"}, sorted(modules - set(sys.stdlib_module_names))
+
+
+# ── the migrated spawn sites hand their child child_env, not the hook-rewritten env ─────────────────────────────────
+
+
+def _polluted(monkeypatch) -> str:
+    """Put this interpreter's site-packages FIRST on os.environ's PYTHONPATH, as the GStreamer .pth hook does."""
+    site_dir = own_site_dirs()[0]
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([site_dir, "/repo/src"]))
+    return site_dir
+
+
+def _capture_run(monkeypatch, target: str) -> list[dict]:
+    envs: list[dict] = []
+
+    def fake_run(cmd, **kwargs):
+        envs.append(kwargs.get("env"))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(f"{target}.subprocess.run", fake_run)
+    return envs
+
+
+def test_the_leader_restart_reexecs_with_child_env(monkeypatch):
+    import threading
+
+    from maxim.runtime import leader_proxy
+
+    site_dir = _polluted(monkeypatch)
+    execs: list[tuple] = []
+    monkeypatch.setattr(leader_proxy.os, "execve", lambda exe, argv, env: execs.append((exe, argv, env)))
+    monkeypatch.setattr(leader_proxy, "_stop_own_servers_for_restart", lambda: None)
+    monkeypatch.setattr(leader_proxy.time, "sleep", lambda s: None)
+
+    class _Inline:  # run the restart thread's target synchronously
+        def __init__(self, target, **_kw):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", _Inline)
+    h = object.__new__(leader_proxy._ProxyHandler)
+    h.start_time = 0.0
+    h.client_address = ("127.0.0.1", 1)
+    h._admin_refused = lambda name: False
+    h._read_body = lambda max_size: b""
+    h._send_json = lambda code, body: None
+    h._handle_admin_restart()
+    assert len(execs) == 1
+    env = execs[0][2]
+    assert site_dir not in env.get("PYTHONPATH", "").split(os.pathsep)
+    assert "/repo/src" in env["PYTHONPATH"].split(os.pathsep)
+
+
+def test_the_leader_pip_calls_get_child_env(monkeypatch, tmp_path: Path):
+    from maxim.runtime import leader_proxy
+
+    site_dir = _polluted(monkeypatch)
+    envs = _capture_run(monkeypatch, "maxim.runtime.leader_proxy")
+    leader_proxy._get_latest_pypi_version()
+    h = object.__new__(leader_proxy._ProxyHandler)
+    h._send_json = lambda code, body: None
+    h._run_pip_install(str(tmp_path))
+    assert len(envs) == 2
+    for env in envs:
+        assert env is not None and site_dir not in env.get("PYTHONPATH", "").split(os.pathsep)
+
+
+def test_the_matplotlib_preflight_gets_child_env(monkeypatch, tmp_path: Path):
+    from maxim.utils import plotting
+
+    site_dir = _polluted(monkeypatch)
+    envs = _capture_run(monkeypatch, "maxim.utils.plotting")
+    plotting.preflight_matplotlib_fonts(cache_dir=tmp_path / "mpl")
+    assert envs and envs[0] is not None
+    assert site_dir not in envs[0].get("PYTHONPATH", "").split(os.pathsep)
+    assert envs[0]["MPLCONFIGDIR"] == str(tmp_path / "mpl")

@@ -2384,12 +2384,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         )
 
         # Schedule the restart on a background thread so the response
-        # is fully flushed before os.execv replaces the process image.
+        # is fully flushed before os.execve replaces the process image.
         def _do_restart() -> None:
             time.sleep(delay_s)
-            # os.execv() does NOT fire atexit handlers: this process's own LLM servers are stopped first (#1344 PR 3a).
+            # os.execve() does NOT fire atexit handlers: this process's own LLM servers are stopped first (#1344 PR 3a).
             _stop_own_servers_for_restart()
-            logger.info("admin/restart: executing os.execv — goodbye")
+            logger.info("admin/restart: executing os.execve — goodbye")
             # Re-exec with the original command line
             # execve with child_env: an execv would hand the re-exec'd leader a .pth-rewritten PYTHONPATH with
             # site-packages first, so it could come back importing a stray site-packages maxim (#1593).

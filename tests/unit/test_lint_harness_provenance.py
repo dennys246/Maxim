@@ -127,3 +127,37 @@ def test_real_tree_is_clean() -> None:
 def test_spawns_sim_sees_every_command_shape(src: str, spawns: bool) -> None:
     """#1010 item 5: a tuple or an appended flag escaped the list-literal-only check."""
     assert L._spawns_sim(ast.parse(src)) is spawns
+
+
+# ── #1593: a harness's sub-sim environment comes from child_env ─────────────────────────────────────────────────────
+
+
+def _env_hits(code: str) -> list[str]:
+    import textwrap
+
+    return L._env_failures(Path("scripts/h.py"), ast.parse(textwrap.dedent(code)))
+
+
+def test_an_environment_copied_from_os_environ_fails_and_one_wrapped_in_child_env_passes():
+    bad = """
+    import os
+    a = os.environ.copy()
+    b = dict(os.environ)
+    c = {**os.environ, "X": "1"}
+    d = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    subprocess.run(cmd, env=os.environ)
+    """
+    assert len(_env_hits(bad)) == 5
+    good = """
+    import os
+    a = child_env()
+    d = child_env({k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")})
+    e = child_env(dict(os.environ))
+    keys = sorted(k for k in os.environ if k.startswith("MAXIM_"))
+    v = os.environ.get("HOME")
+    """
+    assert _env_hits(good) == []
+
+
+def test_every_real_harness_builds_its_sub_sim_environment_with_child_env():
+    assert not [f for f in L.lint() if "child_env" in f]

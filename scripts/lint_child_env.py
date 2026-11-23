@@ -9,23 +9,31 @@ site-packages. A spawn that inherits ``os.environ``, or copies it by hand, hands
 
 **What counts as a spawn:** a call to
 - ``subprocess.run`` / ``Popen`` / ``call`` / ``check_call`` / ``check_output``;
+- ``subprocess.getoutput`` / ``getstatusoutput``, which take no environment and so always count;
 - ``asyncio.create_subprocess_exec`` / ``create_subprocess_shell``;
-- an ``os.exec*`` / ``os.spawn*`` / ``os.posix_spawn*`` function.
+- an ``os.exec*`` / ``os.spawn*`` / ``os.posix_spawn*`` function. One without an ``e`` suffix always counts,
+  because it inherits ``os.environ``.
 
 **A spawn is clean when** its environment argument (``env=``, or the ``env`` positional of
-``os.execve``/``os.execvpe``/``os.spawnve``/``os.posix_spawn``) is one of these:
-- a call to a sanctioned builder;
-- a name assigned, in the same function, from an expression that calls one;
-- an expression that calls one.
-
-The sanctioned builders are ``child_env`` itself, the builders listed in :data:`SANCTIONED` (each checked to
-call ``child_env``; see ``tests/unit/test_lint_child_env.py``), and any function in the same file whose body
-calls a sanctioned builder. An ``os.exec*`` without an ``e`` suffix always counts, because it inherits
-``os.environ``.
+``os.execve``/``os.execvpe``/``os.spawnve``/``os.posix_spawn``) evaluates to a ``child_env``-built
+environment:
+- a call to ``child_env`` or another builder in :data:`SANCTIONED`, by name or as ``module.name`` (each is
+  checked to reach ``child_env`` in ``tests/unit/test_lint_child_env.py``);
+- a call to a same-file function, as ``f()`` or ``self.f()``, every one of whose ``return`` values is clean.
+  A method name alone never counts, so a local ``def copy()`` does not clean ``os.environ.copy()``;
+- ``{**clean, "K": v}``, where every ``**`` unpack is clean, ``a if c else b``, where both branches are, or
+  ``{k: v for k, v in clean.items() if ...}``, a filter of a clean environment;
+- a name every assignment to which, in the spawn's own function scope, is clean, and which nothing
+  ``.update()``s with ``os.environ``.
 
 **Ratchet:** every file is grandfathered at its ``origin/main`` count, and a branch may not raise any file's
-count. New files start at zero, and burning a count down is free. This catches FORGETTING, not evasion: an
-environment built through a variable from another module, or a spawn reached through an alias, escapes it.
+count. New files start at zero, and burning a count down is free. This catches FORGETTING, not evasion:
+- an environment built in another module, or a spawn reached through an alias (``import subprocess as sp``,
+  ``from subprocess import run``), escapes it;
+- an environment passed in as a function PARAMETER, or unpacked from a tuple, always counts as unclean. It
+  neither credits a correct caller nor catches a regressed one; pass ``env=child_env(env)`` (idempotent) to
+  make such a site count as clean. The harnesses' sub-sim spawns take their environment as a parameter, which
+  is why ``scripts/lint_harness_provenance.py::_env_failures`` checks where those environments are BUILT.
 
 Exits: 0 clean; 1 a file's count rose (stderr); 2 unexpected error.
 """
@@ -45,6 +53,8 @@ CANONICAL = frozenset({"src/maxim/utils/child_env.py", "scripts/_child_env.py"})
 #: Builders in other modules that return a ``child_env``-derived environment.
 SANCTIONED = frozenset({"child_env", "host_tool_env", "git_env"})
 _SUBPROCESS = frozenset({"run", "Popen", "call", "check_call", "check_output"})
+#: subprocess helpers that take no ``env``: they always inherit ``os.environ``.
+_SUBPROCESS_NO_ENV = frozenset({"getoutput", "getstatusoutput"})
 _ASYNCIO = frozenset({"create_subprocess_exec", "create_subprocess_shell"})
 #: os functions that take an environment, and the positional index of it.
 _OS_ENV_POS = {
@@ -62,30 +72,93 @@ _OS_ENV_POS = {
 _OS_NO_ENV = frozenset({"execv", "execvp", "execl", "execlp", "spawnv", "spawnvp", "spawnl", "spawnlp"})
 
 
-def _called_names(node: ast.AST) -> set[str]:
-    names: set[str] = set()
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Call):
-            f = sub.func
-            if isinstance(f, ast.Name):
-                names.add(f.id)
-            elif isinstance(f, ast.Attribute):
-                names.add(f.attr)
-    return names
+def _own_nodes(fn: ast.AST):
+    """Every node in ``fn``'s own scope: nested function and class bodies excluded."""
+    stack = list(ast.iter_child_nodes(fn))
+    while stack:
+        node = stack.pop()
+        yield node
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def _is_builder_call(node: ast.AST, local: set[str]) -> bool:
+    """``child_env(...)`` / a SANCTIONED builder (by name or as ``module.name``), or a local builder (``f()``,
+    ``self.f()``). A bare method name never counts on its own: ``os.environ.copy()`` is not ``copy()``."""
+    if not isinstance(node, ast.Call):
+        return False
+    f = node.func
+    if isinstance(f, ast.Name):
+        return f.id in SANCTIONED or f.id in local
+    if isinstance(f, ast.Attribute):
+        if f.attr in SANCTIONED:
+            return True
+        return isinstance(f.value, ast.Name) and f.value.id in ("self", "cls") and f.attr in local
+    return False
+
+
+def _mentions_environ(node: ast.AST) -> bool:
+    return any(
+        isinstance(n, ast.Attribute) and n.attr == "environ" and isinstance(n.value, ast.Name) and n.value.id == "os"
+        for n in ast.walk(node)
+    )
+
+
+def _clean_expr(expr: ast.expr | None, scope: ast.AST, local: set[str]) -> bool:
+    """True when ``expr`` evaluates to a ``child_env``-built environment."""
+    if expr is None:
+        return False
+    if _is_builder_call(expr, local):
+        return True
+    if isinstance(expr, ast.IfExp):
+        return _clean_expr(expr.body, scope, local) and _clean_expr(expr.orelse, scope, local)
+    if isinstance(expr, ast.Dict):
+        unpacks = [v for k, v in zip(expr.keys, expr.values) if k is None]
+        return bool(unpacks) and all(_clean_expr(v, scope, local) for v in unpacks)
+    if isinstance(expr, ast.DictComp) and len(expr.generators) == 1:
+        it = expr.generators[0].iter  # {k: v for k, v in <clean>.items() if ...}: a filter of a clean environment
+        return (
+            isinstance(it, ast.Call)
+            and isinstance(it.func, ast.Attribute)
+            and it.func.attr == "items"
+            and _clean_expr(it.func.value, scope, local)
+        )
+    if isinstance(expr, ast.Name):
+        values: list[ast.expr] = []
+        for node in _own_nodes(scope):
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == expr.id for t in node.targets):
+                values.append(node.value)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == expr.id:
+                if node.value is not None:
+                    values.append(node.value)
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "update"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == expr.id
+                and any(_mentions_environ(arg) for arg in [*node.args, *(k.value for k in node.keywords)])
+            ):
+                return False  # env = child_env(); env.update(os.environ) puts the hook's value back
+        return bool(values) and all(_clean_expr(v, scope, local) for v in values)
+    return False
 
 
 def _local_builders(tree: ast.AST) -> set[str]:
-    """Functions in this file whose bodies call a sanctioned builder, resolved to a fixed point."""
-    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    builders = set(SANCTIONED)
+    """Same-file functions every one of whose ``return`` values is a clean environment, to a fixed point."""
+    funcs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    local: set[str] = set()
     changed = True
     while changed:
         changed = False
-        for name, fn in funcs.items():
-            if name not in builders and _called_names(fn) & builders:
-                builders.add(name)
+        for fn in funcs:
+            if fn.name in local:
+                continue
+            returns = [n for n in _own_nodes(fn) if isinstance(n, ast.Return)]
+            if returns and all(_clean_expr(r.value, fn, local) for r in returns):
+                local.add(fn.name)
                 changed = True
-    return builders
+    return local
 
 
 def _spawn_kind(call: ast.Call) -> tuple[str, int | None] | None:
@@ -96,6 +169,8 @@ def _spawn_kind(call: ast.Call) -> tuple[str, int | None] | None:
     mod, attr = f.value.id, f.attr
     if mod == "subprocess" and attr in _SUBPROCESS:
         return f"subprocess.{attr}", None
+    if mod == "subprocess" and attr in _SUBPROCESS_NO_ENV:
+        return f"subprocess.{attr}", -2
     if mod == "asyncio" and attr in _ASYNCIO:
         return f"asyncio.{attr}", None
     if mod == "os" and attr in _OS_ENV_POS:
@@ -116,29 +191,6 @@ def _env_arg(call: ast.Call, pos: int | None) -> ast.expr | None:
             return None
         return None if isinstance(arg, ast.Starred) else arg
     return None
-
-
-def _assignments(fn: ast.AST) -> dict[str, list[ast.expr]]:
-    out: dict[str, list[ast.expr]] = {}
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    out.setdefault(target.id, []).append(node.value)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-            out.setdefault(node.target.id, []).append(node.value)
-    return out
-
-
-def _clean(env: ast.expr | None, scope: ast.AST, builders: set[str]) -> bool:
-    if env is None:
-        return False
-    if _called_names(env) & builders:
-        return True
-    if isinstance(env, ast.Name):
-        values = _assignments(scope).get(env.id, [])
-        return bool(values) and all(_called_names(v) & builders for v in values)
-    return False
 
 
 def unclean_spawns(text: str) -> list[tuple[int, str]]:
@@ -168,7 +220,7 @@ def unclean_spawns(text: str) -> list[tuple[int, str]]:
         if kind is None:
             continue
         spelling, pos = kind
-        if spelling[3:] in _OS_NO_ENV and spelling.startswith("os."):
+        if pos == -2 or (spelling.startswith("os.") and spelling[3:] in _OS_NO_ENV):
             hits.append((call.lineno, spelling))  # inherits os.environ by construction
             continue
         if pos == -1:  # execle-style: the environment is the last positional
@@ -176,7 +228,7 @@ def unclean_spawns(text: str) -> list[tuple[int, str]]:
             env = None if last is None or isinstance(last, ast.Starred) else last
         else:
             env = _env_arg(call, pos)
-        if not _clean(env, enclosing(call), builders):
+        if not _clean_expr(env, enclosing(call), builders):
             hits.append((call.lineno, spelling))
     return sorted(hits)
 
@@ -223,7 +275,8 @@ def main() -> int:
                 exclude=CANONICAL,
                 what="spawns without a child_env environment",
                 advice=(
-                    "pass env=child_env(...) (maxim.utils.child_env; scripts: from _child_env import child_env), "
+                    "pass env=child_env(...) (maxim.utils.child_env; scripts: from _child_env import child_env; idempotent, so "
+                    "child_env(env) also works for an env passed in), "
                     "or os.execve(..., child_env()) for a re-exec (#1593). The count only ratchets down."
                 ),
             )

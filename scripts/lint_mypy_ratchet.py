@@ -99,6 +99,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _lint_git import GitUnavailable, base_ref, changed_files, must_not_skip  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = "src/maxim"
 
@@ -262,7 +265,7 @@ def run_mypy(tree: Path) -> tuple[int, str, str]:
     try:
         cfg = scratch / "empty.ini"
         cfg.write_text("[mypy]\n")  # a section header only; without it mypy warns on stderr
-        env = {k: v for k, v in os.environ.items() if k not in SCRUBBED_ENV}
+        env = child_env({k: v for k, v in os.environ.items() if k not in SCRUBBED_ENV})
         cmd = [
             sys.executable,
             "-m",

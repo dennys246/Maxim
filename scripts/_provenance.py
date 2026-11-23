@@ -412,7 +412,7 @@ def in_process_code_provenance(
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "code_tree_sha256": code_tree_sha256(root),
         "python": sys.executable,
-        "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "pythonpath": child_env().get("PYTHONPATH", ""),  # what the sub-sims get, not a .pth hook's rewrite (#1593)
     }
     if gate["allow_dirty"]:
         prov["allow_dirty"] = True
@@ -450,7 +450,7 @@ def executed_code_provenance(
         # The digest describes the tree the dirty flag (and any allowance) was judged on, and only when that
         # is the tree the sub-sims import: an allowance for one tree must never bind to another's code.
         "code_tree_sha256": code_tree_sha256(root) if executed_root == root else "unknown",
-        "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "pythonpath": child_env().get("PYTHONPATH", ""),  # what the sub-sims get, not a .pth hook's rewrite (#1593)
         **_run_id_stamp(),
         "harness_family": "spawning",
     }
