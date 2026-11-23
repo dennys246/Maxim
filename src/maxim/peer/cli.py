@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import getpass
 import sys
+import logging
 from collections.abc import Sequence
 
 from maxim.peer.config import (
@@ -19,6 +20,9 @@ from maxim.peer.config import (
     truncate_key,
     write_peer_config,
 )
+from maxim.runtime.lane_models import REMOTE_CAPABLE_TIERS
+
+logger = logging.getLogger(__name__)
 
 
 def _clear_probe_cache(url: str | None = None) -> None:
@@ -55,6 +59,13 @@ Options:
   --key KEY        Bearer token (prompts if omitted)
   --model MODEL    Model name to send (optional; server picks default)
   --skip-test      Don't verify connectivity before saving
+  --cloud          Mark the URL public-facing (stored in peer.yml only;
+                   it does not enable cloud-provider routing)
+  --all-lanes      Point every lane (large, medium, small) at the leader.
+                   Default: only large; the others keep running locally,
+                   and connect prints where each one goes. The leader
+                   serves one generation at a time, so lanes sent there
+                   queue behind each other.
 """
 
 
@@ -201,6 +212,7 @@ def _cmd_connect(argv: list[str]) -> int:
     key: str | None = None
     model: str | None = None
     skip_test = False
+    all_lanes = False
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -212,6 +224,12 @@ def _cmd_connect(argv: list[str]) -> int:
             i += 2
         elif a == "--skip-test":
             skip_test = True
+            i += 1
+        elif a == "--all-lanes":
+            all_lanes = True
+            i += 1
+        elif a == "--cloud":
+            # Read below as is_cloud. The parser used to reject it as an unknown option (#1780).
             i += 1
         else:
             print(f"Unknown option: {a}", file=sys.stderr)
@@ -268,7 +286,8 @@ def _cmd_connect(argv: list[str]) -> int:
     # peer.yml working during the deprecation window.
     cfg = PeerConfig(url=url, api_key=key, model=model, is_cloud=is_cloud)
     peer_path = write_peer_config(cfg)
-    config_json_path = _write_lane_to_config_json(url, key, model, is_cloud)
+    tiers = REMOTE_CAPABLE_TIERS if all_lanes else ("large",)
+    config_json_path = _write_lane_to_config_json(url, key, model, is_cloud, tiers=tiers)
 
     # New URL: drop any cached probe outcomes so the next startup re-probes
     # the freshly-configured leader instead of trusting a stale entry from
@@ -284,12 +303,48 @@ def _cmd_connect(argv: list[str]) -> int:
     if is_cloud:
         print("  is_cloud: true (cloud-lane gate will be auto-enabled)")
     print()
+    for line in _lane_routing_lines(url, tiers):
+        print(line)
+    print()
     print("You can now run `maxim` — it will auto-route to this leader.")
     return 0
 
 
-def _write_lane_to_config_json(url: str, key: str, model: str | None, is_cloud: bool):
-    """Mirror peer.yml's data into ``config.json::lanes.large.*``.
+def _lane_routing_lines(url: str, remote_tiers: Sequence[str]) -> list[str]:
+    """Where each lane goes after ``connect``: the leader, a local model, or nowhere (line 6 item 7).
+
+    Local lanes are named from this host's hardware detection (``detect_tiers``, counting only models already
+    on disk), the same detection ``build_primary_router`` starts from. A lane pointed at the leader is listed
+    whether or not this host has that tier: a remote URL creates the lane (``apply_lane_env_overrides``).
+    """
+    from maxim.runtime.lane_backends import _profile_has_local_file
+    from maxim.runtime.lane_models import detect_tiers
+
+    try:
+        local = detect_tiers(None, profile_available=_profile_has_local_file)
+    except Exception as e:  # a report line: never a reason to fail a connect that is already saved
+        logger.warning("peer connect: hardware detection for the lane report failed: %s", e)
+        return ["Lanes: could not detect this machine's local tiers; run `maxim doctor --as peer`."]
+    lines = ["Lanes:"]
+    for tier in REMOTE_CAPABLE_TIERS:
+        if tier in remote_tiers:
+            lines.append(f"  {tier:<7} → leader ({url})")
+        elif tier in local and local[tier].model_profile:
+            lines.append(f"  {tier:<7} → local, {local[tier].model_profile} on {local[tier].device or 'auto'}")
+        else:
+            lines.append(f"  {tier:<7} → none on this machine")
+    if len(remote_tiers) < len(REMOTE_CAPABLE_TIERS):
+        lines.append("  Use --all-lanes to send every lane to the leader (they share its one generation slot).")
+    return lines
+
+
+def _write_lane_to_config_json(
+    url: str, key: str, model: str | None, is_cloud: bool, *, tiers: Sequence[str] = ("large",)
+):
+    """Mirror peer.yml's data into ``config.json::lanes.<tier>.*`` for each of ``tiers``.
+
+    Every tier not in ``tiers`` that still points at a remote from an earlier ``connect --all-lanes`` is
+    cleared, so a later large-only connect never leaves medium or small on an old leader.
 
     Writes the API key to ``~/.config/maxim/api_key`` mode-0600 (via
     :func:`maxim.utils.atomic_io.atomic_write_secret`) and stores the
@@ -309,10 +364,13 @@ def _write_lane_to_config_json(url: str, key: str, model: str | None, is_cloud: 
 
     # Write the lane fields via the canonical writer module
     set_field("role", "peer")
-    set_field("lanes.large.remote_url", url)
-    set_field("lanes.large.remote_api_key_ref", str(api_key_path))
-    if model:
-        set_field("lanes.large.remote_model", model)
+    for tier in REMOTE_CAPABLE_TIERS:
+        if tier in tiers:
+            set_field(f"lanes.{tier}.remote_url", url)
+            set_field(f"lanes.{tier}.remote_api_key_ref", str(api_key_path))
+            set_field(f"lanes.{tier}.remote_model", model or None)
+        else:
+            _clear_remote_lane(tier, only_if_set=True)
     # Post-implementation Executor I5 fold: do NOT flip cloud.enabled
     # based on the peer-connect ``--cloud`` flag.
     #
@@ -371,6 +429,11 @@ def _cmd_show() -> int:
             print(f"  model:    {cfg.lanes.large.remote_model}")
         if cfg.cloud.enabled:
             print("  is_cloud: true (cloud.enabled in config.json)")
+        others = [t for t in REMOTE_CAPABLE_TIERS[1:] if getattr(cfg.lanes, t).remote_url]
+        for tier in others:
+            print(f"  {tier}:   {getattr(cfg.lanes, tier).remote_url}")
+        if not others:
+            print("  medium, small: local (`maxim peer connect <url> --all-lanes` sends them to the leader)")
         # Also show peer.yml if present — operator wants to see drift
         peer = read_peer_config()
         if peer is not None:
@@ -401,23 +464,35 @@ def _cmd_show() -> int:
     return 0
 
 
-def _cmd_forget() -> int:
-    """C4 fold: delete BOTH config.json::lanes.large.* AND peer.yml."""
-    from maxim.runtime.config_loader import config_path, load_config
+def _clear_remote_lane(tier: str, *, only_if_set: bool) -> bool:
+    """Null ``lanes.<tier>``'s remote fields; True when it pointed somewhere (or ``only_if_set`` is False)."""
+    from maxim.runtime.config_loader import load_config
     from maxim.runtime.config_writer import set_field
+
+    lane = getattr(load_config().lanes, tier)
+    if only_if_set and not (lane.remote_url or lane.remote_api_key_ref):
+        return False
+    set_field(f"lanes.{tier}.remote_url", None)
+    set_field(f"lanes.{tier}.remote_api_key_ref", None)
+    set_field(f"lanes.{tier}.remote_model", None)
+    return True
+
+
+def _cmd_forget() -> int:
+    """C4 fold: delete BOTH config.json::lanes.<tier>.* (every tier) AND peer.yml."""
+    from maxim.runtime.config_loader import config_path, load_config
 
     removed_any = False
 
     # Clear config.json lane routing — pass None directly (set_field
-    # accepts typed None, which writes a null field).
+    # accepts typed None, which writes a null field). Every tier, since
+    # `connect --all-lanes` writes medium and small too.
     try:
-        cfg = load_config()
-        if cfg.lanes.large.remote_url or cfg.lanes.large.remote_api_key_ref:
-            set_field("lanes.large.remote_url", None)
-            set_field("lanes.large.remote_api_key_ref", None)
-            set_field("lanes.large.remote_model", None)
-            print(f"✓ Cleared lanes.large.* in {config_path()}")
-            removed_any = True
+        load_config()
+        for tier in REMOTE_CAPABLE_TIERS:
+            if _clear_remote_lane(tier, only_if_set=True):
+                print(f"✓ Cleared lanes.{tier}.* in {config_path()}")
+                removed_any = True
     except Exception as e:
         print(f"⚠ Could not clear config.json lanes: {e}")
 

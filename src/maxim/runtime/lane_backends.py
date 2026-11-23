@@ -2189,22 +2189,6 @@ def _append_decision_record(
             logger.debug("decision_log append failed (non-fatal): %s", e)
 
 
-def _add_remote_large_placeholder(lane_configs: dict[str, Any]) -> None:
-    """``build_primary_router``'s remote large-tier placeholder (moved verbatim for rule T, #1538)."""
-    # If peer config provides a remote URL for the large tier but local
-    # hardware didn't create one (e.g., Mac with no CUDA GPU), inject a
-    # large tier placeholder so apply_lane_env_overrides() can wire it
-    # to the leader. The remote URL IS the large tier — the leader's GPU.
-    if "large" not in lane_configs:
-        _large_url = os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip()
-        if _large_url:
-            lane_configs["large"] = LaneConfig(
-                name="large",
-                max_workers=1,
-                requires_gpu=False,  # Remote — no local GPU needed
-            )
-
-
 def _function_router_for(lane_configs: dict[str, Any], _llm_json_func_config: dict) -> Any:
     """``build_primary_router``'s FunctionRouter (moved verbatim for rule T, #1538)."""
     from maxim.runtime.lane_models import load_function_overrides
@@ -2359,8 +2343,6 @@ def build_primary_router(
         from maxim.runtime.worker_pool import DEFAULT_TIERS
 
         lane_configs = {name: dataclasses.replace(cfg) for name, cfg in DEFAULT_TIERS.items()}
-
-    _add_remote_large_placeholder(lane_configs)
 
     # Apply tier/function config from llm.json if present
     _llm_json_tier_config: dict = {}

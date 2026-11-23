@@ -519,6 +519,10 @@ def detect_tiers(
     return tiers
 
 
+# The tiers a lane can be pointed at a remote server for (``lanes.<tier>.remote_url``).
+REMOTE_CAPABLE_TIERS: tuple[str, ...] = ("large", "medium", "small")
+
+
 def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, LaneConfig]:
     """Patch lane configs with env-var overrides for remote URLs.
 
@@ -536,12 +540,28 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
     REMOTE_URL leaves the lane unchanged. Names are case-folded (large →
     MAXIM_LANE_LARGE_REMOTE_URL).
 
+    A REMOTE_URL on one of the three tiers this host's hardware did not
+    detect creates that lane, served remotely. It used to be dropped
+    silently, except for large, which ``build_primary_router`` gave a
+    placeholder of its own: so a peer that pointed ``lanes.medium`` at its
+    leader on a GPU box (no medium tier) got no medium lane at all (line 6
+    item 7, 2026-11-23).
+
     Returns a new dict — does not mutate the input.
     """
     out: dict[str, LaneConfig] = {}
-    for name, cfg in lane_configs.items():
+    names = list(lane_configs)
+    names += [t for t in REMOTE_CAPABLE_TIERS if t not in lane_configs]
+    for name in names:
         key = name.upper()
         url = os.environ.get(f"MAXIM_LANE_{key}_REMOTE_URL", "").strip()
+        if name not in lane_configs:
+            if not url:
+                continue
+            # Remote: the leader's hardware serves it, so no local GPU is needed.
+            cfg = LaneConfig(name=name, max_workers=1, requires_gpu=False)
+        else:
+            cfg = lane_configs[name]
         if not url:
             out[name] = cfg
             continue
