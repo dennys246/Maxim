@@ -23,7 +23,7 @@ goes to the lines below.
   - #1680 (`fix/1680-write-paper-kwarg`);
   - #1414 (`fix/goal-call-closure`, draft PR #1747);
   - atonia 10a and 10b (draft PRs #1603 and #1735);
-  - loop slice 6 (`refactor/loop-slice6-intake`).
+  - loop slice 6 (`refactor/loop-slice6-intake`; merged as #1758 on 2026-11-22).
 - **They collide in the hot files.** In this plan, **the hot files** are `runtime/agent_loop.py`,
   `agents/exec_agent.py`, `cli.py`, `simulation/orchestrator.py`, `runtime/tool_dispatch.py` and
   `models/language/router.py`. `git diff --name-only origin/main...<branch>` on 2026-11-22 shows:
@@ -356,7 +356,7 @@ an action for this release, not a rule.
 1. **Behaviour fixes:** #1747, #1185, #1519, #1228 and #1680. The order among them comes from `scripts/pr_overlap.py`
    across the branches, and each passes `pr_merge_readiness`.
 2. **10a, then 10b** (V22). Then #1601, #1396 and line 6's `models/language/` items (5 and 8).
-3. **Loop slice 6.** Then 7a, 7b and the B2 edge are rebased onto it (D4).
+3. **Loop slice 6** (merged, #1758). Then 7a, 7b and the B2 edge are rebased onto it (D4).
 4. **The first new orchestrator slice,** after step 1's `orchestrator.py` branches.
 5. **Everything else** merges whenever it is green: the line 2, 5 and 6 PRs that touch no hot file.
 
