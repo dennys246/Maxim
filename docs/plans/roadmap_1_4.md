@@ -3,7 +3,8 @@
 **Recentered 2026-10-16, after 1.3.2 shipped** (owner decisions; a six-reader docs review):
 - **The path:** four patch releases, then 1.4.0. They are 1.3.3 (the release pipeline and pulse's blockers), 1.3.4 (the
   atonia gate, on its own clock), 1.3.5 (the orchestrator decomposition) and 1.3.6 (loop phase 2, then this plan's
-  Phase 0 instrument). 1.3.3 was split on 2026-10-17. Scopes, exits and
+  Phase 0 instrument). 1.3.3 was split on 2026-10-17. *(2026-11-22, release_1_3_5.md D1: 1.3.5 is re-scoped to its
+  own lines; the orchestrator decomposition is the orchestrator line, planned as 1.3.5, numbered at its cut.)* Scopes, exits and
   risks: [roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16).
 - **E1 is redesigned before its harness** (§Phase 2): as drafted it cannot EARN under BF2.
 - **T1-2 (Exp 37) is resolved by B4 before 1.4.0.** If B4 has not run, 1.4.0 waits.
@@ -625,7 +626,10 @@ frozen status verbatim; **EARNED** per rung = every frozen gate of that rung's p
   `run_agentic_loop` (2026-10-27; pinned at 2,411 then, 2,349 on 2026-10-29). It is not in the debt snapshot and
   has no `accepted_new_debt` record, by owner decision 2026-10-29: it stays unaccepted so the gate keeps pressing on
   the decomposition. So 1.4.0 ships only once it is under the 200-line pin threshold or accepted then. Accepted or
-  not, the 1.5 bound is set on it at the 1.4 release (register row O21). Second, the five
+  not, the 1.5 bound is set on it at the 1.4 release (register row O21). *(Superseded 2026-11-22, owner decision
+  release_1_3_5.md D10: the body gets an `accepted_new_debt` record whose `reason` names 1.5 as the repaying
+  release, landed on `main` in its own PR before the 1.4.0 bump PR. That replaces the 2026-10-29 "left unaccepted"
+  decision. It does not lift `1323.functions-1000`: the body is still held to 1,000 lines through `split_from`.)* Second, the five
   orchestrator characterization arms (`persistent_agent`, `imagination`, `new_goal`, `stall`, `generative`) are
   complete: in the golden, with direct-assertion evidence, their golden case passing. (That they land BEFORE the
   slice that moves their code is enforced by that slice's review and roadmap_1_3_x.md §"Characterization owed",
@@ -749,7 +753,8 @@ only, no behavioural claim.
 
 *As shipped (1.3.2, 2026-10-16):* the `agent_loop` decomposition through slice 5 (`agent_loop.py` 5,543 → 3,363
 lines), plus the ratchets, the evidence gate and the 1.4.0 hard gate (#1300). The orchestrator slices and loop
-phase 2 did **not** ship. They are the 1.4.0 gate and are scheduled as 1.3.5 and 1.3.6
+phase 2 did **not** ship. They are the 1.4.0 gate and are scheduled as 1.3.5 and 1.3.6 (since 2026-11-22, D1: the
+orchestrator line and the loop-phase-2 line, each numbered at its cut)
 ([roadmap_1_3_x.md §Path to 1.4.0](roadmap_1_3_x.md#path-to-140-owner-decision-2026-10-16)).
 
 They come FIRST because Phase 0 below builds its instrument on `agent_loop.py`: decomposing
@@ -783,7 +788,8 @@ land — the point at which T0 can pass.)*
 Nothing under `runtime/agent_loop.py`, `decisions/nac.py`'s selection path or `simulation/orchestrator.py`
 until the decomposition slices touching it have landed. The fence lifts when 1.3.6's decomposition slices land — the
 point at which T0 can pass (owner decision 2026-10-18; T0 in §Release thresholds, `scripts/release_gates.json`). The
-slices did not all land in 1.3.2; they continue in 1.3.5 and 1.3.6.
+slices did not all land in 1.3.2; they continue in 1.3.5 and 1.3.6 (since 2026-11-22, D1: the orchestrator line and
+the loop-phase-2 line, each numbered at its cut).
 
 **Dev-box groundwork (Track B), in order of value:**
 1. **Exp 62's different-reader pass** — cheap, and it turns a ledger row (EARNED then; PARTIAL, floor matched, since 2026-10-15) into a result 1.4 may
@@ -844,7 +850,7 @@ slices did not all land in 1.3.2; they continue in 1.3.5 and 1.3.6.
    (no design review), on a box with no leader beside it. *Update 2026-11-16: done. Exp 63b read NOT SHOWN, and Exp 63c
    PASSED its own frozen prereg: T1-16 EARNED 2026-11-13 (narrow) on Exp 63c, an owner reading of BF2 (DECISIONS.md
    2026-11-16, BF2-R1); its floor is owed at B3.*
-2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.5 and 1.3.6 unblock B2 and B3 (#1352, #1353), and before 1.4.0
+2b. **B4, T1-2's re-fire (L8's dose-response design)**, after 1.3.5 and 1.3.6 (since 2026-11-22: the orchestrator and loop-phase-2 lines) unblock B2 and B3 (#1352, #1353), and before 1.4.0
    (owner decision 2026-10-16);
 3. 1.4's campaigns, starting with the schedule below;
 4. after E3's campaign has run or its disposition is recorded, the parallel lines' rig work, one at a

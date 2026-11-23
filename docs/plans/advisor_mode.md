@@ -659,4 +659,6 @@ session.close()
 - AvServ-specific code in Maxim.
 - Hivemind or Oasis participation.
 - Per-person erasure (item 7's ephemeral mode is the answer for this use).
-- Approval of proposals in non-advisor runs (#922, #1185; 1.4).
+- Approval of proposals in non-advisor runs (#922, #1185; 1.4). *(2026-11-22: #1185 itself, plan approval as a
+  gate, ships in 1.3.5 line 1 ([release_1_3_5.md](release_1_3_5.md)); its larger design follow-ons, #922 and
+  GrantAuthority, stay 1.4.)*

@@ -69,6 +69,9 @@ class AgenticGoalAgent(Agent):
         # Current goal state
         self._current_goal: ProposedGoal | None = None
         self._pending_tool_call: ToolCall | None = None
+        # The id of the current goal once one of its SKIP sub-goals was skipped by a REFUSAL (#1414): the goal goes
+        # on and may end as a success, but it is still marked refused so contemplation learning skips it.
+        self._refused_in_goal: str | None = None
 
         # Subscribe to messages
         self._bus.subscribe(ProposedGoal, self._on_proposed_goal)
@@ -172,15 +175,23 @@ class AgenticGoalAgent(Agent):
             )
 
     def _on_tool_result(self, result: ToolResult) -> None:
-        """Handle tool completion."""
-        if self._current_goal is None or self._pending_tool_call is None:
-            return
+        """Handle tool completion published on the bus."""
+        self.close_tool_call(result.tool_call_id, result.success, result.result, result.error)
 
-        if result.tool_call_id != self._pending_tool_call.id:
-            return
+    def close_tool_call(self, tool_call_id: str, success: bool, result: Any = None, error: str | None = None) -> bool:
+        """Close the pending tool call with the fate of the tool that ran (or raised): the sub-goal policy, then the
+        next action or the goal's end. Returns False when ``tool_call_id`` is not the pending call (already closed).
+
+        The agent loop's agent-fallback path (§3) calls this directly (#1414): nothing publishes a ``ToolResult``
+        today, and publishing one from §3 alone would wake ``ToolResult``'s dormant subscribers for a biased slice of
+        calls and book one failure up to three times (owner decision 2026-11-21: direct close; the bus producer
+        belongs to every dispatcher at once, #1727). A refused call is :meth:`refuse_tool_call`'s.
+        """
+        goal, pending = self._current_goal, self._pending_tool_call  # one read of each, as in refuse_tool_call
+        if goal is None or pending is None or tool_call_id != pending.id:
+            return False
 
         self._pending_tool_call = None
-        goal = self._current_goal
 
         # Find the sub-goal that was executing (if any)
         current_sub: SubGoal | None = None
@@ -190,9 +201,9 @@ class AgenticGoalAgent(Agent):
                 break
 
         if current_sub:
-            if result.success:
+            if success:
                 current_sub.status = SubGoalStatus.COMPLETED
-                current_sub.result = result.result
+                current_sub.result = result
                 current_sub.completed_at = time.time()
 
                 log_structured(
@@ -205,13 +216,13 @@ class AgenticGoalAgent(Agent):
                     },
                 )
             else:
-                should_continue = goal.handle_sub_goal_failure(current_sub, result.error or "Unknown error")
+                should_continue = goal.handle_sub_goal_failure(current_sub, error or "Unknown error")
                 if not should_continue:
                     self._complete_goal(
                         success=False,
                         error=f"Sub-goal failed: {current_sub.error}",
                     )
-                    return
+                    return True
 
                 log_structured(
                     self.log,
@@ -224,40 +235,37 @@ class AgenticGoalAgent(Agent):
                     },
                 )
 
-            # Update memory with remaining sub-goals
-            if self._memory:
-                remaining = [
-                    sg.description
-                    for sg in goal.sub_goals
-                    if sg.status not in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
-                ]
-                self._memory.set_active_sub_goals(remaining)
-
-            # Schedule next action
-            self._schedule_next_action()
+            self._continue_goal(goal)
         else:
             # Simple goal (no sub-goals)
             self._complete_goal(
-                success=result.success,
-                result=result.result,
-                error=result.error,
+                success=success,
+                result=result,
+                error=error,
             )
+        return True
 
     def _complete_goal(
         self,
         success: bool,
         result: Any = None,
         error: str | None = None,
+        *,
+        refused: bool = False,
     ) -> None:
-        """Complete the current goal."""
+        """Complete the current goal (``refused``: autonomy refused its tool call, #1414)."""
         if self._current_goal is None:
             return
 
+        goal_id = self._current_goal.id
+        refused = refused or self._refused_in_goal == goal_id
+        self._refused_in_goal = None
         completed = GoalCompleted(
-            goal_id=self._current_goal.id,
+            goal_id=goal_id,
             success=success,
             result=result,
             error=error,
+            refused=refused,
         )
 
         log_structured(
@@ -271,20 +279,26 @@ class AgenticGoalAgent(Agent):
             },
         )
 
-        self._bus.publish(completed)
-        self._current_goal = None
-        self._pending_tool_call = None
+        try:
+            self._bus.publish(completed)
+        finally:
+            # The goal has ended whatever a subscriber does: when a contract error re-raises out of publish
+            # (``EncodingContractError``, still loud), the goal agent, memory's active goal and the plan all end it
+            # together, so none is left stranded (no pending call, a stale active goal, a phase that never advances;
+            # #1414 review).
+            self._current_goal = None
+            self._pending_tool_call = None
 
-        if self._memory:
-            self._memory.set_active_goal(None, None)
-            self._memory.set_active_sub_goals([])
+            if self._memory:
+                self._memory.set_active_goal(None, None)
+                self._memory.set_active_sub_goals([])
 
-        # Delegate phase advancement to PlanManager if a plan is active
-        if self._plan_manager and self._plan_manager.active_plan:
-            try:
-                self._plan_manager.advance_phase(success, result, error)
-            except Exception:
-                pass  # PlanManager failure should not block goal completion
+            # Delegate phase advancement to PlanManager if a plan is active
+            if self._plan_manager and self._plan_manager.active_plan:
+                try:
+                    self._plan_manager.advance_phase(success, result, error)
+                except Exception:
+                    pass  # PlanManager failure should not block goal completion
 
     def get_current_goal(self) -> ProposedGoal | None:
         """Get the current active goal."""
@@ -329,6 +343,39 @@ class AgenticGoalAgent(Agent):
             params=params or {},
         )
         self._bus.publish(tr)
+
+    def _continue_goal(self, goal: ProposedGoal) -> None:
+        """After a sub-goal's call closed and the goal goes on: memory's remaining sub-goals, then the next action."""
+        if self._memory:
+            remaining = [
+                sg.description
+                for sg in goal.sub_goals
+                if sg.status not in (SubGoalStatus.COMPLETED, SubGoalStatus.SKIPPED)
+            ]
+            self._memory.set_active_sub_goals(remaining)
+        self._schedule_next_action()
+
+    def refuse_tool_call(self, tool_call_id: str, reason: str) -> bool:
+        """The loop refused this agent's pending tool call (autonomy, #1414): close it, without a retry.
+
+        A refusal is not a tool result: the tool never ran, so it does not go through ``ToolResult`` (whose
+        subscribers book tool successes and failures). The sub-goal policy for a refusal is
+        ``ProposedGoal.handle_sub_goal_refusal`` (only SKIP goes on); a refused call with no sub-goal ends the goal.
+        Returns False when ``tool_call_id`` is not the pending call (already closed).
+        """
+        # One read of each: ExecAgent's worker thread writes both (``_on_proposed_goal``) and nothing locks them, so
+        # this narrows a goal swap mid-close but does not exclude it (``_complete_goal`` re-reads the goal).
+        goal, pending = self._current_goal, self._pending_tool_call
+        if pending is None or pending.id != tool_call_id:
+            return False
+        self._pending_tool_call = None
+        current = next((sg for sg in goal.sub_goals if sg.status == SubGoalStatus.IN_PROGRESS), None) if goal else None
+        if goal is not None and current is not None and goal.handle_sub_goal_refusal(current, reason):
+            self._refused_in_goal = goal.id  # owner decision 2026-11-21: SKIP goes on, the goal is marked refused
+            self._continue_goal(goal)
+            return True
+        self._complete_goal(success=False, error=f"Refused: {reason}", refused=True)
+        return True
 
     def cancel_current_goal(self, reason: str = "Cancelled by user") -> bool:
         """Cancel the current goal."""
