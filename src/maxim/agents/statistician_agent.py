@@ -170,8 +170,14 @@ class StatisticianAgent(Agent):
         self._record_metric(metric, value)
 
     def _on_goal_completed(self, completed: GoalCompleted) -> None:
-        """Record goal outcome as a metric series point."""
-        metric = f"goal:{completed.goal_id}:success"
+        """Record goal outcome as a metric series point.
+
+        One series for every goal: a goal id never recurs, so a series keyed by it holds one point, never reaches a
+        detector's ``min_observations``, and only accumulates (in memory and in the saved state). Goals began to
+        complete on the agent-fallback path with #1414, which made that growth live; the shared series is bounded by
+        ``window_size`` and is the only shape a pattern can be detected in.
+        """
+        metric = "goal:success"
         value = 1.0 if completed.success else 0.0
         self._record_metric(metric, value)
 

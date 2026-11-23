@@ -875,6 +875,84 @@ def _describe_tools_for_prompt(
     return tool_descriptions
 
 
+_MISSING_CLOSE_HOOK_WARNED: set[tuple[type, str]] = set()
+
+
+def _fallback_close_hook(agent: Any, intent: Mapping[str, Any], hook: str) -> tuple[str, Any] | None:
+    """The agent's ``hook`` and the intent's call id, when §3 has a goal call to close; else None.
+
+    An intent with no ``tool_call_id`` (not from the goal agent) has nothing to close. An intent WITH one, on an agent
+    that lacks the hook, breaks the contract: its call would be proposed again on every pass (#1414), so it logs one
+    WARNING per agent type and hook instead of closing nothing in silence.
+    """
+    tool_call_id = intent.get("tool_call_id")
+    if not tool_call_id:
+        return None
+    fn = getattr(agent, hook, None)
+    if callable(fn):
+        return str(tool_call_id), fn
+    key = (type(agent), hook)
+    if key not in _MISSING_CLOSE_HOOK_WARNED:
+        _MISSING_CLOSE_HOOK_WARNED.add(key)
+        logger.warning(
+            "agent %s proposed a goal tool call (%s) but has no %s(): the call is never closed, so it is "
+            "proposed again on every pass (#1414)",
+            type(agent).__name__,
+            tool_call_id,
+            hook,
+        )
+    return None
+
+
+def _close_fallback_call(
+    agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], tool_output: Any = None, *, error: Any = None
+) -> None:
+    """Close the goal agent's tool call that the agent-fallback path (§3) ran or that raised (#1414).
+
+    ``AgenticGoalAgent.propose_intent`` returns its pending tool call until it learns that call's fate. Before #1414
+    nothing told it, so a call §3 ran was proposed again on the next pass, and a call autonomy refused was refused
+    again on every pass (pulse saw one refusal 87 times in 44 s). A REFUSED call is closed by
+    :func:`_fallback_rejected` instead. The close is a direct call (``agent.close_tool_call``), not a ``ToolResult``
+    on the bus: nothing publishes one yet, and doing it from §3 alone would wake ``ToolResult``'s dormant
+    subscribers for a biased slice of calls (owner decision 2026-11-21; #1727).
+
+    §3 calls this right after ``executor.execute`` returns, so a ``tool_output`` means the call is already closed: a
+    later raise in §3's try reaches the ``except`` with one, and nothing is closed twice. With no ``tool_output`` the
+    execute itself raised, and the call closes as failed with ``error``.
+    """
+    if error is not None and tool_output is not None:
+        return
+    found = _fallback_close_hook(agent, intent, "close_tool_call")
+    if found is None:
+        return
+    tool_call_id, close = found
+    failure = error if error is not None else getattr(tool_output, "error", None)
+    close(
+        tool_call_id,
+        error is None and bool(getattr(tool_output, "success", True)),
+        getattr(tool_output, "output", None),
+        None if failure is None else str(failure),
+    )
+
+
+def _fallback_rejected(
+    agent: Any, intent: Mapping[str, Any], action: Mapping[str, Any], reason: Any, confidence: float
+) -> None:
+    """§3's autonomy refusal of the agent-fallback action: logged, and the goal agent's call is closed as REFUSED
+    (``refuse_tool_call``), so it is not proposed again on the next pass (#1414). The goal ends as a failed
+    ``GoalCompleted`` with ``refused=True`` unless its sub-goal is SKIP: memory, the goal metric and the plan's
+    replanning see a failed goal, and ExecAgent's contemplation learning skips it."""
+    log_agentic(
+        "agent_loop",
+        "action_rejected",
+        {"tool": action["tool_name"], "reason": reason, "confidence": confidence},
+    )
+    found = _fallback_close_hook(agent, intent, "refuse_tool_call")
+    if found is not None:
+        tool_call_id, refuse = found
+        refuse(tool_call_id, f"Rejected by autonomy: {reason}")
+
+
 def _followup_synthetic_input(followup: Any) -> str:
     """The follow-up input the LLM receives, with the tool result FRAMED as data (#823).
 
@@ -1724,6 +1802,7 @@ def _run_agentic_loop_body(
                                             log_swallowed_exception(e, operation="on_event:tool_start")
 
                                     result = executor.execute(action)
+                                    _close_fallback_call(agent, intent, action, result)
 
                                     # Log tool execution
                                     success = getattr(result, "success", True)
@@ -1806,6 +1885,7 @@ def _run_agentic_loop_body(
                                     )
 
                                 except Exception as e:
+                                    _close_fallback_call(agent, intent, action, result, error=e)
                                     book_agent_fallback_failure(
                                         e,
                                         rec_outcome=_rec_outcome,
@@ -1821,16 +1901,7 @@ def _run_agentic_loop_body(
                                         state=state,
                                     )
                             else:
-                                # Log rejected action
-                                log_agentic(
-                                    "agent_loop",
-                                    "action_rejected",
-                                    {
-                                        "tool": action["tool_name"],
-                                        "reason": reason,
-                                        "confidence": confidence,
-                                    },
-                                )
+                                _fallback_rejected(agent, intent, action, reason, confidence)
                     else:
                         # Log idle state at debug level
                         log_agentic("agent_loop", "idle", {"step": step_num}, level="DEBUG")
