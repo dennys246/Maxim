@@ -923,7 +923,8 @@ def _wedged_turns(sim, n: int):
     """``n`` LLM timeouts in a row under ``sim`` in OFF mode, each followed by the tick that reads the loop's own
     answer. Returns the controller, the answers given, and the liveness count after each timeout proposal."""
     from maxim.runtime.loop_perception import take_user_input
-    from maxim.runtime.tool_dispatch import _stash_timeout_retry, note_llm_turn
+    from maxim.runtime.loop_intake import note_llm_turn
+    from maxim.runtime.tool_dispatch import _stash_timeout_retry
     from maxim.simulation import sim_logger
 
     ctrl = _controller()
@@ -977,7 +978,7 @@ def test_a_wedged_llm_is_retried_twice_then_the_turn_stops(kind: str) -> None:
 
 
 def test_an_answered_llm_turn_resets_both_counts() -> None:
-    from maxim.runtime.tool_dispatch import note_llm_turn
+    from maxim.runtime.loop_intake import note_llm_turn
 
     state = MagicMock()
     state.data = {"machine_timeout_retries": 2}
@@ -1066,7 +1067,7 @@ def test_a_person_s_input_never_carries_a_loop_reply_s_prompt() -> None:
 def test_a_parse_failure_is_a_failed_llm_turn() -> None:
     """Delta-7 NIT 2: outside a sim an ``llm_fallback`` proposal reaches ``note_llm_turn``; it is no usable answer,
     so it counts and resets neither count."""
-    from maxim.runtime.tool_dispatch import note_llm_turn
+    from maxim.runtime.loop_intake import note_llm_turn
 
     state = MagicMock()
     state.data = {"machine_timeout_retries": 2}
@@ -1085,3 +1086,24 @@ def test_the_machine_s_no_is_not_reported_as_a_person_s(source: InputSource, tol
     with patch("maxim.simulation.sim_logger.display_status") as status:
         assert ctrl.handle_timeout_retry("no", sim=MagicMock(), answer_source=source) is True
     assert any("Understood" in str(c.args[0]) for c in status.call_args_list) is told
+
+
+def test_the_loop_counts_a_timeout_turn_as_failed_through_note_llm_turn(monkeypatch, tmp_path, caplog):
+    """The wire, not the helper: through ``run_agentic_loop`` (slice 6's intake, ``loop_intake.take_llm_proposal``),
+    a timeout proposal on pass 0 is a FAILED turn, so the parse-failure drop on pass 2 is the second consecutive one;
+    the answered turn on pass 3 resets the count, so the drop on pass 4 is the first again. Reverting the intake's
+    ``note_llm_turn`` call to the old reset makes the first count 1 (the merge with slice 6's deletion probe)."""
+    import logging
+
+    from tests.unit import test_loop_intake_characterization as C
+
+    caplog.set_level(logging.INFO, logger="maxim.runtime.agent_loop")
+    script = {
+        0: C._proposal(reasoning="llm_timeout"),
+        2: C._proposal(reasoning="llm_fallback"),
+        3: C._proposal(),
+        4: C._proposal(reasoning="llm_fallback"),
+    }
+    C._run(monkeypatch, tmp_path, script, steps=6, sink=False)
+    skips = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Sim mode: skipping fallback")]
+    assert skips == [f"Sim mode: skipping fallback proposal ({n} consecutive)" for n in (2, 1)]

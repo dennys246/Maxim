@@ -1311,7 +1311,7 @@ def _nobody_answers_a_timeout(sim: Any) -> bool:
 
 # How many times in a row the loop answers its own timeout-retry prompt "yes" before it answers "no" (owner decision
 # 2026-11-21). The count is ``state.data["machine_timeout_retries"]``; any LLM turn that is not a timeout resets it
-# (``note_llm_turn``).
+# (``loop_intake.note_llm_turn``).
 MACHINE_TIMEOUT_RETRIES = 2
 
 
@@ -1320,7 +1320,7 @@ def _machine_timeout_answer(sim: Any, state: Any) -> str:
     ``MACHINE_TIMEOUT_RETRIES`` consecutive machine retries have run, then "no" (the turn fails visibly: a
     ``timeout_retry_exhausted`` event, the person told, and in a sim the LLM-unavailable marker for the bridge).
     The count is not reset by the "no": the LLM is taken as still wedged, so the next request's first timeout is
-    declined at once, until a turn the LLM answers resets it (``note_llm_turn``)."""
+    declined at once, until a turn the LLM answers resets it (``loop_intake.note_llm_turn``)."""
     retries = int(state.data.get("machine_timeout_retries", 0) or 0)
     if retries < MACHINE_TIMEOUT_RETRIES:
         state.data["machine_timeout_retries"] = retries + 1
@@ -1333,18 +1333,6 @@ def _machine_timeout_answer(sim: Any, state: Any) -> str:
     display_status(f"Giving up on this turn: {detail}.")
     sim.report_llm_unavailable(detail)
     return "no"
-
-
-def note_llm_turn(proposal: Any, state: Any, consecutive_failures: int) -> int:
-    """One LLM turn's effect on the loop's consecutive-LLM-failure count (the stall detector's liveness signal) and
-    on the machine's timeout-retry count (#1185, owner decision 2026-11-21). A timeout proposal (``llm_timeout``) is
-    a failed turn: it counts, instead of resetting the count as an answered turn does, and so is a parse failure
-    (``llm_fallback``: no usable answer; outside a sim it reaches here, where the null adapter keeps it). Any other
-    turn is the LLM answering: both counts reset."""
-    if getattr(proposal, "reasoning", "") in ("llm_timeout", "llm_fallback"):
-        return consecutive_failures + 1
-    state.data.pop("machine_timeout_retries", None)
-    return 0
 
 
 def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
