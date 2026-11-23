@@ -69,6 +69,12 @@ Inputs and how each could lie:
   hid a claimed child's argv and let two checks start together on Linux; ``ps -ww`` (procps and BSD) never truncates.
 - The waiter's own process tree: it and its ancestors are never counted (``running(own_pid=)``), or a waiter run
   from inside a full suite (its tests in CI) counts that suite and waits for itself forever.
+- A repeated waiter (#1760): a harness that kills the shell around a waiter leaves the waiter itself alive, orphaned
+  and still queued, so a caller who re-queues after the "failed" shell adds a second waiter for the same run (two
+  4 h suites for one commit). Tickets and claims record the command's argv and the waiter's real cwd, and ``wait``
+  refuses (exit ``DUPLICATE_EXIT``), under the lock that writes its ticket, while a live ticket or claim has the same
+  argv and cwd; ``--allow-duplicate`` is the deliberate repeat. A file written before #1760 has no argv and never
+  matches. ``status`` prints each entry's cwd and command.
 
 State lives in ``~/.cache/maxim-box-quiet`` (shared by every worktree and session of this user), or ``--state-dir``.
 These files are not persisted data (throwaway coordination state; CC3 and ``_format_version`` do not apply).
@@ -92,6 +98,7 @@ from pathlib import Path
 MAX_SUITES = 2
 DRAIN_AFTER_S = 600.0
 SUITE, CHECK = "suite", "check"
+DUPLICATE_EXIT = 75  # EX_TEMPFAIL: the same run is already queued or running (#1760)
 DEFAULT_STATE = Path.home() / ".cache" / "maxim-box-quiet"
 SELF = "box_quiet.py"
 _INTERPRETER = re.compile(r"^(python[0-9.]*|bash|sh|zsh|dash)$")
@@ -299,6 +306,8 @@ class Ticket:
     kind: str
     started: str = ""
     weight: int = 1  # the command's own weight (a ``--shards N`` suite); a ticket written before #1645 reads 1
+    cmd: tuple[str, ...] = ()  # what it will run, and the waiter's real cwd; empty before #1760, so it never matches
+    cwd: str = ""
 
     @property
     def order(self) -> tuple[int, int, int]:
@@ -385,8 +394,8 @@ def _load_queue(state: Path, procs: list[Proc], prune: bool) -> list[Ticket]:
         try:
             d = json.loads(f.read_text())
             t = Ticket(bool(d["critical"]), int(d["queued_ns"]), int(d["pid"]), str(d["kind"]), str(d["started"]),
-                       max(1, int(d.get("weight", 1))))  # fmt: skip
-        except (OSError, ValueError, KeyError) as e:
+                       max(1, int(d.get("weight", 1))), tuple(map(str, d.get("cmd", ()))), str(d.get("cwd", "")))  # fmt: skip
+        except (OSError, ValueError, KeyError, TypeError) as e:
             print(f"box_quiet: unreadable ticket {f.name}: {e}", file=sys.stderr)
             if prune:
                 f.unlink(missing_ok=True)
@@ -398,23 +407,43 @@ def _load_queue(state: Path, procs: list[Proc], prune: bool) -> list[Ticket]:
     return out
 
 
-def _load_claims(state: Path, procs: list[Proc], prune: bool) -> dict[int, str]:
+def _claim_records(state: Path, procs: list[Proc], prune: bool) -> list[dict]:
+    """Live claims as ``{pid, kind, cmd, cwd}`` (``cmd`` empty for a claim written before #1760)."""
     started = _started(procs)
-    out = {}
+    out = []
     for f in (state / "claims").glob("*.json"):
         try:
             d = json.loads(f.read_text())
-            pid, kind, when = int(d["pid"]), str(d["kind"]), str(d["started"])
-        except (OSError, ValueError, KeyError) as e:
+            rec = {"pid": int(d["pid"]), "kind": str(d["kind"]), "cmd": tuple(map(str, d.get("cmd", ()))),
+                   "cwd": str(d.get("cwd", ""))}  # fmt: skip
+            when = str(d["started"])
+        except (OSError, ValueError, KeyError, TypeError) as e:
             print(f"box_quiet: unreadable claim {f.name}: {e}", file=sys.stderr)
             if prune:
                 f.unlink(missing_ok=True)
             continue
-        if started.get(pid) == when:
-            out[pid] = kind
+        if started.get(rec["pid"]) == when:
+            out.append(rec)
         elif prune:
             f.unlink(missing_ok=True)
     return out
+
+
+def _load_claims(state: Path, procs: list[Proc], prune: bool) -> dict[int, str]:
+    return {r["pid"]: r["kind"] for r in _claim_records(state, procs, prune)}
+
+
+def duplicate_of(state: Path, procs: list[Proc], cmd: tuple[str, ...], cwd: str, now_ns: int) -> str | None:
+    """Why a waiter for ``cmd`` from ``cwd`` would repeat a live one (a queued ticket or a running claim), or None."""
+    if not cmd:
+        return None
+    for t in _load_queue(state, procs, prune=True):
+        if (t.cmd, t.cwd) == (cmd, cwd):
+            return f"already queued by waiter pid {t.pid} ({(now_ns - t.queued_ns) / 1e9:.0f}s ago)"
+    for r in _claim_records(state, procs, prune=True):
+        if (r["cmd"], r["cwd"]) == (cmd, cwd):
+            return f"already running as pid {r['pid']}"
+    return None
 
 
 def infer_kind(cmd: list[str]) -> str | None:
@@ -426,7 +455,8 @@ def cmd_status(state: Path, only: str | None = None) -> int:
         (state / sub).mkdir(parents=True, exist_ok=True)
     with Lock(state):
         procs = scoped(read_ps(), only)
-        now = running(procs, _load_claims(state, procs, prune=False), own_pid=os.getpid())
+        claims = _claim_records(state, procs, prune=False)
+        now = running(procs, {r["pid"]: r["kind"] for r in claims}, own_pid=os.getpid())
         queue = _load_queue(state, procs, prune=False)
     print(
         f"suites running: load {suite_load(now)}/{MAX_SUITES} {now[SUITE]} (pid: weight)   "
@@ -437,8 +467,15 @@ def cmd_status(state: Path, only: str | None = None) -> int:
         waited = (now_ns - t.queued_ns) / 1e9
         flags = ("  CRITICAL" if t.critical else "") + ("  DRAINING" if _draining(t, now_ns) else "")
         print(f"  queued: {t.kind:5} pid {t.pid}  weight {t.weight}  waited {waited:.0f}s{flags}")
+        print(f"          {_where(t.cwd, t.cmd)}")
+    for r in sorted(claims, key=lambda r: r["pid"]):
+        print(f"  claimed: {r['kind']:5} pid {r['pid']}  {_where(r['cwd'], r['cmd'])}")
     print(f"a suite fits now: {fits(SUITE, now)}   a check fits now: {fits(CHECK, now)}")
     return 0
+
+
+def _where(cwd: str, cmd: tuple[str, ...]) -> str:
+    return f"in {cwd or '?'}: {' '.join(cmd) or '? (written before #1760)'}"
 
 
 def _run_child(child: subprocess.Popen) -> int:
@@ -461,17 +498,25 @@ def _run_child(child: subprocess.Popen) -> int:
     return 128 - rc if rc < 0 else rc
 
 
-def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: float, only: str | None = None) -> int:
+def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: float, only: str | None = None,
+             allow_duplicate: bool = False) -> int:  # fmt: skip
     for sub in ("queue", "claims"):
         (state / sub).mkdir(parents=True, exist_ok=True)
     child = None
+    cwd = os.path.realpath(os.getcwd())
     with Lock(state):
         procs = read_ps()
         me = Ticket(critical, time.time_ns(), os.getpid(), kind, _started(procs).get(os.getpid(), ""),
-                    weight(tuple(cmd)))  # fmt: skip
+                    weight(tuple(cmd)), tuple(cmd), cwd)  # fmt: skip
+        dup = None if allow_duplicate else duplicate_of(state, procs, me.cmd, cwd, me.queued_ns)
+        if dup is not None:
+            print(f"box_quiet: refused, the same command from {cwd} is {dup}: {' '.join(cmd)}\n"
+                  "  (a killed parent shell leaves its waiter alive; see `box_quiet.py status`, kill that pid to "
+                  "replace it, or pass --allow-duplicate to run it twice)", file=sys.stderr, flush=True)  # fmt: skip
+            return DUPLICATE_EXIT
         ticket = state / "queue" / me.name
         _write_atomic(ticket, {"critical": critical, "queued_ns": me.queued_ns, "pid": me.pid, "kind": kind,
-                               "started": me.started, "weight": me.weight})  # fmt: skip
+                               "started": me.started, "weight": me.weight, "cmd": cmd, "cwd": cwd})  # fmt: skip
     announced = False
     try:
         while child is None:
@@ -487,7 +532,7 @@ def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: flo
                             break
                         time.sleep(0.02)
                     claim = state / "claims" / f"{child.pid}.json"
-                    _write_atomic(claim, {"pid": child.pid, "kind": kind, "started": when})
+                    _write_atomic(claim, {"pid": child.pid, "kind": kind, "started": when, "cmd": cmd, "cwd": cwd})
                     ticket.unlink(missing_ok=True)
                     break
             if not announced:
@@ -513,6 +558,8 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--critical", action="store_true", help="work the next release waits on")
     w.add_argument("--kind", choices=(SUITE, CHECK), help="default: inferred from the command")
     w.add_argument("--poll-s", type=float, default=20.0)
+    w.add_argument("--allow-duplicate", action="store_true",
+                   help="queue even while the same command from the same directory is queued or running")  # fmt: skip
     w.add_argument("cmd", nargs=argparse.REMAINDER)
     ap.add_argument("--only-matching", default=None, help=argparse.SUPPRESS)  # tests: count only their processes
     args = ap.parse_args(argv)
@@ -526,7 +573,7 @@ def main(argv: list[str] | None = None) -> int:
     kind = args.kind or infer_kind(cmd)
     if kind is None:
         ap.error(f"cannot tell whether {cmd[0]!r} is a suite or a check: pass --kind")
-    return cmd_wait(args.state_dir, kind, args.critical, cmd, args.poll_s, args.only_matching)
+    return cmd_wait(args.state_dir, kind, args.critical, cmd, args.poll_s, args.only_matching, args.allow_duplicate)
 
 
 if __name__ == "__main__":
