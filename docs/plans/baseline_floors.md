@@ -36,7 +36,7 @@ and `RANDOM` ([e1_conflict_prereg.md](../experiments/e1_conflict_prereg.md)); B4
 ([b4_exp37_floors_prereg.md](../experiments/b4_exp37_floors_prereg.md)), both through the four-lens review (#1382;
 [lessons](../lessons/e1-b4-design-review.md)). *Then, after 1.3.2:*
 E1's prereg draft and four-lens review carry the twin and a floor-can-lose check from the start; B2 (bare LLM)
-still waits on the `start_simulation_mode` decomposition, and B0b on #1227 (#1228 fixed by #TBD).
+still waits on the `start_simulation_mode` decomposition, and B0b on #1227 (#1228 fixed by #1777).
 
 Until B1, no ledger row, EARNED or STALE, had been compared with an agent that lacks the bio layers. "Earned"
 today means beating one of Maxim's own ablations: Exp 60's control is FEAR vs ABLATED (fear subscriber
@@ -259,7 +259,7 @@ B0 and B1 are done (2026-10-14). B2 → B3 → B4 are serial.
 1. **`create_full_agent` ignores `remembers`/`learns` when `with_bio_stack=True`.** It sets
    `instance.hippocampus = bio.hippocampus` and `instance.nac = bio.nac` whatever the config says (the
    "Full bio-stack if remembers=True and learns=True" docstring is `create_npc_agent`'s). A silent no-op of
-   the class CLAUDE.md says to push into the type. Blocks the `+memory` rung. **#1225 (fixed by #TBD):** the
+   the class CLAUDE.md says to push into the type. Blocks the `+memory` rung. **#1225 (fixed by #1777):** the
    contradiction is now refused where the config is built (`AgentConfig.__post_init__` and again in
    `create_full_agent`, `AgentConfigContradiction`), so it is no longer silent; the `+memory` rung still waits on
    typed `build_bio_stack` flags.
