@@ -63,6 +63,7 @@ def _record_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Spy every way ExecAgent could build an LLM of its own; recorded, not raised (``_ensure_router`` catches a
     config error and returns None, which would hide a raise)."""
     import maxim.agents.exec_agent as EA
+    import maxim.agents.exec_agent_router as R
 
     built: list[str] = []
 
@@ -75,7 +76,7 @@ def _record_builds(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     for name in ("load_llm_config", "consented_router", "ChatLLMAgent"):
         monkeypatch.setattr(EA, name, _must_not_build(name))
-    monkeypatch.setattr(EA, "_configured_override", lambda: None)
+    monkeypatch.setattr(R, "configured_override", lambda: None)
     return built
 
 
@@ -132,19 +133,19 @@ def test_adopt_router_hands_a_late_router_and_worker() -> None:
 def test_a_bypassed_exec_agent_override_is_warned_once(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    import maxim.agents.exec_agent as EA
+    import maxim.agents.exec_agent_router as R
     from maxim.agents.maxim_agent import MaximAgent
 
-    monkeypatch.setattr(EA, "_BYPASSED_OVERRIDES_WARNED", set())
+    monkeypatch.setattr(R, "_BYPASSED_OVERRIDES_WARNED", set())
     reads: list[int] = []
 
     def _cfg(*_a: Any, **_k: Any) -> Any:
         reads.append(1)
         return SimpleNamespace(agent_profiles={"exec_agent": "big"})
 
-    monkeypatch.setattr(EA, "load_llm_config", _cfg)
-    monkeypatch.setattr(EA, "_OVERRIDE_READ", None)
-    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+    monkeypatch.setattr(R, "load_llm_config", _cfg)
+    monkeypatch.setattr(R, "_OVERRIDE_READ", None)
+    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent_router"):
         MaximAgent(shared_router=_Router("small"))
         MaximAgent(shared_router=_Router("small"))
         MaximAgent(shared_router=_Router("big"))  # the override's own profile: nothing bypassed
@@ -162,19 +163,19 @@ def test_an_llm_json_edit_reaches_the_override_warning(
     import json
     import os
 
-    import maxim.agents.exec_agent as EA
+    import maxim.agents.exec_agent_router as R
     from maxim.agents.maxim_agent import MaximAgent
 
     llm_json = tmp_path / "llm.json"
     monkeypatch.setenv("MAXIM_LLM_CONFIG", str(llm_json))  # the first discovery candidate
-    monkeypatch.setattr(EA, "_BYPASSED_OVERRIDES_WARNED", set())
-    monkeypatch.setattr(EA, "_OVERRIDE_READ", None)
+    monkeypatch.setattr(R, "_BYPASSED_OVERRIDES_WARNED", set())
+    monkeypatch.setattr(R, "_OVERRIDE_READ", None)
 
     def _write(override: str, mtime_s: int) -> None:
         llm_json.write_text(json.dumps({"agent_profiles": {"exec_agent": override}}), encoding="utf-8")
         os.utime(llm_json, (mtime_s, mtime_s))  # a distinct mtime, however fast the two writes land
 
-    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+    with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent_router"):
         _write("small", 1_700_000_000)
         MaximAgent(shared_router=_Router("small"))  # the override's own profile: nothing bypassed
         _write("big", 1_700_000_100)
@@ -188,13 +189,13 @@ def test_starting_an_agent_handed_none_warns_once_naming_build_own(
 ) -> None:
     """``shared_router=None`` meant the lazy build on 1.3.3; now it means no LLM. ``ExecAgent.on_start`` (the only
     production starter of goal proposals) says so once per process, naming ``BUILD_OWN``."""
-    import maxim.agents.exec_agent as EA
+    import maxim.agents.exec_agent_router as R
     from maxim.agents.maxim_agent import MaximAgent
 
-    monkeypatch.setattr(EA, "_NO_ROUTER_START_WARNED", False)
+    monkeypatch.setattr(R, "_NO_ROUTER_START_WARNED", False)
     agents = [MaximAgent(shared_router=None), MaximAgent(shared_router=None), MaximAgent(shared_router=_Router("r"))]
     try:
-        with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent"):
+        with caplog.at_level(logging.WARNING, logger="maxim.agents.exec_agent_router"):
             for agent in agents:
                 agent.exec_agent.on_start()
     finally:

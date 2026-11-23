@@ -30,6 +30,13 @@ from maxim.agents.bus import (
     SubGoal,
 )
 from maxim.default_network.messages import FilteredPercept
+from maxim.agents.exec_agent_router import (
+    BUILD_OWN,
+    _BuildOwn,
+    override_in,
+    warn_if_profile_override_bypassed,
+    warn_no_router_start_once,
+)
 from maxim.agents.exec_prompts import (
     SYSTEM_PROMPT,
     CRITIQUE_SYSTEM,
@@ -51,75 +58,6 @@ from maxim.utils.logging import warn
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
-
-
-class _BuildOwn:
-    """The type of :data:`BUILD_OWN` (one instance)."""
-
-    def __repr__(self) -> str:
-        return "BUILD_OWN"
-
-
-# ``shared_router=`` (REQUIRED, #1228): a router means "run on this one"; ``None`` means "no LLM: build none"; and
-# ``BUILD_OWN`` means "build one lazily from ``load_llm_config()``" (the CLI's agentic path, which asks for download
-# consent there). A router variable that happens to be None therefore builds nothing: the old default (None = build
-# your own) served the narrator's profile to a dual-LLM AUT.
-BUILD_OWN = _BuildOwn()
-# (agent_profiles.exec_agent override, the handed-in router's profile) pairs already warned about (#1228).
-_BYPASSED_OVERRIDES_WARNED: set[tuple[str, str]] = set()
-
-
-def _override_in(cfg: Any) -> str | None:
-    """The ``agent_profiles.exec_agent`` (or ``executive``) override in ``cfg``, or None."""
-    profiles = getattr(cfg, "agent_profiles", {})
-    if not isinstance(profiles, dict):
-        return None
-    for key in ("exec_agent", "executive"):
-        value = profiles.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
-
-
-# (llm.json identity, override) of the last read, or None: re-read only when that file changed (#1228).
-_OVERRIDE_READ: tuple[tuple[str, int, int] | None, str | None] | None = None
-# Set once the "handed None: no goal proposals" WARNING has been logged in this process (#1228).
-_NO_ROUTER_START_WARNED = False
-
-
-def _llm_json_identity() -> tuple[str, int, int] | None:
-    """(path, st_mtime_ns, st_size) of the llm.json ``load_llm_config`` would read (the first existing discovery
-    candidate), or None when there is none. ``agent_profiles`` lives there, not in config.json, and no llm.json writer
-    (the downloader, a hand edit) moves ``config_generation()``, so the file itself is the key."""
-    from maxim.models.language.config import _llm_config_candidates
-
-    for path in _llm_config_candidates():
-        if path and os.path.isfile(path):
-            try:
-                st = os.stat(path)
-            except OSError:
-                return None
-            return (path, st.st_mtime_ns, st.st_size)
-    return None
-
-
-def _configured_override() -> str | None:
-    """The process's ``agent_profiles.exec_agent`` override (the bypass warning's input, #1228), read again only when
-    the llm.json it comes from changed (path, mtime or size): a constructor handed a router does not reload an
-    unchanged file, and an edit (the downloader's write, a hand edit, in a long-lived ``maxim serve`` too) is seen by
-    the next one. ``load_llm_config`` itself does not cache; this is the warning's own read. None when there is none
-    or the config is unreadable."""
-    global _OVERRIDE_READ
-    identity = _llm_json_identity()
-    if _OVERRIDE_READ is not None and _OVERRIDE_READ[0] == identity:
-        return _OVERRIDE_READ[1]
-    try:
-        override = _override_in(load_llm_config())
-    except Exception as e:  # an unreadable config is load_llm_config's to report on the build path
-        logger.debug("ExecAgent: could not read the config to check the exec_agent override: %s", e)
-        override = None
-    _OVERRIDE_READ = (identity, override)
-    return override
 
 
 class ExecAgent(Agent):
@@ -198,7 +136,7 @@ class ExecAgent(Agent):
         self._refused_cause: str | None = None  # why (one of LocalModelUnavailable.CAUSES), for the CLI's typed refusal
         self._llm_worker: LLMWorker | None = shared_llm_worker
         if self._router is not None:
-            self._warn_if_profile_override_bypassed(self._router)
+            warn_if_profile_override_bypassed(self._router)
         self._owns_llm_worker = shared_llm_worker is None  # Only stop if we created it
 
         # Rate limiting
@@ -267,35 +205,16 @@ class ExecAgent(Agent):
         agent already holds is kept; an adopted worker is not this agent's to stop."""
         if router is not None and self._router is None:  # adopting None leaves it as it was: never a lazy build
             self._router = router
-            self._warn_if_profile_override_bypassed(router)
+            warn_if_profile_override_bypassed(router)
         if worker is not None and self._llm_worker is None:
             self._llm_worker = worker
             self._owns_llm_worker = False
-
-    def _warn_if_profile_override_bypassed(self, router: Any) -> None:
-        """One WARNING per (override, router profile) pair when the config names an ``agent_profiles.exec_agent``
-        override that a handed-in router does not serve: the override applies only to a router this agent builds
-        itself (:meth:`_resolve_profile_override`), so a caller that hands one in bypasses it (#1228)."""
-        served = getattr(getattr(router, "cfg", None), "profile", None)
-        override = _configured_override()
-        if not override or override == served:
-            return
-        key = (override, str(served))
-        if key in _BYPASSED_OVERRIDES_WARNED:
-            return
-        _BYPASSED_OVERRIDES_WARNED.add(key)
-        logger.warning(
-            "agent_profiles.exec_agent names %r, but this agent was handed a router serving %r: the override applies "
-            "only to a router ExecAgent builds itself, so it is not used here (#1228)",
-            override,
-            served,
-        )
 
     def _resolve_profile_override(self, cfg: Any) -> str | None:
         """The ``agent_profiles.exec_agent`` (or ``executive``) override in ``cfg``, or None. It applies only to a
         router this agent builds itself (:meth:`_ensure_router`); a router handed in (``shared_router=``,
         :meth:`adopt_router`) is used as it is (#1228)."""
-        return _override_in(cfg)
+        return override_in(cfg)
 
     def _ensure_router(self, *, consent: Literal["ask", "never"] = "never") -> LLMRouter | None:
         """ExecAgent's router, built once, its local model usable (``models/download.py::consented_router``).
@@ -1949,13 +1868,8 @@ Based on this context, what goal should be proposed?"""
         """Start the background worker (the only production starter of goal proposals). An agent handed
         ``shared_router=None`` proposes no goals; that is said once per process, naming ``BUILD_OWN``, because None
         meant the lazy build before #1228."""
-        global _NO_ROUTER_START_WARNED
-        if self._router is None and not self._builds_own and not _NO_ROUTER_START_WARNED:
-            _NO_ROUTER_START_WARNED = True
-            logger.warning(
-                "ExecAgent started with shared_router=None: it has no LLM and proposes no goals. None meant a lazy "
-                "router build before #1228; pass maxim.agents.exec_agent.BUILD_OWN for that behaviour"
-            )
+        if self._router is None and not self._builds_own:
+            warn_no_router_start_once()
         if self._worker is None or not self._worker.is_alive():
             self._stop_event.clear()
             self._worker = threading.Thread(target=self._worker_loop, daemon=True)
