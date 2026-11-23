@@ -33,13 +33,16 @@ The CLI treats process success as **run integrity**, not as a favorable result:
 
 - `0` — the run completed with usable evidence. Semantic outcomes such as
   `failed`, `blocked`, and `inconclusive` are still valid observations.
-- `1` — a generic runtime error (or a rejected research review).
+- `1` — a generic runtime error, or a `--research` run that ended without a usable paper: the review rejected it
+  (`reject`), or the Writer saved no paper, so nothing was reviewed (`no_paper`; the cause, no research LLM or no
+  text from the LLM for any section, is in `research_result.json`'s `review_issues`).
 - `4` — the run was incomplete or aborted (`llm_wedged`, `planning_failed`,
   `worker_unavailable`, `aut_died`, `aborted`, `cancel`, `stuck`, or `yielded`: a process stop request
   ended it, for example the console shutting down). This is the
   same code used whether teardown completed normally or the hard-abort backstop
   had to terminate the process.
-- `2` — the operator must act: a typed backend error (its fix hint is printed) or a
+- `2` — the operator must act: a typed backend error (its fix hint is printed), options the research protocol
+  cannot honour (`CliOptionsRefused`, see [Research Protocol](#research-protocol)), or a
   security refusal such as a leader with no usable key (its reason is printed).
 - `130` — interrupted by Ctrl+C before any memory session opened, or forced by a second Ctrl+C.
 - `75` — a stop that did not finish in time: the watchdog ended the process (see below).
@@ -587,7 +590,9 @@ For full details on campaign authoring, character definitions, and the encounter
 
 ## Research Protocol
 
-Add `--research` to any simulation to run Writer and Reviewer agents after the sim completes. They produce a structured research report with findings, methodology, and analysis.
+Add `--research` to a goal-string simulation to run Writer and Reviewer agents after the sim completes. They produce a structured research report with findings, methodology, and analysis. (Under `--aut-mode substrate-primary`, `--research` means per-tick substrate telemetry instead, and no paper is written.)
+
+The research protocol runs its own sim call, which does not take every simulation option. Passing one it cannot honour is refused before the run starts (exit `2`, `CliOptionsRefused`, naming the options) instead of being dropped: `--embodiment`, `--no-embodiment`, `--deep-embodiment`, `--auto-curate`, `--sim-mode` (other than `research`), `--sim-run-full-turns`, `--continuous`, `--sandbox-image`, `--sandbox-network`, `--resume-sim`, and `--sim-max-turns` together with `--campaign` (`--sim-script` with `--research` is refused earlier by its own check, exit `1`). `--sim-max-turns` is forwarded; `--no-sim-env` is accepted (the protocol always runs without the sim environment).
 
 ```bash
 maxim --sim "hippocampal recall" --research

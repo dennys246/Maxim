@@ -974,6 +974,22 @@ def _open_sim_workspace(*, debug: bool) -> tuple[Path, Path, str]:
     return sim_workspace, sim_tmpdir, log_path
 
 
+def _register_research_tools(orch_registry: Any, experiment_log: Any, sim_tmpdir: Any) -> Any:
+    """Register record_experiment / query_experiments on the narrator's registry; return the log they write to.
+
+    The caller's ``experiment_log`` when given (the research protocol's, so its Writer/Reviewer read the same
+    instance), else a new one in ``sim_tmpdir``. A failure raises: these were built inside ``except Exception:
+    logger.debug``, so a constructor defect would have dropped both tools from every run without a word (#1680)."""
+    from maxim.simulation.research_tools import ExperimentLog, QueryExperimentsTool, RecordExperimentTool
+
+    if experiment_log is None:
+        experiment_log = ExperimentLog(session_dir=sim_tmpdir)
+    orch_registry.register(RecordExperimentTool(experiment_log))
+    orch_registry.register(QueryExperimentsTool(experiment_log))
+    logger.info("Research tools registered (record_experiment, query_experiments)")
+    return experiment_log
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -1755,25 +1771,7 @@ def start_simulation_mode(
     # copies it to the final session directory at save time.
     # Use caller-provided ExperimentLog if given (research protocol passes
     # its log in so Writer/Reviewer read from the same instance — D-0a fix).
-    if experiment_log is None:
-        try:
-            from maxim.simulation.research_tools import ExperimentLog
-
-            experiment_log = ExperimentLog(session_dir=sim_tmpdir)
-        except Exception as e:
-            logger.debug("ExperimentLog not available: %s", e)
-    try:
-        from maxim.simulation.research_tools import (
-            RecordExperimentTool,
-            QueryExperimentsTool,
-        )
-
-        if experiment_log is not None:
-            orch_registry.register(RecordExperimentTool(experiment_log))
-            orch_registry.register(QueryExperimentsTool(experiment_log))
-            logger.info("Research tools registered (record_experiment, query_experiments)")
-    except Exception as e:
-        logger.debug("Research tools not available: %s", e)
+    experiment_log = _register_research_tools(orch_registry, experiment_log, sim_tmpdir)
 
     # The narrator's own tool descriptions (the follow-up types that keep it acting after send_message, and its
     # 'respond' decoy's) ride on its registry, ``SimToolRegistry.tool_descriptions()``, never the process-global

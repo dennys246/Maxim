@@ -49,7 +49,7 @@ def fake_router(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "maxim.models.language.config.load_llm_config",
         lambda profile_override=None: SimpleNamespace(
-            model_path=str(tmp_path / "missing.gguf"), profile=profile_override
+            enabled=True, model_path=str(tmp_path / "missing.gguf"), profile=profile_override
         ),
     )
     monkeypatch.setattr("maxim.models.language.router.LLMRouter", FakeRouter)
@@ -174,7 +174,7 @@ def _with_backend(monkeypatch, tmp_path, profile: str) -> None:
     monkeypatch.setattr(
         "maxim.models.language.config.load_llm_config",
         lambda profile_override=None: SimpleNamespace(
-            model_path=str(tmp_path / "missing.gguf"), profile=profile_override, backend=backend
+            enabled=True, model_path=str(tmp_path / "missing.gguf"), profile=profile_override, backend=backend
         ),
     )
 
@@ -270,7 +270,7 @@ def test_every_spelling_the_router_reads_as_llama_cpp_still_asks(fake_router, mo
     monkeypatch.setattr(
         "maxim.models.language.config.load_llm_config",
         lambda profile_override=None: SimpleNamespace(
-            model_path=str(tmp_path / "missing.gguf"), profile=profile_override, backend=spelling
+            enabled=True, model_path=str(tmp_path / "missing.gguf"), profile=profile_override, backend=spelling
         ),
     )
     handed = _run_foundry(monkeypatch, fake_router.profile)

@@ -6,7 +6,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1182
+      "lines": 1128
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -191,12 +191,12 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1879
+      "lines": 1861
     },
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 233
+      "lines": 218
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -388,9 +388,11 @@
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
     "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
+    "#1680 (2026-11-21, rule T): _main_impl 1195 -> 1185 -> 1158 -> 1141 and start_simulation_mode 1895 -> 1877 across the review folds (the research dispatch to cli._run_research_from_cli, then the --sim-only checks to cli._validate_sim_only_flags; the commit messages from c7a1327a on give each step); start_research_mode 241 -> 226 on the branch, 241 -> 233 for #1621 on main, and the merged body measures 218",
     "start_simulation_mode tightened 1895 -> 1886 on 2026-11-21 (#1228, rule T): the AUT's fear gate moved to orchestrator._fear_gate_aut_executor (its FearAgent now on the AUT's router), paying for the AUT-side router hand-offs (the AUT's and the narrator's MaximAgent(shared_router=), the factory's fear_llm and the imagination designer's llm_router).",
     "#1228 fold batch (2026-11-21, rule T): start_simulation_mode 1886 -> 1880 (the AUT's MaximAgent and its event bridge to orchestrator._aut_maxim_agent and the dead fear_llm slot removed, paying for agent_router, the sub-simulation tool's aut_router and the narrator's NO_ROUTER choice); _main_impl 1195 -> 1182 (the agentic MaximAgent build to cli._cli_agentic_agent, paying for its stated shared_router=None); AgenticRuntimeMixin._start_agentic_runtime 796 -> 790 (the ExecAgent hand-off to _share_llm_with_exec_agent, on the new ExecAgent.adopt_router, paying for shared_router=NO_ROUTER); api.py::run 201 -> 192 (the LLM worker start to api._start_run_worker, paying for the router handed to _build_run_agent) and report.py::build_report 209 -> 188 (the cost lookup to report._router_cost/_run_costs, with the AUT's own router), both entries removed: under the threshold.",
     "#1228 delta-round folds (2026-11-21, rule T): AgenticRuntimeMixin._start_agentic_runtime 790 -> 774 (the robot fear gate to _robot_fear_gate, carrying its stated pattern-only FearAgent and its INFO line, #1728) and start_simulation_mode 1880 -> 1879 (the agent_router import dropped: shared_router=None now means no LLM). These supersede the previous note's NO_ROUTER/agent_router wording: None means no LLM, exec_agent.BUILD_OWN the lazy build.",
+    "#1228 re-merged onto #1680 on 2026-11-23: _main_impl 1141 -> 1128 and start_simulation_mode 1877 -> 1861 (the same 13 and 16 lines #1228 moved out); report.py::build_report measures 188, so its entry is removed (under the threshold).",
     "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged.",
     "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch."
   ],

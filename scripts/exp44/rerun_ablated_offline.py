@@ -40,10 +40,12 @@ def _build_router() -> Any:
 
     Never asks: a missing model downloads only with a standing grant, and otherwise this exits with the hint the
     consent check logged, rather than query a router that refuses every call."""
-    from maxim.models.download import consented_router
+    from maxim.models.download import LLM_DISABLED, consented_router
     from maxim.models.language.router import load_llm_config
 
     router, cause = consented_router(load_llm_config())
+    if router is None and cause == LLM_DISABLED:
+        raise SystemExit("exp44 rerun: the LLM is disabled in llm.json (llm.enabled is false); enable it to rerun")
     if router is None:
         raise SystemExit(f"exp44 rerun: the configured model is not usable ({cause}; see the logged message)")
     return router
