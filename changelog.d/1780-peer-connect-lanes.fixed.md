@@ -1,4 +1,5 @@
-- **A lane pointed at a remote server is never silently dropped** (#1780): `lanes.medium.remote_url` or
-  `lanes.small.remote_url` on a machine whose hardware has no such tier used to be ignored, with nothing logged.
-  Only large had a placeholder. A remote URL now creates any of the three lanes.
-- **`maxim peer connect --cloud` is accepted** (#1780): the parser used to reject it as an unknown option.
+- **`maxim peer connect --cloud` is accepted** (#1780). The code read the flag from the command line, but the parser
+  had already rejected it as an unknown option. Its banner no longer claims a cloud gate the flag never sets.
+- **`maxim peer connect` says what the leader serves** (#1780): the large lane, which every model call goes through,
+  and that it falls back to a local model when the leader is unreachable at startup. New troubleshooting page:
+  `docs/troubleshooting/tailscale_peer.md`.

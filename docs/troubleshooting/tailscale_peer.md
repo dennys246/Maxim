@@ -14,7 +14,7 @@ For any other peer-to-leader failure, see [Peer → Leader Connectivity](peer_le
 - the **leader proxy** on `0.0.0.0:8099`. It checks the mesh key and rejects a prompt larger than the model's
   context window. Peers talk to this port, never to 8100.
 
-Its key is the mesh key: `maxim tunnel key export` on the leader prints it.
+Its key is the mesh key: `maxim tunnel key show` on the leader prints it.
 
 **On the peer:**
 
@@ -26,43 +26,26 @@ maxim doctor --as peer http://<leader>:8099/v1
 
 `connect` asks for the key (or takes `--key`), tests the connection, and saves it.
 
-## Which lanes go to the leader
+## What the leader serves
 
-Maxim has three lanes: large, medium and small. `peer connect` points **only the large lane** at the leader, and
-prints where every lane goes. For example, on a laptop with no usable GPU:
+Maxim sends its model calls through one lane, the **large** lane. `peer connect` points that lane at the leader, so
+the leader serves every model call this machine makes. Maxim also defines medium and small lanes, but no model call
+uses them today, so there is nothing to point at the leader there.
 
-```text
-Lanes:
-  large   → leader (http://mini:8099/v1)
-  medium  → local, phi-3-mini-4k-instruct on cpu
-  small   → local, smollm-1.7b-instruct on cpu
-  Use --all-lanes to send every lane to the leader (they share its one generation slot).
-```
+If the leader is unreachable when `maxim` starts, the large lane runs a local model instead. `maxim doctor --as peer`
+shows which one you got.
 
-A lane marked **local** runs a model on this machine. A local model that is not on disk yet may be downloaded the
-first time a call needs it. To send every lane to the leader instead:
+## Treat the leader as one generation at a time
 
-```bash
-maxim peer connect http://<leader>:8099/v1 --all-lanes
-```
-
-A later `connect` without `--all-lanes` moves medium and small back to local. `maxim peer forget` clears every lane.
-`maxim peer show` prints where medium and small go.
-
-You can also point one lane by hand, for example `maxim config set lanes.medium.remote_url http://<leader>:8099/v1`.
-That works even on a machine whose hardware has no medium tier: the remote URL creates the lane.
-
-## The leader serves one generation at a time
-
-The leader's model server runs one generation at a time. The proxy lets up to 4 requests in
-(`MAXIM_PROXY_MAX_CONCURRENT`, default 4), and answers anything past that with an immediate **HTTP 429**. It does not
-queue them. So:
-- every lane you send to the leader waits behind the others; that is why `--all-lanes` is not the default;
-- two peers, or a peer and an experiment on the leader, share that one slot;
+The leader spawns its model server with no parallel slots, so Maxim treats it as running one generation at a time.
+Release 1.3.5's line 6 item 1 measures this under load. The leader proxy lets up to 4 requests in at once
+(`maxim config set proxy.max_concurrent N` on the leader; env `MAXIM_PROXY_MAX_CONCURRENT`) and answers anything
+past that with an immediate **HTTP 429**. It does not queue them. A per-peer rate limit (`proxy.rate_limit_rpm`) also
+answers 429, with "Rate limit exceeded". So:
+- two peers, or a peer and an experiment on the leader, share that one generation;
 - a 429 means "busy", not "broken". Retry later rather than reconfiguring.
 
-Release 1.3.5's line 6 measures this under load and replaces the instant 429 with a bounded queue
-([release_1_3_5.md](../plans/release_1_3_5.md), line 6 items 1 and 3).
+Line 6 item 3 replaces the instant 429 with a bounded queue ([release_1_3_5.md](../plans/release_1_3_5.md)).
 
 **Don't run a game or playtest against the leader while an experiment holds it.** The experiment's numbers depend on
 having the server to itself (decision D12 in the same plan).
@@ -72,7 +55,7 @@ having the server to itself (decision D12 in the same plan).
 | Symptom | Likely cause | Check |
 |---|---|---|
 | `connect` says the connection test failed | wrong port (8100 instead of 8099), the leader is not running, or Tailscale is down on one side | `tailscale ping <leader>`; `curl -s -o /dev/null -w '%{http_code}' http://<leader>:8099/v1/models` should print `401` without a key |
-| `401` from every call | wrong or rotated key | `maxim peer key set` with the leader's current `maxim tunnel key export` |
-| `429` under load | more requests than the proxy's cap | the section above; lower your own concurrency |
-| a lane you expected on the leader runs locally | it was not pointed at the leader | the `Lanes:` block from `connect`, or `maxim peer show` |
+| `401` from every call | wrong or rotated key | `maxim peer key set` with the leader's current `maxim tunnel key show` |
+| `429` under load | more requests than the proxy's cap, or this peer's rate limit | the section above; lower your own concurrency |
+| calls run locally although the leader is configured | the leader was unreachable at startup, so the large lane fell back to local | `maxim doctor --as peer`; restart `maxim` once the leader answers |
 | `doctor --as peer` says `inference_broken` while the leader is busy | a long generation held the one slot past the probe's timeout | retry when the leader is idle |
