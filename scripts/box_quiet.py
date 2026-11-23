@@ -74,7 +74,10 @@ Inputs and how each could lie:
   4 h suites for one commit). Tickets and claims record the command's argv and the waiter's real cwd, and ``wait``
   refuses (exit ``DUPLICATE_EXIT``), under the lock that writes its ticket, while a live ticket or claim has the same
   argv and cwd; ``--allow-duplicate`` is the deliberate repeat. A file written before #1760 has no argv and never
-  matches. ``status`` prints each entry's cwd and command.
+  matches. ``status`` prints each entry's cwd and command. The identity is the argv as typed (owner, #1760), so a
+  command that resolves HEAD when it STARTS (a bare ``suite_at_commit.sh``, ``prepr.sh``) repeats an earlier run from
+  that directory even after a new commit: pass ``suite_at_commit.sh`` an explicit SHA. 75 is the waiter's refusal,
+  never the child's status (no child it runs today exits 75); the stderr line starts ``box_quiet: refused``.
 
 State lives in ``~/.cache/maxim-box-quiet`` (shared by every worktree and session of this user), or ``--state-dir``.
 These files are not persisted data (throwaway coordination state; CC3 and ``_format_version`` do not apply).

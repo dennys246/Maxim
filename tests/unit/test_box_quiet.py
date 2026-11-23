@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import select
 import subprocess
 import sys
 import threading
@@ -525,6 +526,15 @@ def test_a_ticket_with_a_malformed_cmd_is_unreadable_not_a_crash(tmp_path):
                                                     "started": "t0", "cmd": 5}))  # fmt: skip
     procs = [P(4242, 1, "x"), P(4444, 1, "y")]
     assert [t.pid for t in B._load_queue(s, procs, prune=False)] == [4242]
+    (s / "claims" / "4444.json").write_text(json.dumps({"pid": 4444, "kind": "suite", "started": "t0", "cmd": 5}))
+    assert B._load_claims(s, procs, prune=False) == {}  # unreadable, reported, not a crash
+
+
+def _line(proc: subprocess.Popen, timeout: float = 15.0) -> str:
+    """One stderr line, or a failure (never a hang) if the waiter wedges before printing it."""
+    ready, _, _ = select.select([proc.stderr], [], [], timeout)
+    assert ready, "the waiter printed nothing"
+    return proc.stderr.readline()
 
 
 def _orphan_waiter(state: Path, marker: str, cwd: Path) -> subprocess.Popen:
@@ -546,7 +556,7 @@ def test_a_repeated_waiter_is_refused_until_the_first_is_gone_and_allow_duplicat
     s = tmp_path / "s"
     first = _orphan_waiter(s, marker, tmp_path)
     try:
-        assert "waiting to start a check" in first.stderr.readline()
+        assert "waiting to start a check" in _line(first)
         monkeypatch.chdir(tmp_path)
         argv = ["--state-dir", str(s), "--only-matching", marker, "wait", "--kind", "check", "--poll-s", "0.05", "--",
                 sys.executable, "-c", "pass", marker]  # fmt: skip
@@ -577,3 +587,30 @@ def test_status_names_each_entrys_directory_and_command(tmp_path, capsys):
     f.write_text(json.dumps({**d, "started": started}))
     assert B.main(["--state-dir", str(s), "--only-matching", "nothing-here", "status"]) == 0
     assert "in /w/a: bash scripts/suite_at_commit.sh 80cf841f" in capsys.readouterr().out
+
+
+def test_a_waiter_whose_child_already_runs_refuses_a_repeat_from_a_symlink_to_its_directory(tmp_path, monkeypatch):
+    """The other #1760 half: the orphan already started its child, so the match is the CLAIM. The first waiter runs
+    from a symlink to the directory the repeat runs from, and they are one directory (``getcwd`` is already physical on
+    POSIX; ``realpath`` keeps that true wherever it is not)."""
+    marker = f"box-quiet-1760-run-{tmp_path.name}"
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    s = tmp_path / "s"
+    cmd = [sys.executable, "-c", "import time; time.sleep(30)", marker]
+    first = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "--state-dir", str(s), "--only-matching", marker, "wait", "--kind", "check",
+         "--poll-s", "0.05", "--", *cmd],
+        cwd=link, stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        assert "started check pid" in _line(first)
+        assert list((s / "queue").glob("*.json")) == []  # it is a claim now, not a ticket
+        monkeypatch.chdir(real)
+        argv = ["--state-dir", str(s), "--only-matching", marker, "wait", "--kind", "check", "--", *cmd]
+        assert B.main(argv) == B.DUPLICATE_EXIT
+    finally:
+        first.terminate()
+        first.wait(timeout=10)
