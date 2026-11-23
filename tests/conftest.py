@@ -103,6 +103,7 @@ _docker_guard.install()
 # "scripts._lint_git", ...): a script's lazy `from _provenance import ...` then sees another object than the one a
 # later test patched, so a test's outcome depends on which files ran before it on its worker (#1339). The check runs
 # around every test, every test module and every collected module; see tests/script_module_guard.py.
+from tests import package_attribute_guard as _package_attribute_guard  # noqa: E402
 from tests import script_module_guard as _script_module_guard  # noqa: E402
 
 
@@ -283,11 +284,16 @@ def pytest_runtest_makereport(item: pytest.Item, call: "pytest.CallInfo[None]"):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_make_collect_report(collector: pytest.Collector):  # noqa: ANN201
     before = _script_module_guard.snapshot()
+    before_pkg = _package_attribute_guard.snapshot()
     outcome = yield
     report = outcome.get_result()
     _fail_required_extra_skip(collector.config, report)
-    leak = _script_module_guard.check_and_restore(before)
-    if leak is not None:
+    for leak in (
+        _script_module_guard.check_and_restore(before),
+        _package_attribute_guard.check_and_restore(before_pkg),
+    ):
+        if leak is None:
+            continue
         if report.outcome == "failed":
             report.longrepr = f"{report.longrepr}\n\n{leak}"
         else:
@@ -312,6 +318,27 @@ def _scripts_modules_not_replaced_by_module():
     before = _script_module_guard.snapshot()
     yield
     leak = _script_module_guard.check_and_restore(before)
+    if leak is not None:
+        pytest.fail(f"in this module's fixtures: {leak}", pytrace=False)
+
+
+@pytest.fixture(autouse=True)
+def _maxim_package_attributes_intact():
+    """Fail the test that left the ``maxim`` package replaced or missing a submodule attribute (#1755;
+    tests/package_attribute_guard.py). Requests no ``monkeypatch``, so it tears down after the test's own undo."""
+    before = _package_attribute_guard.snapshot()
+    yield
+    leak = _package_attribute_guard.check_and_restore(before)
+    if leak is not None:
+        pytest.fail(leak, pytrace=False)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _maxim_package_attributes_intact_by_module():
+    """The same check over a whole test module, which sees module- and class-scoped fixtures."""
+    before = _package_attribute_guard.snapshot()
+    yield
+    leak = _package_attribute_guard.check_and_restore(before)
     if leak is not None:
         pytest.fail(f"in this module's fixtures: {leak}", pytrace=False)
 
