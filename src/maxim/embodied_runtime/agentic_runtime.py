@@ -8,6 +8,7 @@ DefaultNetwork, CaptureManager, and all related subsystems.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -60,6 +61,7 @@ class AgenticRuntimeMixin:
     # Always None since the protocol system's deletion (#1436 removed its start-up block, the one
     # assignment that typed it); the readers that remain are #1467's to remove.
     _protocol_registry: Any
+    log: logging.Logger  # set by the host (Selfy.__init__)
 
     def _resolve_body_wiring(self, pain_bus: Any, nac: Any) -> "tuple[str | None, Any]":
         """Resolve an optional SEM body to wire into ``build_executor``.
