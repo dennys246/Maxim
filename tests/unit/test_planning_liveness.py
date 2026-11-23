@@ -515,12 +515,12 @@ class TestLoopWiringPins:
         assert 'new_proposal.error != "shutdown"' in loop_text
 
     def test_stale_drop_calls_handler(self, loop_text):
-        from maxim.runtime import agent_loop
+        from maxim.runtime import loop_intake
 
         from tests.unit._loop_source import loop_call_count
 
         assert loop_call_count("_drop_stale_proposal") >= 1  # a call, not the def
-        assert "stale_proposal_dropped" in inspect.getsource(agent_loop._drop_stale_proposal)
+        assert "stale_proposal_dropped" in inspect.getsource(loop_intake._drop_stale_proposal)  # §2's leaf (slice 6)
 
     def test_idle_gate_has_terminal_job_backstop(self, loop_text):
         assert "planning_job_completed_without_proposal" in loop_text
@@ -528,7 +528,7 @@ class TestLoopWiringPins:
         assert "ctrl.last_proposal_time < ctrl.last_llm_submit_time" in loop_text
 
     def test_no_action_no_error_proposal_calls_handler(self, loop_text):
-        from maxim.runtime.agent_loop import _proposal_without_action_reason
+        from maxim.runtime.loop_intake import _proposal_without_action_reason
 
         assert "_proposal_without_action_reason(new_proposal)" in loop_text
         assert "proposal_without_action" in inspect.getsource(_proposal_without_action_reason)
@@ -593,10 +593,13 @@ class TestLoopWiringPins:
         [deferred_raise] = [n for n in ast.walk(wrapper) if isinstance(n, ast.Raise)]
         assert deferred_raise.lineno > session_block.end_lineno
 
-    def test_proposal_time_stamped_on_any_proposal(self, loop_src):
-        # FUNCTION-SPECIFIC: the same line also lives in a module-level helper, so the loop's own stamp
-        # is only visible in run_agentic_loop's body; a slice that moves it updates this pin.
-        assert "ctrl.last_proposal_time = time.time()" in loop_src
+    def test_proposal_time_stamped_on_any_proposal(self):
+        # FUNCTION-SPECIFIC: the same line also lives in a module-level helper, so the loop's own stamp is read
+        # from the function that polls the worker: §2, ``loop_intake.take_llm_proposal`` since slice 6 (1.3.6).
+        from maxim.runtime import loop_intake
+
+        src = inspect.getsource(loop_intake.take_llm_proposal)
+        assert src.index("llm_worker.get_latest_proposal()") < src.index("ctrl.last_proposal_time = time.time()")
 
     def test_global_call_registry_does_not_control_loop_liveness(self, loop_text):
         assert "any_call_in_flight" not in loop_text
@@ -622,19 +625,19 @@ class TestLoopWiringPins:
 
 class TestProposalWithoutAction:
     def test_action_or_error_is_executable_or_explicit(self):
-        from maxim.runtime.agent_loop import _proposal_without_action_reason
+        from maxim.runtime.loop_intake import _proposal_without_action_reason
 
         assert _proposal_without_action_reason(MagicMock(action={"tool_name": "respond"}, error=None)) is None
         assert _proposal_without_action_reason(MagicMock(action=None, error="bad response")) is None
 
     def test_parsed_empty_proposal_is_a_failure(self):
-        from maxim.runtime.agent_loop import _proposal_without_action_reason
+        from maxim.runtime.loop_intake import _proposal_without_action_reason
 
         proposal = MagicMock(action=None, error=None, ready_to_act=True, mode_goal_achieved=False)
         assert _proposal_without_action_reason(proposal) == "proposal_without_action"
 
     def test_not_ready_proposal_is_classified(self):
-        from maxim.runtime.agent_loop import _proposal_without_action_reason
+        from maxim.runtime.loop_intake import _proposal_without_action_reason
 
         proposal = MagicMock(action=None, error=None, ready_to_act=False, mode_goal_achieved=False)
         assert _proposal_without_action_reason(proposal) == "proposal_not_ready_to_act"
@@ -800,10 +803,11 @@ class TestParseFailureVsBadToolChoice:
         assert "fallback_proposal_dropped" in src
 
     def test_bad_tool_name_is_recorded_for_correction(self):
-        from maxim.runtime import agent_loop
+        from maxim.runtime import loop_intake
 
-        # FUNCTION-SPECIFIC (a region/ordering inside run_agentic_loop): the slice that moves §2 (LLM-primary; outside phase 1) updates it consciously.
-        src = inspect.getsource(agent_loop._run_agentic_loop_body)
+        # FUNCTION-SPECIFIC (a region/ordering inside §2): the sim fallback drop is ``loop_intake._drop_skipped_fallback``
+        # since slice 6 (1.3.6).
+        src = inspect.getsource(loop_intake._drop_skipped_fallback)
         block = src.split("_is_parse_failure = ", 1)[1].split("new_proposal = None", 1)[0]
         assert "_tools_hallucinated" in block, (
             "the unregistered-tool case must feed the existing corrective channel, "
