@@ -50,6 +50,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Pi 5 / Raspberry Pi OS bookworm: aarch64, glibc 2.36, CPython 3.11.
@@ -108,7 +111,7 @@ def resolve(extra: str, platform: str, python_version: str) -> tuple[list[str], 
         ]
         for pkg in _SOURCE_OK:
             cmd += ["--no-binary", pkg]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=child_env())
         if proc.returncode != 0:
             stderr = proc.stderr.strip()
             for name, apt in _SOURCE_OK.items():

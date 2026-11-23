@@ -73,6 +73,9 @@ import time
 import unicodedata
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 __all__ = [
     "GATED_DATA_DIR",
     "HARNESS_RUN_ID_ENV",
@@ -175,7 +178,7 @@ def resolved_maxim_file(binary: str, *, timeout: float = 60.0) -> str | None:
     try:
         probe = subprocess.run(
             [interp, "-c", "import maxim,sys; sys.stdout.write(maxim.__file__)"],
-            env=os.environ.copy(),  # same env the sub-sims inherit
+            env=child_env(),  # the env the sub-sims get: every harness spawns them with child_env (#1593)
             capture_output=True,
             text=True,
             timeout=timeout,

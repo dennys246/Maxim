@@ -2394,6 +2394,42 @@ def check_disk_space() -> CheckResult:
     )
 
 
+def check_maxim_install(site_dirs: tuple[str, ...] | None = None) -> CheckResult:
+    """Fail when ``maxim`` runs from a checkout while a ``maxim`` package also sits in site-packages (#1593).
+
+    The process itself imports the checkout. A child, or a re-exec, whose environment did not come from
+    ``maxim.utils.child_env`` would import the site-packages copy instead: a ``.pth`` hook (the GStreamer
+    wheels') rewrites ``PYTHONPATH`` with site-packages first. That is how a stray pymaxim 1.3.2 shadowed the
+    rig's editable install from 2026-10-16 to 2026-11-03. A normal ``pip install`` (``maxim`` imported from
+    site-packages) is fine.
+    """
+    from pathlib import Path
+
+    import maxim
+    from maxim.utils.child_env import own_site_dirs
+
+    imported = Path(maxim.__file__).resolve().parent
+    roots = [Path(d) for d in (own_site_dirs() if site_dirs is None else site_dirs)]
+    if any(imported.is_relative_to(root) for root in roots):
+        return CheckResult(name="maxim install", status="ok", message=f"installed package at {imported}")
+    strays = [root / "maxim" for root in roots if (root / "maxim" / "__init__.py").is_file()]
+    if not strays:
+        return CheckResult(name="maxim install", status="ok", message=f"checkout at {imported}")
+    stray = strays[0]
+    return CheckResult(
+        name="maxim install",
+        status="fail",
+        message=(
+            f"maxim runs from {imported}, but another copy sits at {stray}; a child process or a restart "
+            "that inherits a .pth-rewritten PYTHONPATH would import that copy instead"
+        ),
+        fix=(
+            f"If `pip show pymaxim` lists a non-editable install, `pip uninstall pymaxim` and reinstall with "
+            f"`pip install -e .`; if no package claims {stray}, move it aside: `mv {stray} {stray}.stray`"
+        ),
+    )
+
+
 def check_ram_headroom() -> CheckResult:
     """Report available system RAM."""
     try:
@@ -3671,6 +3707,7 @@ def run_all_checks(
         check_tier_effectiveness(),
         check_disk_space(),
         check_ram_headroom(),
+        check_maxim_install(),
         check_storage_footprint(),
         check_user_profiles(),
     ]
@@ -3803,6 +3840,7 @@ __all__ = [
     "check_loopback_lane_auth",
     "check_disk_space",
     "check_ram_headroom",
+    "check_maxim_install",
     "check_inference_coherence",
     "check_peer_url_reachable",
     "check_peer_key_set",

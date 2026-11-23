@@ -42,13 +42,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 JUNIT = "fast-suite.xml"
@@ -171,7 +173,7 @@ def shard_argv(args: list[str], k: int, n: int) -> list[str]:
 
 def scrubbed_env() -> dict[str, str]:
     """The environment without coverage's names (ENV_DROP) or pytest's selection/plugin knobs (PYTEST_ENV_DROP)."""
-    return {key: v for key, v in os.environ.items() if not key.startswith(ENV_DROP) and key not in PYTEST_ENV_DROP}
+    return {key: v for key, v in child_env().items() if not key.startswith(ENV_DROP) and key not in PYTEST_ENV_DROP}
 
 
 def shard_env(k: int) -> dict[str, str]:
