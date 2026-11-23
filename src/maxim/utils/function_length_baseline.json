@@ -126,7 +126,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 2140
+      "lines": 1927
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -395,7 +395,9 @@
     "api.py::run 201 -> 186 (entry removed: under the threshold) and _maybe_auto_spawn_server 205 -> 201 on 2026-11-20 (#1315 item 10a merged with main, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out. build_primary_router stays under the threshold: its first step is lane_backends._router_build_preflight (the offline engage, then #1610's process services and _require_valid_user_profiles). check_resolved_config walks config_loader.SETTABLE_FIELDS and its role row is doctor/checks.py::_role_row.",
     "_main_impl tightened 1195 -> 1193 on 2026-11-21 (#1315 item 10b merged with main, rule T): both benchmark exits are one call to simulation/benchmark.py::BenchmarkReport.exit_code (2 when a model was refused, owner decision V26).",
     "_main_impl 1193 -> 1180, AgenticRuntimeMixin._start_agentic_runtime 796 -> 792 and start_simulation_mode 1895 -> 1889 on 2026-11-21 (#1315 item 10b, owner decision V29: every MaximAgent takes the run's router, rule T): the CLI agentic agent's build moved to cli.py::_build_cli_agentic_agent and the AUT agent's (with its event bridge) to orchestrator.py::_build_aut_agent, carrying the llm_router= edits; the robot runtime's hand-written ExecAgent share is one MaximAgent.share_run_llm call.",
-    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted."
+    "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
+    "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged.",
+    "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch."
   ],
   "touch_exemptions": [
     {
