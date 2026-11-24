@@ -40,7 +40,7 @@
         "WorkerPool"
       ],
       "disposition": "accepted",
-      "rationale": "LLMWorker is the worker-pool client (JobStatus/LaneConfig/WorkerPool); the agents layer owns the worker because it is where planning turns are consumed. Burn-down: the pool types are a contract that belongs below both layers LaneStopped (2026-11-24): the lane's typed stopped-lane refusal, caught beside queue.Full where LLMWorker submits."
+      "rationale": "LLMWorker is the worker-pool client (JobStatus/LaneConfig/WorkerPool); the agents layer owns the worker because it is where planning turns are consumed. Burn-down: the pool types are a contract that belongs below both layers. LaneStopped (2026-11-24): the lane's typed stopped-lane refusal, caught beside queue.Full where LLMWorker submits."
     },
     {
       "file": "maxim/agents/llm_worker.py",
