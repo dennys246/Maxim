@@ -244,7 +244,19 @@ def test_fetch_url_strict_uses_a_client_with_no_proxy(monkeypatch, policy) -> No
         stale.close()
     url = f"https://{TAILNET_NAME}/v1/models" if policy == "any" else f"http://{TAILNET_IP}:8099/v1/models"
     assert _route(_http._registry.get_client(name), url) == "direct"
-    assert _route(_http._registry.get_client(_http._EXTERNAL_ENDPOINT), url) == "proxy"  # the non-strict control
+    # The non-strict control. The shared client may already be cached from an earlier test, built before
+    # this test set the proxy env. So build a fresh one, and put the original back afterwards: a client
+    # cached here with this test's proxy mounts would leak a dead proxy into later tests.
+    control = _http._EXTERNAL_ENDPOINT
+    saved = _http._registry._clients.pop(control, None)
+    try:
+        assert _route(_http._registry.get_client(control), url) == "proxy"
+    finally:
+        fresh = _http._registry._clients.pop(control, None)
+        if fresh is not None:
+            fresh.close()
+        if saved is not None:
+            _http._registry._clients[control] = saved
 
 
 def test_strict_on_any_still_honours_the_env_ca(monkeypatch, tmp_path) -> None:
