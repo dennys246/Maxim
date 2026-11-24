@@ -182,6 +182,7 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
         sim_logger.sim_deliberation_update(f"I will quote {CANARY}", cycle=1, max_cycles=2)
         sim_logger.sim_log("RESPONSE", "ran internet_search (failed)", {"text": None}, _terminal=False)
         sim_logger.display_scene(f"  Reasoning: the file said {CANARY}")
+        sim_logger.sim_percept("cli", f"The narrator says {CANARY}", modality="text")
         sim_logger.display_turn(7)
         session = sim_logger.get_sim_records()
     finally:
@@ -205,4 +206,9 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
     _assert_shape_logged(texts, text_shape(scene), scene)
     scenes = [r for r in session if r["subsystem"] == "SCENE"]
     assert scenes and CANARY in scenes[0]["message"], "the session trail (the Adventure view's source) lost the scene"
+    percept = f"The narrator says {CANARY}"
+    _assert_shape_logged(texts, '"source": "cli"', percept)
+    assert [r for r in session if r["subsystem"] == "PERCEPT" and CANARY in r["message"]], (
+        "the session lost the percept"
+    )
     assert any("Turn 7" in t for t in texts), "a subsystem that carries no model text lost its message"
