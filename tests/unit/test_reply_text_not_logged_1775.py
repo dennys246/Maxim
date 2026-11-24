@@ -161,3 +161,35 @@ def test_a_critique_s_issues_are_logged_as_a_count() -> None:
     assert _issue_count({"issues": [CANARY, "two"]}) == 2
     assert _issue_count({"issues": CANARY}) == 0
     assert _issue_count(None) == 0
+
+
+# ── the sim stream's RESPONSE record (owner, 2026-11-24: stop mirroring its text) ──
+
+
+def test_a_sim_response_reaches_the_log_file_by_shape_but_the_session_keeps_it(tmp_path: Any) -> None:
+    from maxim.simulation import sim_logger
+
+    reply = f"The note says {CANARY}."
+    handler = logging.FileHandler(tmp_path / "maxim.jsonl")
+    handler._maxim_jsonl = True  # type: ignore[attr-defined]
+    captured: list[logging.LogRecord] = []
+    handler.emit = captured.append  # type: ignore[method-assign]
+    root = logging.getLogger()
+    root.addHandler(handler)
+    sim_logger.enable_sim_logging(use_color=False)
+    try:
+        sim_logger.sim_log("RESPONSE", reply, {"text": reply, "actions": ["respond"]}, _terminal=False)
+        sim_logger.sim_log("NARRATOR", "the scene opens", _terminal=False)
+        session = sim_logger.get_sim_records()
+    finally:
+        sim_logger.disable_sim_logging()
+        root.removeHandler(handler)
+        handler.close()
+
+    responses = [r for r in session if r["subsystem"] == "RESPONSE"]
+    assert responses and responses[0]["message"] == reply, "the session trail (the Talk view's source) lost the reply"
+    texts = [_record_text(r) for r in captured]
+    assert any("sim_response" == getattr(r, "event", None) for r in captured), "RESPONSE was not mirrored at all"
+    assert not [t for t in texts if CANARY in t], f"a sim reply's text reached MAXIM_LOG_FILE: {texts}"
+    _assert_shape_logged(texts, text_shape(reply), reply)
+    assert any("the scene opens" in t for t in texts), "a non-reply subsystem lost its text"

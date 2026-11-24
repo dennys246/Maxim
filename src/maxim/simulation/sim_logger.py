@@ -26,6 +26,7 @@ import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, ParamSpec, TypeVar
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,44 @@ def _ensure_sim_bridge_handlers() -> None:
     for handler_id, h in root_jsonl.items():
         if handler_id not in bridge_ids:
             _sim_bridge_logger.addHandler(h)
+
+
+# #1775 (owner, 2026-11-24): subsystems whose message IS the agent's reply. The sim-session JSONL and the
+# sinks (the console's Talk view) keep the text; the MAXIM_LOG_FILE mirror carries only its shape, because a
+# reply can quote a PRIVATE tool's output and the log file is not a display surface.
+_REPLY_SUBSYSTEMS = frozenset({"RESPONSE"})
+
+
+def _bridge_to_log_file(
+    subsystem: str,
+    message: str,
+    data: dict[str, Any] | None,
+    *,
+    elapsed: float,
+    agent_id: str | None,
+    nickname: str | None,
+) -> None:
+    """Mirror one sim_log record into the unified ``MAXIM_LOG_FILE`` stream (reply text by shape only)."""
+    fields = dict(data or {})
+    if subsystem in _REPLY_SUBSYSTEMS:
+        message = text_shape(str(message))
+        if isinstance(fields.get("text"), str):
+            fields["text"] = text_shape(fields["text"])
+    _ensure_sim_bridge_handlers()
+    _sim_bridge_logger.info(
+        message,
+        extra={
+            "event": f"sim_{subsystem.lower()}",
+            "data": {
+                "subsystem": subsystem,
+                "message": message,
+                "elapsed_s": round(elapsed, 3),
+                "agent_id": agent_id,
+                "agent": nickname,
+                **fields,
+            },
+        },
+    )
 
 
 # ContextVar for implicit agent_id threading. The agent loop sets this
@@ -1049,21 +1088,7 @@ def sim_log(
     # picks up `event` + `data` from the `extra=` dict; we route through a
     # dedicated logger with propagate=False so stdout handlers never see
     # these emissions (they have their own terminal path below).
-    _ensure_sim_bridge_handlers()
-    _sim_bridge_logger.info(
-        message,
-        extra={
-            "event": f"sim_{subsystem.lower()}",
-            "data": {
-                "subsystem": subsystem,
-                "message": message,
-                "elapsed_s": round(elapsed, 3),
-                "agent_id": agent_id,
-                "agent": nickname,
-                **(data or {}),
-            },
-        },
-    )
+    _bridge_to_log_file(subsystem, message, data, elapsed=elapsed, agent_id=agent_id, nickname=nickname)
 
     # `_terminal=False`: record ONLY (sinks + JSONL + bridge, already done
     # above) and skip terminal rendering. Used by the display_* helpers, which
