@@ -14,7 +14,7 @@ src/maxim/simulation/
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
     tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
-    response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
+    response_policy.py         # ResponsePolicy (auto-approve/reject/delayed)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)
     validation.py              # 15 expectation types (behavioral, metric, bio-system)
@@ -155,7 +155,7 @@ Key semantics:
 - `is_exhausted()` is `True` only for finite sources (scenarios, replays). Live sources always return `False`.
 - `capabilities` tells the pipeline which subsystems to activate (e.g., `{"vision", "cli"}`).
 
-To implement a new source, create a class satisfying this protocol and pass it as the `percept_source` parameter to `run_agentic_loop()`.
+To implement a new source, create a class satisfying this protocol and pass it as the `percept_source` parameter to `run_agentic_loop()`, together with `response_policy=` (required with a `percept_source`, #1185): the sim's `ResponsePolicy` (a `SimulationBridge`'s `bridge.response_policy`), or `None` when nothing should answer its gating prompts, with a comment saying why.
 
 ## ConversationalSource
 
@@ -210,15 +210,21 @@ Uses `__getattr__` forwarding so it is a drop-in replacement -- any attribute no
 
 ## Integration with run_agentic_loop()
 
-In `src/maxim/runtime/agent_loop.py`, `run_agentic_loop()` accepts two optional parameters:
+In `src/maxim/runtime/agent_loop.py`, `run_agentic_loop()` accepts these simulation parameters:
 
 ```python
 def run_agentic_loop(
     ...,
     percept_source: Any | None = None,   # PerceptSource for simulation
+    response_policy: Any = RESPONSE_POLICY_UNSET,  # required with percept_source (#1185)
     action_sink: Any | None = None,       # ActionSink for recording
 ) -> None:
 ```
+
+`response_policy` must be passed explicitly whenever `percept_source` is: the sim's `ResponsePolicy` answers its
+gating prompts (confirmations, plan approvals, timeout retries), and `None` means nothing does. A `percept_source`
+without it raises `TypeError`. The loop is handed the bridge's percept source, never the bridge, so the policy cannot
+be found any other way.
 
 When `percept_source` is provided, the loop replaces the normal `environment.observe()` call:
 
@@ -377,7 +383,6 @@ Four policies:
 | `AUTO_APPROVE` | Always yes (default) | Fast sim runs, no blocking |
 | `AUTO_REJECT` | Always no | Test refusal/cancellation paths |
 | `DELAYED` | Approve after N seconds | Test timeout handling |
-| `ASK_ORCHESTRATOR` | Defer to orchestrator | Full confirmation-flow testing |
 
 The bridge holds the policy (`SimulationBridge.response_policy`). The agent loop checks `sim.resolve_confirmation()`, `sim.resolve_plan_approval()`, and `sim.resolve_timeout_retry()` at each blocking point. Production mode (`NullSimulationAdapter`) returns `None` — wait for real user.
 

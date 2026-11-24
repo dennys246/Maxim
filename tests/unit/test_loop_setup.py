@@ -105,6 +105,7 @@ def _build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **overrides: Any) ->
         use_tool_prompting=True,
         protocol_registry=None,
         percept_source=None,
+        response_policy=None,
         action_sink=None,
         pain_bus=None,
         aut_mode="substrate-primary",
