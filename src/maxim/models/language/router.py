@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic, log_structured
 from maxim.models.language import call_accounting
 from maxim.models.language.cost_tracker import CostTracker
-from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch
+from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch, text_shape
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
 
 # Internal imports — only symbols actually used by LLMRouter
@@ -2317,7 +2317,10 @@ Return JSON exactly like:
             stream=stream,
         )
         if text:
-            logger.debug("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
+            # The reply's shape, never its text (#1775): a reply can quote a PRIVATE tool's output it was shown, and
+            # DEBUG records persist (MAXIM_LOG_FILE, the sim JSONL, /v1/debug/logs). No log carries reply text: to
+            # see one behind a parse failure, reproduce the call (the shape's digest matches a repeat).
+            logger.debug("LLM raw response: %s", text_shape(text))
 
         from maxim.utils.cancellation import yield_requested
 
@@ -2396,7 +2399,7 @@ Return JSON exactly like:
         # Note: Response length is controlled by max_tokens in config
         # No truncation here - let the full response through
 
-        logger.debug("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
+        logger.debug("LLM answer_only response: %s", text_shape(answer))  # #1775: the shape, never the text
 
         # Stage 2: Wrap in JSON programmatically (no LLM needed)
         # Escape the answer for JSON
@@ -2492,7 +2495,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
             request_context=request_context,
         )
         if text:
-            logger.debug("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
+            logger.debug("LLM tool_response raw: %s", text_shape(text))  # #1775: the shape, never the text
 
         if not text or not text.strip():
             warn("LLM returned empty tool response")
