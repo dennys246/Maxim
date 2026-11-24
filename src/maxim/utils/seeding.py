@@ -113,9 +113,11 @@ def stable_hash_32(text: str) -> int:
     recall across sessions (see tests/unit/test_stable_hash_two_process.py).
 
     Uses SHA-256, same pattern as
-    ``memory/hippocampus_consolidation.py::_context_signature``.
+    ``memory/hippocampus_consolidation.py::_context_signature``. Encodes with ``surrogatepass`` so a lone surrogate
+    (text decoded with ``surrogateescape``: undecodable file names, subprocess output) hashes instead of raising; no
+    string that encodes strictly changes its hash (#1751).
     """
-    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:4], "big")
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8", "surrogatepass")).digest()[:4], "big")
 
 
 def stable_hash_64_signed(text: str) -> int:
@@ -125,6 +127,7 @@ def stable_hash_64_signed(text: str) -> int:
     (``SemanticLSH.hash`` / ``NeuralSemanticLSH._fallback_hash`` hyperplane
     bits).  An unsigned digest would make every sum positive and collapse
     all hash bits to 1 — the signed range keeps the bit distribution
-    balanced, matching the builtin ``hash()`` semantics it replaces.
+    balanced, matching the builtin ``hash()`` semantics it replaces. Encodes with ``surrogatepass``, as
+    ``stable_hash_32`` does (#1751).
     """
-    return int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big", signed=True)
+    return int.from_bytes(hashlib.sha256(text.encode("utf-8", "surrogatepass")).digest()[:8], "big", signed=True)

@@ -180,3 +180,28 @@ class TestQueryExperimentsTool:
         tool = QueryExperimentsTool(log)
         result = tool.run(limit=3)
         assert result.output["returned"] == 3
+
+
+class TestNarratorResearchToolRegistration:
+    """``orchestrator.py::_register_research_tools`` (#1680): a defect building the log raises, where it used to
+    drop record_experiment / query_experiments from the run behind a debug line."""
+
+    def test_registers_both_tools_on_a_new_log(self, tmp_path):
+        from maxim.simulation.orchestrator import _register_research_tools
+
+        names = []
+        registry = type("R", (), {"register": lambda self, tool: names.append(tool.name)})()
+        log = _register_research_tools(registry, None, tmp_path)
+        assert isinstance(log, ExperimentLog)
+        assert names == ["record_experiment", "query_experiments"]
+
+    def test_a_constructor_defect_raises(self, tmp_path, monkeypatch):
+        from maxim.simulation.orchestrator import _register_research_tools
+
+        def _broken(**kw):
+            raise TypeError("unexpected keyword argument")
+
+        monkeypatch.setattr("maxim.simulation.research_tools.ExperimentLog", _broken)
+        registry = type("R", (), {"register": lambda self, tool: None})()
+        with pytest.raises(TypeError):
+            _register_research_tools(registry, None, tmp_path)
