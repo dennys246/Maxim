@@ -9,7 +9,8 @@ where each site goes. This script prints, from the AST alone (it imports nothing
    kind, M72 scope and placement.
 2. **Stamps (I4).** Writers of the stamp attributes (``timestamp``, ``created_at``, ``accessed_at``,
    ``consolidated_at``): a stamp class built with one as a keyword (including ``cls(...)`` inside a stamp class),
-   and every assignment to one. Readers: every subtraction with a stamp operand, in attribute, subscript
+   every assignment to one (plain, augmented, annotated or inside a tuple target), a class-body field default, and
+   every dict literal with one as a key. Readers: every subtraction with a stamp operand, in attribute, subscript
    (``x["timestamp"]``), ``getattr(x, "timestamp", ...)`` or ``x.get("timestamp", ...)`` form, with the clock the
    other operand reads. Both are untyped: AST cannot tell an ``EpisodicMemory`` from any other object with a
    ``timestamp``, so every one is listed and a reviewer reads the list.
@@ -25,7 +26,9 @@ prints as ``outside M72's scopes``. ``tests/unit/test_world_clock_census.py`` fa
 nothing on the tree (a rule naming a function that moved), unless the rule says why it is empty today.
 
 Stated blind spots: dynamic access (``getattr(time, "time")``), a callable passed in, a local variable shadowing an
-imported name, and render sites that format a stamp without reading a clock (``_format_episodic_memory``).
+imported name, render sites that format a stamp without reading a clock (``_format_episodic_memory``), a subscript
+assignment (``d["timestamp"] = ...``; none on today's tree), and an UNSEEDED owned generator
+(``random.Random()``, ``np.random.default_rng()``), which draws from OS entropy but is excluded with the seeded ones.
 
 Usage: ``python scripts/world_clock_census.py [--json] [--root DIR]``. The scan covers files tracked by git
 under ``<root>/src/maxim`` (``git ls-files``), so untracked scratch files and fixtures never count.
@@ -314,6 +317,7 @@ class _Scanner(ast.NodeVisitor):
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if isinstance(node.op, ast.Sub):
+            # Each stamp operand is its own reader: ``rec.created_at - rec.consolidated_at`` reads two stamps.
             for side, other in ((node.left, node.right), (node.right, node.left)):
                 stamp = _stamp_operand(side)
                 if stamp is not None:
@@ -328,22 +332,35 @@ class _Scanner(ast.NodeVisitor):
                             placement=placement_of(self.path, self.function, None),
                         )
                     )
-                    break
         self.generic_visit(node)
 
-    def _assigned(self, targets: list[ast.expr], value: ast.AST, line: int) -> None:
+    def _writer(self, line: int, target: str, attr: str, value: ast.AST) -> None:
+        self.out.writers.append(
+            StampWriter(
+                path=self.path,
+                line=line,
+                function=self.function,
+                target=target,
+                attrs=attr,
+                input_clock=self._clock_kinds_in([value]),
+            )
+        )
+
+    def _assigned(self, targets: list[ast.expr], value: ast.AST, line: int, how: str = "assignment") -> None:
         for target in targets:
-            if isinstance(target, ast.Attribute) and target.attr in STAMP_ATTRS:
-                self.out.writers.append(
-                    StampWriter(
-                        path=self.path,
-                        line=line,
-                        function=self.function,
-                        target=f"assignment .{target.attr}",
-                        attrs=target.attr,
-                        input_clock=self._clock_kinds_in([value]),
-                    )
-                )
+            if isinstance(target, (ast.Tuple, ast.List)):
+                self._assigned(list(target.elts), value, line, how)
+            elif isinstance(target, ast.Attribute) and target.attr in STAMP_ATTRS:
+                self._writer(line, f"{how} .{target.attr}", target.attr, value)
+            elif (
+                isinstance(target, ast.Name)
+                and target.id in STAMP_ATTRS
+                and self.classes
+                and self.stack
+                and self.stack[-1] == self.classes[-1]
+            ):
+                # A class-body field (``timestamp: float = field(default_factory=time.time)``) stamps every instance.
+                self._writer(line, f"field default {self.classes[-1]}.{target.id}", target.id, value)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self._assigned(list(node.targets), node.value, node.lineno)
@@ -352,6 +369,16 @@ class _Scanner(ast.NodeVisitor):
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
             self._assigned([node.target], node.value, node.lineno)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self._assigned([node.target], node.value, node.lineno, how="augmented assignment")
+        self.generic_visit(node)
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for key, value in zip(node.keys, node.values, strict=True):
+            if isinstance(key, ast.Constant) and key.value in STAMP_ATTRS:
+                self._writer(node.lineno, f'dict literal "{key.value}"', str(key.value), value)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -521,7 +548,7 @@ def render(result: FileCensus) -> str:
         ref = "call" if s.call else "ref"
         lines.append(f"{s.path}:{s.line}  {s.function}  {s.name}  {s.kind}  {ref}  {s.scope}  {s.placement}")
     lines.append("")
-    lines.append(f"== stamp writers ({', '.join(sorted(STAMP_ATTRS))}: stamp-class constructors and assignments) ==")
+    lines.append(f"== stamp writers ({', '.join(sorted(STAMP_ATTRS))}: constructors, assignments, fields, dicts) ==")
     for w in result.writers:
         lines.append(f"{w.path}:{w.line}  {w.function}  {w.target}  {w.attrs}  input={w.input_clock}")
     lines.append("")

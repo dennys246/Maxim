@@ -139,7 +139,12 @@ def test_stamp_subtractions_name_the_other_clock() -> None:
         return b.timestamp - a.timestamp
     """
     out = census_mod.scan_text(textwrap.dedent(src), "src/maxim/memory/x.py")
-    assert [(r.function, r.other_clock) for r in out.subtractions] == [("age", "wall"), ("gap", "caller-supplied")]
+    # Both stamps of ``gap`` are readers, each against the other.
+    assert [(r.function, r.other_clock) for r in out.subtractions] == [
+        ("age", "wall"),
+        ("gap", "caller-supplied"),
+        ("gap", "caller-supplied"),
+    ]
 
 
 def test_every_stamp_reader_form_is_seen() -> None:
@@ -160,6 +165,7 @@ def test_every_stamp_reader_form_is_seen() -> None:
         ("c", "timestamp", "subscript"),
         ("d", "accessed_at", "attribute"),
         ("e", "created_at", "attribute"),
+        ("e", "consolidated_at", "attribute"),
     ], got
 
 
@@ -192,12 +198,23 @@ def test_loader_constructors_and_assignments_are_stamp_writers() -> None:
     def touch(memory):
         memory.accessed_at = time.time()
         memory.name = "x"
+        memory.accessed_at += 1.0
+        memory.timestamp, other = time.time(), 2
+        return {"timestamp": time.time(), "kind": "x"}
+    class Stamped:
+        timestamp: float = field(default_factory=time.time)
+        def method(self):
+            timestamp = 3.0  # a local variable, not a field
     """
     out = census_mod.scan_text(textwrap.dedent(src), "src/maxim/memory/x.py")
     got = [(w.target, w.attrs, w.input_clock) for w in out.writers]
     assert got == [
         ("EpisodicMemory (cls)", "accessed_at,timestamp", "caller-supplied"),
         ("assignment .accessed_at", "accessed_at", "wall"),
+        ("augmented assignment .accessed_at", "accessed_at", "caller-supplied"),
+        ("assignment .timestamp", "timestamp", "wall"),
+        ('dict literal "timestamp"', "timestamp", "wall"),
+        ("field default Stamped.timestamp", "timestamp", "wall"),
     ], got
 
 
