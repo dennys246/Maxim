@@ -144,14 +144,14 @@ def test_an_environment_copied_from_os_environ_fails_and_one_wrapped_in_child_en
     a = os.environ.copy()
     b = dict(os.environ)
     c = {**os.environ, "X": "1"}
-    d = {k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")}
+    d = {k: v for k, v in os.environ.items() if not k.startswith("XYZ_")}
     subprocess.run(cmd, env=os.environ)
     """
     assert len(_env_hits(bad)) == 5
     good = """
     import os
     a = child_env()
-    d = child_env({k: v for k, v in os.environ.items() if not k.startswith("MAXIM_")})
+    d = child_env({k: v for k, v in os.environ.items() if not k.startswith("XYZ_")})
     e = child_env(dict(os.environ))
     keys = sorted(k for k in os.environ if k.startswith("MAXIM_"))
     v = os.environ.get("HOME")

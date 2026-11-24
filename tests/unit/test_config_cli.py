@@ -278,6 +278,22 @@ class TestEdit:
         loaded = load_config(target)
         assert loaded == MaximConfig()
 
+    def test_edit_hands_the_editor_child_env_not_a_pth_rewritten_pythonpath(self, isolated_config_dir, monkeypatch):
+        """$EDITOR may be a Python tool: it must not get a .pth hook's site-packages-first PYTHONPATH (#1593)."""
+        import os
+
+        from maxim.runtime import config_cli
+        from maxim.utils.child_env import own_site_dirs
+
+        site_dir = own_site_dirs()[0]
+        monkeypatch.setenv("PYTHONPATH", os.pathsep.join([site_dir, "/editor/lib"]))
+        monkeypatch.setenv("EDITOR", "true")
+        monkeypatch.delenv("VISUAL", raising=False)
+        envs: list[dict] = []
+        monkeypatch.setattr(config_cli.subprocess, "call", lambda cmd, **kw: envs.append(kw.get("env")) or 0)
+        assert run_config_subcommand(["edit"]) == 0
+        assert envs and envs[0]["PYTHONPATH"] == "/editor/lib"
+
     def test_edit_validates_after_save(self, capsys, isolated_config_dir, monkeypatch, tmp_path):
         # Create an editor stub that injects invalid JSON
         editor_script = tmp_path / "bad_editor.sh"

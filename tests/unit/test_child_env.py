@@ -45,9 +45,9 @@ def test_strip_does_not_match_a_sibling_that_only_shares_a_prefix():
 
 def test_child_env_removes_pythonpath_when_nothing_is_left():
     site_dir = own_site_dirs()[0]
-    env = child_env({"PYTHONPATH": site_dir, "HOME": "/h"})
+    env = child_env({"PYTHONPATH": site_dir, "LANG": "C"})
     assert "PYTHONPATH" not in env  # nothing left: removed, not set to ""
-    assert env["HOME"] == "/h"
+    assert env["LANG"] == "C"
 
 
 def test_child_env_keeps_other_variables_and_applies_overrides_last():
@@ -294,8 +294,8 @@ def test_child_probe_reports_the_last_stderr_line(monkeypatch):
 
 
 def test_child_probe_reports_a_refused_or_failed_spawn(monkeypatch):
-    _fake_child(monkeypatch, raises=RuntimeError("offline: spawn refused"))
-    assert checks._child_maxim_dir() == "RuntimeError: offline: spawn refused"
+    _fake_child(monkeypatch, raises=OSError("no such file"))
+    assert checks._child_maxim_dir() == "OSError: no such file"
     _fake_child(monkeypatch, raises=subprocess.TimeoutExpired(["x"], 60))
     assert checks._child_maxim_dir().startswith("TimeoutExpired")
 
@@ -317,3 +317,12 @@ def test_child_probe_downgrades_the_offline_latch_refusal_to_a_warning(tmp_path:
     _fake_child(monkeypatch, raises=OfflineRefusal("subprocess.Popen refused: offline"))
     result = check_maxim_install((_site(tmp_path, stray=False),))
     assert result.status == "warn" and "OfflineRefusal" in result.message
+
+
+def test_child_probe_lets_an_unrelated_runtime_error_propagate(monkeypatch):
+    """Only the offline latch's refusal is downgraded; any other RuntimeError is a bug and must surface."""
+    import pytest
+
+    _fake_child(monkeypatch, raises=RuntimeError("something else broke"))
+    with pytest.raises(RuntimeError, match="something else broke"):
+        checks._child_maxim_dir()

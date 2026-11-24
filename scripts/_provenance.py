@@ -73,8 +73,6 @@ import time
 import unicodedata
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
-from _child_env import child_env  # noqa: E402
 
 __all__ = [
     "GATED_DATA_DIR",
@@ -131,6 +129,19 @@ def _load_code_tree():
 
 
 _code_tree = _load_code_tree()
+
+
+def _load_child_env():
+    """``src/maxim/utils/child_env.py`` from THIS tree, by path (#1593), like :func:`_load_code_tree`: no
+    ``sys.path`` change at import, so this module stays free of import side effects."""
+    path = Path(__file__).resolve().parents[1] / "src" / "maxim" / "utils" / "child_env.py"
+    spec = importlib.util.spec_from_file_location("_maxim_child_env", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+child_env = _load_child_env().child_env
 
 # Anything written here is a GATED record: it backs a ledger row, a result
 # doc, or a release gate. The refuse path below applies to this tree only.

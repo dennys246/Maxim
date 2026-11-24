@@ -2416,6 +2416,7 @@ def _child_maxim_dir(timeout: float = 60.0) -> Path | str:
     import subprocess
     import sys
 
+    from maxim._offline import OfflineRefusal
     from maxim.utils.child_env import child_env
 
     try:
@@ -2426,7 +2427,7 @@ def _child_maxim_dir(timeout: float = 60.0) -> Path | str:
             text=True,
             timeout=timeout,
         )
-    except (OSError, subprocess.TimeoutExpired, RuntimeError) as e:  # RuntimeError: the offline latch's refusal
+    except (OSError, subprocess.TimeoutExpired, OfflineRefusal) as e:
         return f"{type(e).__name__}: {e}"
     if out.returncode != 0 or not out.stdout.strip():
         lines = (out.stderr or "").strip().splitlines()

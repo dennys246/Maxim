@@ -32,8 +32,9 @@ count. New files start at zero, and burning a count down is free. This catches F
   ``from subprocess import run``), escapes it;
 - an environment passed in as a function PARAMETER, or unpacked from a tuple, always counts as unclean. It
   neither credits a correct caller nor catches a regressed one; pass ``env=child_env(env)`` (idempotent) to
-  make such a site count as clean. An item assignment or ``|=`` after ``env = child_env()``
-  (``env["PYTHONPATH"] = os.environ[...]``, ``env |= os.environ``) is not seen either; only ``.update`` is. The
+  make such a site count as clean. An item assignment after ``env = child_env()`` (``env["PYTHONPATH"] =
+  os.environ[...]``) or an ``.update(os.environ)`` on an ALIAS of ``env`` is not seen either. A name bound by a
+  walrus, a ``for``/``with`` target, a tuple target or an augmented assignment (``|=``) counts as unclean. The
   harnesses' sub-sim spawns take their environment as a parameter, which
   is why ``scripts/lint_harness_provenance.py::_env_failures`` checks where those environments are BUILT.
 
@@ -106,50 +107,142 @@ def _mentions_environ(node: ast.AST) -> bool:
     )
 
 
-def _clean_expr(expr: ast.expr | None, scope: ast.AST, local: set[str], seen: frozenset[str] = frozenset()) -> bool:
+def _bound_outside(name: str, scope: ast.AST) -> bool:
+    """True when ``name`` gets a value this scope cannot see: a parameter, or a ``global``/``nonlocal``."""
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        a = scope.args
+        params = [*a.posonlyargs, *a.args, *a.kwonlyargs, *(x for x in (a.vararg, a.kwarg) if x is not None)]
+        if any(p.arg == name for p in params):
+            return True
+    return any(isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names for n in _own_nodes(scope))
+
+
+def _clean_expr(expr: ast.expr | None, scope: ast.AST, local: set[str], names: set[str] | None = None) -> bool:
     """True when ``expr`` evaluates to a ``child_env``-built environment.
 
-    ``seen`` holds the names being resolved: ``env = {**env, "A": "1"}`` refers to ``env`` itself, and that
-    self-reference is decided by ``env``'s other assignments, not by recursing forever."""
+    A Name is clean when it is in :func:`_clean_names` for its scope (or in ``names``, the assumption a fixed-point
+    pass is testing).
+    """
     if expr is None:
         return False
     if _is_builder_call(expr, local):
         return True
+
+    def sub(e: ast.expr | None) -> bool:
+        return _clean_expr(e, scope, local, names)
+
     if isinstance(expr, ast.IfExp):
-        return _clean_expr(expr.body, scope, local, seen) and _clean_expr(expr.orelse, scope, local, seen)
+        return sub(expr.body) and sub(expr.orelse)
     if isinstance(expr, ast.Dict):
         unpacks = [v for k, v in zip(expr.keys, expr.values) if k is None]
-        return bool(unpacks) and all(_clean_expr(v, scope, local, seen) for v in unpacks)
+        return bool(unpacks) and all(sub(v) for v in unpacks)
     if isinstance(expr, ast.DictComp) and len(expr.generators) == 1:
         it = expr.generators[0].iter  # {k: v for k, v in <clean>.items() if ...}: a filter of a clean environment
         return (
             isinstance(it, ast.Call)
             and isinstance(it.func, ast.Attribute)
             and it.func.attr == "items"
-            and _clean_expr(it.func.value, scope, local, seen)
+            and sub(it.func.value)
         )
     if isinstance(expr, ast.Name):
-        if expr.id in seen:
-            return True  # a self-reference: the name's other assignments decide
-        values: list[ast.expr] = []
-        for node in _own_nodes(scope):
-            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == expr.id for t in node.targets):
-                values.append(node.value)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == expr.id:
-                if node.value is not None:
-                    values.append(node.value)
-            elif (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "update"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == expr.id
-                and any(_mentions_environ(arg) for arg in [*node.args, *(k.value for k in node.keywords)])
-            ):
-                return False  # env = child_env(); env.update(os.environ) puts the hook's value back
-        inner = seen | {expr.id}
-        return bool(values) and all(_clean_expr(v, scope, local, inner) for v in values)
+        return expr.id in (_clean_names(scope, local) if names is None else names)
     return False
+
+
+_CLEAN_NAMES_CACHE: dict[tuple[int, frozenset[str]], set[str]] = {}
+
+
+def _clean_names(scope: ast.AST, local: set[str]) -> set[str]:
+    """The names in ``scope`` that hold a ``child_env``-built environment.
+
+    Two fixed points over the scope's own assignments, alternated until they agree. Candidates are the names the scope assigns, minus a
+    parameter, a ``global`` or ``nonlocal`` (their values come from outside), and a name ``.update()``d with
+    ``os.environ``.
+    1. Greatest: drop any candidate with an assignment that is not clean while the remaining names are assumed
+       clean. What survives is consistent: aliases, loops and ``env = {**env, ...}`` rebuilds included.
+    2. Least: of those, keep a name only when some assignment is clean given the names already kept, starting
+       from none. So every kept name reaches a real ``child_env`` value, and an ungrounded cycle (``a = b; b = a``,
+       ``env = {**env}`` over a parameter) is unclean.
+    """
+    key = (id(scope), frozenset(local))
+    if key in _CLEAN_NAMES_CACHE:
+        return _CLEAN_NAMES_CACHE[key]
+    _CLEAN_NAMES_CACHE[key] = set()  # a re-entrant lookup during the passes sees no clean names
+    # One walk of the scope: every name's assigned values, the names .update()d with os.environ, globals.
+    assigned: dict[str, list[ast.expr]] = {}
+    poisoned: set[str] = set()
+    outside: set[str] = set()
+
+    def bound_names(target: ast.AST) -> list[str]:
+        """The names a target BINDS: a Name, or the Names inside a tuple/list/starred target. A subscript or
+        attribute target (``env["K"] = v``) binds nothing new."""
+        if isinstance(target, ast.Name):
+            return [target.id]
+        if isinstance(target, (ast.Tuple, ast.List)):
+            return [n for elt in target.elts for n in bound_names(elt)]
+        if isinstance(target, ast.Starred):
+            return bound_names(target.value)
+        return []
+
+    for node in _own_nodes(scope):
+        # A name bound any way the lint cannot evaluate (a walrus, a for/with target, a tuple target, an augmented
+        # assignment such as ``env |= os.environ``) is unclean: fail closed rather than miss a dirty rebinding.
+        if isinstance(node, ast.NamedExpr):
+            poisoned.update(bound_names(node.target))
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            poisoned.update(bound_names(node.target))
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            poisoned.update(bound_names(node.optional_vars))
+        elif isinstance(node, ast.AugAssign):
+            poisoned.update(bound_names(node.target))
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    assigned.setdefault(t.id, []).append(node.value)
+                else:
+                    poisoned.update(bound_names(t))  # a tuple target; a subscript binds nothing
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            assigned.setdefault(node.target.id, []).append(node.value)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            outside.update(node.names)
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "update"
+            and isinstance(node.func.value, ast.Name)
+            and any(_mentions_environ(arg) for arg in [*node.args, *(k.value for k in node.keywords)])
+        ):
+            poisoned.add(node.func.value.id)
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        args = scope.args
+        outside.update(
+            p.arg for p in [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg] if p is not None
+        )
+    candidates = {n: vs for n, vs in assigned.items() if n not in outside and n not in poisoned}
+    kept = set(candidates)
+    while True:
+        # Greatest fixed point: every assignment clean, assuming the kept names are.
+        changed = True
+        while changed:
+            changed = False
+            for n in sorted(kept):
+                if not all(_clean_expr(v, scope, local, kept) for v in candidates[n]):
+                    kept.discard(n)
+                    changed = True
+        # Least fixed point: reachable from a real clean value.
+        grounded: set[str] = set()
+        changed = True
+        while changed:
+            changed = False
+            for n in sorted(kept - grounded):
+                if any(_clean_expr(v, scope, local, grounded) for v in candidates[n]):
+                    grounded.add(n)
+                    changed = True
+        if grounded == kept:
+            break  # every kept name is grounded and every one of its assignments is clean given the kept set
+        kept = grounded  # an ungrounded cycle was holding a grounded name up: re-check without it
+    _CLEAN_NAMES_CACHE[key] = kept
+    return kept
 
 
 def _local_builders(tree: ast.AST) -> set[str]:
@@ -207,16 +300,25 @@ def unclean_spawns(text: str) -> list[tuple[int, str]]:
         tree = ast.parse(text)
     except SyntaxError:
         return []
+    _CLEAN_NAMES_CACHE.clear()  # keyed by id(scope): ids are reused across parsed files
     builders = _local_builders(tree)
     parent: dict[ast.AST, ast.AST] = {}
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
             parent[child] = node
 
-    def enclosing(node: ast.AST) -> ast.AST:
+    def enclosing(node: ast.AST, env: ast.expr | None) -> ast.AST:
+        """The scope ``env`` resolves in: a lambda only when it binds the name as a parameter (a closure
+        over an outer ``env`` resolves in the enclosing function)."""
         while node in parent:
             node = parent[node]
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                return node
+            if (
+                isinstance(node, ast.Lambda)
+                and env is not None
+                and any(isinstance(n, ast.Name) and _bound_outside(n.id, node) for n in ast.walk(env))
+            ):
                 return node
         return tree
 
@@ -236,7 +338,7 @@ def unclean_spawns(text: str) -> list[tuple[int, str]]:
             env = None if last is None or isinstance(last, ast.Starred) else last
         else:
             env = _env_arg(call, pos)
-        if not _clean_expr(env, enclosing(call), builders):
+        if not _clean_expr(env, enclosing(call, env), builders):
             hits.append((call.lineno, spelling))
     return sorted(hits)
 
