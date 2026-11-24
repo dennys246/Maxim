@@ -6,7 +6,11 @@ same-process test cannot see this class of bug: every check here runs the save i
 ``PYTHONHASHSEED``s and compares their bytes (CLAUDE.md's stable-hash lesson).
 
 Each source store holds many ids under one key, so an unsorted writer would almost surely differ between the seeds.
-The guard was proven by reverting the fix: every case failed.
+The guard was proven by reverting the fix: every case failed, the cross-process ones as byte mismatches.
+
+The SCN's ``priors`` is written sorted too, for consistency, but has no case here: it is a set of small ints, whose
+order never followed PYTHONHASHSEED. ``SimilarityIndex.save`` has no production caller today; it is covered so the
+fix holds when one appears.
 """
 
 from __future__ import annotations
@@ -32,15 +36,18 @@ def _save_in_two_processes(tmp_path: Path, body: str, source: Path | None = None
         out = tmp_path / f"out-{seed}.json"
         home = tmp_path / f"home-{seed}"
         home.mkdir()
-        env = {**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(SRC), "HOME": str(home)}
+        # A minimal environment: nothing inherited (no MAXIM_* paths, no PYTHONPATH) beyond what Python needs.
+        env = {"PATH": os.environ.get("PATH", ""), "PYTHONHASHSEED": seed, "PYTHONPATH": str(SRC), "HOME": str(home)}
         script = "import time\ntime.time = lambda: 1_764_000_000.5\n" + textwrap.dedent(body)
-        subprocess.run(
+        proc = subprocess.run(
             [sys.executable, "-c", script, str(source or ""), str(out)],
             env=env,
-            check=True,
             capture_output=True,
+            text=True,
             timeout=120,
         )
+        if proc.returncode != 0:
+            pytest.fail(f"child under PYTHONHASHSEED={seed} failed:\n{proc.stderr}")
         outputs.append(out.read_bytes())
     return outputs
 
@@ -144,6 +151,51 @@ def test_ec_inverted_indices_are_byte_stable_across_processes(tmp_path: Path) ->
         source,
     )
     assert first == second
+
+
+def test_a_whole_ec_save_is_byte_stable_across_processes(tmp_path: Path) -> None:
+    """End to end: the EC file, whose ``inverted`` section is ``InvertedIndices.to_dict``."""
+    first, second = _save_in_two_processes(
+        tmp_path,
+        f"""
+        import sys
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex, SituationSignature
+        ec = EntorhinalCortex(ECConfig(persistence_path=sys.argv[2]))
+        for i, memory_id in enumerate({IDS!r}):
+            ec.register(
+                memory_id,
+                signature=SituationSignature(
+                    semantic_hash=(1, 2, 3),
+                    structural_hash=42,
+                    temporal_hash=(9, 3, 1, 8),
+                    context_hash=7,
+                    tool_name="look",
+                    outcome_type="success",
+                    mode="explore",
+                    goal_keywords=("probe",),
+                ),
+            )
+        ec.save(sys.argv[2])
+        """,
+    )
+    assert b'"inverted"' in first
+    assert first == second
+
+
+def test_atomic_write_json_writes_an_unconverted_set_sorted(tmp_path: Path) -> None:
+    """The structural half: a set that reaches the encoder is a sorted list, never its ``str`` (which a loader's
+    ``set(v)`` would read back as a set of characters)."""
+    from maxim.utils.atomic_io import atomic_write_json
+
+    path = tmp_path / "x.json"
+    atomic_write_json(str(path), {"ids": set(reversed(IDS)), "frozen": frozenset({"b", "a"}), "mixed": {2, "a"}})
+    data = json.loads(path.read_text())
+    assert data["ids"] == sorted(IDS)
+    assert data["frozen"] == ["a", "b"]
+    assert data["mixed"] == sorted([2, "a"], key=repr)
+    # Anything else still falls back to str, as before.
+    atomic_write_json(str(path), {"p": tmp_path})
+    assert json.loads(path.read_text())["p"] == str(tmp_path)
 
 
 def test_similarity_index_bands_are_byte_stable_across_processes(tmp_path: Path) -> None:

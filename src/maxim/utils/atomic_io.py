@@ -263,14 +263,29 @@ def atomic_write_bytes(
             logger.warning("initial_mode: could not chmod %s: %s", path, e)
 
 
+def _json_default(value: Any) -> Any:
+    """``atomic_write_json``'s fallback encoder: a set as a sorted list, anything else as ``str``.
+
+    A set that reaches the encoder unconverted used to be written as its ``str`` (``"{'b', 'a'}"``), which a
+    loader's ``set(v)`` reads back as a set of characters, and whose order follows PYTHONHASHSEED (#1789). A set of
+    mixed, unorderable types is sorted by ``repr`` so the write still succeeds deterministically.
+    """
+    if isinstance(value, (set, frozenset)):
+        try:
+            return sorted(value)
+        except TypeError:
+            return sorted(value, key=repr)
+    return str(value)
+
+
 def atomic_write_json(
     path: str,
     payload: Any,
     *,
     indent: int | None = 2,
-    default: Any = str,
+    default: Any = _json_default,
 ) -> None:
-    """Atomically write ``payload`` to ``path`` as JSON."""
+    """Atomically write ``payload`` to ``path`` as JSON. Sets are written as sorted lists (``_json_default``)."""
     atomic_write_text(
         path,
         json.dumps(payload, indent=indent, default=default),
