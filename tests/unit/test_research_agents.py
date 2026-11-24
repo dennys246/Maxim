@@ -178,8 +178,41 @@ class TestWriterAgent:
     def test_run_without_llm(self, experiment_log, bus, session_dir):
         writer = WriterAgent(llm=None, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
         draft = writer.run("test")
-        # Sections should be empty strings (no LLM to generate)
-        assert all(s == "" for s in draft.sections.values()) or len(draft.sections) == 0
+        # No LLM, no section: no paper saved, announced or sent to the reviewer (#1680)
+        assert draft.sections == {} and draft.output_path is None
+        assert not (session_dir / "paper.md").exists()
+        assert bus.get_history(msg_type=MeshMessageType.PAPER_DRAFT) == []
+
+    def test_no_text_from_any_section_is_no_paper(self, experiment_log, bus, session_dir):
+        """The real router returns "" on a failed dispatch; a draft with no section must not read as the paper."""
+        llm = MagicMock()
+        llm._complete_text.return_value = ("", None)
+        writer = WriterAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+        draft = writer.run("test")
+        assert draft.output_path is None and not (session_dir / "paper.md").exists()
+        assert bus.get_history(msg_type=MeshMessageType.PAPER_DRAFT) == []
+        writer.revise(ReviewResult(verdict="revise", section_feedback={"methods": "more"}))
+        assert writer.draft.output_path is None and not (session_dir / "paper.md").exists()
+
+    def test_a_partial_draft_is_saved_and_names_its_missing_sections(self, experiment_log, bus, session_dir, caplog):
+        llm = MagicMock()
+        llm._complete_text.side_effect = [("Methods text.", None)] + [("", None)] * (len(PAPER_SECTIONS) - 1)
+        writer = WriterAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+        with caplog.at_level("WARNING", logger="maxim.simulation.research_agents"):
+            draft = writer.run("test")
+        assert draft.output_path == session_dir / "paper.md" and draft.output_path.exists()
+        assert "sections missing" in caplog.text and "'results'" in caplog.text
+
+    def test_a_backend_error_is_no_section_but_a_code_defect_raises(self, experiment_log, bus, session_dir):
+        from maxim.models.language.types import BackendError
+
+        llm = MagicMock()
+        llm._complete_text.side_effect = BackendError("server 500")
+        writer = WriterAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+        assert writer.run("test").output_path is None
+        llm._complete_text.side_effect = TypeError("unexpected keyword argument")
+        with pytest.raises(TypeError):
+            writer.run("test")
 
     def test_revise_increments_revision(self, mock_llm, experiment_log, bus, session_dir):
         writer = WriterAgent(llm=mock_llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
@@ -325,3 +358,94 @@ class TestResearchResult:
         )
         assert payload["finish_reason"] == "planning_failed"
         assert payload["review_verdict"] == "aborted"
+
+
+class TestResearchProtocolWithNoPaper:
+    """``start_research_mode`` end to end (only the sim and the LLM stubbed): when the Writer saves no paper, nothing
+    is reviewed, and the run reports ``no_paper`` with its cause, never an accept beside ``Paper: None`` (#1680)."""
+
+    def _run(self, tmp_path, monkeypatch, llm):
+        from types import SimpleNamespace
+
+        from maxim.simulation.research_orchestrator import start_research_mode
+        from maxim.utils.paths import _reset_caches
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+        _reset_caches()
+        monkeypatch.setattr("maxim.simulation.research_orchestrator._build_research_llm", lambda *a, **k: llm)
+        monkeypatch.setattr(
+            "maxim.simulation.orchestrator.start_simulation_mode",
+            lambda **kwargs: SimpleNamespace(
+                finish_reason="completed", campaign_analysis={}, duration_s=0.1, turns=1, total_actions=1
+            ),
+        )
+        result = start_research_mode(goal="no paper contract")
+        session = tmp_path / "home" / "sim_reports" / f"research_{result.session_id}"
+        return result, session
+
+    @pytest.mark.parametrize("has_llm", [False, True], ids=["no-llm", "llm-returns-no-text"])
+    def test_no_paper_is_not_reviewed_and_says_why(self, tmp_path, monkeypatch, has_llm):
+        from types import SimpleNamespace
+
+        from maxim.cli import _research_result_exit_code
+
+        llm = None
+        if has_llm:
+            llm = MagicMock(session_cost=0.0)
+            llm._complete_text.return_value = ("", None)  # what the real router returns on a failed call
+        result, session = self._run(tmp_path, monkeypatch, llm)
+
+        assert result.review_verdict == "no_paper" and result.paper_path == "" and result.revision_rounds == 0
+        assert not (session / "paper.md").exists() and not list(session.glob("review_r*.json"))
+        payload = json.loads((session / "research_result.json").read_text())
+        assert payload["review_verdict"] == "no_paper"
+        assert payload["review_issues"] == [
+            "the LLM returned no text for any paper section"
+            if has_llm
+            else "no research LLM, so the Writer wrote no section"
+        ]
+        if llm is not None:
+            llm.generate_json.assert_not_called()  # the Reviewer's call
+        assert _research_result_exit_code(SimpleNamespace(finish_reason="completed", review_verdict="no_paper")) == 1
+
+
+class TestReviewerFailures:
+    """The Reviewer reads a failed call (``BackendError``) as no feedback; anything else propagates (#1680)."""
+
+    def _reviewer(self, experiment_log, bus, session_dir, error):
+        llm = MagicMock()
+        llm.generate_json.side_effect = error
+        return ReviewerAgent(llm=llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+
+    def test_a_backend_error_is_no_feedback(self, experiment_log, bus, session_dir):
+        from maxim.models.language.types import BackendError
+
+        reviewer = self._reviewer(experiment_log, bus, session_dir, BackendError("server 500"))
+        draft = PaperDraft(sections={"methods": "m"})
+        review = reviewer.review(draft, "g")
+        assert review.section_feedback == {} and review.verdict == "revise"
+
+    @pytest.mark.parametrize("site", ["section", "verdict"])
+    def test_a_code_defect_or_a_leader_refusal_raises(self, experiment_log, bus, session_dir, site):
+        from maxim.exceptions import LeaderRefusal
+
+        reviewer = self._reviewer(experiment_log, bus, session_dir, None)
+        if site == "section":
+            reviewer.llm.generate_json.side_effect = TypeError("unexpected keyword argument")
+            with pytest.raises(TypeError):
+                reviewer._review_section("methods", "m", "g", [])
+        else:
+            reviewer.llm.generate_json.side_effect = LeaderRefusal("no key")
+            with pytest.raises(LeaderRefusal):
+                reviewer._determine_verdict(ReviewResult(), "g", [])
+
+    def test_a_confidence_that_is_not_a_number_is_logged_not_raised(self, experiment_log, bus, session_dir):
+        reviewer = self._reviewer(experiment_log, bus, session_dir, None)
+        reviewer.llm.generate_json.side_effect = None
+        reviewer.llm.generate_json.return_value = {"verdict": "accept", "confidence": "high"}
+        assert reviewer._determine_verdict(ReviewResult(), "g", []) == {
+            "verdict": "accept",
+            "confidence": 0.5,
+            "revision_requests": [],
+        }

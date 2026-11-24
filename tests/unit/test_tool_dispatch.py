@@ -92,6 +92,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="look",
@@ -113,6 +114,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="new_tool",
@@ -133,6 +135,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="say",
@@ -154,6 +157,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="examine",
@@ -178,6 +182,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="move",
@@ -200,6 +205,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="heavy_compute",
@@ -222,6 +228,7 @@ class TestRecordOutcome:
         # Should not raise even with nac=None
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="look",
@@ -243,6 +250,7 @@ class TestRecordOutcome:
         # Should not raise — NAc errors are logged, not propagated
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="test",
             tool_name="look",
@@ -288,7 +296,7 @@ class TestClusterRewardMotorCredit:
             cluster_id="cluster-xyz",
         )
         kwargs.update(overrides)
-        record_outcome(bridge_booked=None, refused=None, **kwargs)
+        record_outcome(bridge_booked=None, refused=None, untrusted_output=False, **kwargs)
         if not nac.update_cluster_reward.called:
             return None
         return nac.update_cluster_reward.call_args.kwargs["reward"]
@@ -400,7 +408,7 @@ class TestOperantOnlyCreditMode:
             cluster_id="cluster-xyz",
         )
         kwargs.update(overrides)
-        record_outcome(bridge_booked=None, refused=None, **kwargs)
+        record_outcome(bridge_booked=None, refused=None, untrusted_output=False, **kwargs)
         return nac
 
     def test_driveless_action_books_no_tool_success_floor(self, monkeypatch):
@@ -430,6 +438,7 @@ class TestOperantOnlyCreditMode:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="a",
             tool_name="turn_left",
@@ -605,6 +614,7 @@ class TestAgentIdAttribution:
         with pytest.raises(TypeError, match="agent_id"):
             record_outcome(  # type: ignore[call-arg]
                 bridge_booked=None,
+                untrusted_output=False,
                 refused=None,
                 tool_name="look",
                 success=True,
@@ -622,6 +632,7 @@ class TestAgentIdAttribution:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="alpha",
             tool_name="move",
@@ -645,6 +656,7 @@ class TestAgentIdAttribution:
         pool = self._make_context_pool()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="alpha",
             tool_name="t",
@@ -660,6 +672,7 @@ class TestAgentIdAttribution:
         )
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="bravo",
             tool_name="t",
@@ -813,7 +826,7 @@ class TestNeutralOutcomeTier:
             active_goal="find_the_sound",
         )
         kwargs.update(overrides)
-        record_outcome(bridge_booked=None, refused=None, **kwargs)
+        record_outcome(bridge_booked=None, refused=None, untrusted_output=False, **kwargs)
         return nac
 
     # ── the causal surface: the collapse no flag could suppress ──
@@ -881,6 +894,7 @@ class TestNeutralOutcomeTier:
         nac = NAc(NACConfig())
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             nac=nac,
             tool_name="clamped_turn",
@@ -890,6 +904,7 @@ class TestNeutralOutcomeTier:
         )
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             nac=nac,
             tool_name="real_turn",

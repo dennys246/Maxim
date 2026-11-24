@@ -15,6 +15,13 @@
    one client built without it turns auto-yaw back on for every client. Python files are read as an AST (a call
    split across lines counts; a ``**kwargs`` splat cannot show the value, so it is flagged); shell files, which
    embed Python, by the call's bracketed text.
+4. **Media left released** (#1712). A ``ReachyMini(`` call that can connect with ``media_backend="no_media"`` (that
+   literal, a non-literal value, or a ``**kwargs`` splat) releases the daemon's media, daemon-wide and past the
+   process, and only the SDK's ``__exit__`` re-acquires it. Its file must undo that: a ``with ReachyMini(...)``,
+   a ``<handle>.__exit__(`` call on a name ending in ``mini``, or a call to ``release_mini(``
+   (``scripts/orient_backbone/live_1_smoke.py``, which calls ``__exit__``). Python files are read as an AST, so a
+   comment, a string or another object's ``__exit__`` does not count. The controller owns its own re-acquire (``_reacquire_media``, #1704) and is listed in
+   ``MEDIA_UNDO_OWNERS``. A missing ``media_backend`` is the SDK default, which never releases.
 
 Stated residuals (a line-based lint):
 - a clamp or a handle split across lines;
@@ -25,6 +32,10 @@ Stated residuals (a line-based lint):
   ``ReachyMini().goto_target``, ``getattr(self, "mini")``), and ``getattr(handle, name)`` with a dynamic name;
 - a ``ReachyMini`` reached under another name (``cls = ReachyMini; cls(...)``, ``from reachy_mini import
   ReachyMini as RM``) or built through ``functools.partial``;
+- rule 4 is per file, not per call or per path: a file that undoes one handle passes for all of its calls, and a
+  ``release_mini(`` call that is unreachable from the exit is not seen; a shell file is read as text, so there a
+  mention in a comment or string counts as an undo, and only a literal ``no_media`` in the call marks it; a
+  ``media_backend`` passed positionally (the SDK's tenth argument) is not seen;
 - the canned or boolean SDK entry points ``wake_up``, ``goto_sleep``, ``enable/disable_motors``,
   ``enable/disable_wobbling``, ``set_automatic_body_yaw``, gravity compensation and ``cancel_move``
   (none takes a motion value; #1499's wider grep).
@@ -88,13 +99,46 @@ AUTO_YAW_SCOPE = ("src/", "scripts/")
 AUTO_YAW_SUFFIXES = (".py", ".sh")
 _AUTO_YAW_OFF = re.compile(r"\bautomatic_body_yaw\s*=\s*False\b")
 _REACHY_MINI_CALL = re.compile(r"\bReachyMini\(")
+# Rule 4: files whose ReachyMini( calls may release the media and that re-acquire through their own seam.
+MEDIA_UNDO_OWNERS = {
+    "src/maxim/hardware/reachy/controller.py": "re-acquires what its connect released (_reacquire_media, #1704)",
+}
+_MEDIA_UNDO = re.compile(r"\.__exit__\(|\brelease_mini\(|\bwith\s+ReachyMini\(")  # shell files only
+
+
+def _is_reachy_mini_call(node: ast.AST) -> bool:
+    return isinstance(node, ast.Call) and (
+        getattr(node.func, "id", None) == "ReachyMini" or getattr(node.func, "attr", None) == "ReachyMini"
+    )
+
+
+def _terminal_name(node: ast.AST) -> str:
+    return getattr(node, "attr", None) or getattr(node, "id", None) or ""
+
+
+def _undoes_media(tree: ast.AST) -> bool:
+    """A real undo in the AST: ``with ReachyMini(...)``, ``<...mini>.__exit__(...)`` or ``release_mini(...)``."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            if any(_is_reachy_mini_call(item.context_expr) for item in node.items):
+                return True
+        elif isinstance(node, ast.Call):
+            if _terminal_name(node.func) == "release_mini":
+                return True
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "__exit__"
+                and _terminal_name(node.func.value).endswith("mini")
+            ):
+                return True
+    return False
 
 
 @dataclass(frozen=True)
 class Finding:
     """One lint finding. Not persisted (CC3 does not apply)."""
 
-    kind: str  # "clamp", "raw_sdk" or "auto_yaw"
+    kind: str  # "clamp", "raw_sdk", "auto_yaw" or "media_undo"
     path: str
     line: int
     text: str
@@ -188,6 +232,49 @@ def _auto_yaw_findings(rel: str, source: str) -> list[Finding]:
     return findings
 
 
+def _may_release_media(call_text: str | None, call: ast.Call | None) -> bool:
+    """Whether a ``ReachyMini(`` call can connect with ``media_backend="no_media"`` (rule 4)."""
+    if call is None:  # shell (or unparsable Python): the call's text
+        return bool(call_text) and "no_media" in call_text
+    if any(kw.arg is None for kw in call.keywords) or any(isinstance(a, ast.Starred) for a in call.args):
+        return True  # a splat cannot show the backend
+    for kw in call.keywords:
+        if kw.arg == "media_backend":
+            return not (isinstance(kw.value, ast.Constant) and kw.value.value != "no_media")
+    return False
+
+
+def _media_undo_findings(rel: str, source: str) -> list[Finding]:
+    """Each ``ReachyMini(`` call that may release the daemon's media, in a file that never undoes it (rule 4)."""
+    if rel in MEDIA_UNDO_OWNERS:
+        return []
+    lines = source.splitlines()
+    tree = None
+    if rel.endswith(".py"):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            tree = None
+    if tree is not None:
+        if _undoes_media(tree):
+            return []
+        hits = [node.lineno for node in ast.walk(tree) if _is_reachy_mini_call(node) and _may_release_media(None, node)]
+    else:
+        if _MEDIA_UNDO.search(source):
+            return []
+        hits = []
+        for match in _REACHY_MINI_CALL.finditer(source):
+            depth, end = 0, len(source)
+            for i in range(match.end() - 1, len(source)):
+                depth += {"(": 1, ")": -1}.get(source[i], 0)
+                if depth == 0:
+                    end = i + 1
+                    break
+            if _may_release_media(source[match.start() : end], None):
+                hits.append(source.count("\n", 0, match.start()) + 1)
+    return [Finding("media_undo", rel, n, lines[n - 1].strip()) for n in hits]
+
+
 def _auto_yaw_candidates(root: Path) -> list[Path]:
     paths: set[Path] = set()
     for scope in AUTO_YAW_SCOPE:
@@ -219,7 +306,9 @@ def scan(root: Path) -> list[Finding]:
     for path in _auto_yaw_candidates(root):
         rel = path.relative_to(root).as_posix()
         if rel != "scripts/lint_motion_safety.py":  # its own pattern literals
-            findings.extend(_auto_yaw_findings(rel, path.read_text(encoding="utf-8")))
+            source = path.read_text(encoding="utf-8")
+            findings.extend(_auto_yaw_findings(rel, source))
+            findings.extend(_media_undo_findings(rel, source))
     return findings
 
 
@@ -229,13 +318,18 @@ def main() -> int:
     for f in findings:
         if f.kind == "clamp":
             hint = "use maxim.hardware.controller.clamp_finite (refuses NaN), or mark a measurement clamp"
+        elif f.kind == "media_undo":
+            hint = (
+                "a no_media connect releases the daemon's media past this process: use `with ReachyMini(...)`, "
+                "or call release_mini(mini) / mini.__exit__(None, None, None) on every exit (#1712)"
+            )
         elif f.kind == "auto_yaw":
             hint = "pass automatic_body_yaw=False: the setting is daemon-wide and the SDK defaults it on (#1499)"
         else:
             hint = "route through ReachyMiniController.goto_target or Selfy's validated entry points"
         print(f"{f.path}:{f.line}: [{f.kind}] {f.text}\n    -> {hint}")
     if findings:
-        print(f"lint_motion_safety: {len(findings)} finding(s) (#1496, #1499; docs/plans/motion_finite_1496.md)")
+        print(f"lint_motion_safety: {len(findings)} finding(s) (#1496, #1499, #1712; docs/plans/motion_finite_1496.md)")
         return 1
     print("lint_motion_safety: clean")
     return 0

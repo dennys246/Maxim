@@ -69,6 +69,9 @@ EVENT_VERBOSITY: dict[str, int] = {
     "plan_refused": 0,  # a drained approval refused by the machine (#1085: blocked / drain_aborted / no_action)
     "plan_modify_requested": 0,
     "plan_approval_check": 0,
+    "confirmation_reask": 0,  # #1185: a gating prompt asked again, at its prompt's level
+    "timeout_retry_reask": 0,
+    "modification_unsupported": 0,  # #1185: a requested change this mode cannot apply, told to the person
     # Level 1: Important events
     "goal_cancelled": 1,
     "mode_change": 1,

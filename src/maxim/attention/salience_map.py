@@ -224,7 +224,7 @@ class SalienceMap:
             movement_detector: MovementDetector for motion scores.
             current_time: Current timestamp (defaults to time.time()).
         """
-        now = current_time or time.time()
+        now = current_time if current_time is not None else time.time()
 
         # Reset per-frame components
         for row in self._grid:
@@ -340,8 +340,9 @@ class SalienceMap:
 
         for row in self._grid:
             for cell in row:
-                if cell.last_visited == 0:
-                    # Never visited - fully unexplored
+                if cell.visit_count == 0:
+                    # Never visited - fully unexplored. The count, not last_visited == 0: a visit at time 0.0 is a
+                    # visit (#1684).
                     cell.unexplored = 1.0
                 else:
                     # Recover based on time since visit

@@ -6,7 +6,10 @@ twilio) gives clear, actionable error messages instead of raw ImportErrors.
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -365,3 +368,96 @@ def test_import_refused_classifies_by_cause(exc, import_name, refused):
     from maxim.utils.optional_deps import import_refused
 
     assert import_refused(exc, import_name) is refused
+
+
+# ── #1647: an extra's own module refuses TYPED without the extra ────────────────────────────────────────────────
+# ``motor_cortex`` raised a plain ImportError at import when keras was absent, and the fresh-import sweep
+# (tests/integration/test_fresh_import_sweep.py, nightly) read it as a defect, so the slow lane (no ``training``) was
+# red from 2026-11-01. The module is the ``training`` extra's own: the sweep lists it in ``EXTRA_OWNED``, and the
+# module refuses with ``OptionalDependencyError(keras, training)``, the one refusal the sweep accepts for it.
+
+_MOTOR = "maxim.models.movement.motor_cortex"
+_SRC = str(Path(__file__).resolve().parents[2] / "src")
+
+
+def _run_child(code: str, *, hide_keras: bool) -> subprocess.CompletedProcess[str]:
+    prelude = "import sys\nsys.path.insert(0, sys.argv[1])\n"
+    if hide_keras:
+        prelude += "sys.modules['keras'] = None\nsys.modules['tensorflow'] = None\n"
+    return subprocess.run(  # noqa: S603 -- our own interpreter, our own script
+        [sys.executable, "-I", "-c", prelude + code, _SRC],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+
+def test_motor_cortex_without_keras_refuses_typed_at_import():
+    proc = _run_child(
+        "import importlib, json\n"
+        "from maxim.utils.optional_deps import OptionalDependencyError\n"
+        "try:\n"
+        f"    importlib.import_module({_MOTOR!r})\n"
+        "    out = 'imported'\n"
+        "except OptionalDependencyError as e:\n"
+        "    out = [e.import_name, e.extra, 'training' in e.fix_hint]\n"
+        "print(json.dumps(out))\n",
+        hide_keras=True,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == ["keras", "training", True]
+
+
+def test_motor_cortex_without_keras_refuses_typed_in_process(monkeypatch):
+    """The same refusal as the child-process test, in THIS process, so coverage (which does not follow a child
+    interpreter) measures the module's import lines: keras made unimportable, ``motor_cortex`` re-imported."""
+    import importlib
+
+    from maxim.utils.optional_deps import OptionalDependencyError
+
+    monkeypatch.setitem(sys.modules, "keras", None)  # ``import keras`` now raises ImportError
+    monkeypatch.delitem(sys.modules, _MOTOR, raising=False)  # restored afterwards if it was loaded
+    with pytest.raises(OptionalDependencyError) as raised:
+        importlib.import_module(_MOTOR)
+    assert (raised.value.import_name, raised.value.extra) == ("keras", "training")
+    assert "pymaxim[training]" in raised.value.fix_hint
+    assert isinstance(raised.value, ImportError)  # the robot's handler around the motor load still catches it
+
+
+def test_motor_cortex_with_keras_defines_its_classes_after_the_tf_env():
+    """The with-keras half, against a stand-in keras (the real one costs minutes of TensorFlow start-up): the TF GPU
+    defaults are set BEFORE keras is imported, the classes subclass keras's under their module-level names (what a
+    checkpoint's ``custom_objects`` records), and the ``motor_cortex`` alias holds."""
+    proc = _run_child(
+        "import importlib.abc, importlib.util, json, os, types\n"
+        "seen = {}\n"
+        "class _StandIn(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        return importlib.util.spec_from_loader(name, self) if name == 'keras' else None\n"
+        "    def create_module(self, spec):\n"
+        "        return None\n"
+        "    def exec_module(self, module):\n"
+        "        seen['env_at_keras_import'] = os.environ.get('TF_GPU_ALLOCATOR')\n"
+        "        module.layers = types.SimpleNamespace(Layer=type('Layer', (), {}))\n"
+        "        module.Model = type('Model', (), {})\n"
+        "sys.meta_path.insert(0, _StandIn())\n"
+        "os.environ.pop('TF_GPU_ALLOCATOR', None)\n"
+        f"from {_MOTOR} import LayerScale, MotorCortex, motor_cortex\n"
+        "keras = sys.modules['keras']\n"
+        "print(json.dumps({\n"
+        "  'env': seen.get('env_at_keras_import'),\n"
+        "  'layer': issubclass(LayerScale, keras.layers.Layer), 'model': issubclass(MotorCortex, keras.Model),\n"
+        "  'alias': motor_cortex is MotorCortex,\n"
+        "  'names': [LayerScale.__qualname__, MotorCortex.__qualname__, LayerScale.__module__],\n"
+        "}))\n",
+        hide_keras=False,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert out == {
+        "env": "cuda_malloc_async",
+        "layer": True,
+        "model": True,
+        "alias": True,
+        "names": ["LayerScale", "MotorCortex", _MOTOR],
+    }

@@ -205,7 +205,9 @@ Each stage is one PR or more and goes through the reviews its kind requires.
   - There is no offline drowning simulator (`minecraft_harness.py::FakeBridgeServer` has no water physics),
     so the arms are proven offline only for wiring; liveness preflights follow Exp 60's amendments 3–7.
 - **B2. The bare loop and its guards** ([#1352](https://github.com/dennys246/Maxim/issues/1352)). Its three code
-  prerequisites are 1.3.6 exit items (roadmap_1_3_x.md §1.3.6; owner decision 2026-10-17). Entry condition: the `start_simulation_mode` decomposition has
+  prerequisites are 1.3.6 exit items (roadmap_1_3_x.md §1.3.6; owner decision 2026-10-17). *(2026-11-22,
+  release_1_3_5.md D5: they remain exit items of the loop-phase-2 line, formerly "1.3.6", but may start early,
+  beside the orchestrator line. The entry condition below is unchanged.)* Entry condition: the `start_simulation_mode` decomposition has
   landed (it is next after the agent loop; touching `orchestrator.py` before then collides with it).
   - **B2 takes no `runtime.*` or `agents.*` import.** Its first PR pulls the pieces the arms must share
     (percept intake, the `_llm_unavailable` fallback made inside `run_agentic_loop`, `<think>` stripping, a

@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import Any, Literal
 
@@ -46,6 +47,17 @@ class MaximError(Exception):
         return self.message
 
 
+def _rebuild_with_state(cls: type[BaseException], args: tuple[Any, ...], state: dict[str, Any]) -> BaseException:
+    """Rebuild an exception whose ``__init__`` takes keyword-only fields, for pickle and copy: ``cls.__new__`` plus
+    its ``args`` and attribute ``state``, without calling ``__init__`` (a subclass may narrow its signature, as
+    ``tunnel.keys.LeaderKeyMissing`` does). Used by the ``__reduce__`` of :class:`KeyFileUnusable`,
+    :class:`CampaignUnloadable` and :class:`CliOptionsRefused`."""
+    obj = cls.__new__(cls, *args)
+    obj.args = args
+    obj.__dict__.update(state)
+    return obj
+
+
 class KeyFileUnusable(MaximError, RuntimeError):
     """A key file exists but cannot be used, so it is refused rather than read as absent or overwritten.
 
@@ -61,6 +73,10 @@ class KeyFileUnusable(MaximError, RuntimeError):
         self.reason = reason
         self.fix_hint = fix_hint
         super().__init__(message or f"key file unusable ({reason}): {path}")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fields (and subclasses that narrow them): rebuilt from state, so pickle and copy round-trip.
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
 
 
 class StopStillPending(MaximError, RuntimeError):
@@ -295,6 +311,33 @@ class ToolEffectRefused(MaximError):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Embodiment Errors
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class DamageRefused(MaximError, ValueError):
+    """Damage aimed at a body part that cannot carry it (#1719).
+
+    ``SpecModulator.apply_damage`` raises it for a modulator with no sub-sensors, which used to return ``1.0``
+    and drop the damage. How a partless body should take damage is open
+    (``docs/plans/deferred/reflex_layering.md`` §3); until it is decided, the call refuses. Also a
+    ``ValueError``, so it reads as bad input (like ``MotionRefused``). That makes any ``except ValueError`` around
+    ``apply_damage`` that substitutes a default integrity a hazard: it would bring back the silent drop.
+
+    Attributes:
+        modulator: The name of the part that refused.
+    """
+
+    def __init__(self, message: str, *, modulator: str) -> None:
+        super().__init__(message, context={"modulator": modulator})
+        self.modulator = modulator
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # A keyword-only init: bind ``modulator`` so pickle and copy keep it (and a subclass stays itself).
+        return (functools.partial(type(self), modulator=self.modulator), (self.message,))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Model Errors
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -510,6 +553,54 @@ class UserProfilesInvalid(ConfigurationError):
     fix_hint = "Fix the file, or move it aside, then run `maxim doctor` to check it."
 
 
+class CampaignUnloadable(MaximError, ValueError):
+    """Research mode's explicit campaign cannot be run as scripted turns: it is missing, malformed, or holds a
+    percept that is not a ``cli_input`` line (#1621). Raised by ``research_orchestrator._load_campaign_turns`` before
+    any session directory or LLM is built, so research never runs a free-form sim in its place. A ``ValueError``, so
+    ``maxim.research()`` callers catching that keep working; the CLI exits 2 with ``fix_hint``. ``campaign`` is the
+    path as given and ``reason`` the loader's message.
+    """
+
+    fix_hint = (
+        "Give --campaign a scenario whose percepts are all cli_input lines (one turn each); a scenario with other "
+        "percepts runs through `maxim --sim <scenario>`, and a DM campaign through `maxim --sim <campaign.yaml>`."
+    )
+
+    def __init__(self, *, campaign: str, reason: str) -> None:
+        self.campaign = campaign
+        self.reason = reason
+        # Name the campaign exactly once: always here, and never again as the reason's leading label. The loaders
+        # label their errors three ways: load_scenario's "Scenario <Path>: ", and load_campaign_turns' "<path>: "
+        # as given or Path-normalised (which drops "./"). A name inside a sentence ("not found: x") is left alone.
+        detail = reason
+        for prefix in (f"Scenario {Path(campaign)}: ", f"{campaign}: ", f"{Path(campaign)}: "):
+            if reason.startswith(prefix):
+                detail = reason[len(prefix) :]
+                break
+        super().__init__(f"research campaign {campaign} cannot be loaded: {detail}")
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fields: rebuilt from state, so pickle and copy round-trip.
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
+
+
+class CliOptionsRefused(ConfigurationError):
+    """Explicit CLI options the selected run cannot honour, refused before it starts instead of silently dropped.
+
+    Raised by ``cli.py::_research_refusal`` (#1680): ``--research`` under llm-primary runs the research protocol,
+    whose sim call takes none of the goal-string sim's embodiment, sim-mode, full-turn, sandbox or resume options.
+    ``fix_hint`` names the options to drop. The CLI prints both and exits 2.
+    """
+
+    def __init__(self, message: str, *, fix_hint: str) -> None:
+        super().__init__(message)
+        self.fix_hint = fix_hint
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fix_hint: rebuilt from state, so pickle and copy round-trip (#1680).
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
+
+
 class ComponentNotFoundError(ConfigurationError):
     """Requested SEM component template does not exist.
 
@@ -684,6 +775,8 @@ __all__ = [
     "ToolValidationError",
     "ToolTimeoutError",
     "ToolEffectRefused",
+    # Embodiment
+    "DamageRefused",
     # Models
     "ModelError",
     "ModelLoadError",
@@ -708,6 +801,8 @@ __all__ = [
     # Configuration
     "ConfigurationError",
     "ConfigDirUnreadable",
+    "UserProfilesInvalid",
+    "CliOptionsRefused",
     "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",

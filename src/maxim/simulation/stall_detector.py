@@ -407,7 +407,7 @@ class StallDetector:
         if current_turns - self._last_diversity_turn >= _DIVERSITY_INTERVAL:
             self._last_diversity_turn = current_turns
             try:
-                _diversity_msg = diversity_checkpoint_text(current_turns, self._bridge.get_all_actions())
+                _diversity_msg = diversity_checkpoint_text(current_turns, self._bridge.get_agent_actions())
                 self._orchestrator_source.inject_cli(_diversity_msg, salience=0.9, novelty=0.9)
                 logger.debug("Diversity checkpoint injected at turn %d", current_turns)
             except Exception as e:
@@ -587,7 +587,7 @@ class StallDetector:
             display.set_status_style("stalled")
 
         # Build diagnostic context
-        all_actions = bridge.get_all_actions()
+        all_actions = bridge.get_agent_actions()
         last_action = all_actions[-1] if all_actions else None
         last_tool = last_action.tool_name if last_action else "none"
         last_blocked = last_action.blocked if last_action else False

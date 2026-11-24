@@ -11,6 +11,12 @@
 > **Re-homed 2026-10-29 (owner):** PR 3 (admission control) did not ship in 1.3.3; it is homed in **1.3.5** as
 > [phone_device.md](phone_device.md) P0-2. Two PR 4 items are pulled forward with it: M3 (talk's tool gate, P0-4) and
 > the principal seam under the tier table (P0-3). PR 4's per-device tokens fire with that plan's Phase 1.
+> **Re-homed 2026-11-22 (owner decision D6, [release_1_3_5.md](../release_1_3_5.md)):** phone Phase 0 left 1.3.5, but
+> PR 3 stays in 1.3.5, now in its peer-mesh line (line 6). That line's item 3 builds the shared admission primitive
+> in `runtime/leader_proxy.py::_check_admission` (PR 3's front-gate note: generalize it, no second limiter), and PR 3's
+> console half (`limit_concurrency`, `ws_max_size`, the input cap, the `/api/pair/claim` rate limit) follows as its
+> own PR on that primitive in the same line. The pulled-forward PR 4 items (P0-3, P0-4) move with the rest of Phase 0
+> to the next release after 1.3.5 (unnumbered).
 
 **Status:** ACTIVE — PR 1 (trust guard) MERGED #609 (2026-09-03); PR 2 (bearer auth, A1–A8)
 MERGED #613 and RELEASED in 1.1.4 (contract 0.4.0; one A7 sharpening: disk tokens are re-read

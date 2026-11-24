@@ -45,7 +45,7 @@ from maxim.embodiment.sem import (
     HomeostaticDriveSpec,
     ModulationSpec,
 )
-from maxim.exceptions import ConfigurationError
+from maxim.exceptions import ConfigurationError, DamageRefused
 
 log = logging.getLogger(__name__)
 
@@ -1030,10 +1030,19 @@ class SpecModulator:
         Otherwise distributes proportionally across all sub-sensors.
 
         Returns the new integrity value after damage.
+
+        Raises:
+            DamageRefused: the modulator has no sub-sensors to carry the damage (#1719). It used to
+                return ``1.0`` and drop the damage silently; how a partless body takes damage is open
+                (``docs/plans/deferred/reflex_layering.md`` §3).
         """
         if not self.vital_metrics:
-            # No sub-sensors — can't take component damage
-            return 1.0
+            raise DamageRefused(
+                f"{self._name!r} has no sub-sensors, so it cannot take damage "
+                f"(amount={amount!r}, damage_type={damage_type!r}). Give the part sub-sensors, "
+                "or aim the damage at a part that has them.",
+                modulator=self._name,
+            )
 
         if damage_type and damage_type in self._damage_affinities:
             # Level 3: route through affinities.
