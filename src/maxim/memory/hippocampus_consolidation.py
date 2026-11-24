@@ -163,15 +163,7 @@ class ConsolidationMixin:
                 # Keep as full record
                 results["preserved"] += 1
 
-        # Perform compression
-        for memory_id in memories_to_compress:
-            self._compress_memory(memory_id)
-            results["compressed"] += 1
-
-        # Perform removal
-        for memory_id in memories_to_remove:
-            self._remove_memory(memory_id)
-            results["removed"] += 1
+        self._execute_disposals(memories_to_compress, memories_to_remove, results)
 
         # Update stats
         self._stats["consolidations"] = self._stats.get("consolidations", 0) + 1
@@ -217,6 +209,34 @@ class ConsolidationMixin:
                 log_swallowed_exception()
 
         return results
+
+    def _execute_disposals(self, to_compress: list[str], to_remove: list[str], results: dict[str, int]) -> None:
+        """Compress, then remove, the records a sleep pass chose (lock must be held), and count them.
+
+        A full record holding what a person said or typed is COMPRESSED instead of removed, once: #1137's design
+        ages user words through compression (``CompressedMemory.heard`` keeps them, bounded), and only the
+        compressed record then faces the retention threshold at a later sleep. It is not a retention floor (#843
+        removed that for percepts): the compressed record is removed like any other when its score falls. Without
+        it an aged user-words record scored below ``retention_threshold`` and was deleted outright unless it had
+        been promoted to long-term at birth, which depended on a race (the talk loop ticking before the words
+        arrived). Every sleep path calls this, so no path removes user words uncompressed.
+        """
+        from maxim.memory.types import EpisodicMemory
+
+        compress = list(to_compress)
+        remove: list[str] = []
+        for memory_id in to_remove:
+            record = self._memories.get(memory_id)
+            if isinstance(record, EpisodicMemory) and (record.perception.cli_input or record.perception.transcript):
+                compress.append(memory_id)
+            else:
+                remove.append(memory_id)
+        for memory_id in compress:
+            self._compress_memory(memory_id)
+            results["compressed"] += 1
+        for memory_id in remove:
+            self._remove_memory(memory_id)
+            results["removed"] += 1
 
     def _compress_memory(self, memory_id: str) -> None:
         """Compress a full EpisodicMemory to CompressedMemory (lock must be held)."""
@@ -715,13 +735,7 @@ class ConsolidationMixin:
                 results["preserved"] += 1
 
         # Step 6: Execute compression and removal
-        for memory_id in memories_to_compress:
-            self._compress_memory(memory_id)
-            results["compressed"] += 1
-
-        for memory_id in memories_to_remove:
-            self._remove_memory(memory_id)
-            results["removed"] += 1
+        self._execute_disposals(memories_to_compress, memories_to_remove, results)
 
         # Update stats
         self._stats["consolidations"] = self._stats.get("consolidations", 0) + 1

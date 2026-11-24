@@ -49,11 +49,12 @@ def _age_every_record(handle: Any, seconds: float) -> None:
         record.accessed_at -= seconds
 
 
-@pytest.fixture(scope="module")
-def compressed_session(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+def _run_sessions(home: Any, *, idle_tick_first: bool) -> dict[str, Any]:
+    """Session N states the fact, ages, stops (consolidating); session N+1 asks. ``idle_tick_first`` gives every new
+    agent one idle observation before any words, as a talk loop that ticks before the input lands does (#1137's
+    flake: the race made the fact read as novelty 0)."""
     from maxim.simulation.sim_logger import disable_sim_logging
 
-    home = tmp_path_factory.mktemp("compressed_gate") / "home"
     model = _RecordingModel()
     with pytest.MonkeyPatch.context() as mp:
         import maxim.runtime.lane_backends as lane_backends
@@ -67,6 +68,16 @@ def compressed_session(tmp_path_factory: pytest.TempPathFactory) -> dict[str, An
             real_init(self, *a, **{**k, "settle_s": 0.2})
 
         mp.setattr(SimulationBridge, "__init__", _quick_settle)
+        if idle_tick_first:
+            from maxim.agents.maxim_agent import MaximAgent
+
+            real_agent_init = MaximAgent.__init__
+
+            def _ticked_once(self: Any, *a: Any, **k: Any) -> None:
+                real_agent_init(self, *a, **k)
+                self.perception.process_observation({})  # the loop's first tick, before the words arrive
+
+            mp.setattr(MaximAgent, "__init__", _ticked_once)
 
         session_n = _handle(home)
         try:
@@ -84,6 +95,12 @@ def compressed_session(tmp_path_factory: pytest.TempPathFactory) -> dict[str, An
             _stop_until_saved(session_n1)
             disable_sim_logging()
     return {"stored": stored, "prompts": prompts}
+
+
+@pytest.fixture(scope="module", params=["words_first", "idle_tick_first"])
+def compressed_session(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    home = tmp_path_factory.mktemp(f"compressed_gate_{request.param}") / "home"
+    return _run_sessions(home, idle_tick_first=request.param == "idle_tick_first")
 
 
 def test_the_facts_memory_was_compressed(compressed_session):
