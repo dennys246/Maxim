@@ -166,7 +166,7 @@ def test_a_critique_s_issues_are_logged_as_a_count() -> None:
 # ── the sim stream's RESPONSE record (owner, 2026-11-24: stop mirroring its text) ──
 
 
-def test_a_sim_response_reaches_the_log_file_by_shape_but_the_session_keeps_it(tmp_path: Any) -> None:
+def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(tmp_path: Any) -> None:
     from maxim.simulation import sim_logger
 
     reply = f"The note says {CANARY}."
@@ -179,6 +179,8 @@ def test_a_sim_response_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
     sim_logger.enable_sim_logging(use_color=False)
     try:
         sim_logger.sim_log("RESPONSE", reply, {"text": reply, "actions": ["respond"]}, _terminal=False)
+        sim_logger.sim_deliberation_update(f"I will quote {CANARY}", cycle=1, max_cycles=2)
+        sim_logger.sim_log("RESPONSE", "ran internet_search (failed)", {"text": None}, _terminal=False)
         sim_logger.sim_log("NARRATOR", "the scene opens", _terminal=False)
         session = sim_logger.get_sim_records()
     finally:
@@ -192,4 +194,6 @@ def test_a_sim_response_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
     assert any("sim_response" == getattr(r, "event", None) for r in captured), "RESPONSE was not mirrored at all"
     assert not [t for t in texts if CANARY in t], f"a sim reply's text reached MAXIM_LOG_FILE: {texts}"
     _assert_shape_logged(texts, text_shape(reply), reply)
+    _assert_shape_logged(texts, "deliberation cycle 1/2", f"I will quote {CANARY}")
+    assert any("ran internet_search (failed)" in t for t in texts), "a silent turn's summary (not a reply) was shaped"
     assert any("the scene opens" in t for t in texts), "a non-reply subsystem lost its text"

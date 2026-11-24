@@ -123,10 +123,12 @@ def _ensure_sim_bridge_handlers() -> None:
             _sim_bridge_logger.addHandler(h)
 
 
-# #1775 (owner, 2026-11-24): subsystems whose message IS the agent's reply. The sim-session JSONL and the
-# sinks (the console's Talk view) keep the text; the MAXIM_LOG_FILE mirror carries only its shape, because a
-# reply can quote a PRIVATE tool's output and the log file is not a display surface.
-_REPLY_SUBSYSTEMS = frozenset({"RESPONSE"})
+# #1775 (owner, 2026-11-24): subsystems that carry the model's reply text, as ``data["text"]`` and, for RESPONSE,
+# as the message itself (DELIBERATION's message is a cycle counter; its text is the reasoning parsed from the reply).
+# The sim-session JSONL and the sinks (the console's Talk view, the web ThinkingPanel) keep the text; the
+# MAXIM_LOG_FILE mirror carries only its shape, because a reply can quote a PRIVATE tool's output and the log file is
+# not a display surface. A silent RESPONSE turn (``text`` None) keeps its message: a tool-name summary, not a reply.
+_REPLY_SUBSYSTEMS: dict[str, bool] = {"RESPONSE": True, "DELIBERATION": False}  # subsystem -> message is the reply
 
 
 def _bridge_to_log_file(
@@ -141,7 +143,8 @@ def _bridge_to_log_file(
     """Mirror one sim_log record into the unified ``MAXIM_LOG_FILE`` stream (reply text by shape only)."""
     fields = dict(data or {})
     if subsystem in _REPLY_SUBSYSTEMS:
-        message = text_shape(str(message))
+        if _REPLY_SUBSYSTEMS[subsystem] and fields.get("text", message) is not None:
+            message = text_shape(str(message))
         if isinstance(fields.get("text"), str):
             fields["text"] = text_shape(fields["text"])
     _ensure_sim_bridge_handlers()
