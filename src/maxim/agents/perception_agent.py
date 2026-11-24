@@ -132,16 +132,8 @@ class PerceptionAgent(Agent):
             max_sal = max(max_sal, sal)
         return min(1.0, max_sal)
 
-    def _compute_novelty(self, detections: list[dict], text: str | None = None) -> float:
-        """Compute novelty via Jaccard similarity with recent percepts.
-
-        A percept that carries TEXT and no detections (what a person said or typed) is compared by its words,
-        ``_text_novelty``; every other percept by its vision tracks. Track sets alone made two text percepts look
-        identical (both empty), so an utterance after any idle tick read as novelty 0 and lost the salience boost
-        that promotes it at birth (#1137's red gate flaked on that race).
-        """
-        if text and not detections:
-            return self._text_novelty(text)
+    def _compute_novelty(self, detections: list[dict]) -> float:
+        """Compute novelty via Jaccard similarity with recent percepts."""
         if not self._recent_percepts:
             return 1.0
         current_tracks = {d.get("track_id") for d in detections if d.get("track_id")}
@@ -156,28 +148,6 @@ class PerceptionAgent(Agent):
                 jaccard = len(current_tracks & past_tracks) / len(current_tracks | past_tracks)
                 overlaps.append(jaccard)
         return 1.0 - (sum(overlaps) / len(overlaps))
-
-    def _text_novelty(self, text: str) -> float:
-        """1 minus the highest word overlap (Jaccard over ``memory.text.key_tokens``) with a recent percept's text.
-
-        Percepts without text (idle ticks, vision frames) are not compared: they say nothing about whether these
-        words are new. The highest overlap, not the mean, so a sentence repeated among other utterances still reads
-        as familiar. No recent text, or no content words in this one, reads as fully novel (the track path's
-        empty-window rule)."""
-        from maxim.memory.text import key_tokens
-
-        current = set(key_tokens(text))
-        if not current:
-            return 1.0
-        best = 0.0
-        for past in self._recent_percepts:
-            past_text = past.raw_transcript_text or past.cli_input
-            if not past_text:
-                continue
-            seen = set(key_tokens(str(past_text)))
-            if seen:
-                best = max(best, len(current & seen) / len(current | seen))
-        return 1.0 - best
 
     def _check_transcript_file(self, obs: dict[str, Any]) -> tuple[bool, str | None]:
         """Check if transcript file changed."""
@@ -246,7 +216,7 @@ class PerceptionAgent(Agent):
 
         # Compute signals
         salience = self._compute_salience(detections)
-        novelty = self._compute_novelty(detections, raw_text)
+        novelty = self._compute_novelty(detections)
 
         # Boost salience for voice commands
         if has_maxim:
