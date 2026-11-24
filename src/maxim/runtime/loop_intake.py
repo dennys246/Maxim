@@ -31,6 +31,14 @@ import is cut: by the PR right after slice 6 that moves those two helpers (owner
 
 Characterization: ``tests/unit/test_loop_intake_characterization.py`` (written before the move, through the public
 ``run_agentic_loop``, and kept green by it).
+
+**Not verbatim since #1185.** #1185 (approval intent, merged onto this module after the move) changed three lines
+of the moved block, so a re-diff against slice 6's base shows them: ``_drop_skipped_fallback`` clears the pending
+input through ``ctrl.clear_pending_user_input()`` (the same three keys), the stall marker is
+``sinks.LLM_UNAVAILABLE`` (the same string), and ``take_llm_proposal`` counts each turn with ``note_llm_turn``
+instead of resetting the stall counter. ``note_llm_turn`` lives here (moved verbatim from ``tool_dispatch``, its
+only caller being the intake): a timeout or parse-failure turn counts as failed, and any other turn resets the
+counter and pops ``state.data["machine_timeout_retries"]``, a state write the inline block never made.
 """
 
 from __future__ import annotations
@@ -67,6 +75,18 @@ class IntakeOutcome:
 
 # A completed proposal that waited longer than this is dropped (#1048's cutoff).
 _STALE_PROPOSAL_AGE_S = 35.0
+
+
+def note_llm_turn(proposal: Any, state: Any, consecutive_failures: int) -> int:
+    """One LLM turn's effect on the loop's consecutive-LLM-failure count (the stall detector's liveness signal) and
+    on the machine's timeout-retry count (#1185, owner decision 2026-11-21). A timeout proposal (``llm_timeout``) is
+    a failed turn: it counts, instead of resetting the count as an answered turn does, and so is a parse failure
+    (``llm_fallback``: no usable answer; outside a sim it reaches here, where the null adapter keeps it). Any other
+    turn is the LLM answering: both counts reset."""
+    if getattr(proposal, "reasoning", "") in ("llm_timeout", "llm_fallback"):
+        return consecutive_failures + 1
+    state.data.pop("machine_timeout_retries", None)
+    return 0
 
 
 def _drop_stale_proposal(proposal: Any, *, ctrl: Any, llm_worker: Any, sim: Any, liveness_on: bool) -> tuple[Any, bool]:
@@ -117,7 +137,7 @@ def _drop_skipped_fallback(
 ) -> IntakeOutcome:
     """§2, sim mode: drop a proposal the adapter skips (a parse-failure fallback or an unregistered tool).
 
-    The inline branch's body, moved verbatim except for its ``return``: it counts the fallback, records an unregistered name in the executor's
+    The inline branch's body, moved verbatim except for its ``return`` (and #1185's two lines, module docstring): it counts the fallback, records an unregistered name in the executor's
     hallucinated-tool list, reschedules the turn under planning liveness, clears the pending user input and surfaces
     ``_llm_unavailable`` to the action sink. Returns the same ``IntakeOutcome`` as ``take_llm_proposal``; the caller
     sets its own ``new_proposal`` to None (the branch's assignment of it here rebinds only this function's local).
@@ -174,20 +194,18 @@ def _drop_skipped_fallback(
     # has_pending_llm_input guard (30s timeout) prevents
     # propose_intent from running AND prevents the bridge
     # send_and_wait from timing out, causing a 120s stall.
-    state.data.pop("pending_user_input", None)
-    state.data.pop("pending_user_input_time", None)
-    state.data.pop("pending_user_input_source", None)
+    ctrl.clear_pending_user_input()
 
     # Stall detection: after N consecutive LLM failures, record a
     # synthetic action so the bridge's settle loop detects activity
     # and exits instead of spinning for 120s.
     if _consecutive_llm_fallbacks >= _LLM_STALL_THRESHOLD and action_sink is not None:
-        from maxim.simulation.sinks import ActionRecord
+        from maxim.simulation.sinks import LLM_UNAVAILABLE, ActionRecord
 
         action_sink.record(
             ActionRecord(
                 timestamp=time.time(),
-                tool_name="_llm_unavailable",
+                tool_name=LLM_UNAVAILABLE,
                 tool_args={},
                 result_success=False,
                 result_output=None,
@@ -272,7 +290,7 @@ def take_llm_proposal(
             _consecutive_llm_fallbacks = _dropped.consecutive_llm_fallbacks
             _planning_liveness_exhausted = _planning_liveness_exhausted or _dropped.exhausted
         if new_proposal:
-            _consecutive_llm_fallbacks = 0  # Real proposal arrived — LLM is back
+            _consecutive_llm_fallbacks = note_llm_turn(new_proposal, state, _consecutive_llm_fallbacks)  # #1185
             if callable(on_event):
                 try:
                     on_event(StreamEvent("inference_end", {"has_proposal": True}))
