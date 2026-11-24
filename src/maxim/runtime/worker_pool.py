@@ -517,6 +517,10 @@ class Lane:
         )
         self._stop = threading.Event()
         self._dispatcher: threading.Thread | None = None
+        # Guards the hand-off to the executor against ``stop()`` shutting it down: the dispatcher can outlive its
+        # bounded join, and a gate-watcher thread is never joined, so either could submit to a shut-down executor.
+        self._handoff_lock = threading.Lock()
+        self._closed = False
 
     @property
     def name(self) -> str:
@@ -537,6 +541,8 @@ class Lane:
         self._stop.set()
         if self._dispatcher and self._dispatcher.is_alive():
             self._dispatcher.join(timeout=timeout)
+        with self._handoff_lock:
+            self._closed = True
         self._executor.shutdown(wait=True, cancel_futures=True)
 
     def submit(self, job: Job) -> None:
@@ -594,7 +600,7 @@ class Lane:
                     name=f"gate-{job.job_id}",
                 ).start()
             else:
-                self._executor.submit(self._execute_job, job)
+                self._hand_off(job)
             self._queue.task_done()
 
     def _wait_then_dispatch(self, job: Job) -> None:
@@ -607,7 +613,22 @@ class Lane:
                 failed,
             )
         job._prefetched = prefetched
-        self._executor.submit(self._execute_job, job)
+        self._hand_off(job)
+
+    def _hand_off(self, job: Job) -> None:
+        """Submit ``job`` to the executor, or fail it when the lane has stopped.
+
+        ``stop()`` closes the lane under the same lock before it shuts the executor down, so no job is submitted to a
+        shut-down executor (that raised ``RuntimeError: cannot schedule new futures after shutdown`` inside the
+        dispatcher thread, killing it, and the job's waiters waited forever). A job that arrives after the close is
+        marked failed, which wakes its waiters.
+        """
+        with self._handoff_lock:
+            if not self._closed:
+                self._executor.submit(self._execute_job, job)
+                return
+        logger.warning("Job %s: lane %s stopped before it could run", job.job_id, self._config.name)
+        self._registry.mark_failed(job.job_id, error=RuntimeError(f"lane {self._config.name!r} stopped"))
 
     def _execute_job(self, job: Job) -> None:
         """Run the job callable. Deps already resolved by dispatcher."""
