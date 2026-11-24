@@ -52,7 +52,6 @@ logger = logging.getLogger(__name__)
 #: ``BenchmarkRunner.write_paper``'s cause beside ``consented_router``'s: the router returned no text for any paper
 #: section (a failed call returns "", #1680).
 PAPER_NO_TEXT = "no_text"
-PAPER_REFUSED = "refused"  # write_paper's cause when its router build was refused (SECURITY_REFUSALS; #1315)
 
 
 # ── Data classes ─────────────────────────────────────────────────────
@@ -987,10 +986,12 @@ class BenchmarkRunner:
 
         Returns ``(paper_path, None)``, or ``(None, cause)`` when no LLM is usable, the ``consented_router`` idiom:
         ``cause`` is ``consented_router``'s (``LLM_DISABLED`` or one of ``LocalModelUnavailable.CAUSES``), or
-        :data:`PAPER_NO_TEXT` (the router returned no text for any section), or :data:`PAPER_REFUSED` (the router
-        build was refused: the offline latch or a leader refusal, logged and, offline, recorded as degraded). Any
-        other failure raises: a broad except here once turned a constructor ``TypeError`` into a None the CLI
-        reported as "LLM unavailable", so the paper step never worked and nothing said why (#1680).
+        :data:`PAPER_NO_TEXT` (the router returned no text for any section). Any other failure raises: a broad
+        except here once turned a constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so
+        the paper step never worked and nothing said why (#1680). A refusal (``SECURITY_REFUSALS``: the offline
+        latch, a leader refusal) raises too, at the router build or at a section call, so the run exits 2 like any
+        other refusal (V26; owner decision 2026-11-23); the build-time one is logged first and, offline, marked
+        degraded, which logs a WARNING (the benchmark report is already saved and has no offline block).
         """
         from maxim.mesh.bus import LocalMessageBus
         from maxim.models.download import LLM_DISABLED, consented_router
@@ -1003,13 +1004,13 @@ class BenchmarkRunner:
         # usable LLM leaves no experiment log behind.
         try:
             router, cause = consented_router(load_llm_config(), logger=logger)
-        except SECURITY_REFUSALS as refusal:  # said as what it is; offline, also in the run's offline block (#1315)
+        except SECURITY_REFUSALS as refusal:  # said as what it is, then raised: a refusal exits 2 (V26, 2026-11-23)
             from maxim import _offline
 
             if isinstance(refusal, _offline.OfflineRefusal):
                 _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
             logger.warning("No paper: the paper writer's router was refused (%s)", refusal)
-            return None, PAPER_REFUSED
+            raise
         if router is None:
             if cause == LLM_DISABLED:
                 logger.warning("No LLM available for paper generation: the LLM is disabled in llm.json")

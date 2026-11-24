@@ -1342,7 +1342,6 @@ class TestWriteBenchmarkPaperCli:
             (("PATH", None), "Paper saved: PATH"),
             ((None, "llm_disabled"), "LLM is disabled"),
             ((None, "no_text"), "returned no text"),
-            ((None, "refused"), "router was refused"),
             ((None, "model_path_missing"), "model_path does not exist"),
             ((None, "not_downloaded"), "maxim --list-models"),
         ],

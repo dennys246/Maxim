@@ -294,10 +294,13 @@ def test_a_refused_model_is_recorded_not_scored_or_ranked() -> None:
 def test_the_benchmark_loop_records_a_refusal_and_continues() -> None:
     import ast
     import inspect
+    import textwrap
 
     from maxim.simulation import benchmark
 
-    tree = ast.parse(inspect.getsource(benchmark))
+    # The scenario loop is BenchmarkRunner.run: a refused model is recorded and the others still run. write_paper's
+    # handler re-raises on purpose (a refused paper exits 2, owner decision 2026-11-23), so the search is scoped.
+    tree = ast.parse(textwrap.dedent(inspect.getsource(benchmark.BenchmarkRunner.run)))
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.ExceptHandler)
@@ -740,47 +743,76 @@ def test_an_early_leader_boot_refused_offline_is_not_a_port_conflict(monkeypatch
         cli._early_leader_boot()
 
 
-def test_a_refused_paper_router_is_named_and_recorded_as_degraded(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_a_refused_paper_router_is_named_recorded_as_degraded_and_raised(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """A refused paper router is said, marked degraded offline, and raised: the run exits 2 (V26, 2026-11-23)."""
     from maxim.models import download
     from maxim.models.language import router as router_mod
     from maxim.simulation import benchmark as bm
 
     monkeypatch.setattr(download, "consented_router", lambda *_a, **_k: _refusing_router("default"))
     monkeypatch.setattr(router_mod, "load_llm_config", lambda: None)
-    from maxim.simulation import research_tools
-
-    monkeypatch.setattr(research_tools, "ExperimentLog", MagicMock())  # its nickname= bug is #1680's, not this test's
     report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
     report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
     _offline.engage("test")
     runner = object.__new__(bm.BenchmarkRunner)
-    assert runner.write_paper(report, tmp_path) == (None, bm.PAPER_REFUSED)
+    with caplog.at_level("WARNING", logger="maxim.simulation.benchmark"), pytest.raises(_offline.OfflineRefusal):
+        runner.write_paper(report, tmp_path)
     assert [d.site for d in _offline.degraded()] == ["benchmark.paper"]
     assert "lanes that are not in-process" in _offline.degraded()[0].reason
+    assert "router was refused" in caplog.text
+    assert not list(tmp_path.iterdir())  # the router is built first: no experiment log is left behind
 
 
-def test_a_leader_refused_paper_router_is_not_recorded_as_offline(
+def test_a_leader_refused_paper_router_is_raised_but_not_recorded_as_offline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Delta round 4 NIT: an online LeaderRefusal names the refusal but books no offline 'degraded' entry."""
+    """Delta round 4 NIT: an online LeaderRefusal is raised (exit 2) but books no offline 'degraded' entry."""
     from maxim.exceptions import LeaderRefusal
     from maxim.models import download
     from maxim.models.language import router as router_mod
     from maxim.simulation import benchmark as bm
-    from maxim.simulation import research_tools
 
     def refuse(*_a: object, **_k: object) -> None:
         raise LeaderRefusal("no mesh key")
 
     monkeypatch.setattr(download, "consented_router", refuse)
     monkeypatch.setattr(router_mod, "load_llm_config", lambda: None)
-    monkeypatch.setattr(research_tools, "ExperimentLog", MagicMock())
     report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
     report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
-    assert object.__new__(bm.BenchmarkRunner).write_paper(report, tmp_path) == (None, bm.PAPER_REFUSED)
+    with pytest.raises(LeaderRefusal):
+        object.__new__(bm.BenchmarkRunner).write_paper(report, tmp_path)
     assert not _offline.degraded()
+
+
+def test_a_paper_section_refused_mid_write_propagates_through_the_cli(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The same refusal at a section call also raises, through ``cli._write_benchmark_paper``: one exit code (2)
+    wherever the paper writer is refused (delta round 10 SHOULD-FIX 1, owner decision 2026-11-23)."""
+    from maxim import cli
+    from maxim.exceptions import LeaderRefusal
+    from maxim.models import download
+    from maxim.models.language import router as router_mod
+    from maxim.simulation import benchmark as bm
+    from maxim.simulation import research_agents
+
+    class _RefusedWriter:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def run(self, _goal: str) -> None:
+            raise LeaderRefusal("the leader refused a section call")
+
+    monkeypatch.setattr(download, "consented_router", lambda *_a, **_k: (object(), None))
+    monkeypatch.setattr(router_mod, "load_llm_config", lambda: None)
+    monkeypatch.setattr(research_agents, "WriterAgent", _RefusedWriter)
+    report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
+    report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
+    runner = object.__new__(bm.BenchmarkRunner)
+    with pytest.raises(LeaderRefusal, match="section call"):
+        cli._write_benchmark_paper(runner, report, tmp_path)
 
 
 # Owner decision V29 (2026-11-21): every MaximAgent takes the run's router, so its ExecAgent never builds a second one

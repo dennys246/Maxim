@@ -208,7 +208,7 @@ def _print_model_unavailable(cause: str | None) -> None:
 
 def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
     """``--write-paper``: the benchmark's comparative paper, or the one line saying why there is none (#1680)."""
-    from maxim.simulation.benchmark import PAPER_NO_TEXT, PAPER_REFUSED
+    from maxim.simulation.benchmark import PAPER_NO_TEXT
 
     print("  Generating comparative paper...")
     paper_path, cause = runner.write_paper(report, report_dir)
@@ -216,8 +216,6 @@ def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
         print(f"  Paper saved: {paper_path}\n")
     elif cause == PAPER_NO_TEXT:
         print("  No paper: the LLM returned no text for any section (see the Writer warnings in the log).\n")
-    elif cause == PAPER_REFUSED:
-        print("  No paper: the paper writer's router was refused (the refusal is in the log).\n")
     else:
         print(f"  No paper: {_model_unavailable_reason(cause)}.\n")
 
