@@ -4,3 +4,5 @@
   CI), and jobs cancelled by the shutdown, jobs still queued at stop, and jobs submitted after it were never run or
   marked. Every job a stopped lane did not run now ends failed, which wakes anything waiting on it; `submit()` and
   `start()` on a stopped lane raise.
+  The refusal is a typed `LaneStopped` (a `RuntimeError`), and `LLMWorker` treats it like a full queue: a request or
+  retry that races its stop is rejected, not raised.

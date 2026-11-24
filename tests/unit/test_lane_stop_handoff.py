@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from maxim.runtime.worker_pool import Job, JobRegistry, JobStatus, Lane, LaneConfig
+from maxim.runtime.worker_pool import Job, JobRegistry, JobStatus, Lane, LaneConfig, LaneStopped
 
 
 def _lane(registry: JobRegistry) -> Lane:
@@ -70,24 +70,41 @@ def test_a_gate_watcher_after_stop_fails_its_job() -> None:
     assert registry.get_status("gated") == JobStatus.FAILED
 
 
-def test_jobs_queued_behind_a_running_one_fail_at_stop() -> None:
-    """Futures the shutdown cancels, and jobs still in the lane queue, both end FAILED."""
+def test_jobs_queued_behind_a_running_one_fail_at_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Futures the shutdown cancels end FAILED. "busy" is released only once the shutdown has cancelled the queued
+    futures, so the single worker cannot run them first (no timing race)."""
     registry = JobRegistry()
     lane = _lane(registry)
     lane.start()
     release = threading.Event()
-    lane.submit(Job(job_id="busy", fn=lambda: release.wait(5.0)))
+    started = threading.Event()
+
+    def _busy() -> None:
+        started.set()
+        release.wait(5.0)
+
+    lane.submit(Job(job_id="busy", fn=_busy))
+    assert started.wait(5.0)
     for i in range(3):
         lane.submit(Job(job_id=f"q{i}", fn=lambda: None))
-    time.sleep(0.3)  # the dispatcher hands the queued jobs to the executor behind "busy"
-    stopper = threading.Thread(target=lane.stop, kwargs={"timeout": 1.0})
-    stopper.start()
-    time.sleep(0.2)
-    release.set()
-    stopper.join(timeout=5.0)
+    deadline = time.monotonic() + 5.0
+    while lane._queue.qsize() and time.monotonic() < deadline:  # the dispatcher hands q0..q2 to the executor
+        time.sleep(0.01)
+    assert lane._queue.qsize() == 0, "the dispatcher did not hand the queued jobs off"
+
+    real_shutdown = lane._executor.shutdown
+
+    def _cancel_then_release(wait: bool = True, *, cancel_futures: bool = False) -> None:
+        real_shutdown(wait=False, cancel_futures=cancel_futures)
+        release.set()
+        real_shutdown(wait=wait)
+
+    monkeypatch.setattr(lane._executor, "shutdown", _cancel_then_release)
+    lane.stop(timeout=1.0)
     for i in range(3):
         assert registry.wait_for_completion(f"q{i}", timeout=1.0), f"q{i} was stranded PENDING"
         assert registry.get_status(f"q{i}") == JobStatus.FAILED
+    assert registry.get_status("busy") == JobStatus.COMPLETED
 
 
 def test_a_job_still_in_the_queue_at_stop_fails() -> None:
@@ -103,10 +120,10 @@ def test_a_stopped_lane_refuses_new_jobs_and_a_restart() -> None:
     lane = _lane(registry)
     lane.start()
     lane.stop(timeout=1.0)
-    with pytest.raises(RuntimeError, match="stopped"):
+    with pytest.raises(LaneStopped):
         lane.submit(Job(job_id="after", fn=lambda: None))
     assert registry.get_status("after") is None, "a refused job was left registered"
-    with pytest.raises(RuntimeError, match="stopped"):
+    with pytest.raises(LaneStopped):
         lane.start()
 
 
@@ -132,3 +149,53 @@ def test_a_running_lane_still_runs_its_jobs() -> None:
     finally:
         lane.stop(timeout=1.0)
     assert registry.get_status("now") == JobStatus.COMPLETED
+
+
+# ── the LLMWorker, the lane's caller: a request that races stop() is rejected, not raised ──
+
+
+def _stopped_pool_worker() -> Any:
+    from maxim.agents.llm_worker import LLMWorker
+    from maxim.runtime.worker_pool import WorkerPool
+    from tests.unit.test_llm_worker_pool import FakeLLM
+
+    pool = WorkerPool()
+    pool.start()
+    worker = LLMWorker(llm=FakeLLM(), pool=pool)
+    worker.start()
+    pool.stop()
+    return worker
+
+
+def test_a_request_to_a_stopped_pool_is_rejected() -> None:
+    from tests.unit.test_llm_worker_pool import _submit_test_context
+
+    worker = _stopped_pool_worker()
+    try:
+        assert _submit_test_context(worker) is False
+    finally:
+        worker.stop()
+
+
+def test_a_retry_to_a_stopped_pool_is_rejected() -> None:
+    from maxim.agents.autonomy import AutonomyLevel
+    from maxim.agents.llm_worker import LLMRequest
+    from tests.unit.test_llm_worker_pool import FakeContext, _make_mode_info
+
+    worker = _stopped_pool_worker()
+    try:
+        request = LLMRequest(
+            request_id="req-late",
+            context=FakeContext(cli_inputs=["maxim hello"]),
+            mode=_make_mode_info(),
+            autonomy_level=AutonomyLevel.SUPERVISED,
+            internet_access=False,
+            internet_policy_summary="",
+            triggering_input="maxim hello",
+            use_tool_prompting=True,
+            available_tools={"respond"},
+            tool_descriptions={"respond": "Send a message"},
+        )
+        assert worker.retry_with_timeout(request, timeout_s=10.0) is False
+    finally:
+        worker.stop()

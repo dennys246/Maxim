@@ -94,6 +94,8 @@ except ImportError:
     _HAS_ENERGY_TRACKING = False
     LLMEnergyTracker = None  # type: ignore
 
+from maxim.runtime.worker_pool import LaneStopped  # worker_pool imports no maxim module at runtime: no cycle
+
 if TYPE_CHECKING:
     from maxim.agents.bus import StructuredContext
     from maxim.runtime.worker_pool import WorkerPool
@@ -665,7 +667,7 @@ class LLMWorker:
                 priority=-request.priority,
             )
             return True
-        except queue.Full:
+        except (queue.Full, LaneStopped):  # LaneStopped: a requeue that raced stop()
             self._reject_attempt()
             self._requests_dropped += 1
             return False
@@ -1147,7 +1149,7 @@ class LLMWorker:
                     priority=-priority,
                 )
                 return True
-            except queue.Full:
+            except (queue.Full, LaneStopped):  # LaneStopped: a request that raced stop()
                 self._reject_attempt()
                 self._requests_dropped += 1
                 logger.warning(

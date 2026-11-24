@@ -25,6 +25,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class LaneStopped(RuntimeError):
+    """A job offered to, or left in, a lane that has stopped: it will never run."""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Data Structures
 # ─────────────────────────────────────────────────────────────────────────────
@@ -529,7 +533,7 @@ class Lane:
     def start(self) -> None:
         """Start the dispatcher thread. A stopped lane cannot restart: its executor is shut down."""
         if self._closed:
-            raise RuntimeError(f"lane {self._config.name!r} was stopped; build a new one")
+            raise LaneStopped(f"lane {self._config.name!r} was stopped; build a new one")
         self._stop.clear()
         self._dispatcher = threading.Thread(
             target=self._dispatch_loop,
@@ -539,7 +543,8 @@ class Lane:
         self._dispatcher.start()
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the dispatcher and drain the executor; every job this lane never ran ends FAILED, never PENDING.
+        """Stop the dispatcher and drain the executor; every job this lane never ran ends FAILED (a gated job when its
+        dependency wait ends, at most ``DependencySpec.timeout_s`` later), none stays PENDING.
 
         Closing under ``_handoff_lock`` means no job is submitted to the executor after it shuts down, and no job is
         enqueued after the drain (``submit`` checks the flag under the same lock). The jobs still queued are failed by
@@ -564,7 +569,7 @@ class Lane:
         job.lane = self._config.name
         with self._handoff_lock:
             if self._closed:
-                raise RuntimeError(f"lane {self._config.name!r} is stopped; job {job.job_id} was not accepted")
+                raise LaneStopped(f"lane {self._config.name!r} is stopped; job {job.job_id} was not accepted")
             if job.deps:
                 job.gate = DependencyGate(job.deps, self._registry)
                 job.gate.start_early_prefetch()
@@ -645,12 +650,12 @@ class Lane:
                 future.add_done_callback(lambda f, job_id=job.job_id: self._fail_if_cancelled(f, job_id))
                 return
         logger.warning("Job %s: lane %s stopped before it could run", job.job_id, self._config.name)
-        self._registry.mark_failed(job.job_id, error=RuntimeError(f"lane {self._config.name!r} stopped"))
+        self._registry.mark_failed(job.job_id, error=LaneStopped(f"lane {self._config.name!r} stopped"))
 
     def _fail_if_cancelled(self, future: Any, job_id: str) -> None:
         """A future ``stop()``'s shutdown cancelled before it ran: its job ends FAILED, not PENDING forever."""
-        if future.cancelled():
-            self._registry.mark_failed(job_id, error=RuntimeError(f"lane {self._config.name!r} stopped"))
+        if future.cancelled() and self._registry.get_status(job_id) != JobStatus.CANCELLED:
+            self._registry.mark_failed(job_id, error=LaneStopped(f"lane {self._config.name!r} stopped"))
 
     def _execute_job(self, job: Job) -> None:
         """Run the job callable. Deps already resolved by dispatcher."""
