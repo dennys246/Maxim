@@ -462,6 +462,20 @@ def test_no_llm_json_has_no_identity(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert R._llm_json_identity() is None
 
 
+def test_an_llm_json_that_vanishes_before_stat_has_no_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The file passes the isfile check but is gone by the stat (removed or replaced in between): no identity, not a
+    raise, and the later candidates are not consulted, since the first existing one is the file load_llm_config
+    reads."""
+    import maxim.agents.exec_agent_router as R
+    import maxim.models.language.config as C
+
+    vanished, later = tmp_path / "llm.json", tmp_path / "later.json"
+    later.write_text("{}")
+    monkeypatch.setattr(C, "_llm_config_candidates", lambda: [str(vanished), str(later)])
+    monkeypatch.setattr(R.os.path, "isfile", lambda path: True)
+    assert R._llm_json_identity() is None
+
+
 def test_an_unreadable_config_names_no_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """A config that cannot be read gives no override (the build path reports it), and the result is cached for that
     llm.json identity, so a constructor does not re-read a broken file."""
