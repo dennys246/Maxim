@@ -4,7 +4,7 @@
   "min_package_statements": 200,
   "overall": {
     "percent": 75.6,
-    "missing": 25357
+    "missing": 25351
   },
   "packages": {
     "maxim/<root>": {
