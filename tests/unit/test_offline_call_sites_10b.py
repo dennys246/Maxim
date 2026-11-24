@@ -796,23 +796,22 @@ def test_a_paper_section_refused_mid_write_propagates_through_the_cli(
     from maxim.models import download
     from maxim.models.language import router as router_mod
     from maxim.simulation import benchmark as bm
-    from maxim.simulation import research_agents
 
-    class _RefusedWriter:
-        def __init__(self, **_kwargs: object) -> None:
-            pass
+    class _RefusingRouter:  # the real WriterAgent runs: its one LLM call is _complete_text (round 11 NIT)
+        calls = 0
 
-        def run(self, _goal: str) -> None:
+        def _complete_text(self, *_a: object, **_k: object) -> tuple[str, None]:
+            _RefusingRouter.calls += 1
             raise LeaderRefusal("the leader refused a section call")
 
-    monkeypatch.setattr(download, "consented_router", lambda *_a, **_k: (object(), None))
+    monkeypatch.setattr(download, "consented_router", lambda *_a, **_k: (_RefusingRouter(), None))
     monkeypatch.setattr(router_mod, "load_llm_config", lambda: None)
-    monkeypatch.setattr(research_agents, "WriterAgent", _RefusedWriter)
     report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
     report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
     runner = object.__new__(bm.BenchmarkRunner)
     with pytest.raises(LeaderRefusal, match="section call"):
         cli._write_benchmark_paper(runner, report, tmp_path)
+    assert _RefusingRouter.calls == 1  # the first section's call: refused, not retried or swallowed
 
 
 # Owner decision V29 (2026-11-21): every MaximAgent takes the run's router, so its ExecAgent never builds a second one
