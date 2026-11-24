@@ -126,9 +126,9 @@ def _ensure_sim_bridge_handlers() -> None:
 # #1775 (owner, 2026-11-24): subsystems that carry model-written or incoming text, as ``data["text"]`` and, for
 # RESPONSE, SCENE and PERCEPT, as the message itself (DELIBERATION's message is a cycle counter; its text is the
 # reasoning parsed from the reply). SCENE is ``display_scene``: the narrator's prose, and the approval prompt's lines
-# quoting a proposal's reasoning and the agent's question. PERCEPT is the agent's incoming text: the narrator's prose
-# arrives as a ``cli`` percept, like the person's typing, and NPC lines and comms messages are percepts too; its
-# ``data["source"]`` stays readable. The sim-session JSONL and the sinks (the console's Talk view, the web
+# quoting a proposal's reasoning and the agent's question. PERCEPT is the agent's incoming text (in its message only):
+# the narrator's prose arrives as a ``cli`` percept, like the person's typing, and NPC lines and comms messages are
+# percepts too; its ``data["source"]`` stays readable. The sim-session JSONL and the sinks (the console's Talk view, the web
 # ThinkingPanel, the Adventure view) keep the text; the MAXIM_LOG_FILE mirror carries only its shape, because the text
 # can quote a PRIVATE tool's output and the log file is not a display surface. A silent RESPONSE turn (``text`` None)
 # keeps its message: a tool-name summary, not a reply. Value: whether the message is the text.
@@ -1156,10 +1156,11 @@ def sim_log(
 def sim_percept(source: str, summary: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log an incoming percept.
 
-    ``source`` and ``text`` ride in the data too (#1775), so the MAXIM_LOG_FILE mirror, which logs a PERCEPT's text by
-    shape only, still says where the percept came from.
+    ``source`` rides in the data too (#1775), so the MAXIM_LOG_FILE mirror, which logs a PERCEPT's message by shape
+    only, still says where the percept came from. The text itself stays in the message alone: a ``text`` key would be
+    echoed a second time by the terminal renderer's details.
     """
-    sim_log("PERCEPT", f"👁️ [{source}] {summary}", {"source": source, "text": summary, **kwargs}, agent_id=agent_id)
+    sim_log("PERCEPT", f"👁️ [{source}] {summary}", {"source": source, **kwargs}, agent_id=agent_id)
 
 
 @_contained

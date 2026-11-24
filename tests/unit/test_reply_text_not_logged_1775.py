@@ -206,7 +206,7 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
     _assert_shape_logged(texts, text_shape(scene), scene)
     scenes = [r for r in session if r["subsystem"] == "SCENE"]
     assert scenes and CANARY in scenes[0]["message"], "the session trail (the Adventure view's source) lost the scene"
-    percept = f"The narrator says {CANARY}"
+    percept = f"👁️ [cli] The narrator says {CANARY}"
     _assert_shape_logged(texts, '"source": "cli"', percept)
     assert [r for r in session if r["subsystem"] == "PERCEPT" and CANARY in r["message"]], (
         "the session lost the percept"

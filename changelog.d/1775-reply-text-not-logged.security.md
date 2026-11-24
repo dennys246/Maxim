@@ -10,4 +10,4 @@
   reasoning) and the `PERCEPT` record (the agent's incoming text, the narrator's prose and the person's typing
   included) keep their text in the sim-session JSONL, the console's Talk view, the ThinkingPanel and the Adventure
   view, but their copy in `MAXIM_LOG_FILE` now carries only the shape (owner decision, 2026-11-24). To read a sim's
-  text after the fact, read the sim-session JSONL (`sim_sandbox/sim_log_*.jsonl`).
+  text after the fact, read the sim-session JSONL in `sim_sandbox/` (`sim_agent_*.jsonl`, `sim_log_*.jsonl`).
