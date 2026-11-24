@@ -188,3 +188,144 @@ def test_address_checked_client_strict_on_any_reads_no_env_proxy(monkeypatch) ->
         assert _route(client, "https://api.example.com/v1") == "direct"
     finally:
         client.close()
+
+
+# ── review-round folds: probes, the env CA, the SDK's default host, the latch, the value's parse ───────────────
+
+
+def _strict_peer_backend(base_url: str):
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+    cfg = dataclasses.replace(
+        LLMConfig(),
+        providers={
+            "t1782p": {
+                "type": "maxim_peer",
+                "base_url": base_url,
+                "api_key_env": KEY_ENV,
+                "model": "m",
+                "allow_local_endpoints": True,
+                "pricing_required": False,
+                "strict_address_check": True,
+            }
+        },
+    )
+    return _MaximPeerBackend(cfg, provider_key="t1782p")
+
+
+@pytest.mark.parametrize("base_url", TAILNET_URLS, ids=["http-private", "https-any"])
+def test_a_strict_peer_backends_probes_refuse_the_proxy_too(monkeypatch, base_url) -> None:
+    """warmup's model discovery (_get_json) and health_check's two stages carry the bearer key: they go strict."""
+    import maxim.models.language.maxim_peer_backend as mpb
+
+    seen: list[tuple[str, bool]] = []
+
+    def spy(url, **kwargs):
+        seen.append((url, kwargs.get("strict", False)))
+        return _http.Response(200, {}, b'{"data": []}', 1.0, "spy", "rid")
+
+    monkeypatch.setattr(mpb._http, "fetch_url", spy)
+    backend = _strict_peer_backend(base_url)
+    backend._get_json(lambda base: base + "/models")
+    backend.health_check()
+    assert len(seen) >= 3, seen  # discovery, liveness, readiness
+    assert all(strict for _, strict in seen), seen
+
+
+@pytest.mark.parametrize("policy", ["any", "public", "private"])
+def test_fetch_url_strict_uses_a_client_with_no_proxy(monkeypatch, policy) -> None:
+    monkeypatch.setenv("HTTP_PROXY", PROXY)
+    monkeypatch.setenv("HTTPS_PROXY", PROXY)
+    _http._ensure_external_endpoint()
+    name = _http._EXTERNAL_STRICT_ENDPOINTS[policy]
+    stale = _http._registry._clients.pop(name, None)
+    if stale is not None:
+        stale.close()
+    url = f"https://{TAILNET_NAME}/v1/models" if policy == "any" else f"http://{TAILNET_IP}:8099/v1/models"
+    assert _route(_http._registry.get_client(name), url) == "direct"
+    assert _route(_http._registry.get_client(_http._EXTERNAL_ENDPOINT), url) == "proxy"  # the non-strict control
+
+
+def test_strict_on_any_still_honours_the_env_ca(monkeypatch, tmp_path) -> None:
+    """``trust_env=False`` on the client alone would drop SSL_CERT_FILE: an internal CA would then fail TLS."""
+    monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "missing-ca.pem"))
+    with pytest.raises((FileNotFoundError, OSError)):  # the CA file is read: proof the env CA is honoured
+        _http.address_checked_client("any", timeout=5.0, base_url=None, strict=True)
+
+
+def test_a_strict_openai_entry_with_no_base_url_still_refuses_the_proxy(monkeypatch) -> None:
+    """No base_url: the SDK's default host. The SDK's own client would read HTTPS_PROXY, so strict hands it ours."""
+    pytest.importorskip("openai", reason="the OpenAI backend is an optional extra")
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.openai_backend import _OpenAIBackend
+
+    monkeypatch.setenv("HTTPS_PROXY", PROXY)
+    cfg = LLMConfig(
+        enabled=True,
+        providers={"openai": {"type": "openai", "api_key_env": KEY_ENV, "model": "m", "strict_address_check": True}},
+    )
+    backend = _OpenAIBackend(cfg, provider_key="openai")
+    client = backend._ensure_client()
+    try:
+        assert client is not None
+        assert _route(client._client, "https://api.openai.com/v1/chat/completions") == "direct"
+    finally:
+        backend.unload()
+
+
+def test_the_strict_any_client_is_refused_under_the_offline_latch(monkeypatch) -> None:
+    from maxim import _offline
+
+    client = _http.address_checked_client("any", timeout=5.0, base_url=None, strict=True)
+    try:
+        _offline.engage("test: the strict any client keeps the call-site refusal")
+        with pytest.raises(_offline.OfflineRefusal):
+            client.get("https://api.example.com/v1/models")
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(True, True), ("true", True), ("false", False), ("0", False), (1, False), (None, False)]
+)
+def test_the_provider_value_is_parsed_not_cast(value, expected) -> None:
+    """A JSON "false" used to read as True through bool()."""
+    assert _http.provider_strict_address_check({"strict_address_check": value}) is expected
+
+
+@pytest.mark.parametrize("policy", ["any", "public", "private"])
+def test_fetch_url_strict_picks_the_strict_endpoint(monkeypatch, policy) -> None:
+    picked: list[str] = []
+
+    class _Stop(Exception):
+        pass
+
+    def spy(name):
+        picked.append(name)
+        raise _Stop
+
+    _http._ensure_external_endpoint()
+    monkeypatch.setattr(_http._registry, "get_client", spy)
+    with pytest.raises(_Stop):
+        _http.fetch_url(f"https://{TAILNET_NAME}/v1/models", address_policy=policy, strict=True)
+    assert picked == [_http._EXTERNAL_STRICT_ENDPOINTS[policy]]
+
+
+def test_an_offline_any_endpoint_keeps_the_env_ca(monkeypatch, tmp_path) -> None:
+    """The offline latch drops the env proxy on "any"; it used to drop the env CA with it (the same build)."""
+    from maxim import _offline
+
+    name = "t1782-offline-any"
+    _http.register_endpoint(_http.HTTPEndpoint(name=name, base_url=f"https://{TAILNET_NAME}"))
+    try:
+        _offline.engage("test: the offline any client keeps the env CA")
+        monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "missing-ca.pem"))
+        with pytest.raises((FileNotFoundError, OSError)):
+            _http._registry.get_client(name)
+    finally:
+        with _http._registry._lock:
+            _http._registry._endpoints.pop(name, None)
+            stale = _http._registry._clients.pop(name, None)
+            if stale is not None:
+                stale.close()

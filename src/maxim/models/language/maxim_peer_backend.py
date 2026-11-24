@@ -243,7 +243,7 @@ def _classify_probe_cause(exc: BaseException, fallback_detail: str) -> str:
     return "other"
 
 
-def _probe_once(url: str, api_key: str | None, timeout_s: float):
+def _probe_once(url: str, api_key: str | None, timeout_s: float, *, strict: bool = False):
     """Single liveness probe attempt — ``GET /v1/models``.
 
     Specific-before-general ``except`` ordering — ``HTTPAuthError``
@@ -265,6 +265,7 @@ def _probe_once(url: str, api_key: str | None, timeout_s: float):
             headers=headers,
             # #921: the probe carries the bearer key; a cleartext URL may only reach a private network
             address_policy=base_url_address_policy(url, allow_local=True),
+            strict=strict,  # #1782: a strict provider's probe refuses the env proxy too
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 2.0),
                 read_s=timeout_s,
@@ -302,6 +303,8 @@ def _probe_stage2_readiness(
     api_key: str | None,
     model_name: str,
     timeout_s: float = 3.0,
+    *,
+    strict: bool = False,
 ):
     """Stage-2 readiness probe: micro-completion via ``POST /v1/chat/completions``."""
     from maxim.runtime.llm_server import ProbeResult
@@ -325,6 +328,7 @@ def _probe_stage2_readiness(
             headers=headers,
             json=body,
             address_policy=base_url_address_policy(url, allow_local=True),  # #921
+            strict=strict,  # #1782
             timeout=_http.TimeoutPolicy(
                 connect_s=min(timeout_s, 2.0),
                 read_s=timeout_s,
@@ -483,6 +487,7 @@ class _MaximPeerBackend:
                 address_policy=base_url_address_policy(
                     base, bool(self._provider_cfg().get("allow_local_endpoints", True))
                 ),
+                strict=self._strict_address_check(),  # #1782: the same proxy rule as inference
                 timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, pool_s=4.0),
             )
             return json.loads(resp.content or b"{}")
@@ -697,13 +702,14 @@ class _MaximPeerBackend:
         )
 
         stage1_start = time.monotonic()
-        result = _probe_once(base_url, api_key, first_timeout_s)
+        strict = self._strict_address_check()  # #1782: the probe refuses the proxy inference refuses
+        result = _probe_once(base_url, api_key, first_timeout_s, strict=strict)
         if not result.is_reachable:
-            result = _probe_once(base_url, api_key, retry_timeout_s)
+            result = _probe_once(base_url, api_key, retry_timeout_s, strict=strict)
         stage1_ms = round((time.monotonic() - stage1_start) * 1000, 1)
 
         if enable_stage2 and result.outcome == "ok":
-            stage2 = _probe_stage2_readiness(base_url, api_key, model_name)
+            stage2 = _probe_stage2_readiness(base_url, api_key, model_name, strict=strict)
             log_structured(
                 logger,
                 logging.INFO,
@@ -787,6 +793,11 @@ class _MaximPeerBackend:
         providers = getattr(self.cfg, "providers", {}) or {}
         raw = providers.get(self._provider_key, {})
         return raw if isinstance(raw, dict) else {}
+
+    def _strict_address_check(self) -> bool:
+        """The provider entry's ``strict_address_check`` (#1782): this backend's calls AND probes refuse every env
+        proxy. Off by default, where ``NO_PROXY`` decides (D16)."""
+        return _http.provider_strict_address_check(self._provider_cfg())
 
     def _get_api_key(self) -> str:
         # Per-instance override takes precedence so ``for_url(api_key=k)``
@@ -877,7 +888,7 @@ class _MaximPeerBackend:
                 # #921: validate_base_url's rules, enforced on the address actually dialled
                 address_policy=policy,
                 # #1782: a provider entry may refuse every env proxy (NO_PROXY is honoured without it, D16)
-                strict_address_check=bool(provider_cfg.get("strict_address_check", False)),
+                strict_address_check=self._strict_address_check(),
             )
         )
         self._endpoint_registered = True
