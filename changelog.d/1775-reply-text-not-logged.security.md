@@ -6,6 +6,7 @@
   at the router's one dispatch, as its length and a stable digest (`cloud_redaction.text_shape`), as #1751 does for tool text,
   and every other site logs the shape or a count (`exec_agent`'s `goal_proposed` description too). No other log line or backend
   trace keeps reply text (apart from the sim records named below), so seeing the reply behind a parse failure means reproducing the call. The sim stream's `RESPONSE`
-  record and `DELIBERATION`'s reasoning keep their text in the sim-session JSONL, the console's Talk view and the
-  ThinkingPanel, but their copy in `MAXIM_LOG_FILE` now carries only the shape (owner decision, 2026-11-24). Not yet
-  changed: the `NARRATOR` and `SCENE` records' copies there.
+  record, `DELIBERATION`'s reasoning and the `SCENE` record (the narrator's prose and the approval prompt's quoted
+  reasoning) keep their text in the sim-session JSONL, the console's Talk view, the ThinkingPanel and the Adventure
+  view, but their copy in `MAXIM_LOG_FILE` now carries only the shape (owner decision, 2026-11-24). Not yet changed:
+  the `PERCEPT` record's 200-character summary there.

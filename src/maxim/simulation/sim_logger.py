@@ -123,12 +123,14 @@ def _ensure_sim_bridge_handlers() -> None:
             _sim_bridge_logger.addHandler(h)
 
 
-# #1775 (owner, 2026-11-24): subsystems that carry the model's reply text, as ``data["text"]`` and, for RESPONSE,
-# as the message itself (DELIBERATION's message is a cycle counter; its text is the reasoning parsed from the reply).
-# The sim-session JSONL and the sinks (the console's Talk view, the web ThinkingPanel) keep the text; the
-# MAXIM_LOG_FILE mirror carries only its shape, because a reply can quote a PRIVATE tool's output and the log file is
-# not a display surface. A silent RESPONSE turn (``text`` None) keeps its message: a tool-name summary, not a reply.
-_REPLY_SUBSYSTEMS: dict[str, bool] = {"RESPONSE": True, "DELIBERATION": False}  # subsystem -> message is the reply
+# #1775 (owner, 2026-11-24): subsystems that carry model-written text, as ``data["text"]`` and, for RESPONSE and
+# SCENE, as the message itself (DELIBERATION's message is a cycle counter; its text is the reasoning parsed from the
+# reply). SCENE is ``display_scene``: the narrator's prose, and the approval prompt's lines quoting a proposal's
+# reasoning and the agent's question. The sim-session JSONL and the sinks (the console's Talk view, the web
+# ThinkingPanel, the Adventure view) keep the text; the MAXIM_LOG_FILE mirror carries only its shape, because the text
+# can quote a PRIVATE tool's output and the log file is not a display surface. A silent RESPONSE turn (``text`` None)
+# keeps its message: a tool-name summary, not a reply.
+_REPLY_SUBSYSTEMS: dict[str, bool] = {"RESPONSE": True, "SCENE": True, "DELIBERATION": False}  # -> message is the text
 
 
 def _bridge_to_log_file(

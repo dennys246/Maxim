@@ -181,7 +181,8 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
         sim_logger.sim_log("RESPONSE", reply, {"text": reply, "actions": ["respond"]}, _terminal=False)
         sim_logger.sim_deliberation_update(f"I will quote {CANARY}", cycle=1, max_cycles=2)
         sim_logger.sim_log("RESPONSE", "ran internet_search (failed)", {"text": None}, _terminal=False)
-        sim_logger.sim_log("NARRATOR", "the scene opens", _terminal=False)
+        sim_logger.display_scene(f"  Reasoning: the file said {CANARY}")
+        sim_logger.display_turn(7)
         session = sim_logger.get_sim_records()
     finally:
         sim_logger.disable_sim_logging()
@@ -200,4 +201,8 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
     _assert_shape_logged(texts, text_shape(reply), reply)
     _assert_shape_logged(texts, "deliberation cycle 1/2", f"I will quote {CANARY}")
     assert any("ran internet_search (failed)" in t for t in texts), "a silent turn's summary (not a reply) was shaped"
-    assert any("the scene opens" in t for t in texts), "a non-reply subsystem lost its text"
+    scene = f"  Reasoning: the file said {CANARY}"
+    _assert_shape_logged(texts, text_shape(scene), scene)
+    scenes = [r for r in session if r["subsystem"] == "SCENE"]
+    assert scenes and CANARY in scenes[0]["message"], "the session trail (the Adventure view's source) lost the scene"
+    assert any("Turn 7" in t for t in texts), "a subsystem that carries no model text lost its message"
