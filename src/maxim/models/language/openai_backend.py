@@ -283,9 +283,14 @@ class _OpenAIBackend:
                 from maxim.utils.net import base_url_address_policy
 
                 # #921: validate_base_url's rules, enforced on the address the SDK actually dials
-                allow_local = bool(self._provider_cfg().get("allow_local_endpoints", False))
+                provider_cfg = self._provider_cfg()
+                allow_local = bool(provider_cfg.get("allow_local_endpoints", False))
                 checked = _http.address_checked_client(
-                    base_url_address_policy(base_url, allow_local), timeout=self._get_timeout(), base_url=base_url
+                    base_url_address_policy(base_url, allow_local),
+                    timeout=self._get_timeout(),
+                    base_url=base_url,
+                    # #1782: a provider entry may refuse every env proxy (NO_PROXY is honoured without it, D16)
+                    strict=bool(provider_cfg.get("strict_address_check", False)),
                 )
                 if checked is not None:
                     client_kwargs["http_client"] = checked

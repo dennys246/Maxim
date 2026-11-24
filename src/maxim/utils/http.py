@@ -222,9 +222,10 @@ class HTTPEndpoint:
     # (#824, #921): "public" (globally routable only), "private" (LAN/loopback only -- a cleartext
     # ``http://`` backend), or "any". See ``utils/net.py::AddressPolicy``.
     address_policy: AddressPolicy = "any"
-    # True = never route through an env proxy, so the check always holds (the MODEL-chosen fetch, #824).
+    # True = never route through an env proxy, so the check always holds (the MODEL-chosen fetch, #824). On an
+    # "any" endpoint, which has no check, it still means no env proxy: a backend caller may ask for that (#1782).
     # False = an env proxy that applies to the base URL wins, with one warning: the proxy dials, so the
-    # check cannot apply (owner decision 2026-09-28, #921).
+    # check cannot apply (owner decision 2026-09-28, #921). NO_PROXY is honoured either way (D16).
     strict_address_check: bool = False
 
     # Runtime-only registry entry, never persisted or sent: CC3 does not apply.
@@ -509,7 +510,8 @@ class _EndpointRegistry:
                         base_url=ep.base_url or "",
                         timeout=ep.timeouts.to_httpx(),
                         limits=limits,
-                        trust_env=not _offline.is_offline(),  # offline: no env proxy (#1315 §6 layer 2)
+                        # offline: no env proxy (#1315 §6 layer 2); strict: none either (#1782)
+                        trust_env=not (_offline.is_offline() or ep.strict_address_check),
                         event_hooks=_OFFLINE_EVENT_HOOKS,
                     )
                 else:
@@ -907,15 +909,29 @@ def _policy_backend(policy: AddressPolicy) -> _AddressCheckingBackend | None:
 _SDK_CONNECTION_LIMITS = httpx.Limits(max_connections=1000, max_keepalive_connections=100)
 
 
-def address_checked_client(policy: AddressPolicy, *, timeout: float, base_url: str | None) -> httpx.Client | None:
+def address_checked_client(
+    policy: AddressPolicy, *, timeout: float, base_url: str | None, strict: bool = False
+) -> httpx.Client | None:
     """An ``httpx.Client`` enforcing ``policy`` on every address it dials directly, for a third-party SDK
-    that owns its transport (the OpenAI backend, #921); None for "any". It matches the SDK's defaults
-    (redirects followed -- every hop is a checked connection -- and its connection limits), and a
-    configured proxy carries the URLs it covers (``_proxy_mounts``). The caller closes it."""
+    that owns its transport (the OpenAI backend, #921); None for "any" unless ``strict``. It matches the SDK's
+    defaults (redirects followed -- every hop is a checked connection -- and its connection limits), and a
+    configured proxy carries the URLs it covers (``_proxy_mounts``), NO_PROXY honoured. ``strict``
+    (``HTTPEndpoint.strict_address_check``'s meaning, #1782) mounts no proxy at all, and for "any" returns a
+    client that reads no env proxy, since the SDK's own client would. The caller closes it."""
     backend = _policy_backend(policy)
     if backend is None:
-        return None
-    return _checked_client(backend, limits=_SDK_CONNECTION_LIMITS, timeout=timeout, base_url="", follow_redirects=True)
+        if not strict:
+            return None
+        return httpx.Client(
+            timeout=timeout,
+            follow_redirects=True,
+            limits=_SDK_CONNECTION_LIMITS,
+            trust_env=False,
+            event_hooks=_OFFLINE_EVENT_HOOKS,
+        )
+    return _checked_client(
+        backend, limits=_SDK_CONNECTION_LIMITS, timeout=timeout, base_url="", follow_redirects=True, strict=strict
+    )
 
 
 # ─────────────────────────── External endpoint bootstrap ────────────────

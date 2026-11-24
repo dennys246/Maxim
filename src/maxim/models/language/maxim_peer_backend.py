@@ -861,7 +861,8 @@ class _MaximPeerBackend:
 
         from maxim.utils.net import base_url_address_policy
 
-        policy = base_url_address_policy(base, bool(self._provider_cfg().get("allow_local_endpoints", True)))
+        provider_cfg = self._provider_cfg()
+        policy = base_url_address_policy(base, bool(provider_cfg.get("allow_local_endpoints", True)))
         _http.register_endpoint(
             HTTPEndpoint(
                 name=self._endpoint_name,
@@ -875,6 +876,8 @@ class _MaximPeerBackend:
                 internal=True,
                 # #921: validate_base_url's rules, enforced on the address actually dialled
                 address_policy=policy,
+                # #1782: a provider entry may refuse every env proxy (NO_PROXY is honoured without it, D16)
+                strict_address_check=bool(provider_cfg.get("strict_address_check", False)),
             )
         )
         self._endpoint_registered = True
