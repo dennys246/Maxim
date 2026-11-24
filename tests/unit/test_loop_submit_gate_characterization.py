@@ -442,6 +442,17 @@ def test_a_follow_up_with_no_built_context_gets_a_minimal_one(monkeypatch, tmp_p
     assert _logs(caplog, "Created minimal context") == ["Created minimal context for pending action followup"]
 
 
+def test_a_pending_modification_with_no_built_context_gets_a_minimal_one(monkeypatch, tmp_path, caplog):
+    """#1185's second trigger of the minimal context: a requested change to a parked plan, with nothing built, still
+    reaches the LLM (the change is the request), and the parked change is consumed."""
+    change = {"original_tool_name": "bash", "user_modification": "make it shorter"}
+    obs = _run(monkeypatch, tmp_path, amend=lambda k, ctx: None, state_data={"pending_modification": change}, steps=2)
+    [sub] = obs.worker.submits
+    assert sub["mode"] == "active" and sub["autonomy_level"] == "supervised"  # operational mode; the state default
+    assert sub["triggering_input"] == "make it shorter" and sub["kw"]["pending_modification"] == change
+    assert _logs(caplog, "Created minimal context") == ["Created minimal context for pending action followup"]
+
+
 def test_with_planning_liveness_a_held_input_rides_the_follow_up(monkeypatch, tmp_path):
     """#1048 through the seam: the held input reaches ``submit_context(deferred_inputs=...)`` beside the follow-up,
     marked processed; without planning liveness nothing is held, and the input preempts the follow-up (#1721's shape)."""
