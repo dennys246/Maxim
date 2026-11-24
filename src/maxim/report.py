@@ -45,7 +45,8 @@ class Report:
         sections: Named sections for structured access.
         metrics: Quantitative results.
         review: Reviewer feedback (if applicable).
-        review_verdict: ``"accept"``, ``"revise"``, or ``"reject"``.
+        review_verdict: the research protocol's verdict: ``"accept"``, ``"revise"``, ``"reject"``, ``"no_paper"``,
+            ``"aborted"`` or ``"not_reviewed"`` (``research_orchestrator.ResearchResult`` says what each means).
         metadata: Arbitrary extra data.
     """
 

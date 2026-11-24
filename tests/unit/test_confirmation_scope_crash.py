@@ -23,6 +23,7 @@ from unittest.mock import MagicMock
 from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import LoopController
 from maxim.runtime.loop_types import PendingConfirmation
+from maxim.utils.input_source import InputSource
 
 
 def _controller():
@@ -40,7 +41,7 @@ def _controller():
         memory=MagicMock(),
         decision_engine=MagicMock(),
         executor=executor,
-        autonomy_controller=MagicMock(),
+        autonomy_controller=MagicMock(**{"approved_action_denial.return_value": None}),
     )
     # record_outcome sinks wired later in production bootstrap:
     ctrl.context_pool = MagicMock()
@@ -75,6 +76,9 @@ class TestConfirmationBranchScope:
                 execute_and_learn=run.execute_and_learn,
                 book_refusal=run.book_refusal,
                 observation={},
+                sim=MagicMock(),
+                book_machine_refusal=MagicMock(),
+                answer_source=InputSource.OPERATOR,
             )
             is True
         )
@@ -86,7 +90,13 @@ class TestConfirmationBranchScope:
         run = _run()
         assert (
             ctrl.handle_confirmation(
-                "no", execute_and_learn=run.execute_and_learn, book_refusal=run.book_refusal, observation={}
+                "no",
+                execute_and_learn=run.execute_and_learn,
+                book_refusal=run.book_refusal,
+                observation={},
+                sim=MagicMock(),
+                book_machine_refusal=MagicMock(),
+                answer_source=InputSource.OPERATOR,
             )
             is True
         )

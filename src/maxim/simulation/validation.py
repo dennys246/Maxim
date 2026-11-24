@@ -264,7 +264,7 @@ def _check_pipeline_continued(
         )
 
     delivered_at = tag_times[tag]
-    after = [a for a in sink.actions if a.timestamp > delivered_at and not a.tool_name.startswith("_")]
+    after = [a for a in sink.actions if a.timestamp > delivered_at and not a.is_synthetic]
     if after:
         return ExpectationResult(
             expectation=exp,
@@ -284,7 +284,7 @@ def _check_pipeline_continued(
 
 def _check_action_count_range(exp: Expectation, sink: RecordingSink) -> ExpectationResult:
     """Check that total action count is within [min, max] range."""
-    count = len(sink.actions)
+    count = sum(1 for a in sink.actions if not a.is_synthetic)
     min_count = getattr(exp, "min_count", None) or exp.params.get("min", 0)
     max_count = getattr(exp, "max_count", None) or exp.params.get("max", float("inf"))
     passed = int(min_count) <= count <= int(max_count)
@@ -332,7 +332,7 @@ def _check_response_latency_ms(exp: Expectation, sink: RecordingSink) -> Expecta
         p95_max_ms: optional float — p95 must be <= this
         min_samples: optional int (default 2) — skip check if fewer actions
     """
-    actions = sink.actions
+    actions = [a for a in sink.actions if not a.is_synthetic]
     min_samples = int(exp.params.get("min_samples", 2))
     if len(actions) < min_samples:
         return ExpectationResult(

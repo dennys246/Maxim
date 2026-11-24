@@ -375,6 +375,7 @@ def _loop_kwargs(
         # ::test_substrate_proposal_is_executed_on_the_harness_loop (RED on the pre-fix runner).
         "autonomy_controller": AutonomyController(initial_level=AutonomyLevel.AUTONOMOUS),
         "percept_source": aut.percept_source,
+        "response_policy": None,  # the world is no bridge: no policy answers prompts (the harness runs AUTONOMOUS)
         "pain_bus": aut.bio.pain_bus,
         "memory_hub": aut.bio.memory_hub,
         "hippocampus": aut.bio.hippocampus,

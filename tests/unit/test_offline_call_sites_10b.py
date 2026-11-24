@@ -681,7 +681,9 @@ def test_api_benchmark_does_not_score_a_refused_model(monkeypatch: pytest.Monkey
 # turned an offline refusal into a template fallback, a warning, or a misread boot failure.
 
 
-def _refusing_router(_profile: str) -> None:
+def _refusing_router(
+    _profile: str, **_kwargs: object
+) -> None:  # cli._cli_local_router also takes fallback_user= (#1680)
     _offline.refuse("router[build]", "lanes that are not in-process: local")
 
 
@@ -754,7 +756,7 @@ def test_a_refused_paper_router_is_named_and_recorded_as_degraded(
     report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
     _offline.engage("test")
     runner = object.__new__(bm.BenchmarkRunner)
-    assert runner.write_paper(report, tmp_path) is None
+    assert runner.write_paper(report, tmp_path) == (None, bm.PAPER_REFUSED)
     assert [d.site for d in _offline.degraded()] == ["benchmark.paper"]
     assert "lanes that are not in-process" in _offline.degraded()[0].reason
 
@@ -777,7 +779,7 @@ def test_a_leader_refused_paper_router_is_not_recorded_as_offline(
     monkeypatch.setattr(research_tools, "ExperimentLog", MagicMock())
     report = bm.BenchmarkReport(timestamp="t", suite="s", models=["phi-2"], runs_per_model=1)
     report.results = {"phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7)}
-    assert object.__new__(bm.BenchmarkRunner).write_paper(report, tmp_path) is None
+    assert object.__new__(bm.BenchmarkRunner).write_paper(report, tmp_path) == (None, bm.PAPER_REFUSED)
     assert not _offline.degraded()
 
 

@@ -553,6 +553,7 @@ class MaximHandle:
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=bridge.percept_source,
+                    response_policy=bridge.response_policy,  # the sim's answers to gating prompts (#1185)
                     action_sink=bridge.action_sink,
                     pain_bus=self.instance.pain_bus,
                     # Persistent agent: its session-end is the explicit

@@ -47,7 +47,7 @@ def _pain(intensity) -> object:
 
 
 def _adapter(percept, bus: ReactionBus) -> SimulationAdapter:
-    return SimulationAdapter(_OneShotSource(percept), pain_bus=bus)
+    return SimulationAdapter(_OneShotSource(percept), pain_bus=bus, response_policy=None)
 
 
 def test_a_pain_percept_is_published_with_its_intensity():

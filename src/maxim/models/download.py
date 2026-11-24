@@ -880,6 +880,11 @@ def _another_provider_serves(providers: Any, backend: str, llama_types: tuple[st
     return False
 
 
+#: :func:`consented_router`'s cause beside ``LocalModelUnavailable.CAUSES``: ``llm_config.enabled`` is False (llm.json
+#: switches the LLM off), so no router is built. Not a missing model: no fix hint, no ``LocalModelUnavailable`` (#1680).
+LLM_DISABLED = "llm_disabled"
+
+
 def consented_router(
     llm_config: Any,
     *,
@@ -894,10 +899,14 @@ def consented_router(
     ``runtime/lane_backends.py::build_run_router``'s fallback, the benchmark's paper writer and offline scripts. No
     lanes, no spawned server, no banner or decision record. ``interactive`` defaults to ``False`` (never ask: a missing
     model downloads only with a standing grant); a caller that may ask passes :func:`consent_interactive`'s answer.
-    ``cause`` is one of ``LocalModelUnavailable.CAUSES``, for a caller that refuses the run, typed. Never prints.
+    ``cause`` is one of ``LocalModelUnavailable.CAUSES``, for a caller that refuses the run, typed, or
+    :data:`LLM_DISABLED` for a config whose LLM is switched off (checked here, once, for every caller; #1680). Never
+    prints.
     """
     from maxim.models.language.router import LLMRouter
 
+    if not llm_config.enabled:
+        return None, LLM_DISABLED
     router = LLMRouter(llm_config)
     cause = router_model_problem(router, interactive=interactive, declined=declined, logger=logger)
     return (router, None) if cause is None else (None, cause)

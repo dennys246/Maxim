@@ -47,7 +47,9 @@ dependencies = [
     # IDNA 2008 (UTS 46) host normalisation for the internet policy's domain lists (#968); already
     # installed through httpx, declared because the policy imports it directly.
     "idna>=3.4,<4.0",
-    "rich>=13.0.0,<14.0",
+    # The cap is inherited by every embedder (Overdrive OD-I6: import-linter 2.7+ needs rich>=14.2). The interactive
+    # and display tests pass on 13.9.4, 14.3.4 and 15.0.0 (2026-11-23); widen again after testing the next major.
+    "rich>=13.0.0,<16.0",
     # Plan 4 C2: cross-platform RMW file locking for drain state
     # serialization. Already present transitively via huggingface_hub /
     # torch on most installs; explicit here so headless peers without

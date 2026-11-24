@@ -49,6 +49,12 @@ SCORE_SCHEME = "weighted-per-scenario-v1"
 logger = logging.getLogger(__name__)
 
 
+#: ``BenchmarkRunner.write_paper``'s cause beside ``consented_router``'s: the router returned no text for any paper
+#: section (a failed call returns "", #1680).
+PAPER_NO_TEXT = "no_text"
+PAPER_REFUSED = "refused"  # write_paper's cause when its router build was refused (SECURITY_REFUSALS; #1315)
+
+
 # ── Data classes ─────────────────────────────────────────────────────
 
 
@@ -973,77 +979,75 @@ class BenchmarkRunner:
 
     # ── Phase 7: Research protocol integration ───────────────────
 
-    def write_paper(self, report: BenchmarkReport, output_dir: Path) -> Path | None:
+    def write_paper(self, report: BenchmarkReport, output_dir: Path) -> tuple[Path | None, str | None]:
         """Generate a comparative research paper from benchmark results.
 
         Uses the existing WriterAgent pipeline from the research protocol.
         Converts benchmark metrics into experiment log entries.
 
-        Returns the paper path, or None if generation fails.
+        Returns ``(paper_path, None)``, or ``(None, cause)`` when no LLM is usable, the ``consented_router`` idiom:
+        ``cause`` is ``consented_router``'s (``LLM_DISABLED`` or one of ``LocalModelUnavailable.CAUSES``), or
+        :data:`PAPER_NO_TEXT` (the router returned no text for any section), or :data:`PAPER_REFUSED` (the router
+        build was refused: the offline latch or a leader refusal, logged and, offline, recorded as degraded). Any
+        other failure raises: a broad except here once turned a constructor ``TypeError`` into a None the CLI
+        reported as "LLM unavailable", so the paper step never worked and nothing said why (#1680).
         """
+        from maxim.mesh.bus import LocalMessageBus
+        from maxim.models.download import LLM_DISABLED, consented_router
+        from maxim.models.language.router import load_llm_config
+        from maxim.simulation.research_agents import WriterAgent
+        from maxim.simulation.research_tools import ExperimentLog
+
+        # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
+        # (#1396 bullet 2): no paper rather than a router that refuses every call. Built first, so a run with no
+        # usable LLM leaves no experiment log behind.
         try:
-            from maxim.mesh.bus import LocalMessageBus
-            from maxim.simulation.research_agents import WriterAgent
-            from maxim.simulation.research_tools import ExperimentLog
+            router, cause = consented_router(load_llm_config(), logger=logger)
+        except SECURITY_REFUSALS as refusal:  # said as what it is; offline, also in the run's offline block (#1315)
+            from maxim import _offline
 
-            exp_log = ExperimentLog(session_dir=output_dir, nickname="benchmark")
-
-            for model, mr in report.results.items():
-                metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
-                exp_log.record(
-                    hypothesis=f"Model {model} performs well on {report.suite}",
-                    method=f"Benchmark suite: {report.suite}, {report.runs_per_model} run(s)",
-                    result=metrics_summary,
-                    conclusion=f"Score: {mr.score:.2f}, passed: {mr.passed}",
-                    tags=["benchmark", model],
-                    metrics=mr.metrics,
-                )
-
-            from maxim.models.download import consented_router
-            from maxim.models.language.router import load_llm_config
-
-            # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
-            # (#1396 bullet 2): no paper rather than a router that refuses every call.
-            try:
-                router, cause = consented_router(load_llm_config(), logger=logger)
-            except SECURITY_REFUSALS as refusal:  # said as what it is; offline, also in the run's offline block (#1315)
-                from maxim import _offline
-
-                if isinstance(refusal, _offline.OfflineRefusal):
-                    _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
-                logger.warning("No paper: the paper writer's router was refused (%s)", refusal)
-                return None
-            except Exception:
-                logger.warning("No LLM available for paper generation")
-                return None
-            if router is None:
+            if isinstance(refusal, _offline.OfflineRefusal):
+                _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
+            logger.warning("No paper: the paper writer's router was refused (%s)", refusal)
+            return None, PAPER_REFUSED
+        if router is None:
+            if cause == LLM_DISABLED:
+                logger.warning("No LLM available for paper generation: the LLM is disabled in llm.json")
+            else:
                 logger.warning("No LLM available for paper generation (the model is not usable: %s)", cause)
-                return None
+            return None, cause
 
-            bus = LocalMessageBus()
-            writer = WriterAgent(
-                llm=router,
-                experiment_log=exp_log,
-                bus=bus,
-                session_dir=output_dir,
+        exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")
+        for model, mr in report.results.items():
+            metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
+            exp_log.record(
+                hypothesis=f"Model {model} performs well on {report.suite}",
+                method=f"Benchmark suite: {report.suite}, {report.runs_per_model} run(s)",
+                result=metrics_summary,
+                conclusion=f"Score: {mr.score:.2f}, passed: {mr.passed}",
+                tags=["benchmark", model],
+                metrics=mr.metrics,
             )
 
-            goal = (
-                f"Write a comparative analysis of {len(report.models)} LLM models "
-                f"benchmarked on the {report.suite} suite. "
-                f"Models tested: {', '.join(report.models)}. "
-                f"Include methodology, per-model results, and ranking analysis."
-            )
+        writer = WriterAgent(
+            llm=router,
+            experiment_log=exp_log,
+            bus=LocalMessageBus(),
+            session_dir=output_dir,
+        )
 
-            draft = writer.run(goal)
-            paper_path = output_dir / "paper.md"
-            draft.save(paper_path)
-            logger.info("Benchmark paper generated: %s", paper_path)
-            return paper_path
+        goal = (
+            f"Write a comparative analysis of {len(report.models)} LLM models "
+            f"benchmarked on the {report.suite} suite. "
+            f"Models tested: {', '.join(report.models)}. "
+            f"Include methodology, per-model results, and ranking analysis."
+        )
 
-        except Exception as e:
-            logger.warning("Paper generation failed: %s", e)
-            return None
+        draft = writer.run(goal)  # saves output_dir / "paper.md" when any section came back
+        if draft.output_path is None:
+            return None, PAPER_NO_TEXT
+        logger.info("Benchmark paper generated: %s", draft.output_path)
+        return draft.output_path, None
 
     # ── Phase 9: Tier 3 embodiment hooks ─────────────────────────
 

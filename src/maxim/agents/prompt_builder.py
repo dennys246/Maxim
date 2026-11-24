@@ -29,7 +29,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
-from maxim.utils.cloud_redaction import tool_result_header
+from maxim.utils.cloud_redaction import text_shape, tool_result_header
 from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section, render_headed_section
 
 if TYPE_CHECKING:
@@ -2337,9 +2337,8 @@ class PromptBuilder:
                 if tools is not None and "internet_search" not in tools:
                     followup_type, tool_name = "process", ""  # not this agent's search: "your last tool"
             else:
-                logger.warning(
-                    f"Could not parse followup input format, using fallback. Input starts with: {followup_input[:100]}"
-                )
+                # Shape only, never content: the input can be a PRIVATE or SECRET tool's output (#1751).
+                logger.warning("Could not parse followup input format, using fallback: %s", text_shape(followup_input))
                 # Not known to be a search: "your last tool", whose result is private (cloud_redaction fails closed).
                 followup_type, tool_name, mode_name = "process", "", "live"
                 original_query = ""

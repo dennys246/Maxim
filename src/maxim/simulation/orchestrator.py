@@ -948,6 +948,22 @@ def _open_sim_workspace(*, debug: bool) -> tuple[Path, Path, str]:
     return sim_workspace, sim_tmpdir, log_path
 
 
+def _register_research_tools(orch_registry: Any, experiment_log: Any, sim_tmpdir: Any) -> Any:
+    """Register record_experiment / query_experiments on the narrator's registry; return the log they write to.
+
+    The caller's ``experiment_log`` when given (the research protocol's, so its Writer/Reviewer read the same
+    instance), else a new one in ``sim_tmpdir``. A failure raises: these were built inside ``except Exception:
+    logger.debug``, so a constructor defect would have dropped both tools from every run without a word (#1680)."""
+    from maxim.simulation.research_tools import ExperimentLog, QueryExperimentsTool, RecordExperimentTool
+
+    if experiment_log is None:
+        experiment_log = ExperimentLog(session_dir=sim_tmpdir)
+    orch_registry.register(RecordExperimentTool(experiment_log))
+    orch_registry.register(QueryExperimentsTool(experiment_log))
+    logger.info("Research tools registered (record_experiment, query_experiments)")
+    return experiment_log
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -1730,25 +1746,7 @@ def start_simulation_mode(
     # copies it to the final session directory at save time.
     # Use caller-provided ExperimentLog if given (research protocol passes
     # its log in so Writer/Reviewer read from the same instance — D-0a fix).
-    if experiment_log is None:
-        try:
-            from maxim.simulation.research_tools import ExperimentLog
-
-            experiment_log = ExperimentLog(session_dir=sim_tmpdir)
-        except Exception as e:
-            logger.debug("ExperimentLog not available: %s", e)
-    try:
-        from maxim.simulation.research_tools import (
-            RecordExperimentTool,
-            QueryExperimentsTool,
-        )
-
-        if experiment_log is not None:
-            orch_registry.register(RecordExperimentTool(experiment_log))
-            orch_registry.register(QueryExperimentsTool(experiment_log))
-            logger.info("Research tools registered (record_experiment, query_experiments)")
-    except Exception as e:
-        logger.debug("Research tools not available: %s", e)
+    experiment_log = _register_research_tools(orch_registry, experiment_log, sim_tmpdir)
 
     # The narrator's own tool descriptions (the follow-up types that keep it acting after send_message, and its
     # 'respond' decoy's) ride on its registry, ``SimToolRegistry.tool_descriptions()``, never the process-global
@@ -2208,30 +2206,7 @@ def start_simulation_mode(
                     # keeps injecting into (and finishing) the underlying
                     # ConversationalSource child, so termination is unchanged.
                     # Default OFF → byte-identical (bare bridge.percept_source).
-                    from maxim.simulation.audio_orient_wiring import audio_orient_enabled
-
-                    _aut_percept_source = bridge.percept_source
-                    if audio_orient_enabled():
-                        from maxim.simulation.audio_orient_wiring import (
-                            build_audio_composite,
-                            default_sim_doa_reader,
-                            sim_audio_salience_novelty,
-                        )
-
-                        _aud_sal, _aud_nov = sim_audio_salience_novelty()
-                        _aut_percept_source = build_audio_composite(
-                            bridge.percept_source,
-                            default_sim_doa_reader(),
-                            agent_id=_aut_agent_id,
-                            salience=_aud_sal,
-                            novelty=_aud_nov,
-                        )
-                        logger.info(
-                            "audio-orient channel attached to AUT percept source "
-                            "(synthetic DoA reader, salience=%.2f novelty=%.2f)",
-                            _aud_sal,
-                            _aud_nov,
-                        )
+                    _aut_percept_source = _aut_percept_source_for(bridge, _aut_agent_id)
                     run_agentic_loop(
                         aut_agent,
                         aut_env,
@@ -2248,6 +2223,7 @@ def start_simulation_mode(
                         stop_event=stop_event,
                         target_hz=2.0,
                         percept_source=_aut_percept_source,
+                        response_policy=bridge.response_policy,  # the sim's answers to gating prompts (#1185)
                         state_home=sim_tmpdir,  # the AUT's state file stays in the sim sandbox (#1264)
                         action_sink=bridge.action_sink,
                         pain_bus=aut_pain_bus,
@@ -2518,10 +2494,7 @@ def start_simulation_mode(
                 )
                 display_status(f"New goal: {new_goal}")
         elif line.lower() == "/status":
-            display_status(f"Turns: {bridge.turn_count}")
-            display_status(f"Actions: {len(bridge.get_all_actions())}")
-            blocked = [a for a in bridge.get_all_actions() if a.blocked]
-            display_status(f"Blocked: {len(blocked)}")
+            _display_status_counts(bridge, display_status)
         elif line.lower() == "/report":
             orchestrator_source.inject_cli(
                 "Generate an interim report of your findings so far "
@@ -2735,6 +2708,7 @@ def start_simulation_mode(
                     stop_event=stop_event,
                     target_hz=2.0,
                     percept_source=orchestrator_source,
+                    response_policy=None,  # the narrator is no AUT: no policy answers its prompts (it runs AUTONOMOUS)
                     state_home=sim_tmpdir,  # the narrator's state file stays in the sim sandbox (#1264)
                     # Bugs ledger D13. THIS loop is the one that needs it: it has
                     # no action_sink and no percept producer between turns, so a
@@ -2751,28 +2725,7 @@ def start_simulation_mode(
         display_summary(["Simulation stopped by user"])
         _stop_by_operator(stop_event, operator_stop)
     except _PlanningLivenessExhausted as e:
-        # D13: the agent loop spent its bounded planning-retry budget and
-        # aborted through its normal teardown. Preserve the typed failure:
-        # provider/parse exhaustion is ``llm_wedged``, responsive but invalid
-        # planning is ``planning_failed``, and queue/worker exhaustion is
-        # ``worker_unavailable``.
-        _finish_status = getattr(e, "finish_status", "llm_wedged")
-        _liveness_msg = f"PLANNING LIVENESS EXHAUSTED [{_finish_status}] (bugs ledger D13): {e}"
-        logger.error(_liveness_msg)
-        _emit(f"🛑 {_liveness_msg}", "turn")
-        try:
-            bridge._spinner.update(f"🛑 {_finish_status} — aborting sim")
-        except Exception as spin_err:
-            logger.debug("spinner abort update failed: %s", spin_err)
-        if not bridge.finish_context:
-            bridge.finish_context.update(
-                {
-                    "status": _finish_status,
-                    "reason": str(e),
-                    "summary": _liveness_msg,
-                    "initiated_by": "planning_liveness",
-                }
-            )
+        _record_liveness_abort(e, bridge)
     except Exception as e:
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)
@@ -2837,3 +2790,70 @@ def start_simulation_mode(
         )
     show_report = not _is_interactive or _tail.stop is not None
     return finish_run(_tail, report, report_dir, duration, finish_reason, show_report=show_report)
+
+
+def _display_status_counts(bridge: Any, display_status: Any) -> None:
+    """The ``/status`` command's counts (moved out of ``start_simulation_mode``, rule T for #1185): turns, the
+    agent's actions and how many were blocked, synthetic markers left out (``ActionRecord.is_synthetic``)."""
+    display_status(f"Turns: {bridge.turn_count}")
+    actions = bridge.get_agent_actions()
+    display_status(f"Actions: {len(actions)}")
+    display_status(f"Blocked: {len([a for a in actions if a.blocked])}")
+
+
+def _aut_percept_source_for(bridge: Any, agent_id: Any) -> Any:
+    """The AUT's percept source: the bridge's, or the audio-orient composite over it when opted in (moved verbatim
+    out of ``start_simulation_mode``, rule T for #1185, paying for the AUT loop's ``response_policy``)."""
+    from maxim.simulation.audio_orient_wiring import audio_orient_enabled
+
+    _aut_percept_source = bridge.percept_source
+    if audio_orient_enabled():
+        from maxim.simulation.audio_orient_wiring import (
+            build_audio_composite,
+            default_sim_doa_reader,
+            sim_audio_salience_novelty,
+        )
+
+        _aud_sal, _aud_nov = sim_audio_salience_novelty()
+        _aut_percept_source = build_audio_composite(
+            bridge.percept_source,
+            default_sim_doa_reader(),
+            agent_id=agent_id,
+            salience=_aud_sal,
+            novelty=_aud_nov,
+        )
+        logger.info(
+            "audio-orient channel attached to AUT percept source (synthetic DoA reader, salience=%.2f novelty=%.2f)",
+            _aud_sal,
+            _aud_nov,
+        )
+    return _aut_percept_source
+
+
+def _record_liveness_abort(e: Any, bridge: Any) -> None:
+    """The narrator loop's planning-liveness abort (moved verbatim out of ``start_simulation_mode``, rule T for
+    #1185, paying for the narrator's explicit ``response_policy``)."""
+    from maxim.simulation.sim_logger import _emit
+
+    # D13: the agent loop spent its bounded planning-retry budget and
+    # aborted through its normal teardown. Preserve the typed failure:
+    # provider/parse exhaustion is ``llm_wedged``, responsive but invalid
+    # planning is ``planning_failed``, and queue/worker exhaustion is
+    # ``worker_unavailable``.
+    _finish_status = getattr(e, "finish_status", "llm_wedged")
+    _liveness_msg = f"PLANNING LIVENESS EXHAUSTED [{_finish_status}] (bugs ledger D13): {e}"
+    logger.error(_liveness_msg)
+    _emit(f"🛑 {_liveness_msg}", "turn")
+    try:
+        bridge._spinner.update(f"🛑 {_finish_status} — aborting sim")
+    except Exception as spin_err:
+        logger.debug("spinner abort update failed: %s", spin_err)
+    if not bridge.finish_context:
+        bridge.finish_context.update(
+            {
+                "status": _finish_status,
+                "reason": str(e),
+                "summary": _liveness_msg,
+                "initiated_by": "planning_liveness",
+            }
+        )
