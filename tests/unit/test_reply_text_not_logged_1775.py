@@ -208,7 +208,7 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
     assert scenes and CANARY in scenes[0]["message"], "the session trail (the Adventure view's source) lost the scene"
     percept = f"👁️ [cli] The narrator says {CANARY}"
     _assert_shape_logged(texts, '"source": "cli"', percept)
-    assert [r for r in session if r["subsystem"] == "PERCEPT" and CANARY in r["message"]], (
-        "the session lost the percept"
-    )
+    percepts = [r for r in session if r["subsystem"] == "PERCEPT" and CANARY in r["message"]]
+    assert percepts, "the session lost the percept"
+    assert "text" not in percepts[0]["data"], "a percept's text in its data is echoed twice by the terminal renderer"
     assert any("Turn 7" in t for t in texts), "a subsystem that carries no model text lost its message"
