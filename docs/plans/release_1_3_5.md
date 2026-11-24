@@ -140,7 +140,7 @@ These are the agent's safety gates: plan approval, the framing of untrusted text
 | Autonomy refusals | #1550, #1549 | not started; ride on #1185 | agent_loop |
 | The advisory follow-ups | #1751 (logs tool output at WARNING) first, then #1749, #1750, #1752 | filed 2026-11-22 | none |
 | One prompt-line grammar | #1753 | after #1519 | none |
-| The offline latch, `llm.offline` | #1315 item 10a (#1603), then 10b (#1735) | draft PRs; synced heads not pushed | router, cli, exec_agent, orchestrator |
+| The offline latch, `llm.offline` (**AvServ hardline**, with #1783) | #1315 item 10a (#1603), then 10b (#1735) | draft PRs; synced heads not pushed | router, cli, exec_agent, orchestrator |
 | Goal calls closed on the fallback path | #1414 (PR #1747) | draft; synced head not pushed | agent_loop, exec_agent |
 | llm.json tiers apply | #1601 | decided (above) | router; after 10a and 10b |
 
@@ -368,6 +368,9 @@ T (touch it, shrink it) applies. All five fix branches pass it standalone today.
 
 1.3.5 is ready to cut when all of these hold:
 - line 1 has merged (#1753 and 10c may ride later);
+- **AvServ hardline (owner, 2026-11-23):** #1603 and #1735 have merged, and the `maxim.advisor` conformance note
+  against AvServ plan 50 §18 (#1783, `docs/user/advisor.md` §Conformance) is final: re-checked on the merged code, its
+  DRAFT status removed, and AvServ told whether 10a or 10b changed anything in §18;
 - line 2's S items are fixed, the world-clock A-pre plan has passed its review, and its first PR has merged;
 - line 6 items 1, 2 and 7 have merged or run, and the approach notes for items 3 and 5 have passed review (item 1
   needs the owner's rig window);
