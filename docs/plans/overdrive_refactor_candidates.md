@@ -433,7 +433,7 @@ the robot** before it moves a Maxim claim.
 ## Not decided here
 
 - ~~Whether A3 is one plan or Overdrive's two (A-pre, A-post), and how it divides with #1361.~~ **Two plans:** A-pre is
-  [world_clock_a_pre.md](world_clock_a_pre.md) (2026-11-24, owner decisions D-WC1 to D-WC4); A-post rides with #1361's
+  [world_clock_a_pre.md](world_clock_a_pre.md) (2026-11-24, owner decisions D-WC1 to D-WC7); A-post rides with #1361's
   slices in 1.3.6.
 - ~~Whether A2's per-agent key widens #1305 before 1.4.0, or follows it.~~ **Decided 2026-11-19: it follows it**,
   after the 1.4.0 cut, as a new release-gate item (A2).

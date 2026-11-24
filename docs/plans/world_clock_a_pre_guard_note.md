@@ -1,69 +1,111 @@
 # Approach note: the wall-read guard for world clock A-pre (M72, extended)
 
-> **PROPOSED 2026-11-24.** A one-page adversarial design pass (CLAUDE.md "Faster without lowering the bar" (1)),
-> written before any code, for [world_clock_a_pre.md](world_clock_a_pre.md) D-WC4. It is based on Overdrive's current
-> position (roadmap OD-A2: a static AST ban plus a long-horizon scripted run, BD-14.2), which supersedes the 11-16
-> draft's `sys.setprofile` tripwire (§3.3).
+> **PROPOSED 2026-11-24.** This is a one-page adversarial design pass, written before any code (CLAUDE.md "Faster
+> without lowering the bar" (1)), for [world_clock_a_pre.md](world_clock_a_pre.md) D-WC4.
+> - **Basis:** Overdrive's current position. Roadmap row OD-A2 calls for a static AST ban plus a long-horizon scripted
+>   run (BD-14.2), which supersedes the draft's `sys.setprofile` tripwire (draft §3.3).
+> - **Revised** after the plan's three-lens review on `1e1eed8d`. The review corrected four claims: the dynamic half's
+>   reach, the resolver this note cited, the ratchet's semantics and the scope list.
 
 ## What the guard is
 
-It has two parts, and neither part trusts the other.
+It has two parts, and neither trusts the other.
 
-1. **The static half is M72, extended.** It is one lint, `scripts/lint_wall_clock_reads.py`, and adds no second lint.
-   It has two scopes:
-   - **Machinery:** the step-path set. That is M72's original files (`decisions/`, `memory/`, `embodiment/body.py`,
-     the two `_apply_decay`s), plus A-pre's families from the census: `agents/context_pool.py`, `attention/`,
-     `salience/`, `embodiment/spec.py`, `proprioception/pain_bus.py`, `reactions/bus.py` and
-     `models/language/cost_tracker.py`.
-   - **Prompt:** `agents/prompt_builder.py`, `agents/context_pool.py`, `agents/llm_fallback.py`,
-     `agents/exec_agent.py`, `agents/exec_prompts.py`, `agents/statistician_agent.py`, `retrieval/temporal_signal.py`,
-     `tools/http_fetch.py` and `tools/introspection.py`.
+### 1. The static half: M72, extended
 
-   The lint refuses any **reference** (not just a call) to `time.time`, `time.time_ns`, `time.monotonic(_ns)`,
-   `time.perf_counter(_ns)`, `time.localtime`, `time.gmtime`, `time.strftime` or `time.ctime`. It also refuses
-   `datetime.now`, `utcnow`, `today`, `date.today` and `fromtimestamp`, and `uuid.uuid1` and `uuid.uuid4`, outside
-   `time/agent_time.py` and the allowlist. It is a **per-file ratchet**, the pattern `lint_atomic_io_ratchet.py` uses: each file is grandfathered at its
-   `origin/main` count (through `scripts/_lint_git.py`'s shared ratchet), a branch may not raise a file's count, new
-   files start at zero, and each A-pre PR lowers its family's counts. There is no baseline file to edit.
-2. **The dynamic half is G-long.** It is a long-horizon scripted run through consolidation, sleep and decay. The wall
-   clock is patched to jump a huge, varying amount on every read, and the run is repeated under two different jump
-   schedules. The persisted-state digest (ids excluded, D-WC1) must be identical. A wall read that the lint missed
-   shows up as a digest difference, whatever form the value takes.
+- **One lint, not a second one:** `scripts/lint_wall_clock_reads.py`.
+- **End state.** It is #1361's **absolute** lint (experience_clock_decay.md §Enforcement): no wall-clock reference in
+  scope outside the allowlist.
+- **Migration.** It starts as a per-file ratchet against `origin/main`, through `scripts/_lint_git.py::count_ratchet`
+  and `base_ref`, so existing reads are grandfathered while A-pre and A-post convert them. A file pins **absolute**
+  (zero outside the allowlist) as soon as its count reaches zero. When every in-scope file is pinned, the ratchet is
+  deleted.
+- **Precedence.**
+  - An allowlisted `file::function` reference is never counted.
+  - Every other reference in scope is counted.
+  - The ratchet applies to the count, and a pinned file applies zero.
+- **Scopes.**
+  - **Machinery.** M72's original files, which are `decisions/`, `memory/`, `embodiment/body.py` and the two
+    `_apply_decay`s. Added to them: `integration/memory_hub.py`, `agents/memory_agent.py` (whole file),
+    `agents/context_pool.py`, `attention/`, `salience/`, `default_network/network.py`, `bridges/salience_bridge.py`,
+    `bridges/planning_bridge.py`, `bridges/spatial_bridge.py`, `similarity/signature.py`, `embodiment/spec.py`,
+    `proprioception/pain.py`, `proprioception/pain_bus.py`, `reactions/bus.py` and `models/language/cost_tracker.py`.
+    Most of these start ratcheted with `pending:` entries, because D-WC6 moves their stamps later.
+  - **Prompt.** `agents/prompt_builder.py`, `agents/context_pool.py`, `agents/llm_fallback.py`,
+    `agents/exec_agent.py`, `agents/exec_prompts.py`, `agents/statistician_agent.py`, `retrieval/temporal_signal.py`,
+    `tools/http_fetch.py`, `tools/introspection.py` and `simulation/introspection.py`.
+- **Banned references** (references, not just calls):
+  - `time.time`, `time.time_ns`, `time.monotonic(_ns)`, `time.perf_counter(_ns)`, `time.localtime`, `time.gmtime`,
+    `time.strftime` and `time.ctime`;
+  - `datetime.now`, `utcnow`, `today`, `date.today` and `fromtimestamp`.
+
+  These are refused outside `time/agent_time.py` and the allowlist.
+- **`uuid1` and `uuid4` are census-only.** The lint warns and does not fail, because D-WC1 offers no `IdSource`, so
+  failing on them would be a new id rule the owner deferred.
+- **Its own alias resolver,** about 40 lines. Neither `lint_dead_imports`' resolver (maxim-internal targets) nor
+  `lint_atomic_io_ratchet._module_aliases` (`import X as Y` only) resolves local stdlib bindings. The new resolver
+  handles these forms:
+  - `import time as _t`;
+  - `from time import time as now`;
+  - `from datetime import datetime`;
+  - `import datetime as dt`;
+  - `from datetime import datetime as DT`.
+
+### 2. The dynamic half: G-long
+
+- **The run.** A long-horizon scripted run through observe, consolidate, sleep and decay. `time.time` alone is patched
+  to jump a huge, varying amount per read, and two jump schedules are compared. The persisted-state digest must be
+  identical. Its scope is named in the test: A-pre's families first, and the full loop in A-post.
+- **What it catches.** A wall read that goes through `time.time` at call time and reaches state, in any form.
+- **What it cannot catch** (corrected from the first draft, which claimed "whatever form the value takes"):
+  - `datetime.now()` and `datetime.fromtimestamp()`, which are C-level and never call `time.time`;
+  - `field(default_factory=time.time)`, which binds the builtin at import (`tests/unit/_loop_harness.py`'s
+    docstring states this limit);
+  - `time.monotonic` reads, which are deliberately left unpatched, because huge jumps there would trip `Deadline` and
+    `wait_session_ended` and abort the run instead of comparing.
+
+  For these the static half is the only guard.
 
 ## Every input the guard consults, and how each could lie
 
 | Input | How it lies | What catches it |
 |---|---|---|
-| **The scope lists** | A new module that renders or stamps time is in neither list, so it is never scanned | Machinery: G-long, whose digest covers state wherever it is written. Prompt: G-render and G-tz build real prompts. The list itself: backlog **M99**, which derives the prompt scope from the prompt's producers. *Stated blind spot until M99.* |
-| **Import aliasing** | `import time as _time` (as in `embodiment/spec.py`), `from time import time as now`, `from datetime import datetime`, `import datetime as dt` | The lint resolves every import binding in the module (the `lint_dead_imports` resolver) before matching. A planted test case covers each form. |
-| **References that are not calls** | `field(default_factory=time.time)` binds the builtin at class definition, so a call-only scan misses it | The lint matches `Attribute` and `Name` references, not `Call` nodes. Planted case: a dataclass stamp. |
-| **Dynamic access** | `getattr(time, "time")`, `importlib`, a callable passed in from outside scope | *Static blind spot, stated.* G-long catches it if the value reaches state. A read that never reaches state, such as one only logged, is not a correctness leak for this plan. |
-| **Transitive reads** | an in-scope function calls a helper in an unscanned module (a `utils/` function) that reads the wall | *Static blind spot, stated.* G-long and G-pace catch it at the digest. The census lists every cross-module helper the families call. |
-| **The allowlist** | An entry rubber-stamps a leak. An entry outlives the site it names. | Entries are keyed `file::function`, with a category from a fixed set (`process`, `scheduling`, `motor-io`, `real-world-io`, `cost`, `pending:<where>`) and a reason string. A `pending` entry must name the plan or PR that removes it. An entry whose function no longer reads a banned name **fails** the lint, so a stale entry cannot linger. New `motor-io` and `real-world-io` entries are review-visible in the diff. |
-| **The ratchet's reference** | The `origin/main` ref is stale or missing (shallow clone), so the grandfathered counts are wrong | `scripts/_lint_git.py`'s shared ratchet, which `lint_atomic_io_ratchet.py` already relies on: a ref it cannot read is exit 2, never a pass. A raise needs a new allowlist entry, which is visible in the diff. |
-| **Legitimate monotonic durations** | A timeout's `time.monotonic()` looks the same as a leak | It carries category `process`. A duration that feeds learning (OD-A4's tool duration) is never `process`: it is `pending:A-post` with G-tool-duration red. |
-| **G-long's sentinel** | A wall read used only as a difference gives small numbers that look normal. A frozen fake clock hides cadence bugs. | The patched wall **advances** by a huge, varying jump per read, and two schedules are compared, so any wall-derived duration or stamp changes the digest. The machinery clock advances too, never frozen. |
-| **Threads** | A background worker (the ConceptExtractor) reads the wall off the stepped thread | G-long builds with `build_memory_hub(start_background_workers=False)`, so worker paths are out of its reach. *Stated blind spot:* the host-driven thread is OD-A12's, and G-long does not claim it. |
-| **TZ** | The prompt test runs where `time.tzset` is missing (Windows) and passes vacuously | G-tz skips **loudly** with a reason and runs in CI on Linux. A skip is never a pass. |
-| **The census** | The census script misclassifies a site, so the plan's placement is wrong | The census is AST-only and prints its classification for review. The lint and G-long don't read the census's verdicts: they rescan. |
-| **The scan's own tree** | The lint scans `tests/` or its own fixtures and flags itself, or skips a tracked file | The lint scans tracked `src/maxim/` files only (`git ls-files`), and its tests use planted temp trees (the `lint_self_scan` lesson). |
+| **The scope lists** | A new module that renders or stamps time is in neither list | Machinery: G-long, where its reach allows (§2). Prompt: G-render, G-tz and G-scn, which build real prompts. The list itself: **M99**, which derives the prompt scope. *Stated blind spot until M99.* |
+| **Import aliasing** | `import time as _time` (as `embodiment/spec.py` does), `from datetime import datetime`, and the other forms in §1 | The new resolver, with a planted test case for each form |
+| **Non-call references** | `default_factory=time.time` binds at class definition, so a call-only scan misses it | `Attribute`/`Name` matching. Planted: a dataclass stamp. G-long cannot see this case (§2), so the static half must. |
+| **C-level calendar reads** | `datetime.now()`, `fromtimestamp` | Static only (§2). Planted: one of each in a prompt-scope fixture. |
+| **Dynamic access** | `getattr(time, "time")`, `importlib`, a callable passed in | *Static blind spot, stated.* G-long catches it if the read goes through `time.time` and reaches state. |
+| **Transitive reads** | An in-scope function calls a `utils/` helper that reads the wall | *Static blind spot, stated.* G-long and G-pace catch it at the digest, within §2's reach. The census lists every cross-module helper a family calls. |
+| **The allowlist** | A rubber-stamp entry, or an entry that outlives its site | Entries are keyed `file::function` with a fixed category (`process`, `scheduling`, `motor-io`, `real-world-io`, `cost`, `pending:<where>`) and a reason. A `pending` entry names the PR that removes it. An entry whose function no longer reads a banned name **fails** the lint. New entries show in the diff. |
+| **The ratchet's reference** | `origin/main` is stale or missing, for example in a shallow clone | `_lint_git.base_ref`: a ref it cannot read exits 2 and is never a pass |
+| **Swaps at an equal count** | `count_ratchet` counts hits in changed files, so replacing an allowlisted read with a leak in the same function, or one leak with another, passes | Allowlisted references are not counted, so a leak swapped *in* raises the count. A leak swapped for another leak is invisible to a count. That is why a file pins **absolute** once it reaches zero, and why the end state is absolute (§1). *Stated blind spot while ratcheted.* |
+| **Legitimate durations** | A timeout's `monotonic()` looks the same as a leak | Category `process`. A duration that feeds learning (OD-A4's tool duration) is never `process`: it is `pending:A-post`, with G-tool-duration red. |
+| **G-long's sentinel** | A frozen fake clock hides cadence bugs, and a wall read used only as a difference looks normal | The wall **advances** by huge, varying jumps, two schedules are compared, and the machinery clock advances too |
+| **Threads** | The ConceptExtractor reads the wall off the stepped thread | G-long builds without ATL, so `MemoryHub._restore_on_open` cannot revive the extractor across a session cycle, and with `build_memory_hub(start_background_workers=False)`. *Stated blind spot:* host-driven threads are OD-A12's. |
+| **TZ** | The prompt test runs where `time.tzset` is missing (Windows) and passes vacuously | G-tz skips **loudly** with a reason and runs in CI on Linux. A skip is never counted as a pass. |
+| **The census** | It misclassifies a site, so a placement is wrong | It is AST-only and prints its classification for review. The lint and G-long rescan and never read its verdicts. M100's `--check` adds the pair check. |
+| **The scan's own tree** | It flags its own fixtures, or skips a tracked file | It scans tracked `src/maxim/` only (`git ls-files`), and its tests use planted temp trees |
 
 ## Proof by deletion
 
-Every planted case goes red before it goes green, for each form above, in `tests/unit/test_lint_wall_clock_reads.py`:
+Each planted case is red before it goes green, in `tests/unit/test_lint_wall_clock_reads.py`:
+- one per alias form;
 - a `default_factory` stamp;
-- a from-import alias;
+- `datetime.now`;
 - `fromtimestamp`;
 - `strftime`;
-- `uuid4`;
 - a stale allowlist entry;
-- a count raised above `origin/main`.
+- a count raised above `origin/main`;
+- a pinned file going from zero to one.
 
-G-long is proven by removing one machinery pass in PR 4 and watching the digest differ.
+`uuid4` is checked as a warning, not a failure.
+
+G-long is proven by reverting PR 4's window read to `time.time()` under the patched schedules and watching the
+digest differ.
 
 ## What it does not claim
 
-- No guard on ids or randomness: D-WC1 defers them, and the lint lists `uuid4` only to keep the census honest. Its
-  sites are `pending:OD-A7`.
-- No guard on the fenced files: they are `pending:A-post`, and G-long's full-loop half stays strict red until A-post.
-- No guard on threads the host owns (OD-A12).
+- No failure on ids or randomness (D-WC1). Their sites are `pending:OD-A7`.
+- No guard on the hot and fenced files beyond the ratchet. Their sites are `pending:A-post`, and G-long's full-loop
+  half stays strict red until A-post.
+- No guard on threads the host owns (OD-A12), or on the C-level and import-bound reads at run time (§2).
