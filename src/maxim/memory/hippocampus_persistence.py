@@ -177,7 +177,9 @@ class PersistenceMixin(StoreFileOwnership):
         memories_data = [m.to_dict() for m in self._memories.values()]
 
         # Serialize index (convert sets to lists)
-        index_data = {k: list(v) for k, v in self._context_index.items()}
+        index_data = {
+            k: sorted(v) for k, v in self._context_index.items()
+        }  # a set: sorted, or the bytes follow PYTHONHASHSEED (#1789)
 
         # Serialize associative graph edges
         graph_data = self._graph.to_dict()

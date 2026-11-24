@@ -3852,7 +3852,9 @@ class NAc(StoreFileOwnership):
             return {
                 "version": "1.0",  # legacy payload string — tombstoned, do not bump
                 "links": {event_sig: [link.to_dict() for link in links] for event_sig, links in self._links.items()},
-                "outcome_index": {k: list(v) for k, v in self._outcome_index.items()},
+                "outcome_index": {
+                    k: sorted(v) for k, v in self._outcome_index.items()
+                },  # sets: sorted for stable bytes (#1789)
                 "priors": self._priors,
                 "total_observations": self._total_observations,
                 "reward_bias": {f"{aid}:{nid}": bias for (aid, nid), bias in self._reward_bias.items()},
