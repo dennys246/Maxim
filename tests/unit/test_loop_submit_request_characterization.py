@@ -717,6 +717,24 @@ def test_an_action_less_cycle_1_answer_is_installed_and_wedges_the_submit(monkey
     assert obs.ctrl.pending_proposal is not None and obs.ctrl.pending_proposal.action == {}
 
 
+# Red gates for #1743: a deliberation answer goes through §2's intake checks, as every other proposal does, so an
+# action-less answer is never installed and the loop keeps hearing. They flip with the fix (strict: an xpass fails).
+@pytest.mark.xfail(strict=True, reason="#1743: the ready branch installs an action-less answer past §2; §6 wedges")
+def test_1743_an_action_less_ready_answer_does_not_wedge_the_submit(monkeypatch, tmp_path):
+    worker = _Worker(answers=[_proposal(reasoning="nothing to do")])
+    obs = _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, pipeline=_Pipeline(), steps=4)
+    assert [s["cli_inputs"] for s in obs.worker.submits] == [["one"], ["two"]]
+
+
+@pytest.mark.xfail(strict=True, reason="#1743: the not-ready branch installs cycle 2's action-less answer past §2")
+def test_1743_an_action_less_cycle_2_answer_does_not_wedge_the_submit(monkeypatch, tmp_path):
+    worker = _Worker(
+        answers=[_proposal(ready=False, reasoning="let me think more"), _proposal(reasoning="still nothing")]
+    )
+    obs = _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, pipeline=_Pipeline(), steps=4)
+    assert [s["cli_inputs"] for s in obs.worker.submits if s["cli_inputs"]][-1] == ["two"]
+
+
 def test_a_repeated_cycle_1_thought_is_not_shown_again(monkeypatch, tmp_path):
     worker = _Worker(answers=[_proposal(reasoning="same thought exactly"), _proposal(reasoning="same thought exactly")])
     obs = _run(
