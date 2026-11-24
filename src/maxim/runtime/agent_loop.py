@@ -18,6 +18,7 @@ from maxim.runtime.tool_dispatch import (
     book_agent_fallback_failure,
     safe_agent_name as _safe_agent_name,
     execute_parallel_actions as _execute_parallel,
+    log_tool_result as _log_tool_result,
 )
 
 # Extracted to bio_integration.py
@@ -1826,17 +1827,7 @@ def _run_agentic_loop_body(
                                         },
                                     )
 
-                                    # Log tool result details at verbose level
-                                    output = getattr(result, "output", None)
-                                    if output:
-                                        log_agentic(
-                                            "agent_loop",
-                                            "tool_result",
-                                            {
-                                                "tool": action["tool_name"],
-                                                "output": output if isinstance(output, dict) else str(output)[:100],
-                                            },
-                                        )
+                                    _log_tool_result(action["tool_name"], getattr(result, "output", None))
 
                                     autonomy_controller.log_action(
                                         action_type="executed",
