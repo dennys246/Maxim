@@ -493,3 +493,24 @@ def test_an_unreadable_config_names_no_override(monkeypatch: pytest.MonkeyPatch)
     assert R.configured_override() is None
     assert R.configured_override() is None
     assert calls == [1]
+
+
+def test_an_aut_fear_gate_that_cannot_be_wired_logs_and_leaves_the_executor_unwrapped(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``_fear_gate_aut_executor`` (moved out of ``start_simulation_mode``, rule T): a FearAgent that cannot be built
+    on the AUT's router is a logged WARNING and the AUT keeps its unwrapped executor, as before the move."""
+    import maxim.agents.fear_agent as FA
+    from maxim.simulation import orchestrator
+
+    def _refuse(self: Any, *_a: Any, **_k: Any) -> None:
+        raise RuntimeError("no fear agent today")
+
+    monkeypatch.setattr(FA.FearAgent, "__init__", _refuse)
+    executor = object()
+    with caplog.at_level(logging.WARNING, logger=orchestrator.logger.name):
+        assert orchestrator._fear_gate_aut_executor(executor, _Router("aut")) is executor
+    assert any(
+        "Failed to wire FearGatedExecutor for AUT" in r.getMessage() and "no fear agent today" in r.getMessage()
+        for r in caplog.records
+    ), caplog.text
