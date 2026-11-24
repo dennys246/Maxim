@@ -72,6 +72,10 @@ class SimulationResult:
     Carries all data needed for benchmarks, experiment analysis, and
     programmatic inspection.  Previously, detailed data was only
     persisted to session files; now it's available in-memory.
+
+    ``total_actions`` / ``blocked_actions`` count the agent's actions only, the report's numbers (synthetic markers
+    left out, ``ActionRecord.is_synthetic``, #1185), while ``actions`` is the complete serialized history, so
+    ``len(result.actions)`` can be larger.
     """
 
     goal: str

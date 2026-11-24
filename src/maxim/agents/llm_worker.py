@@ -288,6 +288,19 @@ def _sim_log_proposal_built(proposal: LLMProposal, request: LLMRequest) -> None:
         pass
 
 
+def _timeout_retry_message(triggering_input: str | None, timeout_s: float) -> str:
+    """The timeout-retry prompt (moved out of ``LLMWorker._process_request``, rule T for #1185). It offers only the
+    answers ``LoopController.handle_timeout_retry`` reads (owner decision C): yes, minutes 1-10, or no."""
+    question = (triggering_input or "your request")[:50]
+    return (
+        f"I ran out of time processing '{question}' "
+        f"(took longer than {int(timeout_s)}s). "
+        f"Would you like me to try again with more time? "
+        f"Type 'yes' to double my time limit, a number of minutes "
+        f"from 1 to 10 (e.g. '2'), or 'no'."
+    )
+
+
 class LLMWorker:
     """
     Dedicated thread for LLM inference.
@@ -1211,14 +1224,7 @@ class LLMWorker:
             # Check for timeout -- ask user if they want to wait longer
             if isinstance(response, dict) and response.get("_timeout"):
                 timeout_s = response.get("_timeout_s", self._llm_timeout)
-                question = (request.triggering_input or "your request")[:50]
-                timeout_msg = (
-                    f"I ran out of time processing '{question}' "
-                    f"(took longer than {int(timeout_s)}s). "
-                    f"Would you like me to try again with more time? "
-                    f"Say 'yes' to double my time limit, a number of minutes "
-                    f"(e.g. '2'), or 'no' to skip."
-                )
+                timeout_msg = _timeout_retry_message(request.triggering_input, timeout_s)
                 return LLMProposal(
                     request_id=request.request_id,
                     action={

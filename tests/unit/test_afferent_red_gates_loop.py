@@ -278,6 +278,7 @@ def body_rig(
         }
         if source is not None:
             kwargs["percept_source"] = source
+            kwargs["response_policy"] = None  # a test sim with no response policy answers no prompt (#1185)
         return Rig(executor=executor, bio=bio, kwargs=kwargs, percept_source=source)
 
     return build

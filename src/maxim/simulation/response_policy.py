@@ -7,10 +7,9 @@ Policies:
     AUTO_APPROVE  — Always approve (default for sim). Fast, no blocking.
     AUTO_REJECT   — Always reject. Tests refusal/cancellation paths.
     DELAYED       — Approve after a configurable delay. Tests timeout handling.
-    ASK_ORCHESTRATOR — Forward the decision to the orchestrator agent via
-                       the bridge. The orchestrator sees a notification and
-                       can respond with send_message. Full option for testing
-                       the confirmation UX flow itself.
+
+Every policy answers: a run with no policy passes ``response_policy=None``. ``ASK_ORCHESTRATOR`` was retired
+(#1736): it had no route to the orchestrator, so the loop answered in its place.
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ class PolicyType(Enum):
     AUTO_APPROVE = "auto_approve"
     AUTO_REJECT = "auto_reject"
     DELAYED = "delayed"
-    ASK_ORCHESTRATOR = "ask_orchestrator"
 
 
 @dataclass
@@ -38,11 +36,11 @@ class ResponsePolicy:
     policy: PolicyType = PolicyType.AUTO_APPROVE
     delay_s: float = 3.0  # Only used for DELAYED policy
 
-    def resolve_confirmation(self, confirmation: dict[str, Any]) -> str | None:
+    def resolve_confirmation(self, confirmation: dict[str, Any]) -> str:
         """Resolve a pending confirmation prompt.
 
         Returns:
-            "yes" to approve, "no" to reject, None to defer to orchestrator.
+            "yes" to approve, "no" to reject.
         """
         tool_name = confirmation.get("tool_name", "unknown")
 
@@ -59,17 +57,13 @@ class ResponsePolicy:
             time.sleep(self.delay_s)
             return "yes"
 
-        elif self.policy == PolicyType.ASK_ORCHESTRATOR:
-            # Return None — caller should notify orchestrator and wait
-            return None
-
         return "yes"  # Fallback
 
-    def resolve_plan_approval(self, plan_text: str | None) -> str | None:
+    def resolve_plan_approval(self, plan_text: str | None) -> str:
         """Resolve a pending plan approval prompt.
 
         Returns:
-            "yes" to approve, "no" to reject, None to defer to orchestrator.
+            "yes" to approve, "no" to reject.
         """
         if self.policy == PolicyType.AUTO_APPROVE:
             logger.info("ResponsePolicy: auto-approving plan")
@@ -83,16 +77,13 @@ class ResponsePolicy:
             time.sleep(self.delay_s)
             return "yes"
 
-        elif self.policy == PolicyType.ASK_ORCHESTRATOR:
-            return None
-
         return "yes"
 
-    def resolve_timeout_retry(self, timeout_s: float) -> str | None:
+    def resolve_timeout_retry(self, timeout_s: float) -> str:
         """Resolve a timeout retry prompt.
 
         Returns:
-            "yes" to retry, "no" to skip, None to defer to orchestrator.
+            "yes" to retry, "no" to skip.
         """
         if self.policy == PolicyType.AUTO_APPROVE:
             logger.info("ResponsePolicy: auto-retrying with doubled timeout")
@@ -105,9 +96,6 @@ class ResponsePolicy:
         elif self.policy == PolicyType.DELAYED:
             time.sleep(self.delay_s)
             return "yes"
-
-        elif self.policy == PolicyType.ASK_ORCHESTRATOR:
-            return None
 
         return "yes"
 
@@ -123,7 +111,3 @@ def auto_reject() -> ResponsePolicy:
 
 def delayed(delay_s: float = 3.0) -> ResponsePolicy:
     return ResponsePolicy(PolicyType.DELAYED, delay_s=delay_s)
-
-
-def ask_orchestrator() -> ResponsePolicy:
-    return ResponsePolicy(PolicyType.ASK_ORCHESTRATOR)

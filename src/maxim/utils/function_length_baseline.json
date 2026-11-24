@@ -11,7 +11,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1141
+      "lines": 1131
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -131,7 +131,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1917
+      "lines": 1795
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -191,17 +191,12 @@
     {
       "file": "src/maxim/simulation/interactive.py",
       "qualname": "run_interactive_sim",
-      "lines": 248
+      "lines": 244
     },
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1877
-    },
-    {
-      "file": "src/maxim/simulation/report.py",
-      "qualname": "build_report",
-      "lines": 209
+      "lines": 1832
     },
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
@@ -401,7 +396,17 @@
     "#1680 (2026-11-21, rule T): _main_impl 1195 -> 1185 -> 1158 -> 1141 and start_simulation_mode 1895 -> 1877 across the review folds (the research dispatch to cli._run_research_from_cli, then the --sim-only checks to cli._validate_sim_only_flags; the commit messages from c7a1327a on give each step); start_research_mode 241 -> 226 on the branch, 241 -> 233 for #1621 on main, and the merged body measures 218",
     "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged.",
     "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch.",
-    "_run_agentic_loop_body tightened 2140 -> 2130 (re-merged onto slice 6 and #1414 on 2026-11-23 as 1927 -> 1917, the same 10 lines) and execute_and_learn 342 -> 325 on 2026-11-22 (#1751, rule T): the two identical agentic tool_result blocks (each logged up to 100 chars of any tool's output to stdout) moved to tool_dispatch.log_tool_result, and execute_and_learn's goal_failed event (any tool's whole error) to tool_dispatch.log_tool_failure; both show a PRIVATE or SECRET tool's text by shape only."
+    "_run_agentic_loop_body tightened 2140 -> 2130 (re-merged onto slice 6 and #1414 on 2026-11-23 as 1927 -> 1917, the same 10 lines) and execute_and_learn 342 -> 325 on 2026-11-22 (#1751, rule T): the two identical agentic tool_result blocks (each logged up to 100 chars of any tool's output to stdout) moved to tool_dispatch.log_tool_result, and execute_and_learn's goal_failed event (any tool's whole error) to tool_dispatch.log_tool_failure; both show a PRIVATE or SECRET tool's text by shape only.",
+    "_run_agentic_loop_body tightened 2140 -> 2138 on 2026-11-21 (#1185, rule T): the plan-approval branch's nested pending-slot check and its comment became one line, since LoopController.handle_plan_approval now returns True exactly when the reply is the answer to the plan (approved, rejected or re-asked) and the controller clears the pending input itself.",
+    "_run_agentic_loop_body tightened 2138 -> 2114 on 2026-11-21 (#1185 Surface, rule T): the plan gate (the requires_approval check, the sim auto-resolve and the park) moved to LoopController.gate_plan_approval, paying for the handle_plan_approval call's new keywords (execute_and_learn, book_machine_refusal, observation, sim): an approved plan now executes once inside the handler through loop_planning.execute_approved_plan.",
+    "_run_agentic_loop_body tightened 2114 -> 2109 on 2026-11-21 (#1185 delta round, rule T): the confirmation, timeout-retry and plan-approval calls became one LoopController.answer_pending_prompt call ahead of store_user_input (S9), paying for gate_plan_approval's new keywords; LLMWorker._process_request 225 -> 218: its timeout prompt moved to llm_worker._timeout_retry_message, paying for its new text.",
+    "_run_agentic_loop_body tightened 2109 -> 2098 on 2026-11-21 (#1185, rule T): section 6's speech, maxim-keyword and hard-override meaningful-input checks moved to loop_perception.context_addresses_the_llm, paying for the requested-change trigger it now carries (pending_modification).",
+    "#1185 delta 3 (2026-11-21, rule T): _run_agentic_loop_body 2098 -> 2027 (section 4's PLANNING-queue block and SUPERVISED confirmation-park block moved to LoopController.queue_for_approval / park_confirmation, paying for the typed verdict, the answering source and the take_user_input sim_mode); run_interactive_sim 248 -> 244 (its /status block to interactive._show_status, paying for the agent-action count); start_simulation_mode 1895 -> 1892 (its /status counts to orchestrator._display_status_counts, likewise); build_report 209 -> 208 (its two action reads became one line on bridge.get_agent_actions).",
+    "#1185 delta 4 (2026-11-21, rule T): _run_agentic_loop_body 2027 -> 2017 (section 4's autonomy-check log to agent_loop._log_autonomy_check, paying for the response_policy parameter and its forward to build_loop_run); start_simulation_mode 1892 -> 1870 (the AUT percept-source / audio-orient block to orchestrator._aut_percept_source_for, paying for the AUT loop's response_policy); build_report 208 -> 195, its entry removed (its tool-usage tally to report._tool_usage).",
+    "#1185 delta 5 (2026-11-21, rule T): _main_impl 1195 -> 1185 (the --sim sandbox cleanup to cli._cleanup_sim_sandbox, paying for the scenario loop's explicit response_policy); start_simulation_mode 1870 -> 1850 (the narrator's planning-liveness abort to orchestrator._record_liveness_abort, paying for the narrator loop's explicit response_policy).",
+    "#1185 delta 7 (2026-11-21, rule T): _run_agentic_loop_body 2017 -> 2016 (the fallback drop's three hand-written pending_user_input pops replaced by LoopController.clear_pending_user_input, the same three, paying for the answers= forward of UserInput.answers)",
+    "#1185 re-merged onto slice 6 (2026-11-23): _run_agentic_loop_body 1927 -> 1805, the branch's 124 lines (2140 -> 2016) less the 2 it saved in section 2, which slice 6 moved to loop_intake: there _drop_skipped_fallback clears the pending input through ctrl.clear_pending_user_input(), the stall marker is sinks.LLM_UNAVAILABLE, and take_llm_proposal counts the turn with note_llm_turn, which moved verbatim from tool_dispatch to loop_intake (its only caller; importing tool_dispatch from the intake would deepen the edge test_loop_intake_bio_free.py waits to cut).",
+    "#1185 re-merged onto #1680 (#1772) and #1751 (#1776) on 2026-11-23: _main_impl 1141 -> 1131 (#1185's 10), _run_agentic_loop_body 1917 -> 1795 (#1185's 122 on slice 6), start_simulation_mode 1877 -> 1832 (#1185's 45); build_report measures 195 with both sides' extractions, so its entry is removed."
   ],
   "touch_exemptions": [
     {

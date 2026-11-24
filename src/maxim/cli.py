@@ -1567,8 +1567,8 @@ def _report_scenario_validation(
         print(f"  [{status}] {desc}")
         if not r.passed and r.detail:
             print(f"         {r.detail}")
-    print(f"\nActions recorded: {len(sim_sink.actions)}")
-    for a in sim_sink.actions[:20]:
+    print(f"\nActions recorded: {len(sim_sink.agent_actions)}")
+    for a in sim_sink.agent_actions[:20]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         print(f"  {tag} {a.tool_name}")
 
@@ -1577,7 +1577,7 @@ def _report_scenario_validation(
         report = {
             "scenario": scenario_name,
             "passed": passed,
-            "action_count": len(sim_sink.actions),
+            "action_count": len(sim_sink.agent_actions),
             "expectations_met": [r.expectation.description or r.expectation.type for r in results if r.passed],
             "expectations_failed": [
                 f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in results if not r.passed
@@ -1852,6 +1852,22 @@ def _reuse_bio_pain_bus_for_sim(args: Any, *, pain_bus: Any, hippocampus: Any, n
 
     args._sim_pain_bus = _sim_pain_bus
     args._sim_hippo = hippocampus
+
+
+def _cleanup_sim_sandbox(args: Any) -> None:
+    """Clean up simulation sandbox (but preserve the log): a --sim scenario's teardown (moved verbatim out of
+    ``_main_impl``, rule T for #1185, paying for its ``response_policy`` argument)."""
+    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
+    if sim_tmpdir is not None:
+        import shutil
+
+        original_cwd = getattr(args, "_sim_original_cwd", "/")
+        os.chdir(original_cwd)
+        try:
+            shutil.rmtree(str(sim_tmpdir))
+            print(f"  Sandbox cleaned up: {sim_tmpdir}")
+        except Exception as e:
+            print(f"  Warning: failed to clean sandbox: {e}")
 
 
 def _main_impl(argv: Sequence[str] | None = None) -> int:
@@ -2905,6 +2921,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         max_steps=epochs_value,
                         run_id=run_id,
                         percept_source=sim_source,
+                        response_policy=None,  # a scripted scenario has no response policy: it answers no prompt
                         action_sink=sim_sink,
                         pain_bus=getattr(args, "_sim_pain_bus", None) or _cli_pain_bus,
                         bio_enrichment_pipeline=_cli_bio_enrichment,
@@ -2928,18 +2945,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     if saved_log:
                         print(f"  Simulation log saved: {saved_log}")
 
-                    # Clean up simulation sandbox (but preserve the log)
-                    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
-                    if sim_tmpdir is not None:
-                        import shutil
-
-                        original_cwd = getattr(args, "_sim_original_cwd", "/")
-                        os.chdir(original_cwd)
-                        try:
-                            shutil.rmtree(str(sim_tmpdir))
-                            print(f"  Sandbox cleaned up: {sim_tmpdir}")
-                        except Exception as e:
-                            print(f"  Warning: failed to clean sandbox: {e}")
+                    _cleanup_sim_sandbox(args)  # Clean up simulation sandbox (but preserve the log)
 
                     return 0 if passed else 1
 

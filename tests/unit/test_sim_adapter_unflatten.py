@@ -59,7 +59,7 @@ def _percept() -> Percept:
 
 def test_observation_dict_has_only_the_five_scalar_text_keys():
     p = _percept()
-    adapter = SimulationAdapter(_OneShotSource(p))
+    adapter = SimulationAdapter(_OneShotSource(p), response_policy=None)
     obs = adapter.next_observation(environment=None)
     assert set(obs.keys()) == {
         "source",
@@ -75,14 +75,14 @@ def test_observation_dict_has_only_the_five_scalar_text_keys():
 
 def test_current_percept_is_the_emitted_object():
     p = _percept()
-    adapter = SimulationAdapter(_OneShotSource(p))
+    adapter = SimulationAdapter(_OneShotSource(p), response_policy=None)
     adapter.next_observation(environment=None)
     assert adapter.current_percept is p
 
 
 def test_current_percept_cleared_to_none_on_idle_tick():
     p = _percept()
-    adapter = SimulationAdapter(_OneShotSource(p))
+    adapter = SimulationAdapter(_OneShotSource(p), response_policy=None)
     adapter.next_observation(environment=None)  # emits p
     assert adapter.current_percept is p
     adapter.next_observation(environment=None)  # idle → None, no stale percept
@@ -92,7 +92,7 @@ def test_current_percept_cleared_to_none_on_idle_tick():
 def test_no_percept_leaks_into_runtime_state_data():
     """The anti-leak guard: the persisted state surface stays Percept-free."""
     p = _percept()
-    adapter = SimulationAdapter(_OneShotSource(p))
+    adapter = SimulationAdapter(_OneShotSource(p), response_policy=None)
     state = RuntimeState()
 
     obs = adapter.next_observation(environment=None)
@@ -113,7 +113,7 @@ def test_audio_percept_does_not_bleed_into_cli_input():
 
     audio = make_audio_percept(-0.67, source="reachy:audio-doa")
     assert audio.content  # the factory sets a human-readable content string
-    adapter = SimulationAdapter(_OneShotSource(audio))
+    adapter = SimulationAdapter(_OneShotSource(audio), response_policy=None)
     obs = adapter.next_observation(environment=None)
     assert obs["cli_input"] is None
     assert obs["transcript"] is None

@@ -192,7 +192,7 @@ def run_interactive_sim(
         )
 
         # Show what Maxim did
-        sim_log("PIPELINE", f"Initial turn complete ({len(total_sink.actions)} actions)")
+        sim_log("PIPELINE", _actions_line("Initial turn complete", total_sink))
         _show_turn_results(total_sink, from_index=0)
         display_scene("Simulated, what happens next?")
 
@@ -234,11 +234,7 @@ def run_interactive_sim(
                 continue
 
             if user_input.lower() == "/status":
-                display_status(f"Conversation: {conversation_count}, Turn: {turn}")
-                display_status(f"Percepts sent: {len(all_percepts)}")
-                display_status(f"Actions recorded: {len(total_sink.actions)}")
-                if hippocampus:
-                    display_status(f"Hippocampus memories: {len(hippocampus)}")
+                _show_status(conversation_count, turn, all_percepts, total_sink, hippocampus)
                 continue
 
             # Generate continuation percepts with context
@@ -394,6 +390,7 @@ def _run_scenario_turn(  # noqa: PLR0913
             state_home=run_tmpdir,  # the turn's state file stays in its sandbox, removed with it (#1264)
             stop_event=stop,
             percept_source=source,
+            response_policy=None,  # no response policy: the person answers prompts, except a timeout retry (#1185)
             action_sink=sink,
             **kwargs,
         )
@@ -529,11 +526,28 @@ def _print_summary(sink: Any) -> None:
     """Print conversation summary."""
     from maxim.simulation.sim_logger import display_scene
 
-    display_scene(f"Actions: {len(sink.actions)}")
-    for a in sink.actions[:15]:
+    agent_actions = sink.agent_actions  # synthetic markers left out (#1185)
+    display_scene(f"Actions: {len(agent_actions)}")
+    for a in agent_actions[:15]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         name = a.tool_name
         preview = _action_preview(a)
         display_scene(f"  {tag} {name}{preview}")
-    if len(sink.actions) > 15:
-        display_scene(f"  ... and {len(sink.actions) - 15} more")
+    if len(agent_actions) > 15:
+        display_scene(f"  ... and {len(agent_actions) - 15} more")
+
+
+def _actions_line(label: str, sink: Any) -> str:
+    """A count of the agent's actions, synthetic markers left out (``RecordingSink.agent_actions``, #1185)."""
+    return f"{label} ({len(sink.agent_actions)} actions)"
+
+
+def _show_status(conversation_count: int, turn: int, all_percepts: Any, sink: Any, hippocampus: Any) -> None:
+    """The ``/status`` command (moved out of ``run_interactive_sim``, rule T for #1185)."""
+    from maxim.simulation.sim_logger import display_status
+
+    display_status(f"Conversation: {conversation_count}, Turn: {turn}")
+    display_status(f"Percepts sent: {len(all_percepts)}")
+    display_status(f"Actions recorded: {len(sink.agent_actions)}")  # synthetic markers left out (#1185)
+    if hippocampus:
+        display_status(f"Hippocampus memories: {len(hippocampus)}")

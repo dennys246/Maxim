@@ -608,7 +608,7 @@ class FixtureDrivenOrchestrator:
         import re
 
         results: list[dict[str, Any]] = []
-        all_actions = bridge.get_all_actions()
+        all_actions = bridge.get_agent_actions()
 
         for exp in self._definition.expectations:
             check: dict[str, Any] = {
