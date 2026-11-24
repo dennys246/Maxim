@@ -7,9 +7,12 @@ import threading
 from pathlib import Path
 import time
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from maxim.cli_parser import _build_parser
+
+if TYPE_CHECKING:
+    from maxim.exceptions import CliOptionsRefused
 from maxim.utils.data_management import build_home
 from maxim.utils.logging import configure_logging, log_exception
 
@@ -45,7 +48,9 @@ def _research_result_exit_code(result: object) -> int:
     sim_code = _simulation_result_exit_code(result)
     if sim_code:
         return sim_code
-    return 1 if getattr(result, "review_verdict", "") == "reject" else 0
+    from maxim.simulation.research_orchestrator import NO_PAPER_VERDICT
+
+    return 1 if getattr(result, "review_verdict", "") in ("reject", NO_PAPER_VERDICT) else 0  # no paper: a failed run
 
 
 def _resolve_mode(args, default: str = "generative") -> str:
@@ -163,33 +168,56 @@ def _handle_delete_model(name: str) -> int:
     return 0
 
 
-def _cli_local_router(profile: str) -> Any | None:
+def _cli_local_router(profile: str, *, fallback_user: str) -> Any | None:
     """The router foundry and auto-curate build from ``--llm`` (#1396): the consent gate asks first, on the main thread.
 
     These paths dispatch before the agent stack, so no preflight asked. Without this the backend's warmup refuses a
     missing model (it never prompts), and the run falls back to templates without the operator ever being asked.
-    None when the model is missing and was not downloaded: the caller takes its template fallback, and no warmup runs.
-    Built by ``models/download.py::consented_router``, the one consented builder (#1396 bullet 2), asking as
-    ``consent_interactive()`` allows (the main thread only, #1658); the library check never prints, so the CLI prints
-    its own line here.
+    None when the model is missing and was not downloaded (or the LLM is disabled): the caller takes its template
+    fallback, and no warmup runs. Built by ``models/download.py::consented_router``, the one consented builder (#1396
+    bullet 2), asking as ``consent_interactive()`` allows (the main thread only, #1658); the library check never
+    prints, so the CLI prints its one line here, naming the cause and that ``fallback_user`` ("foundry", "curation")
+    takes the template fallback.
     """
     from maxim.models.download import consent_interactive, consented_router
     from maxim.models.language.config import load_llm_config
 
     router, cause = consented_router(load_llm_config(profile_override=profile), interactive=consent_interactive())
     if router is None:
-        _print_model_unavailable(cause)
+        print(f"  WARNING: {_model_unavailable_reason(cause)} — {fallback_user} will use template fallback.")
     return router
+
+
+def _model_unavailable_reason(cause: str | None) -> str:
+    """Why a router build gave no router, for the CLI's one line (the library check logs, never prints; #1396)."""
+    from maxim.models.download import LLM_DISABLED
+    from maxim.models.language.types import LocalModelUnavailable
+
+    if cause == LLM_DISABLED:
+        return "the LLM is disabled in ~/.maxim/config/llm.json"
+    if cause == LocalModelUnavailable.MODEL_PATH_MISSING:
+        return "the router's model_path does not exist (fix model_path in ~/.maxim/config/llm.json)"
+    return "LLM model not available (run: maxim --list-models to see available models)"
 
 
 def _print_model_unavailable(cause: str | None) -> None:
     """The CLI's line for a router whose model stayed unusable (the library check logs, never prints; #1396)."""
-    from maxim.models.language.types import LocalModelUnavailable
+    reason = _model_unavailable_reason(cause)
+    print(f"  {reason[0].upper()}{reason[1:]}.")
 
-    if cause == LocalModelUnavailable.MODEL_PATH_MISSING:
-        print("  The router's model_path does not exist. Fix model_path in ~/.maxim/config/llm.json.")
+
+def _write_benchmark_paper(runner: Any, report: Any, report_dir: Any) -> None:
+    """``--write-paper``: the benchmark's comparative paper, or the one line saying why there is none (#1680)."""
+    from maxim.simulation.benchmark import PAPER_NO_TEXT
+
+    print("  Generating comparative paper...")
+    paper_path, cause = runner.write_paper(report, report_dir)
+    if paper_path is not None:
+        print(f"  Paper saved: {paper_path}\n")
+    elif cause == PAPER_NO_TEXT:
+        print("  No paper: the LLM returned no text for any section (see the Writer warnings in the log).\n")
     else:
-        print("  Model not available. Run: maxim --list-models to see available models.")
+        print(f"  No paper: {_model_unavailable_reason(cause)}.\n")
 
 
 def _cli_llm_profile(args: Any) -> str | None:
@@ -1041,11 +1069,16 @@ def _maybe_run_dm_campaign(yaml_path: Path, args, *, debug: bool, entity_ref: st
     sys.exit(_simulation_result_exit_code(result))
 
 
+def _sim_max_turns(args: Any) -> int:
+    """``--sim-max-turns``, default 50: the one definition, for the goal sim's caps and the research protocol."""
+    return int(getattr(args, "sim_max_turns", 50) or 50)
+
+
 def _sim_turn_caps(args: Any) -> dict[str, int]:
     """``start_simulation_mode``'s turn caps from the CLI: ``max_turns`` (``--sim-max-turns``, default 50) and
     ``min_finish_turns``, the same cap under ``--sim-run-full-turns`` (the narrator may not end such a run early;
     owner decisions 2026-10-02: opt-in, so other harnesses keep early finishing), else 0."""
-    max_turns = int(getattr(args, "sim_max_turns", 50) or 50)
+    max_turns = _sim_max_turns(args)
     return {"max_turns": max_turns, "min_finish_turns": max_turns if getattr(args, "sim_run_full_turns", False) else 0}
 
 
@@ -1104,6 +1137,138 @@ def _run_goal_sim(
     sys.exit(_simulation_result_exit_code(result))
 
 
+#: The goal-string sim's options (``_run_goal_sim``, the embodiment it is handed, and the curation run before it) that
+#: the research protocol does not take: ``start_research_mode`` runs its own sim call, so each of these, passed
+#: explicitly with ``--research`` under llm-primary (or ``--sim research``), would be dropped without a word (#1680).
+#: Not here: ``--sim-max-turns`` (forwarded as ``max_turns``), ``--no-sim-env`` (research always runs
+#: ``no_sim_env=True``) and ``--sim-mode`` (checked on its own: only ``research``, what it runs, is accepted).
+#: ``tests/unit/test_cli_research_options_1680.py`` pins that every option the goal-sim path reads is either
+#: forwarded by :func:`_run_research_from_cli` or listed here.
+_RESEARCH_DROPPED_OPTIONS = frozenset(
+    {
+        "embodiment",
+        "no_embodiment",
+        "deep_embodiment",
+        "auto_curate",
+        "sim_run_full_turns",
+        "continuous",
+        "sandbox_image",
+        "sandbox_network",
+        "resume_sim",
+        "sim_script",
+    }
+)
+
+
+def _non_default_options(args: Any, dests: Callable[[str], bool]) -> list[str]:
+    """The parsed options whose dest ``dests`` selects and whose value differs from the parser's default, as the
+    first option string of each (``--dm``), in parser order. ``--sim-script``'s whitelist and the research refusal
+    both read it."""
+    parser = _build_parser()
+    defaults = vars(parser.parse_args([]))
+    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
+    return [
+        flags.get(dest, dest)
+        for dest, default in defaults.items()
+        if dests(dest) and getattr(args, dest, default) != default
+    ]
+
+
+def _runs_research_protocol(args: Any) -> bool:
+    """Whether this invocation dispatches to ``start_research_mode``: ``--sim research``, or a goal-string ``--sim``
+    with ``--research`` under llm-primary (under substrate-primary ``--research`` is substrate telemetry)."""
+    sim = getattr(args, "sim", None)
+    if sim is None:
+        return False
+    kind = _sim_value_kind(str(sim))
+    if kind == "research":
+        return True
+    return (
+        kind == "goal"
+        and bool(getattr(args, "research", False))
+        and getattr(args, "aut_mode", "llm-primary") != "substrate-primary"
+    )
+
+
+def _research_refusal(args: Any) -> CliOptionsRefused | None:
+    """The refusal for explicit options the research protocol would drop (None = it honours every one given)."""
+    from maxim.exceptions import CliOptionsRefused
+
+    dropped = _non_default_options(args, _RESEARCH_DROPPED_OPTIONS.__contains__)
+    # sim_mode's parsed default is SUPPRESS and normalize_args fills "generative", so its explicitness is recorded
+    # there (``sim_mode_explicit``); un-normalized args carry the attribute only when it was passed.
+    explicit_mode = getattr(args, "sim_mode_explicit", hasattr(args, "sim_mode"))
+    if explicit_mode and getattr(args, "sim_mode", None) != "research":  # the protocol always runs mode="research"
+        dropped.append("--sim-mode")
+    reasons = []
+    if dropped:
+        reasons.append(f"{', '.join(dropped)}: its sim call does not take them, so they would be dropped")
+    if getattr(args, "campaign", None) and getattr(args, "sim_max_turns", None) is not None:
+        dropped.append("--sim-max-turns")
+        reasons.append("--sim-max-turns with --campaign: every campaign line is delivered whatever the cap")
+    if not reasons:
+        return None
+    return CliOptionsRefused(
+        "cannot run with the research protocol (--research under llm-primary, or --sim research): "
+        + "; ".join(reasons),
+        fix_hint=f"Drop {', '.join(dropped)}, or run the sim without --research.",
+    )
+
+
+def _refuse_dropped_research_options(args: Any) -> None:
+    """Raise the research refusal (``CliOptionsRefused``, exit 2) before anything runs for this invocation: before
+    curation writes components and before the older ``--sim-mode`` guard exits 1 for a goal string (#1680)."""
+    if _runs_research_protocol(args):
+        refusal = _research_refusal(args)
+        if refusal is not None:
+            raise refusal
+
+
+def _run_research_from_cli(args: Any, goal: str, *, debug_raw: Any) -> NoReturn:
+    """Run the research protocol for ``goal`` and exit with its code; refuse (exit 2) the options it would drop."""
+    from maxim.simulation.research_orchestrator import start_research_mode
+
+    refusal = _research_refusal(args)
+    if refusal is not None:
+        raise refusal
+    result = start_research_mode(
+        goal=goal,
+        campaign=getattr(args, "campaign", None),
+        language_model=str(getattr(args, "language_model", "") or "").strip() or None,
+        aut_model=getattr(args, "aut_model", None),
+        debug=bool(debug_raw),
+        sandbox_backend=getattr(args, "sandbox_backend", "auto"),
+        max_turns=_sim_max_turns(args),
+    )
+    sys.exit(_research_result_exit_code(result))
+
+
+def _validate_sim_only_flags(args: Any) -> None:
+    """Refuse simulation-only flags without a sim to take them, before any sim path runs: the research protocol's
+    dropped options first (``CliOptionsRefused``, exit 2; before curation and the ``--sim-mode`` guard, #1680), then
+    ``--goal``, ``--sim-mode`` and ``--resume-sim`` without ``--sim agent``/``--sim research`` (exit 1). Moved out of
+    ``_main_impl`` (rule T)."""
+    _refuse_dropped_research_options(args)
+    sim_path = getattr(args, "sim", None)
+    _sim_mode = str(sim_path).strip().lower() if sim_path is not None else ""
+    _is_sim_mode = _sim_mode in ("agent", "research")
+    if not _is_sim_mode:
+        if getattr(args, "sim_goal", None) is not None:
+            print("Error: --goal / --sim-goal requires --sim agent or --sim research.")
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
+            print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
+            sys.exit(1)
+        if getattr(args, "sim_mode", None) not in (None, "generative") and not _runs_research_protocol(args):
+            print("Error: --sim-mode requires --sim agent (simulation mode).")
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode research')
+            sys.exit(1)
+        if getattr(args, "resume_sim", None) is not None and sim_path is None:
+            print("Error: --resume-sim requires --sim (simulation mode).")
+            print('  Usage: maxim --sim "test goal" --resume-sim SESSION_ID')
+            print('         maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
+            sys.exit(1)
+
+
 def _sim_value_kind(value: str) -> str:
     """What a ``--sim`` value selects: ``"yaml"`` (a scenario or campaign file), the legacy aliases ``"agent"``,
     ``"research"`` and ``"benchmark"``, ``"interactive"`` (the REPL; ``--sim`` with no value), else ``"goal"`` (a goal
@@ -1148,18 +1313,7 @@ _SIM_SCRIPT_NORMALIZED = frozenset({"audio"})
 def _sim_script_unexpected_options(args: Any) -> list[str]:
     """The options outside :data:`_SIM_SCRIPT_ALLOWED` whose value differs from the parser's default, as the first
     option string of each (``--dm``), in parser order."""
-    from maxim.cli_parser import _build_parser
-
-    parser = _build_parser()
-    defaults = vars(parser.parse_args([]))
-    flags = {a.dest: a.option_strings[0] for a in parser._actions if a.option_strings}
-    return [
-        flags.get(dest, dest)
-        for dest, default in defaults.items()
-        if dest not in _SIM_SCRIPT_ALLOWED
-        and dest not in _SIM_SCRIPT_NORMALIZED
-        and getattr(args, dest, default) != default
-    ]
+    return _non_default_options(args, lambda dest: dest not in _SIM_SCRIPT_ALLOWED | _SIM_SCRIPT_NORMALIZED)
 
 
 def _sim_script_refusal(args: Any) -> str | None:
@@ -1501,9 +1655,8 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
     def build() -> Any | None:
         router = None
         try:
-            router = _cli_local_router(profile)
+            router = _cli_local_router(profile, fallback_user="curation")
             if router is None:
-                print("  WARNING: LLM model not available — curation will use template fallback.")
                 return None
             built.append(router)
             router.warmup()
@@ -1591,10 +1744,8 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
     if _foundry_profile:
         try:
-            _foundry_llm = _cli_local_router(_foundry_profile)
-            if _foundry_llm is None:
-                print("  WARNING: LLM model not available — foundry will use template fallback.")
-            else:
+            _foundry_llm = _cli_local_router(_foundry_profile, fallback_user="foundry")
+            if _foundry_llm is not None:
                 _foundry_llm.warmup()
                 print(f"  Waiting for LLM ({_foundry_profile}) to load...")
                 if not _foundry_llm.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
@@ -1969,35 +2120,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         print(f"\n  Report saved: {report_dir}\n")
 
         if getattr(args, "write_paper", False):
-            print("  Generating comparative paper...")
-            paper_path = runner.write_paper(report, report_dir)
-            if paper_path:
-                print(f"  Paper saved: {paper_path}\n")
-            else:
-                print("  Paper generation failed (LLM unavailable)\n")
+            _write_benchmark_paper(runner, report, report_dir)
 
         all_passed = all(mr.passed for mr in report.results.values())
         sys.exit(0 if all_passed else 1)
 
-    # Validate simulation-only flags aren't used without --sim agent/research
+    _validate_sim_only_flags(args)
     sim_path = getattr(args, "sim", None)
-    _sim_mode = str(sim_path).strip().lower() if sim_path is not None else ""
-    _is_sim_mode = _sim_mode in ("agent", "research")
-    if not _is_sim_mode:
-        if getattr(args, "sim_goal", None) is not None:
-            print("Error: --goal / --sim-goal requires --sim agent or --sim research.")
-            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
-            print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
-            sys.exit(1)
-        if getattr(args, "sim_mode", None) not in (None, "generative"):
-            print("Error: --sim-mode requires --sim agent (simulation mode).")
-            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode research')
-            sys.exit(1)
-        if getattr(args, "resume_sim", None) is not None and sim_path is None:
-            print("Error: --resume-sim requires --sim (simulation mode).")
-            print('  Usage: maxim --sim "test goal" --resume-sim SESSION_ID')
-            print('         maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
-            sys.exit(1)
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts
     if sim_path is not None:
@@ -2175,20 +2304,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             # multi-agent paper-writing harness". Phase 0 of
             # docs/plans/grounded_language_acquisition.md.
             if _wants_research and _aut_mode_val != "substrate-primary":
-                # Generative + research report
-                from maxim.simulation.research_orchestrator import start_research_mode
-
-                campaign = getattr(args, "campaign", None)
-                language_model = str(getattr(args, "language_model", "") or "").strip() or None
-                result = start_research_mode(
-                    goal=goal,
-                    campaign=campaign,
-                    language_model=language_model,
-                    aut_model=getattr(args, "aut_model", None),
-                    debug=bool(_debug_raw),
-                    sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-                )
-                sys.exit(_research_result_exit_code(result))
+                _run_research_from_cli(args, goal, debug_raw=_debug_raw)  # Generative + research report; exits
             else:
                 _run_goal_sim(
                     args,
@@ -2269,12 +2385,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
             # Optional: generate comparative paper
             if getattr(args, "write_paper", False):
-                print("  Generating comparative paper...")
-                paper_path = runner.write_paper(report, report_dir)
-                if paper_path:
-                    print(f"  Paper saved: {paper_path}\n")
-                else:
-                    print("  Paper generation failed (LLM unavailable)\n")
+                _write_benchmark_paper(runner, report, report_dir)
 
             # Exit with 0 if all models passed, 1 if any failed
             all_passed = all(mr.passed for mr in report.results.values())
@@ -2283,22 +2394,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         # Check for research mode (legacy alias — deprecated, use --research flag)
         _sim_research = _is_legacy_research
         if _sim_research:
-            from maxim.simulation.research_orchestrator import start_research_mode
-
             goal = getattr(args, "sim_goal", None) or "investigate the research question"
-            debug = bool(_debug_raw)
-            campaign = getattr(args, "campaign", None)
-            language_model = str(getattr(args, "language_model", "") or "").strip() or None
-
-            result = start_research_mode(
-                goal=goal,
-                campaign=campaign,
-                language_model=language_model,
-                aut_model=getattr(args, "aut_model", None),
-                debug=debug,
-                sandbox_backend=getattr(args, "sandbox_backend", "auto"),
-            )
-            sys.exit(_research_result_exit_code(result))
+            _run_research_from_cli(args, goal, debug_raw=_debug_raw)  # exits
 
         # ── Auto-detect Roy curriculum YAMLs ──
         # A curriculum YAML has a top-level ``stages:`` list and chains
@@ -2961,8 +3058,19 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("maxim").error("maxim refused: %s", refusal)
         return 2
     except Exception as e:
-        from maxim.exceptions import CampaignUnloadable, ConfigDirUnreadable, LLMServerPortBusy, UserProfilesInvalid
+        from maxim.exceptions import (
+            CampaignUnloadable,
+            CliOptionsRefused,
+            ConfigDirUnreadable,
+            LLMServerPortBusy,
+            UserProfilesInvalid,
+        )
 
+        if isinstance(e, CliOptionsRefused):  # options the selected run would drop, refused before it starts (#1680)
+            from maxim.utils.logging import user_warn
+
+            user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="cli", event="cli_options_refused")
+            return 2
         if isinstance(e, CampaignUnloadable):  # --research --campaign that cannot be scripted turns (#1621)
             from maxim.utils.logging import user_warn
 

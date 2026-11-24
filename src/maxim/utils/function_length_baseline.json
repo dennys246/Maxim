@@ -11,7 +11,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1195
+      "lines": 1141
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -131,7 +131,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1913
+      "lines": 1903
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -166,7 +166,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 328
+      "lines": 311
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -196,7 +196,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1895
+      "lines": 1877
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -206,7 +206,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 233
+      "lines": 218
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -400,9 +400,12 @@
     "#1519 fold (2026-11-21, rule T, no exemption): _run_agentic_loop_body 2140 -> 2128 and _run_deliberation_cycles 235 -> 227: both THOUGHT writes into working memory moved to agent_loop._add_deliberation_thought, paying for the required provenance= keyword WorkingMemorySet.add now takes; then 227 -> 224 (delta round): the thoughts reader became one WMEntry.prompt_text call. Delta 2: _run_agentic_loop_body 2128 -> 2126, the submit's triggering input and its source built by agent_loop._triggering in one splat.",
     "#1519 delta 4 (2026-11-21, rule T, no exemption): record_outcome 392 -> 385 (the recent-outcome append and trim to tool_dispatch._append_recent_outcome, paying for the untrusted_output keyword it records); execute_and_learn 342 -> 336 (the follow-up type and result text to tool_dispatch._followup_type_and_text, paying for passing untrusted_output). Delta 5: execute_and_learn 336 -> 328 (the error branch's audit entry to tool_dispatch._audit_execution_error, paying for the now-required untrusted_output on its exception booking). Suite fold (2026-11-22): the follow-up type returns to execute_and_learn (lint_loop_mode_reads rule E: its sink reads the one mode the tick read), so _followup_type_and_text becomes tool_dispatch._followup_text_for (result text only); execute_and_learn stays at 328, paid for by the think check moving into tool_dispatch._reset_deliberation.",
     "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
+    "#1680 (2026-11-21, rule T): _main_impl 1195 -> 1185 -> 1158 -> 1141 and start_simulation_mode 1895 -> 1877 across the review folds (the research dispatch to cli._run_research_from_cli, then the --sim-only checks to cli._validate_sim_only_flags; the commit messages from c7a1327a on give each step); start_research_mode 241 -> 226 on the branch, 241 -> 233 for #1621 on main, and the merged body measures 218",
     "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged.",
     "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch.",
-    "#1519 re-merged onto slice 6 (2026-11-23): _run_agentic_loop_body 1927 -> 1913, the same 14 lines #1519 moved out on the branch (2140 -> 2126)."
+    "_run_agentic_loop_body tightened 2140 -> 2130 (re-merged onto slice 6 and #1414 on 2026-11-23 as 1927 -> 1917, the same 10 lines) and execute_and_learn 342 -> 325 on 2026-11-22 (#1751, rule T): the two identical agentic tool_result blocks (each logged up to 100 chars of any tool's output to stdout) moved to tool_dispatch.log_tool_result, and execute_and_learn's goal_failed event (any tool's whole error) to tool_dispatch.log_tool_failure; both show a PRIVATE or SECRET tool's text by shape only.",
+    "#1519 re-merged onto slice 6 (2026-11-23): _run_agentic_loop_body 1927 -> 1913, the same 14 lines #1519 moved out on the branch (2140 -> 2126).",
+    "#1519 re-merged onto #1751 (#1776) on 2026-11-23: _run_agentic_loop_body 1917 -> 1903 and execute_and_learn 325 -> 311, the same 14 lines each that #1519 moved out on the branch."
   ],
   "touch_exemptions": [
     {

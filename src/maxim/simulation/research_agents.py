@@ -19,6 +19,7 @@ from typing import Any
 from maxim.mesh.identity import AgentProfile
 from maxim.mesh.message import MeshMessage, MeshMessageType
 from maxim.mesh.bus import LocalMessageBus
+from maxim.models.language.types import BackendError
 from maxim.simulation.research_tools import ExperimentLog
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,8 @@ class WriterAgent:
     def run(self, goal: str) -> PaperDraft:
         """Generate a complete paper draft from experiment data.
 
-        Returns the PaperDraft with all sections populated.
+        Returns the PaperDraft with every section the LLM wrote. A draft with no section is not saved, announced or
+        sent to the reviewer, so its ``output_path`` stays None: no text from the LLM is no paper (#1680).
         """
         experiments = self.experiment_log.all_entries()
         if not experiments:
@@ -166,10 +168,9 @@ class WriterAgent:
                 self.draft.write_section(section, content)
                 logger.info("Writer: completed section '%s' (%d chars)", section, len(content))
 
-        # Save to disk
-        paper_path = self.session_dir / "paper.md"
-        self.draft.save(paper_path)
-        logger.info("Writer: paper saved to %s", paper_path)
+        paper_path = self._save_draft()
+        if paper_path is None:
+            return self.draft
 
         # Notify reviewer via bus
         self.bus.send(
@@ -196,9 +197,24 @@ class WriterAgent:
                 self.draft.write_section(section, revised)
                 logger.info("Writer: revised section '%s' (revision %d)", section, self.draft.revision)
 
+        self._save_draft()
+        return self.draft
+
+    def _save_draft(self) -> Path | None:
+        """Save the draft to ``session_dir/paper.md`` and return the path, or None (nothing saved) with no section.
+
+        A partial draft is saved and its missing sections logged; an empty one would be a paper with no text that
+        every caller reads as the paper (#1680)."""
+        if not self.draft.sections:
+            logger.warning("Writer: the LLM returned no text for any section; no paper saved")
+            return None
+        missing = [s for s in PAPER_SECTIONS if s not in self.draft.sections]
+        if missing:
+            logger.warning("Writer: %d of %d sections missing: %s", len(missing), len(PAPER_SECTIONS), missing)
         paper_path = self.session_dir / "paper.md"
         self.draft.save(paper_path)
-        return self.draft
+        logger.info("Writer: paper saved to %s", paper_path)
+        return paper_path
 
     _WRITER_SYSTEM = (
         "You are an academic research paper writer. "
@@ -221,7 +237,7 @@ class WriterAgent:
                 temperature=0.4,
             )
             return text.strip() if text else ""
-        except Exception as e:
+        except BackendError as e:  # a failed call (the router returns "" for most); a code defect propagates (#1680)
             logger.warning("Writer: prose generation failed: %s", e)
             return ""
 
@@ -292,6 +308,15 @@ class WriterAgent:
 
         result = self._generate_prose(prompt)
         return result if result else current
+
+
+def _model_confidence(value: Any) -> float:
+    """The verdict's confidence as the model wrote it, as a float; 0.5 (logged) for a value that is not a number."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        logger.warning("Reviewer: the model's confidence %r is not a number; using 0.5", value)
+        return 0.5
 
 
 # ── Reviewer Agent ───────────────────────────────────────────────────────────
@@ -391,7 +416,7 @@ class ReviewerAgent:
             if isinstance(result, dict):
                 return result.get("feedback", result.get("content", str(result)))
             return str(result) if result else ""
-        except Exception as e:
+        except BackendError as e:  # a failed call; a LeaderRefusal or a code defect propagates (#1680)
             logger.warning("Reviewer: failed to review '%s': %s", name, e)
             return ""
 
@@ -442,14 +467,15 @@ class ReviewerAgent:
 
         try:
             result = self.llm.generate_json(prompt, max_tokens=256)
-            if isinstance(result, dict):
-                return {
-                    "verdict": result.get("verdict", "revise"),
-                    "confidence": float(result.get("confidence", 0.5)),
-                    "revision_requests": result.get("revision_requests", []),
-                }
-        except Exception as e:
+        except BackendError as e:  # a failed call; a LeaderRefusal or a code defect propagates (#1680)
             logger.warning("Reviewer: verdict generation failed: %s", e)
+            result = None
+        if isinstance(result, dict):
+            return {
+                "verdict": result.get("verdict", "revise"),
+                "confidence": _model_confidence(result.get("confidence", 0.5)),
+                "revision_requests": result.get("revision_requests", []),
+            }
 
         # Fallback
         return {"verdict": "revise", "confidence": 0.5, "revision_requests": review.issues}

@@ -17,6 +17,7 @@ from maxim.utils.content_safety import (
     is_section_boundary_line,
     split_lines,
 )
+from maxim.utils.seeding import stable_hash_32
 
 
 class DataSensitivity(Enum):
@@ -143,6 +144,27 @@ def tool_result_header(tool_name: str) -> str:
     the table (or "" for an unparseable follow-up) is private: the filter fails closed."""
     sensitivity = TOOL_SENSITIVITY.get(tool_name, DataSensitivity.PRIVATE)
     return f"=== Tool Result ({sensitivity.value}) ==="
+
+
+def text_shape(text: str) -> str:
+    """Describe ``text`` by its shape, for a log line that must not carry it (#1751): its length and a stable
+    32-bit digest. The digest correlates repeats of one input; it is not secrecy (a short, guessable value can be
+    confirmed against it offline)."""
+    return f"<len={len(text)}, digest={stable_hash_32(text):08x}>"
+
+
+def tool_text_is_loggable(tool_name: str) -> bool:
+    """Whether a log line may carry ``tool_name``'s output or error text (#1751): only a PUBLIC or INTERNAL tool's.
+    A PRIVATE or SECRET tool's may not, nor an unclassified tool's, which is private (``tool_result_header``)."""
+    sensitivity = TOOL_SENSITIVITY.get(tool_name, DataSensitivity.PRIVATE)
+    return sensitivity in (DataSensitivity.PUBLIC, DataSensitivity.INTERNAL)
+
+
+def loggable_tool_text(tool_name: str, text: str, *, limit: int) -> str:
+    """What of a tool's ``text`` (its output or its error) a log line may carry (#1751). Log records persist
+    (``MAXIM_LOG_FILE``, the sim JSONL, the leader's ``/v1/debug/logs`` buffer), so a tool whose text is not
+    loggable (``tool_text_is_loggable``) is described by ``text_shape``; any other tool's is cut to ``limit``."""
+    return text[:limit] if tool_text_is_loggable(tool_name) else text_shape(text)
 
 
 @dataclass(slots=True)
@@ -571,4 +593,7 @@ __all__ = [
     "note_dispatch",
     "record_dispatches",
     "tool_result_header",
+    "text_shape",
+    "tool_text_is_loggable",
+    "loggable_tool_text",
 ]

@@ -26,6 +26,7 @@ from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.tools.base import GATE_REFUSAL_KINDS, ToolErrorKind
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.cloud_redaction import loggable_tool_text, text_shape, tool_text_is_loggable
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
@@ -688,7 +689,7 @@ def _retry_write_file_overwrite(executor: Any, action: dict[str, Any], result: A
     else:
         _loop_logger.warning(
             "Auto-recovery failed for write_file: %s",
-            getattr(result, "error", "unknown"),
+            text_shape(str(getattr(result, "error", "unknown"))),
         )
     return result, success
 
@@ -1367,6 +1368,30 @@ def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
         }
 
 
+def log_tool_result(tool_name: str | None, output: Any) -> None:
+    """Buffer a tool's result as the agentic ``tool_result`` event, which ``AbstractionBuffer`` prints to stdout
+    (``[AGENTIC]``, on by default in the CLI). A PRIVATE or SECRET (or unclassified) tool's output is shown by
+    shape only; a PUBLIC or INTERNAL tool's dict stays whole and its text is cut to 100 characters (#1751)."""
+    if not output:
+        return
+    name = tool_name or ""
+    shown: Any = output
+    if not (isinstance(output, dict) and tool_text_is_loggable(name)):
+        shown = loggable_tool_text(name, str(output), limit=100)
+    log_agentic("agent_loop", "tool_result", {"tool": tool_name, "output": shown})
+
+
+def log_tool_failure(tool_name: str | None, error: Any) -> None:
+    """Buffer a failed tool call as the agentic ``goal_failed`` event (WARNING, printed to stdout like
+    ``log_tool_result``). A PRIVATE or SECRET (or unclassified) tool's error, such as a test run's or a git
+    command's stderr, is shown by shape only; a PUBLIC or INTERNAL tool's stays whole, as before (#1751)."""
+    shown = error
+    if error is not None:
+        text = str(error)
+        shown = loggable_tool_text(tool_name or "", text, limit=len(text))
+    log_agentic("agent_loop", "goal_failed", {"tool": tool_name, "error": shown}, level="WARNING")
+
+
 def execute_and_learn(
     *,
     agent: Any,
@@ -1509,17 +1534,8 @@ def execute_and_learn(
             },
         )
 
-        # Log tool result details
         output = getattr(result, "output", None)
-        if output:
-            log_agentic(
-                "agent_loop",
-                "tool_result",
-                {
-                    "tool": action.get("tool_name"),
-                    "output": output if isinstance(output, dict) else str(output)[:100],
-                },
-            )
+        log_tool_result(action.get("tool_name"), output)
 
         # Log to autonomy controller
         autonomy_controller.log_action(
@@ -1641,15 +1657,7 @@ def execute_and_learn(
 
         # Handle failure
         if success is False:
-            log_agentic(
-                "agent_loop",
-                "goal_failed",
-                {
-                    "tool": action.get("tool_name"),
-                    "error": getattr(result, "error", None),
-                },
-                level="WARNING",
-            )
+            log_tool_failure(action.get("tool_name"), getattr(result, "error", None))
             try:
                 state.mark_failure(getattr(result, "error", None))
             except Exception as e:

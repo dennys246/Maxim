@@ -8,8 +8,8 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 73.0,
-      "missing": 1080
+      "percent": 74.8,
+      "missing": 1033
     },
     "maxim/advisor": {
       "percent": 98.9,
@@ -156,8 +156,8 @@
       "missing": 292
     },
     "maxim/simulation": {
-      "percent": 77.9,
-      "missing": 2353
+      "percent": 79.3,
+      "missing": 2258
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -186,8 +186,8 @@
       "missing": 233
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 75.7,
-      "missing": 250
+      "percent": 76.8,
+      "missing": 241
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
