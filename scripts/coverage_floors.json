@@ -182,8 +182,8 @@
   },
   "files": {
     "src/maxim/agents/exec_agent_router.py": {
-      "percent": 96.5,
-      "missing": 2
+      "percent": 100.0,
+      "missing": 0
     },
     "src/maxim/models/language/router.py": {
       "percent": 78.8,
