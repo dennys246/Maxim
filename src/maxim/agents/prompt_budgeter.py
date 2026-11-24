@@ -6,9 +6,11 @@ LLMWorker state — only needs a token counter.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import re
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any, Callable, Literal
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,15 @@ _STABLE_BUDGET_FRACTION = 0.7
 # (a tool result, a memory, an input, its own roster), which is never rewritten. Required on every ``add``: a new
 # section cannot skip the decision.
 SectionSource = Literal["builder", "data"]
+
+
+class _Unset(Enum):
+    """``PromptBudgeter.add``'s ``header`` when the caller did not pass one."""
+
+    UNSET = "unset"
+
+
+_UNSET = _Unset.UNSET
 
 
 class SectionPriority(IntEnum):
@@ -60,6 +71,14 @@ class PromptSection:
     # emits every phase-scoped section AFTER every session-stable one, so a
     # roster change invalidates only the tail of the cached prefix (P21).
     phase_scoped: bool = False
+    # A section rendered by identity (``PromptBudgeter.add(header=...)``): the header line is kept apart from
+    # ``content`` (the body), so truncation and frame cleanup act on the body only and the header is always emitted.
+    header: str | None = None
+
+    @property
+    def rendered(self) -> str:
+        """The section as it appears in the prompt: the header line, if any, then the body."""
+        return self.content if self.header is None else f"{self.header}\n{self.content}"
 
 
 class PromptBudgeter:
@@ -108,6 +127,7 @@ class PromptBudgeter:
         *,
         source: SectionSource,
         frame_wording: str | None = None,
+        header: str | None | Literal[_Unset.UNSET] = _UNSET,
     ) -> None:
         """Add a section to the budget. Empty content is silently ignored.
 
@@ -120,11 +140,31 @@ class PromptBudgeter:
         silently ignored.
 
         ``frame_wording`` names what this section's frames hold (#1481); None is the tool-output default.
+
+        ``header`` is required with ``source="data"`` (``header=None`` says the section has none), so a new data
+        section cannot skip the decision. A ``=== X ===`` line renders the section by identity: ``content`` is the
+        body, and every rewrite (frame cleanup, truncation) acts on the body, which is neutralized
+        (``content_safety.neutralize_section_body``) so it holds neither a section boundary nor a blank line. The
+        header line is therefore always the section's first line. Every private section (the ones
+        ``utils/cloud_redaction.py::_SECTION_RULES`` redact) is added this way. Every data section also loses any
+        ``\x1e`` (the prompt segment delimiter, ``prompt_builder.PROMPT_SEGMENT_DELIMITER``) to a line break.
         """
         if phase_scoped and not cacheable:
             raise ValueError(f"prompt section {name!r}: phase_scoped=True requires cacheable=True")
         if source not in ("builder", "data"):
             raise ValueError(f"prompt section {name!r}: source must be 'builder' or 'data', not {source!r}")
+        if header is _UNSET:
+            if source == "data":
+                raise TypeError(f"prompt section {name!r}: a source='data' section passes header= (None for none)")
+            header = None
+        if header is not None:
+            from maxim.utils.content_safety import check_section_header, neutralize_section_body
+
+            if source != "data":
+                raise ValueError(f"prompt section {name!r}: a header-separate section is source='data'")
+            check_section_header(header)
+        if source == "data" and content:
+            content = content.replace("\x1e", "\n")  # never the segment delimiter, cacheable or not
         if source == "builder" and self._builder_gate is not None and content:
             content = self._builder_gate(content)
         if content and "TOOL_OUTPUT" in content:
@@ -137,7 +177,9 @@ class PromptBudgeter:
             )
         if not content or not content.strip():
             return
-        token_count = self._counter.count_tokens(content)
+        if header is not None:
+            content = neutralize_section_body(content)
+        token_count = self._counter.count_tokens(content if header is None else f"{header}\n{content}")
         self._sections.append(
             PromptSection(
                 name=name,
@@ -150,6 +192,7 @@ class PromptBudgeter:
                 truncate_fn=truncate_fn,
                 cacheable=cacheable,
                 phase_scoped=phase_scoped,
+                header=header,
             )
         )
         self._insertion_idx += 1
@@ -181,30 +224,15 @@ class PromptBudgeter:
                     and remaining >= section.min_tokens
                     and remaining > 0
                 ):
-                    truncated = section.truncate_fn(section.content, remaining)
-                    if "TOOL_OUTPUT" in truncated:  # a truncator may cut a frame, front or back (rule 2)
-                        from maxim.utils.content_safety import drop_unbalanced_frames
-
-                        truncated = drop_unbalanced_frames(truncated)[0]
-                    new_count = self._counter.count_tokens(truncated)
-                    if new_count <= remaining and truncated.strip():
-                        included.append(
-                            PromptSection(
-                                name=section.name,
-                                content=truncated,
-                                priority=section.priority,
-                                token_count=new_count,
-                                insertion_order=section.insertion_order,
-                                truncatable=section.truncatable,
-                                min_tokens=section.min_tokens,
-                                truncate_fn=section.truncate_fn,
-                                cacheable=section.cacheable,
-                                phase_scoped=section.phase_scoped,
-                            )
-                        )
-                        used += new_count
+                    truncated = self._truncated(section, remaining)
+                    if truncated.token_count <= remaining and truncated.content.strip():
+                        included.append(truncated)
+                        used += truncated.token_count
                         logger.debug(
-                            "Truncated section '%s': %d→%d tokens", section.name, section.token_count, new_count
+                            "Truncated section '%s': %d→%d tokens",
+                            section.name,
+                            section.token_count,
+                            truncated.token_count,
                         )
                     else:
                         dropped.append(section.name)
@@ -212,6 +240,24 @@ class PromptBudgeter:
                     dropped.append(section.name)
 
         return included, dropped, used
+
+    def _truncated(self, section: PromptSection, remaining: int) -> PromptSection:
+        """``section`` with its body cut to fit ``remaining`` tokens, header included. A truncator may cut a frame,
+        front or back (Session R, rule 2); a header-separate body stays neutralized whatever the truncator returns,
+        and its header is never offered to the truncator, so it cannot be cut."""
+        assert section.truncate_fn is not None
+        header_tokens = 0 if section.header is None else self._counter.count_tokens(section.header + "\n")
+        body = section.truncate_fn(section.content, max(0, remaining - header_tokens))
+        if "TOOL_OUTPUT" in body:
+            from maxim.utils.content_safety import drop_unbalanced_frames
+
+            body = drop_unbalanced_frames(body)[0]
+        if section.header is not None:
+            from maxim.utils.content_safety import neutralize_section_body
+
+            body = neutralize_section_body(body)
+        cut = dataclasses.replace(section, content=body)
+        return dataclasses.replace(cut, token_count=self._counter.count_tokens(cut.rendered))
 
     @staticmethod
     def _log_included(included: list[PromptSection]) -> None:
@@ -229,7 +275,7 @@ class PromptBudgeter:
         logger.debug(
             "prompt_sections %s",
             ",".join(
-                f"{s.name}:{len(s.content)}"
+                f"{s.name}:{len(s.rendered)}"
                 for s in sorted(included, key=lambda x: (not x.cacheable, x.phase_scoped, x.insertion_order))
             ),
         )
@@ -238,7 +284,7 @@ class PromptBudgeter:
     def _emit(included: list[PromptSection]) -> str:
         """Join included sections in original insertion order."""
         ordered = sorted(included, key=lambda s: s.insertion_order)
-        return "\n\n".join(s.content for s in ordered)
+        return "\n\n".join(s.rendered for s in ordered)
 
     @staticmethod
     def _emit_stable(included: list[PromptSection]) -> str:
@@ -257,7 +303,7 @@ class PromptBudgeter:
         head cached when the tail changes.
         """
         ordered = sorted(included, key=lambda s: (s.phase_scoped, s.insertion_order))
-        return "\n\n".join(s.content for s in ordered)
+        return "\n\n".join(s.rendered for s in ordered)
 
     def build(self) -> tuple[str, list[str]]:
         """Assemble the prompt within budget.
@@ -378,7 +424,7 @@ def _truncate_conversation(content: str, max_tokens: int, counter: Any) -> str:
 def _truncate_context_pool(content: str, max_tokens: int, counter: Any) -> str:
     """Drop oldest lines from the front of the context pool."""
     lines = content.split("\n")
-    for start in range(1, len(lines)):
+    for start in range(len(lines)):  # the body only: its header is the budgeter's, never offered here
         candidate = "\n".join(lines[start:])
         if counter.count_tokens(candidate) <= max_tokens:
             return candidate
@@ -411,15 +457,43 @@ def _truncate_reasoning_carryover(content: str, max_tokens: int, counter: Any) -
             header_lines.append(line)
 
     header = "\n".join(header_lines)
+    lead = header + "\n" if header_lines else ""  # a header-separate body has no header line to keep
     for start in range(1, len(entry_lines)):
-        candidate = header + "\n" + "\n".join(entry_lines[start:])
+        candidate = lead + "\n".join(entry_lines[start:])
         if counter.count_tokens(candidate) <= max_tokens:
             return candidate
     return header
 
 
+# A framed listing (``prompt_builder._listing``): the opener line, the file names, the closer line (#1519).
+_FRAMED_LISTING = re.compile(r"^(<<TOOL_OUTPUT id=([0-9a-f]+) [^\n]*>>)\n(.*?)\n(<</TOOL_OUTPUT id=\2>>)$", re.M | re.S)
+
+
 def _truncate_manifest(content: str, max_tokens: int, counter: Any) -> str:
-    """Truncate a manifest section by removing file entries from the end."""
+    """Truncate a manifest section by removing file entries from the end.
+
+    The CWD's file names arrive framed (#1519): they are cut INSIDE their frame, which is rebuilt around the names
+    kept, so no name is ever shown outside it; a listing with no name left goes whole, frame and all."""
+    listing = _FRAMED_LISTING.search(content)
+    if listing is None:
+        return _truncate_unframed_manifest(content, max_tokens, counter)
+    head, tail = content[: listing.start()], content[listing.end() :]
+    names = listing.group(3).split("\n")
+    while names:
+        framed = f"{head}{listing.group(1)}\n" + "\n".join(names) + f"\n{listing.group(4)}{tail}"
+        if counter.count_tokens(framed) <= max_tokens:
+            return framed
+        names.pop()
+    rest = (head.rstrip("\n") + tail).strip("\n")
+    from maxim.utils.content_safety import TOOL_OUTPUT_RULE, frame_spans
+
+    if not frame_spans(rest)[0]:  # the frame rule the budgeter stated above the listing has no frame left under it
+        rest = "\n".join(line for line in rest.split("\n") if line != TOOL_OUTPUT_RULE)
+    return _truncate_unframed_manifest(rest, max_tokens, counter)
+
+
+def _truncate_unframed_manifest(content: str, max_tokens: int, counter: Any) -> str:
+    """Remove indented file entries from the end of a manifest with no framed listing."""
     lines = content.split("\n")
     # Separate header/rule lines from indented file entries
     header_lines: list[str] = []

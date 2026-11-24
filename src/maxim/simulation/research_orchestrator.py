@@ -13,12 +13,16 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass
 from pathlib import Path
 
 from maxim.exceptions import LeaderRefusal
 from maxim.mesh.bus import LocalMessageBus
+
+if TYPE_CHECKING:
+    from maxim.simulation.research_agents import PaperDraft, ReviewResult, WriterAgent
+    from maxim.simulation.research_tools import ExperimentLog
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +31,13 @@ MAX_REVISION_ROUNDS = 3
 
 @dataclass
 class ResearchResult:
-    """Result from a completed research protocol run."""
+    """Result from a completed research protocol run.
+
+    ``review_verdict`` is ``"accept"``, ``"revise"`` or ``"reject"`` (the Reviewer's), ``"no_paper"`` (the Writer
+    saved no paper, so nothing was reviewed; #1680), ``"aborted"`` (the underlying sim was not usable evidence, so
+    neither ran) or ``"not_reviewed"`` (the default before a review). ``no_paper`` and ``reject`` exit 1 from the
+    CLI (``cli.py::_research_result_exit_code``).
+    """
 
     goal: str
     experiments_count: int = 0
@@ -114,33 +124,69 @@ def _build_research_llm(language_model: str | None = None) -> Any:
 
 
 def _load_campaign_turns(campaign: str | None) -> list[dict]:
-    """The researcher's campaign turns from the campaign YAML (empty with none, or when it fails to load)."""
+    """The researcher's campaign turns (empty without a campaign), read strictly by the one scripted-turn loader,
+    ``experiment.load_campaign_turns`` (#1621): an explicit campaign that fails to load, or holds a percept that is
+    not a ``cli_input`` line, raises :class:`~maxim.exceptions.CampaignUnloadable`, so research never runs a
+    free-form sim in its place and writes a paper about a different experiment."""
+    if not campaign:
+        return []
+    from maxim.exceptions import CampaignUnloadable
+    from maxim.simulation.experiment import load_campaign_turns
     from maxim.simulation.sim_logger import display_status
 
-    campaign_turns: list[dict] = []
-    if campaign:
-        try:
-            from maxim.simulation.scenario_source import load_scenario
-            from pathlib import Path as _Path
-
-            scenario = load_scenario(_Path(campaign))
-            for p in scenario.percepts:
-                text = p.get("cli_input", "")
-                if text:
-                    campaign_turns.append(
-                        {
-                            "text": text.strip(),
-                            "phase": p.get("metadata", {}).get("phase", ""),
-                            "role": p.get("metadata", {}).get("experiment_role", ""),
-                            "tag": p.get("metadata", {}).get("scenario_tag", ""),
-                            "salience": p.get("salience", 0.8),
-                            "novelty": p.get("novelty", 0.7),
-                        }
-                    )
-            display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
-        except Exception as e:
-            logger.warning("Failed to load campaign YAML: %s", e)
+    try:
+        campaign_turns = load_campaign_turns(campaign, strict=True)
+    except (OSError, ValueError) as exc:
+        raise CampaignUnloadable(campaign=str(campaign), reason=str(exc)) from exc
+    display_status(f"Loaded {len(campaign_turns)} campaign turns from {campaign}")
     return campaign_turns
+
+
+#: ``ResearchResult.review_verdict`` when the Writer saved no paper, so nothing was reviewed (#1680).
+NO_PAPER_VERDICT = "no_paper"
+
+
+def _review_phase(
+    writer: WriterAgent,
+    draft: PaperDraft,
+    *,
+    research_llm: Any,
+    experiment_log: ExperimentLog,
+    bus: LocalMessageBus,
+    session_dir: Path,
+    goal: str,
+) -> tuple[PaperDraft, ReviewResult, int, list[str]]:
+    """Phase 3: review the paper and revise it up to ``MAX_REVISION_ROUNDS``; ``(draft, review, rounds, issues)``.
+
+    With no paper (``draft.output_path`` is None: the Writer got no text for any section) nothing is reviewed:
+    an empty draft used to be reviewed and accepted, and the run reported "accept" with no paper (#1680). The
+    verdict is then :data:`NO_PAPER_VERDICT` and ``issues`` names why.
+    """
+    from maxim.simulation.research_agents import ReviewerAgent, ReviewResult
+    from maxim.simulation.sim_logger import display_status
+
+    if draft.output_path is None:
+        cause = (
+            "no research LLM, so the Writer wrote no section"
+            if research_llm is None
+            else "the LLM returned no text for any paper section"
+        )
+        display_status(f"Phase 3 skipped: no paper ({cause})")
+        return draft, ReviewResult(verdict=NO_PAPER_VERDICT), 0, [cause]
+
+    display_status("Phase 3: Peer review...")
+    reviewer = ReviewerAgent(llm=research_llm, experiment_log=experiment_log, bus=bus, session_dir=session_dir)
+    review = reviewer.review(draft, goal)
+    revision_round = 0
+    while review.verdict == "revise" and revision_round < MAX_REVISION_ROUNDS:
+        revision_round += 1
+        display_status(f"Revision round {revision_round}/{MAX_REVISION_ROUNDS}...")
+        display_status(f"Issues: {len(review.issues)}, Requests: {len(review.revision_requests)}")
+        draft = writer.revise(review)  # the Writer revises from the feedback
+        display_status(f"Writer revised {len(review.section_feedback)} sections")
+        review = reviewer.review(draft, goal)  # the Reviewer re-evaluates
+        display_status(f"Reviewer verdict: {review.verdict} (confidence: {review.confidence:.2f})")
+    return draft, review, revision_round, review.issues
 
 
 def start_research_mode(
@@ -170,8 +216,9 @@ def start_research_mode(
     """
     from maxim.simulation.orchestrator import start_simulation_mode
     from maxim.simulation.research_tools import ExperimentLog
-    from maxim.simulation.research_agents import WriterAgent, ReviewerAgent
+    from maxim.simulation.research_agents import WriterAgent
 
+    campaign_turns = _load_campaign_turns(campaign)  # refused before any session dir or LLM (#1621)
     start_time = time.time()
     session_id = time.strftime("%Y%m%d_%H%M%S")
     # Under the data home like every other simulation report (#932): a working-directory-relative
@@ -203,22 +250,13 @@ def start_research_mode(
 
     display_status("Phase 1: Running experiments...")
 
-    # Load campaign YAML and extract percept texts for the researcher
-    campaign_turns = _load_campaign_turns(campaign)
-
-    # Build the researcher goal — for non-campaign runs only.
-    # Campaign runs bypass the orchestrator LLM entirely.
-    researcher_goal = goal
-    if not campaign_turns and campaign:
-        researcher_goal = f"{goal}\n\nCampaign file: {campaign} (failed to load — run manually with send_message)"
-
     # Run the simulation. Campaign turns are injected directly through
     # the bridge, and post-campaign analysis runs programmatically.
     # The orchestrator LLM is only used for non-campaign simulations.
     # Pass our experiment_log so the orchestrator's research tools write to
     # the same log the Writer/Reviewer will read from (D-0a fix).
     sim_result = start_simulation_mode(
-        goal=researcher_goal,
+        goal=goal,  # campaign runs bypass the orchestrator LLM; a goal run is driven by it
         mode="research",
         max_turns=max_turns,
         debug=debug,
@@ -318,32 +356,16 @@ def start_research_mode(
     sections_written = len(draft.sections)
     display_status(f"Writer completed: {sections_written} sections written")
 
-    # ── Phase 3: Reviewer ────────────────────────────────────────────────
-    display_status("Phase 3: Peer review...")
-
-    reviewer = ReviewerAgent(
-        llm=research_llm,
+    # ── Phase 3: Reviewer (none without a paper: an empty draft would be reviewed, and accepted, as one) ──
+    draft, review, revision_round, issues = _review_phase(
+        writer,
+        draft,
+        research_llm=research_llm,
         experiment_log=experiment_log,
         bus=bus,
         session_dir=session_dir,
+        goal=goal,
     )
-
-    review = reviewer.review(draft, goal)
-    revision_round = 0
-
-    # ── Revision loop ────────────────────────────────────────────────────
-    while review.verdict == "revise" and revision_round < MAX_REVISION_ROUNDS:
-        revision_round += 1
-        display_status(f"Revision round {revision_round}/{MAX_REVISION_ROUNDS}...")
-        display_status(f"Issues: {len(review.issues)}, Requests: {len(review.revision_requests)}")
-
-        # Writer revises based on feedback
-        draft = writer.revise(review)
-        display_status(f"Writer revised {len(review.section_feedback)} sections")
-
-        # Reviewer re-evaluates
-        review = reviewer.review(draft, goal)
-        display_status(f"Reviewer verdict: {review.verdict} (confidence: {review.confidence:.2f})")
 
     # ── Final report ─────────────────────────────────────────────────────
     duration = time.time() - start_time
@@ -366,15 +388,16 @@ def start_research_mode(
         finish_reason=sim_finish_reason,
     )
 
-    _persist_research_result(result, session_dir, bus, review_issues=review.issues)
+    _persist_research_result(result, session_dir, bus, review_issues=issues)
 
     # Print summary
     summary_lines = [
         "RESEARCH PROTOCOL COMPLETE",
         f"Goal: {goal}",
         f"Experiments: {exp_count}",
-        f"Paper: {draft.output_path}",
+        f"Paper: {draft.output_path or 'none'}",
         f"Verdict: {review.verdict} (confidence: {review.confidence:.2f})",
+        *([f"No paper: {issues[0]}"] if review.verdict == NO_PAPER_VERDICT else []),
         f"Revisions: {revision_round}",
         f"Duration: {duration:.1f}s",
     ]

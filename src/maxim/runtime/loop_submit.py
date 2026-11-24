@@ -10,8 +10,9 @@ request assembly, moved verbatim from the loop's body in three pieces so each fu
   and W1's grayscale-tool annotations (one kill switch, ``MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION``).
 - ``gate_submission``: is anything worth a submission? A fresh CLI percept or an escalating audio pass; then, given a
   context, ``_scan_context_inputs``: a new CLI input (voice needs a wake word, Selfy's commands are skipped), spoken
-  "maxim", a keyword or hard-override percept, a pending action follow-up (folded into the inputs and cleared, with the
-  inputs held for it under planning liveness). Nothing meaningful, or sleep without a wake keyword, drops the context;
+  "maxim", a keyword or hard-override percept or a requested plan change (``loop_perception.context_addresses_the_llm``,
+  #1185), a pending action follow-up (folded into the inputs and cleared, with the inputs held for it under planning
+  liveness). Nothing meaningful, or sleep without a wake keyword, drops the context;
   the new input is marked processed.
 
 A raise anywhere here still reaches the loop's ``except`` around the whole submit, as before. By rule (a),
@@ -40,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from maxim.runtime.loop_controller import is_unread_input
+from maxim.runtime.loop_perception import context_addresses_the_llm
 from maxim.runtime.loop_state import operational_mode
 
 # The SAME logger object as ``agent_loop.logger`` (logging returns one logger per name), so records keep
@@ -95,11 +97,11 @@ def _followup_synthetic_input(followup: Any) -> str:
     external, and so is a tool that declares ``untrusted_output`` (recalled or stored text). The query
     is quoted so it cannot shift the parser's ``']: `` split.
     """
-    from maxim.modes.definitions import NETWORK_TOOLS
+    from maxim.modes.definitions import output_is_external
     from maxim.utils.content_safety import frame_tool_output
 
     tool = followup.tool
-    external = tool in NETWORK_TOOLS or tool == "batched_exploration" or followup.untrusted_output
+    external = output_is_external(tool, untrusted_output=followup.untrusted_output)
     result = frame_tool_output(tool, followup.result or "", external=external)
     query = str(followup.original_query or "").replace("'", "\u2019")
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
@@ -166,7 +168,7 @@ def build_tick_context(
     # create a minimal context to ensure the followup gets processed.
     # This fixes the bug where search results were returned but not
     # processed because memory.build_context() returned None.
-    if ctrl.pending_action_followup and context is None:
+    if (ctrl.pending_action_followup or state.data.get("pending_modification")) and context is None:
         from maxim.agents.bus import StructuredContext
 
         context = StructuredContext(
@@ -503,19 +505,8 @@ def _scan_context_inputs(
                     # Mark voice inputs without wake word as processed
                     processed_cli_inputs.append(cli_input)
 
-    # Check for speech with maxim keyword
-    if context.detected_speech:
-        for speech in context.detected_speech:
-            if speech and "maxim" in speech.lower():
-                has_meaningful_input = True
-                break
-
-    # Check for maxim keyword in current percept
-    if context.current_percept and context.current_percept.has_maxim_keyword:
-        has_meaningful_input = True
-
-    # Check for hard override commands
-    if context.current_percept and context.current_percept.hard_override:
+    # Speech or a percept naming the agent, a hard override, or a requested change (#1185)
+    if context_addresses_the_llm(context, state):
         has_meaningful_input = True
 
     # Check for pending action followup (tools that need LLM processing)

@@ -11,21 +11,36 @@ directions of that drift:
 
 1. Structural: the exact header literals the rules depend on must
    exist in the PromptBuilder source, so a header rename fails here
-   and forces a rule update.
+   and forces a rule update; every private section is added
+   header-separate (its body cannot cut or forge its header); and every
+   header a producer emits is a known boundary, so a redacted section
+   ends at the next real section and nowhere else.
 2. Behavioral: a prompt carrying the live sensitive sections must come
    back redacted under strict/standard and intact under relaxed.
 """
 
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 import maxim.agents.prompt_builder as prompt_builder_mod
-from maxim.utils.cloud_redaction import _SECTION_RULES, CloudRedactionFilter
+from maxim.utils.cloud_redaction import (
+    _KNOWN_HEADER_LITERALS,
+    _KNOWN_HEADER_PATTERNS,
+    _SECTION_RULES,
+    CloudRedactionFilter,
+    _ends_section,
+    _rule_for,
+)
+from maxim.utils.content_safety import PLAIN_BOUNDARY_LINES, is_section_boundary_line
+
+_SRC = Path(prompt_builder_mod.__file__).resolve().parents[1]
 
 
 def _rules_match(header: str) -> bool:
-    return any(pattern.match(header.strip()) for pattern, _, _, _ in _SECTION_RULES)
+    return _rule_for(header) is not None
 
 
 def _make_filter(policy: str) -> CloudRedactionFilter:
@@ -43,9 +58,13 @@ _LIVE_SENSITIVE_HEADERS = [
     "=== PROJECT DIRECTORY (12 entries, CWD: Maxim) ===",
     "=== EXISTING WORKSPACE (1 file) ===",
     "=== EXISTING WORKSPACE (7 files) ===",
+    "=== CWD Context (read-only: Maxim) ===",
     "=== Your inner deliberation (private — not speech) ===",
     "=== Your prior reasoning ===",
     "=== Recent Decisions (Working Memory) ===",
+    "=== Inbound Messages (held until you act on them) ===",
+    "=== Tool Result (private) ===",
+    "=== Tool Result (secret) ===",
 ]
 
 # Source substrings the rules are pinned against (quote-agnostic so a
@@ -62,15 +81,15 @@ _PINNED_SOURCE_LITERALS = [
     "=== Context ===",
     "=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ===",
     "=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ===",
+    "=== CWD Context (read-only: {cwd_name}) ===",
     "=== Your inner deliberation (private — not speech) ===",
     "=== Your prior reasoning ===",
+    "=== Inbound Messages (held until you act on them) ===",
 ]
 
-# budgeter.add section names for every rule-matched section. The
-# redaction filter only sees the USER segment (the dynamic remainder);
-# a section tagged cacheable=True moves into the byte-stable prefix →
-# the system message → the rule silently no-ops again. Pinned by
-# test_sensitive_sections_are_not_cacheable below.
+# budgeter.add section names for every rule-matched section. Each must be added header-separate
+# (``header=``, ``source="data"``) and dynamic: the redaction filter only sees the USER segment, and a section tagged
+# cacheable=True moves into the byte-stable prefix → the system message → the rule silently no-ops.
 _SENSITIVE_SECTION_NAMES = frozenset(
     {
         "conversation",
@@ -83,8 +102,67 @@ _SENSITIVE_SECTION_NAMES = frozenset(
         "deliberation_transcript",
         "working_memory_thoughts",
         "reasoning_carryover",
+        "inbound_messages",
     }
 )
+
+# Modules whose text reaches a prompt the filter sees (the tool prompt's sections, the follow-up prompt, the
+# standalone exec prompt). Every header line they hold must be a known boundary.
+_PRODUCER_MODULES = [
+    "agents/prompt_builder.py",
+    "agents/llm_fallback.py",
+    "agents/context_pool.py",
+    "agents/exec_agent.py",
+    "embodiment/body.py",
+    "embodiment/naming_events.py",
+    "prompts/acting_coach.py",
+    "prompts/cluster_bias_annotation.py",
+    "prompts/grayscale_tools_annotation.py",
+    "runtime/prefetch.py",
+    "runtime/tool_dispatch.py",
+    "simulation/dm_runtime.py",
+    "utils/coding_guidelines.py",
+]
+
+
+def _add_calls(tree: ast.AST):
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add"):
+            continue
+        if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+            yield node.args[0].value, {kw.arg: kw.value for kw in node.keywords}
+
+
+def _constant_header(node: ast.expr | None) -> str | None:
+    """The value of a ``header=`` argument that names a constant (``CONVERSATION_HEADER``,
+    ``ReasoningCarryover.PROMPT_HEADER``), or None for anything else."""
+    if isinstance(node, ast.Name) and node.id.isupper():
+        return getattr(prompt_builder_mod, node.id)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return getattr(getattr(prompt_builder_mod, node.value.id), node.attr)
+    return None
+
+
+def _string_lines(source: str) -> set[str]:
+    """Every line of every string literal in ``source``. An f-string's value fields become ``1`` and a conditional
+    one (a plural ``s``) becomes empty."""
+
+    def _field(v: ast.expr) -> str:
+        if isinstance(v, ast.Constant):
+            return str(v.value)
+        assert isinstance(v, ast.FormattedValue)
+        return "" if isinstance(v.value, ast.IfExp) else "1"
+
+    lines: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            text = node.value
+        elif isinstance(node, ast.JoinedStr):
+            text = "".join(_field(v) for v in node.values)
+        else:
+            continue
+        lines.update(line.strip() for line in text.split("\n"))
+    return lines
 
 
 class TestSectionRulesPinnedToPromptBuilder:
@@ -93,55 +171,115 @@ class TestSectionRulesPinnedToPromptBuilder:
             assert _rules_match(header), f"no _SECTION_RULES pattern matches live header {header!r}"
 
     def test_pinned_literals_exist_in_prompt_builder_source(self) -> None:
-        source = Path(prompt_builder_mod.__file__).read_text()
+        source = Path(prompt_builder_mod.__file__).read_text(encoding="utf-8")
         for literal in _PINNED_SOURCE_LITERALS:
             assert literal in source, (
                 f"pinned header literal {literal} no longer in prompt_builder.py — "
                 f"update _SECTION_RULES in cloud_redaction.py and this pin together"
             )
 
-    def test_reasoning_carryover_header_pinned_in_llm_fallback_source(self) -> None:
+    def test_reasoning_carryover_header_pinned_in_llm_fallback(self) -> None:
         """The ReasoningCarryover header lives in llm_fallback.py, not
         PromptBuilder — pin it separately so a rename there also forces
         a rule update (this header was missed by the original audit for
         exactly this reason)."""
-        import maxim.agents.llm_fallback as llm_fallback_mod
+        from maxim.agents.llm_fallback import ReasoningCarryover
 
-        source = Path(llm_fallback_mod.__file__).read_text()
-        assert "=== Recent Decisions (Working Memory) ===" in source, (
-            "ReasoningCarryover header renamed in llm_fallback.py — "
-            "update _SECTION_RULES in cloud_redaction.py and this pin together"
-        )
+        assert ReasoningCarryover.PROMPT_HEADER == "=== Recent Decisions (Working Memory) ==="
+        assert _rules_match(ReasoningCarryover.PROMPT_HEADER)
 
-    def test_sensitive_sections_are_not_cacheable(self) -> None:
-        """The redaction filter runs only on the user segment (dynamic
-        remainder). A sensitive section tagged cacheable=True moves into
-        the byte-stable prefix → system message → its redaction rule
-        silently no-ops. Pin every rule-matched section as dynamic."""
-        import ast
-
-        source = Path(prompt_builder_mod.__file__).read_text()
-        tree = ast.parse(source)
+    def test_every_private_section_is_added_header_separate_and_dynamic(self) -> None:
+        """Every rule-matched section passes its header apart (``header=``) as ``source="data"``, so no rewrite of
+        its body (truncation, frame cleanup) can cut, move or delete the header, and the body cannot forge one. And
+        it is never cacheable (the system message is not redacted)."""
+        tree = ast.parse(Path(prompt_builder_mod.__file__).read_text(encoding="utf-8"))
         seen: set[str] = set()
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add"):
-                continue
-            if not (node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
-                continue
-            name = node.args[0].value
+        for name, kws in _add_calls(tree):
+            header = kws.get("header")
+            given = header is not None and not (isinstance(header, ast.Constant) and header.value is None)
+            if given:
+                assert name in _SENSITIVE_SECTION_NAMES, f"{name!r} is added header-separate but is not pinned here"
             if name not in _SENSITIVE_SECTION_NAMES:
                 continue
             seen.add(name)
-            for kw in node.keywords:
-                if kw.arg == "cacheable":
-                    assert not (isinstance(kw.value, ast.Constant) and kw.value.value is True), (
-                        f"section {name!r} is redaction-matched but tagged cacheable=True — "
-                        f"it would move into the system message where _redact_sections never runs"
-                    )
+            assert given, f"private section {name!r} is added without header= (its header is in its body)"
+            src = kws.get("source")
+            assert isinstance(src, ast.Constant) and src.value == "data", f"{name!r} must be source='data'"
+            cacheable = kws.get("cacheable")
+            assert not (isinstance(cacheable, ast.Constant) and cacheable.value is True), (
+                f"section {name!r} is redaction-matched but tagged cacheable=True — "
+                f"it would move into the system message where _redact_sections never runs"
+            )
+            value = _constant_header(header)
+            if value is not None:  # a loop variable (the manifest) is pinned by its own test below
+                assert _rules_match(value), f"{name!r}: its header {value!r} matches no rule"
         assert seen == set(_SENSITIVE_SECTION_NAMES), (
             f"budgeter.add sites not found for: {set(_SENSITIVE_SECTION_NAMES) - seen} — "
             f"section renamed? update _SENSITIVE_SECTION_NAMES and _SECTION_RULES together"
         )
+
+    def test_every_workspace_manifest_header_matches_a_rule(self, tmp_path, monkeypatch) -> None:
+        from maxim.agents.prompt_builder import build_workspace_manifest_sections
+
+        (tmp_path / "notes.txt").write_text("x")
+        ws = tmp_path / ".maxim_workspace"
+        ws.mkdir()
+        (ws / "draft.md").write_text("x")
+        for mode in ("passive", "active", "singularity"):
+            parts = build_workspace_manifest_sections(mode_name=mode, cwd=str(tmp_path))
+            assert parts, mode
+            for header, _body in parts:
+                assert _rules_match(header), f"{mode}: manifest header {header!r} matches no rule"
+
+    def test_every_producer_header_is_a_known_boundary(self) -> None:
+        """A redacted section ends only at a known boundary, so every header that can follow a private section
+        must be one, or the following section is redacted too (and a renamed one silently over-redacts)."""
+        missing: list[str] = []
+        for rel in _PRODUCER_MODULES:
+            for line in _string_lines((_SRC / rel).read_text(encoding="utf-8")):
+                if re.match(r"^=== .* ===$", line) and not _ends_section(line):
+                    missing.append(f"{rel}: {line}")
+        assert not missing, "headers no cloud_redaction boundary knows:\n" + "\n".join(sorted(missing))
+
+    def test_the_router_trailers_are_known_boundaries(self) -> None:
+        """The router's closing instructions end a private section (the last section may be private)."""
+        source = (_SRC / "models/language/router.py").read_text(encoding="utf-8")
+        for trailer in (
+            "Respond with ONLY a valid JSON object. No text before or after the JSON.",
+            "IMPORTANT: Follow the PLANNING MODE format exactly as shown above.",
+        ):
+            assert trailer in source, f"router trailer {trailer!r} changed: update PLAIN_BOUNDARY_LINES"
+            assert trailer in PLAIN_BOUNDARY_LINES and _ends_section(trailer)
+
+    def test_every_boundary_is_neutralized_inside_a_body(self) -> None:
+        """The renderer prefixes every line ``is_section_boundary_line`` accepts; every boundary the filter knows
+        must be one of those, or a body could carry it."""
+        samples = [*_KNOWN_HEADER_LITERALS, *PLAIN_BOUNDARY_LINES, *_LIVE_SENSITIVE_HEADERS]
+        for pattern in (*_KNOWN_HEADER_PATTERNS, *(rule[0] for rule in _SECTION_RULES)):
+            header_shaped = pattern.pattern.startswith("^=== ") and pattern.pattern.endswith(" ===$")
+            assert header_shaped or pattern.pattern[1:-1] in PLAIN_BOUNDARY_LINES, pattern.pattern
+        for line in samples:
+            assert is_section_boundary_line(line), line
+
+
+class TestToolSensitivity:
+    def test_every_registered_tool_is_classified(self) -> None:
+        """A new tool must be classified on purpose: unlisted names are private (fail closed), which would silently
+        redact a tool that should ship, or ship nothing a reviewer chose."""
+        from maxim.modes.definitions import REGISTERED_TOOL_NAMES
+        from maxim.utils.cloud_redaction import TOOL_SENSITIVITY
+
+        missing = sorted(set(REGISTERED_TOOL_NAMES) - set(TOOL_SENSITIVITY))
+        assert not missing, f"tools with no TOOL_SENSITIVITY entry: {missing}"
+        for name in ("batched_exploration", "web_search"):
+            assert name in TOOL_SENSITIVITY
+
+    def test_an_unlisted_tool_is_private(self) -> None:
+        from maxim.utils.cloud_redaction import tool_result_header
+
+        assert tool_result_header("sense_left_gripper") == "=== Tool Result (private) ==="
+        assert tool_result_header("") == "=== Tool Result (private) ==="
+        assert tool_result_header("internet_search") == "=== Tool Result (public) ==="
 
 
 class TestRedactionBehaviorOnLiveFormat:
@@ -161,6 +299,8 @@ class TestRedactionBehaviorOnLiveFormat:
             "SENTINEL_DELIBERATION plan to persuade the user",
             "=== Recent Decisions (Working Memory) ===",
             "- search_desk: SENTINEL_CARRYOVER the user mentioned a key [OK: found envelope]",
+            "=== Inbound Messages (held until you act on them) ===",
+            "SENTINEL_INBOUND the gate code is 1234",
             "=== Instructions ===",
             "Do the thing.",
         ]
@@ -173,9 +313,11 @@ class TestRedactionBehaviorOnLiveFormat:
         assert "SENTINEL_FILENAME" not in result.user
         assert "SENTINEL_DELIBERATION" not in result.user
         assert "SENTINEL_CARRYOVER" not in result.user
+        assert "SENTINEL_INBOUND" not in result.user
         assert "[REDACTED: memory_contents]" in result.user
         assert "[REDACTED: workspace_manifest]" in result.user
         assert "[REDACTED: inner_deliberation]" in result.user
+        assert "[REDACTED: inbound_messages]" in result.user
         # Non-sensitive sections survive.
         assert "Do the thing." in result.user
 

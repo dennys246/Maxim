@@ -12,6 +12,7 @@ import logging
 import functools
 import re
 from datetime import datetime
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
@@ -29,7 +30,15 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
-from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section
+from maxim.memory.text import frame_external, whole_frames
+from maxim.utils.cloud_redaction import text_shape, tool_result_header
+from maxim.utils.content_safety import (
+    INBOUND_WORDING,
+    frame_tool_output,
+    framed_section,
+    render_headed_section,
+    safe_tool_name,
+)
 
 if TYPE_CHECKING:
     pass
@@ -45,6 +54,27 @@ logger = logging.getLogger(__name__)
 # the dynamic segment into the ``user`` message. See
 # docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 1.
 PROMPT_SEGMENT_DELIMITER = "\x1e"
+
+
+def _no_segment_delimiter(text: str) -> str:
+    """``text`` with every segment delimiter a line break. Only the tool prompt's own join of its stable and dynamic
+    segments emits one (exactly one), so this runs on every other assembled prompt and on both segments before that
+    join: a held input, a query or a tool result cannot move text into the system message."""
+    return text.replace(PROMPT_SEGMENT_DELIMITER, "\n")
+
+
+# The headers of the private sections (the ones utils/cloud_redaction.py::_SECTION_RULES redact). Each is added
+# header-separate (``PromptBudgeter.add(header=...)``), so its body can neither cut nor forge it
+# (tests/unit/test_cloud_redaction_headers.py pins every add site).
+CONVERSATION_HEADER = "=== Conversation History ==="
+CONTEXT_POOL_HEADER = "=== Context ==="
+SPEECH_HEADER = "=== Recent Speech ==="
+RECENT_OUTCOMES_HEADER = "=== Recent Action Outcomes ==="
+BIO_ENRICHMENT_HEADER = "=== What your experience tells you about this situation ==="
+DELIBERATION_HEADER = "=== Your inner deliberation (private — not speech) ==="
+PRIOR_REASONING_HEADER = "=== Your prior reasoning ==="
+RELEVANT_MEMORIES_HEADER = "=== Relevant Memories ==="
+INBOUND_HEADER = "=== Inbound Messages (held until you act on them) ==="
 
 
 # Static block injected when sim mode is active. Extracted to a module
@@ -482,11 +512,19 @@ def has_file_tools(request: LLMRequest) -> bool:
     return any(name in FILE_TOOL_NAMES for name in request.available_tools)
 
 
-def build_workspace_manifest(
+def _header_safe(name: str) -> str:
+    """A name shown inside a header line: line breaks become spaces, so the header stays one line."""
+    from maxim.utils.content_safety import normalize_line_breaks
+
+    return normalize_line_breaks(name).replace("\n", " ")
+
+
+def build_workspace_manifest_sections(
     mode_name: str = "passive", cwd: str | None = None, *, tools: set[str] | frozenset[str] | None = None
-) -> str:
-    """Build a file manifest that adapts to the operational mode. File names are data; the RULES / PLAN FIRST lines
-    are builder text, gated on ``tools`` (#1042), so the section goes in as source="data"."""
+) -> list[tuple[str, str]]:
+    """The file manifest as (header, body) sections, adapted to the operational mode. File names are data; the
+    RULES / PLAN FIRST lines are builder text, gated on ``tools`` (#1042), so the sections go in as source="data",
+    each header-separate (they are private: utils/cloud_redaction.py ``workspace_manifest``)."""
     import os
     from maxim.utils.filesystem_policy import (
         get_effective_cwd,
@@ -497,16 +535,17 @@ def build_workspace_manifest(
     if cwd is None:
         cwd = get_effective_cwd()
     workspace = get_workspace_path(cwd)
-    cwd_name = os.path.basename(cwd) or cwd
+    cwd_name = _header_safe(os.path.basename(cwd) or cwd)
+    parts: list[tuple[str, str]] = []
     sections: list[str] = []
 
     if mode_name == "singularity":
         cwd_entries = scan_cwd_tree(cwd, max_depth=2, max_entries=30)
         n_entries = len(cwd_entries)
-        sections.append(f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ===")
+        header = f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ==="
         sections.append("You have FULL read/write access to all files below.")
         sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
-        sections.extend(cwd_entries)
+        sections.append(_listing(cwd_entries))
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             sections.append(f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files).")
@@ -522,11 +561,12 @@ def build_workspace_manifest(
             )
         if "\n" in (gated := gate_on_roster("\n".join(rules), tools)):  # a header with no rule left is dropped
             sections.append("\n" + gated)
+        parts.append((header, "\n".join(sections)))
     else:
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             n_files = len(ws_entries)
-            sections.append(f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ===")
+            header = f"=== EXISTING WORKSPACE ({n_files} file{'s' if n_files != 1 else ''}) ==="
             sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
             sections.extend(ws_entries[:15])
             if n_files > 15:
@@ -544,17 +584,24 @@ def build_workspace_manifest(
                 )
             if "\n" in (gated := gate_on_roster("\n".join(rules), tools)):
                 sections.append(gated)
+            parts.append((header, "\n".join(sections)))
 
         cwd_entries = scan_cwd_tree(cwd, max_depth=1, max_entries=10)
         if cwd_entries:
-            sections.append(f"\n=== CWD Context (read-only: {cwd_name}) ===")
             if mode_name == "active":
-                sections.append("You can READ these files and SUGGEST edits (requires approval).")
+                cwd_lines = ["You can READ these files and SUGGEST edits (requires approval)."]
             else:
-                sections.append("You can READ these files. CWD edits must be proposed as plans.")
-            sections.extend(cwd_entries)
+                cwd_lines = ["You can READ these files. CWD edits must be proposed as plans."]
+            parts.append(
+                (f"=== CWD Context (read-only: {cwd_name}) ===", "\n".join([*cwd_lines, _listing(cwd_entries)]))
+            )
 
-    return "\n".join(sections) if sections else ""
+    return parts
+
+
+def _listing(entries: list[str]) -> str:
+    """A directory listing's file names, framed external (#1519): a name is whatever whoever made the file chose."""
+    return frame_external("cwd_listing", "\n".join(entries))
 
 
 def _tool_name_re(name: str) -> re.Pattern[str]:
@@ -1026,12 +1073,40 @@ def cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
 
 def _whole_frames(text: str) -> str:
     """``text`` without any partial untrusted-content frame (Session R, rule 2): the loop stores enrichment text cut to
-    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare."""
-    if "TOOL_OUTPUT" not in text:
-        return text
-    from maxim.utils.content_safety import drop_unbalanced_frames
+    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare. The
+    label a dropped frame leaves goes too (``memory/text.py::whole_frames``, #1519)."""
+    return whole_frames(text)
 
-    return drop_unbalanced_frames(text)[0]
+
+# The label a voice-sourced request carries (#1519, owner decision 2026-11-21): it stays the turn's request, so voice
+# still commands the robot, but the model is told who it cannot be sure said it. A room-mic line naming the wake word
+# becomes a "voice" input (``embodied_runtime/input_handlers.py::_handle_transcript_record``), so anyone in the room or
+# on a speakerphone can produce one. The tool gate for such turns is pending
+# (docs/plans/voice_turn_gate_1519_approach.md).
+VOICE_REQUEST_LABEL = (
+    "[Heard on the room microphone: the speaker is unverified, and this was not typed by the operator.]\n"
+)
+
+
+def _request_source_label(request: Any) -> str:
+    """The label above the user's request, from the source the loop recorded with it (``triggering_input_source``,
+    never the text): a voice request is labelled, a typed one is not."""
+    source = str(getattr(request, "triggering_input_source", "") or "").strip().lower()
+    return VOICE_REQUEST_LABEL if source == "voice" else ""
+
+
+def _outcome_result(outcome: dict[str, Any], result: str) -> str:
+    """A recent outcome's result text. A tool's is framed as its follow-up is (#1519: the one predicate,
+    ``modes.definitions.output_is_external``, with the ``untrusted_output`` the outcome was recorded with): data,
+    never instructions. A system-written note (``loop_controller.note_system_outcome``: ``system_note``) is the
+    agent's own guidance, checked there to carry no outside text, so it is shown as written."""
+    from maxim.modes.definitions import output_is_external
+
+    if outcome.get("system_note"):
+        return result
+    tool = str(outcome.get("tool", "?"))
+    external = output_is_external(tool, untrusted_output=bool(outcome.get("untrusted_output")))
+    return frame_tool_output(tool, result, external=external)
 
 
 def _deferred_section(request: Any) -> str:
@@ -1093,8 +1168,13 @@ class PromptBuilder:
             deferred = _deferred_section(request)
             correction = build_followup_retry_correction(request)
             inbound = self._inbound_text(request)  # #1481: the follow-up bypasses the budgeter, so it states its rule
-            inbound = framed_section(inbound, wording=INBOUND_WORDING) if inbound else ""
-            return "\n\n".join(part for part in (prompt, deferred, inbound, correction) if part)
+            inbound = (
+                render_headed_section(INBOUND_HEADER, framed_section(inbound, wording=INBOUND_WORDING))
+                if inbound
+                else ""
+            )
+            parts = (prompt, deferred, inbound, correction)
+            return _no_segment_delimiter("\n\n".join(part for part in parts if part))
 
         # Check for pending user input
         user_question = ""
@@ -1134,7 +1214,9 @@ class PromptBuilder:
                 )
             if question_text:
                 # The router splits the payload at its FIRST blank line: this builder's clock line, then the question.
-                return f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
+                label = _request_source_label(request)  # a voice question is labelled here too (#1519)
+                answer_only = f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{label}{question_text}"
+                return _no_segment_delimiter(answer_only)
             return ""
 
         return self._build_tool_aware_prompt(request, question_text, date_str, time_str)
@@ -1256,10 +1338,11 @@ class PromptBuilder:
             SectionPriority.IMPORTANT,
             source="data",
             frame_wording=INBOUND_WORDING,
+            header=INBOUND_HEADER,
         )
         # #1451: a re-plan carries every input held behind the answer it set aside. CRITICAL: the operator's words
         # are why the request exists, and they are already marked read.
-        budgeter.add("held_inputs", _deferred_section(request), SectionPriority.CRITICAL, source="data")
+        budgeter.add("held_inputs", _deferred_section(request), SectionPriority.CRITICAL, source="data", header=None)
         self._add_deliberation_transcript_section(budgeter, request.context, response_reserve)
         self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context, tools=set(request.available_tools))
@@ -1289,6 +1372,7 @@ class PromptBuilder:
                     [d[:80] for d in request.deferred_inputs],
                 )
 
+        stable_text, dynamic_text = _no_segment_delimiter(stable_text), _no_segment_delimiter(dynamic_text)
         return f"TOOL_PROMPT|{stable_text}{PROMPT_SEGMENT_DELIMITER}{dynamic_text}"
 
     def _inbound_text(self, request: LLMRequest) -> str:
@@ -1296,7 +1380,8 @@ class PromptBuilder:
         (owner decision 2026-10-28). A message that does not fit stays held for the next prompt; a first message larger
         than the cap is truncated to fit, never skipped (delta1 N5). The alias sits in the frame header (``tool=``), so
         a body line cannot impersonate the sender (delta B3). Records each frame's nonce on the request; the worker
-        keeps the ids whose frame reaches the text sent whole. Empty when nothing is held, so the prompt is unchanged."""
+        keeps the ids whose frame reaches the text sent whole. Empty when nothing is held, so the prompt is unchanged.
+        The section's BODY: its header (``INBOUND_HEADER``) is rendered apart, and counted in the cap here."""
         import secrets
 
         feed = request.inbound_feed
@@ -1307,15 +1392,15 @@ class PromptBuilder:
             return ""
         cap = max(1, self._n_ctx // 10)
         counter = self._token_counter
-        lines = ["=== Inbound Messages (held until you act on them) ==="]
-        used = counter.count_tokens(lines[0])
+        lines: list[str] = []
+        used = counter.count_tokens(INBOUND_HEADER)
         for entry in entries:
             nonce = secrets.token_hex(4)
             label = f"comms:{entry.channel}:{entry.alias}"
             frame = frame_tool_output(label, entry.content, external=True, nonce=nonce)
             tokens = counter.count_tokens(frame)
             if used + tokens > cap:
-                if len(lines) > 1:
+                if lines:
                     break
                 keep = max(1, int(len(entry.content) * (cap - used) / max(tokens, 1)) - 40)
                 while True:  # shrink until the frame fits (the estimate can overshoot: code review E-NIT3)
@@ -1329,7 +1414,7 @@ class PromptBuilder:
             lines.append(frame)
             used += tokens
             request.inbound_frame_ids[nonce] = entry.id
-        return "\n".join(lines) if len(lines) > 1 else ""
+        return "\n".join(lines)
 
     # ── _build_tool_aware_prompt section helpers ──────────────────────────
 
@@ -1355,9 +1440,10 @@ class PromptBuilder:
         if question_text:
             budgeter.add(
                 "user_request",
-                f'=== User Request ===\n"{_defanged(question_text)}"',
+                f'=== User Request ===\n{_request_source_label(request)}"{_defanged(question_text)}"',
                 SectionPriority.MANDATORY,
                 source="data",
+                header=None,
             )
 
     def _add_critical_sections(
@@ -1388,6 +1474,7 @@ class PromptBuilder:
                 build_modification_section(request.pending_modification),
                 SectionPriority.CRITICAL,
                 source="data",
+                header=None,
             )
         budgeter.add(
             "identity",
@@ -1424,6 +1511,7 @@ class PromptBuilder:
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                 source="data",
+                header=None,
             )
             if background:
                 bg_section = build_tools_section_filtered(request, background, mode_name)
@@ -1440,6 +1528,7 @@ class PromptBuilder:
                     min_tokens=50,
                     truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                     source="data",
+                    header=None,
                 )
         else:
             # Unfiltered manifest (autonomous modes incl. cradle). The scene
@@ -1464,6 +1553,7 @@ class PromptBuilder:
                 cacheable=True,
                 phase_scoped=True,
                 source="data",
+                header=None,
             )
 
         # EXPERIMENTAL — hallucination-hint section (empty when feature off
@@ -1475,6 +1565,7 @@ class PromptBuilder:
                 failed_section,
                 SectionPriority.CRITICAL,
                 source="data",
+                header=None,
             )
         planning_correction = build_planning_correction(request)
         if planning_correction:  # a retry after the model's own mistake (narrator reliability)
@@ -1490,21 +1581,24 @@ class PromptBuilder:
         # file tool — an embodied DM/cradle AUT, a sandboxed console agent —
         # gets neither: the manifest is a per-turn cache invalidator (it
         # re-scans the tree) and both are pure noise to a body in a world.
-        workspace_manifest = (
-            build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd, tools=set(request.available_tools))
+        manifest_parts = (
+            build_workspace_manifest_sections(
+                mode_name=mode_name, cwd=effective_cwd, tools=set(request.available_tools)
+            )
             if has_file_tools(request)
-            else ""
+            else []
         )
-        if workspace_manifest:
-            is_singularity = mode_name == "singularity"
+        is_singularity = mode_name == "singularity"
+        for manifest_header, manifest_body in manifest_parts:
             budgeter.add(
                 "workspace_manifest",
-                workspace_manifest,
+                manifest_body,
                 SectionPriority.CRITICAL,
                 truncatable=is_singularity,
                 min_tokens=80 if is_singularity else 0,
                 truncate_fn=((lambda c, m: _truncate_manifest(c, m, counter)) if is_singularity else None),
                 source="data",
+                header=manifest_header,
             )
 
         if is_rt and "internet_search" in request.available_tools:  # a hint names only a tool the agent has
@@ -1585,6 +1679,7 @@ class PromptBuilder:
                 coach_text,
                 SectionPriority.CRITICAL,
                 source="data",
+                header=None,
             )
 
     @staticmethod
@@ -1612,6 +1707,7 @@ class PromptBuilder:
                 SectionPriority.IMPORTANT,
                 cacheable=True,
                 source="data",
+                header=None,
             )
 
     @staticmethod
@@ -1656,6 +1752,7 @@ class PromptBuilder:
                 text,
                 SectionPriority.IMPORTANT,
                 source="data",
+                header=None,
             )
 
     @staticmethod
@@ -1694,6 +1791,7 @@ class PromptBuilder:
                 text,
                 SectionPriority.IMPORTANT,
                 source="data",
+                header=None,
             )
 
     def _add_guidance_sections(
@@ -1755,23 +1853,25 @@ class PromptBuilder:
             conv_text = _compact_conversation(request.conversation_history_text, max_conv_turns)
             budgeter.add(
                 "conversation",
-                "=== Conversation History ===\n" + conv_text,
+                conv_text,
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_conversation(c, m, counter),
                 source="data",
+                header=CONVERSATION_HEADER,
             )
 
         if request.context_pool_text:
             budgeter.add(
                 "context_pool",
-                "=== Context ===\n" + request.context_pool_text,
+                request.context_pool_text,
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=30,
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
                 source="data",
+                header=CONTEXT_POOL_HEADER,
             )
 
         if request.protocol_context:
@@ -1780,9 +1880,10 @@ class PromptBuilder:
                 "=== Active Protocols ===\n" + request.protocol_context,
                 SectionPriority.IMPORTANT,
                 source="data",
+                header=None,
             )
 
-        carryover_text = self._reasoning_carryover.get_prompt_text()
+        carryover_text = self._reasoning_carryover.get_prompt_body()
         if carryover_text:
             budgeter.add(
                 "reasoning_carryover",
@@ -1792,6 +1893,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: _truncate_reasoning_carryover(c, m, counter),
                 source="data",
+                header=ReasoningCarryover.PROMPT_HEADER,
             )
 
         if request.prefetch_context:
@@ -1819,6 +1921,7 @@ class PromptBuilder:
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_context_pool(c, m, counter),
                 source="data",
+                header=None,
             )
 
         # Coding guidelines: prefer the user's question text, fall back to
@@ -1838,7 +1941,12 @@ class PromptBuilder:
         # Foundational (Constitution/AGENTS, session-cached) and the mode's
         # static context_prompt are session-stable → cacheable prefix.
         budgeter.add(
-            "foundational", _load_foundational_context(), SectionPriority.IMPORTANT, cacheable=True, source="data"
+            "foundational",
+            _load_foundational_context(),
+            SectionPriority.IMPORTANT,
+            cacheable=True,
+            source="data",
+            header=None,
         )
         if request.mode.context_prompt:
             budgeter.add(
@@ -1860,13 +1968,13 @@ class PromptBuilder:
         if context.current_percept:
             obs_text = build_observation_section(context.current_percept)
             if obs_text:
-                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT, source="data")
+                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT, source="data", header=None)
 
         if context.detected_speech:
-            speech_lines = ["=== Recent Speech ==="]
-            for speech in context.detected_speech[-3:]:
-                speech_lines.append(f'- "{speech[:100]}"')
-            budgeter.add("speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE, source="data")
+            speech_lines = [f'- "{speech[:100]}"' for speech in context.detected_speech[-3:]]
+            budgeter.add(
+                "speech", "\n".join(speech_lines), SectionPriority.NICE_TO_HAVE, source="data", header=SPEECH_HEADER
+            )
 
         if request.agent_states:
             state_lines = ["=== Agent States ==="]
@@ -1875,20 +1983,30 @@ class PromptBuilder:
                 agent_state = state.get("state", "unknown")
                 goal = state.get("goal", "")
                 state_lines.append(f"- {agent_name}: {agent_state}" + (f" (goal: {goal})" if goal else ""))
-            budgeter.add("agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE, source="data")
+            budgeter.add(
+                "agent_states", "\n".join(state_lines), SectionPriority.NICE_TO_HAVE, source="data", header=None
+            )
 
         if request.recent_outcomes:
-            outcome_lines = ["=== Recent Action Outcomes ==="]
+            outcome_lines: list[str] = []
             for outcome in request.recent_outcomes[-3:]:
-                tool = outcome.get("tool", "?")
+                tool = safe_tool_name(outcome.get("tool", "?"))  # a model-proposed name, cleaned (#1519)
                 success = "succeeded" if outcome.get("success") else "failed"
-                result = outcome.get("result", "")[:50] if outcome.get("result") else ""
-                outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
-            budgeter.add("recent_outcomes", "\n".join(outcome_lines), SectionPriority.IMPORTANT, source="data")
+                result = str(outcome.get("result") or "")[:50]
+                outcome_lines.append(
+                    f"- {tool}: {success}" + (f" ({_outcome_result(outcome, result)})" if result else "")
+                )
+            budgeter.add(
+                "recent_outcomes",
+                "\n".join(outcome_lines),
+                SectionPriority.IMPORTANT,
+                source="data",
+                header=RECENT_OUTCOMES_HEADER,
+            )
 
         # Body state (interoception — always present when embodied)
         if context.body_state:
-            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL, source="data")
+            budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL, source="data", header=None)
 
         # Bio-enrichment (L1): focused bio-system associations for current percept.
         # Suppressed when a deliberation transcript is present — the current
@@ -1898,12 +2016,13 @@ class PromptBuilder:
         if context.bio_enrichment_context and not has_transcript:
             budgeter.add(
                 "bio_enrichment",
-                f"=== What your experience tells you about this situation ===\n{context.bio_enrichment_context}",
+                context.bio_enrichment_context,
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 15 - 1)]),
                 source="data",
+                header=BIO_ENRICHMENT_HEADER,
             )
 
         # Auto-sense: passive perception of surroundings + body state.
@@ -1918,6 +2037,7 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
                 source="data",
+                header=None,
             )
 
     def _add_deliberation_transcript_section(
@@ -1943,11 +2063,11 @@ class PromptBuilder:
         if max_tokens < 50:
             return
 
-        lines = ["=== Your inner deliberation (private — not speech) ==="]
+        lines: list[str] = []
         for i, entry in enumerate(transcript, 1):
             lines.append(f"\n[Cycle {i}]")
             lines.append(_whole_frames(entry))  # per item (rule 2): the loop stores cut enrichment text here
-        text = "\n".join(lines)
+        text = "\n".join(lines)  # the body: starts with "\n[Cycle 1]", so parts[0] below is "" (no header)
 
         def _truncate_transcript(content: str, max_tok: int) -> str:
             """Drop oldest cycle entries first."""
@@ -1955,7 +2075,7 @@ class PromptBuilder:
             if len(parts) <= 2:
                 return content[: max_tok * 4]  # rough char approx
             while len(parts) > 2 and counter.count_tokens(content) > max_tok:
-                parts.pop(1)  # drop oldest (index 1 — index 0 is header)
+                parts.pop(1)  # drop oldest (index 1 — index 0 is the empty text before the first cycle)
                 content = parts[0] + "\n[Cycle " + "\n[Cycle ".join(parts[1:])
             return content
 
@@ -1967,6 +2087,7 @@ class PromptBuilder:
             min_tokens=50,
             truncate_fn=_truncate_transcript,
             source="data",
+            header=DELIBERATION_HEADER,
         )
 
     @staticmethod
@@ -1991,13 +2112,13 @@ class PromptBuilder:
         thoughts = getattr(context, "working_memory_thoughts", None)
         if not thoughts:
             return
-        lines = ["=== Your prior reasoning ==="]
+        lines: list[str] = []
         for thought in thoughts[-6:]:  # Last 6 entries (covers 2 full 3-cycle deliberations)
             # Per item (rule 2): a thought cut through a recalled frame loses the partial frame, not its neighbours.
             thought = _whole_frames(thought[:200])
             if thought.strip():
                 lines.append(f"- {thought}")
-        if len(lines) == 1:
+        if not lines:
             return
         budgeter.add(
             "working_memory_thoughts",
@@ -2005,8 +2126,26 @@ class PromptBuilder:
             SectionPriority.IMPORTANT,
             truncatable=True,
             min_tokens=30,
-            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 20 - 1)]),
             source="data",
+            header=PRIOR_REASONING_HEADER,
+        )
+
+    @staticmethod
+    def _add_relevant_memories_section(budgeter: PromptBudgeter, context: Any) -> None:
+        """Episodic recalls, a private section (header-separate), each recalled summary framed external
+        (#1519). Dormant with ``_add_memory_sections``."""
+        if not context.relevant_memories:
+            return
+        budgeter.add(
+            "relevant_memories",
+            _render_relevant_memories(context.relevant_memories),
+            SectionPriority.IMPORTANT,
+            truncatable=True,
+            min_tokens=50,
+            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(1, m // 20 - 1)]),
+            source="data",
+            header=RELEVANT_MEMORIES_HEADER,
         )
 
     @staticmethod
@@ -2017,171 +2156,29 @@ class PromptBuilder:
         tools: set[str],
     ) -> None:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
-        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845)."""
-        if context.relevant_memories:
-            mem_lines = ["=== Relevant Memories ==="]
-            for mem in context.relevant_memories[:8]:
-                content = mem.get("content", {})
-                source = mem.get("source", "episodic")
-                salience = mem.get("salience", 0.0)
-                parts = []
-                if content.get("goal"):
-                    parts.append(f"goal: {content['goal']}")
-                if content.get("action"):
-                    parts.append(f"action: {content['action']}")
-                if content.get("success") is not None:
-                    parts.append("succeeded" if content["success"] else "failed")
-                if content.get("transcript"):
-                    parts.append(f'"{content["transcript"][:80]}"')
-                summary = ", ".join(parts) if parts else str(content)[:80]
-                mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
-                if mem.get("predictions"):
-                    for pred in mem["predictions"][:2]:
-                        pred_tool = pred.get("tool", "?")
-                        pred_success = pred.get("success", "?")
-                        pred_conf = pred.get("confidence", 0)
-                        mem_lines.append(
-                            f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})"
-                        )
-            budgeter.add(
-                "relevant_memories",
-                "\n".join(mem_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=50,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
-                source="data",
-            )
-
-        if context.concept_context:
-            concept_lines = ["=== Active Concepts ==="]
-            for concept in context.concept_context[:5]:
-                name = concept.get("name", "?")
-                category = concept.get("category", "?")
-                confidence = concept.get("confidence", 0)
-                episodes = concept.get("episode_count", 0)
-                concept_lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
-                for rel in concept.get("relationships", [])[:2]:
-                    concept_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
-            budgeter.add(
-                "concept_context",
-                "\n".join(concept_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.knowledge_context:
-            knowledge_lines = ["=== Semantic Knowledge ==="]
-            for entry in context.knowledge_context[:5]:
-                name = entry.get("concept_name", "?")
-                definition = entry.get("definition", "")
-                layer = entry.get("source_layer", "?")
-                conf = entry.get("confidence", 0)
-                knowledge_lines.append(f"- {name} ({layer}, confidence={conf:.2f}): {definition}")
-                for rel in entry.get("relationships", [])[:2]:
-                    knowledge_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
-            budgeter.add(
-                "knowledge_context",
-                "\n".join(knowledge_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.causal_context:
-            causal_lines = ["=== Causal Predictions (learned from experience) ==="]
-            for pred in context.causal_context[:5]:
-                valence = pred.get("valence", "neutral")
-                conf = pred.get("confidence", 0)
-                ctx_match = pred.get("context_match", 0)
-                causal_lines.append(
-                    f"- {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})"
+        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845).
+        Every stored text these sections show (the ``_render_*`` helpers) is framed external, so a revival
+        cannot reopen the stored-injection channel (#1519, #1516 F15)."""
+        PromptBuilder._add_relevant_memories_section(budgeter, context)
+        important, critical = SectionPriority.IMPORTANT, SectionPriority.CRITICAL
+        for name, items, render, priority, min_tok, cut in (
+            ("concept_context", context.concept_context, _render_concepts, important, 30, _lines_cut(15)),
+            ("knowledge_context", context.knowledge_context, _render_knowledge, important, 30, _lines_cut(15)),
+            ("causal_context", context.causal_context, _render_causal, critical, 30, _lines_cut(15)),
+            ("valence_context", context.valence_context, _render_valence, critical, 30, _lines_cut(15)),
+            ("motor_programs", context.motor_programs, _render_motor_programs, important, 30, _truncate_motor_programs),
+        ):
+            if items:  # each renders its own ``=== X ===`` line in its body: none is a private section (#1739)
+                budgeter.add(
+                    name,
+                    render(items),
+                    priority,
+                    truncatable=True,
+                    min_tokens=min_tok,
+                    truncate_fn=cut,
+                    source="data",
+                    header=None,
                 )
-            budgeter.add(
-                "causal_context",
-                "\n".join(causal_lines),
-                SectionPriority.CRITICAL,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.valence_context:
-            valence_lines = ["=== Learned Associations (from experience) ==="]
-            for entry in context.valence_context[:5]:
-                concept = entry.get("concept", "?")
-                valence = entry.get("valence", 0.0)
-                if valence < -0.1:
-                    sentiment = "negative (associated with pain/failure)"
-                elif valence > 0.1:
-                    sentiment = "positive (associated with success/benefit)"
-                else:
-                    sentiment = "neutral"
-                assoc = ", ".join(entry.get("associations", [])[:3])
-                valence_lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {assoc})")
-            budgeter.add(
-                "valence_context",
-                "\n".join(valence_lines),
-                SectionPriority.CRITICAL,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-            )
-
-        if context.motor_programs:
-            motor_lines = ["=== Available Motor Programs ==="]
-            for prog in context.motor_programs[:8]:
-                name = prog.get("name", "?")
-                conf = prog.get("confidence", 0)
-                rate = prog.get("success_rate", 0)
-                execs = prog.get("executions", 0)
-                steps_str = " → ".join(prog.get("steps", [])[:5])
-                motor_lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
-                if steps_str:
-                    motor_lines.append(f"  Steps: {steps_str}")
-                risks = prog.get("risks", [])
-                if risks:
-                    motor_lines.append(f"  Known risks: {', '.join(risks)}")
-
-            def _truncate_motor_programs(content: str, max_tok: int) -> str:
-                """Drop full motor program entries (name + steps + risks) from
-                the tail. The previous implementation sliced by line count,
-                which left partial entries (e.g. a Steps line with no name)
-                because each entry spans 1-3 lines. Pure function — uses the
-                conservative ~4-chars-per-token estimate (same as the
-                deliberation-transcript truncator) since the static-method
-                context has no token counter in scope.
-                """
-                lines = content.split("\n")
-                target_chars = max_tok * 4
-                while len("\n".join(lines)) > target_chars:
-                    cut = None
-                    for i in range(len(lines) - 1, 0, -1):
-                        if lines[i].startswith("- "):
-                            cut = i
-                            break
-                    if cut is None:
-                        break  # only header left, can't drop more
-                    lines = lines[:cut]
-                return "\n".join(lines)
-
-            budgeter.add(
-                "motor_programs",
-                "\n".join(motor_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=_truncate_motor_programs,
-                source="data",
-            )
 
         if context.statistical_context and context.active_pattern_count > 0:
             stat_lines = [
@@ -2208,7 +2205,9 @@ class PromptBuilder:
             if "internet_search" in tools:
                 stat_lines.append("Use 'internet_search' to research unfamiliar patterns or analysis techniques.")
             # Data (the patterns) with builder lines gated inline above.
-            budgeter.add("statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE, source="data")
+            budgeter.add(
+                "statistical_patterns", "\n".join(stat_lines), SectionPriority.NICE_TO_HAVE, source="data", header=None
+            )
 
     def _build_followup_prompt(self, followup_input: str, *, tools: set[str] | None = None) -> str:
         """Build a prompt to handle action followups based on followup_type. With ``tools`` (the agent's roster,
@@ -2249,16 +2248,12 @@ class PromptBuilder:
                 if tools is not None and "internet_search" not in tools:
                     followup_type, tool_name = "process", ""  # not this agent's search: "your last tool"
             else:
-                logger.warning(
-                    f"Could not parse followup input format, using fallback. Input starts with: {followup_input[:100]}"
-                )
-                followup_type = "engage"
-                tool_name = "internet_search"
-                mode_name = "live"
+                # Shape only, never content: the input can be a PRIVATE or SECRET tool's output (#1751).
+                logger.warning("Could not parse followup input format, using fallback: %s", text_shape(followup_input))
+                # Not known to be a search: "your last tool", whose result is private (cloud_redaction fails closed).
+                followup_type, tool_name, mode_name = "process", "", "live"
                 original_query = ""
                 result = followup_input
-                if tools is not None and "internet_search" not in tools:
-                    followup_type, tool_name = "process", ""  # not a search: "your last tool"
 
         # The query is the user's own words: it never carries a frame marker (Session R, N3).
         original_query = _defanged(original_query)
@@ -2268,23 +2263,27 @@ class PromptBuilder:
 
         if "<<TOOL_OUTPUT id=" in result:  # only where there IS a frame (not the legacy branches)
             result = f"{TOOL_OUTPUT_RULE}\n{result}"
+        # Every template shows the result as a section of its own, headed by its tool's sensitivity
+        # (utils/cloud_redaction.py ``tool_result_header``: an unknown tool, or "" for "your last tool", is private).
+        section = render_headed_section(tool_result_header(tool_name), result)
 
         if followup_type == "refused":
-            return self._build_refused_prompt(tool_name, original_query, result, tools=tools)
+            return self._build_refused_prompt(tool_name, original_query, section, tools=tools)
         if followup_type == "process" or not respond_ok:
-            return self._build_process_prompt(tool_name, original_query, result, tools=tools)
+            return self._build_process_prompt(tool_name, original_query, section, tools=tools)
         elif followup_type == "respond":
-            return self._build_respond_prompt(tool_name, original_query, result)
+            return self._build_respond_prompt(tool_name, original_query, section)
         elif followup_type == "engage":
-            return self._build_engage_prompt(tool_name, original_query, result, mode_name)
+            return self._build_engage_prompt(tool_name, original_query, section, mode_name)
         else:
-            return self._build_respond_prompt(tool_name, original_query, result)
+            return self._build_respond_prompt(tool_name, original_query, section)
 
     def _build_process_prompt(
-        self, tool_name: str, query: str, result: str, *, tools: set[str] | frozenset[str] | None = None
+        self, tool_name: str, query: str, section: str, *, tools: set[str] | frozenset[str] | None = None
     ) -> str:
-        """The "choose your next tool" follow-up. With ``tools`` (#1042): its instructions name only those tools and
-        it ends with the agent's own tool list; ``tool_name`` "" is an unparseable follow-up ("your last tool")."""
+        """The "choose your next tool" follow-up, around the result's rendered ``section``. With ``tools`` (#1042): its
+        instructions name only those tools and it ends with the agent's own tool list; ``tool_name`` "" is an
+        unparseable follow-up ("your last tool")."""
         respond_ok = tools is None or "respond" in tools
         done = "use 'respond' to inform the user" if respond_ok else "say so with one of your tools (listed below)"
         done_batched = "Use 'respond'" if respond_ok else "Say so with one of your tools (listed below)"
@@ -2312,7 +2311,7 @@ You now have complete context from the batched exploration. Based on ALL the res
 
 Original request: "{query}"
 
-{result}
+{section}
 
 {batched_instructions}
 
@@ -2324,7 +2323,7 @@ Respond with JSON:
 Original request: "{query}"
 
 Results from {source}:
-{result}
+{section}
 
 === Instructions ===
 Based on these results, determine your next action:
@@ -2339,7 +2338,7 @@ Respond with JSON:
         return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
 
     def _build_refused_prompt(
-        self, tool_name: str, query: str, result: str, *, tools: set[str] | frozenset[str] | None = None
+        self, tool_name: str, query: str, section: str, *, tools: set[str] | frozenset[str] | None = None
     ) -> str:
         """The follow-up after a hard rejection (#1413): the tool did NOT run, and the instruction to choose another
         way is stated here, outside the tool-output frame (a framed instruction is data the model is told to ignore).
@@ -2356,7 +2355,7 @@ Respond with JSON:
 Original request: "{query}"
 
 The refusal:
-{result}
+{section}
 
 === Instructions ===
 Do not propose {refused} again. Either choose one of your allowed tools that can answer the request, or {reply}.
@@ -2366,13 +2365,13 @@ Respond with JSON:
         own = build_own_tools_section(tools) if tools is not None else ""
         return f"TOOL_PROMPT|{prompt}\n\n{own}" if own else f"TOOL_PROMPT|{prompt}"
 
-    def _build_respond_prompt(self, tool_name: str, query: str, result: str) -> str:
+    def _build_respond_prompt(self, tool_name: str, query: str, section: str) -> str:
         prompt = f"""You completed an internet search. Synthesize the results into a helpful response.
 
 Original user request: "{query}"
 
 Search Results:
-{result}
+{section}
 
 === Instructions ===
 Extract the most relevant information from the search results and answer the user's question clearly.
@@ -2386,7 +2385,7 @@ Your response (use tool_name "respond"):"""
 
         return f"TOOL_PROMPT|{prompt}"
 
-    def _build_engage_prompt(self, tool_name: str, query: str, result: str, mode_name: str) -> str:
+    def _build_engage_prompt(self, tool_name: str, query: str, section: str, mode_name: str) -> str:
         now = datetime.now()
         date_str = now.strftime("%A, %B %d, %Y")
         time_str = now.strftime("%I:%M %p")
@@ -2410,7 +2409,7 @@ CURRENT DATE: {date_str} at {time_str}
 Original user request: "{query}"
 
 Search Results:
-{result}
+{section}
 
 === Instructions ===
 1. Extract the relevant information from the search results above
@@ -2426,3 +2425,131 @@ Example JSON format (COPY THIS STRUCTURE EXACTLY):
 Your response (use tool_name "respond"):"""
 
         return f"TOOL_PROMPT|{prompt}"
+
+
+# ── PromptBuilder._add_memory_sections' renderers (Dormant since 2026-10-06, #845) ──────────────────────────────────
+# Each shows a stored record's free text (what an episode heard, its goal and action, a concept's or association's
+# name, a definition, a causal event and outcome, a motor program's name, steps and risks) only framed external
+# (#1519, #1516 F15): the numbers and labels beside it are the agent's own.
+
+
+def _lines_cut(per_line: int) -> Callable[[str, int], str]:
+    return lambda c, m: "\n".join(c.split("\n")[: max(2, m // per_line)])
+
+
+def _render_relevant_memories(memories: list[Any]) -> str:
+    """The recalled memories, as the section body: the header (``RELEVANT_MEMORIES_HEADER``) is passed apart."""
+    lines: list[str] = []
+    for mem in memories[:8]:
+        content = mem.get("content", {})
+        source = mem.get("source", "episodic")
+        salience = mem.get("salience", 0.0)
+        parts = []
+        if content.get("goal"):
+            parts.append(f"goal: {content['goal']}")
+        if content.get("action"):
+            parts.append(f"action: {content['action']}")
+        if content.get("success") is not None:
+            parts.append("succeeded" if content["success"] else "failed")
+        if content.get("transcript"):
+            parts.append(f'"{content["transcript"][:80]}"')
+        summary = ", ".join(parts) if parts else str(content)[:80]
+        lines.append(f"- [{source}, salience={salience:.2f}] {frame_external('recalled_memory', summary)}")
+        for pred in (mem.get("predictions") or [])[:2]:
+            pred_tool = pred.get("tool", "?")
+            pred_success = pred.get("success", "?")
+            pred_conf = pred.get("confidence", 0)
+            lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
+    return "\n".join(lines)
+
+
+def _render_relations(entry: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"  → {rel.get('type', '?')} {frame_external(label, str(rel.get('target', '?')))}"
+        for rel in entry.get("relationships", [])[:2]
+    ]
+
+
+def _render_concepts(concepts: list[Any]) -> str:
+    lines = ["=== Active Concepts ==="]
+    for concept in concepts[:5]:
+        name = frame_external("recalled_concept", str(concept.get("name", "?")))
+        category = concept.get("category", "?")
+        confidence = concept.get("confidence", 0)
+        episodes = concept.get("episode_count", 0)
+        lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
+        lines.extend(_render_relations(concept, "recalled_concept"))
+    return "\n".join(lines)
+
+
+def _render_knowledge(entries: list[Any]) -> str:
+    lines = ["=== Semantic Knowledge ==="]
+    for entry in entries[:5]:
+        text = frame_external("recalled_knowledge", f"{entry.get('concept_name', '?')}: {entry.get('definition', '')}")
+        lines.append(f"- {text} ({entry.get('source_layer', '?')}, confidence={entry.get('confidence', 0):.2f})")
+        lines.extend(_render_relations(entry, "recalled_knowledge"))
+    return "\n".join(lines)
+
+
+def _render_causal(predictions: list[Any]) -> str:
+    lines = ["=== Causal Predictions (learned from experience) ==="]
+    for pred in predictions[:5]:
+        valence = pred.get("valence", "neutral")
+        conf = pred.get("confidence", 0)
+        ctx_match = pred.get("context_match", 0)
+        what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+        lines.append(f"- {what} (valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})")
+    return "\n".join(lines)
+
+
+def _render_valence(entries: list[Any]) -> str:
+    lines = ["=== Learned Associations (from experience) ==="]
+    for entry in entries[:5]:
+        valence = entry.get("valence", 0.0)
+        if valence < -0.1:
+            sentiment = "negative (associated with pain/failure)"
+        elif valence > 0.1:
+            sentiment = "positive (associated with success/benefit)"
+        else:
+            sentiment = "neutral"
+        concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+        assoc = ", ".join(str(a) for a in entry.get("associations", [])[:3])
+        related = frame_external("recalled_association", assoc) if assoc else ""
+        lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {related})")
+    return "\n".join(lines)
+
+
+def _render_motor_programs(programs: list[Any]) -> str:
+    lines = ["=== Available Motor Programs ==="]
+    for prog in programs[:8]:
+        conf = prog.get("confidence", 0)
+        rate = prog.get("success_rate", 0)
+        execs = prog.get("executions", 0)
+        name = frame_external("motor_program", str(prog.get("name", "?")))
+        lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
+        steps_str = " → ".join(str(st) for st in prog.get("steps", [])[:5])
+        if steps_str:
+            lines.append(f"  Steps: {frame_external('motor_program', steps_str)}")
+        risks = prog.get("risks", [])
+        if risks:
+            lines.append(f"  Known risks: {frame_external('motor_program', ', '.join(str(r) for r in risks))}")
+    return "\n".join(lines)
+
+
+def _truncate_motor_programs(content: str, max_tok: int) -> str:
+    """Drop full motor program entries (name + steps + risks) from the tail. Slicing by line count left partial
+    entries (e.g. a Steps line with no name), because each entry spans several lines. Pure function: uses the
+    conservative ~4-chars-per-token estimate (same as the deliberation-transcript truncator), since there is no
+    token counter in scope. A cut through a frame is dropped by the budgeter (rule 2)."""
+    lines = content.split("\n")
+    target_chars = max_tok * 4
+    while len("\n".join(lines)) > target_chars:
+        cut = None
+        for i in range(len(lines) - 1, 0, -1):
+            if lines[i].startswith("- "):
+                cut = i
+                break
+        if cut is None:
+            break  # only header left, can't drop more
+        lines = lines[:cut]
+    return "\n".join(lines)

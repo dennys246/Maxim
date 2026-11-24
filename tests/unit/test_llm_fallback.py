@@ -240,20 +240,20 @@ class TestReasoningCarryover:
         rc.record("old", "old_reason", True, "old_result")
         rc.record("mid", "mid_reason", True, "mid_result")
         rc.record("new", "new_reason", True, "new_result")
-        text = rc.get_prompt_text()
+        text = rc.get_prompt_body()
         assert "old" not in text
         assert "mid" in text
         assert "new" in text
 
-    def test_get_prompt_text_empty(self):
+    def test_get_prompt_body_empty(self):
         rc = ReasoningCarryover()
-        assert rc.get_prompt_text() == ""
+        assert rc.get_prompt_body() == ""
 
-    def test_get_prompt_text_format(self):
+    def test_get_prompt_body_format(self):
         rc = ReasoningCarryover()
         rc.record("search", "Looking", True, "Found items")
-        text = rc.get_prompt_text()
-        assert text.startswith("=== Recent Decisions (Working Memory) ===")
+        text = rc.get_prompt_body()
+        assert rc.PROMPT_HEADER == "=== Recent Decisions (Working Memory) ==="
         assert "- search: Looking [OK: Found items]" in text
 
     def test_clear(self):
@@ -262,7 +262,7 @@ class TestReasoningCarryover:
         assert len(rc) == 1
         rc.clear()
         assert len(rc) == 0
-        assert rc.get_prompt_text() == ""
+        assert rc.get_prompt_body() == ""
 
     def test_thread_safety(self):
         rc = ReasoningCarryover(max_entries=100)

@@ -381,7 +381,8 @@ def assert_this_checkout() -> None:
 
 # ── the fake LLM ──────────────────────────────────────────────────────────
 
-_USER_REQUEST = re.compile(r"=== User Request ===\n\"(.*?)\"\n\n=== ", re.S)
+# A voice request carries ``prompt_builder.VOICE_REQUEST_LABEL`` (one bracketed line) before its quoted text (#1519).
+_USER_REQUEST = re.compile(r"=== User Request ===\n(?:\[[^\n]*\]\n)?\"(.*?)\"\n\n=== ", re.S)
 _EXECUTED = re.compile(r"^TOOL_PROMPT\|You just executed '([^']+)'")
 _ORIGINAL = re.compile(r"Original request: \"(.*?)\"\n\n", re.S)
 _TOOL_LIST = re.compile(r"=== Your Tools ===\nYour tools are: (.*?)\. Choose one of these\.", re.S)

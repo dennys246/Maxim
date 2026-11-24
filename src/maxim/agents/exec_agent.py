@@ -41,7 +41,7 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
-from maxim.models.download import consent_interactive, consented_router
+from maxim.models.download import LLM_DISABLED, consent_interactive, consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
@@ -51,6 +51,24 @@ from maxim.utils.logging import warn
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
+from maxim.memory.text import Provenance, frame_external, stored_percept_text
+
+
+def _voice_command_text(percept: Any) -> str:
+    """The Dormant prompt's "Voice command" line, consistent with the live loop (#1519, owner decision 2026-11-21):
+    a room-mic voice command is LABELLED (heard on the room mic, unverified speaker) and defanged, not framed, so
+    voice still commands; a comms percept's transcript (a phone caller) is framed external like any comms text."""
+    from maxim.utils.content_safety import defang_frame_markers
+
+    text = str(percept.raw_transcript_text or "").strip()
+    if not text:
+        return "(none)"
+    source = percept.source if isinstance(percept.source, str) else ""
+    if source.startswith("comms:"):
+        return stored_percept_text(source, text, limit=2000, keep_lines=True)
+    return (
+        f"[heard on the room microphone: unverified speaker, not typed by the operator] {defang_frame_markers(text)[0]}"
+    )
 
 
 class ExecAgent(Agent):
@@ -216,10 +234,10 @@ class ExecAgent(Agent):
         except Exception as e:
             warn("Failed to load language model config: %s", e)
             return None
-        if not cfg.enabled:
-            return None
         asks = consent_interactive(None if consent == "ask" else False)  # the one thread rule (#1658)
         router, cause = consented_router(cfg, interactive=asks, logger=logger)
+        if cause == LLM_DISABLED:  # llm.json switches the LLM off: no router, and no refused model to report
+            return None
         if router is None:
             self._refused_profile = str(getattr(cfg, "profile", "") or getattr(cfg, "model_base", "")).strip() or "?"
             self._refused_cause = cause
@@ -722,7 +740,10 @@ class ExecAgent(Agent):
 
         # Build CycleContext from available signals
         rpe_raw = 0.0
-        nac = self._nac
+        # A refused goal (#1414) made no contemplation observation (``_on_goal_completed`` skips it), so
+        # ``nac.last_rpe`` belongs to whatever NAc observed last, not to this goal: its surprise is 0.0 (no
+        # prediction was tested), never a stranger's (delta review, 2026-11-21).
+        nac = None if getattr(completed, "refused", False) else self._nac
         if nac is not None:
             try:
                 # Real Rescorla-Wagner prediction error, taken from the causal
@@ -754,9 +775,9 @@ class ExecAgent(Agent):
             energy_crossed_threshold=False,
             # D56 (b), INVESTIGATED 2026-09-02 and NOT changed here — the
             # ledger's "producer-side only" reading does not survive contact.
-            # `GoalCompleted` carries `success: bool` and nothing else, and its
-            # SOLE publisher (`agentic_goal_agent._complete_goal`) also takes
-            # only a bool, so there is no tier anywhere upstream to route. The
+            # `GoalCompleted` carries `success: bool` (plus, since #1414, a `refused` flag, which is not a tier), and its
+            # SOLE publisher (`agentic_goal_agent._complete_goal`) takes the same
+            # bool (and `refused`), so there is no tier anywhere upstream to route. The
             # fix is not a producer edit; it is a design call about whether "a
             # goal completed neutrally" is even meaningful — a goal was
             # achieved or it was not, unlike a tool action, which can be
@@ -863,35 +884,40 @@ class ExecAgent(Agent):
             return  # Goal not from this agent or already expired
 
         contemplated = meta.get("contemplated", False)
-        if contemplated:
-            self._contemplation_stats["contemplated_total"] += 1
-            if completed.success:
-                self._contemplation_stats["contemplated_success"] += 1
-        else:
-            self._contemplation_stats["uncontemplated_total"] += 1
-            if completed.success:
-                self._contemplation_stats["uncontemplated_success"] += 1
+        # A goal one of whose tool calls autonomy REFUSED (#1414): a refused call never ran, so the outcome says
+        # nothing about whether contemplating the goal helped. Neither the stats nor NAc's contemplation link learn
+        # from it (owner decisions 2026-11-21); the log line and acute staging below still see the goal's outcome
+        # (usually a failure; a SKIP goal can still succeed), as memory, the goal metric and replanning do.
+        if not getattr(completed, "refused", False):
+            if contemplated:
+                self._contemplation_stats["contemplated_total"] += 1
+                if completed.success:
+                    self._contemplation_stats["contemplated_success"] += 1
+            else:
+                self._contemplation_stats["uncontemplated_total"] += 1
+                if completed.success:
+                    self._contemplation_stats["uncontemplated_success"] += 1
 
-        # Feed outcome to NAc for causal learning
-        nac = self._nac
-        if nac is not None:
-            try:
-                from maxim.decisions.causal_link import Valence
+            # Feed outcome to NAc for causal learning
+            nac = self._nac
+            if nac is not None:
+                try:
+                    from maxim.decisions.causal_link import Valence
 
-                event_sig = "contemplation:refined" if meta.get("refined") else "contemplation:draft"
-                valence = Valence.POSITIVE if completed.success else Valence.NEGATIVE
-                delta = time.time() - meta.get("timestamp", time.time())
-                nac.observe(
-                    event_type="contemplation",
-                    event_signature=event_sig,
-                    outcome_type="goal_result",
-                    outcome_signature=f"goal:{completed.goal_id}:{valence.value}",
-                    outcome_valence=valence,
-                    delta_seconds=max(0.0, delta),
-                    context={"contemplated": contemplated, "refined": meta.get("refined", False)},
-                )
-            except Exception:
-                pass  # NAc observation is best-effort
+                    event_sig = "contemplation:refined" if meta.get("refined") else "contemplation:draft"
+                    valence = Valence.POSITIVE if completed.success else Valence.NEGATIVE
+                    delta = time.time() - meta.get("timestamp", time.time())
+                    nac.observe(
+                        event_type="contemplation",
+                        event_signature=event_sig,
+                        outcome_type="goal_result",
+                        outcome_signature=f"goal:{completed.goal_id}:{valence.value}",
+                        outcome_valence=valence,
+                        delta_seconds=max(0.0, delta),
+                        context={"contemplated": contemplated, "refined": meta.get("refined", False)},
+                    )
+                except Exception:
+                    pass  # NAc observation is best-effort
 
         log_structured(
             self.log,
@@ -1086,7 +1112,9 @@ class ExecAgent(Agent):
             self._urgent_work_available.set()
 
     def _build_llm_context(self, ctx: StructuredContext, budget_context: str | None = None) -> str:
-        """Build prompt from structured context."""
+        """Build prompt from structured context. Dormant with ExecAgent's own LLM path (``_invoke_llm_for_goal``).
+        A percept's or message's text from outside the agent is framed by its provenance, and no sender is shown
+        (#1519; #1481's code review E2: a phone number never reaches a prompt)."""
         # Current percept summary
         percept_str = "(none)"
         if ctx.current_percept:
@@ -1095,8 +1123,8 @@ class ExecAgent(Agent):
 - Source: {p.source}
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
-- Voice command: {p.raw_transcript_text or "(none)"}
-- Message: {p.content or "(none)"}
+- Voice command: {_voice_command_text(p)}
+- Message: {stored_percept_text(p.source, p.content or "", limit=2000, keep_lines=True) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 
@@ -1119,7 +1147,12 @@ class ExecAgent(Agent):
         for out in ctx.recent_outcomes[-3:]:
             if not isinstance(out, dict):
                 continue
-            status = "OK" if out.get("success") else f"FAILED: {out.get('error')}"
+            error = out.get("error")
+            status = (
+                "OK"
+                if out.get("success")
+                else (f"FAILED: {frame_external('tool_error', str(error))}" if error else "FAILED")
+            )
             outcome_lines.append(f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}")
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 
@@ -1140,10 +1173,12 @@ class ExecAgent(Agent):
         # Comms messages (inbound SMS/voice)
         comms_lines = []
         for msg in ctx.comms_messages[-5:]:
-            prefix = "User" if msg.get("direction") == "inbound" else "Maxim"
+            prefix = "Inbound" if msg.get("direction") == "inbound" else "Maxim"  # a sender is not the operator
             channel = msg.get("channel", "sms")
-            sender = msg.get("sender", "unknown")
-            comms_lines.append(f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}")
+            body = str(msg.get("content", ""))  # the agent's own outbound words are shown as they are
+            if msg.get("direction") == "inbound":
+                body = stored_percept_text(f"comms:{channel}", body, limit=2000, keep_lines=True)
+            comms_lines.append(f"  [{prefix} via {channel}] {body}")
         comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
         # DN escalation context (if percept was escalated by Default Network)
@@ -1218,10 +1253,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for pred in ctx.causal_context[:5]:
                 valence = pred.get("valence", "neutral")
                 conf = pred.get("confidence", 0)
-                causal_lines.append(
-                    f"  - {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f})"
-                )
+                what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+                causal_lines.append(f"  - {what} (valence={valence}, confidence={conf:.2f})")
             causal_str = "\n".join(causal_lines)
 
         valence_str = ""
@@ -1230,7 +1263,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for entry in ctx.valence_context[:5]:
                 v = entry.get("valence", 0.0)
                 sentiment = "negative" if v < -0.1 else ("positive" if v > 0.1 else "neutral")
-                valence_parts.append(f"{entry.get('concept', '?')}: {sentiment} ({v:+.2f})")
+                concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+                valence_parts.append(f"{concept}: {sentiment} ({v:+.2f})")
             valence_str = "\n\nLEARNED ASSOCIATIONS: " + "; ".join(valence_parts)
 
         # Pre-deliberation enrichment (Layer 1): bio-system associations
@@ -1460,6 +1494,7 @@ Based on this context, what goal should be proposed?"""
                         kind=self._WorkingMemoryKind.THOUGHT,
                         content={"source": "pre_deliberation", "enrichment": formatted},
                         salience=result.valence,
+                        provenance=Provenance.INTERNAL,
                     )
                     return formatted
         except Exception as e:

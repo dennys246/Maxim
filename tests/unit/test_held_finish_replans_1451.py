@@ -62,10 +62,10 @@ def test_a_line_held_behind_the_finish_is_planned_before_the_run_ends(tmp_path: 
         ]
     )
     # The re-plan tells the narrator why it is asked again, within the 50 characters the prompt shows of an outcome.
-    assert (
-        "finish_simulation: failed (SYSTEM: 1 new input(s) to read before finishing"
-        in (RUN_SIDE["held_finish"]["prompts"]["narrator"][-1])
-    )
+    # A system-written note is the agent's own guidance, shown unframed (#1519: ``system_note``), so the narrator
+    # reads it as an instruction, not as data.
+    replan = RUN_SIDE["held_finish"]["prompts"]["narrator"][-1]
+    assert "finish_simulation: failed (SYSTEM: 1 new input(s) to read before finishing" in replan, replan[-400:]
     # Only the re-plan's finish ran: it is the run's finish, and it ended the run (no operator stop).
     assert [f.get("reason") for f in t["bridge_finish_calls"]] == ["planned with the guidance in view"] * 2
     assert t["report"]["llm_finish_reason"] == "planned with the guidance in view"
@@ -281,6 +281,7 @@ def test_the_system_outcome_list_keeps_its_newest() -> None:
         "result": "SYSTEM: 2",
         "error": "consecutive_tool_cap",
         "timestamp": 0,
+        "system_note": True,  # shown unframed: the agent's own guidance (#1519)
     }
 
 

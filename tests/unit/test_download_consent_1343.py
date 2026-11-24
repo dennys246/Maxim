@@ -206,7 +206,9 @@ def test_consented_router_with_the_ask_asks_the_gate_and_never_downloads_without
     from maxim.models.download import LLM_MODELS
 
     profile = next(iter(LLM_MODELS))
-    router, cause = _consented(monkeypatch, SimpleNamespace(model_path=str(tmp_path / "missing.gguf"), profile=profile))
+    router, cause = _consented(
+        monkeypatch, SimpleNamespace(enabled=True, model_path=str(tmp_path / "missing.gguf"), profile=profile)
+    )
     assert router is None and cause is not None
     assert no_consent == []
 
@@ -217,7 +219,7 @@ def test_consented_router_with_the_ask_downloads_with_the_operators_grant(no_con
     monkeypatch.setenv("MAXIM_AUTO_DOWNLOAD_MODELS", "1")
     monkeypatch.setattr("maxim.runtime.llm_server.profile_has_local_file", lambda p: False)
     profile = next(iter(LLM_MODELS))
-    _consented(monkeypatch, SimpleNamespace(model_path=str(tmp_path / "x.gguf"), profile=profile))
+    _consented(monkeypatch, SimpleNamespace(enabled=True, model_path=str(tmp_path / "x.gguf"), profile=profile))
     assert no_consent == [profile]
 
 
@@ -230,7 +232,7 @@ def test_consented_router_with_the_ask_leaves_a_present_model_alone(no_consent, 
     present = tmp_path / "m.gguf"
     present.write_text("")
     profile = next(iter(LLM_MODELS))
-    router, cause = _consented(monkeypatch, SimpleNamespace(model_path=str(present), profile=profile))
+    router, cause = _consented(monkeypatch, SimpleNamespace(enabled=True, model_path=str(present), profile=profile))
     assert router is not None and cause is None
     assert no_consent == []
 

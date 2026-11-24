@@ -678,11 +678,12 @@ class TestTopBySalience:
 
     def test_sorted_by_salience_descending(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
+        from maxim.memory.text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.2)
-        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.9)
-        wms.add(WorkingMemoryKind.THOUGHT, content="mid", salience=0.5)
+        wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.2, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.9, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="mid", salience=0.5, provenance=Provenance.INTERNAL)
 
         result = wms.top_by_salience({WorkingMemoryKind.THOUGHT}, limit=10)
         assert len(result) == 3
@@ -692,10 +693,11 @@ class TestTopBySalience:
 
     def test_limit(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
+        from maxim.memory.text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
         for i in range(10):
-            wms.add(WorkingMemoryKind.THOUGHT, content=f"t{i}", salience=i * 0.1)
+            wms.add(WorkingMemoryKind.THOUGHT, content=f"t{i}", salience=i * 0.1, provenance=Provenance.INTERNAL)
 
         result = wms.top_by_salience({WorkingMemoryKind.THOUGHT}, limit=3)
         assert len(result) == 3
@@ -703,10 +705,11 @@ class TestTopBySalience:
 
     def test_min_salience_filter(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
+        from maxim.memory.text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.1)
-        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.8)
+        wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.1, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.8, provenance=Provenance.INTERNAL)
 
         result = wms.top_by_salience({WorkingMemoryKind.THOUGHT}, limit=10, min_salience=0.5)
         assert len(result) == 1
@@ -714,11 +717,12 @@ class TestTopBySalience:
 
     def test_kind_filtering(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
+        from maxim.memory.text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.THOUGHT, content="thought", salience=0.5)
-        wms.add(WorkingMemoryKind.PERCEPT, content="percept", salience=0.9)
-        wms.add(WorkingMemoryKind.RECALL, content="recall", salience=0.7)
+        wms.add(WorkingMemoryKind.THOUGHT, content="thought", salience=0.5, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.PERCEPT, content="percept", salience=0.9, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.RECALL, content="recall", salience=0.7, provenance=Provenance.INTERNAL)
 
         result = wms.top_by_salience({WorkingMemoryKind.THOUGHT}, limit=10)
         assert len(result) == 1
@@ -726,10 +730,11 @@ class TestTopBySalience:
 
     def test_recency_tiebreaker(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
+        from maxim.memory.text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
-        wms.add(WorkingMemoryKind.THOUGHT, content="older", salience=0.5)
-        wms.add(WorkingMemoryKind.THOUGHT, content="newer", salience=0.5)
+        wms.add(WorkingMemoryKind.THOUGHT, content="older", salience=0.5, provenance=Provenance.INTERNAL)
+        wms.add(WorkingMemoryKind.THOUGHT, content="newer", salience=0.5, provenance=Provenance.INTERNAL)
 
         result = wms.top_by_salience({WorkingMemoryKind.THOUGHT}, limit=10)
         assert len(result) == 2

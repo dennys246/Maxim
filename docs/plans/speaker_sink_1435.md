@@ -121,7 +121,7 @@ Q4. `Selfy.push_audio_sample` + `ReachyAudioStream.push_sample` have no `src/` c
 
 ## Owner decisions 2026-10-24 (after the design pass)
 - Q1 rollout: PULSE SHIPS FIRST. Pulse releases a build calling start/stop_device_player when present (getattr
-  fallback to the SDK) and flips its order pin; 1.3.4 does not publish until that pulse release is out. Sink strict.
+  fallback to the SDK) and flips its order pin; 1.3.4 does not publish until that pulse release is out (met: pulse v0.4.4, vendored in 1.3.4). Sink strict.
 - Q2 order: DISABLE the wobbler, THEN start_playing; absent/raising disable → never start (False + WARNING); repeat
   starts re-issue the disable.
 - Q3 fence: named exception for embodied_runtime/connection.py — pop on close, restart after a soft reconnect.

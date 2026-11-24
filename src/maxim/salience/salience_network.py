@@ -219,7 +219,7 @@ class SalienceNetwork:
                 - bbox: (x, y, w, h) bounding box
             timestamp: Detection timestamp (defaults to now).
         """
-        now = timestamp or time.time()
+        now = timestamp if timestamp is not None else time.time()
 
         with self._lock:
             seen_ids: set[Any] = set()
@@ -315,7 +315,7 @@ class SalienceNetwork:
                             oldest_id = min(self._objects.keys(), key=lambda k: self._objects[k].last_seen)
                             del self._objects[oldest_id]
 
-    def get_salience(self, track_id: Any) -> float:
+    def get_salience(self, track_id: Any, now: float | None = None) -> float:
         """Get salience score for a tracked object.
 
         Salience combines:
@@ -324,10 +324,14 @@ class SalienceNetwork:
         - Interest match (boosted if matching interest labels)
         - Confidence
 
+        Args:
+            track_id: The tracked object.
+            now: The caller's current time (defaults to the wall clock). Pass the same clock as the updates (#1684).
+
         Returns:
             Salience score in [0, 1+] (can exceed 1 with interest boost).
         """
-        now = time.time()
+        now = now if now is not None else time.time()
 
         with self._lock:
             if HAS_NUMPY:
@@ -367,9 +371,9 @@ class SalienceNetwork:
 
             return salience
 
-    def get_novelty(self, track_id: Any) -> float:
-        """Get novelty score for an object (1=never seen, 0=very familiar)."""
-        now = time.time()
+    def get_novelty(self, track_id: Any, now: float | None = None) -> float:
+        """Get novelty score for an object (1=never seen, 0=very familiar), at ``now`` (defaults to the wall clock)."""
+        now = now if now is not None else time.time()
 
         with self._lock:
             if HAS_NUMPY:
@@ -391,17 +395,20 @@ class SalienceNetwork:
         self,
         n: int = 5,
         min_salience: float | None = None,
+        now: float | None = None,
     ) -> list[dict[str, Any]]:
         """Get top N most salient objects.
 
         Args:
             n: Number of objects to return.
             min_salience: Minimum salience threshold (defaults to config).
+            now: The caller's current time (defaults to the wall clock), read once for every object (#1684).
 
         Returns:
             List of object dicts sorted by salience (highest first).
         """
         threshold = min_salience if min_salience is not None else self.config.min_salience_threshold
+        now = now if now is not None else time.time()
 
         with self._lock:
             candidates: list[tuple[float, dict[str, Any]]] = []
@@ -410,7 +417,7 @@ class SalienceNetwork:
                 valid_indices = np.where(self._valid)[0]
                 for idx in valid_indices:
                     track_id = self._track_ids[idx]
-                    salience = self.get_salience(track_id)
+                    salience = self.get_salience(track_id, now=now)
                     if salience < threshold:
                         continue
 
@@ -420,7 +427,7 @@ class SalienceNetwork:
                         "label": str(self._labels[idx]),
                         "confidence": float(self._confidence[idx]),
                         "salience": salience,
-                        "novelty": self.get_novelty(track_id),
+                        "novelty": self.get_novelty(track_id, now=now),
                         "position": (float(self._position_u[idx]), float(self._position_v[idx])),
                         "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
                         "times_seen": int(self._times_seen[idx]),
@@ -432,7 +439,7 @@ class SalienceNetwork:
                     candidates.append((salience, result_dict))
             else:
                 for track_id, obj in self._objects.items():
-                    salience = self.get_salience(track_id)
+                    salience = self.get_salience(track_id, now=now)
                     if salience < threshold:
                         continue
 
@@ -442,7 +449,7 @@ class SalienceNetwork:
                         "label": obj.label,
                         "confidence": obj.confidence,
                         "salience": salience,
-                        "novelty": self.get_novelty(track_id),
+                        "novelty": self.get_novelty(track_id, now=now),
                         "position": (obj.position_u, obj.position_v),
                         "bbox_size": (obj.bbox_w, obj.bbox_h),
                         "times_seen": obj.times_seen,
@@ -462,17 +469,20 @@ class SalienceNetwork:
         self,
         position: tuple[float, float],
         radius: float = 50.0,
+        now: float | None = None,
     ) -> list[dict[str, Any]]:
         """Get objects near a specific position.
 
         Args:
             position: (u, v) pixel coordinates.
             radius: Search radius in pixels.
+            now: The caller's current time (defaults to the wall clock), read once for every object (#1684).
 
         Returns:
             List of objects within radius, sorted by distance.
         """
         target_u, target_v = position
+        now = now if now is not None else time.time()
 
         with self._lock:
             results: list[tuple[float, dict[str, Any]]] = []
@@ -494,7 +504,7 @@ class SalienceNetwork:
                                     "label": str(self._labels[idx]),
                                     "position": (pos_u, pos_v),
                                     "distance": dist,
-                                    "salience": self.get_salience(track_id),
+                                    "salience": self.get_salience(track_id, now=now),
                                 },
                             )
                         )
@@ -510,7 +520,7 @@ class SalienceNetwork:
                                     "label": obj.label,
                                     "position": (obj.position_u, obj.position_v),
                                     "distance": dist,
-                                    "salience": self.get_salience(track_id),
+                                    "salience": self.get_salience(track_id, now=now),
                                 },
                             )
                         )
@@ -528,6 +538,7 @@ class SalienceNetwork:
         min_confidence: float = 0.0,
         labels: set[str] | None = None,
         interest_only: bool = False,
+        now: float | None = None,
     ) -> list[dict[str, Any]]:
         """Query tracked objects with filters.
 
@@ -536,10 +547,12 @@ class SalienceNetwork:
             min_confidence: Minimum detection confidence.
             labels: Only include objects with these labels.
             interest_only: Only include interest-matched objects.
+            now: The caller's current time (defaults to the wall clock), read once for every object (#1684).
 
         Returns:
             List of object dicts matching filters.
         """
+        now = now if now is not None else time.time()
         with self._lock:
             results: list[dict[str, Any]] = []
 
@@ -550,7 +563,7 @@ class SalienceNetwork:
                     label = str(self._labels[idx])
                     confidence = float(self._confidence[idx])
                     interest = bool(self._interest_matched[idx])
-                    salience = self.get_salience(track_id)
+                    salience = self.get_salience(track_id, now=now)
 
                     # Apply filters
                     if salience < min_salience:
@@ -569,7 +582,7 @@ class SalienceNetwork:
                             "label": label,
                             "confidence": confidence,
                             "salience": salience,
-                            "novelty": self.get_novelty(track_id),
+                            "novelty": self.get_novelty(track_id, now=now),
                             "position": (float(self._position_u[idx]), float(self._position_v[idx])),
                             "bbox_size": (float(self._bbox_w[idx]), float(self._bbox_h[idx])),
                             "times_seen": int(self._times_seen[idx]),
@@ -580,7 +593,7 @@ class SalienceNetwork:
                     )
             else:
                 for track_id, obj in self._objects.items():
-                    salience = self.get_salience(track_id)
+                    salience = self.get_salience(track_id, now=now)
 
                     if salience < min_salience:
                         continue
@@ -598,7 +611,7 @@ class SalienceNetwork:
                             "label": obj.label,
                             "confidence": obj.confidence,
                             "salience": salience,
-                            "novelty": self.get_novelty(track_id),
+                            "novelty": self.get_novelty(track_id, now=now),
                             "position": (obj.position_u, obj.position_v),
                             "bbox_size": (obj.bbox_w, obj.bbox_h),
                             "times_seen": obj.times_seen,
@@ -610,21 +623,20 @@ class SalienceNetwork:
 
             return results
 
-    def to_context_str(self, max_items: int = 5) -> str:
+    def to_context_str(self, max_items: int = 5, now: float | None = None) -> str:
         """Generate concise context string for LLM consumption.
 
         Modality-aware: uses ``WhereCoord.region()`` when available,
         falls back to pixel coordinates for vision detections.
 
-        Returns a human-readable summary of salient objects.
+        Returns a human-readable summary of salient objects, scored at ``now`` (defaults to the wall clock, #1684).
         """
-        time.time()
 
         with self._lock:
             lines = ["[SALIENCE STATE]"]
 
             # Get top salient objects
-            top = self.get_top_salient(n=max_items)
+            top = self.get_top_salient(n=max_items, now=now)
 
             if not top:
                 lines.append("No salient objects detected")

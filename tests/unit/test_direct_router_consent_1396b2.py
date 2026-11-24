@@ -462,11 +462,9 @@ def test_the_paper_writer_takes_one_plain_router_and_never_asks(gate, fallback, 
     record) for a post-benchmark step; a missing model is no paper, not a router that refuses every call."""
     from maxim.simulation.benchmark import BenchmarkRunner
 
-    # ExperimentLog does not take write_paper's ``nickname=`` (a separate, pre-existing defect: the paper step fails
-    # before it reaches the router); stubbed so this test reaches the router build.
-    monkeypatch.setattr("maxim.simulation.research_tools.ExperimentLog", lambda **kw: SimpleNamespace(record=None))
     report = SimpleNamespace(results={}, suite="s", runs_per_model=1, models=[])
-    assert BenchmarkRunner.write_paper(object.__new__(BenchmarkRunner), report, tmp_path) is None
+    paper, cause = BenchmarkRunner.write_paper(object.__new__(BenchmarkRunner), report, tmp_path)
+    assert paper is None and cause is not None
     assert gate.calls == [(P, False)]
     assert fallback["primary_calls"] == 0
 
@@ -480,6 +478,48 @@ def test_consented_router_never_asks_by_default(gate, monkeypatch, tmp_path) -> 
     assert gate.calls == [(P, False)]
     router, cause = consented_router(_cfg(tmp_path, present=True))
     assert isinstance(router, _Router) and cause is None
+
+
+def test_a_disabled_config_is_no_router_built_and_its_own_cause(gate, monkeypatch, tmp_path) -> None:
+    """#1680: ``enabled`` is checked once, in the one builder, for every caller."""
+    from maxim.models.download import LLM_DISABLED, consented_router
+
+    _Router.built = []
+    monkeypatch.setattr("maxim.models.language.router.LLMRouter", _Router)
+    cfg = _cfg(tmp_path, present=True)
+    cfg.enabled = False
+    assert consented_router(cfg) == (None, LLM_DISABLED)
+    assert _Router.built == [] and gate.calls == []
+
+
+@pytest.mark.parametrize("profile", [None, P], ids=["implicit", "named"])
+def test_the_seam_on_a_disabled_fallback_config_is_no_llm_and_refuses_nothing(gate, fallback, monkeypatch, profile):
+    from maxim.runtime.lane_backends import build_run_router
+
+    manager = fallback["manager"] = _Manager()
+    from maxim.models.language import router as router_mod
+
+    load = router_mod.load_llm_config  # the fallback fixture's config
+
+    def disabled(profile_override=None):
+        cfg = load(profile_override)
+        cfg.enabled = False
+        return cfg
+
+    monkeypatch.setattr("maxim.models.language.router.load_llm_config", disabled)
+    assert build_run_router(logger=None, profile=profile) == (None, manager)
+    assert manager.unusable_models == {} and gate.calls == [] and _Router.built == []
+
+
+def test_exec_agent_on_a_disabled_config_has_no_router_and_records_no_refusal(gate, exec_agent, monkeypatch, tmp_path):
+    from maxim.agents import exec_agent as mod
+
+    cfg = _cfg(tmp_path)
+    cfg.enabled = False
+    monkeypatch.setattr(mod, "load_llm_config", lambda profile_override=None: cfg)
+    assert exec_agent._ensure_router() is None
+    assert exec_agent._refused_profile is None and exec_agent._refused_cause is None
+    assert gate.calls == [] and _Router.built == []
 
 
 def test_a_registry_model_the_gate_did_not_download_has_its_own_cause(gate, monkeypatch, tmp_path) -> None:
@@ -777,3 +817,20 @@ def test_the_mid_sim_agent_refusal_names_the_grant(monkeypatch, tmp_path, caplog
     with caplog.at_level(logging.WARNING):
         assert _LlamaCppBackend(cfg)._ensure() is False
     assert "--auto-download" in caplog.text and "llm.auto_download" in caplog.text
+
+
+def test_the_exp44_rerun_names_a_disabled_llm_itself(monkeypatch) -> None:
+    """#1680: nothing logs ``LLM_DISABLED``, so the script's exit message must say it on its own."""
+    import importlib.util
+
+    from maxim.models.download import LLM_DISABLED
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "exp44" / "rerun_ablated_offline.py"
+    spec = importlib.util.spec_from_file_location("exp44_rerun_1680", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr("maxim.models.language.router.load_llm_config", lambda: object())
+    monkeypatch.setattr("maxim.models.download.consented_router", lambda cfg: (None, LLM_DISABLED))
+    with pytest.raises(SystemExit) as exc:
+        module._build_router()
+    assert "disabled" in str(exc.value) and "logged" not in str(exc.value)

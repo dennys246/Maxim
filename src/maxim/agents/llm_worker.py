@@ -14,12 +14,13 @@ import os
 import queue
 import threading
 import time
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.models.language.token_counter import CharEstimateCounter
 from maxim.utils.cancellation import register_stop_event
+from maxim.utils.cloud_redaction import RedactionResult, record_dispatches
 from maxim.utils.optional_deps import OptionalDependencyError
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -75,7 +76,6 @@ from maxim.agents.prompt_builder import (  # noqa: F401
     build_tool_guidance_core,
     build_tool_guidance_extended,
     build_tools_section,
-    build_workspace_manifest,
     compute_budget_tier,
     cost_energy_divergence,
     estimate_hours_until_limit,
@@ -243,17 +243,24 @@ def _normalize_request_context(ctx: dict[str, Any] | None) -> Any:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _record_inbound_rendered(request: LLMRequest, prompt: str) -> None:
-    """Which held inbound messages this build showed WHOLE (#1481, delta1 N1, delta2 P2/P4): a frame the budgeter
-    dropped, or ``drop_unbalanced_frames`` cut, is not complete in the text sent and does not count. Replaced on every
-    build; the render is counted once per request, so a retry of the same turn is not a second turn."""
+def _record_inbound_rendered(request: LLMRequest, prompt: str, sent: Sequence[RedactionResult] = ()) -> bool:
+    """Which held inbound messages this call showed the model WHOLE (#1481, delta1 N1, delta2 P2/P4): a frame the
+    budgeter dropped, or ``drop_unbalanced_frames`` cut, is not complete in the text sent and does not count; nor does
+    any frame when a cloud call (``sent``, from ``cloud_redaction.record_dispatches``) redacted the inbound section, so
+    a message the model never saw is neither acknowledged nor counted toward its eviction. Replaced on every call;
+    the render is counted once per request, so a retry of the same turn is not a second turn. Returns whether a
+    redaction withheld frames that the prompt held."""
     from maxim.utils.content_safety import frame_is_whole
 
     rendered = [entry_id for nonce, entry_id in request.inbound_frame_ids.items() if frame_is_whole(prompt, nonce)]
+    withheld = bool(rendered) and any("inbound_messages" in r.categories_redacted for r in sent)
+    if withheld:
+        rendered = []
     request.inbound_rendered_ids = rendered
     if rendered and request.inbound_feed is not None and not request.inbound_counted:
         request.inbound_counted = True
         request.inbound_feed.note_rendered(rendered)
+    return withheld
 
 
 def _sim_log_raw_response(response: Any) -> None:
@@ -279,6 +286,19 @@ def _sim_log_proposal_built(proposal: LLMProposal, request: LLMRequest) -> None:
         )
     except Exception:
         pass
+
+
+def _timeout_retry_message(triggering_input: str | None, timeout_s: float) -> str:
+    """The timeout-retry prompt (moved out of ``LLMWorker._process_request``, rule T for #1185). It offers only the
+    answers ``LoopController.handle_timeout_retry`` reads (owner decision C): yes, minutes 1-10, or no."""
+    question = (triggering_input or "your request")[:50]
+    return (
+        f"I ran out of time processing '{question}' "
+        f"(took longer than {int(timeout_s)}s). "
+        f"Would you like me to try again with more time? "
+        f"Type 'yes' to double my time limit, a number of minutes "
+        f"from 1 to 10 (e.g. '2'), or 'no'."
+    )
 
 
 class LLMWorker:
@@ -318,6 +338,7 @@ class LLMWorker:
         # continue to emit session_id=null — that's the correct
         # semantic for non-session contexts.
         self._session_id = session_id
+        self._inbound_withheld_logged = False  # the held-inbound notice is said once per worker
         # Plan 3.5 R2: agent-level timeout is a strict safety net above
         # the HTTP layer (default 300s, was 60s pre-plan). Explicit caller
         # value wins; otherwise read MAXIM_LLM_CALL_TIMEOUT_S (clamped);
@@ -1026,6 +1047,7 @@ class LLMWorker:
         recent_outcomes: list[dict[str, Any]] | None = None,
         use_tool_prompting: bool = False,
         triggering_input: str = "",
+        triggering_input_source: str = "",
         conversation_history_text: str = "",
         pending_modification: dict[str, Any] | None = None,
         prefetch_context: str = "",
@@ -1057,6 +1079,7 @@ class LLMWorker:
             recent_outcomes: List of recent action outcomes for learning
             use_tool_prompting: Whether to use full tool-aware prompts
             triggering_input: The user input that triggered this request
+            triggering_input_source: Where it came from ("CLI", "voice"; "" unknown): a voice input is labelled (#1519)
             conversation_history_text: Formatted conversation history for context
         """
         request = LLMRequest(
@@ -1074,6 +1097,7 @@ class LLMWorker:
             recent_outcomes=recent_outcomes or [],
             use_tool_prompting=use_tool_prompting,
             triggering_input=triggering_input,
+            triggering_input_source=triggering_input_source,
             conversation_history_text=conversation_history_text,
             pending_modification=pending_modification,
             prefetch_context=prefetch_context,
@@ -1198,57 +1222,12 @@ class LLMWorker:
                     original_request=request,
                 )
 
-            # Use mode-specific max tokens for dynamic response length
-            max_tokens = request.mode.max_response_tokens
-            provider_hint, _ = self._get_provider_hint(
-                "",
-                prompt,
-                0.3,
-                max_tokens,
-            )
-            provider_semaphore = None
-            if provider_hint and provider_hint in self._provider_semaphores:
-                provider_semaphore = self._provider_semaphores[provider_hint]
-
-            request_context = {
-                "request_id": request.request_id,
-                "agent": "llm_worker",
-                "lane": request.lane or PLANNING_LANE,
-                "provider_hint": provider_hint or "",
-                "session_id": self._session_id,
-            }
-
-            if provider_semaphore:
-                with provider_semaphore:
-                    response = self._call_llm_with_timeout(
-                        prompt,
-                        temperature=0.3,
-                        max_tokens=max_tokens,
-                        provider_hint=provider_hint,
-                        request_context=request_context,
-                        timeout_override=request.timeout_override,
-                    )
-            else:
-                response = self._call_llm_with_timeout(
-                    prompt,
-                    temperature=0.3,
-                    max_tokens=max_tokens,
-                    provider_hint=provider_hint,
-                    request_context=request_context,
-                    timeout_override=request.timeout_override,
-                )
+            response = self._call_planning_llm(request, prompt)
 
             # Check for timeout -- ask user if they want to wait longer
             if isinstance(response, dict) and response.get("_timeout"):
                 timeout_s = response.get("_timeout_s", self._llm_timeout)
-                question = (request.triggering_input or "your request")[:50]
-                timeout_msg = (
-                    f"I ran out of time processing '{question}' "
-                    f"(took longer than {int(timeout_s)}s). "
-                    f"Would you like me to try again with more time? "
-                    f"Say 'yes' to double my time limit, a number of minutes "
-                    f"(e.g. '2'), or 'no' to skip."
-                )
+                timeout_msg = _timeout_retry_message(request.triggering_input, timeout_s)
                 return LLMProposal(
                     request_id=request.request_id,
                     action={
@@ -1395,6 +1374,61 @@ class LLMWorker:
                 original_request=request,
             )
 
+    def _call_planning_llm(self, request: LLMRequest, prompt: str) -> dict[str, Any] | None:
+        """The planning call for ``request``'s built ``prompt``, then the inbound messages it showed the model
+        (``_record_inbound_rendered`` on what the router sent: a redacting cloud backend withholds them, so they stay
+        held, said once per worker)."""
+        with record_dispatches() as sent:
+            # Use mode-specific max tokens for dynamic response length
+            max_tokens = request.mode.max_response_tokens
+            provider_hint, _ = self._get_provider_hint(
+                "",
+                prompt,
+                0.3,
+                max_tokens,
+            )
+            provider_semaphore = None
+            if provider_hint and provider_hint in self._provider_semaphores:
+                provider_semaphore = self._provider_semaphores[provider_hint]
+
+            request_context = {
+                "request_id": request.request_id,
+                "agent": "llm_worker",
+                "lane": request.lane or PLANNING_LANE,
+                "provider_hint": provider_hint or "",
+                "session_id": self._session_id,
+            }
+
+            if provider_semaphore:
+                with provider_semaphore:
+                    response = self._call_llm_with_timeout(
+                        prompt,
+                        temperature=0.3,
+                        max_tokens=max_tokens,
+                        provider_hint=provider_hint,
+                        request_context=request_context,
+                        timeout_override=request.timeout_override,
+                    )
+            else:
+                response = self._call_llm_with_timeout(
+                    prompt,
+                    temperature=0.3,
+                    max_tokens=max_tokens,
+                    provider_hint=provider_hint,
+                    request_context=request_context,
+                    timeout_override=request.timeout_override,
+                )
+        if not isinstance(response, dict) or response.get("_timeout"):
+            # No model reply (a timeout, a stop, every provider failed): nothing was shown, so nothing is counted.
+            request.inbound_rendered_ids = []
+        elif _record_inbound_rendered(request, prompt, sent) and not self._inbound_withheld_logged:
+            self._inbound_withheld_logged = True
+            logger.warning(
+                "Inbound messages are held, not shown: the cloud redaction policy keeps them from the model, so none "
+                "is acknowledged (said once per run)"
+            )
+        return response
+
     # ── Delegation to extracted modules ──────────────────────────────────
 
     def _generate_llm_fallback(self, request: LLMRequest) -> dict[str, Any] | None:
@@ -1404,24 +1438,15 @@ class LLMWorker:
     # ── Delegation to PromptBuilder ──────────────────────────────────────
 
     def _build_prompt(self, request: LLMRequest) -> str:
-        prompt = self._prompt_builder.build_prompt(request)
-        _record_inbound_rendered(request, prompt)
-        return prompt
+        """The prompt for ``request``. Which inbound messages it showed is recorded after the call
+        (``_call_planning_llm``), from what was sent."""
+        return self._prompt_builder.build_prompt(request)
 
     def _build_budget_context(self) -> str:
         return self._prompt_builder.build_budget_context()
 
     def _build_followup_prompt(self, followup_input: str) -> str:
         return self._prompt_builder._build_followup_prompt(followup_input)
-
-    def _build_process_prompt(self, tool_name: str, query: str, result: str) -> str:
-        return self._prompt_builder._build_process_prompt(tool_name, query, result)
-
-    def _build_respond_prompt(self, tool_name: str, query: str, result: str) -> str:
-        return self._prompt_builder._build_respond_prompt(tool_name, query, result)
-
-    def _build_engage_prompt(self, tool_name: str, query: str, result: str, mode_name: str) -> str:
-        return self._prompt_builder._build_engage_prompt(tool_name, query, result, mode_name)
 
     def _build_tool_aware_prompt(
         self,

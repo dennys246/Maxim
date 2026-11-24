@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from maxim.memory.text import Provenance, shown_text
+
 
 class WorkingMemoryKind(str, Enum):
     """Kind of entry in the working-memory set."""
@@ -44,17 +46,53 @@ class WMEntry:
     """A single entry in the WorkingMemorySet.
 
     Frozen so entries are safe to hand out without copies.  ``content``
-    may be a dict or string — always display-ready for prompt assembly.
+    may be a dict or string. It is NOT display-ready: it holds raw text, some of it from outside the agent, so a
+    prompt shows an entry only through ``prompt_text()``, which renders it by its ``provenance`` (#1519).
+    Runtime-only (never persisted, never sent), so the CC3 forward-compat rule does not apply.
     """
 
     kind: WorkingMemoryKind
     ref: str | None  # episode_id, percept_id, reaction_id, thought_id, or None
-    content: Any  # dict or string payload (display-ready)
+    content: Any  # dict or string payload (raw: render through prompt_text)
     timestamp: float
     tick: int  # monotonic add-order counter (for decay / ordering)
     salience: float = 0.0
     agent_id: str | None = None  # multi-agent scoping
     goal_tag: str | None = None  # active goal when this entry was created
+    # Where the content came from, set at ``add`` (required there). EXTERNAL by default: fail-closed.
+    provenance: Provenance = Provenance.EXTERNAL
+
+    def prompt_text(self, limit: int = 100) -> str:
+        """This entry as text a prompt may show ("" when it says nothing), by its provenance (#1519), cut to ``limit``.
+        An OUTCOME shows its tool and status as the agent's own bookkeeping, and its error text and goal framed (tool
+        and goal text can carry outside words); only an OUTCOME reads its keys that way, so another entry's
+        ``action`` key is never shown as trusted structure. Any other entry shows its ``text``, ``content`` or a
+        THOUGHT's ``enrichment`` (or the string itself) by ``provenance``: the operator's words defanged, outside
+        text framed, the agent's own cut with no partial frame left."""
+        content = self.content
+        if isinstance(content, dict):
+            tool = (
+                (content.get("tool_name") or content.get("action", ""))
+                if self.kind is WorkingMemoryKind.OUTCOME
+                else ""
+            )
+            if tool:
+                status = "succeeded"
+                if not content.get("success", True):
+                    error = shown_text(
+                        str(content.get("error") or ""), Provenance.EXTERNAL, label="tool_error", limit=limit
+                    )
+                    status = f"failed: {error}" if error else "failed"
+                goal = shown_text(str(content.get("goal") or ""), Provenance.EXTERNAL, label="goal", limit=limit)
+                return f"{tool} {status}" + (f" (goal: {goal})" if goal else "")
+            text = content.get("text") or content.get("content") or content.get("enrichment") or ""
+            source = content.get("source")
+        elif isinstance(content, str):
+            text, source = content, None
+        else:
+            return ""
+        label = f"{self.kind.value}_{source}" if isinstance(source, str) and source else self.kind.value
+        return shown_text(str(text), self.provenance, label=label, limit=limit)
 
 
 class WorkingMemorySet:
@@ -99,11 +137,16 @@ class WorkingMemorySet:
         salience: float = 0.0,
         agent_id: str | None = None,
         goal_tag: str | None = None,
+        provenance: Provenance,
     ) -> WMEntry:
         """Append a new entry.  Thread-safe.
 
+        ``provenance`` is REQUIRED (#1519): every producer states where its content came from, so forgetting is a
+        ``TypeError``, never a raw outside text in a prompt (CLAUDE.md "push silent-no-op invariants into types").
         Returns the created entry (useful for testing / provenance).
         """
+        if not isinstance(provenance, Provenance):
+            raise TypeError(f"WorkingMemorySet.add: provenance must be a Provenance, not {provenance!r}")
         with self._lock:
             # Prune valence EMA for evicted entry (deque drops leftmost)
             if len(self._buf) == self._capacity:
@@ -119,6 +162,7 @@ class WorkingMemorySet:
                 salience=salience,
                 agent_id=agent_id or self._agent_id,
                 goal_tag=goal_tag,
+                provenance=provenance,
             )
             self._buf.append(entry)
             self._tick += 1

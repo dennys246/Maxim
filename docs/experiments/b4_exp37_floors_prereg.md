@@ -168,3 +168,8 @@ the delta (OB2).
 
 None open (OB1–OB7 taken 2026-10-18). The prereg freezes after the pilot names the model and the §Build
 prerequisites land; the frozen delta gets its own design-review round.
+
+*(2026-11-22, owner decision D11 in [../plans/release_1_3_5.md](../plans/release_1_3_5.md): one item is open again.)*
+- **OB8 (open, required at B4's design review): #1226, the narrator resume.** B4 either switches the resumed
+  narrator off or adds an arm that does (§Arms states today's non-resumed narrator by code reading). The design
+  review records which; the parked branch `feat/1226-narrator-resume` is deleted once this prereg covers it.

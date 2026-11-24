@@ -23,49 +23,171 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
+## [1.3.4] - 2026-11-22 — "Robot and recall"
 
-- `MaximAgent.wire_communication` (public in 1.3.3; [#1466](https://github.com/dennys246/Maxim/issues/1466)): it stored
-  a gateway nothing read, and with a `nac` it crashed on the deleted communication bridge until #1436.
+The robot and recall release: the defects maxim-pulse found on a real Reachy Mini running 1.3.3, Talk's recall
+across sessions, and the bounded stop. Breaking in places, as 1.3.3 was; each break below is marked and names its
+migration.
+- **Read the Security section first** (#1404, #1715, and cloud redaction).
+- **The robot:** it speaks at the device's rate and refuses loudly when it cannot (#1435), hears again (#1436), and
+  `maxim --tts` speaks (#1437). No non-finite, instant, too-fast or mid-path-unsafe command reaches a motor (#1496,
+  #1499), and a move's outcome reaches the model. Inbound comms reach it, framed as untrusted data (#1466, #1481). The controller gives the camera
+  back and closes its SDK client on disconnect (#1704, #1712), and a fresh pose read gets its full deadline (#1706).
+  **Known oddity, under investigation:** on our test unit the head stops near 56° of yaw, short of the ±65° clamp,
+  and in later joint checks only about 50° on the negative side ([#1707](https://github.com/dennys246/Maxim/issues/1707)). The code behind
+  it is sound by its tests: the clamp matches Pollen's documented ±65° limit, the SDK's default (analytical)
+  kinematics solve to 65°, and the clamp and path tests pass. Whether the shortfall is this unit's mechanism (two of
+  its six head motors were replaced, and the errors behave like friction or weak holding torque) or the head's real range with the body
+  held (Pollen's Placo model caps head-to-body yaw at 55°) is open with Pollen. The full embodied run on the robot is
+  still owed ([#1708](https://github.com/dennys246/Maxim/issues/1708)).
+- **Recall:** what a person says is now stored, and a later question that shares a word with it can recall it, framed
+  as untrusted content (#1444, #1163, #1064, #1447, #1137). The claim is narrow: T1-16 is EARNED (narrow) on Exp
+  63c, one scripted 8-turn resume on one model whose cues reuse the words planted before it; the bare-LLM floor is
+  not measured. Recall matches words (stemmed keys), not
+  meaning: a question sharing no word with what was said, or only a spelling variant (#1516), recalls nothing.
+- **The bounded stop:** a stop saves memory first and finishes within the caller's deadline, inside the robot
+  daemon's ~20 s kill window; SIGTERM saves too, and a forced stop kills only what maxim started (#1438, #1344).
+  `maxim llm reap` cleans up a leftover server, at a terminal only.
+- **The atonia gate's first pieces ship, Experimental and not complete:** `maxim.advisor`, every tool's declared
+  effect, and a required `ToolPolicy` (breaking). The offline latch (`MAXIM_OFFLINE`) ships but is not yet safe for
+  operators (`MAXIM_OFFLINE=1 maxim doctor` crashes), and there is no `llm.offline` mode in this release (#1315
+  item 10's call-site refusals).
+- **The Console:** the wheel vendors maxim-pulse v0.4.4, contract 0.6.0, unchanged. **Correction to the 1.3.3
+  notes:** typed payloads (R3, #1336, contract 0.7.0) did not come in 1.3.4; they wait for a pulse tag built for
+  0.7.0.
+- **Evidence:** T1-16 moved from STALE to EARNED (narrow) on 2026-11-13. T1-2 (Exp 37) ships STALE under the
+  committed exception `release-1.3.4-T1-2`. T1-13/14/15 stay PARTIAL (floor matched under BF2).
+- **Open issues:** 162 at `v1.3.3`, 231 at this cut. Announcement: `docs/announcements/release_1_3_4.md`.
 
-### Fixed
+### Breaking
 
-- **Talk remembers what you told it in an earlier session** (#1444, #1163, #1064, #1447; found by maxim-pulse on a
-  real Reachy: "My name is Denny and my favourite colour is green", a restart, then "What is Denny's favorite
-  color?" got "I do not have information"). Six defects composed into that one symptom, and each alone fixed
-  nothing:
-  - **Your words were never memorized.** Loop §3 alone published them to memory, and Talk never reached it (a
-    proposal was always pending), so in a measured session 0 of 4 utterances were stored. What a person says is now
-    published once, as it arrives, on every channel (Talk, the CLI, voice and the robot, whose capture manager
-    skipped the old path): `runtime/loop_perception.py::take_user_input`. Replies the loop makes itself (an
-    auto-approved confirmation, a sim-resolved one, a timeout retry) are not memorized as someone's words.
-  - **A recalled memory showed only its tool.** What an episode heard now renders, framed as untrusted content
-    (recalled text replayed into later prompts is a stored prompt-injection channel), bounded.
-  - **Stored tool results were their Python repr.** `hippocampus.json` is now `_format_version` 1.1 and stores a
-    result as data; 1.0 files load, their reprs parsed (never evaluated).
-  - **Recall ignored your question** and ranked on a field no capture writes. One tokenizer now keys text recall in
-    every memory store (Hippocampus, NAc, ATL), the ranker scores what captures write and returns nothing unrelated,
-    and recall cues on what you just said. Keys are computed once per record, so a large store stays fast.
-  - **The first question after a restart was never recalled for** (the reflection gate rejected an empty working
-    memory): an addressed input is now always enriched for recall, on every channel. Reflexes and multi-cycle
-    deliberation keep the gate.
-  - **No prompt section carries a partial untrusted-content frame**, wherever its text was cut, every `LLMRouter`
-    call neutralizes a stray frame marker, and a person's own text can no longer open or close one.
+<!-- changelog.d/1315-item3-tool-policy.breaking.md -->
+- **Every executor now takes a required `ToolPolicy`; `permissions=` is removed** (#1315 item 3, the atonia gate).
+  `Executor(registry, *, policy=...)`, `build_executor(..., policy=...)` and `AgentConfig(..., policy=...)` require a
+  `maxim.runtime.tool_policy.ToolPolicy`. Passing `None` or omitting it raises `TypeError`, and so does the old
+  `permissions=` keyword, the `AgentConfig.permissions` field and a positional argument after `Executor`'s registry.
+  Migrate:
+  - `build_executor(reg, pain_bus=..., permissions=None)` →
+    `build_executor(reg, pain_bus=..., policy=ToolPolicy.unrestricted(reason="..."))`;
+  - an `AgentPermissions` allow or deny list → `ToolPolicy.only(names, ceiling=Effect.ALL, reason=...)` or
+    `ToolPolicy.deny(names, reason=...)`;
+  - `AgentConfig(...)` for an agent with no executor (`create_agent`) → `policy=None`;
+  - `agents.permissions.tool_permissions_from_settings` → `runtime.tool_policy.policy_from_tools_settings`.
 
-  - **It lasts past compression** (#1137, owner decision 2026-10-25: a release condition for the recall claim). A
-    compressed memory used to keep only that the episode had user input, so a fact the user stated was gone once
-    its record aged (about 3 days for a user's words). A compressed memory now keeps what the episode heard
-    (bounded, rendered framed like any recalled words) and the episode's active goal, which compression also lost.
-    `hippocampus.json` is now `_format_version` 1.2; older files load, their compressed records keeping neither.
+  None of these is in `docs/user/stable_api.md`; the stable verbs (`maxim.run`, `create.*`, `load.*`) build their
+  own policy, so their signatures are unchanged (`maxim.run`'s file-tool reach changes; see the next entry).
+- **`maxim.run()`'s path-taking file tools reach only the run's workspace, `<home>/.maxim_workspace`** (#1342, first
+  half; the prefetch half stays open). `home_dir` defaults to `~/.maxim`. Before, `read_file`, `write_file`,
+  `edit_file`, `glob`, `search_code` and the git tools reached the process working directory. They no longer reach
+  it, nor the home's own stores, config or other agents' homes. `bash` and `execute_file` now start in the workspace,
+  but a shell command, or the file's code, can still reach any absolute path; `maxim.run`'s passive mode refuses both. Migrate: put the files a run should see in `<home_dir>/.maxim_workspace` (created on first
+  run), or pass `home_dir=` to choose the home.
 
-  The agent bus now re-raises a memory capture-contract break to the publisher, after every handler ran. Ledger: T1-16 (carried memory in recall, Exp 63) is STALE until it is re-run on the new ranker.
-- **An Angular Gyrus recall by `MathCategory` found nothing** (#1153). The store keys a record by the category's
-  name, and `recall(category=MathCategory.PATTERN)` looked up a key built from the enum itself, so every enum-keyed
-  recall came back empty (its one enum caller, MemoryAgent's knowledge fallback, is Dormant), and so did a
-  lower-case name, which the `math` tool passes straight from the model. Storing and recalling now follow one
-  category contract: the enum or its name in any case, blank for none (no filter on recall, the PATTERN default on
-  store), and an unknown name is an error the tool returns to the model. The tool used to store an unknown category
-  as PATTERN while recalling it found nothing.
+<!-- changelog.d/1715-timeoutpolicy-pool-s.breaking.md -->
+- **`maxim.utils.http.TimeoutPolicy.total_s` is renamed `pool_s`** (#1715). It only ever bounded the wait for a
+  pooled connection (httpx's `pool`), but nearly every caller set it as if it bounded the whole request. No
+  behaviour changes. Code that constructs `TimeoutPolicy(total_s=...)` gets a `TypeError` and should pass
+  `pool_s=` instead.
+
+### Security
+
+<!-- changelog.d/1404-actions-jsonl-url-scrub.security.md -->
+- **A sim's `actions.jsonl` no longer records a URL's credentials, path or query string** (#1404): tool arguments,
+  results, errors and block reasons were written verbatim, so a URL the model fetched (with a token in its query) or
+  an httpx error carrying a request URL with `user:pass@` could land in a record committed with experiment evidence.
+  Every `scheme://` URL in those fields (keys included) now keeps only its `scheme://host[:port]`, as `report.json`
+  already does (#997).
+  Text without a URL is unchanged. The console's run view shows the reduced URLs.
+
+<!-- changelog.d/1404-loggable-url-userinfo.security.md -->
+- **HTTP log events no longer carry a URL's username and password** (#1404): the URL that `http_request` and the
+  default-on `http_request_failed` WARNING log kept `user:pass@` (only the query and fragment were stripped). Those
+  events reach `MAXIM_LOG_FILE` and the leader proxy's remotely readable log buffer. The host is now logged without
+  its userinfo, and a URL that cannot be parsed is logged as `<url>` instead of raising inside the failure path.
+
+<!-- changelog.d/1715-fetch-url-deadline.security.md -->
+- **A web page the model fetches can no longer hold the call open by sending slowly** (#1715): `fetch_url` takes a
+  `deadline_s` that bounds the whole request. Every socket read, write, TLS handshake and connect, and the wait for
+  a pooled connection, is cut to what remains of it. Before, httpx timed each read separately, so a server that
+  dripped its body or headers, or sent `100 Continue` forever, could hold `HttpFetchTool` indefinitely.
+  - `HttpFetchTool` gives each call one budget (its per-read timeout plus 2 s), shared by the robots.txt redirects
+    and the page. `internet_search` uses the same bound.
+  - Not bounded: the DNS lookup, and HTTPS through an `https://` proxy (design: `docs/plans/http_deadline_1715.md`).
+
+<!-- changelog.d/redaction-by-section.security.md -->
+- **Cloud redaction renders private sections by identity**: each private prompt section's header is passed apart from
+  its body, and the body is shown in one neutral form on every backend (a line that reads like a section boundary
+  is prefixed with `| `). Tool results in follow-up prompts carry a header that names the tool's sensitivity, and
+  held inbound messages are acknowledged only once the model has been sent them.
+
+### Added
+
+<!-- changelog.d/1315-item1-advisor.added.md -->
+- **`maxim.advisor`, the observer** (#1315 item 1; Experimental): `advisor.open(home_dir=, model=, report_dir=, ...)` builds a Maxim that judges a batch of events and proposes, and cannot act. One `session.ingest(events)` is one bounded turn: every event reaches the model framed as untrusted data, with any special token escaped. The completion is grammar-constrained, and every call the model names goes through a sealed executor whose only tool, `propose_action`, records a proposal. Anything else is refused and recorded in the report and the fsynced log. `open()` refuses a code-loading environment, a model that is not a regular file, and overlapping or symlinked directories; it engages the offline latch and reads no Maxim config or data home. `session.request_stop()` is safe from a signal handler, and `session.close()` is safe under a running turn. See `docs/user/advisor.md`.
+- **`maxim.models.language.closed_local`**: the observer's closed llama.cpp backend, built from a GGUF path alone (it reads no profile or environment and builds no router or cost tracker), with a pure-Python GGUF header read that caps the default context at 8192.
+- **`maxim.utils.atomic_io.atomic_write_json_at(dir_fd, name, payload)`**: an atomic, strictly fsynced JSON write through a directory fd (the one strict `atomic_write_*` helper: an fsync the filesystem refuses raises).
+- **`maxim.exceptions.ClosedLocalError`** (a `ModelLoadError`) and **`AdvisorReportWriteFailed`** (an `AdvisorError`).
+
+<!-- changelog.d/1315-item2-tool-effect.added.md -->
+- **Every tool now declares what it can cause, and a tool registry can refuse a tool by it** (#1315 item 2; design:
+  `docs/plans/atonia_gate_approach_notes.md` §2).
+  - New `maxim.tools.base.Effect`, a set of seven flags (`READ`, `SELF_SCOPE`, `WRITE_LOCAL`, `NETWORK`, `COMMS`,
+    `ACTUATE`, `GOVERN`; `Effect.ALL` is all of them and cannot be reassigned), plus `effect_of`, `exceeds` and
+    `effect_names`. Every built-in tool declares `effect` in its own class body; one that runs a process or
+    model-chosen code declares `ALL`. A tool class that declares nothing counts as `ALL`. Declaring `Effect(0)`
+    raises `TypeError` when the class is created.
+  - `ToolRegistry(ceiling=...)` and `SimToolRegistry(ceiling=...)` refuse, with `maxim.exceptions.ToolEffectRefused`
+    and a `tool_effect_refused` WARNING, a tool whose effect exceeds the ceiling and, below `ALL`, any same-name
+    replacement. Below `ALL`, `SimToolRegistry.get` of an unknown name raises `KeyError` instead of returning its
+    redirect tool. The default ceiling is `ALL`, and no shipped path builds a narrower registry yet.
+  - `@maxim.tool(effect=...)` and `maxim.register_tool(tool, effect=...)` accept an optional declaration. Existing
+    user tools run under `maxim.run` exactly as before, including one whose class already has its own `effect`
+    attribute that is not an `Effect`, or sets `effect` after the class is defined: such a tool counts as `ALL`,
+    with one `tool_effect_invalid` WARNING.
+  - Under `ALL`, replacing a registered tool with one of a different class (for example a user tool that takes a
+    built-in tool's name) now logs a `tool_replaced` WARNING.
+  - Entity tool generation (`generate_tools_for_entity`) now registers all of an entity's tools or none, whatever
+    stops it, and adds the entity to the `EntityMap` only after its tools register. `create_stub_tool` takes a
+    required `effect=`.
+
+<!-- changelog.d/1315-item5-advisor-log.added.md -->
+- **The observer's proposal and refusal log, `maxim.advisor.log`** (#1315 item 5; Experimental): an append-only JSON-lines file, `advisor_log_<session_id>.jsonl`, written through the report directory's fd. Each record is fsynced before `append()` returns (`F_FULLFSYNC` where the filesystem supports it), and a failed or interrupted write marks the log broken; a record refused by validation writes nothing and leaves the log usable. `read_log()` drops only a torn final line and refuses anything else it cannot vouch for. The session id must be one path component, the mode 0600 or 0640, and the record schema is closed. Item 1's `maxim.advisor.open()` will be its caller.
+- **Strict fsync helpers in `maxim.utils.atomic_io`**: `fsync_strict()` and `append_line_fsync()` raise on any failure, unlike the existing lenient helpers, which skip an fsync the filesystem refuses. The module docstring names both policies.
+- **`maxim.exceptions.AdvisorError`**, the base of the observer's errors (`AdvisorLogBroken`, `AdvisorLogMalformed`).
+
+<!-- changelog.d/1344-bounded-stop-pr3b.added.md -->
+- **`maxim llm reap` cleans up a leftover LLM server, at a terminal only** (#1344): every llama-cpp-server maxim
+  spawns now leaves a spawn record (pid, start time, model, spawner) in `~/.maxim/run/llm_server/` (the passwd home;
+  `MAXIM_LLM_SPAWN_RECORD_DIR` overrides). `maxim llm reap [--port N]` reports the recorded server on the port and
+  stops it once you type its pid. It never touches a server without a matching record, and outside a terminal it only
+  reports (exit 2). The wrong-model and key-rejected refusals name the command; `maxim doctor` lists stale records and
+  recorded servers whose spawner is gone. Nothing is ever reaped automatically.
+
+<!-- changelog.d/1476-exp63b-instrumentation.added.md -->
+- **Exp 63b's recall instrumentation** (#1476): `enrichment_trace` gains `cue_text` and `recall_failed`.
+  - `cue_text` is the whole text the cue path queried. That is the input on a turn's first enrichment, the model's own
+    reasoning on later deliberation cycles, a thought, or a percept. With `MAXIM_LOG_FILE` set, each is now logged in
+    full, where it used to be cut at 120 characters.
+  - `recall_failed` is true when the recall itself failed (a failed graph path is not counted).
+- **A store digest on save and load.** When INFO logging is on (as it is under `MAXIM_LOG_FILE`), Hippocampus `save()`
+  and `load()` each log one `hippocampus_store_digest` line. It holds a SHA-256 over what recall matches each record on
+  (its id, content keys and copy key), plus a 16-hex hash per record, so the line grows with the store. The file is
+  named by its basename.
+  - Cost: computing it takes about 0.25 s per 5,000 records under the store's read lock. Without INFO, nothing is
+    computed.
+  - No recall or storage behaviour changes.
+
+<!-- changelog.d/1628-sim-script.added.md -->
+- **`--sim-script <file>`: a scripted narrator** (#1628): `maxim --sim "<goal>" --sim-script lines.yaml
+  --sim-max-turns N --interactive false` sends the file's lines (`percepts: - cli_input: <line>`) to the agent one per
+  turn, through the same bridge path as the narrator's, then ends `completed`; it combines with `--resume-sim`. It runs
+  only on a plain goal-string sim: before any sim starts it refuses every other `--sim` shape (a YAML file, the
+  `agent`/`research`/`benchmark` aliases, the REPL, a blank goal), any option set away from its default outside a
+  short whitelist (so `--dm`, `--research`, `--continuous`, `--campaign`, `--benchmark`, `--goal`, `--foundry` and the
+  rest), a goal that selects a narrative arc, interactive mode, a missing or zero `--sim-max-turns` or one that differs from the line count, and
+  an empty, malformed, blank or whitespace-only script. `cli.resolve_sim_script(args)` runs the same check on
+  normalized args without output or exit, for a harness's preflight. `simulation/experiment.py::load_campaign_turns` gains an opt-in
+  `strict=True` for it; its default behaviour is unchanged.
 
 ### Changed
 
@@ -188,7 +310,169 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     four models" now reads: dominance at GPT-4o, DeepSeek-V3 and R1; Sonnet's verdict rests on first-contact over
     3 of 5 arm-A deceptive trials.
 
+- **Breaking, for custom speakers ([#1435](https://github.com/dennys246/Maxim/issues/1435)):** `ResponseOutput`'s
+  `speaker_fn` is now called as `speaker_fn(samples, sample_rate=<tts rate>)` and must return whether it played (it
+  no longer pre-resamples to a guessed 16 kHz); a single-argument `speaker_fn` now fails and reports `spoken: False`.
+  `LocalSpeaker` accepts `sample_rate`. `push_audio_to_device` requires `sample_rate`, and the
+  `make_device_speak_sink(...)` sink and `MediaLoopMixin.speak` take it keyword-only, so a caller can no longer fall
+  back to a silent 16 kHz. `ReachyAudioStream.push_sample` resamples from the stream's `output_sample_rate`.
+  **Embedders must call `start_device_player(mini)` before speaking** (see Fixed); maxim-pulse ships that change
+  first, and 1.3.4 does not publish before it (mechanization backlog M79).
+
+<!-- changelog.d/1264-api-run-home-dir.changed.md -->
+- **`maxim.run(home_dir=...)` keeps its loop state under that home** (#1264, D15): `<home_dir>/runtime_state/<agent>/`
+  rather than the data home's; `maxim --clear-memory runtime_state --home-dir <home_dir>` clears it.
+
+<!-- changelog.d/1264-runtime-state-dir.changed.md -->
+- **Loop state files now live under `<data home>/runtime_state/`** (#1264): `<data home>/runtime_state/<agent>/`
+  (`MAXIM_DATA_HOME`, else `~/.maxim`), not the working directory's `data/agents/<agent>/runtime/`.
+  A sim (`--sim`, the orchestrator's AUT and narrator, the `spawn_sub_simulation` tool), the interactive sim and the
+  Minecraft harness keep theirs in their own sandbox through the new `run_agentic_loop(state_home=...)`.
+  `--clear-memory` clears the folder in the data home, and in a home named with `--home-dir`. Old files under
+  `data/` are not migrated.
+
+<!-- changelog.d/1315-item1-advisor.changed.md -->
+- **The offline latch no longer reads the environment variables it sets** (#1315 item 1): `maxim._offline.engage()` writes `MAXIM_OFFLINE`, `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY` and `YOLO_OFFLINE` without reading their previous values. That keeps the observer's environment read set pinned. Nothing outside Maxim's own test harness relied on the old read.
+- **`_LlamaCppBackend` builds its `Llama` arguments through the new shared `llama_backend.llama_kwargs()`**, which the observer's backend also uses; the arguments it passes are unchanged.
+
+<!-- changelog.d/1315-item3-tool-policy.changed.md -->
+- **Dispatch checks the tool it runs, and a refusal is typed and teaches nothing** (#1315 item 3).
+  - The executor looks the tool up once, checks that object against the policy's permissions, its effect ceiling
+    (`Effect`, ANDed with the offline ceiling while the offline latch is engaged) and any pin, then runs that same
+    object.
+  - Every gate refusal carries a `ToolErrorKind` (`not_registered`, `inactive_scene`, `policy_ceiling`,
+    `policy_permissions`, `policy_pin`, `mode`, `offline`) and `metadata["refusal_layer"]`.
+  - A gate refusal is booked to the model's carryover, the recent outcomes and the autonomy audit log, but no longer
+    to NAc, goal credit, cluster reward or the plan bridge. The `tools.allow` / `tools.deny` denials, unregistered
+    names and inactive scene tools used to book a negative outcome. Unregistered and inactive-scene calls no longer
+    reach the pain detector.
+  - `record_outcome` takes a required `refused=`. The parallel batch now writes an autonomy audit entry per executed
+    action.
+  - A tool body that returns a gate kind is re-typed `external_failure` (only the executor's own gates produce
+    one), and `Tool.run` re-raises an `OfflineRefusal` so the executor can map it to `offline`.
+  - `FearGatedExecutor` and `AnticipatoryPainExecutor` pass a call the gates will refuse straight through
+    (`Executor.refuses`): no fear review and no anticipated pain for a call that cannot run.
+  - A refused call through `execute_and_learn` is still remembered as an episode (no credit).
+  - `SpawnSubSimulationTool` builds its child from the dispatching executor's policy, and refuses outside a dispatch.
+  - `auto_sense` runs an auto-fire tool, or `sense`, only when the executor's gates would.
+
+<!-- changelog.d/1315-step0a-lazy-inits.changed.md -->
+- **Importing one Maxim module no longer imports its whole package, and `profiles.yml` is read on first use, not at
+  import** (#1315 step 0a, V9; design: `docs/plans/atonia_gate_approach_notes.md` §1A.1).
+  - `maxim.runtime`, `maxim.agents`, `maxim.tools` and `maxim.utils` resolve their public names on first access
+    (PEP 562). `import maxim.runtime.executor` now loads about 130 modules instead of about 830. `from maxim.runtime
+    import X` and every other public name keep working. One break: reaching a submodule as an attribute of a
+    package you only imported (`import maxim.runtime` then `maxim.runtime.executor.X`) now raises
+    `AttributeError`. Import the submodule itself (`import maxim.runtime.executor`).
+  - `~/.config/maxim/profiles.yml` is merged when a profile is first looked up, not when `models/language/config.py`
+    is imported. A malformed file still raises `ConfigurationError`, now on every lookup instead of once at import,
+    so a caller that swallows the first error cannot silently lose your profiles for the rest of the run. Every run
+    still refuses it up front, before choosing a model: every `maxim` run mode stops with `UserProfilesInvalid`,
+    naming the file and the fix (exit 2; `maxim roy` records it as a priming abort and exits 1), and the API and
+    `create` raise it. Bare `maxim` stops before its menu: run `maxim doctor` directly. The repair commands
+    (`maxim doctor`, `config`, `model`, ...) still run, and `maxim doctor` now reports the bad file instead of
+    crashing.
+  - New profile accessors: `get_profile`, `iter_profiles` and `profile_aliases` in `maxim.models.language.config`,
+    and `maxim.models.download.llm_models()`. `maxim.models.LLM_MODELS` stays importable and now includes your
+    `profiles.yml` downloads. Every internal reader moved to these. `maxim --list-models` output is unchanged.
+  - An executor built without a pain bridge no longer imports `maxim.simulation` on every dispatch.
+
+<!-- changelog.d/1344-reap-ui-llm-cli.changed.md -->
+- **`maxim llm reap`'s operator side now lives in `runtime/llm_cli.py`** (#1344 PR 3b follow-up): the report, the
+  terminal gate and the typed-pid prompt moved there. `runtime/llm_spawn_record.py` keeps the records, the identity
+  and listener checks and the kill. The command behaves the same.
+
+<!-- changelog.d/1610-leader-services-one-owner.changed.md -->
+- **Only the `maxim` CLI leader starts a leader's proxy and cloudflared tunnel** (#1610, owner decisions
+  2026-11-09). `maxim serve` (the console) and Python-API processes (`maxim.create`, `api.run`, research) on a
+  leader used to start them, with the leader heartbeat, after a fresh LLM spawn, and no longer do. They share the
+  proxy a running `maxim` leader holds; the console still runs its own health sampling. On a leader box, run `maxim`
+  to bring the leader up.
+
+<!-- changelog.d/1689-no-pre-model-shortcut.changed.md -->
+- **Short questions reach the model** (#1689): the planning path no longer answers time, date, identity, greeting,
+  "how are you" or simple-maths questions of 8 words or fewer with a canned reply before calling the model. The
+  keyword match dropped real requests ("hi, can you look to your left" got "Hello! How can I help you?"), answered
+  the wrong question ("what time is it in Tokyo" got the local time), bypassed persona and memory, and the canned
+  reply was booked to NAc and the causal links as a `plan:direct_answer` decision. That applied to robot speech as
+  well as typed input. The matcher is deleted (`generate_simple_answer`, `matches_phrase`, `normalize_phrases`), so
+  a fallback reply never keyword-answers either. A request with no tool prompt (`ANSWER_ONLY`) now gives the model the
+  date and time, which the tool-aware prompt already did.
+
+<!-- changelog.d/1719-damage-refused-contract.changed.md -->
+- **`SpecModulator.apply_damage` raises instead of returning on a part with no sub-sensors** (#1719): a direct
+  caller that read the old `1.0` now gets `maxim.exceptions.DamageRefused` (also a `ValueError`; `.modulator`
+  names the part). To migrate, check `bool(part.vital_metrics)` before calling, or catch `DamageRefused` and
+  report it; do not turn it back into a default integrity.
+
+<!-- changelog.d/m83-changelog-fragments.changed.md -->
+- **CHANGELOG entries are now one file per change, in `changelog.d/`** (M83 step 3). A `src/` change adds
+  `changelog.d/<slug>.<kind>.md` instead of a line under `[Unreleased]`, which was the file parallel PRs conflicted
+  on most; the release PR folds them in with `scripts/changelog_fragments.py assemble`. One check,
+  `changelog_fragments.py check`, replaces `lint_unreleased_on_src_change.py` and `lint_unreleased_declared.py`, now
+  covers every path under `src/` rather than only `.py` files, and refuses a fragment deleted, renamed or copied
+  outside a release. The release workflow also refuses a fragment left at the tagged commit. Format:
+  `changelog.d/README.md`.
+
+<!-- changelog.d/orch-s11-stall-clock.changed.md -->
+- **The simulation stall detector is its own module, with an injectable clock** (orchestrator §11 slice; for #1259
+  and #1488): `simulation/stall_detector.py::StallDetector` replaces the closure nested in `start_simulation_mode`,
+  behaviour unchanged (the orchestrator characterization golden is byte-identical). Every "now" it reads, its idle
+  timers and the ages of in-flight LLM calls, goes through `StallDetector.CLOCK`; `stall_threshold.stall_suppression`
+  and the call registry's readers take an optional `now` for that. Its suppression failure now reports under the site
+  `stall_detector.py:StallDetector._suppressed:stall_suppression`.
+
+### Removed
+
+- `MaximAgent.wire_communication` (public in 1.3.3; [#1466](https://github.com/dennys246/Maxim/issues/1466)): it stored
+  a gateway nothing read, and with a `nac` it crashed on the deleted communication bridge until #1436.
+
+<!-- changelog.d/1344-bounded-stop-pr3a.removed.md -->
+- **`kill_stale_llm_servers` and `find_stale_llm_servers` are removed** from `maxim.runtime.local_server_spawner`, and `spawned_server_pid` from `maxim.runtime.llm_server` ([#1344](https://github.com/dennys246/Maxim/issues/1344), bounded stop PR 3a): they killed every llama-cpp-server of the user on any port, a busy leader's included. Nothing replaces them. The wrong-model error now names the server's pid instead of advising `pkill -f llama_cpp.server`.
+
+<!-- changelog.d/system-cloudflared-dir.removed.md -->
+- **`maxim.tunnel.daemon_spawner.SYSTEM_CONFIG_PATH`**: it was fixed at import and ignored
+  `MAXIM_CLOUDFLARED_SYSTEM_DIR`. Call `resolve_config_path()`, or `maxim.utils.paths.cloudflared_system_dir()` for
+  the directory, instead.
+
 ### Fixed
+
+- **Talk can recall what you told it in an earlier session, when your question shares a word with it** (#1444, #1163, #1064, #1447; found by maxim-pulse on a
+  real Reachy: "My name is Denny and my favourite colour is green", a restart, then "What is Denny's favorite
+  color?" got "I do not have information"). Six defects composed into that one symptom, and each alone fixed
+  nothing:
+  - **Your words were never memorized.** Loop §3 alone published them to memory, and Talk never reached it (a
+    proposal was always pending), so in a measured session 0 of 4 utterances were stored. What a person says is now
+    published once, as it arrives, on every channel (Talk, the CLI, voice and the robot, whose capture manager
+    skipped the old path): `runtime/loop_perception.py::take_user_input`. Replies the loop makes itself (an
+    auto-approved confirmation, a sim-resolved one, a timeout retry) are not memorized as someone's words.
+  - **A recalled memory showed only its tool.** What an episode heard now renders, framed as untrusted content
+    (recalled text replayed into later prompts is a stored prompt-injection channel), bounded.
+  - **Stored tool results were their Python repr.** `hippocampus.json` is now `_format_version` 1.1 and stores a
+    result as data; 1.0 files load, their reprs parsed (never evaluated).
+  - **Recall ignored your question** and ranked on a field no capture writes. One tokenizer now keys text recall in
+    every memory store (Hippocampus, NAc, ATL), the ranker scores what captures write and returns nothing unrelated,
+    and recall cues on what you just said. Keys are computed once per record, so a large store stays fast.
+  - **The first question after a restart was never recalled for** (the reflection gate rejected an empty working
+    memory): an addressed input is now always enriched for recall, on every channel. Reflexes and multi-cycle
+    deliberation keep the gate.
+  - **No prompt section carries a partial untrusted-content frame**, wherever its text was cut, every `LLMRouter`
+    call neutralizes a stray frame marker, and a person's own text can no longer open or close one.
+
+  - **It lasts past compression** (#1137, owner decision 2026-10-25: a release condition for the recall claim). A
+    compressed memory used to keep only that the episode had user input, so a fact the user stated was gone once
+    its record aged (about 3 days for a user's words). A compressed memory now keeps what the episode heard
+    (bounded, rendered framed like any recalled words) and the episode's active goal, which compression also lost.
+    `hippocampus.json` is now `_format_version` 1.2; older files load, their compressed records keeping neither.
+
+  The agent bus now re-raises a memory capture-contract break to the publisher, after every handler ran. Ledger: T1-16 (carried memory in recall, Exp 63) is STALE until it is re-run on the new ranker.
+- **An Angular Gyrus recall by `MathCategory` found nothing** (#1153). The store keys a record by the category's
+  name, and `recall(category=MathCategory.PATTERN)` looked up a key built from the enum itself, so every enum-keyed
+  recall came back empty (its one enum caller, MemoryAgent's knowledge fallback, is Dormant), and so did a
+  lower-case name, which the `math` tool passes straight from the model. Storing and recalling now follow one
+  category contract: the enum or its name in any case, blank for none (no filter on recall, the PATTERN default on
+  store), and an unknown name is an error the tool returns to the model. The tool used to store an unknown category
+  as PATTERN while recalling it found nothing.
 
 - **`maxim --tts` speaks, or refuses at start** ([#1437](https://github.com/dennys246/Maxim/issues/1437), found by
   maxim-pulse's device review). The CLI built a voice for `--tts`, logged "TTS enabled", and wired no speaker, so it
@@ -405,16 +689,548 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The `speak` tool reports `spoken` from what the speaker did, instead of always True; the pairing announcer logs
     (never the code) when its sink refuses.
 
-### Changed
+<!-- changelog.d/1259-finish-ends-run.fixed.md -->
+- **A narrator's `finish_simulation` now ends the simulation** (#1259): the tool sets the run's stop signal, as a
+  campaign runner's finish does, so teardown starts at once. Before, the run waited out the 180 s percept-source
+  grace while the stall detector nudged the finished narrator, each nudge a fresh narrator LLM call (a probe saw six).
+  `FinishSimulationTool` takes the run's `stop_event` as a required keyword.
+  The AUT's loop stops with the run too, at its next stop check: an AUT action not yet executed at the finish may
+  never run and then earns no credit, as after a campaign runner's finish.
 
-- **Breaking, for custom speakers ([#1435](https://github.com/dennys246/Maxim/issues/1435)):** `ResponseOutput`'s
-  `speaker_fn` is now called as `speaker_fn(samples, sample_rate=<tts rate>)` and must return whether it played (it
-  no longer pre-resamples to a guessed 16 kHz); a single-argument `speaker_fn` now fails and reports `spoken: False`.
-  `LocalSpeaker` accepts `sample_rate`. `push_audio_to_device` requires `sample_rate`, and the
-  `make_device_speak_sink(...)` sink and `MediaLoopMixin.speak` take it keyword-only, so a caller can no longer fall
-  back to a silent 16 kHz. `ReachyAudioStream.push_sample` resamples from the stream's `output_sample_rate`.
-  **Embedders must call `start_device_player(mini)` before speaking** (see Fixed); maxim-pulse ships that change
-  first, and 1.3.4 does not publish before it (mechanization backlog M79).
+<!-- changelog.d/1264-state-paths-under-home.fixed.md -->
+- **Each agent loop run keeps its own runtime-state file** (#1264): a sim's agent under test and its narrator (both
+  `MaximAgent`, started in the same second) wrote one CWD-relative `state_<run_id>.json`, and the later write
+  replaced the earlier. Each run now gets `state_<run_id>_<token>.json` with a random token. A run whose file
+  already exists fails at start with `StatePathCollision` instead of overwriting it; any other failure to create
+  the file is logged and the run goes on. Run ids are unchanged; characters a filename cannot hold become `_` in
+  the filename only.
+
+<!-- changelog.d/1344-bounded-stop-pr3a.fixed.md -->
+- **A forced stop kills every LLM server and tunnel `maxim` started, and nothing it did not start** ([#1344](https://github.com/dennys246/Maxim/issues/1344), bounded stop PR 3a): a server is registered from its launch, so one killed during its readiness wait (up to 120 s) no longer survives as an orphan holding VRAM, and the cloudflared daemon `maxim` started now dies with it too. A `peer restart` stops every server this process started, including one a hot swap is still loading, and nothing else. When a busy server holds the port (a leader generating), `maxim` waits for it up to the spawn timeout (`MAXIM_AUTO_SPAWN_TIMEOUT_S`) and reuses it, instead of killing it from under the leader. A port held by anything it cannot reuse now refuses with the listener's pid: the CLI exits `2` with a hint and server mode goes NOT READY (the robot runtime and research warn and run without that model, as they do on any failed LLM start). **Behaviour change:** an orphan server from an earlier crash is no longer cleared automatically; stop the pid the refusal names.
+
+<!-- changelog.d/1344-cli-signals.fixed.md -->
+- **SIGTERM no longer kills a `maxim` run with nothing saved** ([#1344](https://github.com/dennys246/Maxim/issues/1344), bounded stop PR 2): the CLI now handles SIGINT and SIGTERM in one place, for every subcommand. Once a memory session is open, a signal asks the run to stop and save: `0`, or `4` in a simulation, a typed abort. Before any session it unwinds at once. A watchdog ends a stop that does not finish, killing the spawned LLM server, with the new exit code **`75`**; `MAXIM_SUPERVISOR_KILL_S` tells it when a supervisor will send SIGKILL. Robot runs, the post-sim prompt, server mode and the menu all wake on a stop now. A signal never hides a real failure of a non-sim command. **Behaviour changes:** `maxim serve` exits `0` after one signal instead of `143`; Ctrl+C during a menu sim ends the program rather than returning to the menu (`/cancel` still ends just the sim); after a SIGTERM a run can live up to 32 s while it saves.
+- **`spawn_evidence` refuses an exit 0 without a known outcome** (#1344): a harness can no longer take a yielded or unknown run as evidence. Confirmed negative results (`failed`, `blocked`, `inconclusive`) still count.
+
+<!-- changelog.d/1369-context-overflow-no-cooldown.fixed.md -->
+- **A prompt too large for the model no longer takes a healthy self-hosted provider out of rotation** (#1369): a
+  context-overflow refusal (the leader proxy's 413, or the 400 from llama-cpp-python, vLLM or the llama.cpp server)
+  used to read as a provider failure and put the provider into cooldown, so the next, smaller prompt was refused
+  too. It is now its own error, carrying the requested and window token counts. The router logs it as a WARNING,
+  with those counts and the router's own n_ctx belief, does not cool the provider down, names it in the run
+  report when the overflow was its last outcome, and tries the next provider.
+
+<!-- changelog.d/1370-mid-stream-error-chunk.fixed.md -->
+- **A self-hosted model's stream that ends in an error no longer comes back as a complete answer** (#1370): an
+  error chunk in the middle of a stream (`data: {"error": …}`) used to be ignored, and the text streamed before it
+  was returned as a successful completion. It now fails the call, so the router moves to the next provider, and the
+  partial text is discarded. A stream chunk that is JSON but not an object now fails the same typed way, instead of
+  escaping as a raw `AttributeError`.
+
+<!-- changelog.d/1371-lane-key-on-entry.fixed.md -->
+- **A rotated API key for a remote lane takes effect without a restart** (#1371): a lane's key also travelled
+  through an internal environment variable (`MAXIM_LANE_<TIER>_API_KEY`, and `MAXIM_PLACEMENT_<KEY>_API_KEY` for a
+  fallback placement) written with `setdefault`, so a value already there (an earlier build in the same process, or
+  one inherited from a parent) beat a key rotated in config since. The resolved key now rides on the lane's provider
+  entry, which the backends send. To override a lane's key from the environment, set
+  `MAXIM_LANE_<TIER>_REMOTE_API_KEY`, as `maxim tunnel key export` prints; the old internal variable is ignored, with
+  a one-time warning when it differs.
+
+<!-- changelog.d/1396-asked-once-per-run.fixed.md -->
+- A "no" (or a timeout) at the model-download prompt is remembered for the rest of that `maxim` run, so
+  `--sim interactive` and `--auto-curate` no longer ask the same question twice (#1396). Each bare-`maxim` menu
+  choice is its own run; the library, the console and every subcommand still ask every time.
+
+<!-- changelog.d/1396-curate-asks-only-on-a-gap.fixed.md -->
+- `maxim --sim … --auto-curate --llm X` asks about a missing model only once curation finds a coverage gap and
+  will use it; with every category covered, nothing is built and nothing is asked (#1396).
+
+<!-- changelog.d/1396-direct-routers-consent.fixed.md -->
+- **A model you named that is not on disk now stops the run up front, and the sim, research, robot and ExecAgent
+  routers ask before downloading** (#1396). `--llm X`, `--aut-model X`, research's model, and
+  `maxim.run()`, `maxim.create.router()`, `maxim.imagine()`, `maxim.campaign()` and `maxim.research()` (each hands its
+  model, `mistral-7b` by default, to the build) used to leave a run going on a router that refused every call when X
+  was missing and not downloaded (the dual-LLM AUT quietly measured the shared model instead). Now the run refuses
+  with `LocalModelUnavailable` before any router warms up, before the sim's sandbox is set up and before a
+  `--aut-model` loads (on a GPU host the shared llama-cpp-server may already have been started); the CLI prints how
+  to get the
+  model (download it, grant downloads, fix an llm.json `model_path`, or place an unregistered model by hand) and
+  exits 2. `LocalModelUnavailable` is a `BackendError` and also a `ConfigurationError`, so an existing
+  `except ConfigurationError` around `maxim.run()` or `maxim.create.router()` still catches it.
+  A model picked for you (no name given) falls back to a smaller model you have, or runs without the LLM; when
+  `MAXIM_LLM_PROFILE` names the declined model, the run goes without the LLM. A router with a `--cloud-fallback`
+  (or peer) tail keeps serving from it when its local model is missing, as before. The new router check asks at a
+  terminal only on the main thread and never twice for a model declined in the same startup; the existing
+  startup check inside the lane build still asks wherever stdin is a terminal. `maxim.run()`, `maxim.create`, the
+  console's talk and server mode keep that startup check and its named-model refusal, without the new router
+  check. The benchmark's paper writer never asks. The fallback search after a declined model is now handed the model
+  the run asked for, not the one just declined. A model alias (`mistral-7b`) is resolved before that check, and
+  `lane_decisions.jsonl` now records the `--llm` model as the profile handed to the build for CLI sims.
+
+<!-- changelog.d/1396-foundry-curate-ask-to-download.fixed.md -->
+- `maxim --foundry` and `--auto-curate` with `--llm` now ask before downloading a missing local model, as the
+  agentic path does (#1396). Before, their router reached the backend's lazy load, which never prompts, so at a
+  terminal the run fell back to templates without asking. Declined, or not at a terminal with no
+  `--auto-download` grant, they say the model is not available and use the template fallback, with no warmup.
+
+<!-- changelog.d/1408-server-key-followups.fixed.md -->
+- **Doctor's VRAM check and the leader's `/v1/debug/vram` now know the running server's context window** (#1408):
+  their n_ctx probe sent no key, so a keyed llama-cpp-server answered 401, and its command-line fallback never read
+  `--n_ctx`, the flag Maxim spawns with. There is now one probe, used by both and by `maxim doctor`'s context-window
+  check. It sends the key the server accepts and reads `--n_ctx`, `--ctx-size`, `-c` and vLLM's `max_model_len`.
+- **A filesystem that cannot lock is reported as that, at once** (#1408): on NFS without a lock daemon, creating the
+  local server key waited 30 s and then blamed "another process" for holding the lock, and a model download blamed
+  another download. Both now say the filesystem cannot lock.
+- **`maxim peer llm <model>` explains a refused hot swap** (#1408): when the leader's LLM server was not started by
+  that leader process, the swap now answers 409 with the reason and the fix (restart with the new model) instead of
+  a generic 500.
+
+<!-- changelog.d/1438-bounded-stop-pr1b.fixed.md -->
+- **A console stop now stops the work it waits for, within a budget** ([#1438](https://github.com/dennys246/Maxim/issues/1438)
+  PR 1b, docs/plans/bounded_stop.md §5). A stop used to tell nothing to stop: it waited out a run (30 s), a campaign
+  (60 s) and Talk (20 s), then ended the agent's session unbounded, past pulse's ~20 s kill.
+  - New config `console.stop_budget_s` (default 15 s; `MAXIM_CONSOLE_STOP_BUDGET_S`; `build_app(stop_budget_s=)` for
+    an embedder). `CONFIG_FORMAT_VERSION` is now 1.4.
+  - The console's shutdown (and `maxim serve` on SIGINT/SIGTERM) makes a process stop request
+    (`utils.cancellation.request_stop`): running agent loops end at their next tick, in-flight LLM calls through
+    `LLMWorker` are abandoned within half a second, and backend retries stop (until a campaign's own tail re-arms
+    them; PR 1c). Each wait takes a share of the budget, and a loop that ends this way saves every store and
+    consolidates only within the budget. The request stops every loop and LLM worker in the process, not only the
+    console's.
+  - The request is cleared once the stop finished. If anything was still running at the budget (a campaign, a session
+    end), it stays set, and a console started again in the same process refuses with `StopStillPending` rather than
+    building loops that are born stopped. Restart the process to recover.
+  - `MaximHandle.stop(deadline=)` bounds its waits and the agent's own end without stopping anything else in the
+    process, and returns whether everything it waited for finished. It does NOT bound the session end of a Talk loop
+    that owns the session, which only a process stop request bounds (#1536). `AgentInstance.shutdown` returns
+    whether the session end was reached.
+  - A simulation that ends because of a stop request reports `yielded`, a typed abort (exit 4), never a completed
+    run, even when the stop lands after its last turn. Running campaigns themselves notice the stop in PR 1c.
+  - `maxim serve` runs uvicorn through `console/server.py::_MaximServer`; uvicorn's own wait for open requests is
+    bounded to a quarter of the budget (it was unbounded).
+
+<!-- changelog.d/1438-bounded-stop-pr1c.fixed.md -->
+- **A stopped simulation stops too** ([#1438](https://github.com/dennys246/Maxim/issues/1438) PR 1c,
+  docs/plans/bounded_stop.md §5). PR 1b's process stop request ended a campaign's agent loop, but the rest of the
+  simulation kept going: the narrator and DM looped on, a direct LLM call ran to its backend's timeout, and the sim's
+  own reset re-armed the backend mid-stop.
+  - A direct router call (the narrator, the DM, the roundup, research) is refused under a stop request and abandoned
+    within about half a second when one lands mid-call; a Ctrl+C during the call now cancels it too. An `LLMWorker`
+    call still abandons on the worker's own stop event, as before. `LLMRouter.generate` raises the new
+    `LLMCallStopped` (a `ModelInferenceError`) for a stopped call, so a stop no longer reads as a model failure.
+  - `reset_shutdown()` no longer re-arms the backend while a stop is requested.
+  - `LLMRouter.wait_ready` returns False on a stop request instead of waiting out the model load.
+  - The generative and DM runners stop at the next turn or encounter, never deliver or record a fallback turn or
+    choice made from an abandoned call, and report `yielded`, which the run's finish context now reads as
+    `yielded`, not `error`.
+  - A simulation started under a stop request raises `StopStillPending` before building anything (its start
+    provenance included), and again, releasing its serving registration, if the stop lands while the model loads.
+  - A loop's session end under a stop keeps a reserve for whoever waits on it, so a slow end no longer overruns
+    the console's stop. It persists whatever the bound, and a spent bound still flushes the session's own queued
+    captures for 0.5 s. An exit with no stop keeps its whole bound.
+  - A stopped sim's container is removed in the background. `run_provenance` / `serving_provenance` gain a
+    `deadline=` that bounds every report-time wait and fails skipped checks closed (`unknown: stopped`,
+    `model_changed_during_run` unknown); the sim's stop tail passes it.
+  - A stopped sim's end fits inside the console's stop: it saves an early, partial report.json and action log
+    (`provenance.stop_stage: "early"`) before any wait, bounds its waits for the agent and DM threads and the
+    orchestrator's own shutdown by a share of the stop's deadline (an adopted agent's join no longer waits 300 s),
+    saves the full report (`stop_stage: "late"`) only if time is left, skips the LLM roundup, and never shows the
+    interactive post-sim prompt. A failed save never skips the shutdown and release that follow it. While the agent's
+    loop is still ending its session, the end leaves its state alone: no tool lease restore (by the sim or by
+    `MaximHandle`'s safety net), no pain-bridge unsubscribe, no imagination cleanup, no subsystem snapshot. With no stop, the end of a run is unchanged; its code moved to
+    `simulation/sim_teardown.py`.
+
+<!-- changelog.d/1451-held-input-replans-finish.fixed.md -->
+- **An input the narrator receives while it is planning its finish is now read before the run ends** (#1451). The
+  narrator plans one request at a time, so an operator message, a checkpoint or a nudge that arrives meanwhile waits
+  for its next submit. When the answer it waited behind was `finish_simulation`, the run ended without the narrator
+  reading it.
+  - Such a finish is now set aside once. The narrator is told why, plans again with every held input in view, and
+    that answer runs. If inputs arrive behind that second finish too, it runs, and one WARNING names the inputs it
+    was not shown ("unread at finish"). A finish the tool refuses (below the run's turn floor) leaves the rule armed
+    for the next one.
+  - A plan request now shows the inputs it carries under `=== New Instructions ===`, as a follow-up already did.
+  - A tool declares that it ends the run with the new `Tool.ends_run` attribute (`FinishSimulationTool` sets it).
+  - A run that has stopped no longer submits a planning call. Until now the tick that set the stop could still send
+    one, after the narrator's finish or an operator `/cancel`, and its answer never ran.
+
+<!-- changelog.d/1476-teardown-jsonl.fixed.md -->
+- **A sim's JSONL run log keeps what the run logs after shutdown** (#1476): to hide in-flight INFO lines from the
+  terminal, the sim teardown raised the `maxim` logger to WARNING (#1588). That also cut the `MAXIM_LOG_FILE` JSONL, whose
+  contract is DEBUG and up, for everything after shutdown, the final report and store saves included. It now raises
+  every handler but the JSONL one (`utils/logging.py::quiet_console_handlers`: the console, a `log_file` and the
+  leader's log buffer), so run logs also keep the INFO lines logged
+  during shutdown.
+
+<!-- changelog.d/1481-inbound-comms.fixed.md -->
+- **A message sent to Maxim over SMS, voice or `POST /api/command` now reaches the model, framed as untrusted data**
+  ([#1481](https://github.com/dennys246/Maxim/issues/1481); design: `docs/plans/inbound_comms_1481_approach.md`, four
+  adversarial rounds). The comms stack published each message on the agent's bus, but the live loop never read that
+  bus and the prompt builder never rendered comms, so a message was accepted, logged and never shown, and nothing said
+  so.
+  - The run's loop now holds `comms:*` messages in a bounded inbox (`runtime/loop_external.py`):
+    - at most 20 held;
+    - Twilio retries de-duplicated by `MessageSid`;
+    - each sender shown as a per-session alias ("sender 1"): a phone number never reaches the live prompt or a log
+      (the dormant `ExecAgent` path still would; #1519).
+  - The next prompt the loop builds for another reason shows them in an `inbound_messages` section. Each message sits in
+    its own untrusted-data frame, with the alias in the frame header, inside a token cap of about 10% of the context.
+    The rule line says what the frames hold.
+  - A message leaves the inbox only when a turn whose prompt showed it whole is acted on (dispatched). A timeout, an
+    empty or fallback reply, a stale or discarded proposal, a dropped section or a failed submit all keep it held. A
+    message shown in 3 turns without being acted on is evicted, with a WARNING.
+  - Messages never trigger a turn by themselves yet.
+  - **`POST /api/command` text is shown as outside data, never as an operator instruction**, even though it needs the
+    API token (owner decision 2026-10-28).
+  - `bootstrap.build_comms_stack` takes `agent=` (it raised nothing before and took `bus=`), so comms can only be
+    wired to the bus the loop watches.
+  - Working-memory thoughts still render stored comms text unframed: that is #1519.
+
+<!-- changelog.d/1499-auto-yaw-reassert.fixed.md -->
+- **The Reachy controller turns the daemon's automatic body yaw off again before every discrete move** (#1499 PR 3).
+  The setting is daemon-wide and has no getter, so a second SDK client connecting mid-session could turn it back
+  on, and the daemon would then rotate the body behind Maxim. `goto_target` and `goto_sleep` now re-assert it under
+  the motion lock first; if the call fails, the move is refused (`reference`) and nothing moves until an assertion
+  succeeds. The look-at tracking stream does not re-assert, which would cost about 10 SDK calls a second. The
+  bundled `src/tests/basic_move.sh` no longer turns the setting back on for every client, and the motion lint now
+  flags any `ReachyMini(` in `src/` or `scripts/` built without `automatic_body_yaw=False`.
+
+<!-- changelog.d/1499-dn-pain-at-outcome.fixed.md -->
+- **The Default Network and the pain bridge now book what a move did, when it did it** (#1499 PR 2b,
+  [docs/plans/motion_path_model.md](docs/plans/motion_path_model.md) §5.6). Before, DN counted a move as done, and
+  taught its gaze history, spatial map and attention network, the moment it was queued, so a refused or replaced move
+  still taught "reachable". The pain bridge recorded a look-at's start at the same moment, so a queued move retired
+  the one still running and that move's pain was booked against the wrong action.
+  - DN's bookings run on DN's own tick from the move's final outcome (a new motion inbox), and they run while DN is
+    inhibited and once more as it stops. `DNActionProposal.was_executed` and the action callbacks now arrive when the
+    move finishes, and DN's current gaze position is where a move arrived, not where one is headed. Only a completed
+    move or an IK failure teaches; `look_opposite` books the same way, and its `True` now means the move was issued.
+  - DN's pacing does not change: the dwell and inhibition of return still start when a move is issued, for a move that
+    later fails too (`GazeHistory.note_move_commanded`). A command that raised paces nothing, also as before.
+  - A look-at's pain start is recorded when the move starts, inside the motion lock. A move replaced first records
+    nothing. `record_action_complete(event_id=)` completes that event only, and the bridge's retire-and-install is
+    one atomic step.
+  - The automatic turn binds its own ticket, so its start is recorded behind any move in flight. A turn the
+    controller refuses before its first SDK call now books nothing, and a look-at whose turn failed now reports
+    the failure instead of success.
+  - IK failures have their own outcome kind, `ik`, for the failures the client can see, whether the SDK raised or
+    logged them: one path through the failure count, the mirror re-read, the bounds learner and recovery, and never
+    a connection failure. It replaces DN's and `look_opposite`'s substring checks with a narrower match, so "like"
+    or a port collision no longer counts. Plugins report `kind="ik"` themselves.
+  - `move` answering "already at the requested pose" while that pose is still queued now returns the queued move's
+    ticket, so a retry of a move about to fail no longer reads as done.
+  - On the Reachy controller, nothing moves the robot after the live loop stops. The teardown used to drop the queue, which made the next move
+    run synchronously while DN was still issuing them, and a body turn never went through the queue at all. The
+    teardown now stops the loop, closes the queue and then sets the controller's stop latch
+    (`RobotController.stop_motion()`, a no-op by default for plugins), which only a successful wake clears, as a
+    sleep's does: a soft reconnect's connect no longer clears it. The wake word's wake carries the stop token too. A soft reconnect that finishes after the stop re-latches and wakes nothing: its wake is tied
+    to the controller's stop generation, read before its last check (`RobotController.stop_token()` and
+    `wake_up_unless_stopped_since()`, which plugins without a latch inherit as a plain wake), so a stop either shows in
+    that check or refuses the wake, and a stop during the wake still cuts it. The sleep pose still runs,
+    and a stop that fails is logged without costing the rest of the teardown. A command the motor worker takes as it
+    stops does not run either.
+  Queued moves still book no pain completion, as before: the completion clears the detector's target, which would
+  end its movement-failure check, and it would add a positive NAc link per look-at.
+
+<!-- changelog.d/1499-live-setup-window.fixed.md -->
+- **A Reachy run that fails while starting now fences motion at once** (#1499 PR 3). If `live()` raised after opening
+  its stop event but before its main loop (a leader refusal from the agentic runtime's start, a worker thread that
+  would not start, an unwritable audio chunk directory), its teardown was skipped: the motor queue stayed open, the
+  controller's stop latch never set, and the stop event stayed registered until the caller's shutdown, or for good
+  when `live()` was called directly. The teardown now covers the whole setup and skips a worker thread that never
+  started. A shutdown that fails behind such an error is logged, so the original error, a refusal's exit code
+  included, still reaches the caller.
+
+<!-- changelog.d/1499-motion-outcomes.fixed.md -->
+- **A Reachy move's outcome now reaches the model, not just "queued"** (#1499 PR 2a,
+  [docs/plans/motion_path_model.md](docs/plans/motion_path_model.md) §5.4–5.8). Before, a move that went through
+  Selfy's motor queue was fire-and-forget: a refused move (too fast, an unreadable pose, a sweeping path) was reported
+  to the model as success, a replaced or cleared command vanished without a word, and `act` slept the requested time
+  while the controller had stretched the move.
+  - A new `MotorQueue` resolves every command it removes: `superseded` when replaced, dropped as full, cleared or
+    drained on a reconnect; `cancelled` when a stop closes the queue (`sleep`, the live teardown), and for every
+    later command. Nothing queued behind a stop runs.
+  - Selfy's queued-motion methods (`move`, `move_relative`, `look_at_image`, `goto_pose`, `center_vision`,
+    `move_antenna`, `act`) return a two-stage `MotionTicket`: `accepted` when the checks pass and the first SDK call
+    starts (or with the refusal), `completed` with the final `MotionOutcome`. `goto_pose` no longer sleeps, and `act`
+    waits for each move to complete.
+  - The tools wait for `accepted` (at most 20 s, then "not started: the motor is busy"; a cancel holds until the move
+    is accepted, so it never runs behind that answer) and return the controller's reason (`rate`, `path`,
+    `reference`, `limit`…) instead of "Motion command failed". A duration the model chose is `exact` and refused
+    when too fast; an absent one is stretched. `track_target` and `novelty_track` no longer advertise a 0.3 s
+    default, which models copied into every call.
+  - `turn_around` returns a `MotionOutcome`, plans from the daemon's fresh body yaw (never the mirror), and refuses
+    a turn that would end past ±160° (`limit`) instead of shrinking it; the automatic turn in `look_at` then looks
+    with the head clamped and books nothing with the pain bridge, and the Default Network's own turn is no longer
+    counted as executed. A move that never started no longer leaves Selfy's pose mirror at its target.
+  - `move_antenna` goes through the controller: the motion lock, the fresh readback and the rate cap.
+  - `SimulatedController` returns `MotionOutcome` from `goto_target`, `look_at_pixel`, `wake_up` and `goto_sleep`.
+  - Controller plugins: `RobotController.read_body_yaw()` (optional override; the default needs `body_yaw` in
+    `get_current_pose()`) and `mark_motion_accepted()` (call it before the first actuator command) are documented
+    in docs/user/extension_api.md.
+
+<!-- changelog.d/1499-motion-path.fixed.md -->
+- **No too-fast, wrongly-referenced or mid-path-unsafe command reaches a Reachy motor** (#1499 PR 1; decisions
+  MP1–MP12, [docs/plans/motion_path_model.md](docs/plans/motion_path_model.md)). The SDK moves the head the short way
+  round the world rotation while the body follows its joint line, so a move whose endpoints are both legal could
+  swing the neck through about 180° mid-way: from a turned body through `center_vision`, every SDK `look_at`, wake
+  and sleep, and large turns. `ReachyMiniController` now:
+  - reads its reference fresh from the daemon (`GET /api/state/full`) before every dispatch and between chunks, and
+    refuses (`reference`) on a failed, malformed, torque-off, impossible or diverged read, with no `0.0` fallbacks;
+  - caps the rate (180°/s average, 340°/s peak), stretching a default duration and refusing a too-fast explicit one;
+  - samples the SDK's own path and splits a move that would sweep the neck (body, then neck yaw, then roll and
+    pitch), checking every chunk before any moves, re-checking the pose between chunks, and stopping cleanly on an
+    abort, an SDK timeout or a dropped chunk;
+  - returns a `MotionOutcome` (truthy iff the move completed; `bool` stays accepted from plugins via `as_outcome`).
+  `look_at` turns the head only. Wake and sleep re-centre a turned robot first and run the SDK's steps as clamped
+  dispatches, so the sleep antennas stop at ±90° instead of the SDK's ±175°; sleep with torque already off returns
+  ok without moving. After a sleep, new head and body moves are refused (and the robot reports not awake) until a
+  wake succeeds, even across a reconnect; after a disconnect, until the next connect.
+  `automatic_body_yaw: true` is now a config error. `move_head` delegates to the controller, and standalone callers
+  must pass `motion_lock=`. The motor worker books the gaze and bounds learners only on a completed move. Not yet
+  covered (#1499 PR 2): `move_antenna` still dispatches straight to the SDK (clamped, but with no rate cap or lock),
+  and the tools do not yet mark model-chosen durations as explicit, so those are stretched rather than refused.
+
+<!-- changelog.d/1522-no-hub-agent.fixed.md -->
+- **An agent without a Hippocampus or a NAc no longer reports a corrupt memory hub** (#1522): the hub needs both, so
+  an agent made with `remembers=False` or `learns=False` has none, by design. Its shutdown saves its stores itself;
+  it gets no session-end decay or consolidation (#1366 tracks whether it should). The false "Failed to create
+  MemoryHub" and "Corrupt memory_hub state" warnings are gone, and `on_corrupt="raise"` no longer refuses to build
+  such an agent with `MemoryCorruptionError`. It also no longer reads the hub's own files (`ec.json`, `scn.json`):
+  a bad `ec.json` beside a learns-only agent reset its NAc on every load.
+- The Python API guide's `shutdown()` example now describes what shutdown saves, and in what order (#1521).
+
+<!-- changelog.d/1536-handle-stop-bounds-talk.fixed.md -->
+- **`MaximHandle.stop(deadline=)` now bounds the Talk loop's own session end** (#1536). An embedder stopping one handle
+  makes no process-wide stop request. Until now, the Talk loop's full consolidation (sleep, replay, promotion, ATL/AG)
+  ran past the embedder's deadline. The handle now gives each Talk loop it builds a bound that `stop()` sets, including
+  for a loop still ending from `rest()` or a rebuild. The bound cuts only the consolidation steps: everything the
+  session learned is still flushed and saved, and a campaign's session is untouched.
+
+<!-- changelog.d/1538-aut-router-profile.fixed.md -->
+- **A dual-LLM sim whose AUT router build fails no longer leaves the process on the AUT's model** (#1538). The
+  build changed `MAXIM_LLM_PROFILE` to `--aut-model` and set it back only when it succeeded. After a failure,
+  every later router build and `load_llm_config()` in the process, the `/new` re-entry's among them, served the AUT's
+  model. `build_primary_router` now takes `profile=` and keeps it for the lanes it builds later, so the AUT build and
+  `maxim.create.router(model=)` pass the model in and never change the process's profile, even while the build runs.
+
+<!-- changelog.d/1541-stdin-reader-stops.fixed.md -->
+- **A simulation's stdin reader now stops when the run ends** (#1541). The reader used to block in `input()` and
+  exit only on `/cancel`, end of input or an interrupt. So a run that ended any other way (the narrator's finish, a
+  campaign finish, `max_turns`, the hard abort) left it running, and in a process that ran several simulations it
+  took the next line typed for a later run.
+  - The line reader now polls a selectable stdin (a terminal, a pipe or a file, on POSIX) between checks of the run's
+    stop, in `simulation/stdin_lines.py`.
+  - Teardown joins it, with a bound, before the post-sim prompt reads stdin.
+  - A stdin that cannot be polled (no file descriptor, or Windows) still blocks. Such a reader drops the line it
+    reads after the stop, and teardown logs a warning that it did not stop.
+  - On a piped or file stdin the reader reads the file descriptor directly: lines Python had buffered before the run
+    are not seen by the run (they stay for a later `input()`), and lines the reader read past the last one it
+    processed are lost to a later `input()`. A terminal is unaffected.
+
+<!-- changelog.d/1573-own-capture.fixed.md -->
+- **A repeated question no longer loses its answer** (#1573): recall skipped every record holding the turn's exact words,
+  after its five-result limit, so an earlier identical question was never recalled and a fact was lost once its question
+  had been stored five times. The turn's own records are now excluded by identity, before the limit, on enrichment's paths,
+  and an episode stored many times (the same words, tool and outcome) takes one place on enrichment's paths and in
+  `memory_recall`. The same line with different outcomes stays two memories. `enrichment_trace` gains `own_ids`.
+
+<!-- changelog.d/1586-api-run-profile.fixed.md -->
+- **`maxim.run`, `maxim.imagine` and `maxim.campaign` no longer put their model in `MAXIM_LLM_PROFILE`** (#1586).
+  Each set the variable for its whole run, so any other thread in the process that resolved a profile saw this
+  run's model. `imagine` and `campaign` also set it before loading their scenario or campaign, so a file that failed
+  to load left the caller's model as the process's profile. The model is now handed to the run's router build
+  (`start_simulation_mode(llm_profile=)` for the sims, carried into a `/new` run), and only `MAXIM_LLM_ENABLED`'s
+  default is set, after the inputs load, and restored when the call returns or raises.
+- **`maxim.research(model=)` runs on the model it is given** (#1586). It reported that model as
+  `orchestrator_model` while its Writer, Reviewer and narrator ran on the session's profile. Like the other API verbs,
+  a call with no `model` now runs on the last chosen model, or `mistral-7b` when none was chosen (not the session's
+  `llm.profile`), and an explicit `model` is remembered as the next default.
+
+<!-- changelog.d/1592-narrator-agent-tools.fixed.md -->
+- **The stall detector's texts for the sim narrator no longer name the agent's tools** (#1592): the diversity
+  checkpoint gives the agent under test's action and tool counts and points the narrator at its own
+  `observe_actions`, instead of listing the agent's tool names, and the stall nudges name only `send_message`. A
+  narrator retry after it proposed a tool it lacks no longer repeats that tool's name: it says that a tool not in the
+  narrator's list, such as one in the agent's actions, is the agent's, and lists the narrator's own tools. The Exp 63b
+  smoke stopped with `planning_failed` on this; whether the narrator now recovers on a live model is for the next
+  smoke to show. The narrator still reads the agent's tool names in an `observe_actions` result (#1605).
+
+<!-- changelog.d/1610-leader-services-one-owner.fixed.md -->
+- **A leader that reuses the LLM server already on its port now comes up with its cloudflared tunnel and heartbeat**
+  (#1610): they used to start only after a fresh spawn. A leader's proxy, tunnel and heartbeat now have one owner,
+  the `maxim` CLI process that binds the leader proxy. It starts the tunnel and heartbeat when it builds its LLM,
+  whatever the LLM path decides: a fresh spawn, a reused server, an opted-out spawn, or a build that fails (server
+  mode stays reachable for remote recovery). A sub-sim on the leader box shares the leader's proxy and never starts
+  or stops the tunnel, and a tunnel that cannot start (an unreadable `/etc/cloudflared`) is logged rather than
+  failing the LLM build.
+
+<!-- changelog.d/1620-silent-e-keys.fixed.md -->
+- **Recall matches the regular inflections of a word** (#1620): the memory content keys now bring "move", "moved",
+  "moving" and "moves" to one key (and "stop"/"stopped", "store"/"stored", "place"/"placing", "close"/"closed"…), so
+  a cue in one form reaches a memory stored in another. The frozen tokenizer (`normalize_tokens`, which ATL concept
+  names are persisted from) is unchanged; the keys converge on top of it, so a persisted concept name still matches
+  its words. Words that differ only by a final "e" now share a key ("plan" and "plane", "made" and "mad", "care" and
+  "car"; "done" and the "don" of "don't"). Only words converge: numbers and symbols keep their keys. Still apart: "used" against "use", "agreed" against "agree", "accessing" against "access", and irregular
+  forms ("hid", "slept"). Exp 63b's
+  judge keeps the keying that run executed, so a new 63b-style run on this code is refused by its instrument checks;
+  Exp 63c has its own port.
+
+<!-- changelog.d/1621-imagine-scenario-turns.fixed.md -->
+- **`maxim.imagine(scenario=)` delivers the scenario's lines, or refuses the scenario** (#1621): it read
+  `percepts[].text` while scenarios carry `cli_input`, so every scripted turn reached the agent as an empty string,
+  silently, and the run still made a report. Scripted turns now have one loader, `experiment.load_campaign_turns`,
+  which parses through `scenario_source.load_scenario`, so its expectation and scoring checks still run for
+  `imagine` and research mode.
+  - `imagine` loads strictly: a scenario whose percepts are not all non-blank `cli_input` lines (for example one
+    with a pain or vision percept, such as `scenarios/malware_with_pain.yaml`) raises `ValueError` before any run
+    starts. The message names the percept, points at `maxim --sim <scenario>` for percept scenarios, and points at
+    #1393, which covers delivering those percepts.
+  - Research mode (`maxim.research(campaign=)`, `--research --campaign`) loads its campaign the same strict way.
+    A campaign that fails to load or has no line now raises `maxim.exceptions.CampaignUnloadable`, a `ValueError`,
+    before any session directory or LLM is built, and the CLI exits 2 with a fix hint instead of a traceback. It no
+    longer falls back to a free-form sim and writes a paper about a different experiment. A DM campaign
+    (`scenarios/campaigns/*.yaml`) is refused this way too.
+  - Research turns are no longer whitespace-stripped, which matches every other path: a block-scalar
+    `cli_input: |` line keeps its trailing newline.
+  - The lenient loader that `run_campaign` uses skips, and names in one WARNING, every percept that is not a
+    non-blank `cli_input` string. A blank line used to arrive as an empty turn, and `cli_input: 42` crashed the
+    delivery. Only a null `metadata` reads as `{}`; any other non-mapping `metadata` is skipped and named.
+  - In both modes the loader raises `ValueError` for a file whose top level is not a mapping, whose `percepts` is
+    not a list, or that is not YAML. `load_scenario` also raises a `ValueError` naming the file, rather than an
+    untyped `AttributeError` or `TypeError` or a silent empty value, for `expectations` that are not a list of
+    mappings, an expectation's `params`, a `benchmark` or `suite` section or its `scoring` that is not a mapping
+    (`[]` and `""` included), and a non-numeric `estimated_duration_s`. Only null reads as absent, in every one of
+    these. Strict mode also refuses a percept-level `phase:` key (the old `imagine` format); the lenient mode
+    warns that the key is ignored.
+  - `CampaignUnloadable` and `KeyFileUnusable` (with its `tunnel.keys` subclasses) now survive pickle and copy;
+    their keyword-only `__init__` used to make the round trip raise `TypeError`.
+
+<!-- changelog.d/1657-curate-router-unloaded.fixed.md -->
+- **`--auto-curate` no longer holds its model in memory for the whole sim** (#1657): when curation finds a coverage
+  gap, the router it builds is waited for before use and unloaded once curation ends, so a local model is not
+  loaded twice. New `LLMRouter.unload()` releases every backend a router built, and never waits on a model
+  still loading (that load releases itself when it ends). Two shutdown paths that called a release method the
+  router never had now really free the model: `maxim --foundry`'s on a load timeout, and the robot runtime's
+  shutdown (`LaneBackendManager.unload_all`), which now unloads its in-process models and closes their HTTP
+  clients.
+
+<!-- changelog.d/1658-talk-never-asks.fixed.md -->
+- **The console's talk, and any model build off the main thread, no longer stop to ask about a download on the
+  server's terminal** (#1658, #1677). A talk request against `maxim serve` started from a terminal used to wait 30 s on
+  "Proceed? [y/N]" on the server's stdin, where a line typed there for something else would count as a yes. The robot's
+  wake-word rebuild had the same problem. Now one rule decides whether a download may be offered: only on the main
+  thread, which is the operator's own startup. Anywhere else the build logs how to allow downloads and falls back to a
+  smaller model you have. A model the caller named still stops the run. Talk never offers a download, so `maxim serve`
+  is grant-only. When talk has no model, its error names the model talk's router could not use and how to fix it
+  (for a model that is not downloaded: `maxim config set llm.auto_download true`, or
+  `python -m maxim.models.download --llm <model>`), and the server log says so when another model serves talk. Talk now builds like the other run sites, so when no lane resolves
+  a model it can get the `llm.json` fallback router, where it used to stop with "configure one first". Two cases on the
+  main thread can still ask: the bare-`maxim` menu's live display, and the robot's first build after it wakes.
+
+<!-- changelog.d/1663-atomic-unique-tmp.fixed.md -->
+- **Two writers of one file no longer share a temp file** (#1663): `atomic_write_text`, `atomic_write_json`,
+  `atomic_write_secret` and `atomic_write_bytes` now write through a temp file unique to each write, created
+  exclusively beside the target (`.<name>.<12 hex>.tmp`), instead of the fixed `<name>.tmp`. Before, two concurrent
+  writers of one path could interleave their bytes in the shared temp, and the second `os.replace` failed with
+  `FileNotFoundError` once the first had taken the file. File permissions are unchanged (the umask default, or
+  `initial_mode`), and the LLM spawn-record sweep removes a dead writer's temp under either name.
+
+<!-- changelog.d/1687-offline-windows.fixed.md -->
+- **Maxim imports on Windows again** (#1687): `maxim._offline` used `socket.AF_UNIX`, which Windows CPython lacks, so
+  importing it raised, and with it `maxim.tools.base` and everything else that loads the offline latch. The latch's
+  allowed socket families now include `AF_UNIX` only where the platform has it. The latch stays POSIX-only:
+  `engage()` on any other platform raises `OfflineUnsupportedPlatform` before the latch goes up, so a Windows process
+  started with `MAXIM_OFFLINE` set fails at `import maxim`, and `maxim.advisor.open()` refuses with
+  `AdvisorCompositionError`, instead of reporting offline on a platform whose refusal set has never been checked.
+
+<!-- changelog.d/1691-fallback-no-credit.fixed.md -->
+- **A fallback reply no longer teaches NAc** (#1691): when the model's reply is missing or unreadable, times out, or
+  no model is available, the stock reply is still spoken, but it no longer books a causal link, goal credit, cluster
+  reward, energy cost or plan outcome under the synthetic goal `llm_fallback` / `llm_timeout`. The outcome window, the
+  model's carryover and the episode record still keep the turn. A new `LLMProposal.degraded` flag, set only by the
+  fallback builders, marks these replies; a model writing `"strategy": "fallback"` cannot claim it.
+  - This also changes sims: a parse-failure fallback was already dropped there, but a timeout's "try again with more
+    time?" reply still runs in a sim, and it no longer books a positive `respond` link.
+
+<!-- changelog.d/1704-reachy-media-reacquire.fixed.md -->
+- **`ReachyMiniController` no longer leaves the robot's camera released after a `no_media` connection** (#1704):
+  reachy-mini 1.8.3's `no_media` connect releases the daemon's camera and microphone for the whole robot, and only
+  the SDK's own context exit took them back. `disconnect()` now re-acquires the media its own connect released,
+  before an SSH tunnel stops, and a connect that fails after the release undoes it too. Before, every later camera
+  client, the Maxim app included, failed with "Connection refused" until a manual `POST /api/media/acquire`.
+  - A release another client made is left alone.
+  - When the state before the connect is unknown, or a re-acquire can't be confirmed, the controller logs a WARNING
+    naming that endpoint.
+  - An unconfirmed re-acquire is retried at the next disconnect after a reconnect, provided that reconnect can read
+    the daemon's status. If it can't, the controller drops the claim and logs another WARNING rather than guess.
+  - Scripts that build their own SDK handle with `no_media`, outside the controller, still leak the release (#1712).
+
+<!-- changelog.d/1706-readback-budget.fixed.md -->
+- **A Reachy move no longer refuses a healthy robot's pose read for taking more than a third of the deadline**
+  (#1706): the fresh readback split `FRESH_READ_DEADLINE_S` (100 ms) into three equal httpx timeouts, but the third
+  one (`total_s`) only bounds the wait for a pooled connection. So the connect and the read each got about 33 ms,
+  and reads of 35–43 ms from a Mac refused moves with `reference`. Each phase may now use the whole deadline, and
+  the check after the read still refuses any reference older than it. The constant is unchanged until it is
+  re-measured on the robot, but the read budget actually enforced goes from about 33 ms to the full 100 ms (300 ms
+  tunnelled).
+  - A read that fails can now block for about 3–4 times the deadline before it is refused (twice that with the
+    retry between chunks): about 0.3–0.4 s on the LAN, against about 0.1 s before.
+  - `TimeoutPolicy`'s docstring and `docs/troubleshooting/http_debugging.md` now say what `total_s` does: it bounds
+    the pool wait, not the whole request, and DNS is not timed.
+
+<!-- changelog.d/1712-reachy-sdk-client-close.fixed.md -->
+- Reachy Mini: `ReachyMiniController.disconnect()` now closes the SDK's WebSocket client, as the SDK's own `__exit__`
+  does, instead of leaving its thread to garbage collection, and a connect that fails drops its handle, so the next
+  disconnect no longer retries a re-acquire on a dead one. A camera-backend connect onto a daemon whose media is
+  already released (a killed `no_media` client) now warns and names `POST /api/media/acquire` instead of failing
+  later with a bare `Errno 61`. The SDK-only orient scripts (`LiveRig` and its reconnect, `live_1_smoke`) re-acquire
+  the media they released on every exit but SIGKILL (SIGTERM and SIGHUP now exit normally there), and the motion lint refuses a `no_media` handle that its file
+  never undoes (#1712).
+
+<!-- changelog.d/1719-apply-damage-sensorless.fixed.md -->
+- **Damage aimed at a body part with no sub-sensors is refused, not dropped** (#1719):
+  `SpecModulator.apply_damage` used to return `1.0` on such a part and apply nothing, with no log or error, so a
+  host calling it directly on a flat body saw the damage vanish. It now raises `maxim.exceptions.DamageRefused`
+  (a `MaximError` and a `ValueError`, carrying `.modulator`). `damage_component` is unchanged: it already refused
+  such parts (#873). Hosts that call `apply_damage` directly should give the part sub-sensors, or catch
+  `DamageRefused`. `compute_integrity()` still reads `1.0` for capability-only parts.
+
+<!-- changelog.d/new-slice-1453-1454-1457.fixed.md -->
+- **Typing a new goal after a simulation now continues the run you had** (#1453, #1454, #1457).
+  - The new run keeps the settings of the one before it: the sandbox backend, image and network, the AUT's model and
+    mode, the turn limits, telemetry, the entity and an explicit arc. Before, a `--sandbox tmpdir` run re-entered with
+    `auto`, which picks Docker when the daemon is reachable. A campaign's own inputs do not carry. Whether the run uses
+    a generative arc is decided for the new goal, as a fresh `--sim` would, unless an arc was named. Every parameter is
+    classified, so a new one cannot be dropped by forgetting it.
+  - The agent under test starts from the previous run's saved hippocampus, NAc, EC and ATL, so the prompt's "(memory
+    carries over)" is back and true. The report's provenance stamps the carry as `resume` with `via: "/new"`, and a
+    carry that falls short logs a WARNING.
+  - `--report-json` is written once, by the run whose result the caller gets. It used to hold the first run's report.
+    On an interactive run the file now appears after the post-sim prompt, and `--report-json -` prints before the
+    human report.
+
+<!-- changelog.d/system-cloudflared-dir.fixed.md -->
+- **One reader for the system cloudflared config directory, so tests never see the host's tunnel**: role
+  detection, the tunnel daemon spawner and `maxim doctor`'s tunnel-sync check each read `/etc/cloudflared/` on their
+  own; all three now go through `utils/paths.py::cloudflared_system_dir`, which `MAXIM_CLOUDFLARED_SYSTEM_DIR` (an
+  absolute path) can override. The test suite points both the override and the in-process default into its isolation
+  root, and every child env a test builds keeps it (`tests/_child_env.py`), so a leader machine's real
+  `/etc/cloudflared/config.yml` no longer turns role-dependent tests into leader runs. The doctor's sync check and the
+  tunnel spawner's messages now name the path read.
+
+<!-- changelog.d/1647-motor-cortex-import.fixed.md -->
+- **`maxim.models.movement.motor_cortex` refuses typed without keras** (#1647): importing it without the `training`
+  extra now raises `OptionalDependencyError` (`import_name="keras"`, `extra="training"`) with the
+  `pymaxim[training]` hint, instead of a plain `ImportError`. It is still an `ImportError` subclass, so existing
+  handlers catch it. The fresh-import sweep now declares each module that belongs to an extra (the two console
+  modules and `motor_cortex`): such a module must import when its extra is installed, and when the extra is absent
+  it may fail only with that extra's own refusal. This was one of the two causes of the nightly slow lane's red runs
+  since 2026-11-01.
+- **The `console` extra declares `pydantic>=2.7,<3.0`** (#1647): `console/schemas.py` imports pydantic directly and
+  uses its v2 API, but the extra received it only through fastapi, whose own range still allows pydantic 1. A test
+  now checks that every third-party name an extra-owned module imports at module level is a direct requirement of
+  its extra.
 
 ## [1.3.3] - 2026-10-24 — "Release pipeline"
 

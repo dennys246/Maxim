@@ -142,8 +142,10 @@ stay open here:
    Row 9's body (`base_humanoid`) has every targeted part and is unaffected (see T3-9's #873 note), so #873
    does not break "What it must not do" below, which scopes this plan's routes.
 
-Related, same class: `SpecModulator.apply_damage` returns `1.0` silently when the part has no sensors (now
-dead behind the tool's `_takes_damage` check), and `orchestrator.py::_get_component_integrity` returns `1.0`
+Related, same class: `SpecModulator.apply_damage` used to return `1.0` silently when the part had no sensors
+(dead behind the tool's `_takes_damage` check, but live for a host calling it directly). Since
+[#1719](https://github.com/dennys246/Maxim/issues/1719) it raises `DamageRefused`, which keeps point 3 open
+rather than deciding it. `orchestrator.py::_get_component_integrity` still returns `1.0`
 for a missing part. The orchestrator prompt names parts the default body lacks:
 [#1093](https://github.com/dennys246/Maxim/issues/1093).
 

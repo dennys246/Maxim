@@ -103,6 +103,7 @@ _docker_guard.install()
 # "scripts._lint_git", ...): a script's lazy `from _provenance import ...` then sees another object than the one a
 # later test patched, so a test's outcome depends on which files ran before it on its worker (#1339). The check runs
 # around every test, every test module and every collected module; see tests/script_module_guard.py.
+from tests import package_attribute_guard as _package_attribute_guard  # noqa: E402
 from tests import script_module_guard as _script_module_guard  # noqa: E402
 
 
@@ -164,17 +165,33 @@ _EXTRA_SKIP_REASONS: dict[str, tuple[str, ...]] = {
     "tts": ("`tts` extra", "tts voice not provisioned"),
 }
 
-# A requirement whose distribution name is not its import name (``extra_import_names``).
-_DIST_IMPORT_NAMES: dict[str, str] = {"piper_tts": "piper"}
+# A requirement whose distribution name is not its import name (``extra_import_names``, ``core_import_names``).
+_DIST_IMPORT_NAMES: dict[str, str] = {"piper_tts": "piper", "pyyaml": "yaml"}
 
 
 @functools.cache
-def _optional_dependencies() -> "dict[str, list[str]]":
+def _pyproject_project() -> "dict[str, Any]":
     import tomllib
 
-    return tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"][
-        "optional-dependencies"
-    ]
+    return tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"]
+
+
+def _optional_dependencies() -> "dict[str, list[str]]":
+    return _pyproject_project()["optional-dependencies"]
+
+
+def _import_names(requirements: "list[str] | tuple[str, ...]") -> tuple[str, ...]:
+    """The top-level import names of PEP 508 ``requirements``: the normalised distribution name, mapped through
+    ``_DIST_IMPORT_NAMES`` where the import name differs. The one parser both helpers below share."""
+    import re
+
+    names = []
+    for requirement in requirements:
+        match = re.match(r"[A-Za-z0-9._-]+", requirement)
+        if match:
+            dist = re.sub(r"[-.]", "_", match.group(0).lower())
+            names.append(_DIST_IMPORT_NAMES.get(dist, dist))
+    return tuple(names)
 
 
 def extra_import_names(extra: str) -> tuple[str, ...]:
@@ -186,15 +203,12 @@ def extra_import_names(extra: str) -> tuple[str, ...]:
     contract from drifting when an extra gains a package. A distribution whose import name differs
     (``piper-tts`` imports as ``piper``) is mapped in ``_DIST_IMPORT_NAMES``; ``test_require_extras_lane``
     pins the known answers and checks installed distributions against their real top-level modules."""
-    import re
+    return _import_names(_optional_dependencies().get(extra, ()))
 
-    names = []
-    for requirement in _optional_dependencies().get(extra, ()):
-        match = re.match(r"[A-Za-z0-9._-]+", requirement)
-        if match:
-            dist = re.sub(r"[-.]", "_", match.group(0).lower())
-            names.append(_DIST_IMPORT_NAMES.get(dist, dist))
-    return tuple(names)
+
+def core_import_names() -> tuple[str, ...]:
+    """The top-level import names of ``[project.dependencies]`` (``pyyaml`` imports as ``yaml``), the same way."""
+    return _import_names(_pyproject_project()["dependencies"])
 
 
 def required_extra_skip(reason: str, required: "set[str]") -> str | None:
@@ -270,11 +284,16 @@ def pytest_runtest_makereport(item: pytest.Item, call: "pytest.CallInfo[None]"):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_make_collect_report(collector: pytest.Collector):  # noqa: ANN201
     before = _script_module_guard.snapshot()
+    before_pkg = _package_attribute_guard.snapshot()
     outcome = yield
     report = outcome.get_result()
     _fail_required_extra_skip(collector.config, report)
-    leak = _script_module_guard.check_and_restore(before)
-    if leak is not None:
+    for leak in (
+        _script_module_guard.check_and_restore(before),
+        _package_attribute_guard.check_and_restore(before_pkg),
+    ):
+        if leak is None:
+            continue
         if report.outcome == "failed":
             report.longrepr = f"{report.longrepr}\n\n{leak}"
         else:
@@ -299,6 +318,27 @@ def _scripts_modules_not_replaced_by_module():
     before = _script_module_guard.snapshot()
     yield
     leak = _script_module_guard.check_and_restore(before)
+    if leak is not None:
+        pytest.fail(f"in this module's fixtures: {leak}", pytrace=False)
+
+
+@pytest.fixture(autouse=True)
+def _maxim_package_attributes_intact():
+    """Fail the test that left the ``maxim`` package replaced or missing a submodule attribute (#1755;
+    tests/package_attribute_guard.py). Requests no ``monkeypatch``, so it tears down after the test's own undo."""
+    before = _package_attribute_guard.snapshot()
+    yield
+    leak = _package_attribute_guard.check_and_restore(before)
+    if leak is not None:
+        pytest.fail(leak, pytrace=False)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _maxim_package_attributes_intact_by_module():
+    """The same check over a whole test module, which sees module- and class-scoped fixtures."""
+    before = _package_attribute_guard.snapshot()
+    yield
+    leak = _package_attribute_guard.check_and_restore(before)
     if leak is not None:
         pytest.fail(f"in this module's fixtures: {leak}", pytrace=False)
 

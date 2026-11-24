@@ -221,7 +221,12 @@ def _detector(actions: list[Any]) -> tuple[Any, list[str]]:
     injected: list[str] = []
     detector = StallDetector(
         stop_event=threading.Event(),
-        bridge=SimpleNamespace(turn_count=1, turn_in_progress=False, get_all_actions=lambda: list(actions)),
+        bridge=SimpleNamespace(
+            turn_count=1,
+            turn_in_progress=False,
+            get_all_actions=lambda: list(actions),
+            get_agent_actions=lambda: list(actions),  # the bridge's non-synthetic history (#1185)
+        ),
         orchestrator_source=SimpleNamespace(inject_cli=lambda text, **_k: injected.append(text)),
         orch_executor=SimpleNamespace(_tools_attempted=[]),
         goal="check the nudges",

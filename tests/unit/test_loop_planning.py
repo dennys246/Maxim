@@ -35,7 +35,7 @@ def _proposal(pid: str, tool: str | None = "probe", **kw: Any) -> Proposal:
         id=pid,
         action={"tool_name": tool, "params": {}} if tool is not None else None,
         reasoning="r",
-        confidence=0.7,
+        confidence=0.9,  # above the default policy's 0.8: an approval no longer lifts the threshold (#1185 A)
         **kw,
     )
 
@@ -113,6 +113,9 @@ class _Sim:
     def log(self, category: str, msg: str, data: dict | None = None) -> None:
         self.lines.append(f"{category}:{msg}")
 
+    def emit_prompt(self, text: str) -> None:  # a refusal is shown on the sim's channel too (#1185)
+        self.lines.append(f"PROMPT:{text}")
+
 
 def _drain(ctrl: AutonomyController, eal: Any, booked: list[dict[str, Any]]) -> Any:
     return loop_planning.drain_approved(
@@ -166,7 +169,7 @@ def test_a_proposal_with_no_source_is_its_own_record():
 
     _drain(ctrl, _eal, [])
     [kw] = calls
-    assert kw["proposal"] is p and kw["human_involved"] is True and kw["confidence"] == 0.7
+    assert kw["proposal"] is p and kw["human_involved"] is True and kw["confidence"] == 0.9
     assert kw["observation"] == {"tick": 1}
 
 
@@ -197,9 +200,10 @@ _POLICY = dict(
     requires_confirmation={"confirm_me"},
 )
 
-# (action, confidence) -> can_execute's (decision, message), as on ``main`` before hard_deny was extracted (the
-# same table passes against the pre-#1085 code). Order matters: a prefix beats a category beats a forbid beats
-# the allowed list beats confidence beats confirmation beats the write/execute rules.
+# (action, confidence) -> can_execute's (decision, message). Order matters: a prefix beats a category beats a
+# forbid beats confidence beats the allowed list beats confirmation beats the write/execute rules. (#1185 moved the
+# confidence floor ahead of the allowed list, a refusal no approval lifts, so a low-confidence tool outside the
+# list is refused, not asked about: the row with both below. Before, the allowed list came first.)
 _MATRIX = [
     ({"tool_name": "probe"}, 0.9, (True, None)),
     ({"tool_name": "pre_x"}, 0.9, (False, "Tool 'pre_x' blocked by prefix rule: pre_")),
@@ -207,6 +211,7 @@ _MATRIX = [
     ({"tool_name": "banned"}, 0.9, (False, "Tool 'banned' is forbidden")),
     ({"tool_name": "elsewhere"}, 0.9, (False, "Tool 'elsewhere' requires approval")),
     ({"tool_name": "slow_tool"}, 0.1, (False, "Confidence 0.10 below threshold")),
+    ({"tool_name": "elsewhere"}, 0.1, (False, "Confidence 0.10 below threshold")),  # both: the floor wins
     ({"tool_name": "confirm_me"}, 0.9, (False, "Tool 'confirm_me' requires confirmation")),
     (
         {"tool_name": "write_file", "params": {"path": "/etc/x"}},

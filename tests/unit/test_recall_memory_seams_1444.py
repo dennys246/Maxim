@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 from maxim.memory.encoding import EncodingSignals
+from maxim.utils.input_source import InputSource
 
 _FACT = "My name is Denny and my favourite colour is green."
 _QUESTION = "What is Denny's favorite color?"
@@ -221,7 +222,7 @@ def test_every_input_channel_is_published_once_at_arrival(observation: dict, pen
     state = RuntimeState()
     state.data.update(pending)
     agent = _Recorder()
-    take_user_input(observation, state, agent)
+    take_user_input(observation, state, agent, sim_mode=False)
     assert agent.calls == expected
     assert "pending_cli_input" not in state.data and "pending_voice_input" not in state.data  # processed once
 
@@ -243,7 +244,7 @@ def test_an_arrival_reaches_memory_agent_even_with_a_capture_manager_and_is_not_
     agent._capture_manager = object()  # the robot's vision/audio path
     state = RuntimeState()
     state.data["cli_input"] = typed  # take_observation merged the observation into the state
-    take_user_input({"cli_input": typed}, state, agent)
+    take_user_input({"cli_input": typed}, state, agent, sim_mode=False)
     agent._capture_manager = None
     agent.propose_intent(state, None)
     assert [p.cli_input for p in heard if p.cli_input] == ["My name is Denny."]
@@ -258,11 +259,11 @@ def test_a_reply_the_loop_makes_itself_is_never_memorized_and_a_persons_waits() 
     state, agent = RuntimeState(), _Recorder()
     state.data[LOOP_REPLY_SLOT] = "yes"
     state.data["pending_cli_input"] = "what about the lighthouse?"
-    first = take_user_input({}, state, agent)
+    first = take_user_input({}, state, agent, sim_mode=False)
     assert first.cli_input == "yes" and first.addressed == "" and agent.calls == []
-    second = take_user_input({}, state, agent)  # the person's input waited a tick, untouched
+    second = take_user_input({}, state, agent, sim_mode=False)  # the person's input waited a tick, untouched
     assert second.cli_input == "what about the lighthouse?" and agent.calls == [("what about the lighthouse?", "cli")]
-    take_user_input({}, _with(state, "pending_cli_input", "yes"), agent)
+    take_user_input({}, _with(state, "pending_cli_input", "yes"), agent, sim_mode=False)
     assert agent.calls[-1] == ("yes", "cli")
 
 
@@ -277,7 +278,9 @@ def test_a_world_event_on_the_cli_field_is_not_published_as_a_person() -> None:
     from maxim.runtime.state import RuntimeState
 
     agent = _Recorder()
-    got = take_user_input({"cli_input": "a creeper hisses", "source": "minecraft"}, RuntimeState(), agent)
+    got = take_user_input(
+        {"cli_input": "a creeper hisses", "source": "minecraft"}, RuntimeState(), agent, sim_mode=False
+    )
     assert got.cli_input == "a creeper hisses" and got.addressed == "" and agent.calls == []
 
 
@@ -313,7 +316,7 @@ def test_addressed_input_is_read_from_its_source(observation: dict, addressed: b
     from maxim.runtime.loop_perception import take_user_input
     from maxim.runtime.state import RuntimeState
 
-    assert bool(take_user_input(observation, RuntimeState(), _Recorder()).addressed) is addressed
+    assert bool(take_user_input(observation, RuntimeState(), _Recorder(), sim_mode=False).addressed) is addressed
 
 
 def test_a_follow_up_carries_the_executed_tools_untrusted_declaration_through_an_alias() -> None:
@@ -753,7 +756,7 @@ def test_arrival_returns_the_record_memory_made_of_it(tmp_path: Path) -> None:
         data: dict[str, Any] = {"pending_cli_input": _QUESTION, "active_goal": "g"}
 
     state = _State()
-    got = take_user_input({}, state, _Agent())
+    got = take_user_input({}, state, _Agent(), sim_mode=False)
     assert got.addressed == _QUESTION and got.own_capture_id == "the-record"
     ctx = percept_enrichment_context(state, None, got)
     assert (ctx.user_input, ctx.own_capture_id, ctx.active_goal) == (_QUESTION, "the-record", "g")
@@ -801,9 +804,11 @@ def test_a_persons_input_that_waited_behind_a_loop_reply_survives_the_confirmati
     state, agent = RuntimeState(), _Recorder()
     state.data["pending_loop_reply"] = "yes"
     state.data["pending_cli_input"] = "and also, my cat is called Miso"
-    assert take_user_input({}, state, agent).cli_input == "yes"  # this tick: the loop answers its own confirmation
+    assert (
+        take_user_input({}, state, agent, sim_mode=False).cli_input == "yes"
+    )  # this tick: the loop answers its own confirmation
     _confirm_and_finish(state)
-    assert take_user_input({}, state, agent).cli_input == "and also, my cat is called Miso"
+    assert take_user_input({}, state, agent, sim_mode=False).cli_input == "and also, my cat is called Miso"
     assert agent.calls == [("and also, my cat is called Miso", "cli")]
 
 
@@ -818,12 +823,16 @@ def _confirm_and_finish(state: Any) -> None:
     ctrl.pending_confirmation = SimpleNamespace(tool_name="t", action={"tool_name": "t", "params": {}})
     ctrl.pending_proposal = None
     ctrl.clear_pending_user_input = lambda: None
+    ctrl.autonomy_controller = SimpleNamespace(approved_action_denial=lambda *a, **k: None)  # approved (#1185)
     try:
         ctrl.handle_confirmation(
             "yes",
             execute_and_learn=lambda **k: (_ for _ in ()).throw(RuntimeError("stub")),
             book_refusal=lambda **k: None,
             observation={},
+            sim=SimpleNamespace(emit_prompt=lambda text: None),
+            book_machine_refusal=lambda **k: None,
+            answer_source=InputSource.OPERATOR,
         )
     except Exception:  # the stub raises out of the dispatch; the finally under test still ran
         pass
@@ -838,7 +847,7 @@ def test_an_observation_with_a_transcript_and_a_cli_input_publishes_the_cli_inpu
     agent, state = _Recorder(), RuntimeState()
     state.data["cli_input"] = "the typed words"
     got = take_user_input(
-        {"cli_input": "the typed words", "transcript": "a heard chunk", "source": "cli"}, state, agent
+        {"cli_input": "the typed words", "transcript": "a heard chunk", "source": "cli"}, state, agent, sim_mode=False
     )
     assert agent.calls == [("the typed words", "cli")] and got.addressed == "the typed words"
     assert "cli_input" not in state.data

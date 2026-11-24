@@ -97,11 +97,16 @@ def test_foundry_uses_its_llm_once_it_is_ready(fake_runner: type[_FakeRunner], m
         def wait_ready(self, timeout: float) -> bool:
             return True
 
-    monkeypatch.setattr(config, "load_llm_config", lambda profile_override: f"cfg:{profile_override}")
+    # An enabled config, as load_llm_config gives one: consented_router checks ``enabled`` itself (#1680).
+    monkeypatch.setattr(
+        config,
+        "load_llm_config",
+        lambda profile_override: SimpleNamespace(enabled=True, name=f"cfg:{profile_override}"),
+    )
     monkeypatch.setattr(router, "LLMRouter", _Router)
     assert cli._handle_foundry(SimpleNamespace(language_model="p1"), "desert") == 0
     (call,) = fake_runner.calls
-    assert isinstance(call["llm_router"], _Router) and call["llm_router"].cfg == "cfg:p1"
+    assert isinstance(call["llm_router"], _Router) and call["llm_router"].cfg.name == "cfg:p1"
 
 
 def test_main_renders_a_refused_profiles_file_as_exit_2_with_the_fix(monkeypatch: pytest.MonkeyPatch) -> None:
