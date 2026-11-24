@@ -190,6 +190,10 @@ def test_sim_reply_text_reaches_the_log_file_by_shape_but_the_session_keeps_it(t
 
     responses = [r for r in session if r["subsystem"] == "RESPONSE"]
     assert responses and responses[0]["message"] == reply, "the session trail (the Talk view's source) lost the reply"
+    delib = [r for r in session if r["subsystem"] == "DELIBERATION" and r["data"].get("text")]
+    assert delib and CANARY in delib[0]["data"]["text"], (
+        "the session trail (the ThinkingPanel's source) lost the reasoning"
+    )
     texts = [_record_text(r) for r in captured]
     assert any("sim_response" == getattr(r, "event", None) for r in captured), "RESPONSE was not mirrored at all"
     assert not [t for t in texts if CANARY in t], f"a sim reply's text reached MAXIM_LOG_FILE: {texts}"
