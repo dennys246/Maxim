@@ -50,8 +50,8 @@ class MaximError(Exception):
 def _rebuild_with_state(cls: type[BaseException], args: tuple[Any, ...], state: dict[str, Any]) -> BaseException:
     """Rebuild an exception whose ``__init__`` takes keyword-only fields, for pickle and copy: ``cls.__new__`` plus
     its ``args`` and attribute ``state``, without calling ``__init__`` (a subclass may narrow its signature, as
-    ``tunnel.keys.LeaderKeyMissing`` does). Used by the ``__reduce__`` of :class:`KeyFileUnusable` and
-    :class:`CampaignUnloadable`."""
+    ``tunnel.keys.LeaderKeyMissing`` does). Used by the ``__reduce__`` of :class:`KeyFileUnusable`,
+    :class:`CampaignUnloadable` and :class:`CliOptionsRefused`."""
     obj = cls.__new__(cls, *args)
     obj.args = args
     obj.__dict__.update(state)
@@ -596,6 +596,23 @@ class CampaignUnloadable(MaximError, ValueError):
         return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
 
 
+class CliOptionsRefused(ConfigurationError):
+    """Explicit CLI options the selected run cannot honour, refused before it starts instead of silently dropped.
+
+    Raised by ``cli.py::_research_refusal`` (#1680): ``--research`` under llm-primary runs the research protocol,
+    whose sim call takes none of the goal-string sim's embodiment, sim-mode, full-turn, sandbox or resume options.
+    ``fix_hint`` names the options to drop. The CLI prints both and exits 2.
+    """
+
+    def __init__(self, message: str, *, fix_hint: str) -> None:
+        super().__init__(message)
+        self.fix_hint = fix_hint
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keyword-only fix_hint: rebuilt from state, so pickle and copy round-trip (#1680).
+        return (_rebuild_with_state, (type(self), self.args, dict(self.__dict__)))
+
+
 class ComponentNotFoundError(ConfigurationError):
     """Requested SEM component template does not exist.
 
@@ -796,6 +813,8 @@ __all__ = [
     # Configuration
     "ConfigurationError",
     "ConfigDirUnreadable",
+    "UserProfilesInvalid",
+    "CliOptionsRefused",
     "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",

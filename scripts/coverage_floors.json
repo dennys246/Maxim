@@ -8,8 +8,8 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 73.0,
-      "missing": 1080
+      "percent": 74.8,
+      "missing": 1033
     },
     "maxim/advisor": {
       "percent": 98.9,
@@ -24,8 +24,8 @@
       "missing": 81
     },
     "maxim/attention": {
-      "percent": 39.7,
-      "missing": 534
+      "percent": 43.8,
+      "missing": 498
     },
     "maxim/bench": {
       "percent": 81.5,
@@ -144,20 +144,20 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 79.7,
-      "missing": 2943
+      "percent": 81.4,
+      "missing": 2773
     },
     "maxim/salience": {
-      "percent": 68.6,
-      "missing": 221
+      "percent": 71.0,
+      "missing": 209
     },
     "maxim/similarity": {
       "percent": 82.6,
       "missing": 292
     },
     "maxim/simulation": {
-      "percent": 77.9,
-      "missing": 2353
+      "percent": 79.3,
+      "missing": 2258
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -186,8 +186,8 @@
       "missing": 233
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 75.7,
-      "missing": 250
+      "percent": 76.8,
+      "missing": 241
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,

@@ -2488,7 +2488,7 @@ def build_run_router(
     the caller's own no-LLM path. An implicit build whose profile comes from ``MAXIM_LLM_PROFILE`` and is declined
     lands here too, with no LLM: the manager serves that env profile, not the preflight's re-walk (a filed residual).
     """
-    from maxim.models.download import consent_interactive, consented_router, router_model_problem
+    from maxim.models.download import LLM_DISABLED, consent_interactive, consented_router, router_model_problem
     from maxim.models.language.router import load_llm_config
     from maxim.models.language.types import LocalModelUnavailable
 
@@ -2500,10 +2500,10 @@ def build_run_router(
     declined = manager.declined_profiles if manager is not None else frozenset()
     if router is None:
         llm_config = load_llm_config(profile_override=profile)
-        if not llm_config.enabled:
+        router, cause = consented_router(llm_config, interactive=interactive, declined=declined, logger=logger)
+        if cause == LLM_DISABLED:  # llm.json switches the LLM off: the caller's own no-LLM path, nothing refused
             return None, manager
         checked = _config_profile(llm_config)
-        router, cause = consented_router(llm_config, interactive=interactive, declined=declined, logger=logger)
     elif manager is not None and manager.get_lane_kind("large") == "local":
         checked = _config_profile(getattr(router, "cfg", None))
         cause = router_model_problem(router, interactive=interactive, declined=declined, logger=logger)

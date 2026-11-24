@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.runtime.executor import gates_refuse
 from maxim.tools.base import ToolOutput
+from maxim.utils.cloud_redaction import loggable_tool_text
 
 if TYPE_CHECKING:
     from maxim.agents.fear_agent import FearAgent
@@ -154,14 +155,16 @@ class FearGatedExecutor:
             logger.info(
                 "Tool %s failed: %s",
                 tool_name,
-                (result.error or "unknown error")[:200],
+                loggable_tool_text(tool_name, result.error or "unknown error", limit=200),
             )
 
         # Simulation verbosity — log execution result
         try:
             from maxim.simulation.sim_logger import sim_action
 
-            summary = str(result.output)[:80] if result.output else (result.error or "")[:80]
+            # Shape only for a PRIVATE or SECRET tool: sim_log mirrors into MAXIM_LOG_FILE (#1751).
+            text = str(result.output) if result.output else (result.error or "")
+            summary = loggable_tool_text(tool_name, text, limit=80)
             sim_action(tool_name, result.success, summary)
         except ImportError:
             pass
