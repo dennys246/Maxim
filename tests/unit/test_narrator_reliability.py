@@ -160,7 +160,11 @@ def test_finish_below_an_explicit_cap_is_refused_and_at_the_cap_is_not() -> None
 
     finished = []
     bridge = SimpleNamespace(
-        turn_count=3, finish_context={}, finish=lambda: finished.append(True), get_all_actions=lambda: []
+        turn_count=3,
+        finish_context={},
+        finish=lambda: finished.append(True),
+        get_all_actions=lambda: [],
+        get_agent_actions=lambda: [],
     )
     stop = threading.Event()
     tool = FinishSimulationTool(bridge=bridge, stop_event=stop, min_turns=8)

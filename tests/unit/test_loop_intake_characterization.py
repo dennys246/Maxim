@@ -221,6 +221,7 @@ def _run(
     kwargs: dict[str, Any] = {}
     if sim:
         kwargs["percept_source"] = source
+        kwargs["response_policy"] = None  # no bridge, so no ResponsePolicy: no gating prompt is answered (#1185)
         if sink:
             obs.sink = RecordingSink()
             kwargs["action_sink"] = obs.sink

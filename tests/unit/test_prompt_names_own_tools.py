@@ -493,7 +493,8 @@ def test_the_interactive_identity_names_only_the_agents_tools(monkeypatch: pytes
 def test_an_unparseable_follow_up_is_not_called_a_search_for_an_agent_without_one() -> None:
     prompt = _builder()._build_followup_prompt("an unparseable follow-up", tools=NARRATOR_TOOLS)
     assert "internet_search" not in prompt and "internet search" not in prompt
-    assert "internet search" in _builder()._build_followup_prompt("an unparseable follow-up")
+    # Not known to be a search for any agent: it is "your last tool", and its result is private.
+    assert "internet search" not in _builder()._build_followup_prompt("an unparseable follow-up")
 
 
 def test_a_budgeter_section_must_say_who_wrote_it() -> None:
@@ -513,7 +514,7 @@ def test_a_budgeter_section_must_say_who_wrote_it() -> None:
     with pytest.raises(ValueError):
         b.add("x", "text", SectionPriority.IMPORTANT, source="other")  # type: ignore[arg-type]
     b.add("guide", "Use 'math' to compute.\nUse 'send_message' to talk.", SectionPriority.IMPORTANT, source="builder")
-    b.add("result", "the AUT called 'math'", SectionPriority.IMPORTANT, source="data")
+    b.add("result", "the AUT called 'math'", SectionPriority.IMPORTANT, source="data", header=None)
     assert [s.content for s in b._sections] == ["Use 'send_message' to talk.", "the AUT called 'math'"]
 
 

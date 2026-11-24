@@ -180,6 +180,7 @@ class TestRecordOutcomeRefused:
             nac=nac,
             active_goal="g",
             bridge_booked=None,
+            untrusted_output=False,
             refused=refused,
         )
         return recent

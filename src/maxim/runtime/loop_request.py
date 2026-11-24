@@ -21,7 +21,7 @@ submission); this module holds what follows it, given a context (owner decision 
   ``_run_deliberation_cycles``, or a cycle-1 ready answer used directly.
 
 A raise anywhere in the ``try`` is logged (WARNING plus a DEBUG traceback) and the pass goes on, as inline. By rule (a)
-the helpers called only from this code moved here too: ``_triggering_input``, ``_describe_tools_for_prompt`` with
+the helpers called only from this code moved here too: ``_triggering``, ``_describe_tools_for_prompt`` with
 ``_thaw``, and ``_WIRE3_PHRASE_RE``. ``_advertisable_tools``, which §4's loop-cap message also calls, moved to
 ``loop_state`` (the home of helpers the loop's sections share, beside ``operational_mode``); both callers reach it
 through the module reference, so there is ONE binding for a patch to hit (owner decision 2026-11-22).
@@ -63,6 +63,7 @@ from maxim.agents.bus import StreamEvent
 from maxim.runtime import loop_state as _lstate
 from maxim.runtime.loop_controller import take_replan_inputs
 from maxim.runtime.loop_external import planning_submit_shared_kwargs, submit_tick_context
+from maxim.runtime.loop_perception import is_tool_followup
 from maxim.runtime.loop_planning import annotate_tool_variance
 from maxim.runtime.loop_state import operational_mode
 from maxim.runtime.loop_submit import prepare_submission
@@ -225,6 +226,7 @@ def submit_tick(
             submitted, _shared_submit = _submit_request(
                 llm_worker=llm_worker,
                 ctrl=ctrl,
+                state=state,
                 sim=sim,
                 memory=memory,
                 executor=executor,
@@ -515,6 +517,7 @@ def _submit_request(
     *,
     llm_worker: Any,
     ctrl: Any,
+    state: Any,
     sim: Any,
     memory: Any,
     executor: Any,
@@ -588,7 +591,7 @@ def _submit_request(
         shared=_shared_submit,
         autonomy_level=autonomy_controller.current_level,
         _failed_tools=_failed_tools,
-        triggering_input=_triggering_input(new_cli_input, followup_original_query, pending_modification),
+        **_triggering(new_cli_input, followup_original_query, pending_modification, state),
         pending_modification=pending_modification,
         prefetch_context_text=prefetch_context_text,
         skip_exploration=skip_exploration,
@@ -601,7 +604,7 @@ def _submit_request(
     # Log submission for both user input and followups
     if submitted:
         # Check if this is a followup submission
-        is_followup = context.cli_inputs and any(inp.startswith("[ACTION_FOLLOWUP") for inp in context.cli_inputs)
+        is_followup = context.cli_inputs and any(is_tool_followup(inp) for inp in context.cli_inputs)
         if is_followup:
             logger.info("Submitted followup to LLM for processing")
         elif new_cli_input:
@@ -729,11 +732,17 @@ def _deliberate(
                     thought_gate.reset_refractory(step_num)
 
 
-def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:
-    """The input a §6 submit answers: the new input, else the follow-up's original query, else a pending plan
-    modification's text (moved out of ``_run_agentic_loop_body``, rule T for #1451)."""
+def _triggering(new_cli_input: Any, followup_original_query: str, pending_modification: Any, state: Any) -> dict:
+    """The input a §6 submit answers (the new input, else the follow-up's original query, else a pending plan
+    modification's text; moved out of ``_run_agentic_loop_body``, rule T for #1451), and where it came from: the source
+    ``store_user_input`` recorded for that same text (``pending_user_input_source``: "CLI" or "voice"), "" when the
+    text is not the stored input (#1519: the prompt labels a voice request as heard on the room mic)."""
     modification = pending_modification.get("user_modification", "") if pending_modification else ""
-    return new_cli_input or followup_original_query or modification
+    text = new_cli_input or followup_original_query or modification
+    data = state.data
+    stored = new_cli_input and str(data.get("pending_user_input", "")).strip() == str(new_cli_input).strip()
+    source = str(data.get("pending_user_input_source", "")) if stored else ""
+    return {"triggering_input": text, "triggering_input_source": source}
 
 
 def _thaw(value: Any) -> Any:

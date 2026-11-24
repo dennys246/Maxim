@@ -45,7 +45,8 @@ class SpendRate:
     def update(self, amount_usd: float, now: float, alpha: float) -> None:
         if amount_usd <= 0:
             return
-        elapsed = max(1.0, now - self.last_update) if self.last_update else 1.0
+        # The sample count, not last_update, says whether there was an earlier sample: one at time 0.0 counts (#1684).
+        elapsed = max(1.0, now - self.last_update) if self.samples > 0 else 1.0
         rate_per_hour = amount_usd * 3600.0 / elapsed
         if self.samples <= 0:
             self.value = rate_per_hour
@@ -373,7 +374,7 @@ class CostTracker:
         timestamp: float | None = None,
         pricing_required: bool = True,
     ) -> float:
-        now = timestamp or time.time()
+        now = timestamp if timestamp is not None else time.time()
         pricing = self.get_pricing(model)
         # Token accounting runs REGARDLESS of pricing (2026-08-03 fix):
         # pre-fix the missing-pricing raise fired BEFORE these counters, so
@@ -466,7 +467,7 @@ class CostTracker:
         return round(input_cost + output_cost, 6)
 
     def get_totals(self, now: float | None = None) -> dict[str, float]:
-        now_ts = now or time.time()
+        now_ts = now if now is not None else time.time()
         self._hourly.prune(now_ts)
         self._daily.prune(now_ts)
         return {
@@ -477,7 +478,7 @@ class CostTracker:
         }
 
     def get_per_provider_totals(self, provider: str, now: float | None = None) -> dict[str, float]:
-        now_ts = now or time.time()
+        now_ts = now if now is not None else time.time()
         state = self._per_provider.get(provider)
         if state is None:
             return {"hourly": 0.0, "daily": 0.0, "monthly": 0.0}

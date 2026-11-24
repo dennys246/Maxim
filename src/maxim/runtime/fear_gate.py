@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.runtime.executor import gates_refuse
 from maxim.tools.base import ToolOutput
+from maxim.utils.cloud_redaction import loggable_tool_text
 
 if TYPE_CHECKING:
     from maxim.agents.fear_agent import FearAgent
@@ -154,14 +155,16 @@ class FearGatedExecutor:
             logger.info(
                 "Tool %s failed: %s",
                 tool_name,
-                (result.error or "unknown error")[:200],
+                loggable_tool_text(tool_name, result.error or "unknown error", limit=200),
             )
 
         # Simulation verbosity — log execution result
         try:
             from maxim.simulation.sim_logger import sim_action
 
-            summary = str(result.output)[:80] if result.output else (result.error or "")[:80]
+            # Shape only for a PRIVATE or SECRET tool: sim_log mirrors into MAXIM_LOG_FILE (#1751).
+            text = str(result.output) if result.output else (result.error or "")
+            summary = loggable_tool_text(tool_name, text, limit=80)
             sim_action(tool_name, result.success, summary)
         except ImportError:
             pass
@@ -208,7 +211,18 @@ def _classify_action(tool_name: str) -> str:
 
 
 def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
-    """Extract code content from tool params for review."""
+    """Extract code content from tool params for review: the text that will be WRITTEN, or a stricter version of it
+    (#1519), restored by the writers' own shared helpers (``content_safety.prepare_written_content`` /
+    ``edit_review_text``). Stricter for ``edit_file`` because the gate has no file content: it reviews every format
+    character the old text holds in either form as real, by position, a superset of what either branch of the edit
+    (unescaped match or literal fallback) can write."""
+    from maxim.utils.content_safety import (
+        edit_review_text,
+        has_format_character,
+        prepare_written_content,
+        unescape_format_characters,
+    )
+
     # Bash commands
     if tool_name == "bash" and "command" in params:
         return params["command"]
@@ -218,11 +232,21 @@ def _extract_code_content(tool_name: str, params: dict[str, Any]) -> str | None:
     # File writes that might contain code
     if tool_name in ("write_file", "create_sandbox_script", "write_sandbox_file"):
         content = params.get("content", "")
+        if isinstance(content, str) and content:
+            appending = tool_name == "write_sandbox_file" and bool(params.get("append", False))  # only it appends
+            content = prepare_written_content(content, appending=appending)
         if content and len(content) > 10:
             return content
     # Edit file new text
     if tool_name == "edit_file":
         new_text = params.get("new_text", "")
-        if new_text and len(new_text) > 10:
+        holds_format = False
+        if isinstance(new_text, str) and new_text:
+            holds_format = has_format_character(unescape_format_characters(new_text))
+            new_text = edit_review_text(new_text, str(params.get("old_text", "") or ""))
+        # An edit holding a format character (raw or escaped) is never trivial: it is always reviewed, because the
+        # review's length is not the written length (each budget-less real character may be written as an 8-character
+        # escape). Without one, the review IS the written text, so the size cut-off measures exactly (delta-14).
+        if new_text and (holds_format or len(new_text) > 10):
             return new_text
     return None

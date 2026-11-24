@@ -579,6 +579,7 @@ class TestG4ClusterRewardWire:
 
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
@@ -603,6 +604,7 @@ class TestG4ClusterRewardWire:
         before = bias
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="agent_a",
             tool_name="pick_up_food",
@@ -639,6 +641,7 @@ class TestG4ClusterRewardWire:
 
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="agent_a",
             tool_name="pick_up_food",

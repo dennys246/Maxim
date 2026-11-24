@@ -8,24 +8,24 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 73.0,
-      "missing": 1080
+      "percent": 74.8,
+      "missing": 1033
     },
     "maxim/advisor": {
       "percent": 98.9,
       "missing": 8
     },
     "maxim/agents": {
-      "percent": 70.3,
-      "missing": 2034
+      "percent": 74.7,
+      "missing": 1770
     },
     "maxim/analysis": {
       "percent": 86.9,
       "missing": 81
     },
     "maxim/attention": {
-      "percent": 39.7,
-      "missing": 534
+      "percent": 43.8,
+      "missing": 498
     },
     "maxim/bench": {
       "percent": 81.5,
@@ -72,7 +72,7 @@
       "missing": 96
     },
     "maxim/hardware": {
-      "percent": 84.4,
+      "percent": 85.4,
       "missing": 344
     },
     "maxim/harm": {
@@ -92,8 +92,8 @@
       "missing": 536
     },
     "maxim/integration": {
-      "percent": 74.6,
-      "missing": 404
+      "percent": 76.3,
+      "missing": 377
     },
     "maxim/interactive": {
       "percent": 39.7,
@@ -108,8 +108,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 64.9,
-      "missing": 2235
+      "percent": 65.9,
+      "missing": 2178
     },
     "maxim/modes": {
       "percent": 80.6,
@@ -144,20 +144,20 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 79.7,
-      "missing": 2943
+      "percent": 81.4,
+      "missing": 2773
     },
     "maxim/salience": {
-      "percent": 68.6,
-      "missing": 221
+      "percent": 71.0,
+      "missing": 209
     },
     "maxim/similarity": {
       "percent": 82.6,
       "missing": 292
     },
     "maxim/simulation": {
-      "percent": 77.9,
-      "missing": 2353
+      "percent": 79.3,
+      "missing": 2258
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -176,18 +176,18 @@
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 66.8,
+      "percent": 68.1,
       "missing": 2095
     }
   },
   "files": {
     "src/maxim/models/language/router.py": {
-      "percent": 75.5,
-      "missing": 267
+      "percent": 78.8,
+      "missing": 233
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 75.7,
-      "missing": 250
+      "percent": 76.8,
+      "missing": 241
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,

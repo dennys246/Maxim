@@ -4,4 +4,4 @@
   its logs) and the PFC deliberation after it moved verbatim into `submit_tick`, which now holds the whole submit
   `try` (its first statement is slice 7a's gate). The tool filter that section 4 also calls, `_advertisable_tools`,
   moved to `runtime/loop_state.py`. Behaviour is unchanged and pinned by a new characterization through the public
-  loop. The body shrinks from 1,603 to 1,226 lines (1.3.6 loop phase 2, slice 7b).
+  loop. The body shrinks from 1,461 to 1,086 lines (1.3.6 loop phase 2, slice 7b).

@@ -272,6 +272,7 @@ def _run(
                 return False
 
         kwargs["percept_source"] = _Source()
+        kwargs["response_policy"] = None  # no bridge, so no ResponsePolicy: no gating prompt is answered (#1185)
     else:
         kwargs["sim_adapter"] = _Adapter()
     if nac is not None:

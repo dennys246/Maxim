@@ -100,6 +100,8 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
+from maxim.utils.content_safety import prepare_written_content
+
 from .base import Effect, Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
 
 
@@ -281,7 +283,7 @@ class WriteFileTool(Tool):
     def execute(self, **kwargs) -> ToolResult:
         try:
             raw_path = kwargs["path"]
-            content = kwargs["content"]
+            content = prepare_written_content(kwargs["content"])  # format characters made visible (#1519)
             overwrite = kwargs.get("overwrite", False)
 
             # Check content size to prevent memory exhaustion
@@ -468,6 +470,62 @@ class ExecuteFileTool(Tool):
             return ToolResult(success=False, error=str(e))
 
 
+def _mapped_edit(
+    content: str, old_text: str, new_text: str, context_before: str | None, context_after: str | None
+) -> tuple[str, str, str | None, str | None, str]:
+    """The edit as it applies to ``content``'s real bytes, and a note for the success message (#1519, owner decisions
+    2026-11-21: restore only what was there; raw format characters follow the same rule as escapes).
+
+    Framed tool output shows a format character as ``<U+XXXX>`` and a literal ``<U+`` as ``<U+003C>U+`` (one-to-one),
+    so the old text and the context fields are unescaped exactly to match. When the unescaped old text is not in the
+    file but the text as typed is (a literal ``<U+202E>`` the file really holds), the typed text is used. The new
+    text may keep only format characters, raw or escaped, that the matched old text held, counted per code point
+    (``content_safety.restore_format_characters``): any other is written as visible ``<U+XXXX>`` text, so an edit can
+    never introduce a bidi control or any other invisible character. In the literal fallback only RAW format
+    characters can be kept; an escape typed there stays the text it is."""
+    from maxim.utils.content_safety import (
+        has_format_character,
+        restore_format_characters,
+        unescape_format_characters,
+    )
+
+    def _matching(text: str) -> str:
+        """The text as it matches the file: unescaped, unless only the text as typed is in the file (a file that
+        really holds a literal ``<U+202E>``), applied to the old text and each context field alike."""
+        real = unescape_format_characters(text)
+        return text if real not in content and text in content else real
+
+    old_real = _matching(old_text)
+    before = None if context_before is None else _matching(context_before)
+    after = None if context_after is None else _matching(context_after)
+    literal_fallback = old_real == old_text and old_text != unescape_format_characters(old_text)
+    new_real, kept, shown = restore_format_characters(new_text, present_in=old_real, escapes_literal=literal_fallback)
+    note = ""
+    if literal_fallback:
+        # The literal fallback: escapes typed in the new text are kept as the literal text they are, not escaped.
+        # Report what happened to the raw ones, from the restore's own accounting (a raw one the replaced text held is
+        # kept, not shown), so the note never claims an escape that did not happen.
+        if has_format_character(new_text):
+            note = f"; {len(kept)} format character(s) kept from the replaced text"
+            if shown:
+                note += f", {len(shown)} written as visible <U+XXXX> text"
+    elif kept or shown:
+        note = f"; {len(kept)} format character(s) kept from the replaced text"
+        if shown:
+            note += f", written as visible text (not in the replaced text): {', '.join(shown)}"
+    return old_real, new_real, before, after, note
+
+
+def _with_note(result: ToolResult, note: str) -> ToolResult:
+    """A successful edit's result with the escape note appended (#1519); anything else unchanged. ``ToolResult`` is
+    frozen, so a copy carries the note."""
+    import dataclasses
+
+    if note and result.success:
+        return dataclasses.replace(result, output=f"{result.output}{note}")
+    return result
+
+
 class EditFileTool(Tool):
     """Replace specific text in a file.
 
@@ -547,6 +605,9 @@ class EditFileTool(Tool):
 
             try:
                 content = path.read_text(encoding="utf-8")
+                old_text, new_text, context_before, context_after, note = _mapped_edit(
+                    content, old_text, new_text, context_before, context_after
+                )
             except FileNotFoundError:
                 return ToolResult(
                     success=False,
@@ -563,13 +624,16 @@ class EditFileTool(Tool):
             # Context-aware disambiguation: when context_before or context_after
             # is provided, search for the full pattern and replace only old_text.
             if context_before is not None or context_after is not None:
-                return self._replace_with_context(
-                    content,
-                    path,
-                    old_text,
-                    new_text,
-                    context_before or "",
-                    context_after or "",
+                return _with_note(
+                    self._replace_with_context(
+                        content,
+                        path,
+                        old_text,
+                        new_text,
+                        context_before or "",
+                        context_after or "",
+                    ),
+                    note,
                 )
 
             # Standard path: exact match without context
@@ -605,7 +669,7 @@ class EditFileTool(Tool):
 
             new_content = content.replace(old_text, new_text, expected)
             path.write_text(new_content, encoding="utf-8")
-            return ToolResult(success=True, output=f"Replaced {count} occurrence(s)")
+            return ToolResult(success=True, output=f"Replaced {count} occurrence(s){note}")
 
         except Exception as e:
             return ToolResult(success=False, error=str(e))

@@ -12,7 +12,7 @@ Construction: built from a :class:`ComponentRegistry` at startup.
 Incremental: :meth:`add` called on ``register`` / ``register_ephemeral``.
 Thread-safe: RLock guards alias table + embedding list mutation.
 
-Embedding persistence: cached to ``~/.maxim/component_index.npz``.
+Embedding persistence: cached to ``component_index.npy`` (with a ``.json`` sidecar) in the data home.
 Rebuilt on registry content change (mtime-checked against YAML files).
 """
 
@@ -387,11 +387,12 @@ class ComponentIndex:
     def save(self, path: Path | str | None = None) -> None:
         """Save embeddings to disk for fast reload.
 
-        Saves the embedding matrix as .npz and refs/signatures as a JSON
+        Saves the embedding matrix as .npy and refs/signatures as a JSON
         sidecar.  Aliases are NOT persisted — they are rebuilt from the
         registry on load (source of truth is the YAML synonyms field).
 
-        Uses atomic write to avoid corruption on crash.
+        Each file is written atomically, so a crash never leaves a torn file; ``load`` refuses a matrix whose row count
+        does not match its sidecar's refs (a crash between the two writes).
         """
         save_path = Path(path) if path is not None else self._resolve_cache_path()
         if save_path is None:
@@ -406,21 +407,24 @@ class ComponentIndex:
             refs = list(self._refs)
             signatures = list(self._signatures)
 
-        # Save embeddings (pure float array, no pickle needed)
-        np.save(str(save_path), embeddings)
+        # Save embeddings (pure float array, no pickle needed), atomically: a kill mid-write keeps the earlier cache
+        # whole (#1531's pattern). The ``.npy`` suffix is appended when missing, as ``np.save`` did.
+        import io
+
+        from maxim.utils.atomic_io import atomic_write_bytes
+
+        npy_path = save_path if save_path.suffix == ".npy" else save_path.with_name(save_path.name + ".npy")
+        buf = io.BytesIO()
+        np.save(buf, embeddings)
+        atomic_write_bytes(str(npy_path), buf.getvalue())
 
         # Save refs + signatures as JSON sidecar (no pickle)
         meta_path = save_path.with_suffix(".json")
         meta = {"refs": refs, "signatures": signatures}
-        try:
-            from maxim.utils.atomic_io import atomic_write_text
-            from maxim.utils.format_version import with_format_version
+        from maxim.utils.atomic_io import atomic_write_text
+        from maxim.utils.format_version import with_format_version
 
-            atomic_write_text(meta_path, json.dumps(with_format_version(meta)))
-        except ImportError:
-            # Fallback if atomic_io not available (e.g., minimal install)
-            with open(meta_path, "w") as f:
-                json.dump(meta, f)
+        atomic_write_text(meta_path, json.dumps(with_format_version(meta)))
 
         log.debug("ComponentIndex saved %d embeddings to %s", len(refs), save_path)
 
@@ -448,6 +452,15 @@ class ComponentIndex:
 
             check_format_version(meta, "component_index_meta", log=log)
 
+            # Each file is written atomically, but not the pair: a kill between them leaves a new matrix beside old refs.
+            if len(meta["refs"]) != embeddings.shape[0]:
+                log.warning(
+                    "ComponentIndex cache %s does not match its sidecar (%d rows, %d refs); rebuilding instead",
+                    load_path,
+                    embeddings.shape[0],
+                    len(meta["refs"]),
+                )
+                return False
             with self._lock:
                 self._embeddings = embeddings
                 self._refs = meta["refs"]

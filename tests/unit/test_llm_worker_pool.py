@@ -625,11 +625,12 @@ class TestSessionIdPlumbing:
 
         from maxim.agents.llm_worker import LLMWorker
 
-        src = inspect.getsource(LLMWorker._process_request)
+        # The dict is built in the planning call _process_request delegates to (_call_planning_llm).
+        src = inspect.getsource(LLMWorker._call_planning_llm)
         # Strip whitespace variations — look for the key/value pair
         # in any form that would produce the dict we need.
         assert '"session_id": self._session_id' in src, (
-            "LLMWorker._process_request dict-build site is missing "
+            "LLMWorker._call_planning_llm dict-build site is missing "
             '`"session_id": self._session_id` — regression in Plan 4 '
             "session_id plumbing"
         )

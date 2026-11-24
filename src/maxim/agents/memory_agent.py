@@ -54,7 +54,7 @@ from maxim.memory.types import (
     record_success,
 )
 from maxim.memory.association_index import AssociationIndex
-from maxim.memory.text import normalize_tokens
+from maxim.memory.text import Provenance, normalize_tokens, provenance_of
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import get_abstraction_buffer
 
@@ -579,6 +579,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         "transcript": percept.raw_transcript_text or "",
                     },
                     salience=percept.salience,
+                    provenance=provenance_of(percept.source),  # comms and the world: external (#1519)
                 )
 
             # Update mode
@@ -598,6 +599,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                         ref=None,
                         content={"cli_input": percept.cli_input},
                         salience=percept.salience,
+                        provenance=provenance_of(percept.source),
                     )
 
             # Track comms messages (SMS, voice, etc.). Prefer typed
@@ -648,6 +650,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     ref=None,
                     content=outcome,
                     salience=0.8 if not result.success else 0.5,
+                    provenance=Provenance.INTERNAL,  # tool name and status; the error is framed at render
                 )
 
             # Store significant outcomes
@@ -682,6 +685,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
                     ref=completed.goal_id,
                     content=outcome,
                     salience=salience,
+                    provenance=Provenance.INTERNAL,
                 )
 
     def _on_goal_proposed(self, goal: ProposedGoal) -> None:

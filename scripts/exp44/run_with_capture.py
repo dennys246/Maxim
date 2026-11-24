@@ -5,14 +5,23 @@ Installs ``install_classlevel_capture`` (patches ``PromptBuilder.build_prompt``,
 filtered to the AUT's embodied decisions) and then hands off to the target
 runner script with the remaining argv.
 
-Usage::
+The capture is class-level and in-process, so the runner must build the AUT in THIS process. Usage::
 
     PYTHONPATH=src python scripts/exp44/run_with_capture.py \
         --capture-log data/exp44/paired_prompts.jsonl \
-        --runner scripts/benchmark_exp42_preference.py \
-        -- --aut-mode llm-primary --aut-model qwen2.5-32b-instruct
+        --runner <a runner that builds the AUT in-process> -- <its argv>
 
 Everything after ``--`` is forwarded verbatim to the runner as its argv.
+
+For an llm-primary capture, do not use the default ``--runner``: ``scripts/benchmark_exp42_preference.py`` runs
+each sim as a ``maxim --sim`` subprocess with ``MAXIM_AUTO_SPAWN_LLM_SERVER=0``, so a patch here never reaches the
+child's AUT and an llm-primary AUT has no backend
+(``docs/plans/archive/exp44_substrate_counterfactual_harness.md``, "Wiring reality"). The Exp 44 vehicle is a direct
+run with the in-process hook (``orchestrator.py``'s ``MAXIM_EXP44_CAPTURE_LOG``)::
+
+    MAXIM_EXP44_CAPTURE_LOG=data/exp44/paired_prompts.jsonl \
+        maxim --sim cradle_pref_a --embodiment bodies/infant_humanoid_chilled \
+        --aut-mode llm-primary --aut-model qwen2.5-32b-instruct --interactive false --sim-max-turns 40
 """
 
 from __future__ import annotations
