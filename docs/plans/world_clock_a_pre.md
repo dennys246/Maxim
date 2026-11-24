@@ -304,7 +304,8 @@ PR 0's precondition tests found two premises of this plan false on main:
   `_observe_energy_cost`. No caller passes `record_outcome`'s `elapsed_s`, so robots book no energy cost, and every
   `tool_result` link learns a 0.0 s delay (persisted `temporal_delta`, read by `NAc.predict_delay`): `elapsed_s`
   has both sinks. G-tool-duration would pass vacuously. PR 0 pins both green. The wiring, which also changes NAc's
-  delay predictions, and G-tool-duration move to A-post with B2 (#1788).
+  delay predictions, and G-tool-duration move to A-post with B2 (#1788). #1788 is `silent-wrong`. Its owner exception, needed past
+  2026-12-01 because the fix lands later, is committed in [silent_wrong_exceptions.json](silent_wrong_exceptions.json).
 - **A saved store is not byte-stable across processes.** The Hippocampus `context_index`, NAc's `outcome_index` and
   the EC's inverted indices (`similarity/indices.py`) are written from a `set`, so their order follows
   `PYTHONHASHSEED`. WC5 compares with that one index sorted, and a separate small `src/` PR makes every such writer
