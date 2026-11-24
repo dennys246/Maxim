@@ -165,6 +165,10 @@ def test_the_loop_builds_its_follow_up_only_through_the_consumer() -> None:
     assert source.count("[ACTION_FOLLOWUP type={") == 1
     assert "[ACTION_FOLLOWUP type={" in inspect.getsource(loop_submit._followup_synthetic_input)
     assert "_followup_synthetic_input(ctrl.pending_action_followup)" in source
+    # One "is this output external" predicate (#1519): the consumer asks the shared one, never an inline tool list.
+    assert "output_is_external(tool, untrusted_output=followup.untrusted_output)" in inspect.getsource(
+        loop_submit._followup_synthetic_input
+    )
 
 
 def test_every_control_character_except_tab_and_newline_is_stripped() -> None:
