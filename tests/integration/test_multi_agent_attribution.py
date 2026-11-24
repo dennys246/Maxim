@@ -111,6 +111,7 @@ class TestMultiAgentNacAttribution:
                 for success in (True, False, True):
                     record_outcome(
                         bridge_booked=None,
+                        untrusted_output=False,
                         refused=None,
                         agent_id=agent_id,
                         tool_name=tool,
@@ -218,6 +219,7 @@ class TestSharedNacIsolation:
             for i in range(5):
                 record_outcome(
                     bridge_booked=None,
+                    untrusted_output=False,
                     refused=None,
                     agent_id=agent_id,
                     tool_name=f"{tool_prefix}_{i}",
@@ -274,6 +276,7 @@ class TestEmptyAgentIdRejected:
         with pytest.raises(ValueError, match="non-empty"):
             record_outcome(
                 bridge_booked=None,
+                untrusted_output=False,
                 refused=None,
                 agent_id="",
                 tool_name="t",

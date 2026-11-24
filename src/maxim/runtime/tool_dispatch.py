@@ -20,10 +20,12 @@ from types import SimpleNamespace
 from typing import Any
 
 from maxim.decisions.causal_link import Valence as _V
+from maxim.modes.definitions import get_tool_followup_type
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
-from maxim.runtime.loop_state import operational_mode
+from maxim.runtime.loop_state import no_person_to_ask, operational_mode
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.tools.base import GATE_REFUSAL_KINDS, ToolErrorKind
+from maxim.utils.input_source import InputSource
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.cloud_redaction import loggable_tool_text, text_shape, tool_text_is_loggable
 from maxim.utils.structured_logging import log_agentic
@@ -218,6 +220,13 @@ def gate_refusal_of(result: Any) -> ToolErrorKind | None:
     return kind if isinstance(kind, ToolErrorKind) and kind in GATE_REFUSAL_KINDS else None
 
 
+def _append_recent_outcome(recent_outcomes: list[dict[str, Any]], max_recent: int, entry: dict[str, Any]) -> None:
+    """One outcome onto the prompt's recent outcomes, trimmed to the newest ``max_recent``."""
+    recent_outcomes.append(entry)
+    if len(recent_outcomes) > max_recent:
+        recent_outcomes.pop(0)
+
+
 def record_outcome(
     *,
     agent_id: str,
@@ -244,9 +253,11 @@ def record_outcome(
     outcome_valence: "_V | None" = None,
     bridge_booked: str | None,
     refused: ToolErrorKind | None,
+    untrusted_output: bool,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
+    ``untrusted_output``: the tool that ran replays stored text, so the prompt frames its result external (#1519).
     ``bridge_booked``: the signature the tool-pain bridge booked THIS failure under (``ToolOutput.nac_failure_booked``,
     #1200 Stage 2); see ``_observe_tool_result``. REQUIRED (TF8): forgetting it is a ``TypeError``, not a double count.
 
@@ -296,17 +307,8 @@ def record_outcome(
         )
     nac = _learning_nac(nac, refused)
     ts = time.time()
-    recent_outcomes.append(
-        {
-            "tool": tool_name,
-            "success": success,
-            "result": result_summary,
-            "error": error,
-            "timestamp": ts,
-        }
-    )
-    if len(recent_outcomes) > max_recent:
-        recent_outcomes.pop(0)
+    entry = {"tool": tool_name, "success": success, "result": result_summary, "error": error, "timestamp": ts}
+    _append_recent_outcome(recent_outcomes, max_recent, {**entry, "untrusted_output": bool(untrusted_output)})
 
     if llm_worker is not None:
         llm_worker.record_outcome(
@@ -901,6 +903,7 @@ def execute_parallel_actions(
             drive_relief_channel=pr.get("_drive_relief_channel"),
             # #1200 Stage 2: the signature the bridge booked a failure under (rejected / raised entries: None).
             bridge_booked=pr.get("_failure_booked"),
+            untrusted_output=bool(getattr(tool_to_run(executor, pr["tool"]), "untrusted_output", False)),
             # #1315 item 3: a gate refusal books no NAc. The autonomy rejection above stays a booked negative
             # (pre-existing, inconsistent with #1185; #1550).
             refused=pr.get("_refused"),
@@ -943,11 +946,13 @@ def execute_parallel_actions(
     return parallel_results, combined_results
 
 
-def _reset_deliberation(executor: Any) -> None:
-    """Reset ThinkTool deliberation state when a non-think action fires (L2).
+def _reset_deliberation(executor: Any, tool_name: str) -> None:
+    """Reset ThinkTool deliberation state when a non-think action fires (L2); a ``think`` keeps it.
 
     Single call site for both dispatch paths — prevents drift.
     """
+    if tool_name == "think":
+        return
     try:
         _registry = getattr(executor, "registry", None)
         if _registry is not None:
@@ -990,6 +995,38 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
     return None
 
 
+def _followup_text_for(followup_type: str | None, tool_name: str, output: Any, result: Any) -> str | None:
+    """A completed tool's result text for its follow-up, more of it (up to 3000 characters) for a follow-up type that
+    processes the result (moved out of ``execute_and_learn``, rule T for #1519). The caller resolves the type itself,
+    from the one mode it reads per tick (rule E of ``lint_loop_mode_reads``)."""
+    result_limit = 3000 if followup_type in ("process", "respond", "engage") else 100
+    return _followup_result_text(tool_name, output, result, result_limit)
+
+
+def _audit_execution_error(
+    autonomy_controller: Any,
+    action: dict[str, Any],
+    proposal: Any,
+    executor: Any,
+    state: Any,
+    confidence: float,
+    human_involved: bool,
+    error: Exception,
+) -> None:
+    """The autonomy audit entry for an action whose execution raised (moved out of ``execute_and_learn``, rule T for
+    #1519)."""
+    autonomy_controller.log_action(
+        action_type="executed",
+        action=action,
+        reasoning=proposal.reasoning,
+        mode=operational_mode(executor, state),
+        confidence=confidence,
+        outcome="error",
+        human_involved=human_involved,
+        error=str(error),
+    )
+
+
 def book_refusal(
     *,
     rec_outcome: Callable[..., Any],
@@ -1019,6 +1056,7 @@ def book_refusal(
         tool_name=tool_name,
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=error,
         reasoning=reasoning,
         recent_outcomes=recent_outcomes,
@@ -1061,6 +1099,7 @@ def book_machine_refusal(
         tool_name=tool_name,
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=error,
         reasoning=reasoning,
         recent_outcomes=recent_outcomes,
@@ -1136,6 +1175,7 @@ def book_hard_rejection(
         tool_name=tool_name,
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=rejection_msg,
         reasoning=proposal.reasoning or "",
         recent_outcomes=ctrl.recent_outcomes,
@@ -1288,6 +1328,7 @@ def book_agent_fallback_failure(
         tool_name=action["tool_name"],
         success=False,
         result_summary=None,
+        untrusted_output=False,  # no result to frame
         error=str(e),
         reasoning=getattr(proposal, "reasoning", "") if proposal else "",
         recent_outcomes=recent_outcomes,
@@ -1303,6 +1344,38 @@ def book_agent_fallback_failure(
     )
 
 
+def _nobody_answers_a_timeout(sim: Any) -> bool:
+    """Nobody can answer a timeout-retry prompt (#1185): a non-interactive run (``no_person_to_ask``), or a sim whose
+    adapter has no response policy (the narrator, the CLI scenario, interactive turns, minecraft)."""
+    return no_person_to_ask() or (bool(sim.is_sim_mode) and sim.answer_source() is InputSource.LOOP)
+
+
+# How many times in a row the loop answers its own timeout-retry prompt "yes" before it answers "no" (owner decision
+# 2026-11-21). The count is ``state.data["machine_timeout_retries"]``; any LLM turn that is not a timeout resets it
+# (``loop_intake.note_llm_turn``).
+MACHINE_TIMEOUT_RETRIES = 2
+
+
+def _machine_timeout_answer(sim: Any, state: Any) -> str:
+    """The loop's own answer to a timeout-retry prompt nobody else can answer: "yes" while fewer than
+    ``MACHINE_TIMEOUT_RETRIES`` consecutive machine retries have run, then "no" (the turn fails visibly: a
+    ``timeout_retry_exhausted`` event, the person told, and in a sim the LLM-unavailable marker for the bridge).
+    The count is not reset by the "no": the LLM is taken as still wedged, so the next request's first timeout is
+    declined at once, until a turn the LLM answers resets it (``loop_intake.note_llm_turn``)."""
+    retries = int(state.data.get("machine_timeout_retries", 0) or 0)
+    if retries < MACHINE_TIMEOUT_RETRIES:
+        state.data["machine_timeout_retries"] = retries + 1
+        return "yes"
+    from maxim.simulation.sim_logger import display_status
+
+    detail = f"the LLM timed out {retries + 1} times in a row; the loop stopped retrying (it answered its own prompt)"
+    log_agentic("agent_loop", "timeout_retry_exhausted", {"retries": retries, "detail": detail}, level="WARNING")
+    logger.warning("Timeout retry exhausted: %s", detail)
+    display_status(f"Giving up on this turn: {detail}.")
+    sim.report_llm_unavailable(detail)
+    return "no"
+
+
 def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
     """Store a succeeded timeout-retry prompt's state for the user's response (moved verbatim out of
     ``execute_and_learn``, #1315 item 3)."""
@@ -1314,6 +1387,12 @@ def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
     timeout_s = action.get("_timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S)
     # In sim mode, auto-resolve instead of blocking
     sim_timeout_response = sim.resolve_timeout_retry(timeout_s)
+    answer_source = sim.answer_source().value  # the sim's policy, or the loop's own (#1185)
+    if sim_timeout_response is None and _nobody_answers_a_timeout(sim):
+        # A timeout retry is no approval gate (#1185): with nobody to ask, the loop answers it itself, capped
+        # (owner decision 2026-11-21): "yes" MACHINE_TIMEOUT_RETRIES times in a row, then "no", so a wedged LLM ends
+        # the turn visibly instead of retrying forever.
+        sim_timeout_response, answer_source = _machine_timeout_answer(sim, state), InputSource.LOOP.value
     if sim_timeout_response is not None:
         sim.log("PIPELINE", f"Auto-resolved timeout retry: {sim_timeout_response}")
         state.data["pending_timeout_retry"] = {
@@ -1321,6 +1400,8 @@ def _stash_timeout_retry(action: dict[str, Any], sim: Any, state: Any) -> None:
             "timeout_s": timeout_s,
         }
         state.data["pending_loop_reply"] = sim_timeout_response
+        state.data["pending_loop_reply_source"] = answer_source
+        state.data["pending_loop_reply_for"] = "timeout_retry"  # LOOP_REPLY_FOR_SLOT: never a confirmation's answer
     else:
         state.data["pending_timeout_retry"] = {
             "original_request": action.get("_original_request"),
@@ -1516,17 +1597,10 @@ def execute_and_learn(
         current_mode = operational_mode(executor, state)
 
         # L2: Reset deliberation state when a non-think action fires.
-        if tool_name != "think":
-            _reset_deliberation(executor)
-
-        from maxim.modes.definitions import get_tool_followup_type
+        _reset_deliberation(executor, tool_name)
 
         followup_type = get_tool_followup_type(tool_name, current_mode, overlay=overlay)
-
-        # Store more result for tools that need processing (up to 3000 chars)
-        needs_processing = followup_type in ("process", "respond", "engage")
-        result_limit = 3000 if needs_processing else 100
-        result_str = _followup_result_text(tool_name, output, result, result_limit)
+        result_str = _followup_text_for(followup_type, tool_name, output, result)
 
         rec_outcome(
             agent_id=agent_id,
@@ -1546,6 +1620,7 @@ def execute_and_learn(
             clusters=getattr(proposal, "clusters", None),
             bridge_booked=getattr(result, "nac_failure_booked", None),
             refused=gate_refusal_of(result),
+            untrusted_output=bool(getattr(tool_to_run(executor, tool_name), "untrusted_output", False)),
             embodiment_failed=_embodiment_failed,
             drive_potential_diff=_drive_potential_diff,
             drive_credit_withheld=_drive_credit_withheld,
@@ -1632,16 +1707,7 @@ def execute_and_learn(
     except Exception as e:
         raised = str(e)
         _loop_logger.error(f"Action execution failed: {e}")
-        autonomy_controller.log_action(
-            action_type="executed",
-            action=action,
-            reasoning=proposal.reasoning,
-            mode=operational_mode(executor, state),
-            confidence=confidence,
-            outcome="error",
-            human_involved=human_involved,
-            error=str(e),
-        )
+        _audit_execution_error(autonomy_controller, action, proposal, executor, state, confidence, human_involved, e)
 
         # Track exception in recent_outcomes for LLM learning
         rec_outcome(
@@ -1649,6 +1715,7 @@ def execute_and_learn(
             tool_name=action.get("tool_name", "unknown"),
             success=False,
             result_summary=None,
+            untrusted_output=False,  # no result to frame
             error=str(e),
             reasoning=getattr(proposal, "reasoning", "") if proposal else "",
             recent_outcomes=recent_outcomes,

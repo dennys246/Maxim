@@ -317,7 +317,6 @@ Four policies are available (set on `SimulationBridge`):
 | `auto_approve` | Always approve (default) |
 | `auto_reject` | Always reject -- tests cancellation paths |
 | `delayed` | Approve after configurable delay -- tests timeout handling |
-| `ask_orchestrator` | Forward to orchestrator for decision |
 
 ### Cost Ceiling
 

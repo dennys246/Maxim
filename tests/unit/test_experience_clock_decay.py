@@ -357,6 +357,7 @@ def _drive_in(
         autonomy_controller=controller,
         memory_hub=hub if hub is not None else _Hub(nac),
         percept_source=percept_source,
+        response_policy=None,  # a test sim with no response policy answers no prompt (#1185)
         aut_mode=aut_mode,
         stop_event=threading.Event(),
         max_steps=passes,

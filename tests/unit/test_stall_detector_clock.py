@@ -63,6 +63,7 @@ def _detector(
         turn_count=1,
         turn_in_progress=False,
         get_all_actions=lambda: [],
+        get_agent_actions=lambda: [],  # the bridge's non-synthetic history (#1185)
         _spinner=spinner,
         finish_context={},
         finished=[],

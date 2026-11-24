@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from typing import Any, Callable, Literal
@@ -464,8 +465,35 @@ def _truncate_reasoning_carryover(content: str, max_tokens: int, counter: Any) -
     return header
 
 
+# A framed listing (``prompt_builder._listing``): the opener line, the file names, the closer line (#1519).
+_FRAMED_LISTING = re.compile(r"^(<<TOOL_OUTPUT id=([0-9a-f]+) [^\n]*>>)\n(.*?)\n(<</TOOL_OUTPUT id=\2>>)$", re.M | re.S)
+
+
 def _truncate_manifest(content: str, max_tokens: int, counter: Any) -> str:
-    """Truncate a manifest section by removing file entries from the end."""
+    """Truncate a manifest section by removing file entries from the end.
+
+    The CWD's file names arrive framed (#1519): they are cut INSIDE their frame, which is rebuilt around the names
+    kept, so no name is ever shown outside it; a listing with no name left goes whole, frame and all."""
+    listing = _FRAMED_LISTING.search(content)
+    if listing is None:
+        return _truncate_unframed_manifest(content, max_tokens, counter)
+    head, tail = content[: listing.start()], content[listing.end() :]
+    names = listing.group(3).split("\n")
+    while names:
+        framed = f"{head}{listing.group(1)}\n" + "\n".join(names) + f"\n{listing.group(4)}{tail}"
+        if counter.count_tokens(framed) <= max_tokens:
+            return framed
+        names.pop()
+    rest = (head.rstrip("\n") + tail).strip("\n")
+    from maxim.utils.content_safety import TOOL_OUTPUT_RULE, frame_spans
+
+    if not frame_spans(rest)[0]:  # the frame rule the budgeter stated above the listing has no frame left under it
+        rest = "\n".join(line for line in rest.split("\n") if line != TOOL_OUTPUT_RULE)
+    return _truncate_unframed_manifest(rest, max_tokens, counter)
+
+
+def _truncate_unframed_manifest(content: str, max_tokens: int, counter: Any) -> str:
+    """Remove indented file entries from the end of a manifest with no framed listing."""
     lines = content.split("\n")
     # Separate header/rule lines from indented file entries
     header_lines: list[str] = []

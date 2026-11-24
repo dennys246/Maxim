@@ -12,6 +12,7 @@ import logging
 import functools
 import re
 from datetime import datetime
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
@@ -29,8 +30,15 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
+from maxim.memory.text import frame_external, whole_frames
 from maxim.utils.cloud_redaction import text_shape, tool_result_header
-from maxim.utils.content_safety import INBOUND_WORDING, frame_tool_output, framed_section, render_headed_section
+from maxim.utils.content_safety import (
+    INBOUND_WORDING,
+    frame_tool_output,
+    framed_section,
+    render_headed_section,
+    safe_tool_name,
+)
 
 if TYPE_CHECKING:
     pass
@@ -537,7 +545,7 @@ def build_workspace_manifest_sections(
         header = f"=== PROJECT DIRECTORY ({n_entries} entries, CWD: {cwd_name}) ==="
         sections.append("You have FULL read/write access to all files below.")
         sections.append("!! IMPORTANT: These files ALREADY EXIST. Do NOT recreate them. !!")
-        sections.extend(cwd_entries)
+        sections.append(_listing(cwd_entries))
         ws_entries = scan_workspace_entries(workspace)
         if ws_entries:
             sections.append(f"\n.maxim_workspace/ also available for scratch/drafts ({len(ws_entries)} files).")
@@ -584,9 +592,16 @@ def build_workspace_manifest_sections(
                 cwd_lines = ["You can READ these files and SUGGEST edits (requires approval)."]
             else:
                 cwd_lines = ["You can READ these files. CWD edits must be proposed as plans."]
-            parts.append((f"=== CWD Context (read-only: {cwd_name}) ===", "\n".join(cwd_lines + cwd_entries)))
+            parts.append(
+                (f"=== CWD Context (read-only: {cwd_name}) ===", "\n".join([*cwd_lines, _listing(cwd_entries)]))
+            )
 
     return parts
+
+
+def _listing(entries: list[str]) -> str:
+    """A directory listing's file names, framed external (#1519): a name is whatever whoever made the file chose."""
+    return frame_external("cwd_listing", "\n".join(entries))
 
 
 def _tool_name_re(name: str) -> re.Pattern[str]:
@@ -1058,12 +1073,40 @@ def cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
 
 def _whole_frames(text: str) -> str:
     """``text`` without any partial untrusted-content frame (Session R, rule 2): the loop stores enrichment text cut to
-    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare."""
-    if "TOOL_OUTPUT" not in text:
-        return text
-    from maxim.utils.content_safety import drop_unbalanced_frames
+    a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare. The
+    label a dropped frame leaves goes too (``memory/text.py::whole_frames``, #1519)."""
+    return whole_frames(text)
 
-    return drop_unbalanced_frames(text)[0]
+
+# The label a voice-sourced request carries (#1519, owner decision 2026-11-21): it stays the turn's request, so voice
+# still commands the robot, but the model is told who it cannot be sure said it. A room-mic line naming the wake word
+# becomes a "voice" input (``embodied_runtime/input_handlers.py::_handle_transcript_record``), so anyone in the room or
+# on a speakerphone can produce one. The tool gate for such turns is pending
+# (docs/plans/voice_turn_gate_1519_approach.md).
+VOICE_REQUEST_LABEL = (
+    "[Heard on the room microphone: the speaker is unverified, and this was not typed by the operator.]\n"
+)
+
+
+def _request_source_label(request: Any) -> str:
+    """The label above the user's request, from the source the loop recorded with it (``triggering_input_source``,
+    never the text): a voice request is labelled, a typed one is not."""
+    source = str(getattr(request, "triggering_input_source", "") or "").strip().lower()
+    return VOICE_REQUEST_LABEL if source == "voice" else ""
+
+
+def _outcome_result(outcome: dict[str, Any], result: str) -> str:
+    """A recent outcome's result text. A tool's is framed as its follow-up is (#1519: the one predicate,
+    ``modes.definitions.output_is_external``, with the ``untrusted_output`` the outcome was recorded with): data,
+    never instructions. A system-written note (``loop_controller.note_system_outcome``: ``system_note``) is the
+    agent's own guidance, checked there to carry no outside text, so it is shown as written."""
+    from maxim.modes.definitions import output_is_external
+
+    if outcome.get("system_note"):
+        return result
+    tool = str(outcome.get("tool", "?"))
+    external = output_is_external(tool, untrusted_output=bool(outcome.get("untrusted_output")))
+    return frame_tool_output(tool, result, external=external)
 
 
 def _deferred_section(request: Any) -> str:
@@ -1171,7 +1214,8 @@ class PromptBuilder:
                 )
             if question_text:
                 # The router splits the payload at its FIRST blank line: this builder's clock line, then the question.
-                answer_only = f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{question_text}"
+                label = _request_source_label(request)  # a voice question is labelled here too (#1519)
+                answer_only = f"ANSWER_ONLY|Today is {date_str}. The time is {time_str}.\n\n{label}{question_text}"
                 return _no_segment_delimiter(answer_only)
             return ""
 
@@ -1396,7 +1440,7 @@ class PromptBuilder:
         if question_text:
             budgeter.add(
                 "user_request",
-                f'=== User Request ===\n"{_defanged(question_text)}"',
+                f'=== User Request ===\n{_request_source_label(request)}"{_defanged(question_text)}"',
                 SectionPriority.MANDATORY,
                 source="data",
                 header=None,
@@ -1946,10 +1990,12 @@ class PromptBuilder:
         if request.recent_outcomes:
             outcome_lines: list[str] = []
             for outcome in request.recent_outcomes[-3:]:
-                tool = outcome.get("tool", "?")
+                tool = safe_tool_name(outcome.get("tool", "?"))  # a model-proposed name, cleaned (#1519)
                 success = "succeeded" if outcome.get("success") else "failed"
-                result = outcome.get("result", "")[:50] if outcome.get("result") else ""
-                outcome_lines.append(f"- {tool}: {success}" + (f" ({result})" if result else ""))
+                result = str(outcome.get("result") or "")[:50]
+                outcome_lines.append(
+                    f"- {tool}: {success}" + (f" ({_outcome_result(outcome, result)})" if result else "")
+                )
             budgeter.add(
                 "recent_outcomes",
                 "\n".join(outcome_lines),
@@ -2087,34 +2133,13 @@ class PromptBuilder:
 
     @staticmethod
     def _add_relevant_memories_section(budgeter: PromptBudgeter, context: Any) -> None:
-        """Episodic recalls, a private section (header-separate). Dormant with ``_add_memory_sections``."""
+        """Episodic recalls, a private section (header-separate), each recalled summary framed external
+        (#1519). Dormant with ``_add_memory_sections``."""
         if not context.relevant_memories:
             return
-        mem_lines: list[str] = []
-        for mem in context.relevant_memories[:8]:
-            content = mem.get("content", {})
-            source = mem.get("source", "episodic")
-            salience = mem.get("salience", 0.0)
-            parts = []
-            if content.get("goal"):
-                parts.append(f"goal: {content['goal']}")
-            if content.get("action"):
-                parts.append(f"action: {content['action']}")
-            if content.get("success") is not None:
-                parts.append("succeeded" if content["success"] else "failed")
-            if content.get("transcript"):
-                parts.append(f'"{content["transcript"][:80]}"')
-            summary = ", ".join(parts) if parts else str(content)[:80]
-            mem_lines.append(f"- [{source}, salience={salience:.2f}] {summary}")
-            if mem.get("predictions"):
-                for pred in mem["predictions"][:2]:
-                    pred_tool = pred.get("tool", "?")
-                    pred_success = pred.get("success", "?")
-                    pred_conf = pred.get("confidence", 0)
-                    mem_lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
         budgeter.add(
             "relevant_memories",
-            "\n".join(mem_lines),
+            _render_relevant_memories(context.relevant_memories),
             SectionPriority.IMPORTANT,
             truncatable=True,
             min_tokens=50,
@@ -2131,143 +2156,29 @@ class PromptBuilder:
         tools: set[str],
     ) -> None:
         """Episodic recalls, ATL concepts, semantic knowledge, causal predictions, motor programs, statistics.
-        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845)."""
+        Dormant since 2026-10-06 (memory sections unfed; see MemoryAgent._run_parallel_memory_queries, #845).
+        Every stored text these sections show (the ``_render_*`` helpers) is framed external, so a revival
+        cannot reopen the stored-injection channel (#1519, #1516 F15)."""
         PromptBuilder._add_relevant_memories_section(budgeter, context)
-
-        if context.concept_context:
-            concept_lines = ["=== Active Concepts ==="]
-            for concept in context.concept_context[:5]:
-                name = concept.get("name", "?")
-                category = concept.get("category", "?")
-                confidence = concept.get("confidence", 0)
-                episodes = concept.get("episode_count", 0)
-                concept_lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
-                for rel in concept.get("relationships", [])[:2]:
-                    concept_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
-            budgeter.add(
-                "concept_context",
-                "\n".join(concept_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-                header=None,
-            )
-
-        if context.knowledge_context:
-            knowledge_lines = ["=== Semantic Knowledge ==="]
-            for entry in context.knowledge_context[:5]:
-                name = entry.get("concept_name", "?")
-                definition = entry.get("definition", "")
-                layer = entry.get("source_layer", "?")
-                conf = entry.get("confidence", 0)
-                knowledge_lines.append(f"- {name} ({layer}, confidence={conf:.2f}): {definition}")
-                for rel in entry.get("relationships", [])[:2]:
-                    knowledge_lines.append(f"  → {rel.get('type', '?')} {rel.get('target', '?')}")
-            budgeter.add(
-                "knowledge_context",
-                "\n".join(knowledge_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-                header=None,
-            )
-
-        if context.causal_context:
-            causal_lines = ["=== Causal Predictions (learned from experience) ==="]
-            for pred in context.causal_context[:5]:
-                valence = pred.get("valence", "neutral")
-                conf = pred.get("confidence", 0)
-                ctx_match = pred.get("context_match", 0)
-                causal_lines.append(
-                    f"- {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})"
+        important, critical = SectionPriority.IMPORTANT, SectionPriority.CRITICAL
+        for name, items, render, priority, min_tok, cut in (
+            ("concept_context", context.concept_context, _render_concepts, important, 30, _lines_cut(15)),
+            ("knowledge_context", context.knowledge_context, _render_knowledge, important, 30, _lines_cut(15)),
+            ("causal_context", context.causal_context, _render_causal, critical, 30, _lines_cut(15)),
+            ("valence_context", context.valence_context, _render_valence, critical, 30, _lines_cut(15)),
+            ("motor_programs", context.motor_programs, _render_motor_programs, important, 30, _truncate_motor_programs),
+        ):
+            if items:  # each renders its own ``=== X ===`` line in its body: none is a private section (#1739)
+                budgeter.add(
+                    name,
+                    render(items),
+                    priority,
+                    truncatable=True,
+                    min_tokens=min_tok,
+                    truncate_fn=cut,
+                    source="data",
+                    header=None,
                 )
-            budgeter.add(
-                "causal_context",
-                "\n".join(causal_lines),
-                SectionPriority.CRITICAL,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-                header=None,
-            )
-
-        if context.valence_context:
-            valence_lines = ["=== Learned Associations (from experience) ==="]
-            for entry in context.valence_context[:5]:
-                concept = entry.get("concept", "?")
-                valence = entry.get("valence", 0.0)
-                if valence < -0.1:
-                    sentiment = "negative (associated with pain/failure)"
-                elif valence > 0.1:
-                    sentiment = "positive (associated with success/benefit)"
-                else:
-                    sentiment = "neutral"
-                assoc = ", ".join(entry.get("associations", [])[:3])
-                valence_lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {assoc})")
-            budgeter.add(
-                "valence_context",
-                "\n".join(valence_lines),
-                SectionPriority.CRITICAL,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
-                source="data",
-                header=None,
-            )
-
-        if context.motor_programs:
-            motor_lines = ["=== Available Motor Programs ==="]
-            for prog in context.motor_programs[:8]:
-                name = prog.get("name", "?")
-                conf = prog.get("confidence", 0)
-                rate = prog.get("success_rate", 0)
-                execs = prog.get("executions", 0)
-                steps_str = " → ".join(prog.get("steps", [])[:5])
-                motor_lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
-                if steps_str:
-                    motor_lines.append(f"  Steps: {steps_str}")
-                risks = prog.get("risks", [])
-                if risks:
-                    motor_lines.append(f"  Known risks: {', '.join(risks)}")
-
-            def _truncate_motor_programs(content: str, max_tok: int) -> str:
-                """Drop full motor program entries (name + steps + risks) from
-                the tail. The previous implementation sliced by line count,
-                which left partial entries (e.g. a Steps line with no name)
-                because each entry spans 1-3 lines. Pure function — uses the
-                conservative ~4-chars-per-token estimate (same as the
-                deliberation-transcript truncator) since the static-method
-                context has no token counter in scope.
-                """
-                lines = content.split("\n")
-                target_chars = max_tok * 4
-                while len("\n".join(lines)) > target_chars:
-                    cut = None
-                    for i in range(len(lines) - 1, 0, -1):
-                        if lines[i].startswith("- "):
-                            cut = i
-                            break
-                    if cut is None:
-                        break  # only header left, can't drop more
-                    lines = lines[:cut]
-                return "\n".join(lines)
-
-            budgeter.add(
-                "motor_programs",
-                "\n".join(motor_lines),
-                SectionPriority.IMPORTANT,
-                truncatable=True,
-                min_tokens=30,
-                truncate_fn=_truncate_motor_programs,
-                source="data",
-                header=None,
-            )
 
         if context.statistical_context and context.active_pattern_count > 0:
             stat_lines = [
@@ -2514,3 +2425,131 @@ Example JSON format (COPY THIS STRUCTURE EXACTLY):
 Your response (use tool_name "respond"):"""
 
         return f"TOOL_PROMPT|{prompt}"
+
+
+# ── PromptBuilder._add_memory_sections' renderers (Dormant since 2026-10-06, #845) ──────────────────────────────────
+# Each shows a stored record's free text (what an episode heard, its goal and action, a concept's or association's
+# name, a definition, a causal event and outcome, a motor program's name, steps and risks) only framed external
+# (#1519, #1516 F15): the numbers and labels beside it are the agent's own.
+
+
+def _lines_cut(per_line: int) -> Callable[[str, int], str]:
+    return lambda c, m: "\n".join(c.split("\n")[: max(2, m // per_line)])
+
+
+def _render_relevant_memories(memories: list[Any]) -> str:
+    """The recalled memories, as the section body: the header (``RELEVANT_MEMORIES_HEADER``) is passed apart."""
+    lines: list[str] = []
+    for mem in memories[:8]:
+        content = mem.get("content", {})
+        source = mem.get("source", "episodic")
+        salience = mem.get("salience", 0.0)
+        parts = []
+        if content.get("goal"):
+            parts.append(f"goal: {content['goal']}")
+        if content.get("action"):
+            parts.append(f"action: {content['action']}")
+        if content.get("success") is not None:
+            parts.append("succeeded" if content["success"] else "failed")
+        if content.get("transcript"):
+            parts.append(f'"{content["transcript"][:80]}"')
+        summary = ", ".join(parts) if parts else str(content)[:80]
+        lines.append(f"- [{source}, salience={salience:.2f}] {frame_external('recalled_memory', summary)}")
+        for pred in (mem.get("predictions") or [])[:2]:
+            pred_tool = pred.get("tool", "?")
+            pred_success = pred.get("success", "?")
+            pred_conf = pred.get("confidence", 0)
+            lines.append(f"  prediction: {pred_tool} (success={pred_success}, confidence={pred_conf:.2f})")
+    return "\n".join(lines)
+
+
+def _render_relations(entry: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"  → {rel.get('type', '?')} {frame_external(label, str(rel.get('target', '?')))}"
+        for rel in entry.get("relationships", [])[:2]
+    ]
+
+
+def _render_concepts(concepts: list[Any]) -> str:
+    lines = ["=== Active Concepts ==="]
+    for concept in concepts[:5]:
+        name = frame_external("recalled_concept", str(concept.get("name", "?")))
+        category = concept.get("category", "?")
+        confidence = concept.get("confidence", 0)
+        episodes = concept.get("episode_count", 0)
+        lines.append(f"- {name} ({category}, confidence={confidence:.2f}, episodes={episodes})")
+        lines.extend(_render_relations(concept, "recalled_concept"))
+    return "\n".join(lines)
+
+
+def _render_knowledge(entries: list[Any]) -> str:
+    lines = ["=== Semantic Knowledge ==="]
+    for entry in entries[:5]:
+        text = frame_external("recalled_knowledge", f"{entry.get('concept_name', '?')}: {entry.get('definition', '')}")
+        lines.append(f"- {text} ({entry.get('source_layer', '?')}, confidence={entry.get('confidence', 0):.2f})")
+        lines.extend(_render_relations(entry, "recalled_knowledge"))
+    return "\n".join(lines)
+
+
+def _render_causal(predictions: list[Any]) -> str:
+    lines = ["=== Causal Predictions (learned from experience) ==="]
+    for pred in predictions[:5]:
+        valence = pred.get("valence", "neutral")
+        conf = pred.get("confidence", 0)
+        ctx_match = pred.get("context_match", 0)
+        what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+        lines.append(f"- {what} (valence={valence}, confidence={conf:.2f}, context_match={ctx_match:.2f})")
+    return "\n".join(lines)
+
+
+def _render_valence(entries: list[Any]) -> str:
+    lines = ["=== Learned Associations (from experience) ==="]
+    for entry in entries[:5]:
+        valence = entry.get("valence", 0.0)
+        if valence < -0.1:
+            sentiment = "negative (associated with pain/failure)"
+        elif valence > 0.1:
+            sentiment = "positive (associated with success/benefit)"
+        else:
+            sentiment = "neutral"
+        concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+        assoc = ", ".join(str(a) for a in entry.get("associations", [])[:3])
+        related = frame_external("recalled_association", assoc) if assoc else ""
+        lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {related})")
+    return "\n".join(lines)
+
+
+def _render_motor_programs(programs: list[Any]) -> str:
+    lines = ["=== Available Motor Programs ==="]
+    for prog in programs[:8]:
+        conf = prog.get("confidence", 0)
+        rate = prog.get("success_rate", 0)
+        execs = prog.get("executions", 0)
+        name = frame_external("motor_program", str(prog.get("name", "?")))
+        lines.append(f"- {name} (confidence={conf:.2f}, {execs} runs, success={rate:.0%})")
+        steps_str = " → ".join(str(st) for st in prog.get("steps", [])[:5])
+        if steps_str:
+            lines.append(f"  Steps: {frame_external('motor_program', steps_str)}")
+        risks = prog.get("risks", [])
+        if risks:
+            lines.append(f"  Known risks: {frame_external('motor_program', ', '.join(str(r) for r in risks))}")
+    return "\n".join(lines)
+
+
+def _truncate_motor_programs(content: str, max_tok: int) -> str:
+    """Drop full motor program entries (name + steps + risks) from the tail. Slicing by line count left partial
+    entries (e.g. a Steps line with no name), because each entry spans several lines. Pure function: uses the
+    conservative ~4-chars-per-token estimate (same as the deliberation-transcript truncator), since there is no
+    token counter in scope. A cut through a frame is dropped by the budgeter (rule 2)."""
+    lines = content.split("\n")
+    target_chars = max_tok * 4
+    while len("\n".join(lines)) > target_chars:
+        cut = None
+        for i in range(len(lines) - 1, 0, -1):
+            if lines[i].startswith("- "):
+                cut = i
+                break
+        if cut is None:
+            break  # only header left, can't drop more
+        lines = lines[:cut]
+    return "\n".join(lines)

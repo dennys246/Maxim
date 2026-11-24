@@ -58,6 +58,24 @@ from maxim.utils.logging import warn
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
+from maxim.memory.text import Provenance, frame_external, stored_percept_text
+
+
+def _voice_command_text(percept: Any) -> str:
+    """The Dormant prompt's "Voice command" line, consistent with the live loop (#1519, owner decision 2026-11-21):
+    a room-mic voice command is LABELLED (heard on the room mic, unverified speaker) and defanged, not framed, so
+    voice still commands; a comms percept's transcript (a phone caller) is framed external like any comms text."""
+    from maxim.utils.content_safety import defang_frame_markers
+
+    text = str(percept.raw_transcript_text or "").strip()
+    if not text:
+        return "(none)"
+    source = percept.source if isinstance(percept.source, str) else ""
+    if source.startswith("comms:"):
+        return stored_percept_text(source, text, limit=2000, keep_lines=True)
+    return (
+        f"[heard on the room microphone: unverified speaker, not typed by the operator] {defang_frame_markers(text)[0]}"
+    )
 
 
 class ExecAgent(Agent):
@@ -1116,7 +1134,9 @@ class ExecAgent(Agent):
             self._urgent_work_available.set()
 
     def _build_llm_context(self, ctx: StructuredContext, budget_context: str | None = None) -> str:
-        """Build prompt from structured context."""
+        """Build prompt from structured context. Dormant with ExecAgent's own LLM path (``_invoke_llm_for_goal``).
+        A percept's or message's text from outside the agent is framed by its provenance, and no sender is shown
+        (#1519; #1481's code review E2: a phone number never reaches a prompt)."""
         # Current percept summary
         percept_str = "(none)"
         if ctx.current_percept:
@@ -1125,8 +1145,8 @@ class ExecAgent(Agent):
 - Source: {p.source}
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
-- Voice command: {p.raw_transcript_text or "(none)"}
-- Message: {p.content or "(none)"}
+- Voice command: {_voice_command_text(p)}
+- Message: {stored_percept_text(p.source, p.content or "", limit=2000, keep_lines=True) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 
@@ -1149,7 +1169,12 @@ class ExecAgent(Agent):
         for out in ctx.recent_outcomes[-3:]:
             if not isinstance(out, dict):
                 continue
-            status = "OK" if out.get("success") else f"FAILED: {out.get('error')}"
+            error = out.get("error")
+            status = (
+                "OK"
+                if out.get("success")
+                else (f"FAILED: {frame_external('tool_error', str(error))}" if error else "FAILED")
+            )
             outcome_lines.append(f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}")
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 
@@ -1170,10 +1195,12 @@ class ExecAgent(Agent):
         # Comms messages (inbound SMS/voice)
         comms_lines = []
         for msg in ctx.comms_messages[-5:]:
-            prefix = "User" if msg.get("direction") == "inbound" else "Maxim"
+            prefix = "Inbound" if msg.get("direction") == "inbound" else "Maxim"  # a sender is not the operator
             channel = msg.get("channel", "sms")
-            sender = msg.get("sender", "unknown")
-            comms_lines.append(f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}")
+            body = str(msg.get("content", ""))  # the agent's own outbound words are shown as they are
+            if msg.get("direction") == "inbound":
+                body = stored_percept_text(f"comms:{channel}", body, limit=2000, keep_lines=True)
+            comms_lines.append(f"  [{prefix} via {channel}] {body}")
         comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
         # DN escalation context (if percept was escalated by Default Network)
@@ -1248,10 +1275,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for pred in ctx.causal_context[:5]:
                 valence = pred.get("valence", "neutral")
                 conf = pred.get("confidence", 0)
-                causal_lines.append(
-                    f"  - {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f})"
-                )
+                what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+                causal_lines.append(f"  - {what} (valence={valence}, confidence={conf:.2f})")
             causal_str = "\n".join(causal_lines)
 
         valence_str = ""
@@ -1260,7 +1285,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for entry in ctx.valence_context[:5]:
                 v = entry.get("valence", 0.0)
                 sentiment = "negative" if v < -0.1 else ("positive" if v > 0.1 else "neutral")
-                valence_parts.append(f"{entry.get('concept', '?')}: {sentiment} ({v:+.2f})")
+                concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+                valence_parts.append(f"{concept}: {sentiment} ({v:+.2f})")
             valence_str = "\n\nLEARNED ASSOCIATIONS: " + "; ".join(valence_parts)
 
         # Pre-deliberation enrichment (Layer 1): bio-system associations
@@ -1490,6 +1516,7 @@ Based on this context, what goal should be proposed?"""
                         kind=self._WorkingMemoryKind.THOUGHT,
                         content={"source": "pre_deliberation", "enrichment": formatted},
                         salience=result.valence,
+                        provenance=Provenance.INTERNAL,
                     )
                     return formatted
         except Exception as e:
