@@ -161,7 +161,7 @@ which needs #1305 too, so #1305 rides here.
 | ARCHITECTURE.md says DM NPCs are built through AgentFactory | OD-I4 | #1686 | S | none |
 | pymaxim caps `rich<14` for every embedder | OD-I6 | **to file** (`pyproject.toml` `[project] dependencies`) | S | none |
 | Seeded runs are not reproducible (the global `random`/`np.random`) | cand. A2's first half | #1305 (a 1.4.0 gate item) | M | to be checked by the world-clock plan |
-| The perceived-time port, A-pre half: prompt and observation time through the port, live-path stamps, the hippocampus's 30 s wall window, reaction gates on the injected clock | OD-A2 to OD-A6, cand. A3 A-pre | **plan owed**: Overdrive's `docs/maxim_upstream/world_clock_release_DRAFT.md` becomes a Maxim plan with a three-lens plan review, then one PR per site family | M–L | none (A-pre by definition) |
+| The perceived-time port, A-pre half: prompt and observation time through the port, live-path stamps, the hippocampus's 30 s wall window, reaction gates on the injected clock | OD-A2 to OD-A6, cand. A3 A-pre | [world_clock_a_pre.md](world_clock_a_pre.md) (PROPOSED 2026-11-24; owner decisions D-WC1 to D-WC4), from Overdrive's roadmap rows, the draft as background; then one PR per site family | M–L | none (A-pre by definition) |
 | One `AgentHome` per agent | OD-A12, cand. A1 | with #984 | M | to be checked |
 
 **Already done:** **OD-I7** (`apply_damage` returned 1.0 on a part with no sub-sensors) shipped in 1.3.4 as #1719
