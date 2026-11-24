@@ -44,7 +44,8 @@ Construction of this whole stack is owned by the builder family (`build_bio_stac
 
 | Area | Key files |
 |---|---|
-| Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
+| Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer), `memory/text.py` (content keying) |
+| Stored text in a prompt | `utils/prompt_text.py` (outside `memory/` so prompt builders load no bio module, B2): the `OPERATOR_SOURCES` trust list, `Provenance`, `frame_external`, `whole_frames`, `bounded_words` / `RECALLED_WORDS_MAX_CHARS` (§3, #1519 / #1137) |
 | Causal learning | `decisions/nac.py` (reward bias, eligibility traces, distribute_reward, **goal_reward_bias**), `decisions/causal_link.py` (CausalLink, percept_refs) |
 | Temporal credit | `decisions/temporal_credit.py` (**TemporalCreditDistributor** — NAc+SCN composition, fast-decay + phase-similarity credit; `anticipatory_pre_activate` is Dormant), `time/temporal_event.py` (TemporalEvent envelope), `decisions/valence_signal.py` (ValenceSignal transport for WMS salience modulation) |
 | Substrate encoding | `similarity/encoder.py` (LinguisticEncoder, SensorEncoder, `_normalize_value`), `similarity/ec.py` (pattern_complete_or_separate, centroid update), `similarity/decomposer.py` (decomposition strategies) |

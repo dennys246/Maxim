@@ -7,4 +7,6 @@
   `RECALLED_WORDS_MAX_CHARS`, `OPERATOR_SOURCES`, `Provenance`, `provenance_of`, `frame_external`, `whole_frames`,
   `shown_text` and `stored_percept_text` moved verbatim from `maxim.memory.text` to the new `maxim.utils.prompt_text`,
   which imports no bio package, so `agents/prompt_builder.py` no longer loads the memory package (and the loop's
-  intake stays bio-free). Behaviour is unchanged; import them from `maxim.utils.prompt_text`.
+  intake stays bio-free). Behaviour is unchanged; import them from `maxim.utils.prompt_text`. Of these, `bounded_words`
+  and `RECALLED_WORDS_MAX_CHARS` were exported by 1.3.4's `maxim.memory.text` and are removed there. ExamineTool's
+  recalled sentence now frames through the same `frame_external` helper (the same output).
