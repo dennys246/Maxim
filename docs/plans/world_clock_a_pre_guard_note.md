@@ -42,14 +42,19 @@ It has two parts, and neither trusts the other.
   These are refused outside `time/agent_time.py` and the allowlist.
 - **`uuid1` and `uuid4` are census-only.** The lint warns and does not fail, because D-WC1 offers no `IdSource`, so
   failing on them would be a new id rule the owner deferred.
-- **Its own alias resolver,** about 40 lines. Neither `lint_dead_imports`' resolver (maxim-internal targets) nor
-  `lint_atomic_io_ratchet._module_aliases` (`import X as Y` only) resolves local stdlib bindings. The new resolver
-  handles these forms:
+- **The alias resolver is shared:** `scripts/_clock_refs.py`, built in PR 0 for the census, which PR 1's lint imports
+  with the banned names and both scopes, so the two cannot drift. Neither `lint_dead_imports`' resolver
+  (maxim-internal targets) nor `lint_atomic_io_ratchet._module_aliases` (`import X as Y` only) resolves local stdlib
+  bindings. The census and the lint still judge independently: the lint never reads the census's verdicts. The
+  resolver handles these forms, each with a planted test:
   - `import time as _t`;
   - `from time import time as now`;
   - `from datetime import datetime`;
   - `import datetime as dt`;
   - `from datetime import datetime as DT`.
+- **Bindings it cannot resolve one way fail closed.** A name bound to two clock targets in one module (a
+  function-local `from datetime import datetime` beside a module-level `import datetime`) or a star import from a
+  clock module is reported, not guessed. The census prints it and the lint fails on it.
 
 ### 2. The dynamic half: G-long
 
@@ -71,7 +76,7 @@ It has two parts, and neither trusts the other.
 | Input | How it lies | What catches it |
 |---|---|---|
 | **The scope lists** | A new module that renders or stamps time is in neither list | Machinery: G-long, where its reach allows (§2). Prompt: G-render, G-tz and G-scn, which build real prompts. The list itself: **M99**, which derives the prompt scope. *Stated blind spot until M99.* |
-| **Import aliasing** | `import time as _time` (as `embodiment/spec.py` does), `from datetime import datetime`, and the other forms in §1 | The new resolver, with a planted test case for each form |
+| **Import aliasing** | `import time as _time` (as `embodiment/spec.py` does), `from datetime import datetime`, and the other forms in §1 | The shared resolver (`scripts/_clock_refs.py`), with a planted test case for each form. A conflicting binding or a clock-module star import is reported and fails closed |
 | **Non-call references** | `default_factory=time.time` binds at class definition, so a call-only scan misses it | `Attribute`/`Name` matching. Planted: a dataclass stamp. G-long cannot see this case (§2), so the static half must. |
 | **C-level calendar reads** | `datetime.now()`, `fromtimestamp` | Static only (§2). Planted: one of each in a prompt-scope fixture. |
 | **Dynamic access** | `getattr(time, "time")`, `importlib`, a callable passed in | *Static blind spot, stated.* G-long catches it if the read goes through `time.time` and reaches state. |

@@ -5,17 +5,27 @@
 where each site goes. This script prints, from the AST alone (it imports nothing from ``maxim``):
 
 1. **Sites.** Every reference (not only calls) to a banned clock, calendar, id or randomness name, resolved
-   through local import aliases, with its ``file::function``, kind, M72 scope and placement.
-2. **Stamp–reader pairs (I4).** The writers of the four stamp classes' ``timestamp`` and every function that
-   subtracts something from a ``.timestamp``, with the clock the other operand reads. Readers are untyped:
-   AST cannot tell an ``EpisodicMemory`` from any other object with a ``timestamp``, so every subtraction is
-   listed and a reviewer reads the list.
+   through local import aliases (``scripts/_clock_refs.py``, shared with M72's lint), with its ``file::function``,
+   kind, M72 scope and placement.
+2. **Stamps (I4).** Writers of the stamp attributes (``timestamp``, ``created_at``, ``accessed_at``,
+   ``consolidated_at``): a stamp class built with one as a keyword (including ``cls(...)`` inside a stamp class),
+   and every assignment to one. Readers: every subtraction with a stamp operand, in attribute, subscript
+   (``x["timestamp"]``), ``getattr(x, "timestamp", ...)`` or ``x.get("timestamp", ...)`` form, with the clock the
+   other operand reads. Both are untyped: AST cannot tell an ``EpisodicMemory`` from any other object with a
+   ``timestamp``, so every one is listed and a reviewer reads the list.
 3. **TemporalSignature and SCN callers,** with the clock their arguments read (input) and what the result
    feeds (output use).
+4. **Resolution conflicts:** a name bound to two clock targets in one module, or a star import from a clock
+   module. The census does not guess; M72's lint fails closed on them.
 
 The output is for review. Neither the M72 lint nor G-long reads its verdicts; they rescan. A site inside an M72
 scope that no rule places prints as ``UNPLACED``, so a reviewer sees it rather than a guessed placement; PR 1
-gives each one an allowlist entry or a move. A site outside both scopes prints as ``outside M72's scopes``.
+gives each one an allowlist entry, a ``pending:`` pin or a move before M72 goes live. A site outside both scopes
+prints as ``outside M72's scopes``. ``tests/unit/test_world_clock_census.py`` fails when a placement rule matches
+nothing on the tree (a rule naming a function that moved), unless the rule says why it is empty today.
+
+Stated blind spots: dynamic access (``getattr(time, "time")``), a callable passed in, a local variable shadowing an
+imported name, and render sites that format a stamp without reading a clock (``_format_episodic_memory``).
 
 Usage: ``python scripts/world_clock_census.py [--json] [--root DIR]``. The scan covers files tracked by git
 under ``<root>/src/maxim`` (``git ls-files``), so untracked scratch files and fixtures never count.
@@ -33,134 +43,128 @@ import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import NamedTuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _clock_refs import SRC, Bindings, kind_of, module_bindings, rel_to_src, resolve, scope_of, under  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC = "src/maxim"
 
-WALL = frozenset({"time.time", "time.time_ns"})
-MONOTONIC = frozenset({"time.monotonic", "time.monotonic_ns", "time.perf_counter", "time.perf_counter_ns"})
-CALENDAR = frozenset(
-    {
-        "time.localtime",
-        "time.gmtime",
-        "time.strftime",
-        "time.ctime",
-        "datetime.datetime.now",
-        "datetime.datetime.utcnow",
-        "datetime.datetime.today",
-        "datetime.datetime.fromtimestamp",
-        "datetime.datetime.utcfromtimestamp",
-        "datetime.date.today",
-        "datetime.date.fromtimestamp",
-    }
-)
-IDS = frozenset({"uuid.uuid1", "uuid.uuid4"})
-_RANDOM_PREFIXES = ("random.", "numpy.random.")
-# Names in the random modules that are types or constants, not draws from the process-global generator.
-_RANDOM_NON_DRAWS = frozenset({"random.Random", "random.SystemRandom", "numpy.random.Generator"})
+STAMP_CLASSES = frozenset({"EpisodicMemory", "MemoryRecord", "Percept", "SensorReading", "PainSignal"})
+STAMP_ATTRS = frozenset({"timestamp", "created_at", "accessed_at", "consolidated_at"})
 
-STAMP_CLASSES = ("EpisodicMemory", "Percept", "SensorReading", "PainSignal")
-STAMP_ATTR = "timestamp"
 
-# M72's two scopes (world_clock_a_pre_guard_note.md §1). A path ending in "/" is a directory prefix.
-MACHINERY_SCOPE = (
-    "decisions/",
-    "memory/",
-    "embodiment/body.py",
-    "integration/memory_hub.py",
-    "agents/memory_agent.py",
-    "agents/context_pool.py",
-    "attention/",
-    "salience/",
-    "default_network/network.py",
-    "bridges/salience_bridge.py",
-    "bridges/planning_bridge.py",
-    "bridges/spatial_bridge.py",
-    "similarity/signature.py",
-    "embodiment/spec.py",
-    "proprioception/pain.py",
-    "proprioception/pain_bus.py",
-    "reactions/bus.py",
-    "models/language/cost_tracker.py",
-)
-PROMPT_SCOPE = (
-    "agents/prompt_builder.py",
-    "agents/context_pool.py",
-    "agents/llm_fallback.py",
-    "agents/exec_agent.py",
-    "agents/exec_prompts.py",
-    "agents/statistician_agent.py",
-    "retrieval/temporal_signal.py",
-    "tools/http_fetch.py",
-    "tools/introspection.py",
-    "simulation/introspection.py",
-)
+class Rule(NamedTuple):
+    """One placement rule. ``kinds`` None matches any kind; ``func`` None any function. ``empty_today`` is the reason
+    a rule matches no site on today's tree (it fences a file or family that has none yet); a rule without it must
+    match at least one item, and a rule with it must match none."""
 
-# Placement rules from world_clock_a_pre.md (§Site families, §Placements, §What stays on the wall), first match
-# wins: (kinds or None for any, path prefix, function regex or None for any, placement). Kind rules come first
-# because ids and randomness are OD-A7's wherever they sit (D-WC1).
+    kinds: frozenset[str] | None
+    prefix: str
+    func: str | None
+    placement: str
+    empty_today: str | None = None
+
+
 _ANY = None
-PLACEMENT_RULES: tuple[tuple[frozenset[str] | None, str, str | None, str], ...] = (
-    (frozenset({"id", "random"}), "", _ANY, "OD-A7, after the 1.4.0 cut (D-WC1)"),
-    (_ANY, "mesh/", _ANY, "out of scope: off the embedded path"),
-    (_ANY, "utils/web_cache.py", _ANY, "out of scope: off the embedded path"),
-    (_ANY, "utils/output_watcher.py", _ANY, "out of scope: off the embedded path"),
-    (_ANY, "runtime/worker_pool.py", _ANY, "out of scope: off the embedded path"),
-    (_ANY, "runtime/agent_loop.py", _ANY, "A-post: fenced file (OD-A8)"),
-    (_ANY, "simulation/orchestrator.py", _ANY, "A-post: fenced file (OD-A8)"),
-    (_ANY, "runtime/tool_dispatch.py", r"^execute_and_learn$", "A-post with B2: OD-A4's tool duration (fenced)"),
-    (_ANY, "runtime/tool_dispatch.py", _ANY, "A-post: fenced file (OD-A8)"),
-    (_ANY, "agents/exec_agent.py", r"_build_llm_context$", "allow: real-world-io (workspace mtimes)"),
-    (_ANY, "agents/exec_agent.py", _ANY, "A-post: hot file (D-WC7)"),
-    (_ANY, "models/language/router.py", _ANY, "A-post: hot file (D-WC7)"),
-    (_ANY, "cli.py", _ANY, "A-post: hot file (D-WC7)"),
-    (_ANY, "runtime/loop_setup.py", _ANY, "A-post: hot file (D-WC7)"),
-    (_ANY, "agents/prompt_builder.py", r"(^|\.)(build_prompt|_build_engage_prompt)$", "PR 2: the port (OD-A3)"),
-    (_ANY, "agents/context_pool.py", r"(^|\.)(_entries_to_text|get_context_text)$", "PR 2: perceive (OD-A3)"),
-    (_ANY, "tools/introspection.py", r"^_format_episodic_memory$", "PR 2: omitted under NO_CALENDAR"),
-    (_ANY, "tools/introspection.py", r"^SceneSummaryTool\.", "PR 2: omitted under NO_CALENDAR"),
-    (_ANY, "tools/introspection.py", r"^TemporalPatternsTool\.", "PR 3: SCN-derived render (D-WC2)"),
-    (
+_FENCED = "A-post: fenced file (OD-A8)"
+_HOT = "A-post: hot file (D-WC7)"
+_OFF_PATH = "out of scope: off the embedded path"
+_STAMP_HALF = "A-post: OD-A4 stamp half (D-WC6)"
+_SCN_REG = "with the stamp half (SCN registration)"
+_OD_A9 = "A-post with OD-A9"
+
+# From world_clock_a_pre.md (§Site families, §Placements, §What stays on the wall). First match wins. Kind rules
+# come first because ids and randomness are OD-A7's wherever they sit (D-WC1).
+PLACEMENT_RULES: tuple[Rule, ...] = (
+    Rule(frozenset({"id", "random"}), "", _ANY, "OD-A7, after the 1.4.0 cut (D-WC1)"),
+    Rule(_ANY, "mesh/", _ANY, _OFF_PATH),
+    Rule(_ANY, "utils/web_cache.py", _ANY, _OFF_PATH),
+    Rule(_ANY, "utils/output_watcher.py", _ANY, _OFF_PATH),
+    Rule(_ANY, "runtime/worker_pool.py", _ANY, _OFF_PATH),
+    Rule(_ANY, "runtime/agent_loop.py", _ANY, _FENCED),
+    Rule(_ANY, "simulation/orchestrator.py", _ANY, _FENCED),
+    Rule(_ANY, "runtime/tool_dispatch.py", r"^execute_and_learn$", "A-post with B2: OD-A4's tool duration (#1788)"),
+    Rule(_ANY, "runtime/tool_dispatch.py", _ANY, _FENCED),
+    Rule(_ANY, "agents/exec_agent.py", r"_build_llm_context$", "allow: real-world-io (workspace mtimes)"),
+    Rule(_ANY, "agents/exec_agent.py", _ANY, _HOT),
+    Rule(_ANY, "models/language/router.py", _ANY, _HOT),
+    Rule(_ANY, "cli.py", _ANY, _HOT),
+    Rule(_ANY, "runtime/loop_setup.py", _ANY, _HOT, empty_today="no clock site today; kept to fence the hot file"),
+    Rule(_ANY, "agents/prompt_builder.py", r"(^|\.)(build_prompt|_build_engage_prompt)$", "PR 2: the port (OD-A3)"),
+    Rule(_ANY, "agents/context_pool.py", r"(^|\.)(_entries_to_text|get_context_text)$", "PR 2: perceive (OD-A3)"),
+    Rule(_ANY, "tools/introspection.py", r"^SceneSummaryTool\.", "PR 2: omitted under NO_CALENDAR"),
+    Rule(_ANY, "tools/introspection.py", r"^TemporalPatternsTool\.", "PR 3: SCN-derived render (D-WC2)"),
+    Rule(
         _ANY,
         "agents/statistician_agent.py",
         r"(_assess_with_temporal_context|summarize_for_context)$",
         "PR 3: [TEMPORAL] (D-WC2)",
     ),
-    (_ANY, "simulation/introspection.py", _ANY, "PR 3: current_phase (D-WC2)"),
-    (_ANY, "retrieval/temporal_signal.py", _ANY, "PR 3: relative dates (D-WC2)"),
-    (_ANY, "memory/hippocampus.py", r"(^|\.)store_observation$", "PR 4: the dedup window (closed pair)"),
-    (
+    Rule(_ANY, "simulation/introspection.py", _ANY, "PR 3: current_phase (D-WC2)"),
+    Rule(_ANY, "retrieval/temporal_signal.py", _ANY, "PR 3: relative dates (D-WC2)"),
+    Rule(_ANY, "memory/hippocampus.py", r"(^|\.)store_observation$", "PR 4: the dedup window (closed pair)"),
+    Rule(
         _ANY,
         "memory/hippocampus.py",
-        r"(^|\.)(_build_capture_record|get|_touch_internal|consolidate[a-z_]*)$",
-        "A-post: OD-A4 stamp half (D-WC6)",
+        r"(^|\.)(_build_capture_record|get|_touch_internal|_evict_one|consolidate[a-z_]*)$",
+        _STAMP_HALF,
     ),
-    (_ANY, "proprioception/pain_bus.py", r"(^|\.)publish$", "PR 5 (1.3.6): refractory (D-WC3)"),
-    (_ANY, "reactions/bus.py", r"(^|\.)publish$", "PR 5 (1.3.6): refractory (D-WC3)"),
-    (_ANY, "proprioception/pain.py", r"(^|\.)(_emit_pain|record_tool_error)$", "PR 5 (1.3.6): PainDetector pair"),
-    (_ANY, "proprioception/pain.py", r"(^|\.)_can_emit_pain$", "allow: motor-io (motion pain cooldown)"),
-    (_ANY, "models/language/cost_tracker.py", _ANY, "allow: cost (D-WC5; #1769 in PR 1)"),
-    (_ANY, "tools/http_fetch.py", r"^HttpFetchTool\.execute$", "allow: real-world-io (accessed_at)"),
-    (_ANY, "embodiment/body.py", _ANY, "A-post (OD-A8) with #1361 S4"),
-    (_ANY, "embodiment/spec.py", r"^SpecSensor\.read$", "A-post: OD-A4 stamp half (SensorReading)"),
-    (_ANY, "similarity/signature.py", _ANY, "with the stamp half (SituationSignature binning)"),
-    (_ANY, "integration/memory_hub.py", r"_register_in_scn$", "with the stamp half (SCN registration)"),
-    (_ANY, "memory/concept_extractor.py", _ANY, "with the stamp half (SCN registration)"),
-    (_ANY, "time/scn.py", _ANY, "with the stamp half (SCN registration)"),
-    (_ANY, "salience/", _ANY, "A-post with OD-A9"),
-    (_ANY, "attention/gaze_history.py", _ANY, "A-post with OD-A9"),
-    (_ANY, "attention/salience_map.py", _ANY, "A-post with OD-A9"),
-    (_ANY, "default_network/network.py", _ANY, "A-post with OD-A9"),
-    (_ANY, "decisions/nac.py", _ANY, "A-post, after #1361 S3b (NAc stamps and anchors)"),
-    (_ANY, "motion/", _ANY, "allow: motor-io"),
-    (_ANY, "hardware/", _ANY, "allow: motor-io"),
+    # The forgetting readers that move with the stamps (§Placements: ConsolidationMixin.sleep, _evict_one).
+    Rule(_ANY, "memory/hippocampus_consolidation.py", _ANY, _STAMP_HALF),
+    Rule(_ANY, "proprioception/pain_bus.py", r"(^|\.)publish$", "PR 5 (1.3.6): refractory (D-WC3)"),
+    Rule(_ANY, "reactions/bus.py", r"(^|\.)publish$", "PR 5 (1.3.6): refractory (D-WC3)"),
+    Rule(_ANY, "proprioception/pain.py", r"(^|\.)(_emit_pain|record_tool_error)$", "PR 5 (1.3.6): PainDetector pair"),
+    # Motion pain's cooldown: _can_emit_pain takes ``now`` from these callers, which read the wall.
+    Rule(
+        _ANY,
+        "proprioception/pain.py",
+        r"(^|\.)(set_movement_target|_check_movement_failure|_check_for_pain)$",
+        "allow: motor-io (motion pain cooldown)",
+    ),
+    Rule(_ANY, "models/language/cost_tracker.py", _ANY, "allow: cost (D-WC5; #1769 in PR 1)"),
+    Rule(_ANY, "tools/http_fetch.py", r"^HttpFetchTool\.execute$", "allow: real-world-io (accessed_at)"),
+    Rule(_ANY, "embodiment/body.py", _ANY, "A-post (OD-A8) with #1361 S4"),
+    Rule(_ANY, "embodiment/spec.py", r"^SpecSensor\.read$", "A-post: OD-A4 stamp half (SensorReading)"),
+    Rule(_ANY, "similarity/signature.py", _ANY, "with the stamp half (SituationSignature binning)"),
+    Rule(_ANY, "integration/memory_hub.py", r"_on_memory_captured_scn$", _SCN_REG),
+    Rule(_ANY, "memory/concept_extractor.py", _ANY, _SCN_REG),
+    Rule(_ANY, "time/scn.py", _ANY, _SCN_REG),
+    Rule(_ANY, "salience/", _ANY, _OD_A9),
+    Rule(_ANY, "attention/gaze_history.py", _ANY, _OD_A9),
+    Rule(_ANY, "attention/salience_map.py", _ANY, _OD_A9),
+    Rule(_ANY, "default_network/network.py", _ANY, _OD_A9),
+    Rule(_ANY, "decisions/nac.py", _ANY, "A-post, after #1361 S3b (NAc stamps and anchors)"),
+    Rule(_ANY, "motion/", _ANY, "allow: motor-io", empty_today="no clock site today; kept so motion stays motor-io"),
+    Rule(_ANY, "hardware/", _ANY, "allow: motor-io"),
 )
 
 
+def match_rule(path: str, function: str, kind: str | None) -> int | None:
+    """The index of the first rule placing (path, function, kind), or None."""
+    rel = rel_to_src(path)
+    for i, rule in enumerate(PLACEMENT_RULES):
+        if rule.kinds is not None and kind not in rule.kinds:
+            continue
+        if rule.prefix and not under(rel, rule.prefix):
+            continue
+        if rule.func is not None and not re.search(rule.func, function):
+            continue
+        return i
+    return None
+
+
+def placement_of(path: str, function: str, kind: str | None) -> str:
+    i = match_rule(path, function, kind)
+    if i is not None:
+        return PLACEMENT_RULES[i].placement
+    # A site in neither M72 scope is not A-pre's to place; one inside a scope that no rule names is a finding.
+    return "UNPLACED" if scope_of(path) != "-" else "outside M72's scopes"
+
+
+# Census output only: never persisted or sent over a wire, so CC3's forward-compat rule does not apply.
 @dataclass(frozen=True)
 class Site:
-    """One banned reference. SHAPE-FROZEN at 1.0 (CC3): census output only, never persisted or sent."""
-
     path: str
     line: int
     function: str
@@ -173,30 +177,27 @@ class Site:
 
 @dataclass(frozen=True)
 class StampSubtraction:
-    """A ``.timestamp`` on one side of a subtraction. SHAPE-FROZEN at 1.0 (CC3): census output only."""
-
     path: str
     line: int
     function: str
+    attr: str
+    form: str
     other_clock: str
     placement: str
 
 
 @dataclass(frozen=True)
 class StampWriter:
-    """A stamp class built with an explicit ``timestamp=``. SHAPE-FROZEN at 1.0 (CC3): census output only."""
-
     path: str
     line: int
     function: str
-    stamp_class: str
+    target: str
+    attrs: str
     input_clock: str
 
 
 @dataclass(frozen=True)
 class TemporalCaller:
-    """A TemporalSignature or SCN call. SHAPE-FROZEN at 1.0 (CC3): census output only."""
-
     path: str
     line: int
     function: str
@@ -212,103 +213,40 @@ class FileCensus:
     subtractions: list[StampSubtraction] = field(default_factory=list)
     writers: list[StampWriter] = field(default_factory=list)
     temporal: list[TemporalCaller] = field(default_factory=list)
+    conflicts: list[str] = field(default_factory=list)
 
 
-# ── alias resolution ─────────────────────────────────────────────────────────
-
-
-def module_bindings(tree: ast.AST) -> dict[str, str]:
-    """Local name → canonical dotted name, for every import in *tree* (any nesting depth).
-
-    Handles ``import time``, ``import time as _t``, ``import os.path``, ``from time import time as now``,
-    ``from datetime import datetime``, ``import datetime as dt`` and ``from datetime import datetime as DT``.
-    A relative import (``from . import x``) binds nothing here: it cannot name a stdlib clock. Bindings are
-    module-wide: a local variable that shadows an imported name is not tracked (stated blind spot).
-    """
-    bindings: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname:
-                    bindings[alias.asname] = alias.name
-                else:
-                    root = alias.name.split(".")[0]
-                    bindings[root] = root
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            for alias in node.names:
-                if alias.name != "*":
-                    bindings[alias.asname or alias.name] = f"{node.module}.{alias.name}"
-    return bindings
-
-
-def resolve(node: ast.AST, bindings: dict[str, str]) -> str | None:
-    """The canonical dotted name of a ``Name``/``Attribute`` chain rooted at an imported name, else None."""
-    attrs: list[str] = []
-    while isinstance(node, ast.Attribute):
-        attrs.append(node.attr)
-        node = node.value
-    if not isinstance(node, ast.Name) or node.id not in bindings:
-        return None
-    return ".".join([bindings[node.id], *reversed(attrs)])
-
-
-def kind_of(name: str) -> str | None:
-    if name in WALL:
-        return "wall"
-    if name in MONOTONIC:
-        return "monotonic"
-    if name in CALENDAR:
-        return "calendar"
-    if name in IDS:
-        return "id"
-    if name.startswith(_RANDOM_PREFIXES) and name not in _RANDOM_NON_DRAWS:
-        # ``import random`` itself resolves to "random", which has no dot after the prefix: not a reference.
-        return "random"
+def _stamp_operand(node: ast.AST) -> tuple[str, str] | None:
+    """(attr, form) when *node* reads a stamp attribute, else None."""
+    if isinstance(node, ast.Attribute) and node.attr in STAMP_ATTRS:
+        return node.attr, "attribute"
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        if isinstance(key, ast.Constant) and key.value in STAMP_ATTRS:
+            return str(key.value), "subscript"
+    if isinstance(node, ast.Call) and node.args:
+        key = node.args[1] if len(node.args) > 1 else None
+        if isinstance(node.func, ast.Name) and node.func.id == "getattr" and isinstance(key, ast.Constant):
+            if key.value in STAMP_ATTRS:
+                return str(key.value), "getattr"
+        first = node.args[0]
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(first, ast.Constant)
+            and first.value in STAMP_ATTRS
+        ):
+            return str(first.value), ".get"
     return None
 
 
-# ── scope and placement ──────────────────────────────────────────────────────
-
-
-def _rel_to_src(path: str) -> str:
-    return path[len(SRC) + 1 :] if path.startswith(SRC + "/") else path
-
-
-def _in(rel: str, prefixes: tuple[str, ...]) -> bool:
-    return any(rel.startswith(p) if p.endswith("/") else rel == p for p in prefixes)
-
-
-def scope_of(path: str) -> str:
-    rel = _rel_to_src(path)
-    scopes = [
-        name for name, prefixes in (("machinery", MACHINERY_SCOPE), ("prompt", PROMPT_SCOPE)) if _in(rel, prefixes)
-    ]
-    return "+".join(scopes) if scopes else "-"
-
-
-def placement_of(path: str, function: str, kind: str | None) -> str:
-    rel = _rel_to_src(path)
-    for kinds, prefix, func_re, placement in PLACEMENT_RULES:
-        if kinds is not None and kind not in kinds:
-            continue
-        if prefix and not (rel.startswith(prefix) if prefix.endswith("/") else rel == prefix):
-            continue
-        if func_re is not None and not re.search(func_re, function):
-            continue
-        return placement
-    # A site in neither M72 scope is not A-pre's to place; one inside a scope that no rule names is a finding.
-    return "UNPLACED" if scope_of(path) != "-" else "outside M72's scopes"
-
-
-# ── the scan ─────────────────────────────────────────────────────────────────
-
-
 class _Scanner(ast.NodeVisitor):
-    def __init__(self, path: str, bindings: dict[str, str]) -> None:
+    def __init__(self, path: str, bindings: Bindings) -> None:
         self.path = path
         self.bindings = bindings
         self.stack: list[str] = []
-        self.out = FileCensus()
+        self.classes: list[str] = []
+        self.out = FileCensus(conflicts=[f"{path} {c}" for c in bindings.conflicts])
         self._value_of_banned: set[int] = set()
 
     @property
@@ -321,7 +259,9 @@ class _Scanner(ast.NodeVisitor):
         self.stack.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.classes.append(node.name)
         self._scoped(node, node.name)
+        self.classes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._scoped(node, node.name)
@@ -345,14 +285,13 @@ class _Scanner(ast.NodeVisitor):
         kind = kind_of(name) if name else None
         if kind is None or name is None:
             return
-        # The innermost banned prefix is the site: for ``np.random.rand`` the ``np.random`` value under it is
-        # marked so it is not counted a second time.
+        # Visiting is outermost first, so the outermost banned name in a chain is the site: for
+        # ``np.random.mtrand.rand`` the ``np.random.mtrand`` under it is marked and not counted again.
         if isinstance(node, ast.Attribute):
             self._value_of_banned.add(id(node.value))
         if id(node) in self._value_of_banned:
             return
-        parent_call = getattr(node, "_census_parent", None)
-        is_call = isinstance(parent_call, ast.Call) and parent_call.func is node
+        parent = getattr(node, "_census_parent", None)
         self.out.sites.append(
             Site(
                 path=self.path,
@@ -360,7 +299,7 @@ class _Scanner(ast.NodeVisitor):
                 function=self.function,
                 name=name,
                 kind=kind,
-                call=is_call,
+                call=isinstance(parent, ast.Call) and parent.func is node,
                 scope=scope_of(self.path),
                 placement=placement_of(self.path, self.function, kind),
             )
@@ -375,37 +314,63 @@ class _Scanner(ast.NodeVisitor):
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if isinstance(node.op, ast.Sub):
-            sides = (node.left, node.right)
-            stamped = [s for s in sides if isinstance(s, ast.Attribute) and s.attr == STAMP_ATTR]
-            if stamped:
-                others = [s for s in sides if s is not stamped[0]]
-                self.out.subtractions.append(
-                    StampSubtraction(
+            for side, other in ((node.left, node.right), (node.right, node.left)):
+                stamp = _stamp_operand(side)
+                if stamp is not None:
+                    self.out.subtractions.append(
+                        StampSubtraction(
+                            path=self.path,
+                            line=node.lineno,
+                            function=self.function,
+                            attr=stamp[0],
+                            form=stamp[1],
+                            other_clock=self._clock_kinds_in([other]),
+                            placement=placement_of(self.path, self.function, None),
+                        )
+                    )
+                    break
+        self.generic_visit(node)
+
+    def _assigned(self, targets: list[ast.expr], value: ast.AST, line: int) -> None:
+        for target in targets:
+            if isinstance(target, ast.Attribute) and target.attr in STAMP_ATTRS:
+                self.out.writers.append(
+                    StampWriter(
                         path=self.path,
-                        line=node.lineno,
+                        line=line,
                         function=self.function,
-                        other_clock=self._clock_kinds_in(list(others)),
-                        placement=placement_of(self.path, self.function, None),
+                        target=f"assignment .{target.attr}",
+                        attrs=target.attr,
+                        input_clock=self._clock_kinds_in([value]),
                     )
                 )
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self._assigned(list(node.targets), node.value, node.lineno)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self._assigned([node.target], node.value, node.lineno)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         callee = _callee_text(node.func)
         if callee:
             last = callee.split(".")[-1]
-            if last in STAMP_CLASSES:
-                stamp_kw = [k for k in node.keywords if k.arg == STAMP_ATTR]
-                if stamp_kw:
-                    self.out.writers.append(
-                        StampWriter(
-                            path=self.path,
-                            line=node.lineno,
-                            function=self.function,
-                            stamp_class=last,
-                            input_clock=self._clock_kinds_in([stamp_kw[0].value]),
-                        )
+            in_stamp_class = last == "cls" and bool(self.classes) and self.classes[-1] in STAMP_CLASSES
+            stamp_kw = [k for k in node.keywords if k.arg in STAMP_ATTRS]
+            if stamp_kw and (last in STAMP_CLASSES or in_stamp_class):
+                self.out.writers.append(
+                    StampWriter(
+                        path=self.path,
+                        line=node.lineno,
+                        function=self.function,
+                        target=f"{self.classes[-1]} (cls)" if in_stamp_class else last,
+                        attrs=",".join(sorted(str(k.arg) for k in stamp_kw)),
+                        input_clock=self._clock_kinds_in([k.value for k in stamp_kw]),
                     )
+                )
             if _is_temporal_callee(callee):
                 args: list[ast.AST] = [*node.args, *(k.value for k in node.keywords)]
                 self.out.temporal.append(
@@ -497,12 +462,8 @@ class CensusError(Exception):
 
 def tracked_files(root: Path) -> list[str]:
     try:
-        proc = subprocess.run(
-            ["git", "ls-files", "-z", "--", f"{SRC}/*.py", f"{SRC}/**/*.py"],
-            cwd=root,
-            capture_output=True,
-            check=True,
-        )
+        # A git pathspec ``*`` matches across ``/``, so this lists nested files too.
+        proc = subprocess.run(["git", "ls-files", "-z", "--", f"{SRC}/*.py"], cwd=root, capture_output=True, check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise CensusError(f"git ls-files failed under {root}: {exc}") from exc
     files = sorted({p for p in proc.stdout.decode().split("\0") if p})
@@ -515,18 +476,28 @@ def census(root: Path) -> FileCensus:
     total = FileCensus()
     for rel in tracked_files(root):
         try:
-            text = (root / rel).read_text(encoding="utf-8")
-            one = scan_text(text, rel)
+            one = scan_text((root / rel).read_text(encoding="utf-8"), rel)
         except (OSError, SyntaxError, UnicodeDecodeError) as exc:
             raise CensusError(f"{rel}: {exc}") from exc
         total.sites.extend(one.sites)
         total.subtractions.extend(one.subtractions)
         total.writers.extend(one.writers)
         total.temporal.extend(one.temporal)
+        total.conflicts.extend(one.conflicts)
     return total
 
 
-# ── output ───────────────────────────────────────────────────────────────────
+def rule_hits(result: FileCensus) -> list[int]:
+    """How many sites, stamp readers and temporal callers each placement rule places, by rule index."""
+    hits = [0] * len(PLACEMENT_RULES)
+    items: list[tuple[str, str, str | None]] = [(s.path, s.function, s.kind) for s in result.sites]
+    items += [(r.path, r.function, None) for r in result.subtractions]
+    items += [(t.path, t.function, None) for t in result.temporal]
+    for path, function, kind in items:
+        i = match_rule(path, function, kind)
+        if i is not None:
+            hits[i] += 1
+    return hits
 
 
 def render(result: FileCensus) -> str:
@@ -542,18 +513,21 @@ def render(result: FileCensus) -> str:
     for placement, n in sorted(by_placement.items(), key=lambda kv: (-kv[1], kv[0])):
         lines.append(f"    {n:5d}  {placement}")
     lines.append("")
+    lines.append(f"== resolution conflicts ({len(result.conflicts)}) ==")
+    lines.extend(result.conflicts)
+    lines.append("")
     lines.append("== sites (path:line  function  name  kind  ref/call  scope  placement) ==")
     for s in result.sites:
         ref = "call" if s.call else "ref"
         lines.append(f"{s.path}:{s.line}  {s.function}  {s.name}  {s.kind}  {ref}  {s.scope}  {s.placement}")
     lines.append("")
-    lines.append(f"== stamp writers ({', '.join(STAMP_CLASSES)} built with timestamp=) ==")
+    lines.append(f"== stamp writers ({', '.join(sorted(STAMP_ATTRS))}: stamp-class constructors and assignments) ==")
     for w in result.writers:
-        lines.append(f"{w.path}:{w.line}  {w.function}  {w.stamp_class}  input={w.input_clock}")
+        lines.append(f"{w.path}:{w.line}  {w.function}  {w.target}  {w.attrs}  input={w.input_clock}")
     lines.append("")
-    lines.append("== stamp readers: every subtraction with a .timestamp operand (untyped; I4 pairs) ==")
+    lines.append("== stamp readers: every subtraction with a stamp operand (untyped; I4 pairs) ==")
     for r in result.subtractions:
-        lines.append(f"{r.path}:{r.line}  {r.function}  other={r.other_clock}  {r.placement}")
+        lines.append(f"{r.path}:{r.line}  {r.function}  {r.attr} ({r.form})  other={r.other_clock}  {r.placement}")
     lines.append("")
     lines.append("== TemporalSignature and SCN callers (input clock -> output use) ==")
     for t in result.temporal:
@@ -562,7 +536,7 @@ def render(result: FileCensus) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     parser.add_argument("--json", action="store_true", help="print the census as JSON")
     parser.add_argument("--root", type=Path, default=REPO_ROOT, help="repository root (default: this checkout)")
     args = parser.parse_args(argv)
@@ -571,10 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     except CensusError as exc:
         print(f"ERROR: world clock census: {exc}", file=sys.stderr)
         return 2
-    if args.json:
-        print(json.dumps(asdict(result), indent=1))
-    else:
-        print(render(result))
+    print(json.dumps(asdict(result), indent=1) if args.json else render(result))
     return 0
 
 

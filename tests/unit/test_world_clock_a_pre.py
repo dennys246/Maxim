@@ -10,10 +10,11 @@ PR 0 lands what today's surface can express:
   vacuously (owner decision 2026-11-24; see ``test_wc5_execute_and_learn_books_no_energy_cost_today``).
 
 Each gate is ``xfail(strict=True, raises=AssertionError)``: an ``ImportError``, ``TypeError`` or ``NameError`` is never
-the expected failure. The facts a gate relies on (the run booked an energy event; the second record was priced) are
-asserted in a separate green test, so a broken setup cannot pass as the expected red. (That precondition is how
-PR 0 found the energy booking has no caller.) Fake clocks ADVANCE on every
-read: a frozen clock hides cadence bugs. Everything that writes state uses ``tmp_path``.
+the expected failure. The facts a gate relies on (both records are priced) are asserted in a separate green test, so a
+broken setup cannot pass as the expected red; a precondition of that kind is how PR 0 found the energy booking has no
+caller. Fake wall clocks ADVANCE on every read, because a frozen clock hides cadence bugs. The one exception is the WC5
+store round trips, which pin ``time.time`` to the fixture's own ``saved_at`` so the re-save can be compared byte for
+byte (their content reads no other clock). Everything that writes state uses ``tmp_path``.
 """
 
 from __future__ import annotations
@@ -61,10 +62,11 @@ def wall(monkeypatch: pytest.MonkeyPatch) -> _AdvancingWall:
 _PRICED = "wc-model"
 
 
-def _tracker(tmp_path: Path) -> Any:
+def _tracker(state_dir: Path) -> Any:
     from maxim.models.language.cost_tracker import CostTracker, CostTrackerConfig, ModelPricing
 
-    config = CostTrackerConfig(state_path=str(tmp_path / "cost_state.json"))
+    state_dir.mkdir(parents=True, exist_ok=True)
+    config = CostTrackerConfig(state_path=str(state_dir / "cost_state.json"))
     return CostTracker({_PRICED: ModelPricing(input_price=3.0, output_price=0.0)}, config)
 
 
@@ -77,7 +79,7 @@ def _record_wall_then_epoch(tracker: Any) -> tuple[float, float]:
 
 def test_cost_month_gate_setup_prices_both_records(tmp_path: Path, wall: _AdvancingWall) -> None:
     """G-cost-month's precondition: both records are priced at 3.0, so the gate's totals are meaningful."""
-    assert _record_wall_then_epoch(_tracker(tmp_path)) == (3.0, 3.0)
+    assert _record_wall_then_epoch(_tracker(tmp_path / "wall")) == (3.0, 3.0)
 
 
 @pytest.mark.xfail(
@@ -88,26 +90,35 @@ def test_cost_month_gate_setup_prices_both_records(tmp_path: Path, wall: _Advanc
 def test_g_cost_month_a_caller_timestamp_cannot_move_the_tracker_off_the_wall(
     tmp_path: Path, wall: _AdvancingWall
 ) -> None:
-    tracker = _tracker(tmp_path)
+    # Window pruning is destructive, so the caller-clock reads go to their own unpruned tracker, FIRST, with a far
+    # future ``now`` that would prune everything if it were honoured (a read at 0.0 prunes nothing and proves nothing).
+    far_future = T0 + 40 * 86_400.0
+    tracker, probe = _tracker(tmp_path / "wall"), _tracker(tmp_path / "caller")
     _record_wall_then_epoch(tracker)
+    _record_wall_then_epoch(probe)
     wall.jump(5.0)
+    caller_totals = probe.get_totals(now=far_future)
+    caller_provider = probe.get_per_provider_totals("cloud", now=far_future)
     totals = tracker.get_totals()
-    assert totals == tracker.get_totals(now=0.0), "a caller clock reached window pruning"
     assert totals["monthly"] == 6.0, f"the month was reset by a caller timestamp: {totals}"
     assert totals["hourly"] == 6.0 and totals["daily"] == 6.0, f"a record fell out of the rolling windows: {totals}"
     assert tracker.get_per_provider_totals("cloud") == {"hourly": 6.0, "daily": 6.0, "monthly": 6.0}
+    assert caller_totals == totals, f"a caller clock reached window pruning: {caller_totals} vs {totals}"
+    assert caller_provider == {"hourly": 6.0, "daily": 6.0, "monthly": 6.0}, f"per provider: {caller_provider}"
     for name, rate in tracker.get_spend_rates().items():
         assert rate.last_update >= T0, f"{name} EMA was stamped with the caller's clock: {rate.last_update}"
 
 
-# ── G-tool-duration (OD-A4's root fix) ───────────────────────────────────────
+# ── The tool duration (OD-A4): today it reaches no learning (#1788) ──────────
 
 
-def _energy_valences(wall: _AdvancingWall, jump_s: float) -> list[tuple[str, float]]:
+def _duration_reads(wall: _AdvancingWall, jump_s: float) -> dict[str, list[Any]]:
     """Run one tool through the real ``execute_and_learn`` while the wall jumps ``jump_s`` inside the tool.
 
-    The tool does the same work either way: only the wall jump differs. Returns each energy event NAc was shown,
-    as (valence, delta_seconds).
+    The tool does the same work either way: only the wall jump differs. Returns what NAc was shown of the tool's
+    duration: each energy event as (valence, delta_seconds), and the ``delta_seconds`` of each ``tool_result`` link.
+    Both consume ``record_outcome``'s ``elapsed_s`` (``_observe_energy_cost`` and ``_observe_tool_result``), so a
+    wiring that fed only one of them still changes this result.
     """
     from maxim.agents.autonomy import AutonomyController, AutonomyLevel
     from maxim.decisions.nac import NAc, NACConfig
@@ -132,11 +143,14 @@ def _energy_valences(wall: _AdvancingWall, jump_s: float) -> list[tuple[str, flo
 
     nac = NAc(NACConfig())
     seen: list[tuple[str, float]] = []
+    tool_deltas: list[float] = []
     original = nac.observe
 
     def spy(**kwargs: Any) -> Any:
         if kwargs.get("event_type") == "energy":
             seen.append((kwargs["outcome_valence"].value, float(kwargs["delta_seconds"])))
+        if kwargs.get("outcome_type") == "tool_result":
+            tool_deltas.append(float(kwargs["delta_seconds"]))
         return original(**kwargs)
 
     nac.observe = spy  # type: ignore[method-assign]
@@ -183,21 +197,22 @@ def _energy_valences(wall: _AdvancingWall, jump_s: float) -> list[tuple[str, flo
     assert not outcome.raised, outcome.error
     assert ran == [jump_s], "the tool never ran"
     assert len(recent) == 1 and recent[0].get("success") is True, recent
-    return seen
+    return {"energy": seen, "tool_result_delta_s": tool_deltas}
 
 
 def test_wc5_execute_and_learn_books_no_energy_cost_today(wall: _AdvancingWall) -> None:
-    """Characterization (owner decision 2026-11-24): the shipped dispatch seam books NO energy cost, at any duration.
+    """Characterization (owner decision 2026-11-24): the shipped dispatch seam hands NAc no tool duration at all.
 
-    ``record_outcome``'s energy booking (NEGATIVE valence above 2.0 s, ``_observe_energy_cost``) runs only when a
-    caller passes ``elapsed_s``, and none does: ``execute_and_learn`` measures ``exec_elapsed`` for its logs and
-    never hands it on (true since the booking landed in 54b77b3a). So OD-A4's tool-duration wall read reaches no
-    learning today, and G-tool-duration could not fail by assertion: it would pass vacuously. Robots keep this
-    (WC5). The PR that wires the duration (A-post with B2, fenced ``runtime/tool_dispatch.py``) replaces this pin
-    with G-tool-duration, landed red, in the same PR.
+    ``record_outcome``'s ``elapsed_s`` feeds two sinks: the energy booking (``_observe_energy_cost``, NEGATIVE valence
+    above 2.0 s) and the ``tool_result`` link's ``delta_seconds`` (persisted ``temporal_delta``, read by
+    ``NAc.predict_delay``). No caller passes it: ``execute_and_learn`` measures ``exec_elapsed`` for its logs only
+    (true since the booking landed in 54b77b3a). So no energy cost is booked and every tool link learns a 0.0 s
+    delay, whatever the wall did, and G-tool-duration could only pass vacuously. Robots keep this (WC5). The PR that
+    wires the duration (A-post with B2, fenced ``runtime/tool_dispatch.py``, #1788) replaces this pin with
+    G-tool-duration, landed red, in the same PR.
     """
-    assert _energy_valences(wall, 1.0) == []
-    assert _energy_valences(wall, 3.0) == []
+    for jump_s in (1.0, 3.0):
+        assert _duration_reads(wall, jump_s) == {"energy": [], "tool_result_delta_s": [0.0]}, jump_s
 
 
 def test_the_energy_booking_itself_works_when_given_a_duration() -> None:
@@ -232,8 +247,8 @@ def _sorted_index(raw: bytes, index: str) -> bytes:
 
     Both writers serialise a ``set`` as a list (``hippocampus_persistence``'s ``context_index``, NAc's
     ``outcome_index``), so that order follows PYTHONHASHSEED and two saves of one store differ only there. The writer
-    fix (sorted output) is its own PR (owner decision 2026-11-24); until it lands, WC5 compares with that one index
-    sorted and every other byte exact.
+    fix (sorted output, #1789) is its own PR (owner decision 2026-11-24); until it lands, WC5 compares with that
+    one index sorted and every other byte exact.
     """
     data = json.loads(raw)
     data[index] = {k: sorted(v) for k, v in data.get(index, {}).items()}
@@ -243,7 +258,10 @@ def _sorted_index(raw: bytes, index: str) -> bytes:
 def _resaved_equals_original(raw: bytes, resaved: bytes, index: str) -> None:
     # The writer's format is plain ``json.dumps(indent=2)``, so re-serialising the original reproduces it byte for
     # byte; the canonical compare below is then exact for every byte outside the one index.
-    assert json.dumps(json.loads(raw), indent=2).encode() == raw.rstrip(b"\n"), "the canonical form is lossy"
+    for name, data in (("original", raw), ("re-saved", resaved)):
+        assert json.dumps(json.loads(data), indent=2).encode() == data.rstrip(b"\n"), (
+            f"{name}: the canonical form is lossy"
+        )
     assert _sorted_index(resaved, index) == _sorted_index(raw, index)
 
 
@@ -356,10 +374,19 @@ def test_wc5_prompt_date_and_time_render_exactly_as_today(monkeypatch: pytest.Mo
     assert DATE_A in prompts["engage"] and TIME_A in prompts["engage"]
 
 
-def test_wc5_the_prompt_reads_time_only_through_the_patched_datetime(
+def test_wc5_no_wall_derived_time_text_reaches_a_prompt_beside_the_patched_datetime(
     monkeypatch: pytest.MonkeyPatch, pinned_tz: None, wall: _AdvancingWall
 ) -> None:
-    """Two instants, with the wall advancing between builds: the prompts differ only in the date and time text."""
+    """Two instants, with the wall jumped between builds: the prompts differ only in the date and time text.
+
+    Scope, stated: this rules out time text derived from ``time.time`` (the jump moves every clock field), for a
+    builder with no cloud cost tracker (``llm=None``, so ``build_budget_context`` renders nothing). It cannot see an
+    unpatched ``datetime.now()`` or argument-less ``time.strftime()`` elsewhere, which the two builds, milliseconds
+    apart in real time, would render alike; the census shows ``prompt_builder.py``'s only clock sites are its two
+    ``datetime.now`` calls. With a cost tracker attached, the budget section reads the wall through ``CostTracker``
+    and ``EnergySignal`` (no date text; PR 1's D-WC5 keeps the tracker on the wall). ``request.context_pool_text``
+    arrives pre-rendered; ``ContextPool``'s stamp render is PR 2's.
+    """
 
     def masked(instant: _dt.datetime) -> dict[str, str]:
         date_s, time_s = _date_time(instant)

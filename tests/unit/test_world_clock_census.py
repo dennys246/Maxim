@@ -7,6 +7,7 @@ sites the plan names, so a census that silently stops seeing a family fails here
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 import textwrap
@@ -70,6 +71,8 @@ def test_ids_and_randomness_are_their_own_kinds() -> None:
     random.random()
     np.random.rand(3)
     rng = random.Random(7)
+    gen = np.random.default_rng(7)
+    legacy = np.random.RandomState(7)
     """
     got = _sites(src)
     assert ("uuid.uuid4", "id", True) in got
@@ -82,6 +85,24 @@ def test_ids_and_randomness_are_their_own_kinds() -> None:
 
 def test_a_chained_name_is_counted_once() -> None:
     assert _sites("import datetime\ndatetime.datetime.now()\n") == [("datetime.datetime.now", "calendar", True)]
+    # Four names deep under a banned prefix: only the outermost reference is the site (the dedup mechanism).
+    assert _sites("import numpy as np\nnp.random.mtrand.rand(2)\n") == [("numpy.random.mtrand.rand", "random", True)]
+
+
+def test_a_conflicting_or_star_binding_is_reported_not_guessed() -> None:
+    src = """
+    import datetime
+    def f():
+        from datetime import datetime
+        return datetime.now()
+    """
+    out = census_mod.scan_text(textwrap.dedent(src), PATH)
+    assert len(out.conflicts) == 1 and "'datetime'" in out.conflicts[0], out.conflicts
+    star = census_mod.scan_text("from time import *\n", PATH)
+    assert len(star.conflicts) == 1 and "import *" in star.conflicts[0]
+    # Two imports of one module to one target, or a clash between non-clock names, is no conflict.
+    assert census_mod.scan_text("import time\ndef g():\n    import time\n", PATH).conflicts == []
+    assert census_mod.scan_text("import json as j\nimport jinja2 as j\n", PATH).conflicts == []
 
 
 def test_unrelated_names_are_not_sites() -> None:
@@ -121,6 +142,27 @@ def test_stamp_subtractions_name_the_other_clock() -> None:
     assert [(r.function, r.other_clock) for r in out.subtractions] == [("age", "wall"), ("gap", "caller-supplied")]
 
 
+def test_every_stamp_reader_form_is_seen() -> None:
+    src = """
+    import time
+    def a(meta): return time.time() - meta.get("timestamp", time.time())
+    def b(mem): return time.time() - getattr(mem, "timestamp", 0)
+    def c(event): return time.time() - event["timestamp"]
+    def d(entry): return time.time() - entry.accessed_at
+    def e(rec): return rec.created_at - rec.consolidated_at
+    def f(x): return time.time() - x.duration
+    """
+    out = census_mod.scan_text(textwrap.dedent(src), "src/maxim/memory/x.py")
+    got = [(r.function, r.attr, r.form) for r in out.subtractions]
+    assert got == [
+        ("a", "timestamp", ".get"),
+        ("b", "timestamp", "getattr"),
+        ("c", "timestamp", "subscript"),
+        ("d", "accessed_at", "attribute"),
+        ("e", "created_at", "attribute"),
+    ], got
+
+
 def test_stamp_writers_record_their_input_clock() -> None:
     src = """
     import time
@@ -130,10 +172,33 @@ def test_stamp_writers_record_their_input_clock() -> None:
         c = Percept(text="no stamp")
     """
     out = census_mod.scan_text(textwrap.dedent(src), "src/maxim/agents/x.py")
-    assert [(w.stamp_class, w.input_clock) for w in out.writers] == [
+    assert [(w.target, w.input_clock) for w in out.writers] == [
         ("Percept", "wall"),
         ("PainSignal", "caller-supplied"),
     ]
+
+
+def test_loader_constructors_and_assignments_are_stamp_writers() -> None:
+    src = """
+    import time
+    class EpisodicMemory:
+        @classmethod
+        def from_dict(cls, d):
+            return cls(timestamp=d["timestamp"], accessed_at=d["accessed_at"])
+    class Other:
+        @classmethod
+        def from_dict(cls, d):
+            return cls(timestamp=d["timestamp"])
+    def touch(memory):
+        memory.accessed_at = time.time()
+        memory.name = "x"
+    """
+    out = census_mod.scan_text(textwrap.dedent(src), "src/maxim/memory/x.py")
+    got = [(w.target, w.attrs, w.input_clock) for w in out.writers]
+    assert got == [
+        ("EpisodicMemory (cls)", "accessed_at,timestamp", "caller-supplied"),
+        ("assignment .accessed_at", "accessed_at", "wall"),
+    ], got
 
 
 def test_temporal_callers_record_input_and_output_use() -> None:
@@ -164,7 +229,9 @@ def test_temporal_callers_record_input_and_output_use() -> None:
         ("src/maxim/runtime/agent_loop.py", "run", "wall", "A-post: fenced file (OD-A8)"),
         ("src/maxim/agents/prompt_builder.py", "PromptBuilder.build_prompt", "calendar", "PR 2: the port (OD-A3)"),
         ("src/maxim/memory/hippocampus.py", "Hippocampus.store_observation", "wall", "PR 4"),
-        ("src/maxim/proprioception/pain.py", "PainDetector._can_emit_pain", "wall", "allow: motor-io"),
+        ("src/maxim/proprioception/pain.py", "PainDetector._check_for_pain", "wall", "allow: motor-io"),
+        ("src/maxim/integration/memory_hub.py", "MemoryHub._on_memory_captured_scn", "wall", "with the stamp half"),
+        ("src/maxim/memory/hippocampus_consolidation.py", "ConsolidationMixin.sleep", "wall", "A-post: OD-A4 stamp"),
         ("src/maxim/memory/hippocampus.py", "Hippocampus.unnamed_reader", "wall", "UNPLACED"),
         ("src/maxim/peer/client.py", "Client.ping", "wall", "outside M72's scopes"),
     ],
@@ -185,6 +252,36 @@ def test_scopes_follow_the_guard_note() -> None:
 def test_a_file_that_does_not_parse_raises() -> None:
     with pytest.raises(SyntaxError):
         census_mod.scan_text("def broken(:\n", PATH)
+
+
+def _git_tree(tmp_path: Path, files: dict[str, str]) -> Path:
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    if files:
+        subprocess.run(["git", "add", *files], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def test_an_empty_tracked_tree_is_an_error(tmp_path: Path) -> None:
+    root = _git_tree(tmp_path, {})
+    (root / "src" / "maxim").mkdir(parents=True)
+    assert census_mod.main(["--root", str(root)]) == 2
+
+
+def test_a_tracked_file_that_does_not_parse_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = _git_tree(tmp_path, {"src/maxim/ok.py": "x = 1\n", "src/maxim/deep/bad.py": "def broken(:\n"})
+    assert census_mod.main(["--root", str(root)]) == 2
+    assert "src/maxim/deep/bad.py" in capsys.readouterr().err
+
+
+def test_json_output_on_a_clean_tree(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = _git_tree(tmp_path, {"src/maxim/deep/a.py": "import time\ndef f():\n    return time.time()\n"})
+    assert census_mod.main(["--root", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert [(s["path"], s["function"], s["name"]) for s in data["sites"]] == [("src/maxim/deep/a.py", "f", "time.time")]
+    assert data["conflicts"] == []
 
 
 def test_an_untracked_tree_is_an_error_not_an_empty_census(tmp_path: Path) -> None:
@@ -219,6 +316,19 @@ def test_the_census_of_this_checkout_sees_the_named_families() -> None:
     assert has("src/maxim/runtime/tool_dispatch.py", "execute_and_learn", "A-post with B2")
     assert has("src/maxim/proprioception/pain_bus.py", "PainBus.publish", "PR 5")
     assert any(s.path == "src/maxim/models/language/cost_tracker.py" and s.kind == "wall" for s in result.sites)
-    # Every section is populated on today's tree.
+    # Every section is populated on today's tree, and the loader of every persisted Hippocampus stamp is a writer.
     assert result.writers and result.subtractions and result.temporal
-    assert "UNPLACED" in census_mod.render(result)
+    assert any(w.function == "EpisodicMemory.from_dict" for w in result.writers)
+
+
+def test_every_placement_rule_still_matches_the_tree() -> None:
+    """A rule that places nothing names a function or file that moved, so its sites fall through unseen. A rule
+    that is empty on purpose says why; one that says so but matches something has a stale reason."""
+    result = census_mod.census(REPO)
+    problems = []
+    for rule, hits in zip(census_mod.PLACEMENT_RULES, census_mod.rule_hits(result), strict=True):
+        if rule.empty_today is None and hits == 0:
+            problems.append(f"matches nothing: {rule.prefix!r} {rule.func!r} -> {rule.placement}")
+        if rule.empty_today is not None and hits:
+            problems.append(f"marked empty but matches {hits}: {rule.prefix!r} {rule.func!r}")
+    assert not problems, "\n".join(problems)
