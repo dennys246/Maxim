@@ -1,10 +1,15 @@
-"""#1775: no log record carries the text of a model's reply, at any level.
+"""#1775: a model's reply reaches a Python log record only as ``cloud_redaction.text_shape``.
 
 A reply can quote what the model was shown, including a PRIVATE or SECRET tool's output fed back in a follow-up.
 Log records persist (``MAXIM_LOG_FILE`` records DEBUG, plus the sim JSONL and the leader's ``/v1/debug/logs``), so
-each path that used to log the reply's first N characters now logs ``cloud_redaction.text_shape`` (length and a
-stable digest). Every test drives a REAL ``LLMRouter`` over a stub backend, as ``test_router_generate_1338`` does, and
-scans every record captured at DEBUG, not only the line that was changed: a new site that logs the reply fails here.
+every site that copied a slice of a reply into a record now logs its length and a stable digest instead.
+
+Every router test drives a REAL ``LLMRouter`` over a stub backend, as ``test_router_generate_1338`` does, and scans
+every captured record, both its message and its structured ``data`` extra. Each test drives one path, including the
+parse-failure branches. The agentic stream's sites (``llm_response``, ``goal_proposed``, ``plan_awaiting_approval``)
+are pinned by ``test_loop_intake_characterization.py`` and ``test_plan_approval_dispatch_1185.py``, which expect
+``text_shape`` values. A site on a path no test drives is outside these guards: the repo-wide AST sweep is
+mechanization backlog M98.
 """
 
 from __future__ import annotations
@@ -54,36 +59,80 @@ def _router(content: str) -> LLMRouter:
     return router
 
 
-def _assert_reply_not_logged(caplog: pytest.LogCaptureFixture, reply: str, *, shape_logged: str) -> None:
-    messages = [r.getMessage() for r in caplog.records]
-    leaked = [m for m in messages if CANARY in m]
-    assert not leaked, f"the reply's text reached a log record: {leaked}"
-    assert any(shape_logged in m and text_shape(reply) in m for m in messages), (
-        f"no {shape_logged!r} record carried the reply's shape; records: {messages}"
+def _record_text(r: logging.LogRecord) -> str:
+    return r.getMessage() + " " + json.dumps(getattr(r, "data", None), default=str)
+
+
+def _assert_no_canary(caplog: pytest.LogCaptureFixture) -> list[str]:
+    texts = [_record_text(r) for r in caplog.records]
+    leaked = [t for t in texts if CANARY in t]
+    assert not leaked, f"a reply's text reached a log record: {leaked}"
+    return texts
+
+
+def _assert_shape_logged(texts: list[str], marker: str, value: str) -> None:
+    assert any(marker in t and text_shape(value) in t for t in texts), (
+        f"no {marker!r} record carried the shape of {value!r}; records: {texts}"
     )
 
 
-def test_json_path_logs_the_reply_shape_only(caplog: pytest.LogCaptureFixture) -> None:
-    reply = json.dumps({"action": "wait", "reasoning": f"the file said {CANARY}"})
+# ── the seam: every reply, every path ─────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "prompt, reply",
+    [
+        ("What next?", json.dumps({"action": "wait", "reasoning": f"the file said {CANARY}"})),
+        ("ANSWER_ONLY|What does the note say?", f"The note says {CANARY}."),
+        ("TOOL_PROMPT|Tools: respond\n\nSay what you read.", json.dumps({"tool": "respond", "params": {"m": CANARY}})),
+    ],
+    ids=["json", "answer_only", "tool_prompt"],
+)
+def test_every_reply_is_logged_once_at_the_seam_by_shape(
+    caplog: pytest.LogCaptureFixture, prompt: str, reply: str
+) -> None:
     with caplog.at_level(logging.DEBUG):
-        out = _router(reply).generate_json("What next?")
+        out = _router(reply).generate_json(prompt)
     assert out is not None and CANARY in json.dumps(out), "the reply did not come back: the path was not exercised"
-    _assert_reply_not_logged(caplog, reply, shape_logged="LLM raw response")
+    texts = _assert_no_canary(caplog)
+    _assert_shape_logged(texts, "LLM reply", reply)
 
 
-def test_answer_only_path_logs_the_answer_shape_only(caplog: pytest.LogCaptureFixture) -> None:
-    answer = f"The note says {CANARY}."
+def test_generate_reply_is_logged_at_the_seam_by_shape(caplog: pytest.LogCaptureFixture) -> None:
+    reply = f"Halt. The ledger reads {CANARY}."
     with caplog.at_level(logging.DEBUG):
-        out = _router(answer).generate_json("ANSWER_ONLY|What does the note say?")
-    assert out is not None and CANARY in json.dumps(out), "the answer did not come back: the path was not exercised"
-    _assert_reply_not_logged(caplog, answer, shape_logged="LLM answer_only response")
+        assert _router(reply).generate("Who goes there?") == reply
+    _assert_shape_logged(_assert_no_canary(caplog), "LLM reply", reply)
 
 
-def test_tool_response_path_logs_the_reply_shape_only(caplog: pytest.LogCaptureFixture) -> None:
-    reply = json.dumps({"tool": "respond", "params": {"message": CANARY}})
+# ── the parse-failure branches (found by the review round) ────────────────
+
+
+def test_a_non_json_reply_on_the_json_path_is_warned_by_shape(caplog: pytest.LogCaptureFixture) -> None:
+    reply = f"I cannot comply; the file said {CANARY}"
     with caplog.at_level(logging.DEBUG):
-        _router(reply).generate_json("TOOL_PROMPT|Tools: respond\n\nSay what you read.")
-    _assert_reply_not_logged(caplog, reply, shape_logged="LLM tool_response raw")
+        assert _router(reply).generate_json("What next?") is None
+    _assert_shape_logged(_assert_no_canary(caplog), "LLM returned non-dict", reply)
+
+
+def test_a_salvaged_message_is_logged_by_shape(caplog: pytest.LogCaptureFixture) -> None:
+    message = f"hello there {CANARY}"
+    reply = f'Sure: "message": "{message}"'
+    with caplog.at_level(logging.DEBUG):
+        out = _router(reply).generate_json("TOOL_PROMPT|Tools: respond\n\nSay hello.")
+    assert out is not None and CANARY in json.dumps(out), "the salvage branch did not run"
+    _assert_shape_logged(_assert_no_canary(caplog), "Salvaged message", message)
+
+
+def test_a_synthetic_planning_proposal_is_logged_by_shape(caplog: pytest.LogCaptureFixture) -> None:
+    reply = json.dumps({"action": {"tool_name": "internet_search", "params": {"query": CANARY}}})
+    with caplog.at_level(logging.DEBUG):
+        out = _router(reply).generate_json("TOOL_PROMPT|PLANNING MODE: ask for APPROVAL first.\n\nFind it.")
+    assert out is not None and CANARY in out.get("_plan_text", ""), "the synthetic-proposal branch did not run"
+    _assert_shape_logged(_assert_no_canary(caplog), "Generated synthetic proposal", out["_plan_text"])
+
+
+# ── the other sites outside the router ────────────────────────────────────
 
 
 def test_npc_reply_is_logged_by_shape_only(caplog: pytest.LogCaptureFixture) -> None:
@@ -94,4 +143,21 @@ def test_npc_reply_is_logged_by_shape_only(caplog: pytest.LogCaptureFixture) -> 
     with caplog.at_level(logging.DEBUG):
         out = pool._generate_llm_response("npc-1", "gruff", "What did you see?")
     assert out == reply
-    _assert_reply_not_logged(caplog, reply, shape_logged="LLM response")
+    _assert_shape_logged(_assert_no_canary(caplog), "NPC 'npc-1' LLM response", reply)
+
+
+def test_a_scenario_reply_that_fails_to_parse_is_logged_by_shape(caplog: pytest.LogCaptureFixture) -> None:
+    from maxim.simulation.simulation_generator import _extract_json
+
+    broken = f'{{"scenario": "{CANARY}", }}'
+    with caplog.at_level(logging.DEBUG):
+        assert _extract_json(f"Here it is: {broken}") is None
+    _assert_shape_logged(_assert_no_canary(caplog), "JSON extraction failed", broken)
+
+
+def test_a_critique_s_issues_are_logged_as_a_count() -> None:
+    from maxim.agents.exec_agent import _issue_count
+
+    assert _issue_count({"issues": [CANARY, "two"]}) == 2
+    assert _issue_count({"issues": CANARY}) == 0
+    assert _issue_count(None) == 0

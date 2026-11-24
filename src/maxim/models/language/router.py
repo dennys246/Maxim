@@ -1021,8 +1021,12 @@ class LLMRouter:
             logger.info("LLM call refused: a process stop is requested")
             return "", None
         if abandons_on_stop():
-            return self._complete_text_dispatch(system, user, **kwargs)
-        return self._complete_text_abandonable(system, user, kwargs)
+            result = self._complete_text_dispatch(system, user, **kwargs)
+        else:
+            result = self._complete_text_abandonable(system, user, kwargs)
+        if result[0]:  # #1775: every reply is logged here, by its shape only (it can quote a PRIVATE tool's output)
+            logger.debug("LLM reply: %s", text_shape(result[0]))
+        return result
 
     def _complete_text_abandonable(
         self, system: str, user: str, kwargs: dict[str, Any]
@@ -2316,19 +2320,13 @@ Return JSON exactly like:
             thinking=thinking,
             stream=stream,
         )
-        if text:
-            # The reply's shape, never its text (#1775): a reply can quote a PRIVATE tool's output it was shown, and
-            # DEBUG records persist (MAXIM_LOG_FILE, the sim JSONL, /v1/debug/logs). No log carries reply text: to
-            # see one behind a parse failure, reproduce the call (the shape's digest matches a repeat).
-            logger.debug("LLM raw response: %s", text_shape(text))
-
         from maxim.utils.cancellation import yield_requested
 
         if not text and yield_requested():
             return None  # refused or abandoned at a process stop (logged by _complete_text), not a model failure
         obj = _extract_json_object(text)
         if not isinstance(obj, dict):
-            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text[:100] if text else "empty")
+            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text_shape(text) if text else "empty")
             return None
 
         if usage:
@@ -2398,8 +2396,6 @@ Return JSON exactly like:
 
         # Note: Response length is controlled by max_tokens in config
         # No truncation here - let the full response through
-
-        logger.debug("LLM answer_only response: %s", text_shape(answer))  # #1775: the shape, never the text
 
         # Stage 2: Wrap in JSON programmatically (no LLM needed)
         # Escape the answer for JSON
@@ -2494,9 +2490,6 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
             provider_hint=provider_hint,
             request_context=request_context,
         )
-        if text:
-            logger.debug("LLM tool_response raw: %s", text_shape(text))  # #1775: the shape, never the text
-
         if not text or not text.strip():
             warn("LLM returned empty tool response")
             return None
@@ -2531,7 +2524,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
                     # Extract and unescape the message
                     extracted_msg = msg_match.group(1).replace('\\"', '"')
                     if extracted_msg and len(extracted_msg) > 10:
-                        info("Salvaged message from failed JSON parse: %s", extracted_msg[:50])
+                        info("Salvaged message from failed JSON parse: %s", text_shape(extracted_msg))
                         return {
                             "action": {
                                 "tool_name": "respond",
@@ -2601,7 +2594,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
                 synthetic_plan = f"I'd like to execute the '{tool_name}' action.\n\nMay I proceed?"
 
             if synthetic_plan:
-                info("Generated synthetic proposal for PLANNING mode: %s", synthetic_plan[:100])
+                info("Generated synthetic proposal for PLANNING mode: %s", text_shape(synthetic_plan))
                 obj["_plan_text"] = synthetic_plan
                 obj["_requires_approval"] = True
 
