@@ -104,13 +104,15 @@ def test_the_compressed_record_gets_one_more_sleep_not_a_floor() -> None:
 
 
 def test_the_compressed_record_is_kept_while_recall_uses_it() -> None:
-    """Recall touches what it returns (bio-memory: ``recall()`` always touches), which resets the record's recency."""
+    """Recall finds the compressed record by what it heard and touches it (bio-memory: ``recall()`` always touches),
+    which resets its recency, so the next sleep keeps it."""
     from maxim.memory.types import CompressedMemory
 
     hippo = _hippo()
     said = _capture(hippo, cli_input="my favourite colour is green")
     _age(hippo, 10 * _DAYS)
     hippo.sleep()
-    hippo.touch(said)  # what recall does to each record it returns
+    found = hippo.recall(query="what colour is green")
+    assert said in [m.id for m in found], "recall did not reach the compressed record through its words"
     hippo.sleep()
     assert isinstance(hippo._memories.get(said), CompressedMemory), "a used compressed record was removed"
