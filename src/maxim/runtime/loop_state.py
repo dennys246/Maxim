@@ -472,3 +472,12 @@ def notes_loop_worker(fn: Callable[_P, _R]) -> Callable[_P, _R]:
 
     _LIVENESS_WRAPPED.add(wrapper)
     return wrapper
+
+
+def no_person_to_ask() -> bool:
+    """True when no person can answer a gating prompt: the run is non-interactive (``--interactive false``, the
+    sim logger's ``InteractiveMode.OFF``). Its approvals are then the MACHINE auto-approve, and its timeout retries
+    the loop's own "yes" (#1185)."""
+    from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
+
+    return get_interactive_mode() is InteractiveMode.OFF

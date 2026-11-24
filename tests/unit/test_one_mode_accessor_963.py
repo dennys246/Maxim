@@ -21,6 +21,7 @@ its "Red on main" comment states; the fix flipped them. The by-class follow-up d
 from __future__ import annotations
 
 import pytest
+from maxim.utils.input_source import InputSource
 from tests.policy_helpers import TEST_POLICY
 
 from tests.unit._execute_learn_driver import run_once
@@ -98,7 +99,15 @@ def test_a_refused_confirmation_is_audited_with_the_operational_mode():
             mode_goal_achieved=False,
         )
     )
-    assert ctrl.handle_confirmation("no", execute_and_learn=MagicMock(), book_refusal=MagicMock(), observation={})
+    assert ctrl.handle_confirmation(
+        "no",
+        execute_and_learn=MagicMock(),
+        book_refusal=MagicMock(),
+        observation={},
+        sim=MagicMock(),
+        book_machine_refusal=MagicMock(),
+        answer_source=InputSource.OPERATOR,
+    )
     [call] = autonomy.log_action.call_args_list
     assert (call.kwargs["action_type"], call.kwargs["mode"]) == ("rejected", "passive")
 
