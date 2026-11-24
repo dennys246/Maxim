@@ -179,6 +179,7 @@ def main() -> int:
         gate_refusal_of,
         read_learning_side_effects,
         record_outcome,
+        tool_to_run,
     )
     from maxim.simulation.minecraft_harness import build_minecraft_aut
     from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
@@ -266,6 +267,9 @@ def main() -> int:
                 agent_id=AGENT_ID,
                 tool_name=probe_tool,
                 bridge_booked=getattr(out, "nac_failure_booked", None),  # #1200 Stage 2
+                untrusted_output=bool(
+                    getattr(tool_to_run(aut.executor, probe_tool), "untrusted_output", False)
+                ),  # #1519, as the loop
                 refused=gate_refusal_of(out),  # #1315 item 3: a gate refusal books no NAc
                 success=bool(getattr(out, "success", False)),
                 result_summary=str(getattr(out, "output", ""))[:80] or None,

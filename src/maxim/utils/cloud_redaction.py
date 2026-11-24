@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from maxim.utils.content_safety import PLAIN_BOUNDARY_LINES, is_blank_line, is_section_boundary_line
+from maxim.utils.content_safety import (
+    PLAIN_BOUNDARY_LINES,
+    frame_spans,
+    is_blank_line,
+    is_section_boundary_line,
+    split_lines,
+)
 from maxim.utils.seeding import stable_hash_32
 
 
@@ -356,7 +362,10 @@ _KNOWN_HEADER_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"^=== Statistical Patterns \(\d+ active\) ===$"),
 )
 
-_PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/)[^ \n\t\r]+")
+# A frame's closer (``<</TOOL_OUTPUT id=…>>``, ``utils/content_safety.py::frame_tool_output``) is not a path: redacting it
+# left every framed body unclosed (#1519). Frame bodies have their own marker lookalikes defanged, so only a real
+# closer reads this way.
+_PATH_PATTERN = re.compile(r"(?:(?:[A-Za-z]:\\)|/(?!TOOL_OUTPUT id=[0-9a-f]+>>))[^ \n\t\r]+")
 _SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|secret|token|bearer)\s*[:=]\s*[^ \n\t\r]+")
 
 
@@ -369,9 +378,49 @@ def _rule_for(line: str) -> tuple[str, DataSensitivity] | None:
     return None
 
 
+def _opening_rule(line: str, start: int, spans: list[tuple[int, int]]) -> tuple[str, DataSensitivity, str] | None:
+    """The (category, sensitivity, header) of the private section the ``\n``-line ``line`` (at offset ``start`` of
+    its text) opens: the line itself, or, failing closed (#1519), a piece of it that another reader shows as a line
+    of its own (``content_safety.split_lines``: a U+2028 or other break the renderer did not normalize). A real
+    private header is always a line of its own by construction (``check_section_header``, sections joined by
+    ``\n``), so a piece opens only on header-shaped DATA, and the cost is over-redaction. A line or piece wholly
+    inside a complete frame (``_in_frame``) is framed body and opens nothing; the rest of a frame closer's line is
+    outside its frame and is read. Only an opening is read by pieces; a section ENDS on ``\n`` lines only
+    (``_ends_section``), so a piece can start a redaction but never cut one short."""
+    pieces = [(start, line)]
+    offset = start
+    for chunk in split_lines(line, keepends=True):
+        pieces.append((offset, split_lines(chunk)[0]))  # the piece, its break left off
+        offset += len(chunk)
+    for piece_start, piece in pieces:
+        if _in_frame(spans, piece_start, piece_start + len(piece)):
+            continue
+        rule = _rule_for(piece)
+        if rule is not None:
+            return rule[0], rule[1], piece
+    return None
+
+
+def _section_openings(text: str) -> tuple[list[str], list[tuple[str, DataSensitivity, str] | None], list[bool]]:
+    """``text``'s ``\n``-lines, the private section each opens (``_opening_rule``, or None), and whether each lies
+    wholly inside a complete frame (``_in_frame``): the one reading the redactor, the prefix gate
+    (``has_private_section``) and the sent-categories report all use (#1519)."""
+    lines = text.split("\n")
+    spans, _, _ = frame_spans(text)
+    openings: list[tuple[str, DataSensitivity, str] | None] = []
+    inside: list[bool] = []
+    offset = 0
+    for line in lines:
+        openings.append(_opening_rule(line, offset, spans))
+        inside.append(_in_frame(spans, offset, offset + len(line)))
+        offset += len(line) + 1
+    return lines, openings, inside
+
+
 def has_private_section(text: str) -> bool:
-    """Whether ``text`` holds a line that opens a private section (any rule, whatever the policy)."""
-    return any(_rule_for(line) is not None for line in text.split("\n"))
+    """Whether ``text`` holds a line that opens a private section (any rule, whatever the policy): exactly where the
+    redactor would open one (``_section_openings``), so the router's prefix gate is as fail-closed as the redactor."""
+    return any(rule is not None for rule in _section_openings(text)[1])
 
 
 def _ends_at_blank(header_line: str) -> bool:
@@ -392,6 +441,29 @@ def _ends_section(line: str) -> bool:
         or any(p.match(stripped) for p in _KNOWN_HEADER_PATTERNS)
         or _rule_for(stripped) is not None
     )
+
+
+def _in_frame(spans: list[tuple[int, int]], start: int, end: int) -> bool:
+    """Whether the text at ``[start, end)`` lies wholly inside a COMPLETE untrusted-content frame (#1519), by the one
+    pairing rule (``content_safety.frame_spans``), past its opener. Such text is framed external data, so it is body
+    whatever it says: a framed blank line never ends a PRIVATE section early, and a framed private-shaped header is
+    not itself redacted. Defense in depth: ``frame_tool_output`` already quotes every body line that reads as a
+    header or a boundary, so a real frame's body holds neither. Fail-closed: an opener whose closer never comes (a
+    cut), one repeated before its closer, and a pair whose span crosses a section header (``content_safety.
+    is_section_header``, which every header in ``_SECTION_RULES`` satisfies: an opener forged in unframed text with
+    a live id) give no span, and text only partly inside a frame (the rest of a closer's line) is outside."""
+    return any(span_start < start and end <= span_end for span_start, span_end in spans)
+
+
+def _section_end(lines: list[str], i: int, *, at_blank: bool, inside: list[bool]) -> int:
+    """The index past a redacted section's body starting at ``i``: the first known boundary (``_ends_section``)
+    or, for a section that ends at one (``_ends_at_blank``), blank line, that is not inside a complete frame
+    (``_in_frame``, #1519); the end of the text otherwise. A framed line never ends a section early."""
+    while i < len(lines):
+        if not inside[i] and (_ends_section(lines[i]) or (at_blank and is_blank_line(lines[i]))):
+            break
+        i += 1
+    return i
 
 
 class CloudRedactionFilter:
@@ -468,23 +540,22 @@ class CloudRedactionFilter:
     def _redact_sections(self, text: str) -> tuple[str, set[str]]:
         """Replace each redacted section, from its header up to its end (``_SECTION_RULES``), with one marker.
 
-        Lines are split on ``\\n`` only: the renderer turns every other line break in a private body into ``\\n``,
-        and a line that still holds one is a single line here too, never a boundary.
+        A section ENDS on ``\\n`` lines only: the renderer turns every other line break in a private body into
+        ``\\n``, and a line that still holds one is a single line here too, never a boundary. A section OPENS on any
+        reader's piece of a line (``_section_openings``), so a break can start a redaction but never cut one short.
         """
-        lines = text.split("\n")
+        lines, openings, inside = _section_openings(text)  # framed text is body, never a header (#1519)
         redacted_categories: set[str] = set()
         out: list[str] = []
         i = 0
         while i < len(lines):
-            matched = _rule_for(lines[i])
+            matched = openings[i]
             if matched is not None and self._should_redact(matched[1]):
                 category = matched[0]
                 redacted_categories.add(category)
                 out.append(f"[REDACTED: {category}]")
-                at_blank = _ends_at_blank(lines[i])
-                i += 1
-                while i < len(lines) and not (_ends_section(lines[i]) or (at_blank and is_blank_line(lines[i]))):
-                    i += 1
+                at_blank = _ends_at_blank(matched[2])
+                i = _section_end(lines, i + 1, at_blank=at_blank, inside=inside)
                 continue
             out.append(lines[i])
             i += 1
@@ -503,8 +574,7 @@ class CloudRedactionFilter:
 
     def _infer_sent_categories(self, original: str, redacted: set[str]) -> set[str]:
         sent: set[str] = set()
-        for line in original.split("\n"):
-            matched = _rule_for(line)
+        for matched in _section_openings(original)[1]:  # the openings the redactor reads (#1519)
             if matched is not None and matched[0] not in redacted:
                 sent.add(matched[0])
         # Always include core context as sent
