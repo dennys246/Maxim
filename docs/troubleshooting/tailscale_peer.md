@@ -11,8 +11,8 @@ For any other peer-to-leader failure, see [Peer → Leader Connectivity](peer_le
 
 **On the leader:** run `maxim` as a leader. It starts two things:
 - the model server (`llama_cpp.server`) on `127.0.0.1:8100`, which only the leader itself can reach;
-- the **leader proxy** on `0.0.0.0:8099`. It checks the mesh key and rejects a prompt larger than the model's
-  context window. Peers talk to this port, never to 8100.
+- the **leader proxy** on `0.0.0.0:8099`. It checks the mesh key and, when it knows the model's context window, rejects a
+  prompt larger than it. Peers talk to this port, never to 8100.
 
 Its key is the mesh key: `maxim tunnel key show` on the leader prints it.
 
@@ -32,8 +32,9 @@ Maxim sends its model calls through one lane, the **large** lane. `peer connect`
 the leader serves every model call this machine makes. Maxim also defines medium and small lanes, but no model call
 uses them today, so there is nothing to point at the leader there.
 
-If the leader is unreachable when `maxim` starts, the large lane runs a local model instead. `maxim doctor --as peer`
-shows which one you got.
+If the leader is unreachable when `maxim` starts, the large lane falls back to local: a local model this machine can
+run, if it has one. `maxim doctor --as peer <url>` tells you whether the leader answers now; restart `maxim` once it
+does.
 
 ## Treat the leader as one generation at a time
 

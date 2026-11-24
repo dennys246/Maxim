@@ -37,6 +37,12 @@ def test_connect_says_the_large_lane_now_points_at_the_leader(peer_home, capsys)
     out = capsys.readouterr().out
     assert "large lane, which now points at this" in out
     assert "medium and small lanes serve no model calls" in out
+    assert "unreachable when maxim starts, the large lane runs locally instead" in out
+
+
+def test_the_usage_text_lists_cloud(capsys) -> None:
+    assert run_peer_connect_subcommand(["connect", "--help"]) == 0
+    assert "--cloud          Mark the URL public-facing" in capsys.readouterr().out
 
 
 def test_cloud_is_accepted_and_marks_the_url_public_facing(peer_home, capsys) -> None:

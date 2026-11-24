@@ -249,8 +249,8 @@ def _cmd_connect(argv: list[str]) -> int:
         return 1
 
     # Peer connections are to your own infrastructure (leader behind a
-    # tunnel). Default to is_cloud=False so the cloud lane gate doesn't
-    # block inference. Use --cloud for actual cloud providers (Anthropic, etc).
+    # tunnel), so is_cloud defaults to False. --cloud only records that the
+    # URL is public-facing, in peer.yml; nothing routes on it (#1780).
     is_cloud = "--cloud" in argv
 
     print()
