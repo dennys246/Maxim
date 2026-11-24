@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from maxim.memory.text import Provenance, shown_text
+from maxim.utils.prompt_text import Provenance, shown_text
 
 
 class WorkingMemoryKind(str, Enum):

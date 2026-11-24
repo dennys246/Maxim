@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
-from maxim.memory.text import Provenance
+from maxim.utils.prompt_text import Provenance
 from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn

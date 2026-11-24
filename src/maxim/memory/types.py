@@ -481,9 +481,9 @@ def record_active_goal(record: Any) -> str | None:
 
 
 def _kept_words(text: str) -> str:
-    """What compression keeps of what an episode heard: ``memory/text.py::bounded_words`` at the one recall bound, so a
+    """What compression keeps of what an episode heard: ``utils/prompt_text.py::bounded_words`` at the one recall bound, so a
     compressed record renders as its episode did (#1137)."""
-    from maxim.memory.text import bounded_words
+    from maxim.utils.prompt_text import bounded_words
 
     return bounded_words(text)
 
