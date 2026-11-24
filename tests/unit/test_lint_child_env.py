@@ -109,3 +109,98 @@ def test_the_repo_scan_runs_and_skips_the_canonical_files():
     found = L.counts(REPO)
     assert found, "the scan found no spawns at all: the matcher is broken"
     assert not set(found) & L.CANONICAL
+
+
+def test_a_self_rebuilding_name_does_not_recurse_and_is_decided_by_its_other_assignments():
+    clean = """
+    import subprocess
+    from maxim.utils.child_env import child_env
+    def f(x):
+        env = child_env()
+        env = {**env, "A": "1"}
+        env = env if x else child_env()
+        for k in ("B",):
+            env = {**env, k: "1"}
+        subprocess.run(["a"], env=env)
+    """
+    assert _hits(clean) == []
+    dirty = """
+    import os, subprocess
+    def f():
+        env = dict(os.environ)
+        env = {**env, "A": "1"}
+        subprocess.run(["a"], env=env)
+    """
+    assert _hits(dirty) == ["subprocess.run"]
+
+
+def test_update_with_os_environ_undoes_child_env():
+    code = """
+    import os, subprocess
+    from maxim.utils.child_env import child_env
+    def f():
+        env = child_env()
+        env.update(os.environ)
+        subprocess.run(["a"], env=env)
+    """
+    assert _hits(code) == ["subprocess.run"]
+
+
+def test_a_local_method_named_like_a_mapping_method_does_not_clean_os_environ():
+    code = """
+    import os, subprocess
+    from maxim.utils.child_env import child_env
+    class C:
+        def copy(self):
+            return child_env()
+        def run(self):
+            subprocess.run(["a"], env=os.environ.copy())
+            subprocess.run(["b"], env=self.copy())
+    """
+    assert _hits(code) == ["subprocess.run"]  # only the os.environ.copy() one
+
+
+def test_a_builder_must_return_a_clean_environment_on_every_path():
+    code = """
+    import os, subprocess
+    from maxim.utils.child_env import child_env
+    def half(x):
+        if x:
+            return child_env()
+        return dict(os.environ)
+    def f():
+        subprocess.run(["a"], env=half(True))
+    """
+    assert _hits(code) == ["subprocess.run"]
+
+
+def test_conditional_and_filtering_comprehension_rules():
+    code = """
+    import os, subprocess
+    from maxim.utils.child_env import child_env
+    def f(x):
+        subprocess.run(["a"], env=child_env() if x else child_env(A="1"))
+        subprocess.run(["b"], env=child_env() if x else os.environ)
+        subprocess.run(["c"], env={k: v for k, v in child_env().items() if k != "X"})
+        subprocess.run(["d"], env={k: v for k, v in os.environ.items() if k != "X"})
+    """
+    assert [ln for ln, _ in L.unclean_spawns(textwrap.dedent(code))] == [6, 8]  # the "b" and "d" calls
+
+
+def test_getoutput_takes_no_environment_and_always_counts():
+    code = """
+    import subprocess
+    subprocess.getoutput("ls")
+    subprocess.getstatusoutput("ls")
+    """
+    assert _hits(code) == ["subprocess.getoutput", "subprocess.getstatusoutput"]
+
+
+def test_posix_spawn_reads_its_environment_from_the_third_argument():
+    code = """
+    import os
+    from maxim.utils.child_env import child_env
+    os.posix_spawn("/bin/true", ["true"], child_env())
+    os.posix_spawn("/bin/true", ["true"], os.environ)
+    """
+    assert _hits(code) == ["os.posix_spawn"]

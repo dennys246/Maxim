@@ -32,7 +32,9 @@ count. New files start at zero, and burning a count down is free. This catches F
   ``from subprocess import run``), escapes it;
 - an environment passed in as a function PARAMETER, or unpacked from a tuple, always counts as unclean. It
   neither credits a correct caller nor catches a regressed one; pass ``env=child_env(env)`` (idempotent) to
-  make such a site count as clean. The harnesses' sub-sim spawns take their environment as a parameter, which
+  make such a site count as clean. An item assignment or ``|=`` after ``env = child_env()``
+  (``env["PYTHONPATH"] = os.environ[...]``, ``env |= os.environ``) is not seen either; only ``.update`` is. The
+  harnesses' sub-sim spawns take their environment as a parameter, which
   is why ``scripts/lint_harness_provenance.py::_env_failures`` checks where those environments are BUILT.
 
 Exits: 0 clean; 1 a file's count rose (stderr); 2 unexpected error.
@@ -66,8 +68,8 @@ _OS_ENV_POS = {
     "spawnvpe": 3,
     "spawnle": -1,
     "spawnlpe": -1,
-    "posix_spawn": 3,
-    "posix_spawnp": 3,
+    "posix_spawn": 2,
+    "posix_spawnp": 2,
 }
 _OS_NO_ENV = frozenset({"execv", "execvp", "execl", "execlp", "spawnv", "spawnvp", "spawnl", "spawnlp"})
 
@@ -104,26 +106,31 @@ def _mentions_environ(node: ast.AST) -> bool:
     )
 
 
-def _clean_expr(expr: ast.expr | None, scope: ast.AST, local: set[str]) -> bool:
-    """True when ``expr`` evaluates to a ``child_env``-built environment."""
+def _clean_expr(expr: ast.expr | None, scope: ast.AST, local: set[str], seen: frozenset[str] = frozenset()) -> bool:
+    """True when ``expr`` evaluates to a ``child_env``-built environment.
+
+    ``seen`` holds the names being resolved: ``env = {**env, "A": "1"}`` refers to ``env`` itself, and that
+    self-reference is decided by ``env``'s other assignments, not by recursing forever."""
     if expr is None:
         return False
     if _is_builder_call(expr, local):
         return True
     if isinstance(expr, ast.IfExp):
-        return _clean_expr(expr.body, scope, local) and _clean_expr(expr.orelse, scope, local)
+        return _clean_expr(expr.body, scope, local, seen) and _clean_expr(expr.orelse, scope, local, seen)
     if isinstance(expr, ast.Dict):
         unpacks = [v for k, v in zip(expr.keys, expr.values) if k is None]
-        return bool(unpacks) and all(_clean_expr(v, scope, local) for v in unpacks)
+        return bool(unpacks) and all(_clean_expr(v, scope, local, seen) for v in unpacks)
     if isinstance(expr, ast.DictComp) and len(expr.generators) == 1:
         it = expr.generators[0].iter  # {k: v for k, v in <clean>.items() if ...}: a filter of a clean environment
         return (
             isinstance(it, ast.Call)
             and isinstance(it.func, ast.Attribute)
             and it.func.attr == "items"
-            and _clean_expr(it.func.value, scope, local)
+            and _clean_expr(it.func.value, scope, local, seen)
         )
     if isinstance(expr, ast.Name):
+        if expr.id in seen:
+            return True  # a self-reference: the name's other assignments decide
         values: list[ast.expr] = []
         for node in _own_nodes(scope):
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == expr.id for t in node.targets):
@@ -140,7 +147,8 @@ def _clean_expr(expr: ast.expr | None, scope: ast.AST, local: set[str]) -> bool:
                 and any(_mentions_environ(arg) for arg in [*node.args, *(k.value for k in node.keywords)])
             ):
                 return False  # env = child_env(); env.update(os.environ) puts the hook's value back
-        return bool(values) and all(_clean_expr(v, scope, local) for v in values)
+        inner = seen | {expr.id}
+        return bool(values) and all(_clean_expr(v, scope, local, inner) for v in values)
     return False
 
 

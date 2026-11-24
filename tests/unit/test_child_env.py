@@ -272,3 +272,48 @@ def test_the_matplotlib_preflight_gets_child_env(monkeypatch, tmp_path: Path):
     assert envs and envs[0] is not None
     assert site_dir not in envs[0].get("PYTHONPATH", "").split(os.pathsep)
     assert envs[0]["MPLCONFIGDIR"] == str(tmp_path / "mpl")
+
+
+def _fake_child(monkeypatch, *, returncode=1, stdout="", stderr="", raises=None):
+    def fake_run(cmd, **kwargs):
+        if raises is not None:
+            raise raises
+        return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+
+def test_child_probe_reports_whitespace_only_stderr_instead_of_crashing(monkeypatch):
+    _fake_child(monkeypatch, returncode=1, stderr="\n")
+    assert checks._child_maxim_dir() == "exit 1, no output"
+
+
+def test_child_probe_reports_the_last_stderr_line(monkeypatch):
+    _fake_child(monkeypatch, returncode=1, stderr="Traceback\nModuleNotFoundError: No module named 'maxim'\n")
+    assert checks._child_maxim_dir() == "ModuleNotFoundError: No module named 'maxim'"
+
+
+def test_child_probe_reports_a_refused_or_failed_spawn(monkeypatch):
+    _fake_child(monkeypatch, raises=RuntimeError("offline: spawn refused"))
+    assert checks._child_maxim_dir() == "RuntimeError: offline: spawn refused"
+    _fake_child(monkeypatch, raises=subprocess.TimeoutExpired(["x"], 60))
+    assert checks._child_maxim_dir().startswith("TimeoutExpired")
+
+
+def test_own_site_dirs_adds_the_user_site_when_enabled(monkeypatch, tmp_path: Path):
+    import site
+
+    monkeypatch.setattr(site, "ENABLE_USER_SITE", True)
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(tmp_path / "user-site"))
+    assert os.path.realpath(tmp_path / "user-site") in own_site_dirs()
+    monkeypatch.setattr(site, "ENABLE_USER_SITE", False)
+    assert os.path.realpath(tmp_path / "user-site") not in own_site_dirs()
+
+
+def test_child_probe_downgrades_the_offline_latch_refusal_to_a_warning(tmp_path: Path, monkeypatch):
+    """Under the offline latch the spawn is refused with OfflineRefusal (a RuntimeError); doctor must not crash."""
+    from maxim._offline import OfflineRefusal
+
+    _fake_child(monkeypatch, raises=OfflineRefusal("subprocess.Popen refused: offline"))
+    result = check_maxim_install((_site(tmp_path, stray=False),))
+    assert result.status == "warn" and "OfflineRefusal" in result.message

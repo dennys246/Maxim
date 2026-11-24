@@ -2426,10 +2426,11 @@ def _child_maxim_dir(timeout: float = 60.0) -> Path | str:
             text=True,
             timeout=timeout,
         )
-    except (OSError, subprocess.TimeoutExpired) as e:
+    except (OSError, subprocess.TimeoutExpired, RuntimeError) as e:  # RuntimeError: the offline latch's refusal
         return f"{type(e).__name__}: {e}"
     if out.returncode != 0 or not out.stdout.strip():
-        return (out.stderr or "no output").strip().splitlines()[-1][:200]
+        lines = (out.stderr or "").strip().splitlines()
+        return lines[-1][:200] if lines else f"exit {out.returncode}, no output"
     return Path(out.stdout.strip()).resolve().parent
 
 

@@ -13,4 +13,4 @@
     Maxim's own imports a different tree. Each failure says how to fix it.
   - A new CI lint (`scripts/lint_child_env.py`) ratchets the spawns not built on `child_env`. The harness
     provenance lint now also refuses a sub-sim environment built from `os.environ` outside `child_env`, so
-    `assert_repo_interpreter`'s probe and the real sub-sims cannot drift apart.
+    `assert_repo_interpreter`'s probe and the real sub-sims are checked to agree.
