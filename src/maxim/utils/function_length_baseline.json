@@ -11,7 +11,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1195
+      "lines": 1141
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -131,7 +131,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1927
+      "lines": 1917
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -166,7 +166,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 342
+      "lines": 325
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -196,7 +196,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1895
+      "lines": 1877
     },
     {
       "file": "src/maxim/simulation/report.py",
@@ -206,7 +206,7 @@
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
       "qualname": "start_research_mode",
-      "lines": 233
+      "lines": 218
     },
     {
       "file": "src/maxim/simulation/roy_runner.py",
@@ -398,8 +398,10 @@
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
     "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
+    "#1680 (2026-11-21, rule T): _main_impl 1195 -> 1185 -> 1158 -> 1141 and start_simulation_mode 1895 -> 1877 across the review folds (the research dispatch to cli._run_research_from_cli, then the --sim-only checks to cli._validate_sim_only_flags; the commit messages from c7a1327a on give each step); start_research_mode 241 -> 226 on the branch, 241 -> 233 for #1621 on main, and the merged body measures 218",
     "_run_agentic_loop_body tightened 2140 -> 1934 on 2026-11-21 (1.3.6 loop phase 2, slice 6) when section 2 (the LLM proposal intake) moved verbatim to runtime/loop_intake.py: take_llm_proposal (164 lines), its sim fallback-drop branch to _drop_skipped_fallback (101; owner decision 2026-11-21: every split-out stays at 200 or fewer, so none adds 1.4.0 new debt), the queued next-action continuation to take_queued_next_action, the body-local _LLM_STALL_THRESHOLD to a module constant, and the module-level _drop_stale_proposal / _proposal_without_action_reason (with _STALE_PROPOSAL_AGE_S) to loop_intake by rule (a). Characterized first by tests/unit/test_loop_intake_characterization.py, kept green unchanged.",
-    "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch."
+    "_run_agentic_loop_body tightened 2140 -> 2133 on 2026-11-21 (#1414 second half, rule T; re-merged onto slice 6 on 2026-11-23 as 1934 -> 1927, the same 7 lines): section 3's agent-fallback refusal log moved to agent_loop.py::_fallback_rejected, which with the new _close_fallback_call closes the goal agent's tool call, paying for the two close lines added to the executed branch (right after executor.execute) and the raised branch.",
+    "_run_agentic_loop_body tightened 2140 -> 2130 (re-merged onto slice 6 and #1414 on 2026-11-23 as 1927 -> 1917, the same 10 lines) and execute_and_learn 342 -> 325 on 2026-11-22 (#1751, rule T): the two identical agentic tool_result blocks (each logged up to 100 chars of any tool's output to stdout) moved to tool_dispatch.log_tool_result, and execute_and_learn's goal_failed event (any tool's whole error) to tool_dispatch.log_tool_failure; both show a PRIVATE or SECRET tool's text by shape only."
   ],
   "touch_exemptions": [
     {
