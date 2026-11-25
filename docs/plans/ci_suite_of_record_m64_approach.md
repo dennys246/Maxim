@@ -24,7 +24,9 @@ early; it stays on the private advisory fork and keeps the local full suite as i
 `evaluate()` gains a step "suite of record" (`_suite_of_record_findings`), plus two fixes the design pass found it depends on:
 
 1. Pick the runs named exactly `unit-tests` whose `app_id` equals the app pinned for that context in
-   `scripts/repo_settings_expected.json` (`protection.required_status_checks.checks`). A same-named check from
+   `scripts/repo_settings_expected.json` (`protection.required_status_checks.checks`), read from the PR's BASE branch
+   through the API (`_base_suite_app_id`; review round: the running checkout could be the PR's own, supplying its own
+   pin). A same-named check from
    another app is not the suite. The step reads the raw run list and takes the **newest by check-run id**
    (`suite_of_record_run`): ids are assigned in creation order, so a re-run cancelled before it started still
    outranks the older success it replaced (design finding 6), and the existing `_latest_run_per_check` order for

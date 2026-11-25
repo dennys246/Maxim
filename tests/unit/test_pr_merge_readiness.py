@@ -743,6 +743,8 @@ class TestSuiteAppPin:
         monkeypatch.setattr(mod, "_gh_json", fake)
         assert mod._base_suite_app_id("o/r", "main") == (7, None)
         assert seen[0][-1] == "repos/o/r/contents/scripts/repo_settings_expected.json?ref=main"
+        mod._base_suite_app_id("o/r", "feat/a+b#c")
+        assert seen[1][-1].endswith("?ref=feat/a%2Bb%23c"), "a base name must not read another ref"
 
     def test_an_unreadable_base_pin_is_a_fetch_error(self, monkeypatch):
         import pr_merge_readiness as mod

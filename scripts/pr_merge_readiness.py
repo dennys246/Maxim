@@ -50,6 +50,7 @@ import json
 import re
 import subprocess
 import sys
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -194,7 +195,7 @@ def _base_suite_app_id(slug: str, base: str) -> tuple[int | None, str | None]:
                 "api",
                 "-H",
                 "Accept: application/vnd.github.raw+json",
-                f"repos/{slug}/contents/{_EXPECTED_SETTINGS_REPO_PATH}?ref={base}",
+                f"repos/{slug}/contents/{_EXPECTED_SETTINGS_REPO_PATH}?ref={urllib.parse.quote(base, safe='/')}",
             ]
         )
     except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
