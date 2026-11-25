@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v23 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v24 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -139,6 +139,11 @@
 >   - The reader's folded tree was verified by the author: 104/104, 0 leaks across every case set, and 3.10 compiles
 >     and matches.
 >   - A delta round 23 is owed on AD1–AD3 only.
+> - **Round 23 (delta, a different reader; 104/104 on 3.10.19 and 3.12.12; AD1 held against the reader's own
+>   families):** 2 SHOULD-FIX (FAIL-OPEN, covered classes), folded and tagged AE1–AE2.
+>   - AE1: form 3 lets the user hold an `@`. The author verified it: 104/104, 0 leaks across every case set.
+>   - AE2: the lint fails on ANY attribute read of a class-body-labelled name, whatever its base.
+>   - A delta round 24 is owed on AE1–AE2 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -353,12 +358,12 @@ written later.
     _URL_IN_TEXT = re.compile(
         r"(?<![A-Za-z0-9+.-])"
         r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?=[\\/]*\\)[\\/]+|/(?![/\\])))(?P=sep)"
-        r"(?:[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@|[^/@:]{0,64}\s[^/@:]{0,64}@)?"
+        r"(?:[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@|[^/:]{0,64}\s[^/:]{0,64}@)?"
         r"\S+"  # separator forms: any whitespace userinfo (bounded, as below), then the whole token
         r"|[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's)
         r"(?:(?P<wsui>[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@"  # form 1: whitespace in the password
         r"|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
-        r"|[^/@:]{0,64}\s[^/@:]{0,64}@)"  # form 3: colon-less userinfo with whitespace
+        r"|[^/:]{0,64}\s[^/:]{0,64}@)"  # form 3: colon-less userinfo with whitespace
         r"|[^\s/@]*@)?"  # plain userinfo (today's)
         r"[^\s'\"<>]+)"
     )
@@ -388,6 +393,10 @@ written later.
         characters, which may itself hold whitespace or an unencoded `@`, an email: AD2), `:`, up to 256 non-space characters, a whitespace, then up to
         256 characters to an `@` (X1, X2, Y1, Y2);
       - whitespace in the user: `https://us er:pw@h/p` passed raw before (Y3). Its user may also hold an `@` (AD2).
+      - (form 3) a colon-less userinfo with whitespace, whose user may also hold an `@` (AE1): `https://bob@ex.com
+        SECRET@h/p`, `https://a@b@c SECRET@h` and the tab, newline, JSON and separator forms leaked. Fail-closed
+        over-match it adds: `https://u@h see bob@x` becomes `<url>`, pinned per branch (it loses text and leaks
+        nothing, so it is not an exception).
       - (Z1) form 1 now spans any whitespace after the password's first space (`[\s\S]{0,256}`), so `\r\n` and a
         newline inside the password are caught, and its user part may hold `\` (`https://D\u:p w@h/x`);
       - (Z1) form 2's password runs to the last `@` within 256 (`https://us er:p@ss"x@h/p`), and its user part is
@@ -489,9 +498,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     through the existing rules (unpack, attribute targets such as `self._f`, walrus and parameter defaults). A call of
     anything carrying the label with tainted text fails, and so does any call that takes a labelled ARGUMENT together
     with tainted text (`map(getattr(str, n), [str(e)], …)`). The label is read from module, class-body and outer-def
-    scopes, as taint is (P3), so a label set in a class body is read through ANY attribute whose base resolves to that class: `cls._f`,
-    `type(self)._f`, `K._f` and `self._f` (AC2, AD3; `self._f` alone was named, though the working forms are the
-    first three). So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
+    scopes, as taint is (P3), so a name labelled in a class body is labelled when read as an attribute of ANY base, without resolving the
+    base (AE2): `cls._f`, `type(self)._f`, `K._f`, `self._f`, `self.__class__._f`, `super()._f`, `Sub._f` and
+    `K()._f` all count. Resolving the base exactly (inheritance, `super()`, instances) is a static-analysis problem
+    the lint does not attempt; the conservative rule cannot be evaded by the base (AC2, AD3, AE2). So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
     `def g(e, f=getattr(str, n))` are caught (AA3, AB2; 39 call/subscript callees in src/maxim, 0 with
     tainted text) (Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` evaded; flagging every
     non-literal `getattr` would hit 78 sites), and `functools.partial` over one, when the text is
@@ -590,6 +600,8 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- AE1: the six colon-less `@`-user cases reduce to `<url>`; `https://bob@ex.com@h/p` and `https://u:p@h/x` still
+  give `https://h`. AE2: the lint fails on each of the eight attribute forms of a class-body label.
 - AD1: `https:\/u:p SECRET@h`, `https:\\/u:p SECRET@h`, `https:\\\/\\\/u:p SECRET@h` and a double
   `json.dumps` reduce to `<url>`; `http:/ prose` is untouched. AD2: `https://bob@ex.com:p SECRET@h/p` and its JSON form
   reduce to `<url>`; `https://bob@ex.com@h/p` still gives `https://h`. AD3: the lint fails on `cls._f`,
