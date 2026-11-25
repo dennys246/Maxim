@@ -637,6 +637,20 @@ class InvalidAgentIdError(InvalidConfigError, ValueError):
     pass
 
 
+class AgentConfigContradiction(InvalidConfigError, ValueError):
+    """An ``AgentConfig`` asks for two things the factory cannot both honour (#1225).
+
+    ``with_bio_stack=True`` builds a Hippocampus and a NAc whatever ``remembers`` / ``learns`` say, so
+    ``remembers=False`` or ``learns=False`` beside it used to be undone in silence. The config is refused where it
+    is built (``AgentConfig.__post_init__``). ``fields`` names the flags that contradict ``with_bio_stack``.
+    """
+
+    def __init__(self, message: str = "", *, fields: tuple[str, ...] = ()) -> None:
+        # Defaults keep it picklable/copyable, like the other keyword-only Maxim errors.
+        super().__init__(message, context={"fields": list(fields)})
+        self.fields = fields
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Hardware Errors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -807,6 +821,7 @@ __all__ = [
     "MissingConfigError",
     "InvalidConfigError",
     "InvalidAgentIdError",
+    "AgentConfigContradiction",
     # Hardware
     "HardwareError",
     "MotorError",

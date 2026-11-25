@@ -16,8 +16,10 @@
 
 **Not established by B0:** which model served the AUT. Every record stamps
 `aut_model_attribution: "not_established"`, and no comparison may claim the AUT's model from a B0 record.
-In particular, `aut_router_serial`'s entries are the AUT **worker's** router calls, not the AUT's: its
-FearAgent, imagination designers and ExecAgent goal proposals run on other routers today (#1228). Also not
+In particular, `aut_router_serial`'s entries are the AUT **worker's** router calls, not the AUT's: until #1228
+(fixed by #1777) its FearAgent and imagination designer ran on the narrator's router (its ExecAgent
+goal-proposal slot is dormant and held none); since #1228 they hold the AUT's, but calls still cannot be
+attributed to a role (#1227), so B0 still makes no AUT claim. Also not
 established: `top_p`/`top_k`/repeat penalty (server defaults), and whether a sub-sim ran the arm its row
 claims (`arm_effective`, which enters with M46 / B4).
 
@@ -32,9 +34,10 @@ claims (`arm_effective`, which enters with M46 / B4).
 - **Owned servers are reached through `_MaximPeerBackend`**, so the router never resolves a GGUF; a local
   file hash comes from the process's running spawner, and peer routing has no local file at all.
 - **Calls cannot be attributed to a role yet.** `RequestContext.agent` is unreliable (#1227). Router objects
-  are reliable, but the AUT's FearAgent, imagination designers and scene manifest run on the narrator's
-  router today, and its ExecAgent builds a private router with the narrator's profile (#1228); calls made on
-  the narrator's router are invisible to any per-router check. Hence the split.
+  are reliable, but when B0 was designed the AUT's FearAgent, imagination designers and scene manifest ran on the
+  narrator's router, and its ExecAgent slot would have built a private router with the narrator's profile (#1228,
+  fixed by #1777: the FearAgent and designer now hold the AUT's router; the scene manifest stays the
+  narrator's, below); calls made on the narrator's router are invisible to any per-router check. Hence the split.
 
 ## Fields, sources, and how each could lie
 
@@ -81,15 +84,21 @@ list extended for every new key).
   mock; they gain the keys so their shape matches. A harness row is in-process (no router, no call fields)
   only by its `harness_family`, never by missing keys.
 
-## B0b — AUT attribution (after #1227 and #1228)
+## B0b — AUT attribution (after #1227; #1228 fixed by #1777)
 
 What the passes established, so B0b does not relearn it:
 
 - Attribute at the **call site**, not after the fact: a role tag bound around each AUT dispatch in a field
   the request dict cannot override (#1227), counted per (role tag, serial) in the same accumulator.
-- #1228 wires every AUT-side LLM slot to `aut_router` (FearAgent, the imagination designers, the ExecAgent's
-  router; and decides whether the scene manifest and the DM/fixture runners' `llm_router` arguments are
-  world generation or AUT cognition). Floor runs need a dedicated AUT router (`aut_router is not llm_router`).
+- #1228 (fixed by #1777) wires every AUT-side LLM slot to `aut_router`: the FearAgent gate, the imagination
+  designer, the AUT's LLM worker, a spawned sub-simulation's agent (owner decision A) and the ExecAgent's (dormant)
+  slot. A run that names `--aut-model` and cannot build that router refuses, typed (`AutRouterUnavailable`,
+  owner decision B), and the report's cost totals include the AUT router's calls, split by role (owner decision C).
+  Floor runs need a dedicated AUT router (`aut_router is not llm_router`).
+- **Owner decision D (2026-11-21): world generation stays on the narrator's model.** The scene manifest
+  (`generate_scene_manifest`) and the campaign runners' `llm_router` arguments (generative, DM and fixture:
+  `campaign_runner.run_generative_campaign`, `run_dm_campaign`, `run_fixture_campaign`) generate the world the
+  AUT is tested in, so they are narrator calls, not AUT cognition, and an AUT model claim does not cover them.
 - An AUT model claim needs every AUT-tagged call on the AUT's serial; an AUT-tagged call on any other serial,
   or an untagged call on the AUT's serial, refuses the claim.
 - Walking objects for routers cannot work: AUT-side state lives in separate locals, and routers passed as

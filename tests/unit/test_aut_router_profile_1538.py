@@ -28,17 +28,24 @@ OPERATOR = OPERATOR_PROFILE_ENV["MAXIM_LLM_PROFILE"]
 @pytest.fixture(scope="module")
 def traces(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
-    for arm in ("aut_router", "aut_build_fails"):
+    for arm in ("aut_router",):
         workdir = tmp_path_factory.mktemp(arm)
         out[arm] = run_arm(arm, workdir)
     return out
 
 
-def test_a_failed_aut_build_leaves_the_operator_profile(traces: dict[str, dict[str, Any]]) -> None:
-    trace = traces["aut_build_fails"]
-    # The AUT's build was attempted and refused (the run fell back to the shared router).
-    assert [b["profile"] or b["env"] for b in trace["router_builds"]] == [OPERATOR, AUT_BUILD_FAILS]
-    assert trace["maxim_env_after"].get("MAXIM_LLM_PROFILE") == OPERATOR
+def test_a_failed_aut_build_refuses_the_run_and_leaves_the_operator_profile(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Owner decision B (#1228): the AUT's build raises, so the run refuses, typed; it used to fall back to the shared
+    router and run as a one-model run under a two-model name. The operator's profile is unchanged (#1538)."""
+    from maxim.models.language.types import AutRouterUnavailable
+
+    monkeypatch.setenv("MAXIM_LLM_PROFILE", OPERATOR)
+    with pytest.raises(AutRouterUnavailable) as exc:
+        run_arm("aut_build_fails", tmp_path_factory.mktemp("aut_build_fails"))
+    assert exc.value.profile == AUT_BUILD_FAILS
+    assert os.environ.get("MAXIM_LLM_PROFILE") == OPERATOR
 
 
 def test_the_aut_build_is_handed_its_profile_and_the_env_keeps_the_operators(
@@ -49,13 +56,6 @@ def test_the_aut_build_is_handed_its_profile_and_the_env_keeps_the_operators(
         {"profile": "orch-golden-aut", "env": OPERATOR},  # the AUT's: handed its own, and the env unchanged
     ]
     assert traces["aut_router"]["maxim_env_after"].get("MAXIM_LLM_PROFILE") == OPERATOR
-
-
-def test_the_aut_build_falls_back_to_the_shared_router(traces: dict[str, dict[str, Any]]) -> None:
-    """The fallback itself is unchanged: the AUT runs on the shared router (one build registered)."""
-    prov = traces["aut_build_fails"]["report"]["provenance"]
-    assert prov["aut_router_serial"] == prov["language_router_serial"] == "<build-1>", prov
-    assert prov["aut_profile"] == OPERATOR, prov
 
 
 def test_build_primary_router_takes_a_profile_and_leaves_the_env_alone(monkeypatch: pytest.MonkeyPatch) -> None:
