@@ -8,6 +8,7 @@ waiting for those dependencies to resolve.
 
 from __future__ import annotations
 
+import functools
 import itertools
 import logging
 import queue
@@ -647,7 +648,7 @@ class Lane:
         with self._handoff_lock:
             if not self._closed:
                 future = self._executor.submit(self._execute_job, job)
-                future.add_done_callback(lambda f, job_id=job.job_id: self._fail_if_cancelled(f, job_id))
+                future.add_done_callback(functools.partial(self._fail_if_cancelled, job_id=job.job_id))
                 return
         logger.warning("Job %s: lane %s stopped before it could run", job.job_id, self._config.name)
         self._registry.mark_failed(job.job_id, error=LaneStopped(f"lane {self._config.name!r} stopped"))
