@@ -257,12 +257,14 @@ written later.
     as well as `://` (and `:\/` for the JSON-escaped form), matched CASE-INSENSITIVELY and anchored on the scheme
     run. **The exact regex, pinned (V1):** the scheme run
     `(?<![A-Za-z0-9+.-])(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?))` (V6: the single-slash `Path` form for `ws`/`wss`/
-    `ftp`/`ftps` leaked under http(s)-only), then `:`, then an ATOMIC separator `(?>(?:\\?/){1,2}|\\{1,2})`, then
+    `ftp`/`ftps` leaked under http(s)-only), then `:`, then an ATOMIC separator, written `(?=(?P<sep>(?:\\?/){1,2}|\\{1,2}))(?P=sep)` (a lookahead plus a backreference: the same
+    semantics as `(?>…)`, which is a syntax error before Python 3.11), then
     the quote-tolerant userinfo `(?:[^\s/@]*@)?`, then the rest of today's host/path pattern. A non-atomic `\\?/`
     let `https:/` match first and skip the userinfo group, so `https://to"k@h/p` leaked `"k@h/p` and
     `test_redact_urls_never_raises_and_keeps_no_password_tail` failed. The atomic form passes 104/104 across the 997,
-    1404-scrub, `_loggable_url` and `http_client` tests (probed). Python 3.11+ is needed for atomic groups; the
-    project's floor meets it. So `Path("/a/HTTPS://…")` and a glued `/a/1https:/…`
+    1404-scrub, `_loggable_url` and `http_client` tests (probed). The project's floor is Python 3.10 (`requires-python = ">=3.10"`, and CI's
+    compatibility matrix runs 3.10), so the atomic group is emulated rather than written as `(?>…)`, and a test runs
+    the pinned regex on CI's 3.10 cell (V1). So `Path("/a/HTTPS://…")` and a glued `/a/1https:/…`
     are caught (U2; probed linear, at most 1.8 ms on 50k characters). `PureWindowsPath` renders `https:\u:PW@h\p`, so for http(s) a
     backslash separator (`:\`) is accepted too (U5). The over-match risk in prose (`http:/` written by hand)
     is fail-closed: it can only reduce text. A test pins `Path("/a/https://u:PW@h/p")`.
