@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v7 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v8 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -29,6 +29,10 @@
 > - **Round 6 (delta, a different reader):** 0 DO-NOT-BUILD, 3 SHOULD-FIX and 4 NITs, folded and tagged J1–J7.
 >   - FAIL-OPEN: J1 (class S3), J2 (class R2) and J3 (class F2). J5 and J6 are latent.
 >   - All findings are in covered classes, and each is one mechanic made precise.
+> - **Owner, 2026-11-25:** keep the stop rule literal. Design rounds continue until one comes back all fail-closed.
+> - **Round 7 (delta, a different reader):** 0 DO-NOT-BUILD, 3 SHOULD-FIX and 3 NITs, folded and tagged K1–K6.
+>   - FAIL-OPEN: K1 (class S3, latent), K2 and K3 (class F2). No new class.
+>   - A delta round 8 is owed on K1–K6 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -101,8 +105,9 @@ written later.
       On a failure (`TypeError`/`ValueError`/`KeyError`) the record is left untouched: no class swap, which would
       drop a subclass's own `getMessage`, or raise `TypeError` on a subclass with `__slots__` (H3). `handleError`
       then reports the bad format at emit, as it does today. The `except` is recorded with the swallow lint, in the
-      Stage-1 form (H3). The subclass path also reduces the traceback fields in place: `exc_text =
-      redact_urls(formatException(exc_info))` and a reduced `stack_info` (J5; latent, since there is no `LogRecord`
+      Stage-1 form (H3). The subclass path also reduces the traceback fields in place, OUTSIDE the message-render
+      `try`, so a bad format string cannot leave them raw (K5): `exc_text =
+      redact_urls(logging.Formatter().formatException(exc_info))` and a reduced `stack_info` (J5; latent, since there is no `LogRecord`
       subclass in `src/` or the venv). A failed render's `getMessage` raises again at emit and goes to
       `handleError`'s stderr dump: the stated terminal-only gap;
   - makes `exc_text` and `stack_info` data descriptors on `_RedactingLogRecord`. Their `__set__` stores the REDUCED
@@ -114,7 +119,8 @@ written later.
     `makeLogRecord`/`QueueListener`/`SocketHandler` receiver in `src/`). Every stdlib `Formatter` reads `exc_text`
     after filling it, so the read is reduced. `pickle`, `copy` and `QueueHandler.prepare` come out clean. A gap,
     stated: `makeLogRecord`'s dict update bypasses `__set__`, so that record's `__dict__` stays raw (latent; no
-    receiver in `src/`) (H2);
+    receiver in `src/`) (H2). The clean-through-`pickle`/`copy`/`QueueHandler.prepare` claim covers `exc_text` and
+    `stack_info` ONLY (K1);
   - carries a marker attribute, but whether to install is decided by the behavioural check, not by the marker. A
     chaining wrapper placed over ours hides the marker, and the outcome is a harmless double wrap (N2).
 
@@ -148,7 +154,8 @@ written later.
     `json.dumps`, because `Content-Length` is computed from that string (H5). `_send_bytes` parses an error JSON body,
     scrubs its leaves and re-encodes it, never running `redact_urls` over the raw bytes, where the userinfo branch can
     span compact-JSON field boundaries (H5). An error body that does not parse as JSON, or is not JSON content, has
-    `redact_urls` run over its decoded text (J6; latent, since every oasis error goes through `json_response`). That which covers `hivemind/oasis_endpoints.py`'s `{"error": str(exc)}` 400 path (G2); That covers its 25 4xx/5xx sites,
+    `redact_urls` run over its decoded text, decoded as `utf-8` with `surrogateescape`, and reduced before the
+    `Content-Length` header is computed (J6, K6; latent, since every oasis error goes through `json_response`). That which covers `hivemind/oasis_endpoints.py`'s `{"error": str(exc)}` 400 path (G2); That covers its 25 4xx/5xx sites,
     including `Invalid JSON body: {e}` and the bare `str(e)` (S2);
   - **errors that bypass `ToolOutput` (S1, F3):**
     - `tool_dispatch.py::record_outcome` reduces `error`. It is the one choke point for `recent_outcomes` and
@@ -216,7 +223,10 @@ Round 4 (G1) found more sites than the grep had:
   `TraceRecord.error` and then the JSONL `data`;
 - `leader_proxy.py::_run_pip_upgrade` (`stdout[-500:]` and `"stderr": (result.stderr or "")[-500:]`);
 - `_install_status["pip_output"]`;
-- `tools/code_tools.py`'s `result.stdout[-2000:]` and `leader_proxy._run_pip_install`'s `stdout[-500:]` (H1).
+- `tools/code_tools.py`'s `result.stdout[-2000:]` and `leader_proxy._run_pip_install`'s `stdout[-500:]` (H1);
+- `bench/recovery_time.py::run_recovery_benchmark`'s `fix_hint[:500]`. Its value is `_classify_error`'s
+  `str(exc)`, and it reaches `bench/cli.py`'s `--output` JSONL. It is reduced inside `_hint` before the cut, and a
+  test pins it, as for `sanitized_error` (K2).
 
 **Guard:** an AST lint, `scripts/lint_cut_before_redact.py`, run over `src/maxim`. A line grep was not enough: it
 passed `redact_urls(str(e)[:50])` (cut first, then reduced: the very bug) and missed `{e!r}`, single-quoted
@@ -226,11 +236,15 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - taint sources: an `except … as` name; a parameter annotated as an exception type (`*Exception`, `BaseException`)
   or named `exc`/`err`/`e`; `.stderr`/`.stdout`; `traceback.format_exc()` (H1);
 - taint propagates through `str()`, `repr()`, f-strings (any conversion), `.attr`, `x.method()`, `x[...]`, `BinOp`
-  (`%`, `+`), `AugAssign` (`s += str(ex)`), list/tuple displays (`[str(ex)][0]`) and assignments within the function
-  (H1, J3);
-- **a name is clean only if EVERY assignment to it in the function is a `redact_urls(...)`/`url_scrubbed(...)` call**
-  (J3). With last-writer-wins, `if a: s = str(e)` / `else: s = redact_urls(str(e))` / `s[:50]` would pass. So
-  `s = redact_urls(str(e)); s[:50]` passes and the branched form fails. On 0f50fdc9 this rule gives 20 hits, every one a listed site or an
+  (`%`, `+`), `AugAssign` (`s += str(ex)`), list/tuple displays (`[str(ex)][0]`), `for` and comprehension targets
+  over a tainted iterable, tuple-unpack targets (`a, b = str(e), 1`), `NamedExpr` (walrus), and any call with a
+  tainted positional argument (`" ".join(str(e).split())`, `json.dumps({..: str(e)})`), plus assignments within
+  the function (H1, J3, K3);
+- **a name is tainted if ANY assignment to it in the function is tainted** (a monotonic union, not last-writer-wins)
+  (J3, K4). With last-writer-wins, `if a: s = str(e)` / `else: s = redact_urls(str(e))` / `s[:50]` would pass. An
+  assignment from `redact_urls(...)`/`url_scrubbed(...)` is an untainted assignment, so `s = redact_urls(str(e));
+  s[:50]` passes and the branched form fails. Rebinding a tainted PARAMETER does not clear it, so the code binds a new
+  name (K4); On 0f50fdc9 this rule gives 20 hits, every one a listed site or an
   allowlist entry (prototype: `scratchpad/rt1801f/lint_h1.py`, the rule as written here; `rt1801e/lint_proto.py`, which gave 12, had no
   parameter or `.attr` sources) (J3). The narrower rule round 4 proposed missed
   `_abort_drain`'s and `_sanitize_error_message`'s parameters;
@@ -239,6 +253,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   - `prefetch.py::discover_files_with_find`, `system_metrics.py::_memory_macos` and `container_runner.py::launch`.
     These three are method-call propagation off a command's `.stdout`, holding file paths, `vm_stat` numbers or a
     container id (J4). "Named `e`" adds 0 false positives (J4);
+  - the three `router._try_provider` tags (built from numbers) and `llm_spawn_record::established_connections`'s
+    lsof line, which K3's call propagation adds (K3).
+  - With K3 the rule catches `sanitized_error[:200]` directly, so that site leaves the blind spot (K3).
 - states its blind spot: a cut made in a helper function the taint does not follow. `sanitized_error[:200]` (a
   helper's return value) is in it, so a test pins that site instead (H1).
 
@@ -252,6 +269,7 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 | `args` | a non-str value, or a `__str__` that raises | rendered lazily by the stdlib `getMessage`; if it raises, logging's `handleError` prints the raw `Arguments:` to stderr: a terminal-only gap, stated |
 | `exc_info` / `stack_info` | the message is the traceback's last line | `exc_text` precomputed and reduced; the proxy buffer is also reduced after formatting |
 | install order | records before `configure_logging`; Python's last-resort stderr handler; a later factory that does not chain | before setup there are no Maxim sinks except stderr (a gap, stated). The behavioural chain check catches a later factory at each install point; one set after the last check point is caught only at the next `configure_logging`, and nothing in the venv calls `setLogRecordFactory` (a gap, stated; N2). `logging.makeLogRecord` and `deepcopy` keep the reduced text (probed) |
+| raw `__dict__` (K1) | `msg` as an exception object, `args`, `exc_info` and `extra=` keys stay raw in `__dict__`, so `vars()`, `pickle` and `copy` carry them; `extra=` keys survive even `makePickle` and `QueueHandler.prepare` | a gap, stated: the boundary reduces what a handler RENDERS, not a record's raw attributes. Latent, since there is no pickling or `__dict__` receiver in `src/` (no `SocketHandler`/`QueueListener`/`makeLogRecord`). The `StructuredFormatter` path reduces `data` on render (R1) |
 | serialization (S3) | a closure `getMessage` cannot be pickled, so `SocketHandler` and a multiprocessing queue drop the record | a module-level `LogRecord` subclass, or a `MethodType` bound to a module-level function |
 | embedding | a global factory rewrites the host app's records | installed only by `configure_logging` (D1) |
 | children (R5) | the LLM server runs `python -m llama_cpp.server`, and `maxim-diagnostics` never calls `configure_logging` | both write only to the terminal or to DEVNULL (stated). Every `cli.py::main` child is covered |
@@ -287,6 +305,8 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- K3: the lint also fails on a `for` target over `.stderr`, a tuple-unpack, a walrus, `" ".join(str(e).split())[:50]`
+  and `json.dumps({"k": str(e)})[:200]`. K2: `fix_hint` holds no credential in the `--output` JSONL.
 - J3: the lint fails on the branched assignment, `s += str(ex)`, `[str(ex)][0][:50]` and `("x %s" % ex)[:50]`.
 - G3: a `logging.makeLogRecord({... "exc_text": <credential traceback>})` formats reduced. G4: a bad format string
   through a subclass record does not raise out of the `logger` call.
