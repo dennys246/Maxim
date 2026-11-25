@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v12 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v13 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -51,6 +51,11 @@
 >   - FAIL-OPEN: Q1 and Q2 (class F2) and Q3 (lint evasion, 0 sites).
 >   - P1 holds for every format directive probed, and the proxies are lazy.
 >   - A delta round 12 is owed on Q1–Q4 only.
+> - **Round 12 (delta, a different reader):** 0 DO-NOT-BUILD, 2 SHOULD-FIX and 2 NITs, folded and tagged T1–T4.
+>   - FAIL-OPEN: T1 (class F2), T2 (lint evasion, 0 sites) and T4 (`Path` collapsing `://`, a NEW class, latent).
+>     T4 is FIXED in `redact_urls`, not merely stated.
+>   - Nested containers, Mapping keys, split URLs and Q2/Q4 hold.
+>   - A delta round 13 is owed on T1–T4 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -117,12 +122,18 @@ written later.
     - a record whose `type(record) is logging.LogRecord` (the stock class, whoever built it) has its
       `record.__class__` set to the module-level `_RedactingLogRecord(logging.LogRecord)`. Its `getMessage` reduces
       BEFORE and AFTER formatting (P1):
-      - **every argument except `None`, `bool` and a `numbers.Number`** is wrapped in a module-level proxy whose
+      - **every argument except an EXACT pass-through type** is wrapped in a module-level proxy whose
         `__str__`, `__repr__` and `__format__` return the reduced text, and so are the VALUES of a single Mapping
         argument (`%(k).Ns`: `LogRecord.__init__` unwraps it to a dict). Then `msg % args` runs. A token-as-username
         URL leaked through Mapping values, `list`/`tuple` (including `e.args`), `bytes`, `httpx.URL` and custom
         `__str__` objects when only `str` and exceptions were proxied (Q1; probed, 0 leaks with this rule). A
-        1-character `str` passes through unproxied, so `%c` renders as today (Q4). So a precision cut in the message
+        1-character `str` passes through unproxied, so `%c` renders as today (Q4). The pass-through test is by EXACT type,
+        never `isinstance` (T1): `type(a) in {NoneType, bool, int, float, complex, Decimal, Fraction}`, or
+        `type(a).__module__` is `numpy`, or `type(a) is str and len(a) == 1`. A subclass with its own `__str__`
+        (`NInt(int)`, a 1-char `S1(str)`) returning a URL is proxied (probed: it leaked under `isinstance`);
+      - the proxy forwards `__float__`, `__int__` and `__index__` through `type(o).__float__(o)` and
+        `operator.index(o)`, never `float(o)`, which would make `%f` accept a str. So `%f`/`%d`/`%x` of a 0-d
+        ndarray or a torch tensor render as today instead of losing the line to `handleError` (T3); So a precision cut in the message
         (`%.50s`, `%.50r`, `%.50a`, `{:.50}`), whatever the logger's name, a message held in a variable, or
         `logger.log(level, …)`, truncates text that is already reduced;
       - the result is reduced again (a URL built across arguments, or one in `msg` itself);
@@ -226,7 +237,11 @@ written later.
     - The userinfo has two alternatives: the existing quote-tolerant `[^\s/@]*@`, so `https://to"k@h` gives the origin
       and not `https://to`, and `user:` plus a password of up to 64 characters that may contain whitespace, which
       gives `<url>` (Na). The code round pins the exact regex in this note before merging.
-    - The user part excludes `\`, so the JSON-escaped form cannot reach into the userinfo (G5).
+    - **`Path` and other single-slash forms (T4):** `pathlib.Path` collapses `://` to `:/`, so `Path("/a/" + URL)`
+    renders `https:/u:PW@host/…` and the regex never saw a URL. For the `http`/`https` schemes the regex accepts `:/`
+    as well as `://` (and `:\/` for the JSON-escaped form). The over-match risk in prose (`http:/` written by hand)
+    is fail-closed: it can only reduce text. A test pins `Path("/a/https://u:PW@h/p")`.
+  - The user part excludes `\`, so the JSON-escaped form cannot reach into the userinfo (G5).
     - Gaps, stated: a password longer than 64 characters that contains whitespace still leaks its tail; so does a
       colon-less userinfo with whitespace (`https://tok en@h/p` keeps `tok` and `en`) (G5); and a user part with a
       backslash and a password with whitespace (`https://D\u:p w@h/x` leaks `w@h/x`) (H6). It is
@@ -282,6 +297,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   - `textwrap.shorten(<tainted>, …)`;
   - the format CALLEES given tainted text, whatever their spec: `str.__mod__`, `operator.mod`, `str.format_map` and
     `string.Formatter().format`/`vformat` (Q3);
+  - **any subscript of tainted text whose index is not a literal int** (`str(e)[sl]`, `str(e)[slice(0, 50)]`), any
+    DUNDER method call on tainted text (`.__getitem__(…)`, `.__format__(…)`), `operator.getitem`, and any
+    `reprlib.*` call over tainted text (T2);
   - the logger form (`log.warning("failed: %.50s", e)`) is NOT a lint rule. The factory's argument proxies make it
     cut reduced text, whatever the logger is called (P1);
   - `%`-formatting matches `\.(\d+|\*)[sra]` (`%.50r` and `%.50a` cut too, P1); a non-literal format string or spec
@@ -368,6 +386,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- T1: an `int` subclass and a 1-char `str` subclass whose `__str__` returns a credential URL render reduced at every
+  cut length. T2: the lint fails on `str(e)[sl]`, `str(e)[slice(0, 50)]`, `operator.getitem`, `.__getitem__`,
+  `.__format__(".50")` and `reprlib.repr` over tainted text. T3: `%f`/`%d`/`%x` of a 0-d ndarray render, and
+  `%f` of a str still raises. T4: `%.40s` of `Path("/a/https://u:PW@h/p")` renders reduced.
 - Q1: the same credential URL as a Mapping value (`%(k).30s`), in a list, in `e.args`, as `bytes`, as an `httpx.URL`
   and in a custom `__str__` object renders reduced at every cut length; `%d`/`%5.2f` with numpy scalars, `%x`, `%c`
   and `%s None` render unchanged. Q2: an entry with fewer hits than its `count` fails as stale. Q3: the lint fails on
