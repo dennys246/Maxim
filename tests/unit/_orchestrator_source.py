@@ -189,6 +189,10 @@ NEW_ORCHESTRATOR_IMPORTS: dict[str, str] = {
 # (ordinary new code in, e.g., ``report.py``), as (file, name) with the reason. Empty at slice 0; the #1261 fix,
 # which is not a slice, added the first entries.
 NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
+    ("sim_logger.py", "_bridge_to_log_file"): (
+        "#1775: sim_log's MAXIM_LOG_FILE mirror moved out so a reply subsystem's text is logged by shape only; "
+        "log redaction, not orchestrator run code"
+    ),
     ("tools.py", "_action_summary"): (
         "#1261: the narrator-facing per-action summary, factored out of SendMessageTool, ExtendSimulationTool and "
         "SpawnSubSimulationTool (three identical copies) to add the utterance; not orchestrator run code"

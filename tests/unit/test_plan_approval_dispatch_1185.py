@@ -17,6 +17,8 @@ from typing import Any
 
 import pytest
 
+from maxim.utils.cloud_redaction import text_shape
+
 from tests.unit._execute_learn_driver import run_once
 
 TOOL = "probe_learn_1133"
@@ -128,7 +130,8 @@ def test_a_plan_proposed_while_one_waits_is_refused_and_the_yes_runs_the_waiting
     assert refusal["success"] is False and refusal.get("nac") is None
     assert "awaiting_human" in refusal["error"]
     [shown] = [d for d in _events(obs, "plan_awaiting_approval") if not d.get("reask")]
-    assert (shown["tool"], shown["params"]) == (TOOL, "{}")  # bounded JSON (a write_file body must not flood)
+    assert (shown["tool"], shown["params"]) == (TOOL, text_shape("{}"))  # #1775: the params' shape only
+    assert shown["plan_preview"] == text_shape(PLAN)  # #1775: the plan's shape; _plan_prompt shows it whole
 
 
 # ── Decision A: the approval is the SUPERVISED confirmation; the policy's other checks still apply ──────

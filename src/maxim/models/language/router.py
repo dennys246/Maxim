@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic, log_structured
 from maxim.models.language import call_accounting
 from maxim.models.language.cost_tracker import CostTracker
-from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch
+from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch, text_shape
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
 
 # Internal imports — only symbols actually used by LLMRouter
@@ -1044,8 +1044,12 @@ class LLMRouter:
             return "", None
         self._refuse_offline_lanes("router[dispatch]")
         if abandons_on_stop():
-            return self._complete_text_dispatch(system, user, **kwargs)
-        return self._complete_text_abandonable(system, user, kwargs)
+            result = self._complete_text_dispatch(system, user, **kwargs)
+        else:
+            result = self._complete_text_abandonable(system, user, kwargs)
+        if result[0]:  # #1775: every reply is logged here, by its shape only (it can quote a PRIVATE tool's output)
+            logger.debug("LLM reply: %s", text_shape(result[0]))
+        return result
 
     def _complete_text_abandonable(
         self, system: str, user: str, kwargs: dict[str, Any]
@@ -2350,16 +2354,13 @@ Return JSON exactly like:
             thinking=thinking,
             stream=stream,
         )
-        if text:
-            logger.debug("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
-
         from maxim.utils.cancellation import yield_requested
 
         if not text and yield_requested():
             return None  # refused or abandoned at a process stop (logged by _complete_text), not a model failure
         obj = _extract_json_object(text)
         if not isinstance(obj, dict):
-            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text[:100] if text else "empty")
+            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text_shape(text) if text else "empty")
             return None
 
         if usage:
@@ -2429,8 +2430,6 @@ Return JSON exactly like:
 
         # Note: Response length is controlled by max_tokens in config
         # No truncation here - let the full response through
-
-        logger.debug("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
 
         # Stage 2: Wrap in JSON programmatically (no LLM needed)
         # Escape the answer for JSON
@@ -2525,9 +2524,6 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
             provider_hint=provider_hint,
             request_context=request_context,
         )
-        if text:
-            logger.debug("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
-
         if not text or not text.strip():
             warn("LLM returned empty tool response")
             return None
@@ -2562,7 +2558,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
                     # Extract and unescape the message
                     extracted_msg = msg_match.group(1).replace('\\"', '"')
                     if extracted_msg and len(extracted_msg) > 10:
-                        info("Salvaged message from failed JSON parse: %s", extracted_msg[:50])
+                        info("Salvaged message from failed JSON parse: %s", text_shape(extracted_msg))
                         return {
                             "action": {
                                 "tool_name": "respond",
@@ -2632,7 +2628,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
                 synthetic_plan = f"I'd like to execute the '{tool_name}' action.\n\nMay I proceed?"
 
             if synthetic_plan:
-                info("Generated synthetic proposal for PLANNING mode: %s", synthetic_plan[:100])
+                info("Generated synthetic proposal for PLANNING mode: %s", text_shape(synthetic_plan))
                 obj["_plan_text"] = synthetic_plan
                 obj["_requires_approval"] = True
 

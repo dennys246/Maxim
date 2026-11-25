@@ -32,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.deadline import Deadline
 from maxim.utils.logging import log_swallowed_exception
 
@@ -408,5 +409,5 @@ class AgentPool:
         # Strip quotes if the LLM wrapped its response
         if response.startswith('"') and response.endswith('"'):
             response = response[1:-1]
-        log.debug("NPC '%s' LLM response: %s", agent_id, response[:80])
+        log.debug("NPC '%s' LLM response: %s", agent_id, text_shape(response))  # #1775: the shape, never the text
         return response
