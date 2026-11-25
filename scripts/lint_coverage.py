@@ -28,8 +28,9 @@ uncovered statement count pinned with it.
   HEAD comparison against the committed pin, never to the pin rules below (the CHANGED cap's own
   ``K_MIN`` noise slack, M60a, is a separate, fixed allowance: see that rule), and pins never move
   with it — so any number of PRs together can drop at most k statements under an unchanged
-  floor (a split resets that bound: the SUM rules charge main's MEASURED ``missing`` at the base, see SF-2, so
-  erosion within k before a split is carried into its successors' pins, up to k per split), and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
+  floor (a split resets that bound: the SUM rules charge main's MEASURED ``missing`` at the base, see
+  SF-2, so erosion within k before a split is carried into its successors' pins, up to k per split),
+  and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
   HEAD rule compares measured ``missing`` with a pinned ``missing`` (those comparisons are pin
   rules), so none needed the tolerance (the "raise it to" HINT prints ``min(measured, pinned)``
   so that following it passes the pin rule, #1409; it gates nothing);
@@ -85,15 +86,19 @@ floor, independently, every run: a PR may have to edit both, and neither substit
   tolerance (the package sum rule's code). The source's base ``missing`` in that sum is ``max(base pin, main's
   measured missing at the base)`` (:class:`BaseMeasured`, owner decision 2026-11-24, approach note
   docs/plans/coverage_split_measured_base_approach.md): a pin goes stale (Known gaps), and a split must not pay for
-  drift it did not cause. Only the two SUM rules take it; LOWERING and the CHANGED cap keep the pin, so a split that
-  moves covered code out while the drift stays in the source is still refused by the source's LOWERING rule (cover
-  the drift or re-pin first). Every doubt about main's measurement charges the pin. This is STRICT by design: an existing successor with no floor at the base
-  brings no pin, so its WHOLE measured ``missing`` — old uncovered code included — is charged to the source's pin.
+  drift it did not cause. The namespace pass's sum (packages, and file floors carried by a rename) takes the same
+  allowance, since it is the same no-tolerance budget: a rename must not refuse what a split of the same file
+  accepts. Only the SUM rules take it; LOWERING and the CHANGED cap keep the pin, so a split that moves covered code
+  out while the drift stays in the source is still refused by the source's LOWERING rule (cover the drift or re-pin
+  first). Every doubt about main's measurement charges the pin. This is STRICT by design: an existing successor
+  with no floor at the base brings no pin, so its WHOLE measured ``missing`` — old uncovered code included — is
+  charged to the source's pin.
   The remedy is to move code into NEW modules (or floor the destination in an earlier PR). It closes the shim trick
   (move everything to a new module, leave a re-export shim carrying the floor), the pre-created target (PR1 adds a
   one-line module, PR2 moves the code into it), padding (move code out, add as many trivial statements back) and
-  laundering test erosion through a move (beyond the k per split the measured base allows). Its costs, accepted: an unrelated module added (or an unrelated file grown
-  by S) in the same PR as a slice joins the group, so land it separately. With NO successor the sum is skipped
+  laundering test erosion through a move (beyond the k per split the measured base allows). Its costs, accepted:
+  an unrelated module added (or an unrelated file grown by S) in the same PR as a slice joins the group, so land
+  it separately. With NO successor the sum is skipped
   (owner decision 2026-10-13): the code went nowhere that grew by S, so an in-place rewrite of S or more statements
   is held by the source's own HEAD floor rule (k tolerance) and the CHANGED/LOWERING rules, not by a no-tolerance
   sum that thread noise would false-fail; code spread over several small files is the thin-slicing residual;
@@ -163,7 +168,8 @@ measurement ``m``; ``k = max(ceil(statements × 0.001), K_MIN)`` statements of r
 - a rename carry-over target follows the CHANGED rules against the removed package's floor;
   and a split may not lose the sum: over each group of removed packages that share targets,
   the targets' measured ``missing`` summed may not exceed the removed packages' pinned
-  ``missing`` summed (plus the pin of any target that already had a floor at base).
+  ``missing`` summed, each charged ``max(pin, main's measured missing at the base)`` (SF-2's
+  :class:`BaseMeasured`), plus the pin of any target that already had a floor at base.
 
 Why this shape: three review rounds each found a walk-down when floors were allowed a
 tolerance on the way DOWN (a floors-only lower; a high ``missing`` pin spent by the next PR;
@@ -297,8 +303,9 @@ coverage, so the numbers live in the CI log.
   the "N/M steps passed" line does not count it (it prints its own PASS/FAIL line);
 
 - the CHANGED cap's ``K_MIN`` slack (M60a): a re-pinned ``missing`` may sit up to ``K_MIN`` (5) statements above
-  the run it is verified on, and never above its base. LOWERING and the split and rename SUM rules read that pin, so
-  a later PR can absorb up to ``K_MIN`` per pin in the group. That is ``K_MIN`` for one scope and ``K_MIN`` × N for a
+  the run it is verified on, and never above its base. LOWERING reads that pin, and the split and rename SUM rules
+  read at least that pin (``max(pin, main's measured missing)``), so a later PR can absorb up to ``K_MIN`` per pin
+  in the group. That is ``K_MIN`` for one scope and ``K_MIN`` × N for a
   sum over N re-pinned scopes. It is bounded and does not accumulate across re-pins. It was accepted so that a pin
   taken from one CI run passes on the next (±2 statements of noise): the owner decision of 2026-10-27, "ship the safe
   half with a noise allowance", sized at ``K_MIN`` by review delta2 P1;
@@ -383,6 +390,7 @@ import tomllib
 import traceback
 import urllib.parse
 from collections.abc import Callable, Mapping
+from typing import Literal
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree
@@ -1085,7 +1093,8 @@ def floor_diff_rules(
     """The pin rules against the base, for ``overall``, the ``packages`` namespace and the ``files`` namespace
     (the same rules, run twice), plus the file-only rules: ``retired_files`` (SF-1) and the split rule (SF-2).
     ``files``/``fd``/``excluded`` are required keyword arguments: a file rule must never be skipped by omission.
-    ``base_measured`` (required too) is the SUM rules' source allowance; no other rule reads it."""
+    ``base_measured`` (required too, :class:`BaseMeasured` below) is the SUM rules' source allowance; no other rule
+    reads it."""
     out: list[str] = []
     for attr, label in (("band", "band"), ("min_statements", "min_package_statements")):
         if getattr(base_fl, attr) != getattr(fl, attr):
@@ -1146,7 +1155,7 @@ def floor_diff_rules(
         renamed_to: Callable[[str], set[str]],
         still_there: str,
         vanished: Callable[[str], None],
-        kind: str,
+        kind: Literal["file", "package"],
     ) -> None:
         """One floor namespace (packages or files): removal only when gone, null-back, CHANGED/NEW verification,
         the rename carry and the sum rule. ``vanished`` is called for a removed floor with no detected rename."""
@@ -2674,7 +2683,10 @@ def reuse_decision_main(
 
 # ── the SUM rules' measured base (owner decision 2026-11-24; docs/plans/coverage_split_measured_base_approach.md) ──
 
-BASE_MEASURED_DEADLINE_SECONDS = 300.0  # the lookup's wall-clock budget: past it, the sum rules charge the pin
+# The lookup's budget, checked BEFORE each API call and download: past it, the sum rules charge the pin. A call that
+# starts inside it can still run to its own timeout (60 s for gh api, 300 s for a download), so the worst case is
+# about this plus one download; the unit-tests job's 60-minute limit has room for that.
+BASE_MEASURED_DEADLINE_SECONDS = 300.0
 
 
 class NoBaseMeasurement(RuntimeError):
@@ -2728,10 +2740,14 @@ def base_measurements(
         names: set[str] | None = None
         for attempt in range(1, attempts + 1):
             in_budget()
-            try:
-                steps = _unit_tests_steps(api, prefix, rid, attempt)
-            except MeasurementError:
-                continue  # an attempt with no unit-tests job measured nothing
+            jobs = api(f"{prefix}/actions/runs/{rid}/attempts/{attempt}/jobs?per_page=100")
+            listed = jobs.get("jobs") if isinstance(jobs, dict) else None
+            if not isinstance(listed, list):  # a malformed listing may hide the minimum: never skip it silently
+                raise NoBaseMeasurement(f"run {rid} attempt {attempt}: the jobs API gave an unexpected response")
+            job = next((j for j in listed if isinstance(j, dict) and j.get("name") == CI_JOB), None)
+            if job is None or job.get("run_attempt", attempt) != attempt:
+                continue  # no unit-tests job in this attempt, or one carried over from an earlier attempt (sampled there)
+            steps = [s for s in job.get("steps") or [] if isinstance(s, dict)]
             conclusion = {s.get("name"): s.get("conclusion") for s in steps}
             if conclusion.get(RUN_SUITE_STEP) != "success" or conclusion.get(RATCHET_STEP) != "success":
                 continue  # a failed, skipped or unfinished attempt is not a whole measurement
@@ -2768,7 +2784,7 @@ class BaseMeasured:
     never read this."""
 
     def __init__(self, load: Callable[[], list[dict[str, FileCov]]] | None, why_not: str = "") -> None:
-        self._load = load
+        self._load = load  # cleared before the one call: the lookup runs at most once, even when it fails
         self._why_not = why_not
         self._files: dict[str, int] = {}
         self._packages: dict[str, int] = {}
@@ -2786,9 +2802,11 @@ class BaseMeasured:
             samples = load()
         except NoBaseMeasurement as e:
             self._why_not = str(e)
-        except Exception as e:  # any doubt charges the pin, never a red job: printed with its traceback
-            traceback.print_exc()
+        except (GitUnavailable, MeasurementError, OSError, ValueError) as e:  # the API, gh, a download, the JSON
             self._why_not = f"{type(e).__name__}: {e}"
+        except Exception as e:  # anything else is a bug: still the pin, never a red job, printed with its traceback
+            traceback.print_exc()
+            self._why_not = f"unexpected {type(e).__name__}: {e}"
         else:
             self._files = _min_missing([file_scopes(c) for c in samples])
             self._packages = _min_missing([measure_scopes(c)[1] for c in samples])
@@ -2796,15 +2814,18 @@ class BaseMeasured:
             return
         print(f"coverage: split base: main's measurement not used, the pin is charged ({self._why_not})")
 
-    def allowance(self, kind: str, key: str, pin: int) -> int:
+    def allowance(self, kind: Literal["file", "package"], key: str, pin: int) -> int:
         """``key``'s charge in a SUM rule: its base ``pin``, or main's measured ``missing`` at the base when that is
-        higher (``kind`` is ``"file"`` or ``"package"``)."""
+        higher. ``kind`` picks the namespace; any other value raises (a typo must not read the other map)."""
+        if kind not in ("file", "package"):  # the real guard: CI's mypy does not cover scripts/, so Literal is a doc
+            raise ValueError(f"BaseMeasured.allowance: kind {kind!r} is not 'file' or 'package'")
         self._ensure()
         measured = (self._files if kind == "file" else self._packages).get(key)
         if measured is None or measured <= pin:
-            if measured is None and self._why_not and key not in self._charged:
+            if measured is None and key not in self._charged:
                 self._charged.add(key)
-                print(f"coverage: {key}: the split sum charges its pin {pin} ({self._why_not})")
+                why = self._why_not or "absent from at least one of main's samples at the base"
+                print(f"coverage: {key}: the split sum charges its pin {pin} ({why})")
             return pin
         if key not in self._charged:
             self._charged.add(key)

@@ -2997,8 +2997,55 @@ def test_a_source_measured_below_its_pin_keeps_the_pin(repo, capsys, monkeypatch
 def test_a_scope_one_sample_lacks_is_charged_its_pin(repo, capsys, monkeypatch):
     _main_measured(monkeypatch, {G: _fc(100, 11)}, {A: _fc(10, 2)})  # the second sample may have been the minimum
     _drifted_split(repo, 11)
-    rc, _, err = _run(capsys)
+    rc, out, err = _run(capsys)
     assert rc == 1 and "together they measure missing 11 > the carried pinned missing 10" in err
+    assert f"{G}: the split sum charges its pin 10 (absent from at least one of main's samples at the base)" in out
+
+
+MOVED = "src/maxim/gamma/moved.py"
+
+
+@pytest.mark.parametrize(("moved_missing", "rc_want"), [(11, 0), (12, 1)])
+def test_a_renamed_file_is_charged_mains_measured_missing_under_its_base_path(
+    repo, capsys, monkeypatch, moved_missing, rc_want
+):
+    """git mv of G (pin 10, main measured 11): the rename's sum is charged 11 under G, the BASE path."""
+    made = _main_measured(monkeypatch, {G: _fc(100, 11)})
+    _g_base(repo)
+    _git(repo, "mv", G, MOVED)
+    _write(repo, L.FLOORS_REL, _g_floors(files={MOVED: (90.0, 10)}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, MOVED: set(range(101 - moved_missing, 101))})
+    rc, _, err = _run(capsys)
+    assert rc == rc_want, err
+    if rc_want:
+        assert f"{MOVED}: received {G}; together they measure missing 12 > the carried pinned missing 11" in err
+    assert ("file", G) in made[0].asked
+
+
+def test_the_lookup_runs_once_for_every_source_it_is_asked_about():
+    calls: list[int] = []
+
+    def load():
+        calls.append(1)
+        return [{G: _fc(100, 11), A: _fc(10, 3)}]
+
+    bm = L.BaseMeasured(load)
+    assert bm.allowance("file", G, 10) == 11 and bm.allowance("file", A, 2) == 3 and bm.allowance("file", G, 10) == 11
+    assert len(calls) == 1
+
+    def boom():
+        calls.append(2)
+        raise L.GitUnavailable("down")
+
+    failed = L.BaseMeasured(boom)
+    assert failed.allowance("file", G, 10) == 10 and failed.allowance("file", A, 2) == 2
+    assert calls.count(2) == 1  # a failed lookup is not retried
+
+
+def test_an_unknown_kind_raises_rather_than_reading_the_other_map():
+    with pytest.raises(ValueError, match="is not 'file' or 'package'"):
+        L.BaseMeasured(lambda: [{G: _fc(100, 11)}]).allowance("files", G, 10)  # type: ignore[arg-type]
 
 
 def test_a_package_split_is_charged_mains_measured_missing_under_its_base_key(repo, capsys, monkeypatch):
@@ -3034,9 +3081,13 @@ def test_a_lookup_error_charges_the_pin_and_is_never_exit_2(repo, capsys, monkey
     rc, out, err = _run(capsys)
     assert rc == 1 and "together they measure missing 11 > the carried pinned missing 10" in err
     assert "split base: main's measurement not used, the pin is charged" in out
+    unexpected = isinstance(exc, KeyError)  # a known lookup error is recorded; only a bug prints its traceback
+    assert ("Traceback" in err) == unexpected and (f"unexpected {type(exc).__name__}" in out) == unexpected
 
 
 def test_no_base_measurement_charges_the_pin_and_says_why(repo, capsys, monkeypatch):
+    """Also the push base accepted only by _lint_git._accepted: it has no green run, so no sample (this message)."""
+
     def none():
         raise L.NoBaseMeasurement("no Tests push run of main at abc has an attempt whose steps both passed")
 
@@ -3065,6 +3116,7 @@ _BOTH = {L.RUN_SUITE_STEP: "success", L.RATCHET_STEP: "success"}
 
 
 def _push_run(rid: int, attempts: int = 1, **over) -> dict:
+    """A Tests push run of main at the base, as the workflow-runs API lists it."""
     run = {
         "id": rid,
         "head_sha": BASE40,
@@ -3076,17 +3128,35 @@ def _push_run(rid: int, attempts: int = 1, **over) -> dict:
     return {**run, **over}
 
 
-def _base_api(runs: list[dict], steps: dict[tuple[int, int], dict], artifacts: dict[int, list[str]]):
+def _base_api(
+    runs: list[dict] | object,
+    steps: dict[tuple[int, int], dict],
+    artifacts: dict[int, list[str]],
+    *,
+    jobs: dict[tuple[int, int], object] | None = None,
+    job_attempt: dict[tuple[int, int], int] | None = None,
+):
+    """``jobs`` replaces an attempt's whole jobs response; ``job_attempt`` sets the listed job's own run_attempt."""
+
     def api(path: str):
         if "/actions/workflows/test.yml/runs?" in path:
             assert f"head_sha={BASE40}" in path and "event=push" in path and "branch=main" in path
             return {"workflow_runs": runs}
         if m := re.search(r"/runs/(\d+)/attempts/(\d+)/jobs", path):
-            st = steps.get((int(m[1]), int(m[2])))
+            key = (int(m[1]), int(m[2]))
+            if jobs and key in jobs:
+                return jobs[key]
+            st = steps.get(key)
             listed = (
                 []
                 if st is None
-                else [{"name": "unit-tests", "steps": [{"name": n, "conclusion": c} for n, c in st.items()]}]
+                else [
+                    {
+                        "name": "unit-tests",
+                        "run_attempt": (job_attempt or {}).get(key, key[1]),
+                        "steps": [{"name": n, "conclusion": c} for n, c in st.items()],
+                    }
+                ]
             )
             return {"jobs": listed}
         if m := re.search(r"/runs/(\d+)/artifacts", path):
@@ -3158,6 +3228,39 @@ def test_every_qualifying_run_and_attempt_is_sampled(repo, tmp_path):
     samples, got = _lookup(repo, tmp_path, api)
     assert got == [("11", "coverage-json-1"), ("11", "coverage-json-2"), ("12", "coverage-json-1")]
     assert len(samples) == 3
+
+
+@pytest.mark.parametrize("bad", [{"message": "rate limited"}, {"jobs": None}, ["not", "a", "dict"]])
+def test_a_malformed_jobs_listing_refuses_rather_than_skipping_the_attempt(repo, tmp_path, bad):
+    api = _base_api([_push_run(11)], {(11, 1): _BOTH}, {11: ["coverage-json-1"]}, jobs={(11, 1): bad})
+    with pytest.raises(L.NoBaseMeasurement, match="the jobs API gave an unexpected response"):
+        _lookup(repo, tmp_path, api)
+
+
+def test_a_unit_tests_job_carried_over_into_a_later_attempt_is_sampled_once(repo, tmp_path):
+    """ "Re-run failed jobs" of another job: attempt 2 lists attempt 1's unit-tests job, which uploaded only -1."""
+    api = _base_api(
+        [_push_run(11, attempts=2)],
+        {(11, 1): _BOTH, (11, 2): _BOTH},
+        {11: ["coverage-json-1"]},
+        job_attempt={(11, 2): 1},
+    )
+    samples, got = _lookup(repo, tmp_path, api)
+    assert got == [("11", "coverage-json-1")] and len(samples) == 1
+
+
+@pytest.mark.parametrize(
+    ("runs", "match"),
+    [({"workflow_runs": "x"}, "workflow-runs API gave an unexpected response"), (None, "no run_attempt")],
+)
+def test_a_malformed_runs_listing_refuses(repo, tmp_path, runs, match):
+    def api(path: str):
+        if "/actions/workflows/test.yml/runs?" in path:
+            return runs if runs is not None else {"workflow_runs": [_push_run(11, attempts=None)]}
+        raise AssertionError(path)
+
+    with pytest.raises(L.NoBaseMeasurement, match=match):
+        _lookup(repo, tmp_path, api)
 
 
 def test_the_lookup_budget_refuses_past_its_deadline(repo, tmp_path):
