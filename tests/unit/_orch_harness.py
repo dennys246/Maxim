@@ -282,7 +282,7 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
     # #1538: the AUT's own router build (``aut_model``), recorded per build (``router_builds``): the ``profile=`` it was
     # handed and the ``MAXIM_LLM_PROFILE`` it saw. The operator's profile is in the env, as ``maxim config`` puts it.
     "aut_router": {"max_turns": 10, "aut_model": "orch-golden-aut", "record_builds": True, "env": OPERATOR_PROFILE_ENV},
-    # ... and the AUT's build raises (an unknown profile, say): the run falls back to the shared router.
+    # ... and the AUT's build raises (an unknown profile, say): the run refuses, AutRouterUnavailable (#1228, B).
     "aut_build_fails": {
         "max_turns": 10,
         "aut_model": AUT_BUILD_FAILS,
@@ -302,12 +302,31 @@ PROBE_ARMS: dict[str, dict[str, Any]] = {
     # handed the checkpoint on its ``observe_actions`` follow-up, proposes ``memory_recall`` (the Exp 63b smoke's
     # failure, 2026-11-03); the loop drops it (``unregistered_tool_proposed``) and requeues the follow-up, and the
     # retry finishes. The poll at its floor lands the checkpoint promptly; the idle threshold stays far off.
+    # #1228: the imagination arm's run (an embodied AUT, so its FearAgent, ExecAgent and imagination designer are all
+    # built) in dual-LLM mode (``aut_model``). ``served_by`` records which build's view answered each sorted call, and
+    # the test records which view each AUT-side consumer holds (``test_aut_llm_slots_1228.py``).
+    "aut_llm_slots": {
+        "max_turns": 10,
+        "aut_model": "orch-golden-aut",
+        "kwargs": {"entity_ref": "bodies/base_humanoid"},
+        "events": True,
+        "record_builds": True,
+        "shipped_inputs": ("components/bodies/base_humanoid.yaml", "reflexes/humanoid.yaml"),
+    },
     "agent_tool_after_checkpoint": {
         "max_turns": 10,
         "events": True,
         "env": {"MAXIM_STALL_FLOOR_S": "120", "MAXIM_SIM_STALL_CHECK_INTERVAL_S": "0.5"},
     },
 }
+# A probe arm that runs another arm's script (its narrator, manifest and finish) under its own settings.
+_SCRIPT_OF = {"aut_llm_slots": "imagination"}
+
+
+def _script(arm: str) -> str:
+    return _SCRIPT_OF.get(arm, arm)
+
+
 AGENT_TOOL = "memory_recall"  # the agent_tool_after_checkpoint arm's AUT tool, which the narrator does not have
 # The operator lines the held_finish arms feed, in order (``_hold_for_held_finish``).
 HELD_GUIDANCE = ("please also ask which tools it has", "and ask what it remembers")
@@ -419,6 +438,7 @@ class FakeRouter:
             "designer": [],
         }
         self.unsorted: list[str] = []
+        self.served_by: list[tuple[int, str | None]] = []  # (the answering build's call_serial, the role), in order
         self.prompts: dict[str, list[str]] = {role: [] for role in self.calls}  # raw, for RUN_SIDE only
         self._lock = threading.Lock()
         # Called with (role, call) before a sorted prompt is answered, on the calling thread: an arm's causal hold
@@ -518,7 +538,7 @@ class FakeRouter:
             return self._answer_stall_narrator(call)
         if self.arm == "agent_tool_after_checkpoint":
             return self._answer_agent_tool_narrator(call)
-        if self.arm in ("new_goal", "persistent_agent", "imagination"):
+        if _script(self.arm) in ("new_goal", "persistent_agent", "imagination"):
             return self._answer_one_probe_narrator(call)
         if self.arm in ("held_finish", "held_finish_twice", "held_finish_two_lines"):
             return self._answer_held_finish_narrator(call)
@@ -625,7 +645,7 @@ class FakeRouter:
         return {"summary": "golden roundup", "issues": ["none observed"], "recommendations": ["keep going"]}
 
     def _answer_manifest(self, call: dict[str, Any]) -> dict[str, Any]:
-        return {"entities": list(_MANIFEST_ENTITIES) if self.arm == "imagination" else []}
+        return {"entities": list(_MANIFEST_ENTITIES) if _script(self.arm) == "imagination" else []}
 
     def _answer_designer(self, call: dict[str, Any]) -> dict[str, Any]:
         return copy.deepcopy(_LANTERN)
@@ -648,6 +668,13 @@ class _RouterView:
         # What a real build serves: its ``profile=`` (the AUT's build is handed ``aut_model``, #1538), else the
         # ``MAXIM_LLM_PROFILE`` in force. ``report.run_provenance`` reads ``router.cfg.profile``.
         self.cfg = SimpleNamespace(profile=profile)
+
+    def generate_json(self, prompt: str, *args: Any, **kwargs: Any) -> dict[str, Any] | None:
+        """The shared router's answer, noting which build's view was asked (``served_by``, #1228)."""
+        role = FakeRouter.classify(prompt, kwargs.get("system_override"))
+        with self._router._lock:
+            self._router.served_by.append((self.call_serial, role))
+        return self._router.generate_json(prompt, *args, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._router, name)
@@ -1190,7 +1217,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
 
     if arm == "stall":
         router.hold = _hold_for_stall_arm
-    if arm in PROBE_ARMS:
+    if arm in PROBE_ARMS and _script(arm) == arm:  # an arm running another's script runs it unheld
         router.hold = _hold_for_held_finish
     if arm == "agent_tool_after_checkpoint":
         router.hold = _hold_for_agent_tool_arm
@@ -1212,7 +1239,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         finish_calls.append(dict(self.finish_context))  # the finish_context each finish() saw
         orig_finish(self)
         if (
-            arm in ("new_goal", "persistent_agent", "imagination")
+            _script(arm) in ("new_goal", "persistent_agent", "imagination")
             and self.finish_context.get("initiated_by") == "llm_finish_tool"
             and not any(b is self for b in cancelled_bridges)
         ):  # each run's narrator finish is followed by its /cancel, as in the narrator arm
@@ -1309,7 +1336,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         from maxim.simulation.stall_detector import StallDetector
 
         patches.append((StallDetector, "CLOCK", staticmethod(stall_clock)))
-    if arm == "imagination":
+    if _script(arm) == "imagination":
         from maxim.embodiment.component_registry import ComponentRegistry
         from maxim.imagination.trigger import ImaginationTrigger
 
@@ -1421,8 +1448,11 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
             trace["router_builds"] = build_profiles
         if arm == "new_goal":
             trace["post_sim_reads"] = post_sim_reads
-        if arm == "imagination":
+        if _script(arm) == "imagination":
             trace["imagination"] = imagination
+        if arm == "aut_llm_slots":
+            # Each answering view as its build label (``<build-1>`` the shared router, ``<build-2>`` the AUT's).
+            trace["served_by"] = [[f"<build-{builds.index(serial) + 1}>", role] for serial, role in router.served_by]
         if handle is not None:
             trace["handle"] = {
                 "before": handle_before,
