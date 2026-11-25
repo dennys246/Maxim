@@ -257,6 +257,9 @@ def _run(
     nac: Any = None,
     observations: dict[int, dict[str, Any]] | None = None,
     raise_on_log: str | None = None,
+    wake: Callable[[], bool] | None = None,
+    skip_fallback: bool = False,
+    action_sink: Any = None,
 ) -> SimpleNamespace:
     """Run the real loop for ``steps`` passes (slice 7a's driver, with the 7b collaborators passed in)."""
     import maxim.simulation.sim_logger as sim_logger
@@ -341,7 +344,10 @@ def _run(
 
     class _Adapter(NullSimulationAdapter):
         def has_carried_percept(self) -> bool:
-            return True  # wake every pass
+            return True if wake is None else wake()  # wake every pass, unless the test says when
+
+        def should_skip_fallback_proposal(self, proposal: Any) -> bool:
+            return skip_fallback and getattr(proposal, "reasoning", "") == "llm_fallback"
 
         def log(self, category: str, msg: str, data: dict | None = None) -> None:
             obs.adapter_logs.append((category, msg))
@@ -381,6 +387,7 @@ def _run(
         ("thought_gate", gate),
         ("on_event", on_event),
         ("protocol_registry", protocols),
+        ("action_sink", action_sink),
     ):
         if value is not None:
             kwargs[key] = value
@@ -644,12 +651,6 @@ SAL_1 = 0.3 * (1 / 5) + 0.3 * (1 / 4) + 0.4  # one section, one memory, novel: 0
 SAL_3 = 0.3 * (1 / 5) + 0.3 * (3 / 4) + 0.4  # one section, three memories: 0.685
 
 
-def _drop_pending(obs: Any) -> None:
-    """Drop the pending answer, as a dispatch would. Since #1743 an action-less answer is never installed, so for those
-    it is a no-op; it was the workaround for the wedge."""
-    obs.ctrl.pending_proposal = None
-
-
 def _cycle1(obs: Any) -> list[tuple[str, Any]]:
     return [(text, kw.get("salience")) for text, kw in obs.delib_updates if kw.get("cycle") == 1]
 
@@ -682,7 +683,6 @@ def test_cycle_1_salience_is_a_stale_value_from_an_earlier_pass(monkeypatch, tmp
         monkeypatch,
         tmp_path,
         inputs={0: "one", 2: "two"},
-        hooks={2: _drop_pending},
         worker=worker,
         pipeline=pipeline,
         steps=3,
@@ -700,7 +700,6 @@ def test_cycle_1_salience_is_this_passes_when_recomputed(monkeypatch, tmp_path):
         monkeypatch,
         tmp_path,
         inputs={0: "one", 2: "two"},
-        hooks={2: _drop_pending},
         worker=worker,
         pipeline=pipeline,
         steps=3,
@@ -751,6 +750,175 @@ def test_1743_a_declined_deliberation_turn_is_dropped_not_retried(monkeypatch, t
     assert "pending_user_input" not in obs.state.data and "pending_user_input_time" not in obs.state.data
 
 
+def _error_answer_spends_the_budget(obs: Any) -> None:
+    obs.ctrl.planning_retry_limit = 0  # the first planning failure exhausts
+
+
+@pytest.mark.parametrize(
+    "answers, raise_on_log, steps",
+    [
+        pytest.param([dict(error="model boom")], None, 40, id="ready-answer"),
+        # the sim log after cycle 2's intake raises: submit_tick's except swallows the intake's outcome
+        pytest.param([dict(ready=False), dict(error="model boom")], "multi-cycle deliberation yielded", 40, id="raise"),
+        # spent on the run's last pass: no next gate runs, so the body's return reads the latch
+        pytest.param([dict(error="model boom")], None, 1, id="last-pass"),
+    ],
+)
+def test_1743_a_budget_spent_in_the_deliberation_aborts_on_the_next_pass(
+    monkeypatch, tmp_path, answers, raise_on_log, steps
+):
+    """The deliberation's intake can spend the D13 budget (an error answer is a planning failure), after §2's break
+    check. On a quiet pass §2 never runs, so the gate reads the latch: the next pass aborts, it does not idle."""
+    import dataclasses
+
+    from maxim.runtime.loop_controller import PlanningLivenessExhausted
+
+    wakes: list[int] = []
+
+    def _wake() -> bool:
+        wakes.append(1)
+        return len(wakes) == 1  # only the first pass has anything to react to
+
+    proposals = [
+        dataclasses.replace(_proposal(ready=a.get("ready", True), reasoning="r"), error=a.get("error")) for a in answers
+    ]
+    with pytest.raises(PlanningLivenessExhausted):
+        _run(
+            monkeypatch,
+            tmp_path,
+            inputs={0: "one"},
+            hooks={0: _error_answer_spends_the_budget},
+            planning_liveness=True,
+            worker=_Worker(answers=proposals),
+            pipeline=_Pipeline(),
+            raise_on_log=raise_on_log,
+            wake=_wake,
+            steps=steps,
+        )
+    assert wakes == [1]  # the second pass's gate aborted before its idle check
+
+
+def test_1743_the_stall_counter_carries_through_the_deliberation(monkeypatch, tmp_path):
+    """A deliberation answer that timed out counts as a failed turn (#1185) and the count reaches the body: the
+    next sim-skipped fallback, also the deliberation's, is the second in a row."""
+    worker = _Worker(answers=[_proposal(reasoning="llm_timeout"), _proposal(reasoning="llm_fallback")])
+    obs = _run(
+        monkeypatch,
+        tmp_path,
+        inputs={0: "one", 2: "two"},
+        worker=worker,
+        pipeline=_Pipeline(),
+        skip_fallback=True,
+        steps=3,
+    )
+    assert ("EXEC", "DROPPED: fallback proposal (sim mode, #2)") in obs.adapter_logs
+
+
+def test_1743_the_deliberation_closes_its_inference_event(monkeypatch, tmp_path):
+    """The submit opens ``inference_start``; the deliberation's answer, through §2's intake, closes it."""
+    events: list[Any] = []
+    worker = _Worker(answers=[_proposal(tool=PROBE)])
+    _run(monkeypatch, tmp_path, inputs={0: "one"}, worker=worker, pipeline=_Pipeline(), on_event=events.append, steps=1)
+    assert [(e.kind, e.payload) for e in events if e.kind.startswith("inference")] == [
+        ("inference_start", {}),
+        ("inference_end", {"has_proposal": True}),
+    ]
+
+
+def test_1743_a_wait_that_brings_nothing_back_closes_the_inference_event(monkeypatch, tmp_path):
+    events: list[Any] = []
+    stop = threading.Event()
+    worker = _Worker(answers=[None], stop=stop)  # the run stops while the submit is in flight: the wait returns None
+    _run(
+        monkeypatch,
+        tmp_path,
+        inputs={0: "one"},
+        worker=worker,
+        pipeline=_Pipeline(),
+        on_event=events.append,
+        stop_event=stop,
+        steps=1,
+    )
+    assert [(e.kind, e.payload) for e in events if e.kind.startswith("inference")] == [
+        ("inference_start", {}),
+        ("inference_end", {"has_proposal": False}),
+    ]
+
+
+def test_1743_a_declined_ready_answer_does_not_say_ready_to_act(monkeypatch, tmp_path):
+    import maxim.simulation.sim_logger as sim_logger
+
+    ends: list[str] = []
+    monkeypatch.setattr(sim_logger, "sim_deliberation_end", lambda **kw: ends.append(kw["summary"]))
+    _run(monkeypatch, tmp_path, inputs={0: "one"}, worker=_Worker(answers=[_proposal()]), pipeline=_Pipeline(), steps=1)
+    _run(
+        monkeypatch,
+        tmp_path / "acts",
+        inputs={0: "one"},
+        worker=_Worker(answers=[_proposal(tool=PROBE)]),
+        pipeline=_Pipeline(),
+        steps=1,
+    )
+    assert ends == ["Declined (cycle 1)", "Ready to act (cycle 1)"]
+
+
+def test_1743_the_wait_resets_the_transport_streak_as_the_poll_does():
+    """§2's poll resets the planning transport-failure streak on ANY proposal; the deliberation's wait does too."""
+    from maxim.runtime.agent_loop import _wait_for_proposal
+
+    resets: list[int] = []
+    ctrl = SimpleNamespace(last_proposal_time=0.0, reset_planning_transport_failures=lambda: resets.append(1))
+    worker = SimpleNamespace(get_latest_proposal=lambda: _proposal())
+    assert _wait_for_proposal(worker, None, ctrl=ctrl) is not None
+    assert resets == [1] and ctrl.last_proposal_time > 0
+
+
+def test_the_blocked_submit_is_traced_in_sim_mode_only():
+    """§6's diagnostic, moved out of the loop's body verbatim (#1743's rule-T carry)."""
+    from maxim.runtime.loop_request import log_submit_blocked
+
+    logs: list[tuple[str, str]] = []
+    ctrl = SimpleNamespace(pending_proposal=_proposal(tool=PROBE))
+    sim = SimpleNamespace(is_sim_mode=True, log=lambda c, m: logs.append((c, m)))
+    log_submit_blocked(llm_worker=object(), ctrl=ctrl, cli_input="hello", sim=sim)
+    log_submit_blocked(llm_worker=object(), ctrl=ctrl, cli_input=None, sim=sim)
+    sim.is_sim_mode = False
+    log_submit_blocked(llm_worker=object(), ctrl=ctrl, cli_input="hello", sim=sim)
+    assert logs == [("PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={PROBE}, new cli_input=hello")]
+
+
+@pytest.mark.parametrize(
+    "deliberates, liveness, answer_tool, marked",
+    [
+        pytest.param(True, False, None, True, id="declined-deliberation"),
+        pytest.param(True, True, None, True, id="declined-deliberation-liveness"),  # dropped, not retried
+        pytest.param(False, False, None, True, id="section-2-no-action"),
+        pytest.param(False, True, None, False, id="section-2-liveness-retries"),  # the retry's answer ends the turn
+        pytest.param(True, False, PROBE, False, id="an-action"),
+    ],
+)
+def test_1743_a_turn_ending_with_no_action_records_the_noop_marker(
+    monkeypatch, tmp_path, deliberates, liveness, answer_tool, marked
+):
+    """The sim bridge settles on any record; a turn over with nothing done records ``DELIBERATION_NOOP`` (owner
+    decision 2026-11-24) so the bridge does not wait out its timeout. A retried turn is not over."""
+    from maxim.simulation.sinks import DELIBERATION_NOOP, RecordingSink
+
+    sink = RecordingSink()
+    _run(
+        monkeypatch,
+        tmp_path,
+        inputs={0: "one"},
+        worker=_Worker(answers=[_proposal(tool=answer_tool)]),
+        pipeline=_Pipeline() if deliberates else None,
+        planning_liveness=liveness,
+        action_sink=sink,
+        steps=2,
+    )
+    noops = [(a.tool_name, a.result_output) for a in sink.actions if a.tool_name == DELIBERATION_NOOP]
+    assert noops == ([(DELIBERATION_NOOP, "proposal_completed_without_action")] if marked else [])
+
+
 def test_1743_a_ready_answer_queues_its_next_actions(monkeypatch, tmp_path):
     """The deliberation's answers dropped their ``next_actions``; §2's intake queues them for ``multi_step``."""
     import dataclasses
@@ -768,7 +936,6 @@ def test_a_repeated_cycle_1_thought_is_not_shown_again(monkeypatch, tmp_path):
         monkeypatch,
         tmp_path,
         inputs={0: "one", 2: "two"},
-        hooks={2: _drop_pending},
         worker=worker,
         pipeline=_Pipeline(),
         steps=3,
@@ -821,13 +988,14 @@ def test_not_ready_runs_cycle_2_with_its_own_request_and_installs_its_answer(mon
 
 
 def test_not_ready_with_no_actionable_answer_idles(monkeypatch, tmp_path):
-    """Cycle 2's enrichment comes back empty: the deliberation stops with the action-less cycle-1 answer, so nothing
-    is installed and the IDLE line is logged."""
+    """Cycle 2's enrichment comes back empty: the deliberation stops with the action-less cycle-1 answer, which goes
+    to §2's intake and is dropped there (#1743; it used to come back as None, past the intake), so nothing is
+    installed."""
     worker = _Worker(answers=[_proposal(ready=False, reasoning="let me think more")])
     pipeline = _Pipeline([_enriched(1), None])
     obs = _run(monkeypatch, tmp_path, inputs={0: "hi"}, worker=worker, pipeline=pipeline, steps=1)
     assert obs.ctrl.pending_proposal is None and len(obs.worker.submits) == 1
-    assert ("DELIBERATION", "multi-cycle deliberation returned None (IDLE)") in obs.adapter_logs
+    assert ("DELIBERATION", "multi-cycle deliberation yielded proposal: tool=None") in obs.adapter_logs
 
 
 def test_the_deliberation_cap_override_reaches_the_cycles(monkeypatch, tmp_path):

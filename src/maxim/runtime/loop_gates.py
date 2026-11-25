@@ -119,6 +119,11 @@ def pre_tick_gate(
         log_agentic("agent_loop", "shutdown", {"reason": "shutdown_mode"})
         return GateOutcome.BREAK
 
+    # D13: a spent planning budget aborts the run wherever it was spent. §6's deliberation intake can spend it after
+    # §2's break check, and on an idle pass §2 never runs, so the latch, not one section's flag, decides (#1743).
+    if planning_liveness_on and ctrl.planning_exhausted:
+        return GateOutcome.EXHAUSTED
+
     # Configure Default Network for the operational mode (the operator's grant wins, #829; never empty, #963)
     ctrl.configure_dn_for_mode(operational_mode(executor, state))
 

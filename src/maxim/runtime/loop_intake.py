@@ -43,7 +43,9 @@ counter and pops ``state.data["machine_timeout_retries"]``, a state write the in
 **One intake since #1743.** Everything after the poll is ``accept_llm_proposal``, which §6's PFC deliberation
 (``loop_request._deliberate``) calls too: it used to install its answers on ``ctrl`` itself, so an action-less one
 (installed past every check here) blocked every later submit, and its ``next_actions`` were dropped. The split
-changed no line of the moved text except the one ``declined_is_failure`` gate (``accept_llm_proposal``'s docstring).
+changed no line of the moved text except the one ``declined_is_failure`` gate (``accept_llm_proposal``'s docstring)
+and the D13 comment naming the install sites, and added one statement at its end: a turn that ends with no action and
+no retry records the sim sink's no-op marker (``_record_declined_turn``).
 """
 
 from __future__ import annotations
@@ -286,6 +288,7 @@ def take_llm_proposal(
             pending_next_actions=pending_next_actions,
             _planning_liveness_on=_planning_liveness_on,
             _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
+            declined_is_failure=True,  # §2's rule: an action-less answer is a planning failure, retried
         )
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 
@@ -304,7 +307,7 @@ def accept_llm_proposal(
     pending_next_actions: list[dict[str, Any]],
     _planning_liveness_on: bool,
     _consecutive_llm_fallbacks: int,
-    declined_is_failure: bool = True,
+    declined_is_failure: bool,
 ) -> IntakeOutcome:
     """The ONE intake of a worker's answer (#1743): §2 calls it with what it polled, ``loop_request._deliberate``
     with each answer the PFC deliberation consumed outside §2's poll. A stale answer and a sim-skipped fallback are
@@ -315,7 +318,13 @@ def accept_llm_proposal(
     failure, retried boundedly (§2's rule, the default), or a turn deliberately declined, dropped with no retry (the
     deliberation path, owner decision 2026-11-24: actions per turn is a measured quantity, executor F3 on
     ``agent_loop._wait_for_proposal``). Either way it is never installed: an installed action-less proposal blocks
-    §6's ``pending_proposal is None`` guard and nothing ever clears it.
+    §6's ``pending_proposal is None`` guard and nothing ever clears it. It is required, so a caller states its policy.
+    No shipped loop runs planning liveness with a deliberation today (the narrator has no enrichment pipeline; the
+    AUT and the CLI have liveness off), so the False branch guards a future one; with liveness off both callers drop
+    the answer alike, and leave the pending user input for ``has_pending_llm_input``'s own 30 s expiry.
+
+    For the deliberation the stale rule bites in one case: when cycles 2+ stop early (a wait timed out), the answer
+    they return is an earlier cycle's, possibly older than ``_STALE_PROPOSAL_AGE_S``, and it is dropped, not run.
     """
     _planning_liveness_exhausted = False
     if new_proposal:
@@ -365,8 +374,8 @@ def accept_llm_proposal(
             # D13: installing an executable proposal resets the
             # planning-failure streak — enforced by the property
             # setter on LoopController, so every install site
-            # (including the multi-step and deliberation paths)
-            # recovers, not just this one.
+            # (including the multi-step path; the deliberation
+            # installs through here since #1743) recovers.
             ctrl.pending_proposal = new_proposal
             # Record surfaced-but-unused signal for learned tool index
             _bridge = getattr(executor, "_tool_pain_bridge", None)
@@ -437,7 +446,20 @@ def accept_llm_proposal(
                     exhausted_status="planning_failed",
                 ):
                     _planning_liveness_exhausted = True
+        if not (new_proposal.action or new_proposal.error or (_planning_liveness_on and declined_is_failure)):
+            _record_declined_turn(action_sink, new_proposal)  # not retried: the turn is over
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
+
+
+def _record_declined_turn(action_sink: Any, proposal: Any) -> None:
+    """A turn that ended with no action and no retry records the sink's no-op marker (``sinks.DELIBERATION_NOOP``),
+    so the sim bridge sees the AUT answered and settles instead of waiting out its response timeout; the bridge
+    counts it as ``noop_count``, never as an action, so ``timed_out`` and the action cap are unchanged. Built for
+    this in 0.8 (Stage 4, F2) and never called until #1743 (owner decision 2026-11-24). A sink without the
+    method (any ``ActionSink`` but ``RecordingSink``) or no sink: nothing."""
+    record_noop = getattr(action_sink, "record_noop", None)
+    if callable(record_noop):
+        record_noop(reason=_proposal_without_action_reason(proposal) or "proposal_without_action")
 
 
 def take_queued_next_action(*, ctrl: Any, pending_next_actions: list[dict[str, Any]]) -> None:

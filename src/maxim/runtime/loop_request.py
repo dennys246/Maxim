@@ -20,7 +20,9 @@ submission); this module holds what follows it, given a context (owner decision 
 - ``_deliberate``: after a submit whose section-1.2 PFC gate passed, cycles 2+ through the body's
   ``_run_deliberation_cycles``, or a cycle-1 ready answer used directly; either answer goes through §2's one intake,
   ``loop_intake.accept_llm_proposal`` (#1743: it used to be installed on ``ctrl`` past §2's checks, so an action-less
-  one blocked every later submit), with a declined turn dropped, not retried (owner decision 2026-11-24).
+  one blocked every later submit, and the cycles' action-less exits returned None, skipping the intake), with a
+  declined turn dropped, not retried (owner decision 2026-11-24). A wait that brings nothing back closes the
+  submit's ``inference_start`` with ``inference_end`` (``has_proposal`` False).
 - ``log_submit_blocked``: the sim trace of a submit a pending proposal blocks, from ahead of the body's guard.
 
 A raise anywhere in the ``try`` is logged (WARNING plus a DEBUG traceback) and the pass goes on, as inline. By rule (a)
@@ -39,9 +41,12 @@ cycles 2+ inside it and cycle 1 in ``_deliberate`` read the same one function) a
 
 **What it returns.** ``SubmitCarry``: the two body locals §6 rebinds that a LATER pass reads, ``last_surfaced_tools``
 (§2's ``record_surfaced_but_unused``) and ``pending_prefetch`` (None once consumed; the body reassigns it only on a pass
-with new input), and since #1743 the deliberation intake's two, as §2 returns them: ``fallbacks`` (the stall counter)
-and ``exhausted`` (the body's flag is False whenever §6 runs, so it is rebound, not ORed; its next §2 check breaks). They are returned even after a raise, carrying whatever the ``try`` had rebound by then, exactly as the
-inline locals did. That both live as body locals apart from ``ctrl``'s copies is pinned as-is (#1744).
+with new input), and since #1743 the stall counter ``consecutive_llm_fallbacks`` after the deliberation's intake.
+They are returned even after a raise, carrying whatever the ``try`` had rebound by then, exactly as the inline locals
+did: for the counter that is its value before the submit, which on a raise after the intake ran misnumbers only the
+next fallback's log line (``_LLM_STALL_THRESHOLD`` is 1). The intake's ``exhausted`` is not carried: a spent budget
+latches ``ctrl.planning_exhausted``, which ``loop_gates.pre_tick_gate`` reads on the next pass, so it aborts even
+after a raise and on an idle pass. That both live as body locals apart from ``ctrl``'s copies is pinned as-is (#1744).
 
 **Arguments.** Explicit keywords, never the loop's ``LoopRun`` (rule (d)), each the loop's own local named as the body
 names it (``_loop_nac``, ``_tool_overlay``, ...), so the moved text is byte for byte the inline text, re-indented. One
@@ -96,13 +101,12 @@ _WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to fa
 
 @dataclass(frozen=True)
 class SubmitCarry:
-    """What one §6 submit hands back to the loop's body: the two body locals §6 rebinds that a LATER pass reads
+    """What one §6 submit hands back to the loop's body: the three body locals §6 rebinds that a LATER pass reads
     (module docstring, "What it returns"). Runtime-ephemeral, as ``SubmitGate``."""
 
     last_surfaced_tools: list[str]  # §2's ``record_surfaced_but_unused`` reads it on the next pass (#1744)
     pending_prefetch: Any  # None once a submit consumed it; the body reassigns it only on a pass with new input
-    fallbacks: int  # #1743: the stall counter (``_consecutive_llm_fallbacks``) after the deliberation's intake
-    exhausted: bool  # #1743: that intake spent the planning retry budget (the body's next §2 check breaks)
+    consecutive_llm_fallbacks: int  # #1743: the stall counter after the deliberation's intake (module docstring)
 
 
 def submit_tick(
@@ -149,7 +153,6 @@ def submit_tick(
     last_surfaced_tools: list[str],
     pending_prefetch: Any,
     action_sink: Any,
-    pending_next_actions: list[dict[str, Any]],
     _consecutive_llm_fallbacks: int,
 ) -> SubmitCarry:
     """§6, the whole submit (module docstring): the gate, then the request and the deliberation; a raise anywhere
@@ -285,7 +288,7 @@ def submit_tick(
                 action_sink=action_sink,
                 on_event=on_event,
                 last_surfaced_tools=last_surfaced_tools,
-                pending_next_actions=pending_next_actions,
+                pending_next_actions=ctrl.pending_next_actions,  # the body's ``pending_next_actions`` is this list
                 _planning_liveness_on=_planning_liveness_on,
                 _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
             )
@@ -295,7 +298,11 @@ def submit_tick(
 
         logger.warning(f"Failed to submit context to LLM: {type(e).__name__}: {e}")
         logger.debug(f"Full traceback:\n{traceback.format_exc()}")
-    return SubmitCarry(last_surfaced_tools, pending_prefetch, _intake.consecutive_llm_fallbacks, _intake.exhausted)
+    return SubmitCarry(
+        last_surfaced_tools=last_surfaced_tools,
+        pending_prefetch=pending_prefetch,
+        consecutive_llm_fallbacks=_intake.consecutive_llm_fallbacks,
+    )
 
 
 def log_submit_blocked(*, llm_worker: Any, ctrl: Any, cli_input: Any, sim: Any) -> None:
@@ -754,7 +761,7 @@ def _deliberate(
                     max_cycles=_max_cyc,
                     ctrl=ctrl,
                 )
-                if _delib is not None:
+                if _delib is not None:  # every answer it consumed since #1743; one with no action, the intake drops
                     _outcome = _accept(_delib)
                     sim.log(
                         "DELIBERATION",
@@ -788,9 +795,17 @@ def _deliberate(
                 # rather than silently fabricated; wire a
                 # real value if this log is ever relied on.
                 sim_contemplation(gate_passed=True, refined=False, score=0.0)
-                sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
+                _taken = ctrl.pending_proposal is _first  # the intake's verdict: installed, or declined/dropped
+                sim_deliberation_end(
+                    cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)" if _taken else "Declined (cycle 1)"
+                )
                 if thought_gate is not None:
                     thought_gate.reset_refractory(step_num)
+        elif callable(on_event):  # nothing came back (a timeout or a stop): close the submit's inference_start
+            try:
+                on_event(StreamEvent("inference_end", {"has_proposal": False}))
+            except Exception:
+                log_swallowed_exception(site="on_event:inference_end")
     return _outcome
 
 

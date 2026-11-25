@@ -368,8 +368,9 @@ def _wait_for_proposal(
             return None
         proposal = llm_worker.get_latest_proposal()
         if proposal is not None:
-            if ctrl is not None:
+            if ctrl is not None:  # as §2's poll does on ANY proposal (#1743: one intake, both halves)
                 ctrl.last_proposal_time = time.time()
+                ctrl.reset_planning_transport_failures()
             return proposal
         time.sleep(0.1)
     logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
@@ -684,7 +685,7 @@ def _run_deliberation_cycles(
             )
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
-            return proposal if proposal.action else None
+            return proposal  # one with no action is a declined turn: the intake drops it (#1743)
 
         # 8. Feed reasoning back for next enrichment
         enrich_text = reasoning
@@ -703,10 +704,7 @@ def _run_deliberation_cycles(
     if thought_gate is not None:
         thought_gate.reset_refractory(step_num)
 
-    # Return last proposal if it has an action, otherwise None (IDLE)
-    if last_proposal is not None and last_proposal.action:
-        return last_proposal
-    return None
+    return last_proposal  # as above: the intake (loop_intake.accept_llm_proposal) drops one with no action (#1743)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2064,11 +2062,10 @@ def _run_agentic_loop_body(
                     last_surfaced_tools=last_surfaced_tools,
                     pending_prefetch=pending_prefetch,
                     action_sink=action_sink,
-                    pending_next_actions=pending_next_actions,
                     _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
                 )
                 last_surfaced_tools, pending_prefetch = _carry.last_surfaced_tools, _carry.pending_prefetch
-                _consecutive_llm_fallbacks, _planning_liveness_exhausted = _carry.fallbacks, _carry.exhausted
+                _consecutive_llm_fallbacks = _carry.consecutive_llm_fallbacks  # #1743; its exhaustion: the gate's latch
 
         # ─────────────────────────────────────────────────────────────────
         # 7. CALL STEP CALLBACK
@@ -2108,7 +2105,7 @@ def _run_agentic_loop_body(
     # D13 planning liveness: RETURNED, and raised by run_agentic_loop AFTER its bio_session ends (#1438 PR 0), so
     # state persistence and the bio session end ran, but the sim still aborts loudly (the orchestrator converts this
     # into a typed finish report) instead of having idled forever on a silently-dropped planning turn.
-    return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted else None
+    return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted or ctrl.planning_exhausted else None
 
 
 def _planning_liveness_abort(ctrl: Any) -> Exception:

@@ -583,7 +583,10 @@ class TestLoopWiringPins:
         from maxim.runtime import agent_loop
 
         # The body returns the abort its module-level builder makes (#1438 PR 0's mypy fold), never raises it.
-        assert "return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted else None" in loop_src
+        assert (  # #1743: the latch too, for a budget spent on the run's last pass
+            "return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted or ctrl.planning_exhausted else None"
+            in loop_src
+        )
         assert "raise PlanningLivenessExhausted(" not in loop_src
         assert "return PlanningLivenessExhausted(" in inspect.getsource(agent_loop._planning_liveness_abort)
         wrapper = ast.parse(textwrap.dedent(inspect.getsource(agent_loop.run_agentic_loop))).body[0]
