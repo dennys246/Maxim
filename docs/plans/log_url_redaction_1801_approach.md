@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v19 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v20 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -90,7 +90,8 @@
 >       accepts: "userinfo containing whitespace leaks its tail when a part exceeds its bound: form 1 user > 64, password before the whitespace > 256, or after it > 256; form 2 user before or after the whitespace > 64, or password > 256; form 3 either side > 64 characters"
 >       why: "a bounded regex is linear; an unbounded one is quadratic on adversarial lines inside the logging path; httpx percent-encodes userinfo, so real transport errors never carry such text"
 >       class: fail-open residual, accepted
->       pinned_by: "one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6)"
+>       pinned_by: "one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6). Each pin plants a distinct marker in EVERY part and compares case-insensitively, since past a bound only part
+        of a secret leaks and `url_origin` lowercases a host (AA4)"
 >     - id: E1801-2
 >       accepts: "prose after a URL that contains `user:…@` (or `host:port … @`) is erased to `<url>`"
 >       why: "fail-closed: no leak and no wrong host; Maxim's own log formats never put a URL next to an `@` (0 grep hits)"
@@ -104,6 +105,13 @@
 >   gone. The author re-verified the three-form regex on the scratch patch: 104/104, 3.10 compiles, linear in
 >   every family (256k characters in at most 218 ms).
 >   - A delta round 19 is owed on Z1–Z6 only.
+> - **Round 19 (delta, a different reader; 104/104 on 3.10.19 and 3.12):** 1 DO-NOT-BUILD, 2 SHOULD-FIX and 2 NITs,
+>   folded and tagged AA1–AA5.
+>   - AA1 (DO-NOT-BUILD, FAIL-OPEN): Z2 was a REGRESSION. Excluding `\` from the plain userinfo leaked a
+>     JSON-escaped quote in a password (`https://u:p\"SECRET@h/p`), which today's main reduces. The fold
+>     (a conditional group) was verified by the author on the scratch patch: 104/104, 0 leaks across every case in
+>     this note, 3.10 compiles, at most 179 ms at 256k characters.
+>   - A delta round 20 is owed on AA1–AA5 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -183,7 +191,10 @@ written later.
         deadlock against a thread part-way through importing numpy that logs (X5; W4). While numpy is part-way
         imported it is in `sys.modules` with `__spec__._initializing` True and no `sctypeDict`. In that case, or if
         the build raises ANY exception (`AttributeError`, a `TypeError` from `np.dtype`, …; Z5), the set is empty and NOT cached, logged once in the Stage-1 form, so the
-        record is proxied (safe) rather than lost to `handleError` (Y5). Built from numpy's own scalar
+        record is proxied (safe) rather than lost to `handleError` (Y5). The log is ONE-SHOT: a module flag is set
+        BEFORE logging, because `log_swallowed_exception`'s own record is proxied too, and an uncached failed build
+        would otherwise rebuild and re-log on every record until a swallowed `RecursionError`. A non-transient
+        failure (anything but `_initializing`) is cached as empty (AA5). Built from numpy's own scalar
         types (`np.sctypeDict` values whose `np.dtype(t).kind` is one of `b i u f c`, a non-empty kind), so a subclass
         or a fake class setting `__module__ = "numpy"` is proxied (V4); or
         `type(a) is str and len(a) == 1`. `np.str_`, `np.bytes_` and every ndarray are proxied: `"%.15s" %
@@ -237,7 +248,11 @@ written later.
 - **The chain check is behavioural (R4).** At the end of `configure_logging` and on each `_LogBuffer` install:
   build a record with a credential URL through the current factory and check that it comes out reduced. On a
   failure, re-install on top and log one WARNING; do not raise.
-- **Family 2:** `sim_log` passes `message` and `data` through `url_scrubbed` once, before `_dispatch_to_sinks`. It
+- **Family 2:** `sim_log` passes `message` and `data` through `url_scrubbed` once, before `_dispatch_to_sinks` AND
+  before `_bridge_to_log_file`. Since #1775 (on main), `sim_log` also mirrors every record into `MAXIM_LOG_FILE`
+  through `_sim_bridge_logger` with `extra={"data": …}` (reply subsystems by shape only). That fifth destination is
+  reduced twice: by `sim_log`'s own pass, and by `StructuredFormatter`'s `data` pass (R1). A test asserts the bridge
+  record is reduced with each pass deleted in turn. It
   recurses and stringifies leaves such as an exception object in `data` (R8).
   - The `"://"`/`r":\/\/"` prefilter (a raw string: the non-raw form raises a SyntaxWarning on 3.12+, Nc) lives
     inside `redact_urls` itself, so `url_scrubbed` gets it on every string:
@@ -309,9 +324,9 @@ written later.
         r"(?:[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's branch, unchanged)
         r"|(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?:\\?/){1,2}|\\{1,2}))(?P=sep))"
         r"(?:(?P<wsui>[^/@:]{0,64}:\S{0,256}\s[\s\S]{0,256}@"  # form 1: whitespace in the password
-        r"|[^\s/@:\\]{0,64}\s[^/@:\\]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
-        r"|[^/@:\\]{0,64}\s[^/@:\\]{0,64}@)"  # form 3: colon-less userinfo with whitespace
-        r"|[^\s/@\\]*@)?"  # plain userinfo, no backslash
+        r"|[^\s/@:]{0,64}\s[^/@:]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
+        r"|[^/@:]{0,64}\s[^/@:]{0,64}@)"  # form 3: colon-less userinfo with whitespace
+        r"|(?:(?(sep)[^\s/@\\]|[^\s/@]))*@)?"  # plain userinfo; no backslash only after a JSON/Windows separator
         r"[^\s'\"<>]+"
     )
     ```
@@ -333,9 +348,13 @@ written later.
       - (Z1) form 2's password runs to the last `@` within 256 (`https://us er:p@ss"x@h/p`), and its user part is
         bounded on both sides of the whitespace (it was unbounded before it);
       - (Z1) form 3, NEW: a colon-less userinfo with whitespace (`https://tok en@h/p`, which passed raw);
-      - (Z2) the plain userinfo excludes `\` (`[^\s/@\\]*@`). Spanning a backslash made `'https:\\"'*n` quadratic
-        (3.6 s at 64k characters); excluding it makes the scan 218 ms at 256k. `https://D\u:pw@h` and
-        `https://to"k@h/p` still reduce to the origin.
+      - (Z2, AA1) the plain userinfo excludes `\` ONLY after branch 2's JSON or Windows separator: the conditional
+        `(?(sep)[^\s/@\\]|[^\s/@])`. Spanning a backslash there made `'https:\\"'*n` quadratic (3.6 s at 64k);
+        excluding it everywhere leaked `https://u:p\"SECRET@h/p`, `https://D\u:p"SECRET@h/p`,
+        `https://a\b:p'SECRET@h` and `https://u:p\<SECRET@h`, which today's main reduces to `https://h` (AA1).
+        With the conditional, all four reduce to `https://h` and the quadratic family takes 179 ms at 256k;
+      - (AA2) forms 2 and 3 allow `\` in their user parts: `https://D\u s:SECRET@h`, `https://u s\x:SECRET@h` and
+        `https://D\u SECRET@h` leaked within bounds. The earlier "FIXED by forms 1 and 3" claim was false for them.
       Past each form's bounds a tail leaks: accepted as owner exception E1801-1, one test per bound (Z6). `_reduce` emits `<url>` when it matched (Na). The other alternative is today's
       quote-tolerant `[^\s/@]*@`.
     - Verified on the scratch patch (`scratchpad/regex1801/regex_candidate.patch`): every Y1–Y3 case, `redis://:PW
@@ -346,7 +365,7 @@ written later.
     - Accepted over-match (fail-closed, X4, E1801-2): `https://h:8080 failed, mail bob@ex.com` and `see https://a.com
       and user:x@y` become `<url>`. `\s` matches a newline between the password and the `@`, so the over-match can
       span line breaks: `http://h:8100/x\nbob@ex.com` and `GET https://h failed\nmail bob@ex.com` become `<url>`. At
-      most 64 + 256 + 256 characters, plus the following token, are lost (Z4; the earlier "about 130" was wrong:
+      most 579 characters (64 + 1 + 256 + 1 + 256 + 1), plus the following token, are lost (Z4, AA4; the earlier "about 130" was wrong:
       495 characters were erased in a probe).
       Tests pin all three.
     - A form branch 2 matches but `url_origin` cannot parse reduces to `<url>` (fail-closed): `x https:/u:PW@h/p`
@@ -419,7 +438,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     `operator.methodcaller` with a split-family literal name WHATEVER their object (`getattr(str, "partition")(str(e),
     "@")[0]` evaded a tainted-object test; 0 such uses in src/maxim, so no flood, Y4), on `getattr` with a non-literal
     name over tainted text, and on ANY call whose callee is itself a call or a subscript (`getattr(...)(…)`,
-    `d[k](…)`) when it takes tainted text (Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` evaded; flagging every
+    `d[k](…)`), a NAME assigned in the function from a call, subscript or `getattr` (`f = getattr(str, …); f(str(e),
+    "@")`), or a `.__call__` attribute, when it takes tainted text (AA3; 39 call/subscript callees in src/maxim, 0 with
+    tainted text) (Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` evaded; flagging every
     non-literal `getattr` would hit 78 sites), and `functools.partial` over one, when the text is
     tainted; and on `re` reached through an import alias or `from re import …`. It resolves import aliases for
     `textwrap`, `itertools`, `collections`, `reprlib`, `operator` and `string` the same way;
@@ -516,6 +537,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- AA1: the four quote/backslash cases reduce to `https://h`, and `'https:\\"'*n` stays linear. AA2: the three
+  backslash-in-user cases reduce. AA3: the lint fails on a `getattr`-bound name and on `.__call__`. AA5: a failing
+  numpy build logs once, and a stream of records makes no nested build (a `RecursionError` sentinel).
 - Z1: `https://u:p\r\nw@h/p`, `https://u\ns:p w@h/p`, `https://u:a b\nc@h/p`, `https://us er:p@ss"x@h/p`,
   `https://tok en@h/p` and `https://D\u:p w@h/x` reduce to `<url>`. Z2: `'https:\\"'*n` stays linear (a timing bound
   in the test). Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` fails the lint. Z5: a `TypeError` in the numpy
