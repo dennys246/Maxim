@@ -1012,3 +1012,22 @@ class TestWait:
         with pytest.raises(SystemExit) as exc:
             mod.main(["7", "--wait", flag, "-1"])
         assert exc.value.code == 2
+
+    def test_a_transient_pin_read_error_keeps_waiting(self, monkeypatch):
+        """Delta review: one failed read of the base pin is not 'unpinned for good'."""
+        pin_error = {
+            **self._running(),
+            "suite_app_id": None,
+            "fetch_errors": ("could not read scripts/repo_settings_expected.json on main (502)",),
+        }
+        mod = self._snapshots(monkeypatch, [pin_error, self._running(), self._surfaces()])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 2
+
+    def test_an_absence_that_clears_and_returns_gets_a_fresh_grace_window(self, monkeypatch):
+        absent = self._surfaces(checks=[])
+        snapshots = [absent, absent, self._running(), absent, absent, absent, absent, absent]
+        mod = self._snapshots(monkeypatch, snapshots)
+        (_, result), sleeps = self._wait(mod, grace_s=25)
+        # Without the reset the second absence would inherit t=0 and end at the 4th read.
+        assert result.exit_code == BLOCKED and len(sleeps) >= 6

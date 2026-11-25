@@ -645,7 +645,11 @@ _WAIT_MAX_CONSECUTIVE_ERRORS = 3
 def still_waiting(result: Readiness, *, absence_is_final: bool = True) -> bool:
     """True while a --wait should keep polling: something is in flight and nothing has failed."""
     codes = {f.code for f in result.findings}
-    if codes & (_FAIL_FAST | _NEVER_CLEARS):
+    if codes & _FAIL_FAST:
+        return False
+    # Unpinned is final only when the settings file was READ and lacks the pin; a failed read of
+    # it (surface-unverified) is transient, so keep polling (delta review, 2026-11-25).
+    if codes & _NEVER_CLEARS and "surface-unverified" not in codes:
         return False
     if not absence_is_final and codes & _ABSENCES:
         return True
