@@ -36,7 +36,7 @@
     {
       "file": "src/maxim/doctor/checks.py",
       "qualname": "check_resolved_config",
-      "lines": 249
+      "lines": 227
     },
     {
       "file": "src/maxim/embodied_runtime/agentic_runtime.py",
@@ -146,7 +146,7 @@
     {
       "file": "src/maxim/runtime/lane_backends.py",
       "qualname": "_maybe_auto_spawn_server",
-      "lines": 205
+      "lines": 201
     },
     {
       "file": "src/maxim/runtime/leader_proxy.py",
@@ -387,6 +387,7 @@
     "LLMWorker._process_request tightened 252 -> 231 on 2026-11-17 (#1689, rule T): the pre-built JSON \"direct answer\" branch and its silent swallow were deleted with the pre-model short-question shortcut.",
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
+    "api.py::run 201 -> 186 (entry removed: under the threshold) and _maybe_auto_spawn_server 205 -> 201 on 2026-11-20 (#1315 item 10a merged with main, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out. build_primary_router stays under the threshold: its first step is lane_backends._router_build_preflight (the offline engage, then #1610's process services and _require_valid_user_profiles). check_resolved_config walks config_loader.SETTABLE_FIELDS and its role row is doctor/checks.py::_role_row.",
     "#1519 fold (2026-11-21, rule T, no exemption): _run_agentic_loop_body 2140 -> 2128 and _run_deliberation_cycles 235 -> 227: both THOUGHT writes into working memory moved to agent_loop._add_deliberation_thought, paying for the required provenance= keyword WorkingMemorySet.add now takes; then 227 -> 224 (delta round): the thoughts reader became one WMEntry.prompt_text call. Delta 2: _run_agentic_loop_body 2128 -> 2126, the submit's triggering input and its source built by agent_loop._triggering in one splat.",
     "#1519 delta 4 (2026-11-21, rule T, no exemption): record_outcome 392 -> 385 (the recent-outcome append and trim to tool_dispatch._append_recent_outcome, paying for the untrusted_output keyword it records); execute_and_learn 342 -> 336 (the follow-up type and result text to tool_dispatch._followup_type_and_text, paying for passing untrusted_output). Delta 5: execute_and_learn 336 -> 328 (the error branch's audit entry to tool_dispatch._audit_execution_error, paying for the now-required untrusted_output on its exception booking). Suite fold (2026-11-22): the follow-up type returns to execute_and_learn (lint_loop_mode_reads rule E: its sink reads the one mode the tick read), so _followup_type_and_text becomes tool_dispatch._followup_text_for (result text only); execute_and_learn stays at 328, paid for by the think check moving into tool_dispatch._reset_deliberation.",
     "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",

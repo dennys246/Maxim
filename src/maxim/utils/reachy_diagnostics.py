@@ -201,6 +201,14 @@ def diagnose_reachy(host: str) -> int:
 
 def main() -> int:
     """Main entry point"""
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first, before any subprocess or socket (#1315 item 10a)
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(
         description="Diagnose Reachy Mini connection issues",
         formatter_class=argparse.RawDescriptionHelpFormatter,
