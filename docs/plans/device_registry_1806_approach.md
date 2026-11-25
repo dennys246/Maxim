@@ -1,11 +1,15 @@
-# Device registry (#1806): approach note, DRAFT v3
+# Device registry (#1806): approach note, DRAFT v5
 
-Status: DRAFT v3, 2026-11-25. Mirrors issue #1806.
+Status: DRAFT v5, 2026-11-25. Mirrors issue #1806.
 
 **Review history.**
 - **Round 1, on DRAFT v1.** Four lenses: [adversarial](reviews/1806/adversarial.md), [safety & lifecycle](reviews/1806/safety_lifecycle.md), [architecture](reviews/1806/architecture.md) and [wire](reviews/1806/wire.md). All four returned DO-NOT-BUILD on one root cause: the identity pin rode a free-form config key and a separate REST probe.
 - **Delta round 1, on DRAFT v2 at f0369379.** Fresh readers: [adversarial](reviews/1806/delta1_adversarial.md), [safety](reviews/1806/delta1_safety_lifecycle.md), [architecture](reviews/1806/delta1_architecture.md) and [wire](reviews/1806/delta1_wire.md). **None returned DO-NOT-BUILD.** Every lens found v2 had closed round 1's DO-NOT-BUILDs. Almost every new finding fell in an already-covered class (converging), but several fail open, so the stop rule was not met.
-- **v3 folds every delta-round-1 finding** (§11). A **delta round 2 is owed**, scoped to the fail-open folds listed in §11.
+- **Delta round 2, on DRAFT v3 at 8540cf19:** [adversarial](reviews/1806/delta2_adversarial.md), [safety](reviews/1806/delta2_safety_lifecycle.md), [architecture](reviews/1806/delta2_architecture.md), [wire](reviews/1806/delta2_wire.md). No lens returned DO-NOT-BUILD, and **every finding fell in an already-covered class** (converging). The remaining fail-open items are guard mechanics: lints that cannot match, proxy resolution, the write-deny seam, unpinned-selection paths, the re-exec, and media-ownership edge cases.
+- **v4 folds every delta-round-2 finding** (§12).
+- **Delta round 3, on DRAFT v4** (staged on 0630487a): [adversarial](reviews/1806/delta3_adversarial.md), [safety](reviews/1806/delta3_safety_lifecycle.md), [architecture](reviews/1806/delta3_architecture.md), [wire](reviews/1806/delta3_wire.md). No lens returned DO-NOT-BUILD, and every finding was in a covered class. The remaining fail-open items are confined to §4.3's media mechanics, the lazy-attribute lint, and selection/phasing.
+- **v5 folds them** (§13), including an owner-approved simplification. The **pinned-registry rule** replaces several path-by-path rules, and `--device`, its re-exec, `--unpinned` and the pin refusal ship together in PR 1. **Delta round 4 is owed**, scoped to §13's fail-open folds.
+- **Spun out as #1811 (security):** the per-mode filesystem policy (`check_write_permission`) has no production caller. v4's PR 0 adds the control-plane deny and the `edit_file` approval fix on the same seam. Wiring the whole policy needs its own design pass.
 
 Owner decisions: D1–D13 were taken on 2026-11-25. The re-asks raised in the delta round were taken the same day: D2″ rides `primary:`, and D12′ leaves `run_device` in `console/`. D14 was taken the same day: deny agent file-tool writes to the whole control-plane set in every mode, in PR 0 (§9).
 
@@ -61,6 +65,7 @@ maxim device repin <name> [<host>]  # operator-confirmed identity change, e.g. a
 maxim device check [<name>]         # layered diagnosis, never actuates
 maxim connect <name>                # resolve + verify + refresh the cache + make it primary
 maxim --device <name> ...           # strict: an exact entry name, or a refusal          [experimental]
+maxim ... --unpinned                # explicit grant to run a non-pinned resolution in a pinned registry (§3.1)
 maxim embody <name> [--dry-run] [--unpinned]   # preflight + launch embodied (§3a)    [experimental]
 ```
 
@@ -68,15 +73,26 @@ maxim embody <name> [--dry-run] [--unpinned]   # preflight + launch embodied (§
   - `--robot` is an explicit alias of `--robot-name`, with today's behaviour (D3′). Defining it explicitly makes `--rob`/`--robo` ambiguous abbreviations, which is documented (wire N7).
   - `--robot-name`'s argparse default becomes `None`. `MAXIM_ROBOT_NAME` is read at resolution time, not by argparse, so a bare `maxim` with that variable set no longer enters the robot runtime (wire F4).
 - **The quick-start gate reads parsed, explicit flags.** It checks `args.device`, an explicit `--robot`/`--robot-name`, `--mode` and the `embody` subcommand. It never reads a resolved primary or environment variables. The gate's test calls the real `cli.py` gate.
-- **Selection precedence** applies only once a robot run is requested:
+- **Selection precedence** (v4; wire W2-2) applies only once a robot run is requested. **Typed flags always beat environment variables.**
   1. `--device <name>`
-  2. `MAXIM_DEVICE`
-  3. legacy `--robot`/`--robot-name`, which keep today's matching and set the daemon name
-  4. a single entry, or the `primary:` entry
+  2. legacy typed `--robot` / `--robot-name` (today's matching: entry id or daemon name)
+  3. `MAXIM_DEVICE`
+  4. legacy `MAXIM_ROBOT_NAME`
+  5. no name: the single entry, or the `primary: true` entry
 
-  Steps 1 and 2 are **explicit names**: they must match an entry exactly, or the run is refused. Only step 4 falls back to `primary:`. `--device` together with a conflicting `--robot-name` is refused (wire N5). The plan block and the startup log name which source chose the device (adversarial N12).
+  Steps 1 and 3 are **explicit names**: they match an entry exactly, or the run is refused. `--device` given together with **any** typed `--robot`/`--robot-name` is refused, whatever the values; that is the whole definition of "conflict". An environment variable outranked by a typed flag is ignored, and the startup log says so. The plan block and the startup log name the source that chose the device (adversarial N12).
+- **The pinned-registry rule** (v5, owner-approved simplification; replaces v4's path-by-path rules; wire W3-2, W3-3, adversarial N3, W2-7). It is one rule, enforced in the one resolver:
+  - **In a registry that holds any pinned entry**, a resolution that does not land on a pinned entry is **refused unless `--unpinned` is typed**. That covers no entry, an unpinned entry, a legacy name that matches nothing (today that dials `<name>.local`), and no name with no `primary:`. The refusal exits non-zero (2). Its hint reads: "`<what>` is not a pinned entry, and this registry pins robots. Run it anyway with `--unpinned`, or pin it with `maxim device add` / `maxim device repin`."
+  - **In a registry with no pinned entry**, including no robots.yaml at all, every legacy flow is unchanged, including the headless fallback. Users meet the rule only after they opt into pinning, and pinning arrives in PR 1.
+  - Step 2's "today's matching" is written out: an exact entry id, else an entry whose `config.robot_name` equals the name, else (in an unpinned registry only) today's fallback to the primary.
+- **Where a run's daemon name comes from** (wire W3-5). For a resolved entry it is the entry's `config.robot_name` if set, else the entry id. It never comes from a typed name that fell back to another entry. A child re-exec'd with `--device <id>` therefore derives the **same** daemon name from the same entry.
 - **`robot_id` and `robot_name` are separated end to end.** The CLI passes `Maxim(robot_id=<entry id>, robot_name=<daemon name>)` (architecture R2).
-- **Re-exec.** `reexec_with_mode` re-execs with `--device <resolved entry id>` alone, never `--robot-name`. The child re-resolves that exact entry and re-verifies it, so a `maxim connect` run in the meantime cannot switch the robot (safety S7, wire N5). The test is "a run-mode switch keeps the device".
+- **Re-exec repeats the parent's choice** (v4; wire W2-3, W2-4; safety S7):
+  - If the parent resolved an entry, the child gets `--device <resolved entry id>`, plus `--unpinned` if the parent **typed** it. "Granted" means typed. A legacy parent in an unpinned registry needed no grant, and neither does its child, because the rule does not apply there (wire W3-6).
+  - If no entry was resolved, the child gets the parent's **typed** `--robot-name` only when one was typed.
+  - Never an environment-derived value, and never `--robot-name None`.
+  - The child re-resolves and re-verifies, so a `maxim connect` run in the meantime cannot switch the robot.
+  - **Ordering** (v5; wire W3-1, W3-4). PR 0 ships only the legacy fixes: explicit `--robot`, `--robot-name` default `None`, the gate rewrite, and a re-exec that omits `None`, all in one commit. **`--device`, its re-exec rule, `--unpinned` and the pinned-registry refusal ship together in PR 1**, so no build has `--device` without its re-exec, or a refusal without its escape. Test rows cover: a `--device` parent keeps the device, `--unpinned` is carried, a typed name with no entry, no entry without a typed name, env-only, and the pinned-registry refusal.
 - **Help text and docs.** `maxim connect` (devices) is distinct from `maxim peer connect`, and the help says so.
 
 ### 3a. `maxim embody <name>`
@@ -89,14 +105,21 @@ maxim embody <name> [--dry-run] [--unpinned]   # preflight + launch embodied (§
 3. **Plan block.** It shows: the device and the source that selected it, the verified IPv4, `hardware_id` (or **UNPINNED**), the body ref, the run mode, the operational mode and its source (typed flag, or the run-mode default), whether the head will move, the LLM and whether it is a cloud model, and the media backend. `--dry-run` stops here.
 4. **Launch** through the existing robot path, with the **verified address and pin carried forward as typed arguments**; nothing is re-resolved.
 
-**Unpinned entries need `--unpinned`.** That applies to `embody` and to `--device`. Without it, an entry with no `hardware_id:` is refused with an explanation (it may be a non-Linux daemon with a null id, or a legacy hand-written entry). Legacy `--robot`/`--robot-name` launches are unchanged (adversarial N3, safety S5).
+**Unpinned runs follow §3.1's pinned-registry rule** for `embody` as for every other path. `embody` additionally always requires `--unpinned` for an unpinned entry, even in an unpinned registry, because `embody` is the new strict verb (adversarial N3, safety S5, wire W3-3).
 
-**Exit on refusal, defined by pin status (D13′).** A refused or failed connect on a **pinned** entry exits non-zero, however the entry was selected. An unpinned entry selected with `--device`/`embody --unpinned` also exits non-zero. Only a legacy launch with no device flag keeps today's headless fallback (safety N8, wire N10, adversarial N7). `test_cli_exit_code_1468.py` gains rows for this.
+**Exit on refusal, defined by pin status (D13′).** These exit non-zero:
+- a refused or failed connect on a **pinned** entry, however it was selected;
+- a pinned-registry refusal (§3.1);
+- a failed connect on an entry chosen by `--device`/`embody`, pinned or not.
+
+Only a legacy launch in a registry with **no** pinned entry keeps today's headless fallback (safety N8, wire N10, adversarial N7). `test_cli_exit_code_1468.py` gains rows for each case.
+
+**Perception without media** (safety delta-3 E5, strict default). If §4.3 would force `no_media` (it cannot vouch for the media target), `embody` in a perception run mode (`exploration`, `live`) **refuses** instead of running blind. `--no-media` is an explicit grant to run without the camera. `open_controller` only warns.
 
 **Defaults.**
 - The run mode is `exploration`.
 - `launch: {mode, llm, interactive}` is an entry-level sibling of `config:`.
-- **`launch.mode` must be one of the run-mode choices** (`exploration`, `live`, `sleep`, `train`, `reflection`, `agentic`). Operational names such as `passive`, `active` and `singularity` are refused for the entry (safety N1).
+- **`launch.mode` must be an embodied run mode**: `exploration`, `live`, `sleep`, `train` or `reflection`. These come from **one shared constant** that argparse's `choices` also uses. `agentic` is refused for `embody`, because it runs the CLI agent loop, which never opens the device, so the plan block would be false (safety delta-2 D7). Operational names such as `passive`, `active` and `singularity` are refused for the entry (safety N1).
 - **`launch:` never holds `operational_mode`**, and the loader refuses that key.
 - Other unknown keys inside `launch:` only warn, scoped to the entry (safety N11).
 - **The capability grant is the typed flag.** `embody` parses `--operational-mode` itself and hands a typed grant to the launch. It does not fake a `--mode` argv to satisfy `_validate_operational_grant`, because that would launder the check (safety N6).
@@ -119,27 +142,31 @@ maxim.devices.repin("rosie", host="10.6.0.71", confirm=lambda old, new: ...)
 report = maxim.devices.check("rosie")             # DiagnosticReport of CheckResult (the existing maxim.diagnose() types)
 dev = maxim.devices.resolve("rosie")              # ResolvedDevice: verified IPv4 + identity; changes nothing
 maxim.devices.use("rosie")                        # what `maxim connect` calls: resolve + make primary
-ctl = maxim.devices.open("rosie")                 # a live RobotController, connected through the pin (§4.3)
+ctl = maxim.devices.open_controller("rosie")      # a live RobotController through RobotRegistry + the pin (§4.3); has daemon side effects
 plan = maxim.devices.plan_launch("rosie", mode="exploration")   # LaunchPlan
 ```
 
-- **Names.** The live opener is `devices.open`, not `devices.connect`. CLI `maxim connect` means "make primary", which is `devices.use`. That avoids four different things called `connect` (architecture N7).
+- **Names.** The live opener is `devices.open_controller`. It is not `connect`: CLI `maxim connect` means "make primary", which is `devices.use`. It is not `open`, which would shadow the builtin (architecture N7, delta-2 F6). It is a **session verb**, not a read verb: it opens a daemon session, sends `SetAutomaticBodyYaw(False)` and may release media. It goes through `RobotRegistry`, which also covers a `KeyboardInterrupt` during the step-3 wait (safety delta-2 D5).
 - **The stable APIs do not change.** `maxim.connect(robot_type, config=…)` and `maxim.run(robot=)` stay **unpinned**, and this is documented and logged.
 - **Who may write (D10).**
   - Write verbs live in `maxim/devices/_write.py`. Python write verbs are operator writers, which needs an amendment to C2 in `docs/agents/persistence-config.md` §1 and to its writer table (architecture N2).
-  - **Enforcement is a check, not a name ban** (wire N4, architecture N2):
-    - (a) An AST lint allow-lists the callers of `hardware/config.py::write_robots_config`: `maxim/devices/_write.py` only, next to `MESH_WRITER_MATCHES` in `test.yml`.
-    - (b) An AST lint refuses any `devices` write-verb attribute call (`.add/.rename/.forget/.relocate/.repin/.use`) on a `maxim.devices` reference in `src/maxim/` outside `cli.py` and `maxim/devices/`. Today that covers `runtime/`, `tools/`, `agents/` and `embodied_runtime/`; the ban does not name `skills/`, which does not exist.
-    - (c) `sandbox_executor.BLOCKED_PYTHON_IMPORTS` gains `maxim.devices`.
-  - **Scope of the claim.** An agent's in-process tools cannot call the write verbs. An agent whose BashTool may run `maxim device add` is operator-equivalent, and that is governed by the operational-mode gate (passive refuses `bash`). D14 covers the files themselves.
-- **Python confirmations.** `relocate` and `repin` require a `confirm=` callback. On the CLI, they need a TTY, or `--yes` (adversarial N10).
+  - **Enforcement rides the architecture audit** (v4; architecture delta-2 F1–F3, wire W2-1):
+    - (a) **Writer callers.** An AST caller allow-list for `hardware/config.py::write_robots_config` permits `maxim/devices/_write.py` and the writer's round-trip test, next to `MESH_WRITER_MATCHES` in `test.yml`.
+    - (b) **Import ban through `LAYER_RULES`.** `"devices"` joins `must_not_import` for `runtime`, `tools`, `agents`, `planning`, `memory`, `bridges` and `hardware`, plus a **new `embodied_runtime` entry** (which still allows `hardware`). The audit already catches every static import spelling (`from maxim.devices import add`, `import maxim.devices._write`, aliases).
+    - (c) **The `devices` entry gets its own non-empty forbidden list**: `["runtime", "tools", "agents", "planning", "console", "cli", "cli_parser", "cli_utils"]`. That **mechanizes "the library does not depend on the CLI"** for this package. `embodied_runtime` is left off the list because #1808 needs it. Both rules are proven by deletion with a `tmp_path` tree, as `test_architecture_audit.py` does.
+    - (d) **Lazy-attribute path** (v5; architecture delta-3 D3-1). A reference-based AST lint flags **any load of `maxim.devices`**, not only write-verb calls. The aliases it tracks are names bound by `import maxim`, `import maxim as m` and `import maxim.<anything>` (each binds `maxim`), plus a local alias (`d = maxim.devices`). It runs in exactly the layers whose `LAYER_RULES` entry bans `"devices"`, with the set read from `LAYER_RULES` itself. A deletion probe covers all three spellings. `getattr()`/`importlib` spellings are **out of scope**, a stated residual.
+    - `test_architecture_audit.py::TestLayerRulesCoverage::EXPECTED_LAYERS` gains `devices` and `embodied_runtime`. `ARCHITECTURE.md`'s `hardware/` row adds `devices` to its bans, and it gains an `embodied_runtime` line (D3-2).
+    - (c) is a **direct-import** rule. An import-closure test, shaped like `test_advisor_gate.py::test_import_closure`, proves that `import maxim.devices` pulls in no `cli*` or `console` module. That keeps the CLI ban true transitively, including after #1808 adds `devices → embodied_runtime` (D3-3).
+    - **Dropped:** v3's `BLOCKED_PYTHON_IMPORTS` lever. It matches only top-level names, and lazy loads skip the hook; the sandbox is documented as not a security boundary.
+  - **Scope of the claim.** No module in the agent's runtime layers can statically import the write verbs. An agent whose BashTool may run `maxim device add` is operator-equivalent, and the operational-mode gate governs that (passive refuses `bash`). D14 covers the files against the agent's **file tools**. `bash` in singularity mode can still write them, and that residual is stated in `safety.md` (adversarial delta-2 NF3).
+- **Python confirmations.** `relocate` and `repin` require a `confirm=` callback, which receives the **same context object the CLI prints** (a `RepinContext` / `RelocateContext`: old and new id, model, version, `wlan_ip`, last seen). An optional `expected_new=` refuses any other id. On the CLI they need a TTY, or `--yes` (adversarial N10, delta-2 N1).
 - **v1 has no in-process launch** (D9). It arrives with #1808 as `maxim.devices.embody(...)`.
 - **`console/device.py::run_device` stays in `console/`** (D12′, architecture N12). It is a node/host concern, and folding it in would pull console/FastAPI imports into `maxim.devices`. At most there is a lazy re-export.
 - **Types.** `DiscoveredDevice`, `DeviceEntry`, `ResolvedDevice`, `DevicePin` and `LaunchPlan` are frozen dataclasses. They live in `hardware/devices_types.py`, so runtime and `embodied_runtime` can import them without importing the write verbs.
   - `DeviceEntry` is built from a `RobotConfig` by one copying constructor, with `config` as a `MappingProxyType`. It is not a "view" over it (architecture N11).
   - All five types take CC3 path (a).
   - Errors are typed and subclass the stable `MaximConnectionError` / `ConfigurationError`: `DeviceNotFound`, `DeviceIdentityMismatch`, `DeviceIdentityDivergence`, `DeviceUnpinned`, `DeviceUnreachable`, `DiscoveryUnavailable`, `RobotsConfigError`. `_run_stopped_on` re-raises them as typed exits.
-- **Stability.** The namespace is ⚠️ Experimental in `stable_api.md`. The new module goes into `scripts/run_mypy_public.sh`.
+- **Stability.** The namespace is ⚠️ Experimental in `stable_api.md`. **Every file** in `maxim/devices/` goes into `scripts/run_mypy_public.sh`. `ARCHITECTURE.md` gains a `devices/` row (architecture delta-2 F8).
 
 ### 3c. Library-first runtime seam (#1808; #1806's `embody` is its first consumer)
 
@@ -161,10 +188,13 @@ The owner's goal is that people can use **the core library or the CLI, without t
 - **Entry-level fields.** robots.yaml entries gain `hardware_id:`, `hostname:` and `launch:`. `RobotConfig.from_dict` parses them into typed fields.
   - The pin key is named `hardware_id:`, not `pin:`, so it is never confused with the SDK's `get_pin()` BLE pairing code (adversarial N13).
   - Its value must be 16 lowercase hex characters.
-  - An absent key means `DevicePin.UNPINNED`, a sentinel and never `None`. An empty or malformed value is a `RobotsConfigError`.
-- **Strict entries** (wire F1b). An **unknown entry-level key** (for example a typo `hardware_idd:`), or `hardware_id`/`hostname` placed under `config:`, is a `RobotsConfigError`. A typo can therefore never yield a silently unpinned entry.
+  - An absent key means `DevicePin.UNPINNED`, a sentinel and never `None`, **but only in a hand-written legacy file** (no `_format_version`). In a **writer-managed** file (one that has `_format_version`), `hardware_id:` is **required** on every entry, and the writer emits `hardware_id: unpinned` explicitly. A deleted pin line is then a `RobotsConfigError`, not a silent switch-off of §3.1's pinned-registry rule (adversarial delta-3 R3-9). An empty or malformed value is always a `RobotsConfigError`.
+- **Strict entries** (wire F1b, W2-5). The allowed entry-level keys are exactly `{type, primary, config, kind, hardware_id, hostname, launch}`. Anything else (a typo `hardware_idd:`), or `hardware_id`/`hostname` placed under `config:`, is a `RobotsConfigError`, so a typo can never yield a silently unpinned entry. A strict-keys red gate is verified by a deletion probe.
+- **Typed scalars** (architecture delta-2 F4, F7):
+  - `primary:` must be a YAML bool, checked as `type(v) is bool`, so `primary: 1` and a quoted `"false"` are refused. PyYAML (YAML 1.1) already parses unquoted `yes/no/on/off` as bools, and those are accepted. More than one `primary: true` is a `RobotsConfigError`; it is not "first wins" (D3-4).
+  - A non-string `hardware_id:` (an unquoted all-digit id loads as an int, and as octal with a leading 0) raises with a "quote it" hint and is never coerced.
 - **How the pin reaches the controller.** The registry passes it as an explicit keyword, `expected_identity: DevicePin`, outside the constructor-signature filter. A controller class whose constructor has no such parameter is **refused** for a pinned entry.
-- **Post-connect check** (safety N3, adversarial N11). After **every** connect, the registry requires `controller.verified_identity() == pin`, a typed accessor that the controller sets only after §4.3 step 3. This replaces trusting an inheritable `supports_identity_pin` flag.
+- **Post-connect check** (safety N3, adversarial N11). After **every** connect, the registry requires `controller.verified_identity() == pin`. This is a typed accessor that defaults to `UNPINNED`, is **reset on connect entry and in `_drop_handle`/`disconnect`**, and is set only after §4.3 step 3 (safety delta-2 D6). This replaces trusting an inheritable `supports_identity_pin` flag.
 - **The reuse branch** ("already connected") refuses, with a typed error and before `set_primary`, when it finds a mismatch **or a controller that was never verified** (safety S9).
 - **An unknown `type:` on a pinned entry** raises `RobotsConfigError` rather than returning `None` before the pin check (wire N10).
 - **Load errors propagate** (wire N1, F18; adversarial N6). `from_yaml` / `from_dict` raise `RobotsConfigError` on:
@@ -174,12 +204,12 @@ The owner's goal is that people can use **the core library or the CLI, without t
   - `find_config_file`'s "data_home() unresolvable" branch;
   - a **relative `MAXIM_DATA_HOME`**.
 
-  The relative-path check covers robots.yaml resolution and the writer only, not `utils/paths.py::data_home()`, which benchmarks call with relative work directories (wire N2). A missing file is fine and means there are no entries. `selfy` stops catching these errors at DEBUG. `agentic_runtime._resolve_body_wiring` stops reloading robots.yaml: it **receives the resolved entry** and keeps its body-ref fallback (wire N3, safety S8).
+  The relative-path check covers robots.yaml resolution and the writer only, not `utils/paths.py::data_home()`, which benchmarks call with relative work directories (wire N2). A missing file is fine and means there are no entries. `selfy` stops catching these errors at DEBUG. `agentic_runtime._resolve_body_wiring` stops reloading robots.yaml: it **receives the resolved entry** as `selfy.Maxim._resolved_robot_config`, the one attribute its four readers (the DoA gate, motor binding ×2, `aut_mode`) see. It keeps its body-ref fallback (wire N3, safety S8). The `test_multi_robot::TestResolveBodyWiring` tests and the 1496 tests that patch the now-dead `load_robots_config` are re-pointed to the handoff, so they cannot pass without testing anything. Residual: `selfy` resolves an entry only when `simulation=False` (no `src/` caller passes `True`) (wire W2-6).
 - **`_format_version`.**
   - A root `_format_version: "1.0"` is written by the writer.
   - An explicit refuse-newer check modelled on `config_writer._refuse_if_newer` runs in the loader and the writer. `check_format_version` itself never refuses.
   - A present non-string value is an error: an unquoted `2.0` is a float, and it must not be read as legacy.
-  - An absent key is accepted as hand-written legacy, without the "re-save" nag (architecture N3, wire N8).
+  - An absent key is accepted as hand-written legacy, without the "re-save" nag: the loader skips `check_format_version` when the key is absent, because it always warns (architecture N3, delta-2 N3 NIT, wire N8).
   - `test_persistence_compat` gains a robots.yaml row.
 
 ### 4.2 Resolution never trusts an advertisement
@@ -194,12 +224,13 @@ That is all. Discovery is never a resolution step. `MAXIM_REACHY_HOST` is read o
 
 **`relocate`** browses the LAN and shows each candidate's claimed identity. It writes nothing until the operator confirms, and it re-verifies the chosen candidate through REST at that literal before writing.
 
-**`add` and `repin` read the identity only from REST `/api/daemon/status` at the literal being dialled** (safety N7). Sim and mockup flags must be off, and the id must be non-null. The mDNS TXT `unit_id` is never used.
+**`add` and `repin` read the identity only through `probe_daemon(proxy="never")` + `refusal` at the literal being dialled** (safety N7). Sim and mockup flags must be off, and the id must be non-null. The mDNS TXT `unit_id` is never used. **`add` refuses an id that another entry already pins**, the same rule as `repin` (adversarial delta-2 N1).
 
 **`repin`** (adversarial N1):
 - It shows the old and new id, model, version and `wlan_ip`, and when the old id was last seen.
 - It refuses a new id that another entry already pins.
 - It needs a TTY confirmation, or `--yes`.
+- `repin <name> <host>` also rewrites `host:` to the confirmed literal, and says so.
 - The mismatch error lists "check your network or DHCP" **first**, and mentions `repin` only as the audio-board-swap case.
 
 **An unpinned entry** resolves only from `host:` or `<robot_name>.local`. It never caches. It needs `--unpinned` for `embody`/`--device` (§3a), and it is labelled everywhere.
@@ -211,13 +242,32 @@ That is all. Discovery is never a resolution step. `MAXIM_REACHY_HOST` is read o
 - The port is fixed at 8000.
 - Trailing dots are normalised. At most 4 candidates are tried.
 
-**Proxies** (adversarial N4). "Disable proxies" needs a mechanism, so PR 0 adds a strict mode to `utils/http.py`: `fetch_url(..., address_policy="private", proxy="never")`. In that mode a private endpoint is dialled directly and never through a proxy. Today the proxy wins per #921, and the private endpoint is `strict=False`. Both the WebSocket (`websockets`) and the SDK's `requests` POST follow environment proxies. A **pinned connect is therefore refused** when `HTTP(S)_PROXY`/`ALL_PROXY` is set and the target is not covered by `NO_PROXY`. The fix hint names `NO_PROXY=<ip>`.
+**Proxies** (adversarial N4, delta-2 NF2/NF4/NF5).
+- **Our own probe.** PR 0 adds a strict mode to `utils/http.py`: `fetch_url(..., address_policy="private", proxy="never")`, a `strict=True` row in `_ensure_external_endpoint`. In that mode a private endpoint is dialled directly, never through a proxy. Today the proxy wins per #921. The new endpoint is registered in `_EXTERNAL_POLICY_ENDPOINTS` / `_DEADLINE_ENDPOINTS`, so it keeps the #1715 deadline.
+- **The SDK's two clients.** The WebSocket (`websockets`) and the SDK's `requests` POST resolve proxies **differently**. The probe-verified disagreements: `no_proxy` CIDR, `ws_proxy`, `ip:port` forms, and macOS system proxies. So the check does not parse variable names. **It asks each library's own resolver:**
+  - `websockets.uri.get_proxy(ws://<ip>:8000/ws/sdk)`
+  - `requests.utils.get_environ_proxies(http://<ip>:8000/…)`, which includes `urllib.request.getproxies()` for macOS system settings.
+
+  A pinned connect is refused unless **both** say direct. Implementation notes (R3-2):
+  - `get_proxy` takes `parse_uri(url)`, not a string.
+  - "Direct" for requests means `select_proxy(url, get_environ_proxies(url)) is None`, because the dict can be non-empty for an unrelated scheme.
+  - Any exception from a resolver **refuses**.
+- **The media clients too** (adversarial delta-3 R3-1). The chosen media backend opens more clients: the SDK's `media/webrtc_utils.py::get_producer_list` connects to `ws://<signalling_host>:8443` with `proxy=True`, and the GStreamer signaller's proxy behaviour is unverified. The check therefore asks the same resolvers about **every URL that backend will open**. If any of them is proxied, or cannot be checked (the GStreamer signaller, until verified), `no_media` is forced for this connect, which leads to §3a's perception refusal under `embody`. Motion is unaffected either way.
+- **Fix hints.** The hint names `NO_PROXY=<ip>`, or `NO_PROXY=127.0.0.1` for a tunnel entry, since the tunnel's `ws://127.0.0.1` is proxied too.
 
 ### 4.3 The check that counts is on the session that moves the robot
 
 `ReachyMiniController.connect` runs these steps for a pinned entry:
 
-1. **Pre-filter, before any `ReachyMini(`.** `probe_daemon` at the chosen IPv4 literal, then `refusal(outcome, entry)` (identity, sim flags, era/minor, daemon state). It also requires the status **`wlan_ip` to equal the dialled IP**: `ReachyMini.__init__` opens WebRTC to `wlan_ip` and `camera.open()` before any later step can run (adversarial N5). A null `hardware_id` never matches.
+1. **Pre-filter, before any `ReachyMini(`.** `probe_daemon` at the chosen IPv4 literal, then `refusal(outcome, entry)` (identity, sim flags, era/minor, daemon state). A null `hardware_id` never matches.
+
+   **The media target is checked too**, because `ReachyMini.__init__` opens WebRTC to the status `wlan_ip` and calls `camera.open()` before any later step can run (adversarial N5). The v4 rule replaces v3's strict equality, which wrongly refused wired, tunnel, Tailscale and Lite setups (adversarial delta-2 NF1, safety delta-2 D3):
+   - `wlan_ip` equals the dialled IP: accepted.
+   - `wlan_ip` differs, **or the entry is a tunnel**: accepted only if a REST probe at `wlan_ip:8000` (same hygiene, `proxy="never"`) returns the **same pin** with sim flags off.
+   - That probe fails: `no_media` is forced **for this connect only**.
+   - **`wlan_ip` is `None` forces `no_media` for every entry kind** (verified: `_configure_mediamanager` uses `signalling_host = daemon_status.wlan_ip or "localhost"` on port 8443, so signalling would go to the **Maxim host**, never the robot). For a tunnel that is whatever listens on `localhost:8443`, such as a local sim daemon, which would make the camera stream the wrong body (safety delta-3 E4). A red gate covers this.
+   - **A forced `no_media` is per-connect** (E2). It is a local value passed to `ReachyMini(`, and it never writes `self._media_backend`. If this controller **carries** release ownership from an earlier connect and this connect is not `no_media`, it first re-acquires over REST (`POST /api/media/acquire` through `fetch_url(proxy="never")`). If that fails, it keeps `no_media` for this connect. That way a carried release is never silently dropped and the camera never left dead. A red gate runs connect A (forced), then connect B (default), and checks the ownership.
+   - **Wording** (E5). A forced `no_media` releases the camera **daemon-wide**, for every client of that robot, and a SIGKILL leaks it. The release is ours only when the pre-connect status said `media_released: false`, which is the #1704 rule. The WARNING names the release and the recovery (`POST /api/media/acquire`). §3a covers the perception-mode refusal.
 2. **Dial the same literal with `connection_mode="network"` forced.** A tunnel entry dials `127.0.0.1` through this controller's own tunnel. `_wait_local_port` also checks `_tunnel_proc.poll()`, so a foreign listener on :8000 fails there, and is caught by the pin if it does not (safety N10).
 3. **Re-verify on the session, immediately after `ReachyMini(` returns.**
    - It runs after the `_media_released_by_connect` assignment, and before `_assert_auto_yaw_off`, `_clear_latch_after_connect` and the `CONNECTED` state (safety S3).
@@ -225,13 +275,16 @@ That is all. Discovery is never a resolution step. `MAXIM_REACHY_HOST` is read o
    - The status must report the pinned `hardware_id` and sim flags off.
    - A session that reports no `hardware_id` refuses with a distinct reason, "identity not reported by session" (safety N9), not as a mismatch.
    - On success, the controller sets `verified_identity`.
-4. **Failure handling.** The broad `except` cleans up, then **re-raises**; it never returns `False` into "headless mode".
+   - **A step-3 timeout, or a session that reports no identity**, is most likely the pinned daemon itself (a slow link or an old daemon). So the controller **re-probes REST at the literal** (safety delta-2 D2):
+     - Same pin **and**, for "identity not reported", the session's own status (`version`, `wlan_ip`, `state`) equal to step 1's REST values: our own robot. This takes the normal cleanup, which honours this connect's own media ownership. It raises `DeviceUnreachable` (timeout) or `DeviceIdentityUnreported`. If the session fields differ, it takes the divergence path; a split at one IP (an IP conflict or ARP flap) is otherwise a stated residual (safety delta-3 E3).
+     - Different pin or unreachable: it takes the divergence path below.
+4. **Failure handling.** The broad `except` cleans up, then **re-raises**; it never returns `False` into "headless mode". **Every non-identity failure is wrapped as `DeviceUnreachable(...) from e`**, so a raw SDK `ConnectionError`/`TimeoutError` (a Wi-Fi blip) reaches §4.5 typed (safety delta-2 D4).
    - **Before `ReachyMini(`** (step 1 or 2 refusal): nothing was touched, so it raises `DeviceIdentityMismatch` or `DeviceUnreachable`.
    - **After `ReachyMini(`** (step 3 fails after step 1 passed): this means **REST and the session reached different daemons**, which is an active anomaly. It raises `DeviceIdentityDivergence` (safety N2). The media ownership that was recorded is the other daemon's REST pre-state, so it is not trusted:
-     - **do not** re-acquire or release media on the session's daemon;
-     - close the media manager, drop the handle, stop the tunnel;
-     - log at ERROR exactly what that unknown daemon received: `SetAutomaticBodyYaw(False)`, and for `no_media` the `/api/media/release` POST.
-5. **Media residual.** `ReachyMini.__init__` sends `SetAutomaticBodyYaw(False)`, plus the media release (`no_media`) or WebRTC + `camera.open()` (`default`), before step 3. **None of these moves a joint.** For motion, step 3 holds. For these side effects, step 1 (with the `wlan_ip` and proxy checks) is the only protection. This residual is stated in `safety.md`.
+     - **do not** re-acquire or release media on the session's daemon. Reacquiring could steal a deliberate release, while a leftover release can be undone with one command, so leaving it is the safer error;
+     - `_media_released_by_connect` is **snapshotted before `ReachyMini(`**. The divergence path **skips the generic `except` re-acquire branch**, and runs in this order: close the media manager, `_drop_handle`, **then** restore the snapshot, then stop the tunnel. The pinned daemon's carried-over ownership is neither lost nor re-acquired on the foreign daemon. A red gate checks that the fake's `acquire_media` is never called on divergence (safety delta-2 D1, delta-3 E1);
+     - log at ERROR exactly what that unknown daemon received (`SetAutomaticBodyYaw(False)`, and for `no_media` the `/api/media/release` POST). The log names the other daemon's host and the recovery, `POST http://<host>:8000/api/media/acquire` (safety delta-2 D8).
+5. **Media residual.** `ReachyMini.__init__` sends `SetAutomaticBodyYaw(False)`, plus the media release (`no_media`) or WebRTC + `camera.open()` (`default`), before step 3. **None of these moves a joint.** For motion, step 3 holds. For these side effects, step 1 (with the `wlan_ip` and proxy checks) is the only protection. **Also residual** (E6): the SDK reads the media target from the session's status, so a `wlan_ip` that changes between steps 1 and 2 is unverified, and the proxy check does not cover `wlan_ip:8443` or the GStreamer signaller. All of this is stated in `safety.md`.
 
 **Red gates.** `xfail(strict=True)` tests through the real controller against `tests/unit/_reachy_fakes.py`:
 - a mismatch on REST;
@@ -277,12 +330,11 @@ On macOS, an empty `find_robots` result is reported as "none found, or Local Net
 
 `RobotController.reconnect` and `ConnectionMixin._soft_reconnect` handle the new typed errors. Today nothing catches them, so they would escape into the capture loops and skip `_degrade_capabilities`.
 - **`DeviceUnreachable`** keeps the existing retry and backoff and calls `_degrade_capabilities`.
-- **`DeviceIdentityMismatch` / `DeviceIdentityDivergence` on a reconnect** means a different robot now answers at the address. The controller:
-  - **sets the stop latch** (no further motion);
-  - degrades capabilities;
-  - ends the run with the typed exit.
+- **`DeviceIdentityMismatch` / `DeviceIdentityDivergence` on a reconnect** means a different robot now answers at the address. The split of responsibility follows the existing code (safety delta-2 D5):
+  - **The controller** calls `stop_motion()`, the **sticky** sleep latch that only a successful wake clears. This is not the disconnect latch, which the next connect clears. It takes only `_abort_lock`, which `reconnect` does not hold. Then it re-raises.
+  - **`ConnectionMixin._soft_reconnect`** owns `_degrade_capabilities`, sets `_live_stop_event` and produces the typed exit.
 
-  It **never retries an identity failure**. A test covers the "robot swapped mid-run" case.
+  Nothing **ever retries an identity failure**. A test covers the "robot swapped mid-run" case.
 
 ## 5. Fixes folded in (same root cause or exposed by it; not filed)
 
@@ -296,7 +348,17 @@ On macOS, an empty `find_robots` result is reported as "none found, or Local Net
   - The unguarded `float()` on `MAXIM_ROBOT_TIMEOUT` is fixed.
   - The exp49 `_trial_env` (and the documented harness `child_env` recipe) pops `MAXIM_DEVICE` and `MAXIM_ROBOT_NAME`, so a harness child never becomes a named-device run (wire N6, adversarial N12).
 - **`utils/http.py` strict private mode** (`proxy="never"`; §4.2).
-- **Agent writes to the trust-bearing files** (adversarial N2). In singularity mode, `filesystem_policy.check_write_permission` allows any write under cwd. Maxim started from `~` therefore lets the agent rewrite `<data_home>/robots.yaml` (repoint or delete the pin) and `util/device_state.json`. PR 0 denies writes to those two files regardless of `cwd_access`. **D14 (taken): the deny covers the whole control-plane set, `~/.config/maxim/` (mesh.yml, api_key, console_token, config.json) as well as the two files above, in every mode.** `safety.md` and the singularity-mode docs state the new limit.
+- **Agent writes to the trust-bearing files** (adversarial N2, delta-2 NF3; D14).
+  - **What is enforced today.** `filesystem_policy.check_write_permission` **has no production caller** (#1811): no caller passes `mode_config=` or calls `set_mode_config`, and `EditFileTool` never consults it. So today an agent's `write_file`/`edit_file` can rewrite `<data_home>/robots.yaml` (repointing `host:`/`hardware_id:`) and `~/.config/maxim/*` whenever cwd contains them.
+  - **The fix rides the #957 seam.** `tools/base.py::control_plane_write_refusal(path)` sits next to `git_dir_write_refusal` and is called at the **same write sites**. Delta-3 verified these are every production agent file-write tool: `WriteFileTool`, `EditFileTool` (both of its writes), `WriteSandboxFileTool` and `WriteToSharedOutputsTool`. It applies in every mode.
+    - **The denied set** (adversarial delta-3 R3-3, R3-4, R3-8):
+      - the **resolved config directory**, through the same resolver `config_loader` / `peer_config_path` use, which honours `$XDG_CONFIG_HOME/maxim`; never a literal `~/.config/maxim`;
+      - `robots.yaml`, `robots.yaml.bak` and `util/device_state.json` under **both** the process's `data_home()` **and** the default `~/.maxim`. Harness children set `MAXIM_DATA_HOME=<tmp>`, and the operator's real files must stay protected when a child's cwd contains them.
+    - **Matching** (R3-5) uses realpath (which catches symlinks into the set), case-folding, **and** #957's `_same_entry` stat-identity comparison, which catches NFC/NFD-equivalent spellings on APFS.
+    - **Tests** go through `write_file` and `edit_file`, plus an XDG case, a `MAXIM_DATA_HOME` child case and an NFD case. The guard is verified by a deletion probe.
+  - **Same pattern, folded** (R3-6). The dormant `SandboxExecutor.write_script` (reached via `create_sandbox_script`) writes an unsanitised `name` with no containment, and with no #957 check. PR 0 sanitises the name, contains the path within the sandbox, and adds both refusals.
+  - **Same root cause, folded:** the `agents/autonomy.py` approval branch matches only `write_file`, so `edit_file` writes under cwd without approval. It now covers `edit_file` too.
+  - **Residual, stated in `safety.md`** (R3-7): the code-execution tools can still write these files. Those are `bash`, `execute_file`, and `run_tests` when opted in with `MAXIM_ALLOW_*`. Passive mode refuses them. Wiring the whole mode policy is #1811.
 
 ## 6. Threats: every input and how it could lie
 
@@ -322,7 +384,7 @@ The impact is **safety**, not only security. The strict choice is the default ev
 
 - **One writer.** `hardware/config.py::write_robots_config` always targets `<data_home>/robots.yaml`. It runs under `FileLock`, writes through `atomic_write_text`, writes root `_format_version: "1.0"`, refuses to write over a newer file, and takes a one-time `robots.yaml.bak` before the first rewrite of a hand-written file.
   - **It edits the raw mapping under the lock** rather than doing a load → mutate → dump through the lossy dataclasses, and a round-trip test pins this (architecture N5).
-  - `rename`/`forget` move `primary:` within the same write. `device_state.json` is keyed by identity, so `rename` need not touch it, and `forget` removes the identity's row after the robots.yaml write succeeds. The two files are **not** one atomic transaction; the order is chosen so a crash leaves a harmless stale cache row (architecture N9).
+  - `rename` carries `primary:` with the entry. `forget` on the primary entry **clears the marker and never reassigns it**, and it says so. A later no-name run then follows §3.1's "no primary" rule (architecture delta-2 F5, wire W2-7). `device_state.json` is keyed by identity, so `rename` need not touch it, and `forget` removes the identity's row after the robots.yaml write succeeds. The two files are **not** one atomic transaction; the order is chosen so a crash leaves a harmless stale cache row (architecture N9).
   - The callers are enforced by the §3b lints.
 - **Layer table.** robots.yaml goes into the persistence-config §1 table as declarative operator intent living in the data home. C2 is amended there for the Python operator verbs (D10).
 - **Layers.**
@@ -341,21 +403,22 @@ The impact is **safety**, not only security. The strict choice is the default ev
   - typed, loud yaml errors and their propagation, including `find_config_file` and the relative `MAXIM_DATA_HOME` check;
   - one resolver, and the resolved entry handed to `agentic_runtime`;
   - `probe_daemon` + `refusal`;
-  - explicit `--robot`, `--robot-name` default `None`, `--device`, the conflict refusal and the explicit-flag gate;
+  - explicit `--robot`, `--robot-name` default `None` (same commit as the gate rewrite and the re-exec omitting `None`), the explicit-flag gate, and the shared run-mode constant. **`--device` is not in PR 0** (v5);
   - removing the cwd fallback;
   - `fetch_url(proxy="never")`;
-  - the `check_write_permission` deny for robots.yaml + `device_state.json` and `~/.config/maxim/` (D14);
+  - `control_plane_write_refusal` at the #957 write sites (D14), and the `edit_file` approval fix;
   - env scrubs and the harness env pops.
 - **PR 1, the pin (≈400):**
   - typed `hardware_id:`/`hostname:`/`launch:` fields with strict unknown-key refusal;
   - `expected_identity=` and the post-connect `verified_identity()` check in the registry, and the reuse refusal;
-  - the controller's §4.3 sequence, with divergence handling and typed raises;
+  - **`--device`, its re-exec rule, `--unpinned`, the conflict refusal and the pinned-registry refusal** (v5: one PR, so no build has `--device` without its re-exec, or a refusal without its escape);
+  - the controller's §4.3 sequence, with divergence handling, the per-connect media rule and typed raises;
   - the §4.5 reconnect handling;
   - `device_state.json`;
   - the sanitiser;
-  - the `maxim.devices` read verbs (`entries/get/check/resolve/open`) and `maxim device list|show|check`.
+  - the `maxim.devices` read verbs (`entries/get/check/resolve`), the session verb `open_controller`, the `LAYER_RULES` entries, and `maxim device list|show|check`.
 - **PR 2, the writer (≈320):** the raw-mapping `write_robots_config`, the `add`, `rename`, `forget` and `repin` verbs, `use`/`maxim connect` (which moves `primary:`); `relocate` lands with PR 3, the lints, and the C2 amendment.
-- **PR 2b, `embody` (≈180):** `plan_launch`, preflight, the plan block, carrying the verified address, pin and typed grant into the existing launch, the `--device` re-exec, the D13′ exits, `--unpinned`, and `launch:` + `--save-defaults` (which writes `mode/llm/interactive` only).
+- **PR 2b, `embody` (≈180):** `plan_launch`, preflight, the plan block, carrying the verified address, pin and typed grant into the existing launch, `embody`'s D13′ exits, the perception-without-media refusal and `--no-media`, and `launch:` + `--save-defaults` (which writes `mode/llm/interactive` only).
 - **PR 3, discovery (≈220):** `discover` + `relocate` over `find_robots`, the latch checked first, the census and lint updates, and the macOS hint.
 - **Separate, #1808:** the library-first seam, then `maxim.devices.embody()` in process, the local-media kind, and `attached_via: <node>`.
 
@@ -382,7 +445,7 @@ Docs updated in the same PRs: `robot-setup.md`, `getting_started.md`, `cli-refer
 
 **Taken 2026-11-25 (owner took the recommendation):**
 - ✅ **D14. Deny agent file-tool writes to all of Maxim's own control-plane files?** In singularity mode, `check_write_permission` allows writes anywhere under cwd. Started from `~`, the agent can rewrite `~/.config/maxim/` (mesh.yml, api_key, console_token, config.json) and `<data_home>/robots.yaml` without approval.
-  - *Recommendation:* deny writes to the whole control-plane set (`~/.config/maxim/`, `<data_home>/robots.yaml`, `<data_home>/util/device_state.json`) in every mode, in PR 0. That is about 30 `src/` lines plus tests. Singularity keeps full access to everything else. An agent should never be able to rewrite its own trust anchors.
+  - *Taken:* deny **file-tool** writes to the whole control-plane set (`~/.config/maxim/`, `<data_home>/robots.yaml`, `<data_home>/util/device_state.json`) in every mode, in PR 0. v4 implements this through the #957 seam, because `check_write_permission` is unwired (#1811). Singularity's `bash` remains a stated residual. That is about 30 `src/` lines plus tests. Singularity keeps full access to everything else. An agent should never be able to rewrite its own trust anchors.
   - *Alternative:* deny only this design's two files now, and decide the config directory separately.
   - This is a security fix that changes singularity's documented reach, which is why it is an owner decision.
 
@@ -465,3 +528,86 @@ Abbreviations: A = adversarial, S = safety & lifecycle, R = architecture, W = wi
 | Wire | N1, N3–N5, N7, F1b, F11 |
 
 Fail-closed NITs that were folded without a round: adversarial N7–N13, safety N6 and N8–N11, architecture N6 and N8–N11, wire N2, N6 and N8–N10.
+
+## 12. Disposition of delta-round-2 findings (DRAFT v3), and the round-3 scope
+
+| Lens | Finding | Folded in |
+|---|---|---|
+| Adversarial | N1 rest | §3b context objects, §4.2 `add` uniqueness + `repin` host |
+| | N2 / NF3 | §5 #957 seam, #1811 |
+| | N3 | §3.1 unpinned on every path |
+| | N4 / NF2 | §4.2 library resolvers |
+| | NF1 | §4.3 step-1 media rule |
+| | NF4 | §4.2 endpoint registration |
+| | NF5 | §4.2 tunnel hint |
+| Safety | D1 | §4.3 snapshot/restore |
+| | D2 | §4.3 step-3 re-probe |
+| | D3 | §4.3 step-1 tunnel/media rule |
+| | D4 | §4.3 wrap |
+| | D5 | §4.5 split, §3b registry path |
+| | D6 | §4.1 reset |
+| | D7 | §3a `agentic` refused, shared constant |
+| | D8 | §4.3 log |
+| Architecture | F1 | lever dropped |
+| | F2 / F3 | §3b `LAYER_RULES` |
+| | F4 / F7 | §4.1 typed scalars |
+| | F5 | §7 |
+| | F6 | §3b `open_controller` |
+| | F8 | §3b docs |
+| | N3 NIT | §4.1 |
+| | N5 NIT | §3b(a) |
+| Wire | W2-1 | lever dropped |
+| | W2-2 | §3.1 precedence |
+| | W2-3 / W2-4 | §3.1 re-exec + PR 0 ordering |
+| | W2-5 | §4.1 allowed keys |
+| | W2-6 | §4.1 handoff attribute + tests |
+| | W2-7 | §3.1 no-primary rule, §7 `forget` |
+
+**Delta round 3 scope** (the fail-open folds only; same stop rule):
+
+| Lens | Re-check |
+|---|---|
+| Adversarial | NF2 (resolver-based proxy check), NF3 (#957-seam deny), N3 (unpinned on every path) |
+| Safety | D1–D3 (snapshot/restore, step-3 re-probe, step-1 media rule) |
+| Architecture | F2–F4 (`LAYER_RULES` enforcement, `primary:` typing) |
+| Wire | W2-2–W2-4 and W2-7 (precedence, re-exec, no-primary) |
+
+## 13. Disposition of delta-round-3 findings (DRAFT v4), and the round-4 scope
+
+| Lens | Finding | Folded in |
+|---|---|---|
+| Adversarial | R3-1 | §4.2 every media URL |
+| | R3-2 | §4.2 notes |
+| | R3-3 / R3-4 / R3-5 | §5 denied set + matching |
+| | R3-6 | §5 `write_script` |
+| | R3-7 | §5 residual |
+| | R3-8 | §5 `.bak` |
+| | R3-9 | §4.1 writer-managed `hardware_id:` |
+| | R3-10 / R3-11 | §3.1 pinned-registry rule (v5) |
+| Safety | E1 | §4.3 step 4 order |
+| | E2 | §4.3 per-connect media |
+| | E3 | §4.3 step 3 session fields |
+| | E4 | §4.3 `wlan_ip` None → `no_media` |
+| | E5 | §4.3 wording, §3a perception refusal + `--no-media` |
+| | E6 | §4.3 residual |
+| Architecture | D3-1 | §3b(d) reference lint |
+| | D3-2 | §3b docs/tests |
+| | D3-3 | §3b(c) closure test |
+| | D3-4 | §4.1 `type(v) is bool` |
+| Wire | W3-1 / W3-4 | §3.1 ordering: one PR |
+| | W3-2 / W3-3 | §3.1 pinned-registry rule |
+| | W3-5 | §3.1 daemon name |
+| | W3-6 | §3.1 / §3a |
+
+**Owner decisions in v5:**
+- **Taken:** the simplification, i.e. the pinned-registry rule, and shipping `--device`, its re-exec, `--unpinned` and the refusal together in PR 1.
+- **Taken:** `embody` refuses a perception mode when it would have to force `no_media`, with `--no-media` as the explicit override (owner, 2026-11-25).
+
+**Delta round 4 scope** (the fail-open folds only; same stop rule):
+
+| Lens | Re-check |
+|---|---|
+| Adversarial | R3-1 (every media URL), R3-3/4/5 (denied set and matching), R3-9 (writer-managed pins) |
+| Safety | E1, E2, E4 (§4.3 steps 1 and 4) |
+| Architecture | D3-1 (reference lint) |
+| Wire | W3-1/2/3/5 under the pinned-registry rule and the PR 1 ordering |
