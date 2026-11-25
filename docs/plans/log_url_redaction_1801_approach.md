@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v9 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v10 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -37,6 +37,11 @@
 >   - FAIL-OPEN: L1 (class F2), and L2 (class F2, latent: 0 such sites in src).
 >   - K1 holds: no `__dict__`/pickling receiver in `src/`, and nothing reads `record.args`/`record.msg`.
 >   - A delta round 9 is owed on L1–L5 only.
+> - **Round 9 (delta, a different reader):** 0 DO-NOT-BUILD, 2 SHOULD-FIX and 3 NITs, folded and tagged M1–M5.
+>   - FAIL-OPEN: M1 (class F2, latent: 0 sites) and M2 (class F2, how the allowlist is keyed).
+>   - L1, L3, L4 and L5 hold. The allowlist key was the only fix site not yet specific enough to build; M2 settles
+>     it.
+>   - A delta round 10 is owed on M1–M5 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -172,8 +177,8 @@ written later.
     - the sub-simulation tool: `simulation/tools.py`'s `sub_report["error"] = str(e)`, returned inside a
       *successful* `ToolOutput`, so outside D5 (F3);
     - success-shaped tool payloads that carry an exception's text (G6): `tools/introspection.py`'s two
-      `{"error": str(e)}` inside a successful `ToolResult`, `dm_runtime._deliver_and_wait`, and `minecraft.py`'s
-      `detail`. Each is reduced where it is built;
+      `{"error": str(e)}` inside a successful `ToolResult`, `dm_runtime._deliver_and_wait`, and `simulation/minecraft.py::call_action`'s
+      `f"bridge send failed: {exc}"` `detail` (M5). Each is reduced where it is built;
     - `roy_runner.py::_persist_result`: result.json's `"detail": f"{type(e).__name__}: {e}"` (the `health_check`
       probe and preflight), `priming["error"]` and a raw `"url"`. Roy artifacts are committed, so `url_scrubbed` runs
       over the whole payload there (H4). The committed `summary.md`, rendered by `_format_summary(result)` from the
@@ -246,20 +251,34 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   (`%`, `+`), `AugAssign` (`s += str(ex)`), list/tuple displays (`[str(ex)][0]`), `for` and comprehension targets
   over a tainted iterable, tuple-unpack targets (`a, b = str(e), 1`), `NamedExpr` (walrus), and any call with a
   tainted positional OR keyword argument (`" ".join(str(e).split())`, `json.dumps({..: str(e)})`,
-  `dict(m=str(e))["m"]`), plus assignments within the function (H1, J3, K3, L2). Non-text callables (`len`, `hash`,
+  `dict(m=str(e))["m"]`), `BoolOp`/`IfExp` (`(result.stderr or "")[-500:]`), dict displays (`{"k": str(e)}`), plus
+  assignments within the function (H1, J3, K3, L2, M1). Non-text callables (`len`, `hash`,
   `isinstance`, `bool`) propagate too: excluding them changes 0 results on src/maxim, so no exclusion is made (L6);
-- besides a `Subscript` slice, a **precision cut** over tainted text is flagged: a `FormattedValue` with a precision
-  spec (`f"{e!s:.50}"`) and a `%.Ns` format (`"%.50s" % e`). There are 0 such sites in src/maxim, so this is a
-  ratchet (L2);
+- besides a `Subscript` slice, a **precision cut** over tainted text is flagged (L2, M1):
+  - a `FormattedValue` whose spec has a precision with no type, or with type `s`/`r`/`a` (`f"{e!s:.50}"`). A
+    precision on a number type (`{duration:.1f}`) is not a cut (M3);
+  - `%`-formatting with `%.Ns` or `%.*s` (`"%.50s" % e`, `"%.*s" % (50, e)`);
+  - `"{:.50}".format(e)` and `format(e, ".50")`;
+  - `textwrap.shorten(<tainted>, …)`;
+  - a `logger.*` / `log.*` call whose literal message has `%.Ns` with a tainted argument
+    (`log.warning("failed: %.50s", e)`). This form **cuts INSIDE the boundary**: `msg % args` truncates before
+    `_RedactingLogRecord.getMessage` reduces. So it is the lint, not the factory, that stops it (M1).
+  - `.ljust`/`.rjust`/`.center` only pad, so they are not cuts.
+
+  There are 0 such sites in src/maxim, so this is a ratchet;
 - **a name is tainted if ANY assignment to it in the function is tainted** (a monotonic union, not last-writer-wins)
   (J3, K4). With last-writer-wins, `if a: s = str(e)` / `else: s = redact_urls(str(e))` / `s[:50]` would pass. An
   assignment from `redact_urls(...)`/`url_scrubbed(...)` is an untainted assignment, so `s = redact_urls(str(e));
   s[:50]` passes and the branched form fails. Rebinding a tainted name, a parameter or a local, does not clear it
   (`s = str(e); s = redact_urls(s); s[:50]` fails), so the code binds a new name: `safe = redact_urls(str(e))`
-  (K4, L5); On 0f50fdc9 the v9 rule gives 22 unique hits (26 counting nested
-  functions), every one a listed site or an allowlist entry (L5) (prototype: `scratchpad/rt1801f/lint_h1.py`, the rule as written here; `rt1801e/lint_proto.py`, which gave 12, had no
+  (K4, L5); On 0f50fdc9 the rule gives 23 unique lines (26 raw hits, less 3 reported twice
+  for nested functions) (M4), every one a listed site or an allowlist entry (L5) (prototype: `scratchpad/rt1801f/lint_h1.py`, the rule as written here; `rt1801e/lint_proto.py`, which gave 12, had no
   parameter or `.attr` sources) (J3). The narrower rule round 4 proposed missed
   `_abort_drain`'s and `_sanitize_error_message`'s parameters;
+- **attributes each hit to its innermost enclosing function only** (a hit in a nested function is not also reported
+  under the outer one), and keys each allowlist entry as `file::innermost_function` plus the `ast.unparse` text of
+  the sliced expression. Any hit that matches no entry fails. With a function-only key, a future `str(e)[:200]` in
+  an allowlisted function would pass silently (M2);
 - allowlists sites that are terminal-only or carry no exception text, each with a reason:
   - `install_core.py`'s `e.response.text[:500]` and `doctor/checks.py::_child_maxim_dir`;
   - `prefetch.py::discover_files_with_find`, `system_metrics.py::_memory_macos` and `container_runner.py::launch`.
@@ -317,6 +336,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- M1: the lint fails on each planted form: `"{:.50}".format(e)`, `format(e, ".50")`, `"%.*s" % (50, e)`,
+  `textwrap.shorten(str(e), 50)`, `log.warning("failed: %.50s", e)`, `(r.stderr or "")[-500:]` and
+  `json.dumps({"k": str(e)})[:50]`. It passes `f"{duration:.1f}"`. M2: a new `str(e)[:200]` placed inside an
+  allowlisted function fails.
 - L1: `_classify_error`'s `unhandled_*` branch with a credential URL leaves `fix_hint` clean. L2: the lint fails on
   `dict(m=str(e))["m"][:50]`, `f"{e!s:.50}"` and `"%.50s" % e`. L3: a subclass record logged with no exception does
   not raise. L4: a non-JSON error body with a `\x80` byte is sent and reduced.
