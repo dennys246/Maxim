@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v16 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v17 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -74,6 +74,11 @@
 >     patch is at `scratchpad/regex1801/regex_candidate.patch`.
 >   - W2 (FAIL-OPEN, lint evasion) is folded; W3/W4 are fail-closed.
 >   - A delta round 16 is owed on W1–W4 only.
+> - **Round 16 (delta, a different reader; re-ran the author's verification: 104/104 on 3.10.19 and 3.12.12):** 0
+>   DO-NOT-BUILD, 3 SHOULD-FIX (FAIL-OPEN, covered classes) and 2 NITs, folded and tagged X1–X5.
+>   - X1 and X2 (the whitespace-password branch) are FIXED in the regex, not stated. The author re-verified:
+>     104/104, and 3.10 compiles it.
+>   - A delta round 17 is owed on X1–X5 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -147,8 +152,10 @@ written later.
         `__str__` objects when only `str` and exceptions were proxied (Q1; probed, 0 leaks with this rule). A
         1-character `str` passes through unproxied, so `%c` renders as today (Q4). The pass-through test is by EXACT type,
         never `isinstance` (T1): `type(a) in {NoneType, bool, int, float, complex, Decimal, Fraction}`, or
-        a numpy NUMERIC scalar by EXACT type: `type(a) in _NUMPY_NUMERIC`, a frozenset built lazily, behind `functools.cache` on first
-        proxy use (importing numpy costs about 74 ms; numpy is a core dependency, W4), from numpy's own scalar
+        a numpy NUMERIC scalar by EXACT type: `type(a) in _NUMPY_NUMERIC`, a frozenset built lazily on first proxy use, WITHOUT importing:
+        `np = sys.modules.get("numpy")`, and while it is absent the set is empty and NOT cached, since no numpy scalar
+        can exist before numpy is imported. An import inside `getMessage` runs with the handler lock held, and could
+        deadlock against a thread part-way through importing numpy that logs (X5; W4). Built from numpy's own scalar
         types (`np.sctypeDict` values whose `np.dtype(t).kind` is one of `b i u f c`, a non-empty kind), so a subclass
         or a fake class setting `__module__ = "numpy"` is proxied (V4); or
         `type(a) is str and len(a) == 1`. `np.str_`, `np.bytes_` and every ndarray are proxied: `"%.15s" %
@@ -273,7 +280,7 @@ written later.
         r"(?<![A-Za-z0-9+.-])"
         r"(?:[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's branch, unchanged)
         r"|(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?:\\?/){1,2}|\\{1,2}))(?P=sep))"
-        r"(?:(?P<wsui>[^\s/@:\\]+:(?=[^@]{0,64}@)[^@]*?\s[^@]*?@)|[^\s/@]*@)?"
+        r"(?:(?P<wsui>[^\s/@:\\]*:[^\r\n]{0,64}?\s[^\r\n]{0,64}?@)|[^\s/@]*@)?"
         r"[^\s'\"<>]+"
     )
     ```
@@ -283,8 +290,14 @@ written later.
       ftp(s) only (U2, U5, V6), case-insensitively. Its separator is atomic by a lookahead plus a backreference,
       which keeps Python 3.10, the floor (`requires-python = ">=3.10"`, CI's matrix runs 3.10), able to compile it,
       where `(?>…)` would not.
-    - The userinfo has two alternatives: `wsui`, a `user:` password of up to 64 characters that contains whitespace
-      (`_reduce` emits `<url>` when it matched, Na), or today's quote-tolerant `[^\s/@]*@`.
+    - The userinfo has two alternatives: `wsui`, a user (possibly EMPTY, the normal Redis form `redis://:PW D@…`,
+      X1), `:`, then within 64 characters on one line a whitespace and an `@`, where the password may itself hold an
+      `@` (`https://u:p@ss w@h/p`, X2). `_reduce` emits `<url>` when it matched (Na). The other alternative is today's
+      quote-tolerant `[^\s/@]*@`.
+    - Verified on the scratch patch: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` give
+      `<url>`, and `https://a:b c@h1 https://d@h2` gives `<url> https://h2`. Linear: 236 ms at 233k characters in the
+      worst family, 4× the input for 4× the time (X1, X2).
+    - Accepted over-match (fail-closed, X4): `https://h:8080 failed, mail bob@ex.com` becomes `<url>`. A test pins it.
     - A form branch 2 matches but `url_origin` cannot parse reduces to `<url>` (fail-closed): `x https:/u:PW@h/p`
       gives `x <url>`, and the JSON-escaped form gives `"<url>"`.
     - Prose is untouched: `see https://a.com and user:x@y` and `C:\Users\me` stay as they are.
@@ -353,6 +366,11 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     DUNDER method call on tainted text (`.__getitem__(…)`, `.__format__(…)`), `operator.getitem`, and any
     `reprlib.*` call over tainted text (T2);
   - any `textwrap.*`, `itertools.*` or `collections.deque` call over tainted text (U3);
+  - callee indirection (X3): the lint fails on any reference to a split-family attribute (`str.partition`,
+    `x.split`) that is not called on the spot (`sp = str.partition`); on `getattr` with a split-family or non-literal
+    name, `operator.methodcaller` naming a split-family method, and `functools.partial` over one, when the text is
+    tainted; and on `re` reached through an import alias or `from re import …`. It resolves import aliases for
+    `textwrap`, `itertools`, `collections`, `reprlib`, `operator` and `string` the same way;
   - **every** `split`/`rsplit`/`partition`/`rpartition`/`splitlines` call where ANY argument or the receiver is
     tainted (`re.split("@", str(e))`, `str.partition(e, "@")`), and every `re.*` call over tainted text, unless
     the tainted value is a `redact_urls(...)` call (V2, W2). Flagging only a subscript on the call itself missed `head, _, _ =
@@ -446,6 +464,11 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- X1/X2: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` reduce to `<url>`. X3: the lint
+  fails on `sp = str.partition; sp(str(e), "@")[0]`, `getattr(str(e), "partition")("@")[0]`,
+  `operator.methodcaller("split", "@")(str(e))[0]`, `functools.partial(str.split, sep="@")`, `import re as R` and
+  `from re import split` over tainted text. X4: the host:port over-match is pinned. X5: the factory never imports
+  numpy (a test asserts `getMessage` leaves `sys.modules` unchanged).
 - W1: `postgres://u:PW@db`, `redis://:PW@h`, `git+ssh://u:PW@h`, `unix:///s.sock` and `123://u:p@h` reduce;
   `https://u:p w@h/p` gives `<url>`; the case table matches identically on 3.10 and 3.12. W2: the lint fails on
   `re.split("@", str(e))[0]` and `str.partition(e, "@")[0]`. W3: `%f` of an `__index__`-only object renders.
