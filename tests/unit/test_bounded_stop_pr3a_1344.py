@@ -428,7 +428,7 @@ def test_g12_a_restart_stops_only_what_this_process_started(monkeypatch: pytest.
     import inspect
 
     src = inspect.getsource(leader_proxy)
-    restart = src[src.index("def _do_restart") : src.index("os.execv(sys.executable")]
+    restart = src[src.index("def _do_restart") : src.index("os.execve(sys.executable")]
     assert "_stop_own_servers_for_restart()" in restart
 
 

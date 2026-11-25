@@ -11,6 +11,7 @@ requests only lower; `--mode agentic` gets a definition and an unknown mode fail
 from __future__ import annotations
 
 import argparse
+import os
 import logging
 from unittest.mock import MagicMock
 
@@ -39,12 +40,25 @@ def _args(**overrides) -> argparse.Namespace:
 
 def _reexec_argv(monkeypatch, args, mode: str) -> list[str]:
     captured: list[list[str]] = []
-    monkeypatch.setattr("maxim.cli_utils.os.execv", lambda exe, argv: captured.append(list(argv)))
+    monkeypatch.setattr("maxim.cli_utils.os.execve", lambda exe, argv, env: captured.append(list(argv)))
     reexec_with_mode(args, mode=mode)
     assert captured, "reexec_with_mode did not exec"
     argv = captured[0]
     assert argv[1:3] == ["-m", "maxim.cli"]
     return argv[3:]
+
+
+def test_the_reexec_hands_over_child_env_not_a_pth_rewritten_pythonpath(monkeypatch) -> None:
+    """An execv would inherit a .pth hook's site-packages-first PYTHONPATH, so the re-exec'd process could import a
+    stray site-packages maxim (#1593). The re-exec passes child_env() instead."""
+    from maxim.utils.child_env import own_site_dirs
+
+    site_dir = own_site_dirs()[0]
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([site_dir, "/repo/src"]))
+    envs: list[dict[str, str]] = []
+    monkeypatch.setattr("maxim.cli_utils.os.execve", lambda exe, argv, env: envs.append(env))
+    reexec_with_mode(_args(), mode="passive")
+    assert envs and envs[0]["PYTHONPATH"] == "/repo/src"
 
 
 @pytest.mark.parametrize("requested", _RUNTIME_SWITCHABLE_MODES)

@@ -13,6 +13,7 @@ from enum import Enum, EnumMeta, Flag, auto
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 
 from maxim._offline import OfflineRefusal
+from maxim.utils.child_env import child_env
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -766,8 +767,8 @@ _HOST_TOOL_ENV_PREFIXES = ("LC_",)
 
 
 def host_tool_env(environ: dict[str, str] | None = None) -> dict[str, str]:
-    """The allowlisted environment for a host-acting tool's subprocess (#949)."""
-    source = os.environ if environ is None else environ
+    """The allowlisted environment for a host-acting tool's subprocess (#949), built on ``child_env`` (#1593)."""
+    source = child_env(os.environ if environ is None else environ)
     return {
         key: value
         for key, value in source.items()

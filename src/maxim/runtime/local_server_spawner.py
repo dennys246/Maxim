@@ -32,6 +32,7 @@ from maxim.exceptions import LeaderRefusal, LLMServerPortBusy
 from maxim.runtime.llm_spawn_record import remove_spawn_record, write_spawn_record
 from maxim.utils.cancellation import child_groups, spawn_registered, stop_child_group, unregister_child
 from maxim.utils.gpu_compat import get_original_cuda_devices
+from maxim.utils.child_env import child_env
 
 
 DEFAULT_PORT = 8100
@@ -532,7 +533,7 @@ class LocalServerSpawner:
         server to every interface, so those are dropped and ``API_KEY`` is set from ours.
         Also restores ``CUDA_VISIBLE_DEVICES`` if Blackwell hid it.
         """
-        env = os.environ.copy()
+        env = child_env()  # without a .pth hook's site-packages PYTHONPATH entries (#1593)
         for name in list(env):
             if name in _SCRUBBED_ENV or name.lower() == "api_key":
                 del env[name]
