@@ -180,6 +180,33 @@ def test_claimed_by_a_distribution_reads_record_files(tmp_path: Path):
     assert checks._claimed_by_a_distribution(pytest_dir) is True
 
 
+def test_claimed_by_a_distribution_accepts_a_located_file_that_is_not_a_pathlib_path(tmp_path: Path, monkeypatch):
+    """``Distribution.locate_file`` is typed ``SimplePath`` (a zip-backed distribution returns one with no
+    ``.resolve()``); the claim check must compare it through its string form, not crash the doctor."""
+    from importlib import metadata
+    from pathlib import PurePosixPath
+
+    pkg_dir = tmp_path / "maxim"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+
+    class _NotAPathlibPath:  # str-able like a SimplePath, but no .resolve()
+        def __init__(self, p: Path) -> None:
+            self._p = p
+
+        def __str__(self) -> str:
+            return str(self._p)
+
+    class _Dist:
+        files = [PurePosixPath("maxim/__init__.py")]
+
+        def locate_file(self, file):
+            return _NotAPathlibPath(tmp_path / file)
+
+    monkeypatch.setattr(metadata, "distributions", lambda: [_Dist()])
+    assert checks._claimed_by_a_distribution(pkg_dir) is True
+
+
 def test_child_env_module_imports_only_the_standard_library():
     """scripts/_child_env.py loads child_env.py by path so harnesses never import the maxim package. A maxim (or any
     non-stdlib) import added to it would quietly import whichever maxim sys.path holds, the very gap it closes."""

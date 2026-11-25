@@ -2404,7 +2404,7 @@ def _claimed_by_a_distribution(pkg_dir: Path) -> bool:
         for file in dist.files or ():
             if file.name == "__init__.py" and file.parent.name == pkg_dir.name:
                 try:
-                    if dist.locate_file(file).resolve() == target:
+                    if Path(str(dist.locate_file(file))).resolve() == target:
                         return True
                 except (OSError, RuntimeError, NotImplementedError):
                     continue  # a distribution whose files cannot be located claims nothing
