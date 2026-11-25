@@ -126,7 +126,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1781
+      "lines": 1773
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -412,7 +412,8 @@
     "#1519 re-merged onto slice 6 (2026-11-23): _run_agentic_loop_body 1927 -> 1913, the same 14 lines #1519 moved out on the branch (2140 -> 2126).",
     "#1519 re-merged onto #1751 (#1776) on 2026-11-23: _run_agentic_loop_body 1917 -> 1903 and execute_and_learn 325 -> 311, the same 14 lines each that #1519 moved out on the branch.",
     "#1519 re-merged onto #1185 (#1779) on 2026-11-24: _run_agentic_loop_body 1795 -> 1781, the same 14 lines #1519 moved out on the branch.",
-    "#1228 re-merged onto #1519 (#1778) and #1185 (#1779) on 2026-11-24: _main_impl 1131 -> 1118 and start_simulation_mode 1832 -> 1816 (the same 13 and 16 lines #1228 moved out); report.py::build_report stays under the threshold with both sides' extractions (_router_cost/_run_costs and _tool_usage)."
+    "#1228 re-merged onto #1519 (#1778) and #1185 (#1779) on 2026-11-24: _main_impl 1131 -> 1118 and start_simulation_mode 1832 -> 1816 (the same 13 and 16 lines #1228 moved out); report.py::build_report stays under the threshold with both sides' extractions (_router_cost/_run_costs and _tool_usage).",
+    "#1775 (2026-11-24, rule T; Session A's grant): _run_agentic_loop_body 1781 -> 1773, section 4's goal_proposed event moved to agent_loop._log_goal_proposed, paying for its reasoning now logged by text_shape."
   ],
   "touch_exemptions": [
     {
