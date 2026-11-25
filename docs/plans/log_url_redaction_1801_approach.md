@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v10 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v11 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -42,6 +42,9 @@
 >   - L1, L3, L4 and L5 hold. The allowlist key was the only fix site not yet specific enough to build; M2 settles
 >     it.
 >   - A delta round 10 is owed on M1–M5 only.
+> - **Round 10 (delta, a different reader):** 0 DO-NOT-BUILD, 3 SHOULD-FIX (all FAIL-OPEN, all latent: 0 sites in
+>   src) and 1 NIT, folded and tagged P1–P4. P1's logger cut is now fixed at the root, in the factory, not in the
+>   lint. M1, M3, M4 and M5 hold.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -106,8 +109,14 @@ written later.
     stored in `__dict__` drags the raw record into `SocketHandler.makePickle`'s blob, or fails on `exc_info` (F1).
     The choice is made by the record's own type, not by the chained factory's identity (F1):
     - a record whose `type(record) is logging.LogRecord` (the stock class, whoever built it) has its
-      `record.__class__` set to the module-level `_RedactingLogRecord(logging.LogRecord)`, whose `getMessage`
-      reduces. That keeps any foreign attributes and pickles, and `makePickle` is clean (probed);
+      `record.__class__` set to the module-level `_RedactingLogRecord(logging.LogRecord)`. Its `getMessage` reduces
+      BEFORE and AFTER formatting (P1):
+      - each `str` or exception argument is wrapped in a module-level proxy whose `__str__`, `__repr__` and
+        `__format__` return the reduced text, then `msg % args` runs. So a precision cut in the message
+        (`%.50s`, `%.50r`, `%.50a`, `{:.50}`), whatever the logger's name, a message held in a variable, or
+        `logger.log(level, …)`, truncates text that is already reduced;
+      - the result is reduced again (a URL built across arguments, or one in `msg` itself);
+      - other arguments (numbers, None) pass through untouched, so `%d`/`%f` behave as today. That keeps any foreign attributes and pickles, and `makePickle` is clean (probed);
     - a record of a real subclass is rendered eagerly, `msg = redact_urls(getMessage())` and `args = ()`. That pays
       R3's cost only on this rare path. The render is wrapped in `try`: a bad format (`warning("x %d", "notint")`)
       must not raise out of the `logger` call, where inside an `except` block it would mask the original exception.
@@ -257,12 +266,13 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - besides a `Subscript` slice, a **precision cut** over tainted text is flagged (L2, M1):
   - a `FormattedValue` whose spec has a precision with no type, or with type `s`/`r`/`a` (`f"{e!s:.50}"`). A
     precision on a number type (`{duration:.1f}`) is not a cut (M3);
-  - `%`-formatting with `%.Ns` or `%.*s` (`"%.50s" % e`, `"%.*s" % (50, e)`);
+  - `%`-formatting with a precision (`"%.50s" % e`, `"%.*s" % (50, e)`);
   - `"{:.50}".format(e)` and `format(e, ".50")`;
   - `textwrap.shorten(<tainted>, …)`;
-  - a `logger.*` / `log.*` call whose literal message has `%.Ns` with a tainted argument
-    (`log.warning("failed: %.50s", e)`). This form **cuts INSIDE the boundary**: `msg % args` truncates before
-    `_RedactingLogRecord.getMessage` reduces. So it is the lint, not the factory, that stops it (M1).
+  - the logger form (`log.warning("failed: %.50s", e)`) is NOT a lint rule. The factory's argument proxies make it
+    cut reduced text, whatever the logger is called (P1);
+  - `%`-formatting matches `\.(\d+|\*)[sra]` (`%.50r` and `%.50a` cut too, P1); a non-literal format string or spec
+    applied to tainted text fails the lint (P1).
   - `.ljust`/`.rjust`/`.center` only pad, so they are not cuts.
 
   There are 0 such sites in src/maxim, so this is a ratchet;
@@ -278,7 +288,14 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - **attributes each hit to its innermost enclosing function only** (a hit in a nested function is not also reported
   under the outer one), and keys each allowlist entry as `file::innermost_function` plus the `ast.unparse` text of
   the sliced expression. Any hit that matches no entry fails. With a function-only key, a future `str(e)[:200]` in
-  an allowlisted function would pass silently (M2);
+  an allowlisted function would pass silently (M2). Each entry also carries a `count`; more hits than that under one
+  key fail, so two identical `str(e)[:50]` in one function cannot share one entry (P2);
+- **scope (P3):** the lint scans module level and class bodies too (keyed `<module>` and `Class.<body>`), and keys a
+  lambda to its enclosing def, where a lambda's `e`/`exc`/`err` parameters are sources. It detects with the
+  enclosing scope's taint (a closure over an outer `e` is tainted) and attributes the hit to the innermost def;
+- keys survive `ruff format` (the AST is unchanged, probed). A `ruff check --fix` UP031/UP032 rewrite or a Python
+  version change alters the unparse, so the hit goes unmatched and FAILS (fail-closed). The lint runs on CI's pinned
+  Python (P4);
 - allowlists sites that are terminal-only or carry no exception text, each with a reason:
   - `install_core.py`'s `e.response.text[:500]` and `doctor/checks.py::_child_maxim_dir`;
   - `prefetch.py::discover_files_with_find`, `system_metrics.py::_memory_macos` and `container_runner.py::launch`.
@@ -336,8 +353,12 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- P1: `log.warning("failed: %.50s", e)`, `self.log.warning(...)`, `logger.log(30, "%.50r", e)` and a variable message,
+  each with a credential URL in `e`, all render reduced; `%d`/`%f` arguments render unchanged. P2: a second identical
+  hit beyond an entry's `count` fails. P3: a module-level `except … as e: str(e)[:50]`, a class-body one, a lambda
+  `lambda e: str(e)[:50]` and a closure over an outer `e` each fail.
 - M1: the lint fails on each planted form: `"{:.50}".format(e)`, `format(e, ".50")`, `"%.*s" % (50, e)`,
-  `textwrap.shorten(str(e), 50)`, `log.warning("failed: %.50s", e)`, `(r.stderr or "")[-500:]` and
+  `textwrap.shorten(str(e), 50)`, `(r.stderr or "")[-500:]` and
   `json.dumps({"k": str(e)})[:50]`. It passes `f"{duration:.1f}"`. M2: a new `str(e)[:200]` placed inside an
   allowlisted function fails.
 - L1: `_classify_error`'s `unhandled_*` branch with a credential URL leaves `fix_hint` clean. L2: the lint fails on
