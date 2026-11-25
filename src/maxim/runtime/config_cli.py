@@ -37,11 +37,12 @@ from collections.abc import Sequence
 from maxim.exceptions import ConfigurationError
 from maxim.runtime.config_loader import (
     MaximConfig,
-    _FIELD_TO_ENV,
+    SETTABLE_FIELDS,
     config_path,
     load_config,
     resolve_setting,
 )
+from maxim.utils.child_env import child_env
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +120,9 @@ def _cmd_get(argv: list[str]) -> int:
         return _print_all_fields(config, as_json=False)
 
     field_path = argv[0]
-    if field_path not in _FIELD_TO_ENV:
+    if field_path not in SETTABLE_FIELDS:
         print(
-            f"Unknown field path: {field_path!r}\nValid paths:\n  " + "\n  ".join(sorted(_FIELD_TO_ENV.keys())),
+            f"Unknown field path: {field_path!r}\nValid paths:\n  " + "\n  ".join(sorted(SETTABLE_FIELDS)),
             file=sys.stderr,
         )
         return 2
@@ -151,7 +152,7 @@ def _print_all_fields(config: MaximConfig, *, as_json: bool) -> int:
     """Render every absorbed field with its effective value + source."""
     rows: list[tuple[str, object, str]] = []
     error_count = 0
-    for field_path in sorted(_FIELD_TO_ENV.keys()):
+    for field_path in sorted(SETTABLE_FIELDS):
         try:
             value, source = resolve_setting(field_path, config=config)
         except ConfigurationError as e:
@@ -225,7 +226,7 @@ def _cmd_set(argv: list[str]) -> int:
     field_path = argv[0]
     raw_value = argv[1]
 
-    if field_path not in _FIELD_TO_ENV:
+    if field_path not in SETTABLE_FIELDS:
         print(
             f"Unknown field path: {field_path!r}\nUse `maxim config list` to see valid paths.",
             file=sys.stderr,
@@ -267,7 +268,7 @@ def _cmd_unset(argv: list[str]) -> int:
         print("  Removes the field from config.json so it follows the schema default.")
         return 0 if argv else 2
     field_path = argv[0]
-    if field_path not in _FIELD_TO_ENV:
+    if field_path not in SETTABLE_FIELDS:
         print(f"Unknown field path: {field_path!r}\nUse `maxim config list` to see valid paths.", file=sys.stderr)
         return 2
     from maxim.runtime.config_writer import unset_field
@@ -315,7 +316,7 @@ def _cmd_edit(argv: list[str]) -> int:
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
 
     try:
-        rc = subprocess.call([editor, str(target)])
+        rc = subprocess.call([editor, str(target)], env=child_env())  # $EDITOR may be a Python tool (#1593)
     except FileNotFoundError:
         print(
             f"✗ editor not found: {editor!r}. Set $EDITOR or $VISUAL.",

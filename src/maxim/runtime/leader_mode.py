@@ -43,6 +43,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from maxim.exceptions import SECURITY_REFUSALS
+
 logger = logging.getLogger(__name__)
 
 RoleName = Literal["leader", "client", "peer", "solo"]
@@ -155,6 +157,8 @@ def start_claimed_leader_services(log: Any | None = None) -> None:
         from maxim.tunnel.daemon_spawner import auto_spawn_tunnel_daemon
 
         auto_spawn_tunnel_daemon(log)
+    except SECURITY_REFUSALS:
+        raise  # the offline latch refused the cloudflared spawn: a refusal, not a tunnel failure (#1315)
     except Exception as e:  # e.g. PermissionError on /etc/cloudflared: a router build never fails on the tunnel
         logger.warning("leader tunnel daemon did not start: %s", e)
     try:

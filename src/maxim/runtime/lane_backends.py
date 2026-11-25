@@ -32,6 +32,7 @@ from maxim.models.language.types import RESOLVED_KEY_MARKER
 
 logger = logging.getLogger(__name__)
 
+from maxim import _offline
 from maxim.runtime.worker_pool import LaneConfig, Origin, ProviderPlacement
 
 # ─── Plan 3 R2.5: backend-class dispatch table ─────────────────────────
@@ -1246,6 +1247,8 @@ class LaneBackendManager:
                 drain_constraint=drain_constraint,
                 auto_drain_callback=auto_drain_callback,
             )
+        except _offline.OfflineRefusal:
+            raise  # a lane refused offline is refused by name, never dropped to a fallback (#1315 item 10a)
         except Exception as e:
             logger.warning("Failed to create LLM router: %s", e)
             return None
@@ -1454,6 +1457,8 @@ class LaneBackendManager:
 
         try:
             return LLMRouter(remote_cfg)
+        except _offline.OfflineRefusal:
+            raise  # as in _build_local_backend: refused by name, never dropped
         except Exception as e:
             logger.warning("Failed to create remote LLM router for %s: %s", cfg.name, e)
             return None
@@ -2145,6 +2150,18 @@ def _require_valid_user_profiles() -> None:
     require_valid_user_profiles()
 
 
+def _router_build_preflight(logger: Any | None) -> None:
+    """``build_primary_router``'s first step: engage the offline latch from ``llm.offline`` (#1315 item 10a; before
+    the process services, capability detection, a URL probe or auto-spawn can spawn or dial, and for a library caller
+    such as ``maxim.create.router()`` that never ran ``cli.main``), then :func:`_start_process_services` (#1610) and
+    :func:`_require_valid_user_profiles`."""
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    engage_offline_if_configured()
+    _start_process_services(logger)
+    _require_valid_user_profiles()
+
+
 def _capabilities_or_detected(capabilities: Any | None) -> Any:
     """``capabilities``, or this machine's, detected (moved verbatim out of ``build_primary_router`` for rule T)."""
     from maxim.runtime.capabilities import RuntimeCapabilities, detect_compute_resources
@@ -2285,8 +2302,7 @@ def build_primary_router(
         detect_tiers,
     )
 
-    _start_process_services(logger)  # the leader owner's tunnel + heartbeat, then MAXIM_HEARTBEAT's (#1610)
-    _require_valid_user_profiles()
+    _router_build_preflight(logger)  # offline engage, then the leader owner's tunnel + heartbeat (#1610), profiles
     profile = _normalized_build_profile(profile)
 
     # Lane-routing auto-load (C4 of config_unification.md):
@@ -2632,7 +2648,12 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
         leader is still alive so we don't fall back locally.
       * Anything else → log a structured warning + drop ``remote_url`` so
         auto-spawn or local fallback takes over.
+
+    Offline (#1315 item 10a) nothing is probed and nothing is dropped or cached: a remote lane stays wired, so the
+    router build refuses it by name instead of a silent local fallback.
     """
+    if _offline.is_offline():
+        return dict(lane_configs)
     if os.environ.get("MAXIM_SKIP_REMOTE_PROBE", "").strip().lower() in (
         "1",
         "true",
@@ -2845,6 +2866,17 @@ def _lane_profile_is_cloud(infer_cfg: Any, infer_tier: str, logger: Any) -> bool
     return False
 
 
+def _auto_spawn_ruled_out(capabilities: Any) -> bool:
+    """The auto-spawn guards that need no lane: offline (before the :8100 probe, the lsof fallback and any spawn;
+    #1315 item 10, V8), an explicit ``MAXIM_AUTO_SPAWN_LLM_SERVER`` opt-out, or no GPU."""
+    if _offline.is_offline():
+        return True
+    auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()
+    if auto_raw in ("0", "false", "f", "no", "n", "off"):
+        return True
+    return capabilities is None or not getattr(capabilities, "has_gpu", False)
+
+
 def _auto_spawn_timeout_s() -> float:
     """``MAXIM_AUTO_SPAWN_TIMEOUT_S`` (default 120): how long a spawn may load, and how long a busy server on the port
     is waited for (#1344 PR 3a)."""
@@ -2926,11 +2958,7 @@ def _maybe_auto_spawn_server(
     """
     # Mutable globals live in _server_mod (llm_server.py) — single source of truth
 
-    auto_raw = os.environ.get("MAXIM_AUTO_SPAWN_LLM_SERVER", "").strip().lower()
-    if auto_raw in ("0", "false", "f", "no", "n", "off"):
-        return lane_configs
-
-    if capabilities is None or not getattr(capabilities, "has_gpu", False):
+    if _auto_spawn_ruled_out(capabilities):
         return lane_configs
 
     # Tier-based: primary inference tier is "large"; fall back to "infer"

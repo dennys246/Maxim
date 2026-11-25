@@ -106,7 +106,7 @@ class TestFormatVersionFieldOrder:
 
     def test_format_version_default_matches_module_constant(self):
         cfg = MaximConfig()
-        assert cfg._format_version == CONFIG_FORMAT_VERSION == "1.4"
+        assert cfg._format_version == CONFIG_FORMAT_VERSION == "1.5"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -830,14 +830,14 @@ class TestUnknownKeyHandling:
         path.write_text(
             json.dumps(
                 {
-                    "_format_version": "1.5",
+                    "_format_version": "1.99",
                     "embodiment": {"robot_name": "reachy"},
                 }
             )
         )
         with caplog.at_level(logging.WARNING, logger="maxim.runtime.config_loader"):
             cfg = load_config(path)
-        assert cfg._format_version == "1.5"
+        assert cfg._format_version == "1.99"
         assert any("future minor" in r.getMessage() for r in caplog.records)
 
     def test_future_minor_unknown_nested_tolerated(self, tmp_path, caplog):
@@ -845,7 +845,7 @@ class TestUnknownKeyHandling:
         path.write_text(
             json.dumps(
                 {
-                    "_format_version": "1.5",
+                    "_format_version": "1.99",
                     "llm": {"profile": "qwen-32b", "future_field": "value"},
                 }
             )
@@ -869,7 +869,7 @@ class TestUnknownKeyHandling:
         path.write_text(
             json.dumps(
                 {
-                    "_format_version": "1.5",
+                    "_format_version": "1.99",
                     "lanes": {"huge": {"remote_url": "http://example.com"}},
                 }
             )

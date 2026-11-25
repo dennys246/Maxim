@@ -46,6 +46,8 @@ docstring, and #1227).
   - **On the shared router, AUT cognition by design:** FearAgent (`fear_llm=llm_router`, `llm_for_fear = llm_router`), the
     imagination designers and the scene manifest (orchestrator.py, the `aut_imagination_trigger … llm_router` branch).
     B0 doc §"What the code forced": they "run on the narrator's router today" (#1228).
+    *Note 2026-11-21 (#1228):* the factory's `fear_llm=llm_router` slot was dead (the AUT config has
+    `with_fear_gate=False`) and has been removed; the live FearAgent and the imagination designer now hold the AUT's router.
   - **Counted, other serials:** ExecAgent's private router (module-level accounting, so its counts survive, and its
     serial enters `llm_calls` when it made a call).
   - **After the window:** `sim_teardown.py::run_roundup` calls `analyze_simulation(report, llm_router=llm_router)` after
