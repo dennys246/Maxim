@@ -387,7 +387,7 @@ the robot** before it moves a Maxim claim.
   - `LLMWorker._process_request` (A4/B1, around `:1322`).
 
   `_run_deliberation_cycles` (B1) is no longer pinned: #1743 took it to 197 lines. An edit that takes it back over
-  200 is a new function over the threshold, which needs a `split_from` record or an extraction.
+  200 fails the lint as a new function over the threshold: it needs an extraction, or a committed exception record.
 
   Each edit extracts what it touches.
 - **CC3.** B1's continuation and request/reply values, and A6's write-proposal values, are frozen dataclasses that

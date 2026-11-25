@@ -59,6 +59,21 @@ def _failed_actions(turn: dict[str, Any]) -> list[str]:
     return out
 
 
+def nothing_done_text(actions: Any) -> str:
+    """Why a turn that settled on the loop's no-op marker did nothing, in the person's words (#1743): the model
+    chose not to act, its answer failed (with the error, URLs already reduced), or its answer came too late. The one
+    home of this wording; ``server._post_run_talk`` reads it too. Callers pass a turn that settled on the marker
+    (``noop_count``); records with no marker read as declined."""
+    from maxim.simulation.sinks import nothing_done_kind
+
+    kind, detail = nothing_done_kind(actions) or ("declined", "")
+    if kind == "error":
+        return f"the model's answer failed ({detail})" if detail else "the model's answer failed"
+    if kind == "stale":
+        return "the model's answer came too late and was dropped"
+    return "the model chose not to act on this one"
+
+
 def _describe_silent_turn(turn: dict[str, Any]) -> str:
     """Explain a turn that produced no words, in the user's terms.
 
@@ -68,9 +83,7 @@ def _describe_silent_turn(turn: dict[str, Any]) -> str:
     state that is SHOWN.
     """
     if turn.get("timed_out") and turn.get("noop_count"):  # settled on the loop's no-op marker (#1743)
-        from maxim.simulation.sinks import nothing_done_reason
-
-        return f"(no reply — {nothing_done_reason(turn.get('actions')) or 'the model chose not to act on this one'})"
+        return f"(no reply — {nothing_done_text(turn.get('actions'))})"
     if turn.get("timed_out"):
         return "(no reply — the turn timed out before finishing)"
     refused_records = [

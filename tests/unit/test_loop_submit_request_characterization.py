@@ -961,6 +961,33 @@ def test_1743_other_turn_ends_with_nothing_done_record_the_marker(monkeypatch, t
     assert _noops(sink) == marked
 
 
+@pytest.mark.parametrize(
+    "error, text",
+    [
+        ("Invalid LLM response", "the model's answer failed (Invalid LLM response)"),
+        (
+            "Server error '500' for url 'http://user:pw@100.64.1.2:8100/v1/chat?key=s3cret'",
+            "the model's answer failed (Server error '500' for url 'http://100.64.1.2:8100')",
+        ),
+    ],
+    ids=["plain", "url-reduced-before-the-cut"],
+)
+def test_1743_an_error_turn_reaches_the_console_as_a_failure(monkeypatch, tmp_path, error, text):
+    """Producer to consumer: the loop records the error answer's marker; the console words it from the sink's own
+    records. An httpx-style error's URL is reduced to its origin BEFORE the 60-character cut, so no user:pw@, path
+    or query reaches the narrator, the console or the HTTP detail (#997; delta round 3)."""
+    import dataclasses
+
+    from maxim.console.handle import nothing_done_text
+    from maxim.simulation.sinks import RecordingSink
+
+    sink = RecordingSink()
+    proposal = dataclasses.replace(_proposal(), error=error)
+    _run(monkeypatch, tmp_path, inputs={0: "one"}, worker=_Worker(answers=[proposal]), action_sink=sink, steps=2)
+    assert nothing_done_text(sink.actions) == text
+    assert not any(s in "".join(_noops(sink)) for s in ("user", "pw@", "/v1", "s3cret"))
+
+
 def test_1743_a_late_follow_up_answer_does_not_end_the_next_turn(monkeypatch, tmp_path):
     """A tool follow-up's action-less answer can land after the bridge settled on the tool's record and moved on:
     it must not record a marker into the next turn's window (delta round, executor SF1). Neither may a deliberation
@@ -982,15 +1009,21 @@ def test_1743_a_late_follow_up_answer_does_not_end_the_next_turn(monkeypatch, tm
     assert _noops(sink) == []
 
 
-@pytest.mark.parametrize("deliberates", [True, False], ids=["deliberated", "section-2"])
-def test_1743_a_declined_answer_to_a_tool_follow_up_records_no_marker(monkeypatch, tmp_path, deliberates):
+@pytest.mark.parametrize(
+    "deliberates, first_ready",
+    [(True, True), (True, False), (False, True)],
+    ids=["deliberated", "deliberated-cycles-2", "section-2"],
+)
+def test_1743_a_declined_answer_to_a_tool_follow_up_records_no_marker(monkeypatch, tmp_path, deliberates, first_ready):
     """The composed path: a real pending follow-up (``_scan_context_inputs`` adds its line, ``_keep_newest_cli_input``
     keeps it), answered with no action. The bridge settled on the tool's own record, so a marker here could land in
     its next turn (delta round 2: the deliberation decided with cycle 1's request, as §2 does)."""
     from maxim.simulation.sinks import RecordingSink
 
     sink = RecordingSink()
-    worker = _Worker(answers=[_proposal(reasoning="nothing more to do")])
+    # cycles 2+: a not-ready cycle 1, then the settled action-less answer, which inherits cycle 1's verdict
+    answers = [_proposal(ready=False, reasoning="let me think more")] if not first_ready else []
+    worker = _Worker(answers=[*answers, _proposal(reasoning="nothing more to do")])
     obs = _run(
         monkeypatch,
         tmp_path,

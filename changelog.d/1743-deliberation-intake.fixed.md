@@ -10,12 +10,16 @@
   - A planning retry budget spent anywhere now aborts the run on the next pass (`loop_gates.pre_tick_gate` reads the
     latch), so a budget spent in the deliberation's intake cannot leave the loop idling. Under planning liveness a
     declined deliberation turn is dropped, not retried; no shipped loop combines liveness with a deliberation today.
-  - A turn that ends with nothing done and nothing retried now records the sim's no-op marker
-    (`_deliberation_noop`), so the bridge ends that turn after its settle window instead of waiting out the 120 s
-    response timeout: a declined deliberation on a fresh input, and, with planning liveness off, an action-less or error answer to a
-    fresh input or a stale drop of one. An answer to a tool follow-up (deliberated or not) or a deliberation
-    continuation records nothing, so it cannot end the next turn early. The turn still reports `timed_out` and counts no action; the
-    console says why instead of "timed out": the model chose not to act, its answer failed (with the error), or its
-    answer came too late. The marker existed since 0.8 but nothing
-    recorded it. The Exp 41/42 action loaders and the sub-simulation report's `total_actions` now leave the loop's
-    markers out, as the other counters already did.
+  - When the sim's no-op marker (`_deliberation_noop`) is recorded: a turn that answers a fresh input and ends with
+    nothing done and nothing retried. That is a declined deliberation, or, with planning liveness off, an
+    action-less answer, an error answer or a stale drop. The bridge then ends the turn after its settle window
+    instead of waiting out the 120 s response timeout. An answer to a tool follow-up (deliberated or not) or to a
+    deliberation continuation records nothing, so it cannot end the next turn early. The marker existed since 0.8,
+    but nothing recorded it.
+  - What the person sees: the turn still reports `timed_out` and counts no action, but the console says why instead
+    of "timed out": the model chose not to act, its answer failed (with the error, every URL in it reduced to its
+    origin before it is cut), or its answer came too late. The planning-failure reason (logs, the liveness abort
+    message) and the error lines the loop and the planning worker log are reduced the same way.
+  - The Exp 41/42 action loaders and the sub-simulation report's `total_actions` leave the loop's markers out, as the
+    other counters already did. No recorded run changes: both experiments ran substrate-primary, which records no
+    marker.

@@ -361,6 +361,27 @@ def test_an_error_proposal_is_dropped_logged_and_clears_the_input(monkeypatch, t
     assert _pending_cleared(obs) and obs.worker.requeues == []
 
 
+def test_an_error_proposal_with_a_url_logs_only_its_origin(monkeypatch, tmp_path, caplog):
+    """#1743 wire fold (#997's pattern): an LLM error's text can carry credentials or a private path; the loop's
+    error lines (the logger, the sim log, ``log_agentic``) reduce every URL to its origin, and cut only after that."""
+    # 86 characters before the URL, so a cut to 100 BEFORE the scrub would land in the userinfo ("https://user:").
+    err = "connect failed: ".ljust(86, "x") + " https://user:hunter2@llm.internal:8100/v1/chat?key=SECRET"
+    import maxim.simulation.sim_logger as sim_logger
+
+    sim_lines: list[str] = []
+    real_sim_log = sim_logger.sim_log
+    monkeypatch.setattr(
+        sim_logger, "sim_log", lambda cat, msg, data=None: (sim_lines.append(msg), real_sim_log(cat, msg, data))
+    )
+    caplog.set_level(logging.WARNING, logger="maxim")
+    obs = _run(monkeypatch, tmp_path, {0: _proposal(None, error=err)}, steps=3)
+    logged = [r.getMessage() for r in caplog.records if "LLM proposal error" in r.getMessage()]
+    dropped = [m for m in sim_lines if m.startswith("DROPPED: proposal error")]
+    assert logged and dropped and all("https://llm.internal:8100" in m for m in logged + dropped)
+    texts = logged + dropped + [str(data) for _, data in obs.events]
+    assert obs.events and not any(s in t for t in texts for s in ("hunter2", "user:", "/v1/chat", "SECRET"))
+
+
 def test_without_liveness_a_proposal_with_no_action_is_ignored_and_keeps_the_input(monkeypatch, tmp_path):
     obs = _run(monkeypatch, tmp_path, {0: _proposal(None)}, steps=3)
     assert obs.executed == [] and obs.events == [] and obs.worker.requeues == []
@@ -401,6 +422,16 @@ def test_under_liveness_an_error_requeues_but_a_shutdown_does_not(monkeypatch, t
     obs = _run(monkeypatch, tmp_path / "shutdown", {0: _proposal(None, error="shutdown")}, steps=3, liveness=True)
     assert obs.worker.requeues == []
     assert obs.events == [("error", {"context": "llm_proposal", "error": "shutdown"})]
+
+
+def test_under_liveness_an_error_with_a_url_requeues_with_only_its_origin(monkeypatch, tmp_path):
+    """#1743 executor fold: §2's planning-failure reason (the requeue, the failure record, the abort message) reduces
+    every URL to its origin before its cut, like the turn's marker."""
+    err = "connect failed: https://user:hunter2@llm.internal:8100/v1/chat?key=SECRET"
+    obs = _run(monkeypatch, tmp_path, {0: _proposal(None, error=err, original_request="REQ")}, steps=3, liveness=True)
+    reason = "proposal_error:connect failed: https://llm.internal:8100"
+    assert obs.worker.requeues == [("request", "REQ", {"failed_tool": None, "reason": reason})]
+    assert _retry(reason, 1) in obs.events
 
 
 def test_under_liveness_a_proposal_with_no_action_requeues_with_its_reason(monkeypatch, tmp_path):

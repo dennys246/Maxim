@@ -1486,12 +1486,6 @@ _TALK_RUN_ID = "talk"
 _REST_RUN_ID = "rest"
 
 
-def _nothing_done(result: dict[str, Any]) -> str:
-    from maxim.simulation.sinks import nothing_done_reason
-
-    return nothing_done_reason(result.get("actions")) or "the model chose not to act on this one"
-
-
 def _post_run_talk(body: RunRequest) -> RunAccepted:
     """HANDLE talk mode — one conversational turn against the live loop.
 
@@ -1532,6 +1526,8 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         _talk_lock.release()
 
     timed_out = bool(result.get("timed_out"))
+    from maxim.console.handle import nothing_done_text  # the wording's one home (#1743)
+
     return RunAccepted(
         # Per-turn id so a client can correlate a turn with its event burst;
         # events during the turn carry run_id=_TALK_RUN_ID (the scope), while
@@ -1541,7 +1537,7 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         status="completed",
         reply=result.get("response"),
         detail=(
-            f"No reply: {_nothing_done(result)}."  # the loop's no-op marker settled the turn (#1743)
+            f"No reply: {nothing_done_text(result.get('actions'))}."  # the loop's no-op marker settled it (#1743)
             if timed_out and result.get("noop_count")
             else "Turn timed out before a reply — the response may still arrive on /ws."
             if timed_out

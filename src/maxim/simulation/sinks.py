@@ -44,20 +44,35 @@ DELIBERATION_NOOP = "_deliberation_noop"  # a turn over with nothing done (loop_
 SYNTHETIC_TOOL_NAMES: frozenset[str] = frozenset({GATING_PROMPT, LLM_UNAVAILABLE, DELIBERATION_NOOP})
 
 
-def nothing_done_reason(actions: Any) -> str | None:
-    """Why a turn settled on a ``DELIBERATION_NOOP`` marker, in a person's words, or None when it did not: the model
-    declined, its answer failed (the marker's ``proposal_error:<text>``), or its answer was dropped as stale (the
-    reasons ``loop_intake._record_declined_turn`` records, #1743). The console's two talk surfaces read this."""
+# The no-op marker's reasons the console words (#1743): the one vocabulary its producer (``loop_intake``) and its
+# readers share. Any other reason is an answer with no action, which the model chose.
+NOOP_STALE = "stale_proposal_dropped"
+NOOP_ERROR = "proposal_error"
+
+
+def noop_error_reason(error: Any) -> str:
+    """The reason an error answer carries (``proposal_error:<text>``): the error's text with every URL reduced to its
+    origin BEFORE the 60-character cut (a cut first can keep ``user:pw@`` or a path, #997), since it reaches the
+    narrator's tool results, the console stream and the HTTP detail; as §2's liveness reason it also reaches the logs
+    and the abort message (not the retry prompt: ``proposal_error`` is no ``PLANNING_CORRECTIONS`` key)."""
+    from maxim.utils.http import redact_urls
+
+    return f"{NOOP_ERROR}:{redact_urls(str(error))[:60]}"
+
+
+def nothing_done_kind(actions: Any) -> tuple[str, str] | None:
+    """Why a turn settled on a ``DELIBERATION_NOOP`` marker, from the LAST one in its records (the turn's final
+    word): ``("error", <text>)``, ``("stale", "")`` or ``("declined", "")``; None when it carries none. The console
+    owns the words (``console.handle.nothing_done_text``)."""
     for record in reversed(list(actions or [])):
         if getattr(record, "tool_name", None) != DELIBERATION_NOOP:
             continue
         reason = str(getattr(record, "result_output", "") or "")
-        if reason.startswith("proposal_error"):
-            detail = reason.partition(":")[2].strip()
-            return f"the model's answer failed ({detail})" if detail else "the model's answer failed"
-        if reason == "stale_proposal_dropped":
-            return "the model's answer came too late and was dropped"
-        return "the model chose not to act on this one"
+        if reason.split(":", 1)[0] == NOOP_ERROR:
+            return "error", reason.partition(":")[2].strip()
+        if reason == NOOP_STALE:
+            return "stale", ""
+        return "declined", ""
     return None
 
 

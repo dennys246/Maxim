@@ -113,11 +113,33 @@ def _drop_stale_proposal(proposal: Any, *, ctrl: Any, llm_worker: Any, sim: Any,
         ctrl,
         llm_worker,
         sim,
-        reason="stale_proposal_dropped",
+        reason=_stale_reason(),
         original_request=proposal.original_request,
         exhausted_status="planning_failed",
     )
     return None, bool(exhausted)
+
+
+def _stale_reason() -> str:
+    """``sinks.NOOP_STALE``, read lazily: the no-op vocabulary this module writes and the console reads (#1743)."""
+    from maxim.simulation.sinks import NOOP_STALE
+
+    return NOOP_STALE
+
+
+def _error_reason(error: Any) -> str:
+    """An error answer's reason, ``sinks.noop_error_reason``: URLs reduced to their origin before the cut (#997)."""
+    from maxim.simulation.sinks import noop_error_reason
+
+    return noop_error_reason(error)
+
+
+def _redacted(error: Any) -> str:
+    """An error's text with every URL reduced to its origin, for the logs (an LLM error can carry ``user:pw@`` or a
+    private path, #997); cut AFTER this, never before."""
+    from maxim.utils.http import redact_urls
+
+    return redact_urls(str(error))
 
 
 def _proposal_without_action_reason(proposal: Any) -> str | None:
@@ -342,7 +364,7 @@ def accept_llm_proposal(
         )
         _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
         if new_proposal is None and ends_turn and not _planning_liveness_on:  # dropped, not retried: the turn is over
-            _record_declined_turn(action_sink, "stale_proposal_dropped")
+            _record_declined_turn(action_sink, _stale_reason())
     # In simulation mode, skip fallback proposals — wait for real LLM
     if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
         _dropped = _drop_skipped_fallback(
@@ -412,12 +434,12 @@ def accept_llm_proposal(
             state.data.pop("pending_user_input", None)
             state.data.pop("pending_user_input_time", None)
             state.data.pop("pending_user_input_source", None)
-            logger.warning("LLM proposal error: %s", new_proposal.error)
-            sim.log("EXEC", f"DROPPED: proposal error — {new_proposal.error}")
+            logger.warning("LLM proposal error: %s", _redacted(new_proposal.error))
+            sim.log("EXEC", f"DROPPED: proposal error — {_redacted(new_proposal.error)}")
             log_agentic(
                 "agent_loop",
                 "error",
-                {"context": "llm_proposal", "error": str(new_proposal.error)[:100]},
+                {"context": "llm_proposal", "error": _redacted(new_proposal.error)[:100]},
                 level="WARNING",
             )
             # D13: an error proposal is also a consumed planning turn
@@ -430,7 +452,7 @@ def accept_llm_proposal(
                     ctrl,
                     llm_worker,
                     sim,
-                    reason=f"proposal_error:{str(new_proposal.error)[:60]}",
+                    reason=_error_reason(new_proposal.error),  # URLs reduced before the cut (#997, #1743)
                     original_request=new_proposal.original_request,
                 )
             ):
@@ -460,7 +482,7 @@ def accept_llm_proposal(
         if ends_turn and _turn_is_over(new_proposal, liveness_on=_planning_liveness_on, retries=declined_is_failure):
             _record_declined_turn(
                 action_sink,
-                _proposal_without_action_reason(new_proposal) or f"proposal_error:{str(new_proposal.error)[:60]}",
+                _proposal_without_action_reason(new_proposal) or _error_reason(new_proposal.error),
             )
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 

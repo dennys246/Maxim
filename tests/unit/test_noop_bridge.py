@@ -180,3 +180,23 @@ def test_the_sub_simulation_report_counts_no_marker_as_an_action(monkeypatch, tm
     report = out.output if isinstance(out.output, dict) else SimpleNamespace(get=lambda k: None)
     assert out.success, out
     assert report.get("total_actions") == 1 and len(report.get("actions")) == 2
+
+
+def test_the_last_marker_is_the_turns_final_word():
+    """``nothing_done_kind`` reads the LAST no-op marker of a turn's records (#1743)."""
+    from maxim.simulation.sinks import DELIBERATION_NOOP, NOOP_STALE, noop_error_reason, nothing_done_kind
+
+    early = ActionRecord(timestamp=1.0, tool_name=DELIBERATION_NOOP, result_output=NOOP_STALE)
+    late = ActionRecord(timestamp=2.0, tool_name=DELIBERATION_NOOP, result_output=noop_error_reason("boom"))
+    assert nothing_done_kind([early, late]) == ("error", "boom")
+    assert nothing_done_kind([late, early]) == ("stale", "")
+    assert nothing_done_kind([ActionRecord(timestamp=0.0, tool_name="respond")]) is None
+
+
+def test_an_error_reason_reduces_urls_before_the_cut():
+    """A cut first would keep ``user:pw@`` (the URL scrub then cannot match a truncated URL), #997."""
+    from maxim.simulation.sinks import noop_error_reason
+
+    reason = noop_error_reason("x" * 30 + " for url 'http://user:pw@10.0.0.2:8100/a/very/long/path?token=abc'")
+    assert reason.startswith("proposal_error:") and len(reason) <= len("proposal_error:") + 60
+    assert "user" not in reason and "pw" not in reason and "token" not in reason

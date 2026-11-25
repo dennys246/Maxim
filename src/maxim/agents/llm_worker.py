@@ -1355,8 +1355,9 @@ class LLMWorker:
         except Exception as e:
             try:
                 from maxim.simulation.sim_logger import sim_log
+                from maxim.utils.http import redact_urls  # an LLM error can carry user:pw@ or a private path (#997)
 
-                sim_log("EXEC", f"LLMProposal EXCEPTION: {type(e).__name__}: {str(e)}")
+                sim_log("EXEC", f"LLMProposal EXCEPTION: {type(e).__name__}: {redact_urls(str(e))}")
             except Exception:
                 pass
             latency_ms = (time.time() - start_time) * 1000

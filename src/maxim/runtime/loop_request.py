@@ -765,9 +765,8 @@ def _deliberate(
                     max_cycles=_max_cyc,
                     ctrl=ctrl,
                 )
-                _outcome = _accept(
-                    _delib, _ends_turn
-                )  # the answer it settled on (#1743: never None); the intake decides
+                # the answer it settled on (#1743: never None); the intake decides
+                _outcome = _accept(_delib, _ends_turn)
                 sim.log(
                     "DELIBERATION",
                     f"multi-cycle deliberation yielded proposal: "
