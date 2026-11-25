@@ -485,6 +485,12 @@ The impact is **safety**, not only security. The strict choice is the default ev
   - `device_state.json`;
   - the sanitiser;
   - the `maxim.devices` read verbs (`entries/get/check/resolve`), the session verb `open_controller`, the `LAYER_RULES` entries, and `maxim device list|show|check`.
+  - **PR 1 checklist from the PR 0 code review** ([pr0_executor](reviews/1806/pr0_executor.md), [pr0_architecture](reviews/1806/pr0_architecture.md), [pr0_wire](reviews/1806/pr0_wire.md)):
+    - `maxim.connect`/`api._connect_robot_for_run` read neither robots.yaml nor `resolve_daemon_name` (W-4), so state them as unpinned paths, per §3b;
+    - an explicit host name is probed at its resolved IPv4 but the SDK dials the name verbatim (A9). The §4.3 "dial the verified literal" step closes this;
+    - the harness `child_env` recipe pops `MAXIM_DEVICE` and that is documented in `simulation-experiments.md` (A10);
+    - `modes/definitions.py::EMBODIED_RUN_MODES` gets its caller (`launch.mode` validation, PR 2b) and the selfy no-park list derives from `RUN_MODES` (A5/W-8);
+    - `resolve_daemon_name`'s source label distinguishes a library default from a typed flag (A12).
 - **PR 2, the writer (≈320):** the raw-mapping `write_robots_config`, the `add`, `rename`, `forget` and `repin` verbs, `use`/`maxim connect` (which moves `primary:`); `relocate` lands with PR 3, the lints, and the C2 amendment.
 - **PR 2b, `embody` (≈180):** `plan_launch`, preflight, the plan block, carrying the verified address, pin and typed grant into the existing launch, `embody`'s D13′ exits, the perception-without-media refusal and `--no-media`, and `launch:` + `--save-defaults` (which writes `mode/llm/interactive` only).
 - **PR 3, discovery (≈220):** `discover` + `relocate` over `find_robots`, the latch checked first, the census and lint updates, and the macOS hint.
