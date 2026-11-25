@@ -30,6 +30,13 @@ from maxim.agents.bus import (
     SubGoal,
 )
 from maxim.default_network.messages import FilteredPercept
+from maxim.agents.exec_agent_router import (
+    BUILD_OWN,
+    _BuildOwn,
+    override_in,
+    warn_if_profile_override_bypassed,
+    warn_no_router_start_once,
+)
 from maxim.agents.exec_prompts import (
     SYSTEM_PROMPT,
     CRITIQUE_SYSTEM,
@@ -100,7 +107,7 @@ class ExecAgent(Agent):
         quantization: str = "Q4_K_M",
         system_prompt: str | None = None,
         rate_limit_hz: float = 2.0,
-        shared_router: LLMRouter | None = None,
+        shared_router: LLMRouter | _BuildOwn | None,
         shared_llm_worker: LLMWorker | None = None,
         agent_id: str | None = None,
     ) -> None:
@@ -138,12 +145,16 @@ class ExecAgent(Agent):
         self._llm: ChatLLMAgent | None = None
         self._llm_profile = llm_profile
         self._quantization = quantization
-        self._router: LLMRouter | None = shared_router
+        # A handed-in router is the one this agent runs on; None: no LLM, none built; BUILD_OWN: built lazily (#1228).
+        self._builds_own = shared_router is BUILD_OWN
+        self._router: LLMRouter | None = None if isinstance(shared_router, _BuildOwn) else shared_router
         # The profile whose model the last router build was refused (missing, not downloaded), or None (#1396):
         # a lazy "never" build does not rebuild and warn again on every goal; an "ask" build still asks.
         self._refused_profile: str | None = None
         self._refused_cause: str | None = None  # why (one of LocalModelUnavailable.CAUSES), for the CLI's typed refusal
         self._llm_worker: LLMWorker | None = shared_llm_worker
+        if self._router is not None:
+            warn_if_profile_override_bypassed(self._router)
         self._owns_llm_worker = shared_llm_worker is None  # Only stop if we created it
 
         # Rate limiting
@@ -188,7 +199,9 @@ class ExecAgent(Agent):
         self._bus.subscribe(GoalCompleted, self._on_goal_completed)
 
     def _ensure_llm(self) -> ChatLLMAgent | None:
-        """Lazy initialization of LLM."""
+        """Lazy initialization of LLM, only for an agent handed ``BUILD_OWN`` (#1228)."""
+        if not self._builds_own:
+            return None
         if self._llm is None:
             try:
                 config = LLMAgentConfig(
@@ -204,15 +217,22 @@ class ExecAgent(Agent):
                 return None
         return self._llm
 
+    def adopt_router(self, router: LLMRouter | None, worker: LLMWorker | None = None) -> None:
+        """Run on ``router`` (and ``worker``) that this agent's runtime built after the agent: the robot runtime builds
+        its LLM after its ``MaximAgent`` (#1228; it used to set ``_router`` from outside). A router or worker this
+        agent already holds is kept; an adopted worker is not this agent's to stop."""
+        if router is not None and self._router is None:  # adopting None leaves it as it was: never a lazy build
+            self._router = router
+            warn_if_profile_override_bypassed(router)
+        if worker is not None and self._llm_worker is None:
+            self._llm_worker = worker
+            self._owns_llm_worker = False
+
     def _resolve_profile_override(self, cfg: Any) -> str | None:
-        profiles = getattr(cfg, "agent_profiles", {})
-        if not isinstance(profiles, dict):
-            return None
-        for key in ("exec_agent", "executive"):
-            value = profiles.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return None
+        """The ``agent_profiles.exec_agent`` (or ``executive``) override in ``cfg``, or None. It applies only to a
+        router this agent builds itself (:meth:`_ensure_router`); a router handed in (``shared_router=``,
+        :meth:`adopt_router`) is used as it is (#1228)."""
+        return override_in(cfg)
 
     def _ensure_router(self, *, consent: Literal["ask", "never"] = "never") -> LLMRouter | None:
         """ExecAgent's router, built once, its local model usable (``models/download.py::consented_router``).
@@ -224,6 +244,8 @@ class ExecAgent(Agent):
         "never" refusal (#1343, #1396 bullet 2)."""
         if self._router is not None:
             return self._router
+        if not self._builds_own:  # handed None (no LLM) or a router it already returned: it builds none (#1228)
+            return None
         if consent == "never" and self._refused_profile is not None:
             return None
         try:
@@ -1870,7 +1892,11 @@ Based on this context, what goal should be proposed?"""
         return None
 
     def on_start(self, **kwargs: Any) -> None:
-        """Start the background worker."""
+        """Start the background worker (the only production starter of goal proposals). An agent handed
+        ``shared_router=None`` proposes no goals; that is said once per process, naming ``BUILD_OWN``, because None
+        meant the lazy build before #1228."""
+        if self._router is None and not self._builds_own:
+            warn_no_router_start_once()
         if self._worker is None or not self._worker.is_alive():
             self._stop_event.clear()
             self._worker = threading.Thread(target=self._worker_loop, daemon=True)

@@ -683,15 +683,32 @@ def _auto_curate_before_run(curate_genre: str) -> None:
         print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
 
 
-def _build_run_agent(model: str, effective_home: str) -> Any:
+def _start_run_worker(router: Any) -> Any:
+    """``run()``'s started LLM worker on ``router`` (moved verbatim out of ``run``, #1228 rule T)."""
+    from maxim.agents.llm_worker import LLMWorker
+
+    # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
+    # LLMWorker construction site that resolved no n_ctx at all — the
+    # constructor default (4096) applied, and only the old cloud max()
+    # raise compensated by lifting it to the declared provider window.
+    # With the clamp now lower-only, omitting n_ctx here would pin every
+    # headless cloud run to a 4096-token prompt budget. Same pattern as
+    # console/handle.py.
+    llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
+    llm_worker.start()
+    return llm_worker
+
+
+def _build_run_agent(model: str, effective_home: str, router: Any) -> Any:
     """``run()``'s agent, its user event subscriptions bridged to its bus (moved verbatim out of ``run``, #1264
-    rule T)."""
+    rule T). Its ExecAgent is handed ``run()``'s own router (#1228): it used to build a second, private one."""
     from maxim.agents.maxim_agent import MaximAgent
 
     agent = MaximAgent(
         llm_profile=model,
         memory_persistence_path=os.path.join(effective_home, "memory"),
         data_folder=os.path.join(effective_home, "data"),
+        shared_router=router,
     )
     # Bridge user event subscriptions to the agent's bus
     if hasattr(agent, "_bus"):
@@ -795,7 +812,6 @@ def run(
         _validate_model(model)
 
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
-        from maxim.agents.llm_worker import LLMWorker
         from maxim.runtime.agent_loop import run_agentic_loop
         from maxim.runtime.bootstrap import (
             build_decision_engine,
@@ -817,18 +833,10 @@ def run(
         # ── LLM router ───────────────────────────────────────────────────
         _saved_env = _enable_llm_for_run()
         router = _build_run_router(model)
-        # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
-        # LLMWorker construction site that resolved no n_ctx at all — the
-        # constructor default (4096) applied, and only the old cloud max()
-        # raise compensated by lifting it to the declared provider window.
-        # With the clamp now lower-only, omitting n_ctx here would pin every
-        # headless cloud run to a 4096-token prompt budget. Same pattern as
-        # console/handle.py.
-        llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
-        llm_worker.start()
+        llm_worker = _start_run_worker(router)
 
         # ── Agent pipeline ───────────────────────────────────────────────────
-        agent = _build_run_agent(model, effective_home)
+        agent = _build_run_agent(model, effective_home, router)
 
         env = build_environment(root=effective_home)
         state = build_state()
