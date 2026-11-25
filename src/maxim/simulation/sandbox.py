@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.child_env import child_env
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyLevel
@@ -125,6 +126,7 @@ class TmpdirSandbox(SandboxEnvironment):
                 text=True,
                 timeout=timeout,
                 cwd=self._root,
+                env=child_env(),
             )
             # Extract accessed paths from command (best-effort parsing)
             paths = _extract_paths_from_command(command)

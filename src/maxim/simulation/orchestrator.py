@@ -659,6 +659,7 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
     that slot held no router and built none. The scene manifest and the campaign runners (generative, DM, fixture)
     generate the world, so they stay on the narrator's ``llm_router`` (owner decision D, recorded in
     ``docs/plans/baseline_floors_b0.md``)."""
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.language.types import AutRouterUnavailable, BackendError, LocalModelUnavailable
     from maxim.runtime.lane_backends import build_run_router
 
@@ -667,6 +668,8 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
     try:
         aut_router, _ = build_run_router(logger=logger, profile=aut_model)
     except LocalModelUnavailable:
+        raise
+    except SECURITY_REFUSALS:  # a leader or offline refusal is itself the typed refusal; never re-wrapped (#1315)
         raise
     except Exception as e:
         logger.error("AUT router for '%s' could not be built: %s; the run refuses (#1228)", aut_model, e)
@@ -758,13 +761,16 @@ def _build_run_llms(
     ``_await_llm_ready_or_refuse``, so a stop that lands during the shared load is honoured after the AUT build, not
     before it. A refusal releases the run's serving registration (``release_start_provenance``), as the stop refusal
     does: a held one would stamp every later sim ``concurrent_sims``; an AUT build that fails any other way refuses the
-    same way (``AutRouterUnavailable``, #1228)."""
+    same way (``AutRouterUnavailable``, #1228), and so does a leader or offline refusal from either build
+    (``SECURITY_REFUSALS``, #1315 item 10a)."""
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.language.types import AutRouterUnavailable, LocalModelUnavailable
 
+    refusals: tuple[type[BaseException], ...] = (LocalModelUnavailable, AutRouterUnavailable, *SECURITY_REFUSALS)
     try:
         llm_router = _build_shared_router(llm_profile, warm=False)
         aut_router = _build_aut_router(aut_model, llm_router, warm=False)
-    except (LocalModelUnavailable, AutRouterUnavailable):
+    except refusals:
         from maxim.simulation.report import release_start_provenance
 
         release_start_provenance(start_provenance)
