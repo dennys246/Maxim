@@ -665,6 +665,7 @@ def _run_menu_sim(action: str) -> None:
     from pathlib import Path
 
     from maxim import cli_signals
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.utils.cancellation import interruptible
 
     cli_signals.entered_sim_mode()  # a stop from here on exits 4 (#1344)
@@ -724,6 +725,8 @@ def _run_menu_sim(action: str) -> None:
                 max_turns=100,
             )
         except KeyboardInterrupt:
+            raise
+        except SECURITY_REFUSALS:  # a leader/offline refusal reaches _main_guarded's refusal, not "failed to load"
             raise
         except Exception as e:
             print(f"  Failed to load campaign: {e}")

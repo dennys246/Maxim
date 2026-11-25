@@ -422,4 +422,82 @@ def test_the_aut_router_build_does_not_fall_back_on_an_offline_refusal(monkeypat
         result = build("claude-sonnet-4-6", shared)
     except _offline.OfflineRefusal:
         return
-    raise AssertionError(f"_build_aut_router fell back on an offline refusal (returned {result!r})")
+    raise AssertionError(f"_build_aut_router did not refuse on an offline refusal (returned {result!r})")
+
+
+def test_the_aut_router_build_refuses_offline_with_no_shared_router(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--aut-model`` with no narrator LLM still builds the AUT's router (#1228); offline, that build's refusal
+    escapes as itself, not wrapped in ``AutRouterUnavailable`` (the ``SECURITY_REFUSALS`` contract)."""
+    from maxim.runtime import lane_backends
+    from maxim.simulation import orchestrator
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", refuse)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        orchestrator._build_aut_router("claude-sonnet-4-6", None, warm=False)
+
+
+@pytest.mark.parametrize("which", ["shared", "aut"])
+def test_an_offline_refusal_from_either_build_releases_the_serving_registration(
+    monkeypatch: pytest.MonkeyPatch, which: str
+) -> None:
+    """A held registration would stamp every later sim in a long-lived process ``concurrent_sims``: an offline
+    refusal from the shared or the AUT build releases it, as a ``LocalModelUnavailable`` one does (#1315 item 10a)."""
+    from maxim.simulation import orchestrator
+    from maxim.simulation import report as report_mod
+
+    def refuse(*_a: object, **_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(orchestrator, "_build_shared_router", refuse if which == "shared" else (lambda *a, **k: None))
+    monkeypatch.setattr(orchestrator, "_build_aut_router", refuse if which == "aut" else (lambda *a, **k: None))
+    released: list[object] = []
+    monkeypatch.setattr(report_mod, "release_start_provenance", lambda start: released.append(start))
+    _offline.engage("test")
+    start = {"token": 1}
+    with pytest.raises(_offline.OfflineRefusal):
+        orchestrator._build_run_llms(None, aut_model="aut-model", start_provenance=start)
+    assert released == [start]
+
+
+def test_an_offline_refusal_stops_the_benchmark_instead_of_failing_one_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``BenchmarkRunner.run``'s per-run ``except Exception`` must re-raise a ``SECURITY_REFUSALS`` refusal: recorded as
+    one failed run, the benchmark would go on refusing every run and report scores (#1315 item 10a)."""
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim.simulation.benchmark import BenchmarkRunner
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", refuse)
+    _offline.engage("test")
+    suite = "scenarios/benchmarks/quick_check.yaml"  # as test_benchmark_expectations_1310 runs it
+    with pytest.raises(_offline.OfflineRefusal):
+        BenchmarkRunner(models=["m"], suite_path=suite).run()
+
+
+def test_an_offline_refusal_from_a_menu_campaign_is_not_reported_as_a_failed_load(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The menu's campaign path catches ``Exception`` to print "Failed to load campaign"; a leader/offline refusal
+    must escape to ``_main_guarded``'s "Refusing to run" instead (#1315 item 10a)."""
+    from maxim import cli, cli_signals
+    from maxim.embodiment import component_registry
+    from maxim.simulation import dm_schema, orchestrator
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(cli_signals, "entered_sim_mode", lambda: None)
+    monkeypatch.setattr(cli, "_setup_interactive_display", lambda: None)
+    monkeypatch.setattr(component_registry, "ComponentRegistry", lambda **_k: object())
+    monkeypatch.setattr(dm_schema, "load_campaign", lambda *_a, **_k: types.SimpleNamespace(name="c"))
+    monkeypatch.setattr(dm_schema, "validate_campaign", lambda _c: [])
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", refuse)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        cli._run_menu_sim(f"campaign:{tmp_path / 'c.yaml'}")
+    assert "Failed to load campaign" not in capsys.readouterr().out

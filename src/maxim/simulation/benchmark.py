@@ -390,6 +390,7 @@ class BenchmarkRunner:
             Aggregate across runs (mean, stddev)
         Score against thresholds, rank models.
         """
+        from maxim.exceptions import SECURITY_REFUSALS
         from maxim.simulation.experiment import run_campaign
         from maxim.simulation.scenario_source import load_scenario
         from maxim.simulation.validation import validate_finished_run
@@ -472,6 +473,8 @@ class BenchmarkRunner:
                         total = run_result.expectations_total
                         display_status(f"  OK {duration:.1f}s — {turns} turns — {passed}/{total} expectations")
 
+                    except SECURITY_REFUSALS:  # a leader/offline refusal stops the benchmark, never one failed run
+                        raise
                     except Exception as e:
                         logger.warning("Scenario %s failed on %s: %s", scenario_name, model, e)
                         error_msg = str(e)

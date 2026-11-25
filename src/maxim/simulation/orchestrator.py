@@ -761,13 +761,16 @@ def _build_run_llms(
     ``_await_llm_ready_or_refuse``, so a stop that lands during the shared load is honoured after the AUT build, not
     before it. A refusal releases the run's serving registration (``release_start_provenance``), as the stop refusal
     does: a held one would stamp every later sim ``concurrent_sims``; an AUT build that fails any other way refuses the
-    same way (``AutRouterUnavailable``, #1228)."""
+    same way (``AutRouterUnavailable``, #1228), and so does a leader or offline refusal from either build
+    (``SECURITY_REFUSALS``, #1315 item 10a)."""
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.language.types import AutRouterUnavailable, LocalModelUnavailable
 
+    refusals: tuple[type[BaseException], ...] = (LocalModelUnavailable, AutRouterUnavailable, *SECURITY_REFUSALS)
     try:
         llm_router = _build_shared_router(llm_profile, warm=False)
         aut_router = _build_aut_router(aut_model, llm_router, warm=False)
-    except (LocalModelUnavailable, AutRouterUnavailable):
+    except refusals:
         from maxim.simulation.report import release_start_provenance
 
         release_start_provenance(start_provenance)
