@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v22 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v23 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -131,6 +131,14 @@
 >     0 leaks across 33 cases, 3.10 compiles, linear.
 >   - **Owner, 2026-11-25:** E1801-1 extends to EITHER branch.
 >   - A delta round 22 is owed on AC1–AC3 only.
+> - **Round 22 (delta, a different reader; 104/104 on 3.10.19 and 3.12.12):** 2 SHOULD-FIX (FAIL-OPEN) and 1 NIT, folded
+>   and tagged AD1–AD3.
+>   - AD1 (class AC1): separator mixes the lookahead did not offer leaked, as did JSON-in-JSON.
+>   - AD2 (a NEW class, on both branches, in bounds): a username holding an unencoded `@` (an email) plus a
+>     whitespace password leaked: `https://bob@ex.com:p SECRET@h/p`.
+>   - The reader's folded tree was verified by the author: 104/104, 0 leaks across every case set, and 3.10 compiles
+>     and matches.
+>   - A delta round 23 is owed on AD1–AD3 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -344,12 +352,12 @@ written later.
     ```python
     _URL_IN_TEXT = re.compile(
         r"(?<![A-Za-z0-9+.-])"
-        r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>\\/\\/|\\{1,2}|/(?!/)))(?P=sep)"
-        r"(?:[^/@:]{0,64}:\S{0,256}\s[\s\S]{0,256}@|[^\s/@:]{0,64}\s[^/@:]{0,64}:\S{0,256}@|[^/@:]{0,64}\s[^/@:]{0,64}@)?"
+        r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?=[\\/]*\\)[\\/]+|/(?![/\\])))(?P=sep)"
+        r"(?:[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@|[^/@:]{0,64}\s[^/@:]{0,64}@)?"
         r"\S+"  # separator forms: any whitespace userinfo (bounded, as below), then the whole token
         r"|[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's)
-        r"(?:(?P<wsui>[^/@:]{0,64}:\S{0,256}\s[\s\S]{0,256}@"  # form 1: whitespace in the password
-        r"|[^\s/@:]{0,64}\s[^/@:]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
+        r"(?:(?P<wsui>[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@"  # form 1: whitespace in the password
+        r"|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
         r"|[^/@:]{0,64}\s[^/@:]{0,64}@)"  # form 3: colon-less userinfo with whitespace
         r"|[^\s/@]*@)?"  # plain userinfo (today's)
         r"[^\s'\"<>]+)"
@@ -357,15 +365,16 @@ written later.
     ```
 
     - **The separator branch (first, AB1):** for http(s)/ws(s)/ftp(s), case-insensitively, after `:` comes one of
-      three separators:
-      - the JSON-escaped `\/\/`;
-      - the Windows `\` or `\\`;
-      - a single `/` not followed by `/` (the `Path` form).
+      separators:
+      - ANY run of slashes and backslashes that holds at least one backslash (the JSON-escaped `\/\/` and `\/`,
+        JSON-in-JSON `\\\/\\\/`, the Windows `\` or `\\`, and mixes such as `\\/`) (AD1);
+      - a single `/` followed by neither `/` nor `\` (the `Path` form).
 
       It then takes the same three bounded whitespace-userinfo forms as the double-slash branch, optionally, then the
       WHOLE non-space token (`\S+`), and `_reduce` emits `<url>` for it (AC1: a bare `\S+` stopped at the first space
       and leaked whitespace userinfo). No plain userinfo or host is parsed, so an escaped quote cannot end the match
-      early (AB1). Linear: at most 49 ms at 256k characters. Past the forms' bounds a tail leaks: E1801-1, either
+      early (AB1). Linear, re-measured with AD1/AD2: at most about 163 ms at 256k characters on 3.12 (`a://:` runs), and 411 ms on
+      3.10 by the reader (AD2). Past the forms' bounds a tail leaks: E1801-1, either
       branch. Fail-closed over-match: the rest of that token is erased, so `{"u":"https:\/\/…"}` keeps
       `{"u":"<url>`. The separator is atomic by a lookahead plus a backreference, which keeps Python 3.10, the floor
       (`requires-python = ">=3.10"`, CI's matrix runs 3.10), able to compile it, where `(?>…)` would not.
@@ -376,9 +385,9 @@ written later.
       within its bounds (Y1: lazy quantifiers stopped at the first `@`, so `https://u:a b@c d@h/p` leaked `d@h/p`).
       It has two forms:
       - whitespace in the password: a user (possibly empty, the normal Redis form `redis://:PW D@…`; up to 64
-        characters, which may itself hold whitespace), `:`, up to 256 non-space characters, a whitespace, then up to
+        characters, which may itself hold whitespace or an unencoded `@`, an email: AD2), `:`, up to 256 non-space characters, a whitespace, then up to
         256 characters to an `@` (X1, X2, Y1, Y2);
-      - whitespace in the user: `https://us er:pw@h/p` passed raw before (Y3).
+      - whitespace in the user: `https://us er:pw@h/p` passed raw before (Y3). Its user may also hold an `@` (AD2).
       - (Z1) form 1 now spans any whitespace after the password's first space (`[\s\S]{0,256}`), so `\r\n` and a
         newline inside the password are caught, and its user part may hold `\` (`https://D\u:p w@h/x`);
       - (Z1) form 2's password runs to the last `@` within 256 (`https://us er:p@ss"x@h/p`), and its user part is
@@ -480,7 +489,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     through the existing rules (unpack, attribute targets such as `self._f`, walrus and parameter defaults). A call of
     anything carrying the label with tainted text fails, and so does any call that takes a labelled ARGUMENT together
     with tainted text (`map(getattr(str, n), [str(e)], …)`). The label is read from module, class-body and outer-def
-    scopes, as taint is (P3), so a label set in a class body is read as `self._f` (AC2). So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
+    scopes, as taint is (P3), so a label set in a class body is read through ANY attribute whose base resolves to that class: `cls._f`,
+    `type(self)._f`, `K._f` and `self._f` (AC2, AD3; `self._f` alone was named, though the working forms are the
+    first three). So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
     `def g(e, f=getattr(str, n))` are caught (AA3, AB2; 39 call/subscript callees in src/maxim, 0 with
     tainted text) (Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` evaded; flagging every
     non-literal `getattr` would hit 78 sites), and `functools.partial` over one, when the text is
@@ -579,6 +590,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- AD1: `https:\/u:p SECRET@h`, `https:\\/u:p SECRET@h`, `https:\\\/\\\/u:p SECRET@h` and a double
+  `json.dumps` reduce to `<url>`; `http:/ prose` is untouched. AD2: `https://bob@ex.com:p SECRET@h/p` and its JSON form
+  reduce to `<url>`; `https://bob@ex.com@h/p` still gives `https://h`. AD3: the lint fails on `cls._f`,
+  `type(self)._f` and `K._f`.
 - AC1: `https:\/\/u:p SECRET@h\/p` (bare and inside a JSON string), `Path("/a/https://u:p SECRET@h/p")`,
   `https:\/\/us SECRET:p@h`, `https:\/\/tok SECRET@h`, `https:\u:p SECRET@h`, `ws:\\u:p SECRET@h` and a tab form
   reduce to `<url>`. AC2: the lint fails on `list(map(getattr(str, n), [str(e)], ["@"]))` and on a class-body label
