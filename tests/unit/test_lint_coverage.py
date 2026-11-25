@@ -55,7 +55,7 @@ WORKFLOW = (
     f'        if: "{L.CI_REUSE_SKIP_IF}"\n'
     "        run: |\n"
     f"{_SUITE_RUN}"
-    "      - name: Coverage ratchet\n"
+    "      - name: Coverage ratchet (roadmap 1.3.2 item 5)\n"
     f"        {L.CI_LINT_RUN}\n"
     "      - name: upload\n"
     f'        if: "{L.CI_UPLOAD_IF}"\n'
@@ -995,7 +995,7 @@ _HUB = (
     f'      - name: MemoryHub\n        if: "{L.CI_REUSE_SKIP_IF}"\n'
     "        run: python -m pytest tests/integration/test_memory_hub.py -q\n"
 )
-_GATE = f"      - name: Coverage ratchet\n        {L.CI_LINT_RUN}\n"
+_GATE = f"      - name: Coverage ratchet (roadmap 1.3.2 item 5)\n        {L.CI_LINT_RUN}\n"
 
 
 @pytest.mark.parametrize(
@@ -1004,12 +1004,12 @@ _GATE = f"      - name: Coverage ratchet\n        {L.CI_LINT_RUN}\n"
         (_GATE, "", "needs exactly one step whose run is"),
         (f"        {L.CI_LINT_RUN}\n", f"        {L.CI_LINT_RUN} || true\n", "needs exactly one step whose run is"),
         (_GATE, _GATE + "      - name: again\n" + f"        {L.CI_LINT_RUN}\n", "needs exactly one step whose run is"),
-        (_GATE, _GATE.replace("ratchet\n", "ratchet\n        if: false\n"), "may carry only `name` and `run`"),
-        (_GATE, _GATE.replace("ratchet\n", "ratchet\n        shell: bash -c 'true' {0}\n"), "may carry only"),
-        (_GATE, _GATE.replace("ratchet\n", "ratchet\n        env:\n          X: y\n"), "may carry only"),
+        (_GATE, _GATE.replace("item 5)\n", "item 5)\n        if: false\n"), "may carry only `name` and `run`"),
+        (_GATE, _GATE.replace("item 5)\n", "item 5)\n        shell: bash -c 'true' {0}\n"), "may carry only"),
+        (_GATE, _GATE.replace("item 5)\n", "item 5)\n        env:\n          X: y\n"), "may carry only"),
         (
             _GATE,
-            _GATE.replace("ratchet\n", "ratchet\n        continue-on-error: true\n"),
+            _GATE.replace("item 5)\n", "item 5)\n        continue-on-error: true\n"),
             "continue-on-error is banned",
         ),
         ("  unit-tests:\n", "  unit-tests:\n    continue-on-error: true\n", "continue-on-error is banned"),
@@ -2172,7 +2172,9 @@ def test_split_rule_reads_a_symlinked_path_as_gone_whatever_git_reports(tmp_path
     os.symlink("core.py", tmp_path / G)
     fd = L.FileDiff({}, {CORE}, lambda rel: _lines(100, "g") if rel == G else "")
     base_fl, fl = L.parse_floors(_g_floors()), L.parse_floors(_g_floors(files={}))
-    out = L.split_rule(tmp_path, base_fl, fl, {}, fd, set(), set(L._src_files(tmp_path)))
+    out = L.split_rule(
+        tmp_path, base_fl, fl, {}, fd, set(), set(L._src_files(tmp_path)), base_measured=L.BaseMeasured.pins_only("t")
+    )
     assert any(f"{CORE}: 100 statements (added) while this diff removed 100 of floored {G}'s" in o for o in out), out
 
 
@@ -2830,7 +2832,18 @@ def test_the_pin_noise_slack_is_k_min_not_the_size_scaled_k(repo):
     def rules(pin_missing: int) -> list[str]:
         base = L.parse_floors(_floors(overall=(90.0, 2000), alpha=None, beta=None))
         head = L.parse_floors(_floors(overall=(95.0, pin_missing), alpha=None, beta=None))
-        return L.floor_diff_rules(repo, base, head, big, {}, {}, files={}, fd=L.NO_FILE_DIFF, excluded=set())
+        return L.floor_diff_rules(
+            repo,
+            base,
+            head,
+            big,
+            {},
+            {},
+            files={},
+            fd=L.NO_FILE_DIFF,
+            excluded=set(),
+            base_measured=L.BaseMeasured.pins_only("t"),
+        )
 
     assert not [r for r in rules(1000 + L.K_MIN) if r.startswith("overall")]
     assert any("overall: floor pins missing" in r for r in rules(1000 + L.K_MIN + 1))
@@ -2900,3 +2913,271 @@ def test_gh_runs_from_the_checkout_it_pins(repo, tmp_path, monkeypatch):
     with pytest.raises(L.MeasurementError):  # run_measurement's default api passes the checkout as cwd
         L.run_measurement(repo, "1", tmp=tmp_path)
     assert seen[-1] == repo
+
+
+# ── the SUM rules' measured base (owner decision 2026-11-24; docs/plans/coverage_split_measured_base_approach.md) ──
+
+
+def _fc(statements: int, missing: int) -> L.FileCov:
+    covered = statements - missing
+    return L.FileCov(
+        executed=set(range(1, covered + 1)),
+        missing=set(range(covered + 1, statements + 1)),
+        excluded=set(),
+        statements=statements,
+        covered=covered,
+        branches=0,
+        covered_branches=0,
+    )
+
+
+class _SpyBase(L.BaseMeasured):
+    """A BaseMeasured that records every key the SUM rules ask about."""
+
+    asked: list[tuple[str, str]]
+
+    def allowance(self, kind: str, key: str, pin: int) -> int:
+        self.asked.append((kind, key))
+        return super().allowance(kind, key, pin)
+
+
+def _main_measured(monkeypatch, *samples: dict, load=None) -> list[_SpyBase]:
+    """Main's measurement at the base, as the CI lookup would return it (``load`` overrides it)."""
+    made: list[_SpyBase] = []
+
+    def fake(root, base, *, local):
+        bm = _SpyBase(load or (lambda: list(samples)))
+        bm.asked = []
+        made.append(bm)
+        return bm
+
+    monkeypatch.setattr(L, "_base_measured", fake)
+    return made
+
+
+def _drifted_split(repo: Path, core_missing: int) -> None:
+    """G pinned at missing 10 on main; the PR moves 95 statements into CORE, ``core_missing`` of them uncovered."""
+    _g_base(repo, gamma=(88.0, 12), overall=(84.1, 19))
+    core_pct = L.round_down(100.0 * (95 - core_missing) / 95)
+    _split(
+        repo,
+        5,
+        set(),
+        {CORE: (95, set(range(96 - core_missing, 96)))},
+        files={G: (100.0, 0), CORE: (core_pct, core_missing)},
+    )
+
+
+def test_a_split_of_a_drifted_file_is_charged_mains_measured_missing(repo, capsys, monkeypatch):
+    """Pin 10, main measured 11: the split carrying all 11 passes (it FAILS at the pin: the test above)."""
+    made = _main_measured(monkeypatch, {G: _fc(100, 11)})
+    _drifted_split(repo, 11)
+    rc, out, err = _run(capsys)
+    assert rc == 0, err
+    assert f"{G}: the split sum charges main's measured missing 11 at the base, not its stale pin 10" in out
+    assert made[0].asked == [("file", G)]  # the source only: a successor keeps its base pin
+
+
+def test_the_measured_base_is_the_minimum_and_one_statement_over_it_fails(repo, capsys, monkeypatch):
+    _main_measured(monkeypatch, {G: _fc(100, 12)}, {G: _fc(100, 11)})  # a re-run of main fishes nothing
+    _drifted_split(repo, 12)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and (
+        f"{CORE} + {G}: received {G}; together they measure missing 12 > the carried pinned missing 11" in err
+    )
+
+
+def test_a_source_measured_below_its_pin_keeps_the_pin(repo, capsys, monkeypatch):
+    _main_measured(monkeypatch, {G: _fc(100, 9)})
+    _drifted_split(repo, 11)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "together they measure missing 11 > the carried pinned missing 10" in err
+
+
+def test_a_scope_one_sample_lacks_is_charged_its_pin(repo, capsys, monkeypatch):
+    _main_measured(monkeypatch, {G: _fc(100, 11)}, {A: _fc(10, 2)})  # the second sample may have been the minimum
+    _drifted_split(repo, 11)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "together they measure missing 11 > the carried pinned missing 10" in err
+
+
+def test_a_package_split_is_charged_mains_measured_missing_under_its_base_key(repo, capsys, monkeypatch):
+    """maxim/sp is gone at HEAD (sa + sb): it is looked up under its BASE key. Pin 2, main measured 3."""
+    made = _main_measured(monkeypatch, {"src/maxim/sp/c.py": _fc(10, 1), "src/maxim/sp/d.py": _fc(10, 2)})
+    _split_base(repo)
+    _write(repo, L.FLOORS_REL, _floors(overall=(77.5, 9), **{"maxim/sa": (90.0, 1), "maxim/sb": (80.0, 2)}))
+    _commit(repo)
+    _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}, "src/maxim/sa/c.py": {10}, "src/maxim/sb/d.py": {9, 10}})
+    rc, out, err = _run(capsys)
+    assert rc == 0, err
+    assert "maxim/sp: the split sum charges main's measured missing 3 at the base, not its stale pin 2" in out
+    assert made[0].asked == [("package", "maxim/sp")]
+
+
+def test_lowering_still_reads_the_pin_whatever_main_measured(repo, capsys, monkeypatch):
+    made = _main_measured(monkeypatch, {A: _fc(10, 10)})
+    _cov(repo, missing={A: {7, 8, 9, 10}, B: {6, 7, 8, 9, 10}})
+    _write(repo, L.FLOORS_REL, _floors(overall=(55.0, 7), alpha=(60.0, 2)))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and "measured missing 4 > the base's pinned missing 2 — cover 2 statement(s) first" in err
+    assert made[0].asked == []  # no sum ran, so main's measurement was never asked for
+
+
+@pytest.mark.parametrize("exc", [L.GitUnavailable("gh: HTTP 502"), L.MeasurementError("bad json"), KeyError("x")])
+def test_a_lookup_error_charges_the_pin_and_is_never_exit_2(repo, capsys, monkeypatch, exc):
+    def boom():
+        raise exc
+
+    _main_measured(monkeypatch, load=boom)
+    _drifted_split(repo, 11)
+    rc, out, err = _run(capsys)
+    assert rc == 1 and "together they measure missing 11 > the carried pinned missing 10" in err
+    assert "split base: main's measurement not used, the pin is charged" in out
+
+
+def test_no_base_measurement_charges_the_pin_and_says_why(repo, capsys, monkeypatch):
+    def none():
+        raise L.NoBaseMeasurement("no Tests push run of main at abc has an attempt whose steps both passed")
+
+    _main_measured(monkeypatch, load=none)
+    _drifted_split(repo, 10)
+    rc, out, err = _run(capsys)
+    assert rc == 0, err
+    assert f"{G}: the split sum charges its pin 10 (no Tests push run of main" in out
+
+
+def test_outside_ci_the_sum_charges_the_pin_and_asks_no_api(repo, monkeypatch):
+    for env in ({}, {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "schedule"}):
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
+        for k, v in env.items():
+            monkeypatch.setenv(k, v)
+        monkeypatch.setattr(L, "gh_api", lambda *a, **k: pytest.fail("the API was asked"))
+        assert L._base_measured(repo, "a" * 40, local=False).allowance("file", G, 10) == 10
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    assert L._base_measured(repo, "a" * 40, local=True).allowance("file", G, 10) == 10
+
+
+BASE40 = "b" * 40
+_BOTH = {L.RUN_SUITE_STEP: "success", L.RATCHET_STEP: "success"}
+
+
+def _push_run(rid: int, attempts: int = 1, **over) -> dict:
+    run = {
+        "id": rid,
+        "head_sha": BASE40,
+        "event": "push",
+        "head_branch": "main",
+        "path": ".github/workflows/test.yml",
+        "run_attempt": attempts,
+    }
+    return {**run, **over}
+
+
+def _base_api(runs: list[dict], steps: dict[tuple[int, int], dict], artifacts: dict[int, list[str]]):
+    def api(path: str):
+        if "/actions/workflows/test.yml/runs?" in path:
+            assert f"head_sha={BASE40}" in path and "event=push" in path and "branch=main" in path
+            return {"workflow_runs": runs}
+        if m := re.search(r"/runs/(\d+)/attempts/(\d+)/jobs", path):
+            st = steps.get((int(m[1]), int(m[2])))
+            listed = (
+                []
+                if st is None
+                else [{"name": "unit-tests", "steps": [{"name": n, "conclusion": c} for n, c in st.items()]}]
+            )
+            return {"jobs": listed}
+        if m := re.search(r"/runs/(\d+)/artifacts", path):
+            return {"artifacts": [{"name": n, "expired": False} for n in artifacts.get(int(m[1]), [])]}
+        raise AssertionError(path)
+
+    return api
+
+
+def _lookup(repo: Path, tmp_path: Path, api, *, clock=lambda: 0.0, deadline=1.0):
+    got: list[tuple[str, str]] = []
+
+    def download(run_id, name, dest):
+        got.append((run_id, name))
+        return _ci_artifact(repo, dest, missing={A: {10}, B: {9, 10}})
+
+    samples = L.base_measurements(
+        repo, BASE40, api=api, download=download, tmp=tmp_path / "dl", clock=clock, deadline=deadline
+    )
+    return samples, got
+
+
+def test_a_main_push_attempt_that_passed_both_steps_is_a_sample(repo, tmp_path):
+    api = _base_api([_push_run(11)], {(11, 1): _BOTH}, {11: ["coverage-json-1"]})
+    samples, got = _lookup(repo, tmp_path, api)
+    assert got == [("11", "coverage-json-1")] and len(samples) == 1 and samples[0][A].statements == 10
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"event": "pull_request"},
+        {"head_sha": "c" * 40},
+        {"head_branch": "feature"},
+        {"path": ".github/workflows/nightly.yml"},
+    ],
+)
+def test_a_run_that_is_not_mains_push_at_the_base_is_never_a_sample(repo, tmp_path, over):
+    api = _base_api([_push_run(11, **over)], {(11, 1): _BOTH}, {11: ["coverage-json-1"]})
+    with pytest.raises(L.NoBaseMeasurement, match="no Tests push run of main"):
+        _lookup(repo, tmp_path, api)
+
+
+@pytest.mark.parametrize("failed", [L.RUN_SUITE_STEP, L.RATCHET_STEP])
+def test_a_failed_attempt_is_skipped_and_its_artifact_never_read(repo, tmp_path, failed):
+    api = _base_api(
+        [_push_run(11, attempts=2)],
+        {(11, 1): {**_BOTH, failed: "failure"}, (11, 2): _BOTH},
+        {11: ["coverage-json-1", "coverage-json-2"]},
+    )
+    samples, got = _lookup(repo, tmp_path, api)
+    assert got == [("11", "coverage-json-2")] and len(samples) == 1
+
+
+@pytest.mark.parametrize("names", [["coverage-json-2"], ["coverage-json"], []])
+def test_a_passed_attempt_without_its_own_artifact_refuses(repo, tmp_path, names):
+    """Another attempt's artifact, the legacy unsuffixed name, or an expired one: the sample may have been the min."""
+    api = _base_api([_push_run(11)], {(11, 1): _BOTH}, {11: names})
+    with pytest.raises(L.NoBaseMeasurement, match="its artifact 'coverage-json-1' is gone"):
+        _lookup(repo, tmp_path, api)
+
+
+def test_every_qualifying_run_and_attempt_is_sampled(repo, tmp_path):
+    api = _base_api(
+        [_push_run(11, attempts=2), _push_run(12)],
+        {(11, 1): _BOTH, (11, 2): _BOTH, (12, 1): _BOTH},
+        {11: ["coverage-json-1", "coverage-json-2"], 12: ["coverage-json-1"]},
+    )
+    samples, got = _lookup(repo, tmp_path, api)
+    assert got == [("11", "coverage-json-1"), ("11", "coverage-json-2"), ("12", "coverage-json-1")]
+    assert len(samples) == 3
+
+
+def test_the_lookup_budget_refuses_past_its_deadline(repo, tmp_path):
+    api = _base_api([_push_run(11)], {(11, 1): _BOTH}, {11: ["coverage-json-1"]})
+    with pytest.raises(L.NoBaseMeasurement, match="lookup budget passed"):
+        _lookup(repo, tmp_path, api, clock=lambda: 2.0, deadline=1.0)
+
+
+def test_min_missing_takes_the_lowest_over_scopes_every_sample_measured():
+    from types import SimpleNamespace
+
+    one = {"x": SimpleNamespace(missing=5), "y": SimpleNamespace(missing=3)}
+    two = {"x": SimpleNamespace(missing=4)}
+    assert L._min_missing([one, two]) == {"x": 4}
+    assert L._min_missing([]) == {}
+
+
+def test_the_ratchet_step_name_is_pinned(repo, capsys):
+    wf = (repo / ".github/workflows/test.yml").read_text()
+    _write(repo, ".github/workflows/test.yml", wf.replace(L.RATCHET_STEP, "Coverage ratchet"))
+    _commit(repo)
+    rc, _, err = _run(capsys)
+    assert rc == 1 and f"the coverage-ratchet step must be named exactly {L.RATCHET_STEP!r}" in err
