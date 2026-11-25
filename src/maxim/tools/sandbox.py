@@ -15,7 +15,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from maxim.tools.base import Effect, Tool, ToolResult, git_dir_write_refusal
+from maxim.tools.base import Effect, Tool, ToolResult, control_plane_write_refusal, git_dir_write_refusal
 from maxim.utils.content_safety import prepare_written_content
 
 if TYPE_CHECKING:
@@ -224,9 +224,9 @@ class WriteSandboxFileTool(Tool):
         # Ensure within sandbox (use realpath to handle symlinks)
         if not path.startswith(self._sandbox_dir + os.sep) and path != self._sandbox_dir:
             return ToolResult(success=False, error="Path must be within sandbox directory")
-        git_refusal = git_dir_write_refusal(path)  # #957
-        if git_refusal:
-            return ToolResult(success=False, error=git_refusal)
+        refusal = git_dir_write_refusal(path) or control_plane_write_refusal(path)  # #957, #1806 D14
+        if refusal:
+            return ToolResult(success=False, error=refusal)
 
         try:
             # Create parent directories
@@ -624,9 +624,10 @@ class WriteToSharedOutputsTool(Tool):
             return ToolResult(success=False, error="Invalid filename")
 
         path = os.path.join(self._outputs_dir, filename)
-        git_refusal = git_dir_write_refusal(path)  # #957: a file named .git plants a gitfile
-        if git_refusal:
-            return ToolResult(success=False, error=git_refusal)
+        # #957: a file named .git plants a gitfile; #1806 D14: Maxim's own control-plane files
+        refusal = git_dir_write_refusal(path) or control_plane_write_refusal(path)
+        if refusal:
+            return ToolResult(success=False, error=refusal)
 
         try:
             os.makedirs(self._outputs_dir, exist_ok=True)

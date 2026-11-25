@@ -913,6 +913,7 @@ def test_the_fresh_read_is_private_and_bounded(daemon):
     assert ctl.goto_target(_target(head_yaw=0.1, duration=1.0))
     kw = daemon.last_fetch_kwargs
     assert kw["address_policy"] == "private"
+    assert kw.get("proxy") == "never"  # #1806 PR 0: dialled directly, never through an env proxy
     policy = kw["timeout"]
     deadline = reachy_controller.FRESH_READ_DEADLINE_S
     assert (policy.connect_s, policy.read_s, policy.pool_s) == pytest.approx((deadline, deadline, deadline))

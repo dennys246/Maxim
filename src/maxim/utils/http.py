@@ -45,7 +45,7 @@ import zlib
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Literal, Mapping
 from urllib.parse import urlsplit
 
 import httpcore
@@ -55,6 +55,9 @@ from maxim import _offline
 from maxim.utils.net import AddressPolicy
 from maxim.utils.net import is_public_address as _is_public_address
 from maxim.utils.structured_logging import log_structured
+
+ProxyMode = Literal["env", "never"]
+"""``fetch_url(proxy=...)``: ``"env"`` lets an env/system proxy carry the URL (#921); ``"never"`` dials directly."""
 
 logger = logging.getLogger(__name__)
 
@@ -937,7 +940,22 @@ _EXTERNAL_POLICY_ENDPOINTS: dict[str, str] = {
 """``fetch_url(address_policy=...)`` for OPERATOR-configured URLs (a peer's probe, #921): the policy is
 checked on the address dialled; an env proxy that applies to the URL wins, with one warning."""
 
-_DEADLINE_ENDPOINTS = frozenset({_EXTERNAL_ENDPOINT, _EXTERNAL_PUBLIC_ENDPOINT, *_EXTERNAL_POLICY_ENDPOINTS.values()})
+_EXTERNAL_STRICT_POLICY_ENDPOINTS: dict[str, str] = {
+    "private": "_external_policy_private_strict",
+}
+"""``fetch_url(address_policy="private", proxy="never")`` (#1806): an OPERATOR-configured LAN/loopback URL that
+must be dialled DIRECTLY -- the Reachy daemon probe (``hardware/reachy/probe.py``), where a proxy would answer for
+a robot it never reached. Same check on the address dialled as ``_external_policy_private``, but with no proxy
+mounts and no implicit env/system proxy, so #921's "the proxy wins" never applies to it."""
+
+_DEADLINE_ENDPOINTS = frozenset(
+    {
+        _EXTERNAL_ENDPOINT,
+        _EXTERNAL_PUBLIC_ENDPOINT,
+        *_EXTERNAL_POLICY_ENDPOINTS.values(),
+        *_EXTERNAL_STRICT_POLICY_ENDPOINTS.values(),
+    }
+)
 """The endpoints ``fetch_url`` uses: their clients take the deadline backend on every transport (#1715)."""
 
 _external_registered = False
@@ -954,6 +972,7 @@ def _ensure_external_endpoint() -> None:
             (_EXTERNAL_PUBLIC_ENDPOINT, "public", True),
             (_EXTERNAL_POLICY_ENDPOINTS["public"], "public", False),
             (_EXTERNAL_POLICY_ENDPOINTS["private"], "private", False),
+            (_EXTERNAL_STRICT_POLICY_ENDPOINTS["private"], "private", True),
         ]
         for name, policy, strict in specs:
             register_endpoint(
@@ -1441,6 +1460,7 @@ def fetch_url(
     public_only: bool = False,
     address_policy: AddressPolicy = "any",
     deadline_s: float | None = None,
+    proxy: ProxyMode = "env",
 ) -> Response:
     """One-off fetch of a full URL via the shared ``_external`` endpoint.
 
@@ -1460,6 +1480,11 @@ def fetch_url(
     ``address_policy`` (#921): for an OPERATOR-configured URL (a peer probe) -- "public" / "private"
     checked on the address dialled; an env proxy that applies to the URL wins, with one warning.
 
+    ``proxy`` (#1806): ``"env"`` (the default) is the rule above. ``"never"`` dials directly whatever proxy the
+    environment or the system configures, so the address check always holds; it is accepted only with
+    ``address_policy="private"`` (a LAN/loopback device such as the Reachy daemon), and any other combination is a
+    ``ValueError`` rather than a silent fallback to a proxied client. ``public_only`` never uses a proxy anyway.
+
     ``deadline_s`` (#1715): a bound on the WHOLE request, which no ``TimeoutPolicy`` field gives. Every socket read,
     write, TLS handshake and connect, and the pool wait, is cut to what remains of it, so a server that drips its
     body or headers is refused (``HTTPTimeout``) at about ``deadline_s``. The DNS lookup is not timed, and an
@@ -1471,9 +1496,15 @@ def fetch_url(
         isinstance(deadline_s, (int, float)) and math.isfinite(deadline_s) and deadline_s > 0
     ):
         raise ValueError(f"deadline_s must be a finite number of seconds above 0, got {deadline_s!r}")
+    if proxy not in ("env", "never"):
+        raise ValueError(f"unknown proxy mode {proxy!r} (expected 'env' or 'never')")
     _ensure_external_endpoint()
     if public_only:
         endpoint_name = _EXTERNAL_PUBLIC_ENDPOINT
+    elif proxy == "never":
+        if address_policy not in _EXTERNAL_STRICT_POLICY_ENDPOINTS:
+            raise ValueError(f"proxy='never' needs address_policy='private', got {address_policy!r}")
+        endpoint_name = _EXTERNAL_STRICT_POLICY_ENDPOINTS[address_policy]
     elif address_policy == "any":
         endpoint_name = _EXTERNAL_ENDPOINT
     elif address_policy not in _EXTERNAL_POLICY_ENDPOINTS:

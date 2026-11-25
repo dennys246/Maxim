@@ -82,6 +82,37 @@ def test_a_backend_error_inside_a_run_exits_2_with_its_fix_hint_1468(
 
 
 @pytest.mark.timeout(120)
+def test_a_broken_robots_yaml_exits_2_with_its_fix_hint_1806(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#1806 PR 0: ``Maxim(...)`` raises ``RobotsConfigError`` for a robots.yaml it cannot read. The operator must act,
+    so the run exits 2 with the message and ``fix_hint``, not 1 ("crashed") with a bare traceback."""
+    from maxim.exceptions import RobotsConfigError
+    from maxim.utils import logging as maxim_logging
+
+    warned: list[dict] = []
+    monkeypatch.setattr(maxim_logging, "user_warn", lambda message, **kw: warned.append({"message": message, **kw}))
+    assert _run_robot_session(monkeypatch, tmp_path, RobotsConfigError("robots.yaml: line 3: not a mapping")) == 2
+    assert len(warned) == 1
+    assert "robots.yaml: line 3: not a mapping" in warned[0]["message"]
+    assert RobotsConfigError.fix_hint in warned[0]["message"]
+    assert warned[0]["event"] == "robot_config_invalid"
+
+
+@pytest.mark.timeout(120)
+def test_a_bad_robot_config_value_exits_2_1806(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#1806 PR 0: a bad ``MAXIM_ROBOT_TIMEOUT`` reaches the run as ``InvalidConfigError``: exit 2 with its message."""
+    from maxim.exceptions import InvalidConfigError
+    from maxim.utils import logging as maxim_logging
+
+    warned: list[dict] = []
+    monkeypatch.setattr(maxim_logging, "user_warn", lambda message, **kw: warned.append({"message": message, **kw}))
+    assert (
+        _run_robot_session(monkeypatch, tmp_path, InvalidConfigError("MAXIM_ROBOT_TIMEOUT='soon' is not a number")) == 2
+    )
+    assert [w["event"] for w in warned] == ["robot_config_invalid"]
+    assert "MAXIM_ROBOT_TIMEOUT='soon'" in warned[0]["message"]
+
+
+@pytest.mark.timeout(120)
 def test_a_leader_refusal_inside_a_run_exits_2_and_says_why_1468(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

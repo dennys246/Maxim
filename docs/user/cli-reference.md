@@ -89,7 +89,7 @@ not-ready LLM does not exit: the process prints `NOT READY` on stderr, stays up 
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--robot-name` | str | `reachy_mini` | Robot identifier for Zenoh discovery |
+| `--robot-name`, `--robot` | str | unset (then `$MAXIM_ROBOT_NAME`, else `reachy_mini`) | The Reachy Mini daemon's `robot_name`. Typing it (even `--robot-name reachy_mini`) starts the robot runtime; `$MAXIM_ROBOT_NAME` alone does not, so a bare `maxim` with it set shows the menu, and the variable only names the daemon once a robot run is requested (by this flag or `--mode`). `--robot` is an exact alias. Since #1806 the prefixes `--rob` and `--robo` are ambiguous (argparse refuses them, exit 2): type `--robot` or `--robot-name` in full. |
 | `--timeout` | float | `30` | Seconds to wait for robot connection |
 | `--segmentation-model` | str | `rtm` | Vision engine: `rtm` or `yolo` |
 | `--audio` | bool | `True` | Enable audio recording and transcription |

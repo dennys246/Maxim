@@ -6,7 +6,8 @@ Extracted from cli.py for modularity.
 from __future__ import annotations
 
 import argparse
-import os
+
+from maxim.modes.definitions import RUN_MODES
 
 
 def _add_tts_arguments(group: argparse._ArgumentGroup) -> None:
@@ -106,7 +107,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mode",
         type=str,
         default="exploration",
-        choices=["live", "train", "reflection", "sleep", "agentic", "exploration"],
+        choices=list(RUN_MODES),
         help="Run mode: exploration (DEFAULT), agentic (full agent loop), "
         "sleep (audio-only), live (no training), train (update MotorCortex), "
         "reflection (memory consolidation).",
@@ -259,42 +260,8 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_memory_args(parser)
 
     # ── Robot/Hardware ─────────────────────────────────────────────────
-    hw = parser.add_argument_group("hardware", "Robot and hardware options")
-    hw.add_argument(
-        "--robot-name",
-        default=os.environ.get("MAXIM_ROBOT_NAME", "reachy_mini"),
-        help="Reachy Mini daemon robot_name (default: $MAXIM_ROBOT_NAME or 'reachy_mini').",
-    )
-    hw.add_argument(
-        "--timeout",
-        type=float,
-        default=30.0,
-        help="Seconds to wait for the robot connection (default: 30).",
-    )
-    hw.add_argument(
-        "--segmentation-model",
-        type=str,
-        default=None,
-        help="Vision engine (default: rtm). Options: rtm, yolo (requires [yolo] extra).",
-    )
-    hw.add_argument(
-        "--audio",
-        type=str,
-        default="true",
-        help="Record + transcribe audio (True/False).",
-    )
-    hw.add_argument(
-        "--audio_len",
-        type=float,
-        default=5.0,
-        help="Seconds per transcription chunk (default: 5.0).",
-    )
-    _add_tts_arguments(hw)
-    hw.add_argument(
-        "--comms",
-        action="store_true",
-        help="Enable Twilio SMS/Voice communication (requires TWILIO_* env vars).",
-    )
+    _add_hardware_args(parser)
+
     # ── Agentic ────────────────────────────────────────────────────────
     agentic = parser.add_argument_group("agentic", "Agent loop display and logging")
     agentic.add_argument(
@@ -651,6 +618,55 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Clear the saved last invocation and exit.",
     )
     return parser
+
+
+def _add_hardware_args(parser: argparse.ArgumentParser) -> None:
+    """The ``hardware`` argument group: the robot's daemon name (``--robot-name``/``--robot``), connection timeout,
+    vision engine, audio, TTS and ``--comms``."""
+    hw = parser.add_argument_group("hardware", "Robot and hardware options")
+    # ``--robot`` is an explicit alias (#1806 PR 0): before, it worked only as an argparse prefix abbreviation of
+    # ``--robot-name``. Defining it makes ``--rob``/``--robo`` ambiguous (an error), which cli-reference.md states.
+    # The default is None, not ``$MAXIM_ROBOT_NAME``: the variable is read where the name is resolved
+    # (``embodied_runtime.selfy.Maxim``), so a bare ``maxim`` with it set does not count as a robot run
+    # (``cli._requested_run_action``) and a re-exec never replays an environment value as a typed flag.
+    hw.add_argument(
+        "--robot-name",
+        "--robot",
+        dest="robot_name",
+        default=None,
+        help="Reachy Mini daemon robot_name; alias --robot. Typing it starts the robot runtime "
+        "(default: unset, then $MAXIM_ROBOT_NAME, else 'reachy_mini').",
+    )
+    hw.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Seconds to wait for the robot connection (default: 30).",
+    )
+    hw.add_argument(
+        "--segmentation-model",
+        type=str,
+        default=None,
+        help="Vision engine (default: rtm). Options: rtm, yolo (requires [yolo] extra).",
+    )
+    hw.add_argument(
+        "--audio",
+        type=str,
+        default="true",
+        help="Record + transcribe audio (True/False).",
+    )
+    hw.add_argument(
+        "--audio_len",
+        type=float,
+        default=5.0,
+        help="Seconds per transcription chunk (default: 5.0).",
+    )
+    _add_tts_arguments(hw)
+    hw.add_argument(
+        "--comms",
+        action="store_true",
+        help="Enable Twilio SMS/Voice communication (requires TWILIO_* env vars).",
+    )
 
 
 def _add_memory_args(parser: argparse.ArgumentParser) -> None:

@@ -546,8 +546,6 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         sys.executable,
         "-m",
         "maxim.cli",
-        "--robot-name",
-        str(getattr(args, "robot_name", "reachy_mini")),
         "--home-dir",
         str(getattr(args, "home_dir", "data")),
         "--timeout",
@@ -565,6 +563,12 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         "--interactive",
         "true" if bool(getattr(args, "interactive", True)) else "false",
     ]
+    # Only a TYPED name is replayed (#1806 PR 0): ``robot_name`` is None unless the operator typed
+    # ``--robot-name``/``--robot``, and an env-only parent's child resolves ``$MAXIM_ROBOT_NAME`` itself from the
+    # same ``child_env()``. Never ``--robot-name None``, and never an environment value turned into a typed flag.
+    robot_name = getattr(args, "robot_name", None)
+    if robot_name is not None:
+        argv.extend(["--robot-name", str(robot_name)])
     language_model = str(getattr(args, "language_model", "") or "").strip()
     if language_model:
         argv.extend(["--language-model", language_model])

@@ -130,21 +130,24 @@ def diagnose_reachy(host: str) -> int:
         all_passed = False
 
     # Test 2: SDK control channel (WebSocket on the daemon port — SDK >= 1.5;
-    # the zenoh :7447 era ended in v1.5.0, see docs/embodiment/reachy_mini/README.md)
+    # the zenoh :7447 era ended in v1.5.0, see docs/embodiment/reachy_mini/README.md).
+    # One probe for doctor, this tool and the controller: hardware/reachy/probe.py (#1806).
     print_header("Test 2: Daemon Port (SDK Control Channel)")
-    success, message = test_port(host, 8000)
-    if success:
-        print_success(f"Port 8000 (FastAPI + /ws/sdk): {message}")
-        print_info("SDK control communication is available")
-        try:
-            from maxim.utils import http as maxim_http
+    from maxim.hardware.reachy import probe as reachy_probe
 
-            status = maxim_http.fetch_url(f"http://{host}:8000/api/daemon/status", timeout=3).json()
-            print_info(f"Daemon status: version={status.get('version', '?')} state={status.get('state', '?')}")
-        except Exception:
+    outcome = reachy_probe.probe_daemon(host, deadline_s=8.0)
+    if outcome.reachable:
+        print_success("Port 8000 (FastAPI + /ws/sdk): Port is open and accepting connections")
+        print_info("SDK control communication is available")
+        if outcome.status_read:
+            print_info(f"Daemon status: version={outcome.version or '?'} state={outcome.state or '?'}")
+            refused = reachy_probe.refusal(outcome, None)
+            if refused is not None:
+                print_warning(f"A connect check would refuse this daemon: {refused}")
+        else:
             print_info("(/api/daemon/status not readable — pre-1.5 daemon or endpoint moved)")
     else:
-        print_error(f"Port 8000 (daemon): {message}")
+        print_error(f"Port 8000 (daemon): {outcome.error or 'unreachable'}")
         print_info("Solution: Ensure the Reachy daemon is running")
         print_info(f"  SSH into Reachy: ssh pollen@{host}")
         print_info("  Check daemon: systemctl status reachy-mini-daemon")

@@ -22,14 +22,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from maxim.hardware.reachy import probe as reachy_probe
 from maxim.hardware.reachy.controller import ReachyMiniController
 from maxim.runtime.capture import CaptureManager
 
 
+def _status_unreadable(*_a, **_k):
+    raise reachy_probe.DaemonStatusUnreadable("unit test: no daemon")
+
+
 @pytest.fixture(autouse=True)
 def _no_daemon_status_io(monkeypatch):
-    monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: None))
-    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    monkeypatch.setattr(reachy_probe, "read_daemon_status", _status_unreadable)
+    monkeypatch.setattr(reachy_probe, "installed_sdk_version", lambda: (1, 8))
 
 
 def _mock_sdk():
@@ -40,7 +45,7 @@ def _mock_sdk():
 def _connect(mod_configure=None) -> ReachyMiniController:
     c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
     ctx, mod = _mock_sdk()
-    with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+    with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
         if mod_configure is not None:
             mod_configure(mod)
         assert c.connect(timeout=2.0) is True

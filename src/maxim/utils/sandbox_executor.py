@@ -369,6 +369,10 @@ def _check_shell_script_safety(script_content: str) -> tuple[bool, str | None]:
     return True, None
 
 
+# A ``write_script`` name: one plain path component, no leading dot (#1806 PR 0).
+_SCRIPT_NAME = _re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sandbox Executor
 # ─────────────────────────────────────────────────────────────────────────────
@@ -747,9 +751,13 @@ class SandboxExecutor:
 
         Returns:
             Path to created script
+
+        Raises:
+            ValueError: ``name`` is not a plain script name (a path, ``..``, a leading dot, other characters).
+            PermissionError: the resolved path leaves the sandbox, or a #957 / #1806 D14 write refusal applies.
         """
         ext = ".py" if script_type == "python" else ".sh"
-        script_path = os.path.join(self.sandbox_dir, "scripts", f"{name}{ext}")
+        script_path = self._contained_script_path(name, ext)
 
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -758,6 +766,23 @@ class SandboxExecutor:
         if script_type == "shell":
             os.chmod(script_path, 0o755)
 
+        return script_path
+
+    def _contained_script_path(self, name: object, ext: str) -> str:
+        """``<sandbox>/scripts/<name><ext>`` for a plain ``name``, resolved and refused like a file tool's write (#1806
+        PR 0, adversarial R3-6): the name is a model-chosen string, so it must not carry a path, and the resolved path
+        (a symlink planted under ``scripts/`` included) must stay in the sandbox and pass both write refusals."""
+        if not isinstance(name, str) or not _SCRIPT_NAME.fullmatch(name):
+            raise ValueError(f"Invalid script name {name!r}: letters, digits, '_', '-' and '.', not starting with '.'")
+        from maxim.tools.base import control_plane_write_refusal, git_dir_write_refusal
+
+        sandbox = os.path.realpath(self.sandbox_dir)
+        script_path = os.path.realpath(os.path.join(sandbox, "scripts", f"{name}{ext}"))
+        if not script_path.startswith(sandbox + os.sep):
+            raise PermissionError(f"Script path must be within the sandbox directory: {script_path}")
+        refusal = git_dir_write_refusal(script_path) or control_plane_write_refusal(script_path)
+        if refusal:
+            raise PermissionError(refusal)
         return script_path
 
     def list_scripts(self) -> list[dict[str, Any]]:

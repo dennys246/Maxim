@@ -655,6 +655,18 @@ def _scrub_ci_event_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _scrub_robot_selection_env(monkeypatch):
+    """A test never inherits the operator's robot-selection env (#1806 PR 0).
+
+    ``MAXIM_ROBOT_NAME`` picks the daemon name (and, until PR 1, the robots.yaml entry) on every robot run,
+    ``MAXIM_REACHY_HOST`` is ``maxim-diagnostics``' default host and ``MAXIM_ROBOT_TIMEOUT`` overrides the connect
+    timeout. A leaked value from the developer's shell would make CLI-gate, selfy and diagnostics tests resolve a
+    real robot name or host. Tests that want one set it themselves."""
+    for name in ("MAXIM_ROBOT_NAME", "MAXIM_REACHY_HOST", "MAXIM_ROBOT_TIMEOUT"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_internet_lowered_env():
     """Scrub ``MAXIM_INTERNET_LOWERED`` across every test (#1345).
 

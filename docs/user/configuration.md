@@ -197,7 +197,7 @@ Environment variables not on this list are **debug / experimental** — see the 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAXIM_ROBOT_NAME` | Robot identifier (Reachy daemon `robot_name` / zenoh namespace). | reachy_mini |
+| `MAXIM_ROBOT_NAME` | The robot's daemon name (`<name>.local`) when `--robot`/`--robot-name` is not typed. Read when the robot is resolved, so setting it alone no longer makes a bare `maxim` start the robot runtime. | reachy_mini |
 | `MAXIM_COMMS_ENABLED` | Enable SMS/Voice (1/true). | 0 |
 | `MAXIM_WHISPER_COMPUTE_TYPE` | Whisper compute type (int8/float16/float32). | int8 |
 | `MAXIM_DISABLE_IMSHOW` | Disable OpenCV window display. | 0 |

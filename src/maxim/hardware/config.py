@@ -13,20 +13,38 @@ from typing import Any
 
 import yaml
 
+from maxim.exceptions import RobotsConfigError
 from maxim.hardware.registry import RobotRegistry
 
 logger = logging.getLogger(__name__)
 
-# Default config paths (searched in order). The data-home entry is
-# resolved lazily in find_config_file via maxim.utils.paths.data_home()
-# so MAXIM_DATA_HOME isolation covers robots.yaml like every other
-# persisted surface (default unchanged: ~/.maxim/robots.yaml). The
-# hardcoded "~/.maxim" literal was the one path that ignored the
-# override — an Exp 49 harness trial would otherwise silently pick up
-# the operator's REAL robot config.
-DEFAULT_CONFIG_PATHS = [
-    "robots.yaml",
-]
+# robots.yaml lives in exactly one place: ``<data_home>/robots.yaml``
+# (``~/.maxim`` unless ``MAXIM_DATA_HOME`` overrides — the same resolution
+# as every other persisted surface). There is no ``./robots.yaml`` cwd
+# fallback (#1806 owner decision D11): a file planted in the working
+# directory must never pick the robot a run connects to.
+ROBOTS_YAML_NAME = "robots.yaml"
+
+DEFAULT_ROBOT_NAME = "reachy_mini"
+
+
+def resolve_daemon_name(typed: str | None) -> tuple[str, str]:
+    """The robot's daemon name for a run, and which source chose it: ``(name, source)`` (#1806 PR 0).
+
+    The ONE copy of the legacy chain: the typed ``--robot``/``--robot-name``, else ``$MAXIM_ROBOT_NAME``, else
+    ``reachy_mini``. ``selfy.Maxim`` dials it and the CLI's startup log prints it, so the two can never disagree.
+    An empty string, typed or in the environment, counts as unset (the repo's env convention), so a blank value can
+    never become a ``.local`` dial. Since PR 0 ``MAXIM_ROBOT_NAME`` is read here, at resolution time, not as the
+    argparse default.
+    """
+    import os
+
+    if typed:
+        return typed, "--robot-name"
+    env_name = os.environ.get("MAXIM_ROBOT_NAME") or ""
+    if env_name:
+        return env_name, "$MAXIM_ROBOT_NAME"
+    return DEFAULT_ROBOT_NAME, "default"
 
 
 @dataclass
@@ -49,6 +67,13 @@ class RobotConfig:
         controllers via the ``maxim.robots`` entry-point group, so any installed
         plugin can be referenced by its registered name.
         """
+        if "config" in data and not isinstance(data["config"], dict):
+            # ``config: null`` (an empty ``config:`` line) or a scalar would
+            # otherwise TypeError in dict() or silently drop every key.
+            raise RobotsConfigError(
+                f"robots.yaml entry {robot_id!r}: 'config' must be a mapping, got "
+                f"{type(data['config']).__name__} (an empty 'config:' line is null; remove it or give it keys)"
+            )
         return cls(
             robot_id=robot_id,
             robot_type=str(data.get("type", "reachy_mini")),
@@ -64,33 +89,61 @@ class RobotsConfig:
     robots: list[RobotConfig] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RobotsConfig:
-        """Create from configuration dict."""
-        robots_data = data.get("robots", {})
+    def from_dict(cls, data: Any) -> RobotsConfig:
+        """Create from a parsed robots.yaml mapping.
+
+        Raises :class:`~maxim.exceptions.RobotsConfigError` when the top
+        level, ``robots:``, or any entry is not a mapping, or an entry's
+        ``config:`` is not one (#1806 PR 0). Pre-fix a non-dict entry was
+        skipped silently, so a typo'd entry quietly vanished from the
+        registry and the run connected to whatever was left.
+        """
+        if not isinstance(data, dict):
+            raise RobotsConfigError(f"robots.yaml must be a mapping with a 'robots:' key, got {type(data).__name__}")
+        robots_data = data.get("robots")
+        if robots_data is None:  # absent, or an empty ``robots:`` line: no entries
+            robots_data = {}
+        if not isinstance(robots_data, dict):
+            raise RobotsConfigError(
+                f"robots.yaml 'robots:' must be a mapping of robot id to entry, got {type(robots_data).__name__}"
+            )
         robots = []
-
         for robot_id, robot_config in robots_data.items():
-            if isinstance(robot_config, dict):
-                robots.append(RobotConfig.from_dict(robot_id, robot_config))
-
+            if not isinstance(robot_config, dict):
+                raise RobotsConfigError(
+                    f"robots.yaml entry {robot_id!r} must be a mapping, got {type(robot_config).__name__}"
+                )
+            robots.append(RobotConfig.from_dict(str(robot_id), robot_config))
         return cls(robots=robots)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> RobotsConfig:
-        """Load configuration from YAML file."""
+        """Load configuration from a YAML file.
+
+        A missing file is not an error: it means no entries. Anything else
+        that stops the file being read as a registry (unreadable, a YAML
+        parse error, a malformed shape) raises
+        :class:`~maxim.exceptions.RobotsConfigError` naming the path. Pre-fix
+        every such error was logged and an EMPTY config returned, so a robot
+        run with a broken file connected with defaults (silent-wrong).
+        """
         path = Path(path).expanduser()
 
         if not path.exists():
-            logger.warning("Robot config not found: %s", path)
+            logger.debug("Robot config not found: %s", path)
             return cls()
 
         try:
             with open(path, "r") as f:
-                data = yaml.safe_load(f) or {}
-            return cls.from_dict(data)
-        except Exception as e:
-            logger.error("Failed to load robot config from %s: %s", path, e)
+                data = yaml.safe_load(f)
+        except (OSError, yaml.YAMLError) as e:
+            raise RobotsConfigError(f"cannot read robot config {path}: {e}") from e
+        if data is None:  # an empty file: no entries
             return cls()
+        try:
+            return cls.from_dict(data)
+        except RobotsConfigError as e:
+            raise RobotsConfigError(f"{path}: {e}") from e
 
     def get_primary(self) -> RobotConfig | None:
         """Get the primary robot configuration."""
@@ -131,31 +184,53 @@ def resolve_body_ref(robot_config: RobotConfig | None) -> str | None:
     return str(declared) if declared else None
 
 
-def find_config_file(search_paths: list[str] | None = None) -> Path | None:
-    """Find the first existing config file in search paths.
+def robots_yaml_data_home() -> Path:
+    """The data home robots.yaml resolves under, refusing what would mislead it.
 
-    Default order: ``<data_home>/robots.yaml`` (``~/.maxim`` unless
-    ``MAXIM_DATA_HOME`` overrides — same resolution as every other
-    persisted surface), then ``./robots.yaml``.
+    Raises :class:`~maxim.exceptions.RobotsConfigError` for a RELATIVE
+    ``MAXIM_DATA_HOME`` (it would resolve against whatever cwd the run
+    started in, so a harness child could read a planted or the operator's
+    real file) and when the data home cannot be resolved at all. Scoped to
+    robots.yaml resolution only: ``utils/paths.py::data_home()`` itself
+    keeps accepting relative dirs, which benchmarks rely on.
+    """
+    import os
+
+    from maxim.utils.paths import data_home
+
+    raw = os.environ.get("MAXIM_DATA_HOME", "")
+    if raw and not Path(raw).is_absolute():
+        raise RobotsConfigError(
+            f"MAXIM_DATA_HOME={raw!r} is relative; robots.yaml resolution needs an absolute path "
+            "(a relative one resolves against the run's cwd)"
+        )
+    try:
+        home = data_home()
+    except (OSError, RuntimeError, KeyError) as e:
+        # Do NOT fall back to a hardcoded "~/.maxim/robots.yaml" or to
+        # "no file": inside an isolated harness run either would silently
+        # pick the robot (the operator's real file, or defaults).
+        raise RobotsConfigError(f"cannot resolve the data home for robots.yaml: {e}") from e
+    if not home.is_absolute():
+        raise RobotsConfigError(f"data home {str(home)!r} is relative; robots.yaml resolution needs an absolute path")
+    return home
+
+
+def find_config_file(search_paths: list[str] | None = None) -> Path | None:
+    """Find the robots.yaml to load, or ``None`` when there is none.
+
+    Default: ``<data_home>/robots.yaml`` only (``~/.maxim`` unless
+    ``MAXIM_DATA_HOME`` overrides). The ``./robots.yaml`` cwd fallback is
+    gone (#1806 D11). Raises :class:`~maxim.exceptions.RobotsConfigError`
+    when the data home is relative or cannot be resolved. An explicit
+    ``search_paths`` is searched in order instead.
     """
     if search_paths is not None:
-        paths = list(search_paths)
+        paths = [Path(p).expanduser() for p in search_paths]
     else:
-        try:
-            from maxim.utils.paths import data_home
+        paths = [robots_yaml_data_home() / ROBOTS_YAML_NAME]
 
-            paths = [str(data_home() / "robots.yaml"), *DEFAULT_CONFIG_PATHS]
-        except Exception:
-            # Do NOT fall back to a hardcoded "~/.maxim/robots.yaml" here
-            # (review fold): if data-home resolution fails inside an
-            # isolated harness run, silently reading the operator's REAL
-            # robots.yaml could connect a trial to real hardware. Fail
-            # toward cwd-only and say so.
-            logger.warning("data_home() unresolvable — robots.yaml search limited to cwd")
-            paths = list(DEFAULT_CONFIG_PATHS)
-
-    for path_str in paths:
-        path = Path(path_str).expanduser()
+    for path in paths:
         if path.exists():
             return path
 
@@ -223,7 +298,13 @@ def load_robots_config(
         search_paths: Paths to search for config file.
 
     Returns:
-        RobotsConfig instance (empty if no config found).
+        RobotsConfig instance (empty if no config file exists).
+
+    Raises:
+        RobotsConfigError: the file exists but cannot be read as a
+            registry, or the data home is relative / unresolvable. Callers
+            let it propagate (a robot run must fail, not run headless);
+            ``maxim doctor`` reports it as a warning.
     """
     if config_path is not None:
         return RobotsConfig.from_yaml(config_path)
@@ -245,6 +326,12 @@ def connect_configured_robots(
     skip_on_failure: bool = True,
 ) -> dict[str, bool]:
     """Connect all robots from configuration.
+
+    Dormant since 2026-11-25: no ``src/`` caller — the live robot runtime
+    connects its one robot through ``selfy.Maxim`` and
+    ``resolve_robot_entry``, and #1806 PR 1 routes every connect through
+    the registry's identity pin, which this bulk path does not carry. Kept
+    wired for the public ``maxim.hardware`` export; do not build on it.
 
     Args:
         registry: RobotRegistry to connect robots to.
@@ -295,6 +382,10 @@ def setup_robots_from_config(
     timeout: float = 30.0,
 ) -> tuple[RobotRegistry, dict[str, bool]]:
     """Convenience function to load config and connect all robots.
+
+    Dormant since 2026-11-25: no ``src/`` caller (see
+    :func:`connect_configured_robots`); kept for the public
+    ``maxim.hardware`` export. Do not build on it.
 
     Args:
         config_path: Path to robots.yaml (uses search paths if None).

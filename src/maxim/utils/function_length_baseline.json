@@ -6,12 +6,12 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1118
+      "lines": 1100
     },
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 593
+      "lines": 559
     },
     {
       "file": "src/maxim/console/server.py",
@@ -56,7 +56,7 @@
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
       "qualname": "Maxim.__init__",
-      "lines": 312
+      "lines": 243
     },
     {
       "file": "src/maxim/embodiment/body.py",

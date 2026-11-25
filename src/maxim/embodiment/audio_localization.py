@@ -167,8 +167,8 @@ def make_reachy_rest_doa_reader(
     the library so :class:`AzimuthDoASource` has a real off-robot reader.
 
     Network calls go through ``maxim.utils.http`` (the CI-enforced single HTTP
-    surface — raw ``urllib`` is blocked outside ``utils/http.py``), matching
-    ``ReachyMiniController._daemon_status``. The ``fetch`` parameter is a seam for
+    surface — raw ``urllib`` is blocked outside ``utils/http.py``), dialled directly at a private
+    address like ``hardware/reachy/probe.py::probe_daemon``. The ``fetch`` parameter is a seam for
     tests: inject a fake to exercise the reader with NO network and NO robot (the
     same dependency-gate-inside pattern that makes ``make_reachy_doa_reader``
     CI-testable). ``None`` is a live reading this tick (no reading / no speech
@@ -182,7 +182,9 @@ def make_reachy_rest_doa_reader(
             from maxim.utils import http as maxim_http
 
             try:
-                resp = maxim_http.fetch_url(url, timeout=t)
+                # The robot daemon is a LAN peer: dial it directly at a private address, never through an
+                # environment proxy (#1806 PR 0; the same rule as the controller's fresh readback and probe).
+                resp = maxim_http.fetch_url(url, timeout=t, address_policy="private", proxy="never")
                 data = resp.json() if hasattr(resp, "json") else None
             except Exception:
                 logger.debug("REST DoA fetch failed", exc_info=True)

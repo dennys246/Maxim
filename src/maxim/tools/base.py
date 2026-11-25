@@ -6,10 +6,13 @@ import functools
 import logging
 import operator
 import os
+import sys
+import unicodedata
 import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, EnumMeta, Flag, auto
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 
 from maxim._offline import OfflineRefusal
@@ -908,6 +911,149 @@ def git_dir_write_refusal(path: str) -> str | None:
         if parent == current:
             return None
         current = parent
+
+
+# Maxim's own control-plane files (#1806 D14): the files that hold its trust anchors. An agent's FILE tools never write
+# them, in any mode; the code-execution tools (bash, execute_file, opted-in run_tests) still can (a stated residual).
+_CONTROL_PLANE_DATA_FILES: tuple[tuple[str, ...], ...] = (
+    ("robots.yaml",),
+    ("robots.yaml.bak",),
+    ("util", "device_state.json"),
+)
+# The env-independent name rule: realpath components (folded) that END with one of these, or CONTAIN the pair.
+_CONTROL_PLANE_NAME_SUFFIXES: tuple[tuple[str, ...], ...] = tuple((".maxim", *f) for f in _CONTROL_PLANE_DATA_FILES)
+_CONTROL_PLANE_CONFIG_PAIR = (".config", "maxim")
+
+
+def _fold(text: str) -> str:
+    """NFC then case-fold: one spelling for an NFD name and for a case-insensitive filesystem's other cases."""
+    return unicodedata.normalize("NFC", text).casefold()
+
+
+def _account_homes() -> list[str]:
+    """``Path.home()`` (follows ``HOME``) and the passwd entry's home, which a child's environment cannot re-point."""
+    homes = [str(Path.home())]
+    if sys.platform != "win32":
+        import pwd
+
+        try:
+            homes.append(pwd.getpwuid(os.getuid()).pw_dir)
+        except KeyError:  # no passwd entry for this uid: HOME's home and the name rule still apply
+            _logger.debug("control-plane deny: no passwd entry for uid %s", os.getuid())
+    return list(dict.fromkeys(h for h in homes if h))
+
+
+def _control_plane_roots() -> tuple[list[str], list[str]]:
+    """The denied config directories (whole subtree) and the denied data-home files (exact), each root a UNION of the
+    resolver's output for the current environment, the ``Path.home()`` default and the passwd home's default."""
+    from maxim.peer.config import peer_config_path  # the resolver config_loader and peer_config_path share
+    from maxim.utils import paths
+
+    homes = _account_homes()
+    config_dirs = [str(peer_config_path().parent)] + [os.path.join(h, ".config", "maxim") for h in homes]
+    data_homes = [os.environ.get("MAXIM_DATA_HOME", "") or os.path.join(homes[0], ".maxim")]
+    if paths._data_home_cache is not None:  # the process's data_home(), when resolved (calling it would mkdir)
+        data_homes.append(str(paths._data_home_cache))
+    data_homes += [os.path.join(h, ".maxim") for h in homes]
+    files = [os.path.join(d, *f) for d in dict.fromkeys(data_homes) for f in _CONTROL_PLANE_DATA_FILES]
+    return list(dict.fromkeys(config_dirs)), files
+
+
+def _stat_key(path: str) -> tuple[int, int] | None:
+    try:
+        st = os.stat(path)
+    except (OSError, ValueError):  # missing, unreadable or unrepresentable: no identity to compare
+        return None
+    return st.st_dev, st.st_ino
+
+
+def _anchor(root: str) -> tuple[tuple[int, int], tuple[str, ...]] | None:
+    """``root``'s deepest existing ancestor (itself when it exists), by stat identity, and the folded tail below it."""
+    tail: list[str] = []
+    current = root
+    while True:
+        key = _stat_key(current)
+        if key is not None:
+            return key, tuple(reversed(tail))
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        tail.append(_fold(os.path.basename(current)))
+        current = parent
+
+
+def _matches_by_name(real: str) -> bool:
+    parts = tuple(_fold(p) for p in real.split(os.sep) if p)
+    if any(parts[-len(suffix) :] == suffix for suffix in _CONTROL_PLANE_NAME_SUFFIXES):
+        return True
+    return any(parts[i : i + 2] == _CONTROL_PLANE_CONFIG_PAIR for i in range(len(parts) - 1))
+
+
+def _matches_by_string(real: str, config_dirs: list[str], files: list[str]) -> bool:
+    folded = _fold(real)
+    for root in config_dirs:
+        r = _fold(os.path.realpath(root))
+        if folded == r or folded.startswith(r + os.sep):
+            return True
+    return any(folded == _fold(os.path.realpath(f)) for f in files)
+
+
+def _matches_by_identity(real: str, config_dirs: list[str], files: list[str]) -> bool:
+    """#957's ancestor walk: EVERY existing ancestor of ``real`` (and ``real`` itself) is compared by stat identity with
+    each denied root's anchor, and the rest of ``real`` below it with the anchor's tail. Catches APFS firmlinks, NFD
+    spellings, other cases, and a hardlink to an existing denied file (its inode)."""
+    anchors: list[tuple[tuple[int, int], tuple[str, ...], bool]] = []
+    for roots, subtree in ((config_dirs, True), (files, False)):
+        for root in roots:
+            anchor = _anchor(root)
+            if anchor is not None:
+                anchors.append((anchor[0], anchor[1], subtree))
+    tail: list[str] = []
+    current = real
+    while True:
+        key = _stat_key(current)
+        if key is not None:
+            rest = tuple(reversed(tail))
+            for anchor_key, anchor_tail, subtree in anchors:
+                if key == anchor_key and (rest == anchor_tail or (subtree and rest[: len(anchor_tail)] == anchor_tail)):
+                    return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return False
+        tail.append(_fold(os.path.basename(current)))
+        current = parent
+
+
+def control_plane_write_refusal(path: str) -> str | None:
+    """Why a file tool must not write ``path`` because it is one of Maxim's control-plane files, or None (#1806 D14).
+
+    Called at every ``git_dir_write_refusal`` site, with the same ``real_path`` string (no ``~`` expansion). Denied:
+
+    - anything under the resolved config directory (``$XDG_CONFIG_HOME/maxim`` or ``~/.config/maxim``: ``mesh.yml``,
+      ``peer.yml``, ``config.json``, the API keys and console token);
+    - ``robots.yaml``, ``robots.yaml.bak`` and ``util/device_state.json`` under the process's data home AND the default
+      ``~/.maxim`` (a harness child runs with ``MAXIM_DATA_HOME=<tmp>``; the operator's real files stay protected).
+
+    Each root is the union of the resolver's output for the current environment, the ``Path.home()`` default and the
+    passwd home's default. Three independent tests, any one refuses: #957's every-ancestor stat-identity walk (a denied
+    root that does not exist yet is anchored at its deepest existing ancestor plus its tail); a realpath + NFC +
+    case-fold string compare; and an environment-independent name rule over the folded realpath components (ends with
+    ``.maxim/robots.yaml``, ``.maxim/robots.yaml.bak`` or ``.maxim/util/device_state.json``, or contains the pair
+    ``.config``/``maxim``; component-wise, so ``~/.config/maximal/x`` and ``ws/robots.yaml`` stay writable).
+
+    Residuals (``docs/user/safety.md``): the code-execution tools can still write these files; an operator's own
+    non-default ``MAXIM_DATA_HOME``/``XDG_CONFIG_HOME`` that a child re-points; HFS+'s ignorable-character spellings
+    (shared with #957); creating a NEW hardlink into the config dir needs code execution.
+    """
+    real = os.path.realpath(path)
+    config_dirs, files = _control_plane_roots()
+    if (
+        _matches_by_name(real)
+        or _matches_by_string(real, config_dirs, files)
+        or _matches_by_identity(real, config_dirs, files)
+    ):
+        return f"Writing Maxim's control-plane files is not allowed (they hold its trust anchors, #1806): {real}"
+    return None
 
 
 def git_env(root: str | None) -> dict[str, str]:

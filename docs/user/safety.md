@@ -141,6 +141,35 @@ File operations are governed by a path-based permission system:
 - Sandbox mode isolates script execution so that user-written scripts cannot escape their designated directory.
 - All policy violations are logged for review.
 
+### Maxim's own control-plane files
+
+The agent's file tools (`write_file`, `edit_file`, `write_sandbox_file`, `write_to_shared_outputs` and
+`create_sandbox_script`) never write Maxim's own control-plane files. This holds in **every** operational mode,
+singularity included, and no approval lifts it (#1806):
+
+- anything in Maxim's config directory, `$XDG_CONFIG_HOME/maxim/` or `~/.config/maxim/` (`mesh.yml`, `peer.yml`,
+  `config.json`, the API keys and the console token);
+- `robots.yaml`, `robots.yaml.bak` and `util/device_state.json` in the data home (`$MAXIM_DATA_HOME`, default
+  `~/.maxim/`). The default `~/.maxim/` copies stay protected when a run sets `MAXIM_DATA_HOME` elsewhere.
+
+The check resolves symlinks, compares filesystem identity (so other spellings, another case, an NFD name or an
+existing hardlink are caught too), and also refuses any path that ends in `.maxim/robots.yaml`,
+`.maxim/robots.yaml.bak` or `.maxim/util/device_state.json`, or runs through a `.config/maxim/` directory, whatever
+`HOME` and the other variables say. It matches whole path components, so `~/.config/maximal/` and a project's own
+`robots.yaml` stay writable.
+
+What this does **not** cover:
+
+- **Code-execution tools.** `bash`, `execute_file` and `run_tests`, once enabled with `MAXIM_ALLOW_BASH`,
+  `MAXIM_ALLOW_EXECUTE_FILE` or `MAXIM_ALLOW_RUN_TESTS`, run code, and that code can write these files. Passive mode refuses all three. Only grant singularity to an agent
+  you would trust with your shell.
+- **A non-default location you set yourself.** If you point `MAXIM_DATA_HOME` or `XDG_CONFIG_HOME` somewhere other
+  than the default, and a child process is launched with that variable re-pointed again, your copy is protected only
+  when it sits at a default-looking path. That is launcher configuration; the agent cannot change it.
+- **HFS+ ignorable characters.** On an HFS+ volume, a name containing Unicode characters that HFS+ ignores can reach
+  a file not created yet under another spelling. The `.git` check (#957) shares this gap. APFS is not affected.
+- **New hardlinks into the config directory.** Making one needs code execution (the first bullet).
+
 ---
 
 ## Internet Access
@@ -205,7 +234,7 @@ The safety stack, from outermost to innermost:
 1. **Autonomy level** -- Controls whether the agent can act at all without asking.
 2. **FearAgent** -- Reviews every tool call for danger patterns.
 3. **FearGatedExecutor** -- Optional executor wrapper that gates every tool call via FearAgent; active when `with_fear_gate=True`.
-4. **Filesystem policy** -- Restricts which paths can be read, written, or executed.
+4. **Filesystem policy** -- Restricts which paths can be read, written, or executed. The file tools never write Maxim's own config directory, `robots.yaml` or `device_state.json`, in any mode.
 5. **Internet policy** -- Internet access is on by default; disable with `--no-internet`. A persisted toggle and domain policy apply within that (see Internet Access above).
 6. **Predictive harm detection** -- Blocks unsafe movements before they reach hardware.
 7. **Pain detection** -- Monitors the robot during movement and intervenes in real time.
