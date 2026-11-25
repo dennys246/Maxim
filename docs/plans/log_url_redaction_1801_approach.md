@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v21 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v22 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -87,10 +87,10 @@
 >   ```yaml
 >   owner_exceptions:
 >     - id: E1801-1
->       accepts: "userinfo containing whitespace leaks its tail when a part exceeds its bound: form 1 user > 64, password before the whitespace > 256, or after it > 256; form 2 user before or after the whitespace > 64, or password > 256; form 3 either side > 64 characters"
+>       accepts: "on EITHER branch (double-slash or separator; owner 2026-11-25, AC1), userinfo containing whitespace leaks its tail when a part exceeds its bound: form 1 user > 64, password before the whitespace > 256, or after it > 256; form 2 user before or after the whitespace > 64, or password > 256; form 3 either side > 64 characters"
 >       why: "a bounded regex is linear; an unbounded one is quadratic on adversarial lines inside the logging path; httpx percent-encodes userinfo, so real transport errors never carry such text"
 >       class: fail-open residual, accepted
->       pinned_by: "one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6). Each pin plants a distinct marker in EVERY part and compares case-insensitively, since past a bound only part
+>       pinned_by: "one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6); the same pins on the separator branch (AC1). Each pin plants a distinct marker in EVERY part and compares case-insensitively, since past a bound only part
         of a secret leaks and `url_origin` lowercases a host (AA4)"
 >     - id: E1801-2
 >       accepts: "prose after a URL that contains `user:…@` (or `host:port … @`) is erased to `<url>`"
@@ -122,6 +122,15 @@
 >   - Verified by the author on the scratch patch: 104/104, 0 leaks across 25 cases, 3.10 compiles, separator families
 >     about 1 ms at 256k characters.
 >   - A delta round 21 is owed on AB1–AB4 only.
+> - **Round 21 (delta, a different reader; 104/104 on 3.10.19 and 3.12):** 1 DO-NOT-BUILD, 1 SHOULD-FIX and 1 NIT,
+>   folded and tagged AC1–AC3.
+>   - AC1 (DO-NOT-BUILD, FAIL-OPEN): AB1's `\S+` stopped at the first space, so whitespace userinfo on the separator
+>     branch leaked (`https:\/\/u:p SECRET@h\/p`, a `Path` URL with a space in the password, the Windows form). It
+>     was a regression against v20, and AB1's "no in-bounds leak is possible" claim was false.
+>   - The fold puts the three bounded whitespace forms on the separator branch too. The author verified it: 104/104,
+>     0 leaks across 33 cases, 3.10 compiles, linear.
+>   - **Owner, 2026-11-25:** E1801-1 extends to EITHER branch.
+>   - A delta round 22 is owed on AC1–AC3 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -202,7 +211,8 @@ written later.
         imported it is in `sys.modules` with `__spec__._initializing` True and no `sctypeDict`. In that case, or if
         the build raises ANY exception (`AttributeError`, a `TypeError` from `np.dtype`, …; Z5), the set is empty and NOT cached, logged once in the Stage-1 form, so the
         record is proxied (safe) rather than lost to `handleError` (Y5). The log is ONE-SHOT and armed only by a
-        NON-transient failure (AB4: spending it on the transient `_initializing` state would hide a later real
+        NON-transient failure, classified with `getattr(getattr(np, "__spec__", None), "_initializing", False)`, so a
+        `__spec__` of None cannot raise during the classification (AC3; AB4: spending it on the transient `_initializing` state would hide a later real
         failure). The flag is set BEFORE logging, because `log_swallowed_exception`'s own record is proxied too, and an uncached failed build
         would otherwise rebuild and re-log on every record until a swallowed `RecursionError`. A non-transient
         failure (anything but `_initializing`) is cached as empty (AA5). Built from numpy's own scalar
@@ -334,7 +344,9 @@ written later.
     ```python
     _URL_IN_TEXT = re.compile(
         r"(?<![A-Za-z0-9+.-])"
-        r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>\\/\\/|\\{1,2}|/(?!/)))(?P=sep)\S+"  # separator forms: the whole token
+        r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>\\/\\/|\\{1,2}|/(?!/)))(?P=sep)"
+        r"(?:[^/@:]{0,64}:\S{0,256}\s[\s\S]{0,256}@|[^\s/@:]{0,64}\s[^/@:]{0,64}:\S{0,256}@|[^/@:]{0,64}\s[^/@:]{0,64}@)?"
+        r"\S+"  # separator forms: any whitespace userinfo (bounded, as below), then the whole token
         r"|[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's)
         r"(?:(?P<wsui>[^/@:]{0,64}:\S{0,256}\s[\s\S]{0,256}@"  # form 1: whitespace in the password
         r"|[^\s/@:]{0,64}\s[^/@:]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
@@ -350,9 +362,11 @@ written later.
       - the Windows `\` or `\\`;
       - a single `/` not followed by `/` (the `Path` form).
 
-      It then takes the WHOLE non-space token (`\S+`), and `_reduce` emits `<url>` for it. No userinfo or host is
-      parsed, so the regex has nothing to backtrack into: linear (about 1 ms at 256k characters), and no in-bounds
-      leak is possible. Fail-closed over-match: the rest of that token is erased, so `{"u":"https:\/\/…"}` keeps
+      It then takes the same three bounded whitespace-userinfo forms as the double-slash branch, optionally, then the
+      WHOLE non-space token (`\S+`), and `_reduce` emits `<url>` for it (AC1: a bare `\S+` stopped at the first space
+      and leaked whitespace userinfo). No plain userinfo or host is parsed, so an escaped quote cannot end the match
+      early (AB1). Linear: at most 49 ms at 256k characters. Past the forms' bounds a tail leaks: E1801-1, either
+      branch. Fail-closed over-match: the rest of that token is erased, so `{"u":"https:\/\/…"}` keeps
       `{"u":"<url>`. The separator is atomic by a lookahead plus a backreference, which keeps Python 3.10, the floor
       (`requires-python = ">=3.10"`, CI's matrix runs 3.10), able to compile it, where `(?>…)` would not.
     - **The double-slash branch** is today's pattern, which keeps every scheme (`postgres`, `redis`, `git+ssh`, `unix`,
@@ -464,7 +478,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     "@")`), or a `.__call__` attribute, when it takes tainted text. "Dynamic callable" is a SECOND taint label (AB2): its
     sources are the results of `getattr`, `attrgetter`, `methodcaller`, a call and a subscript, and it propagates
     through the existing rules (unpack, attribute targets such as `self._f`, walrus and parameter defaults). A call of
-    anything carrying the label with tainted text fails. So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
+    anything carrying the label with tainted text fails, and so does any call that takes a labelled ARGUMENT together
+    with tainted text (`map(getattr(str, n), [str(e)], …)`). The label is read from module, class-body and outer-def
+    scopes, as taint is (P3), so a label set in a class body is read as `self._f` (AC2). So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
     `def g(e, f=getattr(str, n))` are caught (AA3, AB2; 39 call/subscript callees in src/maxim, 0 with
     tainted text) (Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` evaded; flagging every
     non-literal `getattr` would hit 78 sites), and `functools.partial` over one, when the text is
@@ -563,6 +579,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- AC1: `https:\/\/u:p SECRET@h\/p` (bare and inside a JSON string), `Path("/a/https://u:p SECRET@h/p")`,
+  `https:\/\/us SECRET:p@h`, `https:\/\/tok SECRET@h`, `https:\u:p SECRET@h`, `ws:\\u:p SECRET@h` and a tab form
+  reduce to `<url>`. AC2: the lint fails on `list(map(getattr(str, n), [str(e)], ["@"]))` and on a class-body label
+  read as `self._f`.
 - AB1: `https:\/\/u:p\"SECRET@h\/p`, `https:\u:p\"SECRET@h` and `https:\/\/u:p\<SECRET@h` reduce to `<url>`;
   `http:/ prose` is untouched; `'https:\\"'*n` and `('https:\/\/u:p\"')*n` stay linear. AB2: the lint fails on
   `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and a `getattr` default. AB4: a transient
