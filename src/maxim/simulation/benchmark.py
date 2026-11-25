@@ -152,6 +152,8 @@ class BenchmarkReport:
             mr = self.results.get(model)
             if not mr:
                 return "—"
+            if mr.refused:  # not scored (owner decision V26): never a 0.00
+                return "refused"
             val = mr.metrics.get(key, 0)
             sd = mr.metrics_stddev.get(key, 0)
             if sd > 0.001:
@@ -650,7 +652,8 @@ class BenchmarkRunner:
         # A model with any refused run is refused, not scored: refused part-way, its scored runs are partial (V26).
         refused_runs = [r for r in runs if r.refused]
         if refused_runs:
-            return ModelResult(model=model, runs=runs, passed=False, refused=refused_runs[0].error)
+            reason = (refused_runs[0].error or "").removeprefix("refused: ") or "refused"
+            return ModelResult(model=model, runs=runs, passed=False, refused=reason)
         successful = [r for r in runs if r.error is None]
         if not successful:
             return ModelResult(model=model, runs=runs, passed=False)
@@ -900,6 +903,10 @@ class BenchmarkRunner:
 
         for model, current_mr in report.results.items():
             baseline_mr = baseline.results.get(model)
+            if current_mr.refused or (baseline_mr is not None and baseline_mr.refused):
+                # A refused model is not scored (V26); a report saved by 10a's build kept its partial metrics.
+                logger.info("Model %s was refused in this run or the baseline — no baseline comparison for it", model)
+                continue
             if baseline_mr is None:
                 logger.info("Model %s not in baseline — skipping baseline comparison for it", model)
                 continue
@@ -1023,7 +1030,11 @@ class BenchmarkRunner:
             return None, cause
 
         exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")
+        scored = [m for m in report.models if not (m in report.results and report.results[m].refused)]
+        refused = {m: mr.refused for m, mr in report.results.items() if mr.refused}
         for model, mr in report.results.items():
+            if mr.refused:  # not scored (owner decision V26): the paper names it as refused, never ranks it
+                continue
             metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
             exp_log.record(
                 hypothesis=f"Model {model} performs well on {report.suite}",
@@ -1042,10 +1053,15 @@ class BenchmarkRunner:
         )
 
         goal = (
-            f"Write a comparative analysis of {len(report.models)} LLM models "
+            f"Write a comparative analysis of {len(scored)} LLM models "
             f"benchmarked on the {report.suite} suite. "
-            f"Models tested: {', '.join(report.models)}. "
-            f"Include methodology, per-model results, and ranking analysis."
+            f"Models tested: {', '.join(scored)}. "
+            + (
+                f"Refused and not scored (do not rank them): {', '.join(f'{m} ({why})' for m, why in refused.items())}. "
+                if refused
+                else ""
+            )
+            + "Include methodology, per-model results, and ranking analysis."
         )
 
         draft = writer.run(goal)  # saves output_dir / "paper.md" when any section came back

@@ -282,7 +282,7 @@ def test_a_refused_model_is_recorded_not_scored_or_ranked() -> None:
 
     runner = object.__new__(bm.BenchmarkRunner)
     refused = runner._aggregate_runs("claude", [bm.RunResult("s", "claude", 0, error="refused: offline", refused=True)])
-    assert refused.refused == "refused: offline" and not refused.passed
+    assert refused.refused == "offline" and not refused.passed  # the reason, its "refused: " prefix dropped
     errored = runner._aggregate_runs("m", [bm.RunResult("s", "m", 0, error="boom")])
     assert errored.refused is None
     report = bm.BenchmarkReport(

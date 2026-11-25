@@ -505,6 +505,23 @@ def test_a_model_refused_part_way_is_refused_not_scored_and_the_next_model_still
     assert set(runner._compare_to_baseline(loaded, finished)) == {"a", "c"}  # refused now
     assert set(runner._compare_to_baseline(finished, loaded)) == {"a", "c"}  # refused in the baseline
 
+    # A report saved by 10a's build kept a refused model's partial metrics: still no delta, either direction.
+    key = next(iter(report.results["a"].metrics))
+    partial = dataclasses.replace(
+        loaded,
+        results={**loaded.results, "b": dataclasses.replace(loaded.results["b"], metrics={key: 0.1})},
+    )
+    measured = dataclasses.replace(
+        finished,
+        results={**finished.results, "b": dataclasses.replace(finished.results["b"], metrics={key: 0.9})},
+    )
+    assert set(runner._compare_to_baseline(measured, partial)) == {"a", "c"}  # refused in the baseline
+    assert set(runner._compare_to_baseline(partial, measured)) == {"a", "c"}  # refused now
+
+    rows = [line.split() for line in report.summary_table().splitlines() if line.split()[:1] == [key]]
+    assert rows and all(row[2] == "refused" for row in rows)  # columns a, b, c: b's cell, never a 0.00
+    assert "REFUSED — refused:" not in report.summary_table()  # one prefix
+
 
 def test_an_offline_refusal_from_a_menu_campaign_is_not_reported_as_a_failed_load(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
