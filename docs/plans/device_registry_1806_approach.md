@@ -7,7 +7,7 @@ Status: DRAFT v3, 2026-11-25. Mirrors issue #1806.
 - **Delta round 1, on DRAFT v2 at f0369379.** Fresh readers: [adversarial](reviews/1806/delta1_adversarial.md), [safety](reviews/1806/delta1_safety_lifecycle.md), [architecture](reviews/1806/delta1_architecture.md) and [wire](reviews/1806/delta1_wire.md). **None returned DO-NOT-BUILD.** Every lens found v2 had closed round 1's DO-NOT-BUILDs. Almost every new finding fell in an already-covered class (converging), but several fail open, so the stop rule was not met.
 - **v3 folds every delta-round-1 finding** (§11). A **delta round 2 is owed**, scoped to the fail-open folds listed in §11.
 
-Owner decisions: D1–D13 were taken on 2026-11-25. The re-asks raised in the delta round were taken the same day: D2″ rides `primary:`, and D12′ leaves `run_device` in `console/`. D14 is new and open (§9).
+Owner decisions: D1–D13 were taken on 2026-11-25. The re-asks raised in the delta round were taken the same day: D2″ rides `primary:`, and D12′ leaves `run_device` in `console/`. D14 was taken the same day: deny agent file-tool writes to the whole control-plane set in every mode, in PR 0 (§9).
 
 **What:** give Maxim one way to find, name, remember and reliably reconnect to the devices it senses and acts through. `maxim connect reachy` and `maxim embody reachy` replace hand-editing `~/.maxim/robots.yaml`, chasing a DHCP-moved IP, and knowing about the `.local` and `media_backend: no_media` quirks. Robots come first. The model leaves room for other kinds (a camera, a mic, a device attached to another node) without building that abstraction early. **Every verb is a library function first**, and the CLI is a thin shell over it (§3b). Making the runtime itself a library is its own issue, #1808 (§3c).
 
@@ -296,7 +296,7 @@ On macOS, an empty `find_robots` result is reported as "none found, or Local Net
   - The unguarded `float()` on `MAXIM_ROBOT_TIMEOUT` is fixed.
   - The exp49 `_trial_env` (and the documented harness `child_env` recipe) pops `MAXIM_DEVICE` and `MAXIM_ROBOT_NAME`, so a harness child never becomes a named-device run (wire N6, adversarial N12).
 - **`utils/http.py` strict private mode** (`proxy="never"`; §4.2).
-- **Agent writes to the trust-bearing files** (adversarial N2). In singularity mode, `filesystem_policy.check_write_permission` allows any write under cwd. Maxim started from `~` therefore lets the agent rewrite `<data_home>/robots.yaml` (repoint or delete the pin) and `util/device_state.json`. PR 0 denies writes to those two files regardless of `cwd_access`. **The same exposure covers `~/.config/maxim/` (mesh.yml, api_key, console_token, config.json); see D14.**
+- **Agent writes to the trust-bearing files** (adversarial N2). In singularity mode, `filesystem_policy.check_write_permission` allows any write under cwd. Maxim started from `~` therefore lets the agent rewrite `<data_home>/robots.yaml` (repoint or delete the pin) and `util/device_state.json`. PR 0 denies writes to those two files regardless of `cwd_access`. **D14 (taken): the deny covers the whole control-plane set, `~/.config/maxim/` (mesh.yml, api_key, console_token, config.json) as well as the two files above, in every mode.** `safety.md` and the singularity-mode docs state the new limit.
 
 ## 6. Threats: every input and how it could lie
 
@@ -344,7 +344,7 @@ The impact is **safety**, not only security. The strict choice is the default ev
   - explicit `--robot`, `--robot-name` default `None`, `--device`, the conflict refusal and the explicit-flag gate;
   - removing the cwd fallback;
   - `fetch_url(proxy="never")`;
-  - the `check_write_permission` deny for robots.yaml + `device_state.json` (and `~/.config/maxim/` if D14 says so);
+  - the `check_write_permission` deny for robots.yaml + `device_state.json` and `~/.config/maxim/` (D14);
   - env scrubs and the harness env pops.
 - **PR 1, the pin (≈400):**
   - typed `hardware_id:`/`hostname:`/`launch:` fields with strict unknown-key refusal;
@@ -380,8 +380,8 @@ Docs updated in the same PRs: `robot-setup.md`, `getting_started.md`, `cli-refer
 - **D12:** one `maxim.devices` namespace. **D12′ (delta re-ask, taken):** `run_device` stays in `console/`, with at most a lazy re-export.
 - **D13:** non-zero exit on a refused named-device connect. **D13′ (clarification folded in v3, same intent):** defined by pin status; `--unpinned` is required to run an unpinned entry through `embody`/`--device` (§3a).
 
-**Open:**
-- **D14. Deny agent file-tool writes to all of Maxim's own control-plane files?** In singularity mode, `check_write_permission` allows writes anywhere under cwd. Started from `~`, the agent can rewrite `~/.config/maxim/` (mesh.yml, api_key, console_token, config.json) and `<data_home>/robots.yaml` without approval.
+**Taken 2026-11-25 (owner took the recommendation):**
+- ✅ **D14. Deny agent file-tool writes to all of Maxim's own control-plane files?** In singularity mode, `check_write_permission` allows writes anywhere under cwd. Started from `~`, the agent can rewrite `~/.config/maxim/` (mesh.yml, api_key, console_token, config.json) and `<data_home>/robots.yaml` without approval.
   - *Recommendation:* deny writes to the whole control-plane set (`~/.config/maxim/`, `<data_home>/robots.yaml`, `<data_home>/util/device_state.json`) in every mode, in PR 0. That is about 30 `src/` lines plus tests. Singularity keeps full access to everything else. An agent should never be able to rewrite its own trust anchors.
   - *Alternative:* deny only this design's two files now, and decide the config directory separately.
   - This is a security fix that changes singularity's documented reach, which is why it is an owner decision.
