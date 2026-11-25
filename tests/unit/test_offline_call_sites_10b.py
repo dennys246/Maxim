@@ -638,7 +638,7 @@ def test_warmup_never_leaves_wait_ready_blocking_on_a_refusal(monkeypatch: pytes
 def test_benchmark_exit_code_and_api_scores_leave_a_refused_model_out() -> None:
     from maxim.simulation import benchmark as bm
 
-    refused = bm.ModelResult(model="claude", refused="refused: offline")
+    refused = bm.ModelResult(model="claude", refused="offline")
     passed = bm.ModelResult(model="phi-2", passed=True, score=0.7)
     report = bm.BenchmarkReport(timestamp="t", suite="s", models=["claude", "phi-2"], runs_per_model=1)
     report.results = {"phi-2": passed}
@@ -668,7 +668,7 @@ def test_api_benchmark_does_not_score_a_refused_model(monkeypatch: pytest.Monkey
 
     report = bm.BenchmarkReport(timestamp="t", suite="s", models=["claude", "phi-2"], runs_per_model=1)
     report.results = {
-        "claude": bm.ModelResult(model="claude", refused="refused: offline"),
+        "claude": bm.ModelResult(model="claude", refused="offline"),
         "phi-2": bm.ModelResult(model="phi-2", passed=True, score=0.7),
     }
     runner = MagicMock()
