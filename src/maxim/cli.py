@@ -246,6 +246,30 @@ def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
         _print_model_unavailable(getattr(exec_agent, "_refused_cause", None))
 
 
+def _cli_agentic_agent(args: Any, memory_path: str) -> Any:
+    """The CLI agentic path's ``MaximAgent``, on the ``--llm`` profile (moved out of ``_main_impl``, rule T, #1228).
+
+    ``shared_router=BUILD_OWN`` on purpose: this path's router is built by ExecAgent itself, with ``consent="ask"`` on
+    the main thread (:func:`_cli_agentic_llm_worker`), so the CLI hands the agent no router."""
+    from maxim.agents import MaximAgent
+    from maxim.agents.exec_agent import BUILD_OWN
+
+    # Get LLM profile
+    llm_profile = str(getattr(args, "language_model", "") or "").strip()
+    if not llm_profile:
+        llm_profile = "mistral-7b-instruct-v0.2"
+
+    # Create the agentic agent
+    return MaximAgent(
+        llm_profile=llm_profile,
+        memory_persistence_path=memory_path,
+        data_folder=args.home_dir,
+        enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
+        reset_on_startup=bool(getattr(args, "reset", False)),
+        shared_router=BUILD_OWN,
+    )
+
+
 def _cli_agentic_llm_worker(
     agentic_agent: Any,
     args: Any,
@@ -641,6 +665,7 @@ def _run_menu_sim(action: str) -> None:
     from pathlib import Path
 
     from maxim import cli_signals
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.utils.cancellation import interruptible
 
     cli_signals.entered_sim_mode()  # a stop from here on exits 4 (#1344)
@@ -700,6 +725,8 @@ def _run_menu_sim(action: str) -> None:
                 max_turns=100,
             )
         except KeyboardInterrupt:
+            raise
+        except SECURITY_REFUSALS:  # a leader/offline refusal reaches _main_guarded's refusal, not "failed to load"
             raise
         except Exception as e:
             print(f"  Failed to load campaign: {e}")
@@ -1444,7 +1471,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
 
     A ``LeaderRefusal`` propagates: a security refusal is not "run without the LLM".
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     try:
         from maxim.runtime.lane_backends import build_primary_router
@@ -1455,7 +1482,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
         _srv_router.warmup()
         if not _srv_router.wait_ready(timeout=180.0):
             return "the LLM did not become ready within 180s"
-    except LeaderRefusal:
+    except SECURITY_REFUSALS:
         raise
     except Exception as _srv_err:
         logger.error("LLM server init failed: %s", _srv_err)
@@ -1485,13 +1512,13 @@ def _report_server_not_ready(logger: logging.Logger, reason: str) -> int | None:
 def _run_server_mode(logger: logging.Logger) -> int:
     """``--mode server``: the LLM server + proxy, no agent loop, until Ctrl+C. An LLM that never becomes ready is
     reported NOT READY: the process stays up behind a LeaderProxy, and exits 1 without one (#1338)."""
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     print("Maxim — server mode")
     try:
         try:
             _not_ready = _start_server_llm(logger)
-        except LeaderRefusal as _refusal:
+        except SECURITY_REFUSALS as _refusal:
             # A server mode that kept going would leave the proxy forwarding to what it refused.
             print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
             logger.error("server mode refused: %s", _refusal)
@@ -2625,7 +2652,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if not _gpu_available():
                     _configure_cpu_fallback_model(logger, args.home_dir)
 
-                from maxim.agents import MaximAgent
                 from maxim.agents.autonomy import (
                     AutonomyController,
                     AutonomyLevel,
@@ -2662,19 +2688,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if memory_path is None:
                     memory_path = os.path.join(args.home_dir, "memory", "memories.json")
 
-                # Get LLM profile
-                llm_profile = str(getattr(args, "language_model", "") or "").strip()
-                if not llm_profile:
-                    llm_profile = "mistral-7b-instruct-v0.2"
-
-                # Create the agentic agent
-                agentic_agent = MaximAgent(
-                    llm_profile=llm_profile,
-                    memory_persistence_path=memory_path,
-                    data_folder=args.home_dir,
-                    enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
-                    reset_on_startup=bool(getattr(args, "reset", False)),
-                )
+                agentic_agent = _cli_agentic_agent(args, memory_path)
 
                 # Set up ResponseOutput for LLM responses; spoken replies through local speakers, or a refusal (#1437)
                 from pathlib import Path
@@ -3011,6 +3025,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     stop, whatever the body returned, raised as a ``sys.exit`` or refused with ``StopStillPending`` (it refused to start
     under this process's own stop); a non-sim mode keeps a real failure and otherwise exits 0.
     """
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first: before any subprocess or socket (#1315 item 10, §6 "Startup order")
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}\n  Fix or remove the file, then retry.", file=sys.stderr)
+        return 2
     from maxim import cli_signals
     from maxim.exceptions import StopStillPending
     from maxim.utils.cancellation import stop_noted
@@ -3048,7 +3070,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.download import download_decline_scope
 
     try:
@@ -3056,8 +3078,8 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
-    except LeaderRefusal as refusal:
-        # A security refusal is the operator's to act on: say why and exit 2, as server mode and the early leader
+    except SECURITY_REFUSALS as refusal:
+        # A security refusal (or an offline one, #1315 item 10a) is the operator's to act on: say why and exit 2, as server mode and the early leader
         # boot do (#1468 review, owner decision 2026-10-26).
         _fix = getattr(refusal, "fix_hint", None)
         print(f"\n  ✗ Refusing to run: {refusal}\n" + (f"    → {_fix}\n" if _fix else ""), file=sys.stderr)
@@ -3124,7 +3146,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             # subclass-level fix_hint surfaces as a loud AttributeError
             # instead of silently using a generic fallback string.
             user_warn(
-                f"{type(e).__name__}: {e}",
+                e.problem,  # str(e) already ends with the fix hint, which fix= prints on its own line (#1228)
                 fix=e.fix_hint,
                 source="backend",
                 event="backend_error_uncaught",

@@ -633,8 +633,12 @@ def _read_new_goal(report: Any, report_dir: str) -> str:
 
 
 def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = True) -> Any:
-    """The AUT's own router for a dual-LLM run (``aut_model``), else the shared ``llm_router``, which a failed
-    build also falls back to. The build is handed ``aut_model`` (``build_primary_router(profile=)``) and the
+    """The AUT's own router for a dual-LLM run (``aut_model``), else the shared ``llm_router``. With ``aut_model``
+    set, a build that returns no router or raises refuses the run, typed (``AutRouterUnavailable``; owner decision B,
+    #1228): a two-model run never silently becomes a one-model run (it used to fall back to the shared router, and
+    every "the AUT ran on X" statement then named the narrator's model). The AUT's router is built whether or not
+    the run has a shared one: ``--aut-model`` with no narrator LLM (``llm_router`` None) still builds it, or refuses
+    (before #1228 the build was skipped and the AUT silently had no LLM). The build is handed ``aut_model`` (``build_primary_router(profile=)``) and the
     process's ``MAXIM_LLM_PROFILE`` stays the operator's: written around the build, it named the AUT's model for
     every other thread while the build ran, and stayed after a build that raised (#1538).
 
@@ -646,26 +650,69 @@ def _build_aut_router(aut_model: str | None, llm_router: Any, *, warm: bool = Tr
     (``LocalModelUnavailable`` propagates from ``build_run_router``): a dual-LLM run never measures the shared model
     in its place (owner decision OD2, #1396 bullet 2). ``warm=False`` builds only (the run's
     :func:`_build_run_llms`, so the refusal lands before any ``warmup()`` and before the AUT model loads);
-    :func:`_warm_aut_router` warms it later."""
-    from maxim.models.language.types import LocalModelUnavailable
+    :func:`_warm_aut_router` warms it later.
+
+    Every AUT-side LLM consumer is handed this router and no other (#1228). Live before the fix on the narrator's
+    router: the AUT's FearAgent gate (:func:`_fear_gate_aut_executor`) and its imagination ``EntityDesigner``. Also
+    handed it: the AUT's ``LLMWorker``, a spawned sub-simulation's agent (``SpawnSubSimulationTool``, owner decision
+    A), and the AUT's ``MaximAgent`` (:func:`_aut_maxim_agent`), whose ExecAgent goal-proposal path is dormant, so
+    that slot held no router and built none. The scene manifest and the campaign runners (generative, DM, fixture)
+    generate the world, so they stay on the narrator's ``llm_router`` (owner decision D, recorded in
+    ``docs/plans/baseline_floors_b0.md``)."""
+    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.models.language.types import AutRouterUnavailable, BackendError, LocalModelUnavailable
     from maxim.runtime.lane_backends import build_run_router
 
-    aut_router = llm_router  # default: shared
-    if aut_model is not None and llm_router is not None:
-        try:
-            aut_router, _ = build_run_router(logger=logger, profile=aut_model)
-
-            if aut_router is not None:
-                if warm:
-                    aut_router = _warm_aut_router(aut_router, llm_router, aut_model)
-            else:
-                aut_router = llm_router
-        except LocalModelUnavailable:
-            raise
-        except Exception as e:
-            logger.warning("Failed to build AUT router for '%s': %s — falling back to shared", aut_model, e)
-            aut_router = llm_router
+    if aut_model is None:
+        return llm_router  # one model: the AUT shares the run's router
+    try:
+        aut_router, _ = build_run_router(logger=logger, profile=aut_model)
+    except LocalModelUnavailable:
+        raise
+    except SECURITY_REFUSALS:  # a leader or offline refusal is itself the typed refusal; never re-wrapped (#1315)
+        raise
+    except Exception as e:
+        logger.error("AUT router for '%s' could not be built: %s; the run refuses (#1228)", aut_model, e)
+        cause = e.problem if isinstance(e, BackendError) else f"{type(e).__name__}: {e}"  # one fix hint, not two
+        raise AutRouterUnavailable(aut_model, reason=cause) from e
+    if aut_router is None:
+        logger.error("AUT router for '%s' could not be built (no router); the run refuses (#1228)", aut_model)
+        raise AutRouterUnavailable(aut_model, reason="the build returned no router")
+    if warm:
+        aut_router = _warm_aut_router(aut_router, llm_router, aut_model)
     return aut_router
+
+
+def _aut_maxim_agent(aut_router: Any) -> Any:
+    """The AUT's ``MaximAgent``, its ExecAgent on the AUT's router (None when the run has no LLM: it then builds none;
+    #1228), with the user's event subscriptions bridged to its bus (moved out of
+    ``start_simulation_mode``, rule T)."""
+    from maxim.agents.maxim_agent import MaximAgent
+
+    aut_agent = MaximAgent(shared_router=aut_router)
+
+    # Bridge user event subscriptions to the AUT agent's bus
+    if hasattr(aut_agent, "_bus"):
+        from maxim.api import _bridge_event_subscriptions
+
+        _bridge_event_subscriptions(aut_agent._bus)
+    return aut_agent
+
+
+def _fear_gate_aut_executor(aut_executor: Any, aut_router: Any) -> Any:
+    """``aut_executor`` wrapped in a ``FearGatedExecutor`` whose FearAgent reviews code on the AUT's own router
+    (``aut_router``; it ran on the narrator's in a dual-LLM run, #1228). Moved out of ``start_simulation_mode``
+    (rule T); a failed wiring still logs and leaves the executor unwrapped, as before."""
+    try:
+        from maxim.agents.fear_agent import FearAgent
+        from maxim.runtime.fear_gate import FearGatedExecutor
+
+        fear_agent = FearAgent(llm=aut_router)  # the AUT's safety review runs on the AUT's model
+        aut_executor = FearGatedExecutor(aut_executor, fear_agent)
+        logger.info("AUT FearGatedExecutor active — all tool calls reviewed by FearAgent")
+    except Exception as e:
+        logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
+    return aut_executor
 
 
 def _warm_aut_router(aut_router: Any, llm_router: Any, aut_model: str | None) -> Any:
@@ -682,8 +729,9 @@ def _warm_aut_router(aut_router: Any, llm_router: Any, aut_model: str | None) ->
 
 
 def _build_shared_router(llm_profile: str | None, *, warm: bool = True) -> Any:
-    """The run's shared router (narrator, AUT, fear gate), built on ``llm_profile`` when the caller has its own model
-    (#1586; None: the session's ``MAXIM_LLM_PROFILE``), or None when no LLM is available.
+    """The run's shared router (the narrator's; in a single-LLM run also every AUT-side consumer's), built on
+    ``llm_profile`` when the caller has its own model (#1586; None: the session's ``MAXIM_LLM_PROFILE``), or None
+    when no LLM is available.
 
     A named ``llm_profile`` (the CLI's ``--llm``) whose model is missing and not downloaded refuses the run, typed
     (``build_run_router``; owner decision OD2, #1396 bullet 2); without one, a missing model is no LLM. ``warm=False``
@@ -712,13 +760,17 @@ def _build_run_llms(
     before the shared ``warmup()``; (b) the AUT build (its consent prompt, its spawn) now runs before
     ``_await_llm_ready_or_refuse``, so a stop that lands during the shared load is honoured after the AUT build, not
     before it. A refusal releases the run's serving registration (``release_start_provenance``), as the stop refusal
-    does: a held one would stamp every later sim ``concurrent_sims``."""
-    from maxim.models.language.types import LocalModelUnavailable
+    does: a held one would stamp every later sim ``concurrent_sims``; an AUT build that fails any other way refuses the
+    same way (``AutRouterUnavailable``, #1228), and so does a leader or offline refusal from either build
+    (``SECURITY_REFUSALS``, #1315 item 10a)."""
+    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.models.language.types import AutRouterUnavailable, LocalModelUnavailable
 
+    refusals: tuple[type[BaseException], ...] = (LocalModelUnavailable, AutRouterUnavailable, *SECURITY_REFUSALS)
     try:
         llm_router = _build_shared_router(llm_profile, warm=False)
         aut_router = _build_aut_router(aut_model, llm_router, warm=False)
-    except LocalModelUnavailable:
+    except refusals:
         from maxim.simulation.report import release_start_provenance
 
         release_start_provenance(start_provenance)
@@ -1222,13 +1274,7 @@ def start_simulation_mode(
     _inject_registered_tools(aut_registry)
 
     aut_decision_engine = build_decision_engine()
-    aut_agent = MaximAgent()
-
-    # Bridge user event subscriptions to the AUT agent's bus
-    if hasattr(aut_agent, "_bus"):
-        from maxim.api import _bridge_event_subscriptions
-
-        _bridge_event_subscriptions(aut_agent._bus)
+    aut_agent = _aut_maxim_agent(aut_router)
 
     # AUT runs AUTONOMOUS — no human confirmation prompts (SUPERVISED would
     # deadlock because stdin is captured by the orchestrator's reader thread).
@@ -1308,7 +1354,7 @@ def start_simulation_mode(
     #   (record_tool_complete / record_tool_embodiment_failure).
     # - entity_ref is set: with_pain_bridge=True → pain_bus passed to executor.
     #   build_executor precondition requires a live bus for Embodiment._publish_pain.
-    # with_fear_gate=False — sim wraps FearGatedExecutor AFTER pain
+    # with_fear_gate=False (so no fear_llm: the factory would not use it) — sim wraps FearGatedExecutor AFTER pain
     # layers (PainInterceptor + AnticipatoryPain) so the fear gate is
     # outermost. The factory wraps fear gate directly on the executor
     # which would put it under the pain layers (wrong order).
@@ -1328,7 +1374,6 @@ def start_simulation_mode(
             _aut_config,
             tool_registry=aut_registry,
             pain_bus=aut_pain_bus,
-            fear_llm=llm_router,
         )
 
     # Extract bio-system references for downstream sim-specific wiring.
@@ -1682,7 +1727,7 @@ def start_simulation_mode(
 
     # Orchestrator bio-stack + executor constructed below via AgentFactory
     # after the orch tool registry is built (the factory needs it).
-    orch_agent = MaximAgent()
+    orch_agent = MaximAgent(shared_router=llm_router)
 
     # True when a human drives the conversation (no specific goal).
     # Stall detector and probing are disabled in this mode.
@@ -1698,7 +1743,7 @@ def start_simulation_mode(
 
     orch_registry = SimToolRegistry()
     spawn_tool = SpawnSubSimulationTool(
-        llm_router=llm_router,
+        llm_router=aut_router,  # a sub-AUT is an agent under test: the AUT's model (owner decision A, #1228)
         stop_event=stop_event,
         parent_bridge=bridge,
         sim_tmpdir=str(sim_tmpdir),
@@ -1847,16 +1892,7 @@ def start_simulation_mode(
     # NOTE: this MUST come after ToolPainBridge wiring so the bridge
     # lives on the inner executor where record_tool_start/complete
     # are actually invoked.
-    try:
-        from maxim.agents.fear_agent import FearAgent
-        from maxim.runtime.fear_gate import FearGatedExecutor
-
-        llm_for_fear = llm_router  # Share LLM for code analysis
-        fear_agent = FearAgent(llm=llm_for_fear)
-        aut_executor = FearGatedExecutor(aut_executor, fear_agent)
-        logger.info("AUT FearGatedExecutor active — all tool calls reviewed by FearAgent")
-    except Exception as e:
-        logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
+    aut_executor = _fear_gate_aut_executor(aut_executor, aut_router)
 
     # NOTE: Pre-Wave-2, aut_memory_hub.connect(fear_agent=...) was called
     # here.  build_memory_hub now calls .connect() internally, so the
@@ -1897,7 +1933,7 @@ def start_simulation_mode(
             _aut_component_index = ComponentIndex(aut_component_registry)
             _aut_entity_designer = EntityDesigner(
                 component_registry=aut_component_registry,
-                llm_router=llm_router,
+                llm_router=aut_router,  # the AUT's own imagination runs on the AUT's model (#1228)
             )
             _aut_imagination_designer = ImaginationDesigner(
                 _aut_entity_designer,

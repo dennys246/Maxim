@@ -500,7 +500,7 @@ def run_arm(arm: str, workdir: Path) -> dict[str, Any]:
         aut.executor.execute = _execute
         workspace = home / "workspace"
         workspace.mkdir(parents=True, exist_ok=True)
-        agent = MaximAgent()
+        agent = MaximAgent(shared_router=None)
         agent.wire_memory_hub(hub)
         state = RuntimeState()
         state.data["mode"] = "active"

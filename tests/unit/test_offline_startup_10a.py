@@ -1,0 +1,592 @@
+"""#1315 item 10a: what engages the offline latch from config, and the router's in-process-only rule (notes §6).
+
+The child-process red gates in ``tests/integration/test_offline_latch.py`` prove the router predicate end to end.
+These pin the wiring around it in-process: ``llm.offline`` engages the latch first in ``cli.py::main`` and in every
+``maxim.api`` verb that builds a run, auto-spawn is ruled out offline, and a backend that is not in-process is never
+constructed after the latch. The conftest autouse ``_reset_offline_latch`` fixture disengages the latch after each
+test.
+"""
+
+from __future__ import annotations
+
+import ast
+import dataclasses
+import json
+import logging
+import types
+from pathlib import Path
+
+import pytest
+
+from maxim import _offline
+from maxim.exceptions import ConfigurationError
+from maxim.runtime import config_loader as cl
+
+REPO = Path(__file__).resolve().parents[2]
+# The api verbs that build a run, connect a robot or diagnose: each engages first (§6 "Startup order").
+API_VERBS = ("run", "imagine", "connect", "diagnose", "campaign", "benchmark", "research")
+
+
+class _Sentinel(Exception):
+    pass
+
+
+def _write_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> Path:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    path = tmp_path / "maxim" / "config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(text)
+    return path
+
+
+# ── engage_offline_if_configured ──────────────────────────────────────────
+
+
+def test_llm_offline_true_engages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_config(tmp_path, monkeypatch, json.dumps({"_format_version": "1.5", "llm": {"offline": True}}))
+    assert cl.engage_offline_if_configured() is True
+    assert _offline.is_offline()
+
+
+def test_a_file_that_fails_validation_still_engages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The raw key is read, not the validated config: an unknown key elsewhere does not unlatch it (fail-closed)."""
+    _write_config(tmp_path, monkeypatch, json.dumps({"_format_version": "1.5", "llm": {"offline": True, "nope": 1}}))
+    with pytest.raises(ConfigurationError):  # the validated load refuses this file
+        cl.load_config()
+    assert cl.engage_offline_if_configured() is True
+
+
+@pytest.mark.parametrize(
+    "llm",
+    [{"offline": False}, {"offline": "true"}, {"offline": 1}, {}, None],
+    ids=["false", "string", "int", "absent", "no-llm-section"],
+)
+def test_only_a_json_true_engages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, llm: object) -> None:
+    payload: dict[str, object] = {"_format_version": "1.5"}
+    if llm is not None:
+        payload["llm"] = llm
+    _write_config(tmp_path, monkeypatch, json.dumps(payload))
+    assert cl.engage_offline_if_configured() is False
+    assert not _offline.is_offline()
+
+
+def test_no_config_file_engages_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert cl.engage_offline_if_configured() is False
+
+
+@pytest.mark.parametrize("text", ["{not json", '{"llm": {"offline": true},}', "[1, 2]", '"offline"'])
+def test_a_file_that_cannot_be_parsed_refuses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+    """Whether it means offline is unknowable, so it refuses (owner decision V20), and never engages or runs online."""
+    _write_config(tmp_path, monkeypatch, text)
+    with pytest.raises(ConfigurationError):
+        cl.engage_offline_if_configured()
+    assert not _offline.is_offline()
+
+
+def test_an_empty_file_is_absent_and_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _write_config(tmp_path, monkeypatch, "  \n")
+    with caplog.at_level(logging.WARNING):
+        assert cl.engage_offline_if_configured() is False
+    assert not caplog.records
+
+
+def test_cli_main_refuses_an_unparseable_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from maxim import cli
+
+    _write_config(tmp_path, monkeypatch, "{not json")
+    assert cli.main(["--help"]) == 2
+    assert "invalid JSON" in capsys.readouterr().err
+
+
+def test_the_env_latch_still_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv(_offline.OFFLINE_ENV, "1")
+    assert cl.engage_offline_if_configured() is True
+
+
+# ── the callers engage first ──────────────────────────────────────────────
+
+
+def test_cli_main_engages_before_anything_else(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``cli.py::main`` calls it before ``cli_signals.installed()`` and the guarded body (deletion probe: remove the
+    call and the sentinel never raises)."""
+    from maxim import cli, cli_signals
+
+    monkeypatch.setattr(cl, "engage_offline_if_configured", lambda: (_ for _ in ()).throw(_Sentinel()))
+
+    def too_early() -> None:
+        raise AssertionError("cli_signals.installed() ran before the offline engage")
+
+    monkeypatch.setattr(cli_signals, "installed", too_early)
+    with pytest.raises(_Sentinel):
+        cli.main(["--help"])
+
+
+def _first_statement_after_docstring(fn: ast.FunctionDef) -> ast.stmt:
+    body = fn.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant):
+        body = body[1:]
+    return body[0]
+
+
+def _calls(stmt: ast.stmt) -> str | None:
+    value = stmt.value if isinstance(stmt, ast.Expr | ast.Assign) else None
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+        return value.func.id
+    return None
+
+
+@pytest.mark.parametrize("verb", API_VERBS)
+def test_each_api_verb_engages_first(verb: str) -> None:
+    tree = ast.parse((REPO / "src" / "maxim" / "api.py").read_text())
+    defs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    first = _calls(_first_statement_after_docstring(defs[verb]))
+    if first == "_run_preflight":
+        first = _calls(_first_statement_after_docstring(defs["_run_preflight"]))
+    assert first == "_engage_offline", f"maxim.api.{verb} does not engage the offline latch first (got {first})"
+
+
+def test_api_run_engages_before_its_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import api
+
+    monkeypatch.setattr(api, "_engage_offline", lambda: (_ for _ in ()).throw(_Sentinel()))
+    with pytest.raises(_Sentinel):
+        api.run(goal="   ")  # an invalid goal would raise ConfigurationError if the checks ran first
+
+
+# ── auto-spawn and the router ─────────────────────────────────────────────
+
+
+def test_auto_spawn_is_ruled_out_offline() -> None:
+    from maxim.runtime.lane_backends import _auto_spawn_ruled_out
+
+    gpu = types.SimpleNamespace(has_gpu=True)
+    assert _auto_spawn_ruled_out(gpu) is False
+    _offline.engage("test")
+    assert _auto_spawn_ruled_out(gpu) is True
+
+
+def _router(providers: dict[str, dict[str, object]]):
+    from maxim.models.language.config import LLMConfig
+    from maxim.models.language.router import LLMRouter
+
+    return LLMRouter(dataclasses.replace(LLMConfig(), enabled=True, providers=providers))
+
+
+def test_in_process_lanes_build_offline() -> None:
+    _offline.engage("test")
+    _router({"local": {"type": "llama_cpp", "model": "m"}, "torch": {"type": "transformers", "model": "m"}})
+    assert not _offline.ledger()
+
+
+def test_no_backend_that_is_not_in_process_is_constructed_after_engage() -> None:
+    """A router built before ``engage()`` still has its cloud lane configured: building that backend afterwards is
+    refused, not handed an SDK client."""
+    router = _router({"claude": {"type": "anthropic", "model": "claude-sonnet-4-6", "pricing_required": False}})
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        router._get_backend_for_provider("claude")
+    assert router._backends.get("claude") is None
+    assert [r.event for r in _offline.ledger()] == ["router[backend]"]
+
+
+def test_api_engage_reads_the_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``api._engage_offline`` itself engages (deletion probe: an empty body fails here)."""
+    from maxim import api
+
+    _write_config(tmp_path, monkeypatch, json.dumps({"llm": {"offline": True}}))
+    api._engage_offline()
+    assert _offline.is_offline()
+
+
+def test_build_primary_router_engages_from_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A library caller (``maxim.create.router()``) that never ran ``cli.main`` is latched at the router build."""
+    from maxim.runtime import lane_backends
+
+    _write_config(tmp_path, monkeypatch, json.dumps({"llm": {"offline": True}}))
+    seen: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        lane_backends, "_start_process_services", lambda _log: seen.append(("services", _offline.is_offline()))
+    )
+    monkeypatch.setattr(
+        lane_backends, "_require_valid_user_profiles", lambda: seen.append(("profiles", _offline.is_offline()))
+    )
+    lane_backends._router_build_preflight(None)
+    assert _offline.is_offline()
+    # the latch is up before the leader owner's tunnel + heartbeat start (#1610), which spawn cloudflared
+    assert seen == [("services", True), ("profiles", True)]
+
+
+def test_a_leader_tunnel_refused_offline_stays_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The claimed leader's tunnel spawn refused by the latch propagates: it used to read as "tunnel daemon did not
+    start" and the build went on (#1610's handler, merged into #1315 item 10a)."""
+    from maxim.runtime import leader_mode
+    from maxim.tunnel import daemon_spawner
+
+    def spawn(_log: object) -> None:
+        _offline.refuse("subprocess", "cloudflared")
+
+    monkeypatch.setattr(leader_mode, "owns_leader_services", lambda: True)
+    monkeypatch.setattr(leader_mode, "_started_by_pid", None)
+    monkeypatch.setattr(daemon_spawner, "auto_spawn_tunnel_daemon", spawn)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal, match="cloudflared"):
+        leader_mode.start_claimed_leader_services(None)
+
+
+def test_a_peer_lane_is_refused_by_name_not_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shipped builder raises the refusal (it used to log a WARNING and return None, and callers fell back to
+    another router); the URL probe neither runs nor drops the lane."""
+    from maxim.runtime import lane_backends
+
+    monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_MODEL", "m")
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal, match="lane-large"):
+        lane_backends.build_primary_router(capabilities=types.SimpleNamespace(has_gpu=False))
+    assert [r.event for r in _offline.ledger()] == ["router[build]"]
+
+
+def test_validate_remote_urls_keeps_the_lane_offline() -> None:
+    from maxim.runtime import lane_backends
+
+    lanes = {"large": types.SimpleNamespace(remote_url="http://127.0.0.1:9/v1", remote_api_key=None)}
+    _offline.engage("test")
+    assert lane_backends._validate_remote_urls(lanes, None)["large"].remote_url == "http://127.0.0.1:9/v1"
+
+
+def test_router_build_and_dispatch_refuse_in_process() -> None:
+    """In-process twins of the child-process red gates, so coverage sees the refusal lines."""
+    remote = {"lane": {"type": "maxim_peer", "base_url": "http://127.0.0.1:9/v1", "model": "m"}}
+    router = _router(remote)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        _router(remote)
+    with pytest.raises(_offline.OfflineRefusal):  # generate_json builds its backend first: that refuses
+        router.generate_json("hello")
+    with pytest.raises(_offline.OfflineRefusal):  # generate() no longer rewraps it as ModelInferenceError
+        router.generate("hello")
+    with pytest.raises(_offline.OfflineRefusal):  # in the caller's thread, not the warmup thread
+        router.warmup()
+    assert [r.event for r in _offline.ledger()] == [
+        "router[build]",
+        "router[backend]",
+        "router[dispatch]",
+        "router[warmup]",
+    ]
+
+
+def test_a_doctor_check_refused_offline_is_its_own_row() -> None:
+    from maxim.doctor import checks
+
+    def check_needs_network() -> checks.CheckResult:
+        _offline.refuse("socket.getaddrinfo", "name lookup")  # what the hook raises for a check's lookup
+
+    def check_many() -> list[checks.CheckResult]:
+        _offline.refuse("test", "spawn")
+        return []
+
+    _offline.engage("test")
+    row = checks._refused_offline_row(check_needs_network)()
+    assert (row.status, row.name) == ("info", "needs network") and "refused (offline)" in row.message
+    assert [r.status for r in checks._refused_offline_row(check_many)()] == ["info"]
+
+
+def test_every_doctor_check_is_wrapped() -> None:
+    import inspect
+
+    from maxim.doctor import checks
+
+    for name, fn in vars(checks).items():
+        if name.startswith("check_") and inspect.isfunction(fn):
+            assert hasattr(fn, "__wrapped__"), f"{name} is not wrapped for offline"
+
+
+def test_the_local_lane_builder_raises_the_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A local lane whose router refuses offline (a cloud fallback or placement tail rode in) is refused by name:
+    ``_build_local_backend`` re-raises instead of logging and returning None."""
+    from maxim.models.language import router as router_mod
+    from maxim.runtime.lane_backends import LaneBackendManager
+    from maxim.runtime.worker_pool import LaneConfig
+
+    def refusing_router(*_a: object, **_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: claude")
+
+    monkeypatch.setattr(router_mod, "LLMRouter", refusing_router)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal, match="claude"):
+        LaneBackendManager({})._build_local_backend(LaneConfig(name="large", max_workers=1))
+
+
+def test_a_check_that_catches_the_refusal_still_reads_refused() -> None:
+    """A check that absorbs the latch's refusal into its own verdict ("nothing responding") is reported as refused:
+    the ledger shows the latch answered."""
+    from maxim.doctor import checks
+
+    def check_swallows() -> checks.CheckResult:
+        try:
+            _offline.refuse("socket.connect", "127.0.0.1:8100")
+        except _offline.OfflineRefusal:
+            return checks.CheckResult(name="server", status="fail", message="nothing responding")
+        raise AssertionError("unreachable")
+
+    _offline.engage("test")
+    row = checks._refused_offline_row(check_swallows)()
+    assert row.status == "info" and "socket.connect" in row.message
+
+
+def test_doctor_resolved_config_has_an_llm_offline_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.doctor import checks
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert any(r.name == "llm.offline" for r in checks.check_resolved_config())
+
+
+def test_maxim_config_set_accepts_llm_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim.runtime import config_cli
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert config_cli.run_config_subcommand(["set", "llm.offline", "true"]) == 0
+    assert json.loads((tmp_path / "maxim" / "config.json").read_text())["llm"]["offline"] is True
+
+
+def test_download_model_engages_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    from maxim import api
+
+    monkeypatch.setattr(api, "_engage_offline", lambda: (_ for _ in ()).throw(_Sentinel()))
+    with pytest.raises(_Sentinel):
+        api.download_model("mistral-7b")
+
+
+def test_maxim_diagnostics_engages_first(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    from maxim.utils import reachy_diagnostics
+
+    monkeypatch.setattr(cl, "engage_offline_if_configured", lambda: (_ for _ in ()).throw(ConfigurationError("bad")))
+    assert reachy_diagnostics.main() == 2
+    assert "bad" in capsys.readouterr().err
+
+
+def test_a_config_that_is_not_utf8_refuses_typed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = _write_config(tmp_path, monkeypatch, "")
+    path.write_bytes(b'{"llm": {"offline": true}, "x": "\xff"}')
+    with pytest.raises(ConfigurationError, match="failed to read"):
+        cl.engage_offline_if_configured()
+
+
+def test_the_research_llm_build_does_not_degrade_an_offline_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """It used to fall back to the heuristic Writer/Reviewer with a WARNING (delta round SF1)."""
+    from maxim.runtime import lane_backends
+    from maxim.simulation import research_orchestrator as ro
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", refuse)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        ro._build_research_llm()
+
+
+def test_cli_main_reports_an_offline_refusal_and_exits_2(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from maxim import cli
+
+    monkeypatch.setattr(cli, "_main_impl", lambda _argv: _offline.refuse("router[build]", "lane-large"))
+    _offline.engage("test")
+    assert cli.main([]) == 2
+    assert "Refusing to run" in capsys.readouterr().err
+
+
+def test_the_aut_router_build_does_not_fall_back_on_an_offline_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An offline sim whose AUT model is not in-process must refuse, not fall back to the shared router: that would
+    silently swap the model under test (#1315 item 10a delta SF1; ``_build_aut_router`` came with #1538)."""
+    from maxim.runtime import lane_backends
+    from maxim.simulation import orchestrator
+
+    build = orchestrator._build_aut_router
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", refuse)
+    monkeypatch.setattr(orchestrator, "build_primary_router", refuse, raising=False)
+    _offline.engage("test")
+    shared = object()
+    try:
+        result = build("claude-sonnet-4-6", shared)
+    except _offline.OfflineRefusal:
+        return
+    raise AssertionError(f"_build_aut_router did not refuse on an offline refusal (returned {result!r})")
+
+
+def test_the_aut_router_build_refuses_offline_with_no_shared_router(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--aut-model`` with no narrator LLM still builds the AUT's router (#1228); offline, that build's refusal
+    escapes as itself, not wrapped in ``AutRouterUnavailable`` (the ``SECURITY_REFUSALS`` contract)."""
+    from maxim.runtime import lane_backends
+    from maxim.simulation import orchestrator
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(lane_backends, "build_primary_router", refuse)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        orchestrator._build_aut_router("claude-sonnet-4-6", None, warm=False)
+
+
+@pytest.mark.parametrize("which", ["shared", "aut"])
+def test_an_offline_refusal_from_either_build_releases_the_serving_registration(
+    monkeypatch: pytest.MonkeyPatch, which: str
+) -> None:
+    """A held registration would stamp every later sim in a long-lived process ``concurrent_sims``: an offline
+    refusal from the shared or the AUT build releases it, as a ``LocalModelUnavailable`` one does (#1315 item 10a)."""
+    from maxim.simulation import orchestrator
+    from maxim.simulation import report as report_mod
+
+    def refuse(*_a: object, **_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(orchestrator, "_build_shared_router", refuse if which == "shared" else (lambda *a, **k: None))
+    monkeypatch.setattr(orchestrator, "_build_aut_router", refuse if which == "aut" else (lambda *a, **k: None))
+    released: list[object] = []
+    monkeypatch.setattr(report_mod, "release_start_provenance", lambda start: released.append(start))
+    _offline.engage("test")
+    start = {"token": 1}
+    with pytest.raises(_offline.OfflineRefusal):
+        orchestrator._build_run_llms(None, aut_model="aut-model", start_provenance=start)
+    assert released == [start]
+
+
+def test_an_offline_refusal_stops_the_benchmark_instead_of_failing_one_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``BenchmarkRunner.run``'s per-run ``except Exception`` must re-raise a ``SECURITY_REFUSALS`` refusal: recorded as
+    one failed run, the benchmark would go on refusing every run and report scores (#1315 item 10a)."""
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim.simulation.benchmark import BenchmarkRunner
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", refuse)
+    _offline.engage("test")
+    suite = "scenarios/benchmarks/quick_check.yaml"  # as test_benchmark_expectations_1310 runs it
+    with pytest.raises(_offline.OfflineRefusal):
+        BenchmarkRunner(models=["m"], suite_path=suite, output_dir=str(tmp_path)).run()
+
+
+def test_an_offline_refusal_mid_benchmark_saves_the_finished_models_then_re_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Models that finished before the refusal are not lost: the report is saved with them, the refused model is marked
+    ``refused``, the models after it are absent, and then the refusal escapes (#1315 item 10a, owner option 1)."""
+    import json
+
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim.simulation.benchmark import BenchmarkRunner
+    from tests.unit.test_benchmark_expectations_1310 import _a_run_that_did_the_work
+
+    calls: list[int] = []
+
+    def first_runs_then_refuses(**kwargs: object) -> object:
+        calls.append(1)
+        if len(calls) > 1:
+            _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+        return _a_run_that_did_the_work(**kwargs)
+
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", first_runs_then_refuses)
+    suite = "scenarios/benchmarks/quick_check.yaml"
+    runner = BenchmarkRunner(models=["local", "cloud", "later"], suite_path=suite, output_dir=str(tmp_path))
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        runner.run()
+
+    (report_dir,) = list(tmp_path.iterdir())
+    results = json.loads((report_dir / "benchmark_report.json").read_text())["results"]
+    assert set(results) == {"local", "cloud"}
+    assert results["local"]["refused"] is None
+    assert results["local"]["expectations_passed"] == 3
+    assert "lane-large" in results["cloud"]["refused"]
+    assert results["cloud"]["passed"] is False
+    assert "cloud: REFUSED" in (report_dir / "summary.md").read_text()
+
+
+def test_a_model_refused_part_way_is_kept_partial_and_never_ranked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Refused on its second run, a model has one scored run: it is saved as ``refused`` but left out of the ranking,
+    the per-metric rankings and the baseline deltas, and an unsaveable report still lets the refusal escape."""
+    import json
+
+    import maxim.simulation.orchestrator as orchestrator
+    from maxim.simulation.benchmark import BenchmarkRunner
+    from tests.unit.test_benchmark_expectations_1310 import _a_run_that_did_the_work
+
+    calls: list[int] = []
+
+    def refuses_the_fourth_run(**kwargs: object) -> object:
+        calls.append(1)
+        if len(calls) == 4:  # runs=2: model a's two runs, then b's first, then b's second refuses
+            _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+        return _a_run_that_did_the_work(**kwargs)
+
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", refuses_the_fourth_run)
+    suite = "scenarios/benchmarks/quick_check.yaml"
+    runner = BenchmarkRunner(models=["a", "b", "c"], suite_path=suite, runs=2, output_dir=str(tmp_path))
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        runner.run()
+
+    (report_dir,) = list(tmp_path.iterdir())
+    data = json.loads((report_dir / "benchmark_report.json").read_text())
+    assert set(data["results"]) == {"a", "b"} and data["results"]["b"]["refused"]
+    assert data["results"]["b"]["score"] > 0  # one scored run: partial, which is why it must not be ranked
+    assert data["overall_ranking"] == ["a"]
+    assert all(ranked == ["a"] for ranked in data["rankings"].values())
+    assert "REFUSED (partial results, not ranked): b" in (report_dir / "summary.md").read_text()
+
+    report = runner._load_baseline(str(report_dir / "benchmark_report.json"))
+    assert report is not None
+    finished = dataclasses.replace(
+        report, results={m: dataclasses.replace(mr, refused=None) for m, mr in report.results.items()}
+    )
+    assert set(runner._compare_to_baseline(report, finished)) == {"a"}  # refused now: no delta against a full baseline
+    assert set(runner._compare_to_baseline(finished, report)) == {"a"}  # refused in the baseline: no delta either
+
+    def disk_full(_report: object) -> None:
+        raise OSError("no space left on device")
+
+    calls.clear()
+    monkeypatch.setattr(runner, "save_report", disk_full)
+    with pytest.raises(_offline.OfflineRefusal):
+        runner.run()
+
+
+def test_an_offline_refusal_from_a_menu_campaign_is_not_reported_as_a_failed_load(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The menu's campaign path catches ``Exception`` to print "Failed to load campaign"; a leader/offline refusal
+    must escape to ``_main_guarded``'s "Refusing to run" instead (#1315 item 10a)."""
+    from maxim import cli, cli_signals
+    from maxim.embodiment import component_registry
+    from maxim.simulation import dm_schema, orchestrator
+
+    def refuse(**_k: object) -> None:
+        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
+
+    monkeypatch.setattr(cli_signals, "entered_sim_mode", lambda: None)
+    monkeypatch.setattr(cli, "_setup_interactive_display", lambda: None)
+    monkeypatch.setattr(component_registry, "ComponentRegistry", lambda **_k: object())
+    monkeypatch.setattr(dm_schema, "load_campaign", lambda *_a, **_k: types.SimpleNamespace(name="c"))
+    monkeypatch.setattr(dm_schema, "validate_campaign", lambda _c: [])
+    monkeypatch.setattr(orchestrator, "start_simulation_mode", refuse)
+    _offline.engage("test")
+    with pytest.raises(_offline.OfflineRefusal):
+        cli._run_menu_sim(f"campaign:{tmp_path / 'c.yaml'}")
+    assert "Failed to load campaign" not in capsys.readouterr().out

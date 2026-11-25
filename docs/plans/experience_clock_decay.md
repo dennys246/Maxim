@@ -126,8 +126,9 @@ before S3a.
 
 **S0 result (2026-10-17): none in production.** Every `run_agentic_loop` caller's hub comes from
 `build_bio_stack`, which always builds a Hippocampus: `cli.py`, `console/handle.py`, `api.py` and the orchestrator AUT
-through `create_full_agent(with_bio_stack=True)` (which replaces the skeleton's memory with the bio-stack's, so even
-`remembers=False` keeps a Hippocampus); `run_minecraft_aut`, the embodied runtime and the three Q9 rigs through
+through `create_full_agent(with_bio_stack=True)` (which replaces the skeleton's memory with the bio-stack's; since
+#1225 `AgentConfig` refuses `remembers=False` or `learns=False` beside `with_bio_stack=True`, where it used to keep a
+Hippocampus in silence); `run_minecraft_aut`, the embodied runtime and the three Q9 rigs through
 `build_minecraft_aut`/`build_bio_stack`; the orchestrator's second loop call and `simulation/tools.py` pass no hub.
 `interactive.py::_run_scenario_turn` passes its caller's hub through and `run_interactive_sim` has no caller. The only
 NAc-without-Hippocampus is the bare `create_agent` path (`maxim.create.agent`, `create_npc_agent`, `maxim.load.agent`
@@ -284,8 +285,8 @@ regime (S0); decided time-based (Q3). `decay_imagined_links(0.5)` stays at sessi
 |---|---|
 | Heartbeat, stall detector, LLM timeouts, TTFT keepalive | watch the process and backend |
 | `idle_sleep_s`, `target_period`, `llm_submit_interval`, the 120 s `_submitted_recently` window | loop scheduling; no longer pace decay. The forever-awake AUT becomes a CPU cost only (follow-up issue) |
-| PainBus refractory, reflex cooldowns | motor/IO rate limits; hardware safety (embodiment brief §1) |
-| SCN phases, `TemporalSignature` similarity | host calendar by design |
+| PainBus refractory, reflex cooldowns | motor/IO rate limits; hardware safety (embodiment brief §1). **Amended 2026-11-24** (owner, [world_clock_a_pre.md](world_clock_a_pre.md) D-WC3): the PainBus and ReactionBus de-duplication windows count the injected machinery clock, host default unchanged (`time.monotonic()`), after #1200; motor and IO limits stay on the wall |
+| SCN phases, `TemporalSignature` similarity | host calendar by design. **Amended 2026-11-24** (owner, [world_clock_a_pre.md](world_clock_a_pre.md) D-WC2, revised after its plan review): text derived from the SCN or the calendar that reaches the model asks the perceived-time port first, and under its no-calendar mode emits nothing (host default unchanged); SCN registration and NAc anchor similarity stay on the host calendar (OD-A20 declined 2026-11-19) |
 | `REALTIME_PASS_CAP_US` | the driver's own stall bound |
 
 `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` are
