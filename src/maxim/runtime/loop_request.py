@@ -18,7 +18,10 @@ submission); this module holds what follows it, given a context (owner decision 
 - ``_submit_request``: the protocol context, the ``inference_start`` event, the shared kwargs, ``submit_tick_context``
   (with the run's inbound comms, #1481), the submit stamp, and the submit's logs.
 - ``_deliberate``: after a submit whose section-1.2 PFC gate passed, cycles 2+ through the body's
-  ``_run_deliberation_cycles``, or a cycle-1 ready answer used directly.
+  ``_run_deliberation_cycles``, or a cycle-1 ready answer used directly; either answer goes through §2's one intake,
+  ``loop_intake.accept_llm_proposal`` (#1743: it used to be installed on ``ctrl`` past §2's checks, so an action-less
+  one blocked every later submit), with a declined turn dropped, not retried (owner decision 2026-11-24).
+- ``log_submit_blocked``: the sim trace of a submit a pending proposal blocks, from ahead of the body's guard.
 
 A raise anywhere in the ``try`` is logged (WARNING plus a DEBUG traceback) and the pass goes on, as inline. By rule (a)
 the helpers called only from this code moved here too: ``_triggering``, ``_describe_tools_for_prompt`` with
@@ -36,7 +39,8 @@ cycles 2+ inside it and cycle 1 in ``_deliberate`` read the same one function) a
 
 **What it returns.** ``SubmitCarry``: the two body locals §6 rebinds that a LATER pass reads, ``last_surfaced_tools``
 (§2's ``record_surfaced_but_unused``) and ``pending_prefetch`` (None once consumed; the body reassigns it only on a pass
-with new input). They are returned even after a raise, carrying whatever the ``try`` had rebound by then, exactly as the
+with new input), and since #1743 the deliberation intake's two, as §2 returns them: ``fallbacks`` (the stall counter)
+and ``exhausted`` (the body's flag is False whenever §6 runs, so it is rebound, not ORed; its next §2 check breaks). They are returned even after a raise, carrying whatever the ``try`` had rebound by then, exactly as the
 inline locals did. That both live as body locals apart from ``ctrl``'s copies is pinned as-is (#1744).
 
 **Arguments.** Explicit keywords, never the loop's ``LoopRun`` (rule (d)), each the loop's own local named as the body
@@ -63,6 +67,7 @@ from maxim.agents.bus import StreamEvent
 from maxim.runtime import loop_state as _lstate
 from maxim.runtime.loop_controller import take_replan_inputs
 from maxim.runtime.loop_external import planning_submit_shared_kwargs, submit_tick_context
+from maxim.runtime.loop_intake import IntakeOutcome, accept_llm_proposal
 from maxim.runtime.loop_perception import is_tool_followup
 from maxim.runtime.loop_planning import annotate_tool_variance
 from maxim.runtime.loop_state import operational_mode
@@ -96,6 +101,8 @@ class SubmitCarry:
 
     last_surfaced_tools: list[str]  # §2's ``record_surfaced_but_unused`` reads it on the next pass (#1744)
     pending_prefetch: Any  # None once a submit consumed it; the body reassigns it only on a pass with new input
+    fallbacks: int  # #1743: the stall counter (``_consecutive_llm_fallbacks``) after the deliberation's intake
+    exhausted: bool  # #1743: that intake spent the planning retry budget (the body's next §2 check breaks)
 
 
 def submit_tick(
@@ -141,9 +148,13 @@ def submit_tick(
     _wait_for_proposal: Callable[..., Any],
     last_surfaced_tools: list[str],
     pending_prefetch: Any,
+    action_sink: Any,
+    pending_next_actions: list[dict[str, Any]],
+    _consecutive_llm_fallbacks: int,
 ) -> SubmitCarry:
     """§6, the whole submit (module docstring): the gate, then the request and the deliberation; a raise anywhere
     is logged and the pass goes on, as inline."""
+    _intake = IntakeOutcome(exhausted=False, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
     try:
         _submit = prepare_submission(  # §6's first half (slice 7a)
             memory=memory,
@@ -175,17 +186,7 @@ def submit_tick(
             internet_access = state.data.get("internet_access", False)
             internet_policy_summary = state.data.get("internet_policy_summary", "")
 
-            # Filter CLI inputs to only include new ones (not already processed)
-            # This prevents the LLM from seeing the same input multiple times
-            if context.cli_inputs:
-                new_inputs = [
-                    inp for inp in context.cli_inputs if inp not in processed_cli_inputs or inp == new_cli_input
-                ]
-                # Only keep the most recent new input
-                if new_cli_input:
-                    context.cli_inputs = [new_cli_input]
-                else:
-                    context.cli_inputs = new_inputs[-1:] if new_inputs else []
+            _keep_newest_cli_input(context, processed_cli_inputs, new_cli_input)
 
             available_tools, _wire3_embodiment, _wire3_degraded = _surface_tools(
                 mode_info=mode_info,
@@ -258,7 +259,7 @@ def submit_tick(
                 now=now,
             )
 
-            _deliberate(
+            _intake = _deliberate(
                 submitted=submitted,
                 _pfc_gate_passed=_pfc_gate_passed,
                 bio_enrichment_pipeline=bio_enrichment_pipeline,
@@ -280,6 +281,13 @@ def submit_tick(
                 _salience_c1=_salience_c1,
                 _run_deliberation_cycles=_run_deliberation_cycles,
                 _wait_for_proposal=_wait_for_proposal,
+                executor=executor,
+                action_sink=action_sink,
+                on_event=on_event,
+                last_surfaced_tools=last_surfaced_tools,
+                pending_next_actions=pending_next_actions,
+                _planning_liveness_on=_planning_liveness_on,
+                _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
             )
 
     except Exception as e:
@@ -287,7 +295,32 @@ def submit_tick(
 
         logger.warning(f"Failed to submit context to LLM: {type(e).__name__}: {e}")
         logger.debug(f"Full traceback:\n{traceback.format_exc()}")
-    return SubmitCarry(last_surfaced_tools=last_surfaced_tools, pending_prefetch=pending_prefetch)
+    return SubmitCarry(last_surfaced_tools, pending_prefetch, _intake.consecutive_llm_fallbacks, _intake.exhausted)
+
+
+def log_submit_blocked(*, llm_worker: Any, ctrl: Any, cli_input: Any, sim: Any) -> None:
+    """§6's diagnostic, ahead of its guard: trace why a submit is skipped (moved verbatim from the loop's body)."""
+    # Diagnostic: trace why LLM submission is skipped
+    if llm_worker and ctrl.pending_proposal is not None and cli_input and sim.is_sim_mode:
+        _pp_tool = (
+            ctrl.pending_proposal.action.get("tool_name", "?")
+            if isinstance(ctrl.pending_proposal.action, dict)
+            else "?"
+        )
+        sim.log("PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}")
+
+
+def _keep_newest_cli_input(context: Any, processed_cli_inputs: Any, new_cli_input: str | None) -> None:
+    """Narrow the context's CLI inputs to the newest unprocessed one (moved verbatim from ``submit_tick``, #1743)."""
+    # Filter CLI inputs to only include new ones (not already processed)
+    # This prevents the LLM from seeing the same input multiple times
+    if context.cli_inputs:
+        new_inputs = [inp for inp in context.cli_inputs if inp not in processed_cli_inputs or inp == new_cli_input]
+        # Only keep the most recent new input
+        if new_cli_input:
+            context.cli_inputs = [new_cli_input]
+        else:
+            context.cli_inputs = new_inputs[-1:] if new_inputs else []
 
 
 def _tick_mode_info(
@@ -649,8 +682,36 @@ def _deliberate(
     _salience_c1: float | None,
     _run_deliberation_cycles: Callable[..., Any],
     _wait_for_proposal: Callable[..., Any],
-) -> None:
-    """PFC multi-cycle deliberation after a submit (section 1.2's gate passed)."""
+    executor: Any,
+    action_sink: Any,
+    on_event: Any,
+    last_surfaced_tools: list[str],
+    pending_next_actions: list[dict[str, Any]],
+    _planning_liveness_on: bool,
+    _consecutive_llm_fallbacks: int,
+) -> IntakeOutcome:
+    """PFC multi-cycle deliberation after a submit (section 1.2's gate passed). The answer it consumes goes through
+    ``loop_intake.accept_llm_proposal``, §2's one intake (#1743), given the arguments after ``_wait_for_proposal`` as
+    §2 passes them; returns that intake's outcome (an unchanged one when it took no answer)."""
+
+    def _accept(proposal: Any) -> IntakeOutcome:
+        return accept_llm_proposal(
+            proposal,
+            llm_worker=llm_worker,
+            ctrl=ctrl,
+            sim=sim,
+            state=state,
+            executor=executor,
+            action_sink=action_sink,
+            on_event=on_event,
+            last_surfaced_tools=last_surfaced_tools,
+            pending_next_actions=pending_next_actions,
+            _planning_liveness_on=_planning_liveness_on,
+            _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
+            declined_is_failure=False,  # a declined turn is not retried (owner decision 2026-11-24)
+        )
+
+    _outcome = IntakeOutcome(exhausted=False, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
     # ── PFC multi-cycle deliberation ──────────────────
     # When the gate passed in section 1.2 and the first
     # proposal says ready_to_act=False, run cycles 2+
@@ -694,7 +755,7 @@ def _deliberate(
                     ctrl=ctrl,
                 )
                 if _delib is not None:
-                    ctrl.pending_proposal = _delib
+                    _outcome = _accept(_delib)
                     sim.log(
                         "DELIBERATION",
                         f"multi-cycle deliberation yielded proposal: "
@@ -704,7 +765,7 @@ def _deliberate(
                     sim.log("DELIBERATION", "multi-cycle deliberation returned None (IDLE)")
             else:
                 # ready_to_act == True on cycle 1 — use directly
-                ctrl.pending_proposal = _first
+                _outcome = _accept(_first)
                 from maxim.simulation.sim_logger import (
                     sim_contemplation,
                     sim_deliberation_end,
@@ -730,6 +791,7 @@ def _deliberate(
                 sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
                 if thought_gate is not None:
                     thought_gate.reset_refractory(step_num)
+    return _outcome
 
 
 def _triggering(new_cli_input: Any, followup_original_query: str, pending_modification: Any, state: Any) -> dict:

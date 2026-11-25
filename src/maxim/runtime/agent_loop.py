@@ -33,7 +33,7 @@ from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
 
 # Module reference: §4 reaches the roster filter through its home, the one binding a patch must hit.
 from maxim.runtime import loop_state as _lstate
-from maxim.runtime.loop_request import submit_tick
+from maxim.runtime.loop_request import log_submit_blocked, submit_tick
 from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
@@ -1987,16 +1987,7 @@ def _run_agentic_loop_body(
         # 6. SUBMIT NEW CONTEXT TO LLM (non-blocking, event-driven)
         # Only trigger LLM when there's something meaningful to respond to
         # ─────────────────────────────────────────────────────────────────
-        # Diagnostic: trace why LLM submission is skipped
-        if llm_worker and ctrl.pending_proposal is not None and cli_input and sim.is_sim_mode:
-            _pp_tool = (
-                ctrl.pending_proposal.action.get("tool_name", "?")
-                if isinstance(ctrl.pending_proposal.action, dict)
-                else "?"
-            )
-            sim.log(
-                "PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}"
-            )
+        log_submit_blocked(llm_worker=llm_worker, ctrl=ctrl, cli_input=cli_input, sim=sim)  # runtime/loop_request.py
 
         # ─────────────────────────────────────────────────────────────────
         # Substrate-primary action generation (Phase -1 of grounded
@@ -2072,8 +2063,12 @@ def _run_agentic_loop_body(
                     _wait_for_proposal=_wait_for_proposal,
                     last_surfaced_tools=last_surfaced_tools,
                     pending_prefetch=pending_prefetch,
+                    action_sink=action_sink,
+                    pending_next_actions=pending_next_actions,
+                    _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
                 )
                 last_surfaced_tools, pending_prefetch = _carry.last_surfaced_tools, _carry.pending_prefetch
+                _consecutive_llm_fallbacks, _planning_liveness_exhausted = _carry.fallbacks, _carry.exhausted
 
         # ─────────────────────────────────────────────────────────────────
         # 7. CALL STEP CALLBACK

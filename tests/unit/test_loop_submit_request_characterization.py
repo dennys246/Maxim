@@ -42,9 +42,9 @@ unprocessed line left is the follow-up's; the gate marks every other one process
 
 Pinned AS-IS, each a defect with its own issue (never fixed inside an extraction): (1) ``ctrl.last_surfaced_tools`` never
 holds the surfaced list, only the body's local does (#1744); (2) ``ctrl.pending_prefetch`` keeps a consumed prefetch (#1744);
-(3) ``locals().get("_salience_c1")`` reports a stale salience from an earlier pass, or ``None`` (#1744); (4) the ready-on-cycle-1
-branch installs the answer directly, past §2's install checks, so an action-less answer (a planning failure in §2)
-stays pending and §6 never submits again, not even for a fresh input (#1743); (5) a submit opened with no input and no
+(3) ``locals().get("_salience_c1")`` reports a stale salience from an earlier pass, or ``None`` (#1744); (4) FIXED by #1743:
+the ready-on-cycle-1 branch installed the answer directly, past §2's install checks, so an action-less one stayed
+pending and §6 never submitted again (now ``test_1743_*``: the deliberation's answers go through §2's intake); (5) a submit opened with no input and no
 follow-up (spoken "maxim") is reported to the sim as ``LLM submit: followup`` (#1746); (6) an unknown or passive mode advertises
 its whole roster whether or not those tools are registered, and not the run's own (#1745).
 """
@@ -645,7 +645,8 @@ SAL_3 = 0.3 * (1 / 5) + 0.3 * (3 / 4) + 0.4  # one section, three memories: 0.68
 
 
 def _drop_pending(obs: Any) -> None:
-    """An action-less cycle-1 answer stays pending (§6 then never submits): drop it, as a dispatch would."""
+    """Drop the pending answer, as a dispatch would. Since #1743 an action-less answer is never installed, so for those
+    it is a no-op; it was the workaround for the wedge."""
     obs.ctrl.pending_proposal = None
 
 
@@ -654,7 +655,7 @@ def _cycle1(obs: Any) -> list[tuple[str, Any]]:
 
 
 def test_ready_on_cycle_1_installs_the_answer_and_closes_the_deliberation(monkeypatch, tmp_path):
-    first = _proposal(reasoning="I will act now")
+    first = _proposal(reasoning="I will act now", tool=PROBE)  # with an action: §2's intake installs only those (#1743)
     gate, worker = _Gate(), _Worker(answers=[first])
     obs = _run(monkeypatch, tmp_path, inputs={0: "hi"}, worker=worker, pipeline=_Pipeline(), gate=gate, steps=1)
     assert obs.ctrl.pending_proposal is first and len(obs.worker.submits) == 1
@@ -666,7 +667,7 @@ def test_ready_on_cycle_1_installs_the_answer_and_closes_the_deliberation(monkey
 
 def test_cycle_1_salience_is_none_when_this_run_never_computed_it(monkeypatch, tmp_path):
     """§1.2's enrichment raised: the gate already passed, so §6 deliberates and reads ``_salience_c1`` unbound."""
-    worker = _Worker(answers=[_proposal(reasoning="acting without recall")])
+    worker = _Worker(answers=[_proposal(reasoning="acting without recall", tool=PROBE)])
     pipeline = _Pipeline([RuntimeError("recall down")])
     obs = _run(monkeypatch, tmp_path, inputs={0: "hi"}, worker=worker, pipeline=pipeline, steps=1)
     assert _cycle1(obs) == [("acting without recall", None)]
@@ -707,32 +708,58 @@ def test_cycle_1_salience_is_this_passes_when_recomputed(monkeypatch, tmp_path):
     assert [s for _t, s in _cycle1(obs)] == [pytest.approx(SAL_3), pytest.approx(SAL_1)]
 
 
-def test_an_action_less_cycle_1_answer_is_installed_and_wedges_the_submit(monkeypatch, tmp_path):
-    """Pinned as-is (#1743): the ready branch installs the answer directly, past §2's checks (a proposal with no action is a
-    planning failure there). §4 runs only a proposal with an action, so this one stays pending and §6 (which needs no
-    pending proposal) never submits again, not even for a fresh input."""
-    worker = _Worker(answers=[_proposal(reasoning="nothing to do")])
-    obs = _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, pipeline=_Pipeline(), steps=4)
-    assert [s["cli_inputs"] for s in obs.worker.submits] == [["one"]]
-    assert obs.ctrl.pending_proposal is not None and obs.ctrl.pending_proposal.action == {}
-
-
-# Red gates for #1743: a deliberation answer goes through §2's intake checks, as every other proposal does, so an
-# action-less answer is never installed and the loop keeps hearing. They flip with the fix (strict: an xpass fails).
-@pytest.mark.xfail(strict=True, reason="#1743: the ready branch installs an action-less answer past §2; §6 wedges")
+# #1743: a deliberation answer goes through §2's one intake (``loop_intake.accept_llm_proposal``), as every other
+# proposal does, so an action-less answer is never installed and the loop keeps hearing. The first two were the strict
+# red gates (c3446ec1); before the fix the ready branch installed the answer and §6 never submitted again.
 def test_1743_an_action_less_ready_answer_does_not_wedge_the_submit(monkeypatch, tmp_path):
-    worker = _Worker(answers=[_proposal(reasoning="nothing to do")])
+    # The second answer is for the submit the fix lets through (else the deliberation's wait blocks on it); pre-fix
+    # that submit never happens, so it is never read.
+    worker = _Worker(answers=[_proposal(reasoning="nothing to do"), _proposal(reasoning="still nothing to do")])
     obs = _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, pipeline=_Pipeline(), steps=4)
     assert [s["cli_inputs"] for s in obs.worker.submits] == [["one"], ["two"]]
+    assert obs.ctrl.pending_proposal is None
 
 
-@pytest.mark.xfail(strict=True, reason="#1743: the not-ready branch installs cycle 2's action-less answer past §2")
 def test_1743_an_action_less_cycle_2_answer_does_not_wedge_the_submit(monkeypatch, tmp_path):
-    worker = _Worker(
-        answers=[_proposal(ready=False, reasoning="let me think more"), _proposal(reasoning="still nothing")]
-    )
+    # The third answer is for the submit the fix lets through (as in the ready gate above).
+    answers = [_proposal(ready=False, reasoning="let me think more"), _proposal(reasoning="still nothing")]
+    worker = _Worker(answers=[*answers, _proposal(reasoning="nothing for two either")])
     obs = _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, pipeline=_Pipeline(), steps=4)
     assert [s["cli_inputs"] for s in obs.worker.submits if s["cli_inputs"]][-1] == ["two"]
+
+
+def test_1743_a_declined_deliberation_turn_is_dropped_not_retried(monkeypatch, tmp_path, caplog):
+    """Under planning liveness §2 retries an action-less answer as a planning failure; the deliberation's intake
+    drops it with no retry (owner decision 2026-11-24: a declined turn is not requeued). It still clears the pending
+    user input, as §2's no-action branch does, so nothing waits on an answer that came."""
+    worker = _Worker(answers=[_proposal(reasoning="nothing to do")])
+    obs = _run(
+        monkeypatch,
+        tmp_path,
+        inputs={0: "one"},
+        state_data={"pending_user_input": "one", "pending_user_input_time": 1.0},
+        planning_liveness=True,
+        worker=worker,
+        pipeline=_Pipeline(),
+        steps=1,
+    )
+    assert obs.ctrl.pending_proposal is None and obs.ctrl.planning_failure_streak == 0
+    assert _logs(caplog, "LLM proposal had no executable action") == [
+        "LLM proposal had no executable action: proposal_completed_without_action"
+    ]
+    assert not _logs(caplog, "planning turn failed")
+    assert "pending_user_input" not in obs.state.data and "pending_user_input_time" not in obs.state.data
+
+
+def test_1743_a_ready_answer_queues_its_next_actions(monkeypatch, tmp_path):
+    """The deliberation's answers dropped their ``next_actions``; §2's intake queues them for ``multi_step``."""
+    import dataclasses
+
+    _next = {"tool_name": PROBE2, "params": {}}
+    worker = _Worker(answers=[dataclasses.replace(_proposal(tool=PROBE), next_actions=[_next])])
+    obs = _run(monkeypatch, tmp_path, inputs={0: "one"}, worker=worker, pipeline=_Pipeline(), steps=1)
+    assert obs.ctrl.pending_proposal.action["tool_name"] == PROBE
+    assert obs.ctrl.pending_next_actions == [_next]
 
 
 def test_a_repeated_cycle_1_thought_is_not_shown_again(monkeypatch, tmp_path):
@@ -755,7 +782,7 @@ def test_an_empty_cycle_1_reasoning_shows_nothing_but_still_closes(monkeypatch, 
         monkeypatch,
         tmp_path,
         inputs={0: "hi"},
-        worker=_Worker(answers=[_proposal()]),
+        worker=_Worker(answers=[_proposal(tool=PROBE)]),
         pipeline=_Pipeline(),
         gate=gate,
         steps=1,
