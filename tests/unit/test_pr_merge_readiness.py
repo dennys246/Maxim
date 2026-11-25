@@ -858,3 +858,94 @@ class TestHeadMovedDuringRead:
         monkeypatch.setattr(mod, "_gh_json", fake)
         errors = mod._fetch(1, None)["fetch_errors"]
         assert any("could not re-read the PR head" in e for e in errors)
+
+
+class TestWait:
+    """`--wait` polls until nothing is in flight, waits through DRAFT, fails fast, never times out READY."""
+
+    def _snapshots(self, monkeypatch, snapshots):
+        import pr_merge_readiness as mod
+
+        it = iter(snapshots)
+
+        def fake_fetch(pr_number, repo):
+            item = next(it)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+        monkeypatch.setattr(mod, "_fetch", fake_fetch)
+        return mod
+
+    @staticmethod
+    def _surfaces(*, checks=None, state="CLEAN"):
+        return {
+            "pr": {"state": "OPEN", "mergeStateStatus": state, "mergeable": "MERGEABLE", "headRefOid": "aaa"},
+            "checks": checks if checks is not None else list(_REQUIRED),
+            "alerts": [],
+            "ruleset_rules": [],
+            "required_contexts": None,
+            "fetch_errors": (),
+            "suite_app_id": _ACTIONS,
+            "head_sha": "aaa",
+            "suite_reuse": "",
+        }
+
+    def _running(self, state="DRAFT"):
+        checks = [_run("unit-tests", None, started_at="t", run_id=5, status="in_progress"), *_REQUIRED[1:]]
+        return self._surfaces(checks=checks, state=state)
+
+    def _wait(self, mod, *, timeout_s=1000.0):
+        now = [0.0]
+        sleeps = []
+
+        def sleep(s):
+            sleeps.append(s)
+            now[0] += s
+
+        return mod._wait_for_verdict(
+            1, None, timeout_s=timeout_s, interval_s=10, clock=lambda: now[0], sleep=sleep
+        ), sleeps
+
+    def test_waits_through_draft_until_ci_settles(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._running(), self._running(), self._surfaces()])
+        (surfaces, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 2
+
+    def test_a_draft_with_ci_green_ends_the_wait_blocked_on_draft(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._surfaces(state="DRAFT")])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == BLOCKED and "merge-state-draft" in _codes(result) and not sleeps
+
+    def test_a_settled_failure_ends_the_wait_while_others_still_run(self, monkeypatch):
+        checks = [
+            _run("unit-tests", "failure", started_at="t", run_id=5),
+            {"name": "lint", "status": "in_progress", "conclusion": None},
+            *_REQUIRED[2:],
+        ]
+        mod = self._snapshots(monkeypatch, [self._surfaces(checks=checks, state="DRAFT")])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == BLOCKED and not sleeps
+
+    def test_a_timeout_is_unsettled_never_a_verdict(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._running()] * 5)
+        (_, result), _ = self._wait(mod, timeout_s=25)
+        assert result.exit_code == UNSETTLED
+
+    def test_transient_read_errors_are_retried(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [RuntimeError("502"), self._surfaces()])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 1
+
+    def test_three_read_errors_in_a_row_are_a_tool_error(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [RuntimeError("502")] * 3)
+        waited, _ = self._wait(mod)
+        assert waited == mod.TOOL_ERROR
+
+    def test_main_wait_prints_the_final_verdict_once(self, monkeypatch, capsys):
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", _fake_gh(heads=["aaa", "aaa"]))
+        assert mod.main(["7", "--wait", "--interval", "0"]) == READY
+        out = capsys.readouterr().out
+        assert out.count("PR #7:") == 1 and "suite-of-record" in out

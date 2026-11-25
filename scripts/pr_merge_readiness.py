@@ -29,6 +29,13 @@ both, so they are stated as rules rather than intentions:
 Usage:
     python scripts/pr_merge_readiness.py 654
     python scripts/pr_merge_readiness.py 654 --repo owner/name
+    python scripts/pr_merge_readiness.py 654 --wait [--timeout 60] [--interval 90]
+
+``--wait`` re-reads every surface until nothing is in flight, then prints the final verdict
+once. It waits through a DRAFT state (under M64 a PR is a draft while CI runs, and DRAFT
+alone would end a wait on the exit code at once), returns early on a settled failure (a fix
+is owed now, whatever else still runs), retries a transient read error up to three times in a
+row, and on timeout exits 2 (unsettled), never 0.
 
 **The suite of record (M64, owner decisions 2026-10-16 and 2026-11-25).** CI's latest
 `unit-tests` run on the PR's head SHA is the final full test suite; no local full suite is
@@ -50,6 +57,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -622,19 +630,86 @@ def _branch_rules(slug: str, base: str) -> tuple[list[str], list[str], str | Non
         return rules, contexts, f"could not read branch rules or rulesets ({exc})"
 
 
+_FETCH_ERRORS = (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError)
+# A settled failure ends a --wait early: the verdict cannot turn READY without a new push.
+_FAIL_FAST = frozenset({"check-failed", "suite-of-record-not-green", "suite-of-record-absent", "merge-conflict"})
+_WAIT_MAX_CONSECUTIVE_ERRORS = 3
+
+
+def still_waiting(result: Readiness) -> bool:
+    """True while a --wait should keep polling: something is in flight and nothing has failed."""
+    codes = {f.code for f in result.findings}
+    if codes & _FAIL_FAST:
+        return False
+    return any(f.severity == "UNSETTLED" for f in result.findings)
+
+
+def _wait_for_verdict(
+    pr_number: int,
+    repo: str | None,
+    *,
+    timeout_s: float,
+    interval_s: float,
+    clock: Any = None,
+    sleep: Any = None,
+) -> tuple[dict[str, Any], Readiness] | int:
+    """Poll `_fetch` + `evaluate` until `still_waiting` is False or the timeout passes.
+
+    Returns the last surfaces and verdict, or TOOL_ERROR after three read errors in a row.
+    ``clock``/``sleep`` are injectable so tests do not wait.
+    """
+    clock = clock or time.monotonic
+    sleep = sleep or time.sleep
+    deadline = clock() + timeout_s
+    errors_in_a_row = 0
+    last: tuple[dict[str, Any], Readiness] | None = None
+    while True:
+        try:
+            surfaces = _fetch(pr_number, repo)
+        except _FETCH_ERRORS as exc:
+            errors_in_a_row += 1
+            print(f"wait: could not read PR state ({exc}); retry {errors_in_a_row}", file=sys.stderr)
+            if errors_in_a_row >= _WAIT_MAX_CONSECUTIVE_ERRORS:
+                print(f"error: could not read PR state {errors_in_a_row} times in a row", file=sys.stderr)
+                return TOOL_ERROR
+        else:
+            errors_in_a_row = 0
+            last = (surfaces, evaluate(**surfaces))
+            if not still_waiting(last[1]):
+                return last
+            pending = sorted(f.code for f in last[1].findings if f.severity == "UNSETTLED")
+            print(f"wait: still in flight ({', '.join(pending)})", file=sys.stderr)
+        if clock() >= deadline:
+            if last is None:
+                return TOOL_ERROR
+            print("wait: timed out; reporting the last snapshot", file=sys.stderr)
+            surfaces, result = last
+            # A timeout is never a verdict: report it as unsettled even if the last read was BLOCKED by DRAFT.
+            return surfaces, Readiness(UNSETTLED, result.findings)
+        sleep(interval_s)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Report every surface gating a PR's merge.")
     parser.add_argument("pr", type=int, help="PR number")
     parser.add_argument("--repo", default=None, help="owner/name (defaults to the current repo)")
+    parser.add_argument("--wait", action="store_true", help="poll until nothing is in flight, then report")
+    parser.add_argument("--timeout", type=float, default=60.0, help="--wait: give up after this many minutes")
+    parser.add_argument("--interval", type=float, default=90.0, help="--wait: seconds between reads")
     args = parser.parse_args(argv)
 
-    try:
-        surfaces = _fetch(args.pr, args.repo)
-    except (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError) as exc:
-        print(f"error: could not read PR state: {exc}", file=sys.stderr)
-        return TOOL_ERROR
-
-    result = evaluate(**surfaces)
+    if args.wait:
+        waited = _wait_for_verdict(args.pr, args.repo, timeout_s=args.timeout * 60, interval_s=args.interval)
+        if isinstance(waited, int):
+            return waited
+        surfaces, result = waited
+    else:
+        try:
+            surfaces = _fetch(args.pr, args.repo)
+        except _FETCH_ERRORS as exc:
+            print(f"error: could not read PR state: {exc}", file=sys.stderr)
+            return TOOL_ERROR
+        result = evaluate(**surfaces)
     pr = surfaces["pr"]
     print(
         f"PR #{args.pr}: {pr.get('state')} / mergeable={pr.get('mergeable')} / {pr.get('mergeStateStatus')}"
