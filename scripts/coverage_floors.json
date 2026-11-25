@@ -56,7 +56,7 @@
       "missing": 1068
     },
     "maxim/doctor": {
-      "percent": 73.6,
+      "percent": 74.6,
       "missing": 460
     },
     "maxim/embodied_runtime": {
@@ -186,8 +186,8 @@
       "missing": 0
     },
     "src/maxim/models/language/router.py": {
-      "percent": 78.8,
-      "missing": 233
+      "percent": 80.8,
+      "missing": 211
     },
     "src/maxim/simulation/orchestrator.py": {
       "percent": 76.8,
