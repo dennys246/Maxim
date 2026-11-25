@@ -17,7 +17,7 @@ from typing import Any
 
 from maxim.simulation.conversational_source import ConversationalSource
 from maxim.simulation.response_policy import ResponsePolicy, auto_approve
-from maxim.simulation.sinks import ActionRecord, RecordingSink
+from maxim.simulation.sinks import DELIBERATION_NOOP, ActionRecord, RecordingSink
 from maxim.simulation.spinner import Spinner
 from maxim.utils.logging import log_swallowed_exception
 
@@ -255,8 +255,9 @@ class SimulationBridge:
                 time.sleep(0.3)
                 continue
             current_count = len(self.action_sink.actions)
-            if current_count > last_action_count:
-                new_count = current_count - action_count_before
+            if current_count > last_action_count:  # any record, a marker included, shows the AUT responded
+                # The cap and the spinner count the agent's actions only (#1185): a re-asked prompt is no action
+                new_count = sum(1 for a in self.action_sink.actions[action_count_before:] if not a.is_synthetic)
                 self._spinner.update(
                     f"Turn {self._turn_count}: AUT responded ({new_count} action{'s' if new_count != 1 else ''}), settling..."
                 )
@@ -283,10 +284,11 @@ class SimulationBridge:
         response_text = "\n".join(response_parts) if response_parts else None
 
         elapsed = time.time() - start
+        agent_actions = [a for a in new_actions if not a.is_synthetic]  # what the summary counts (#1185)
         if new_actions:
-            tools_used = ", ".join(a.tool_name for a in new_actions[:3])
-            blocked = sum(1 for a in new_actions if a.blocked)
-            summary = f"Turn {self._turn_count} complete: {len(new_actions)} action(s) [{tools_used}]"
+            tools_used = ", ".join(a.tool_name for a in agent_actions[:3])
+            blocked = sum(1 for a in agent_actions if a.blocked)
+            summary = f"Turn {self._turn_count} complete: {len(agent_actions)} action(s) [{tools_used}]"
             if blocked:
                 summary += f" ({blocked} blocked)"
             summary += f" ({elapsed:.1f}s)"
@@ -306,7 +308,7 @@ class SimulationBridge:
         # Stage 4 (F2 fix): don't count _deliberation_noop markers as
         # real actions for the timed_out flag.  Noop markers keep the
         # bridge alive (break the timeout loop) but aren't substantive.
-        real_actions = [a for a in new_actions if a.tool_name != "_deliberation_noop"]
+        real_actions = [a for a in new_actions if a.tool_name != DELIBERATION_NOOP]
 
         return {
             "turn": self._turn_count,
@@ -333,8 +335,13 @@ class SimulationBridge:
         self._turn_count += 1
 
     def get_all_actions(self) -> list[ActionRecord]:
-        """Read the full action history."""
+        """Read the full action history, synthetic markers included (``get_agent_actions`` leaves them out)."""
         return self.action_sink.actions
+
+    def get_agent_actions(self) -> list[ActionRecord]:
+        """The actions the agent took: the history without synthetic markers (``ActionRecord.is_synthetic``,
+        #1185), what every count and success rate reads."""
+        return [a for a in self.action_sink.actions if not a.is_synthetic]
 
     def get_actions_since(self, index: int) -> list[ActionRecord]:
         """Read actions since a given index."""
@@ -354,14 +361,16 @@ class SimulationBridge:
         the current turn window opened; ``send_and_wait`` opens a new
         window each turn. Always ``True`` when no budget is configured.
 
-        Counts ``action_sink.actions`` — the same counter the observer's
-        settle-loop cap reads, so the two views cannot disagree about
-        what an "action" is. Blocked actions (fear/autonomy gates) count:
-        blocked attempts ARE the thrashing being bounded. Latent coupling
-        (review fold, Executor #7): ``RecordingSink.record_noop``'s
-        deliberation markers would also consume budget — zero production
-        callers today; if a substrate-primary path starts recording
-        noops, decide then whether they spend budget. Thread-safe enough
+        Counts the agent's actions in ``action_sink.actions`` since the
+        window opened, synthetic markers left out
+        (``ActionRecord.is_synthetic``: a gating prompt, the LLM-stall
+        marker, a deliberation noop; decided by #1185, 2026-11-21) — the
+        same count the observer's settle-loop cap and spinner read, so
+        the views cannot disagree about what an "action" is. Blocked
+        actions (fear/autonomy gates) count: blocked attempts ARE the
+        thrashing being bounded. (The settle loop's activity test still
+        sees every record, a marker included: any record means the AUT
+        responded.) Thread-safe enough
         by construction: the AUT thread reads two ints the orchestrator
         thread writes at turn boundaries; a race window of one action at
         the boundary is harmless (the budget is an apparatus bound, not
@@ -374,7 +383,7 @@ class SimulationBridge:
         """
         if self._substrate_actions_per_turn is None:
             return True
-        used = len(self.action_sink.actions) - self._turn_start_action_idx
+        used = sum(1 for a in self.action_sink.actions[self._turn_start_action_idx :] if not a.is_synthetic)
         if used < self._substrate_actions_per_turn:
             return True
         if not self._budget_logged_this_turn:

@@ -716,8 +716,11 @@ def _mock_sim(
             }
         )
 
+    from maxim.simulation.sinks import SYNTHETIC_TOOL_NAMES
+
+    agent_actions = [a for a in actions if a["tool"] not in SYNTHETIC_TOOL_NAMES]  # as a real report counts (#1185)
     tool_usage: dict[str, int] = {}
-    for a in actions:
+    for a in agent_actions:
         tool_usage[a["tool"]] = tool_usage.get(a["tool"], 0) + 1
 
     # Test-only knob (mock path only): simulate a systemic LLM failure where the
@@ -732,7 +735,7 @@ def _mock_sim(
         "duration_s": 1.0,
         "turns": max_turns,
         "finish_reason": "max_turns",
-        "total_actions": len(actions),
+        "total_actions": len(agent_actions),
         "tool_usage": tool_usage,
         "aut_memories_formed": 12,
         "aut_causal_links": 4,
@@ -793,7 +796,15 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     Also returns a per-action rate as a robustness check independent of
     binning, plus the corroborating tool-class-diversity, affordance-
     preference, and time-to-safe-steady-state metrics.
+
+    ``actions`` is the session's ``actions.jsonl``, which stays complete; its loop-made markers
+    (``sinks.SYNTHETIC_TOOL_NAMES``) are left out once, here, so every metric below (the per-action rate's
+    denominator, the turn bins, first contact, time-to-first-warm-self) counts the agent's actions only, as the
+    report's ``tool_usage`` (and so ``tool_class_diversity``) does since #1185.
     """
+    from maxim.simulation.sinks import SYNTHETIC_TOOL_NAMES
+
+    actions = [a for a in actions if a.get("tool") not in SYNTHETIC_TOOL_NAMES]
     rules = FAILURE_CLASS[scenario]
     direct_failure: frozenset[str] = rules["direct_failure_tools"]
     body_rules: tuple[tuple[str, str, str], ...] = rules["body_failure_rules"]

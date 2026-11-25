@@ -378,7 +378,10 @@ class ObserveActionsTool(Tool):
         return ToolOutput(
             success=True,
             output={
+                # ``total_actions`` is the history's length, the space ``since_index`` and each ``index`` count in
+                # (markers included: the AUT's re-asked prompts are in it); ``agent_actions`` leaves the markers out.
                 "total_actions": len(self._bridge.get_all_actions()),
+                "agent_actions": len(self._bridge.get_agent_actions()),
                 "returned": len(summaries),
                 "since_index": since,
                 "actions": summaries,
@@ -411,7 +414,7 @@ class CheckCompletionTool(Tool):
         self._continuous = continuous
 
     def execute(self, **kwargs: Any) -> ToolOutput:
-        actions = self._bridge.get_all_actions()
+        actions = self._bridge.get_agent_actions()
         turn_count = self._bridge.turn_count
 
         # Build a summary for self-assessment (no LLM needed for basic checks)
@@ -475,7 +478,7 @@ class AnalyzeResultsTool(Tool):
         self._llm = llm
 
     def execute(self, **kwargs: Any) -> ToolOutput:
-        actions = self._bridge.get_all_actions()
+        actions = self._bridge.get_agent_actions()
         focus = kwargs.get("focus", "all")
 
         # Group by tool
@@ -1374,6 +1377,9 @@ class SpawnSubSimulationTool(Tool):
     returns a structured sub-report. The sub-AUT stays alive for potential
     extend_simulation follow-ups (lazy cleanup). The next spawn call tears
     down the previous sub-AUT.
+
+    ``llm_router`` is the router the sub-AUT runs on, all of it (its ExecAgent, FearAgent and LLMWorker): the
+    sub-AUT is an agent under test, so the orchestrator hands it the run's AUT router (owner decision A, #1228).
     """
 
     name = "spawn_sub_simulation"
@@ -1545,7 +1551,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent()
+        sub_agent = MaximAgent(shared_router=self._llm_router)  # the sub-AUT's router (#1228)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(
@@ -1610,6 +1616,7 @@ class SpawnSubSimulationTool(Tool):
                     stop_event=self._stop_event,
                     target_hz=2.0,
                     percept_source=sub_bridge.percept_source,
+                    response_policy=sub_bridge.response_policy,  # the sim's answers to gating prompts (#1185)
                     action_sink=sub_bridge.action_sink,
                     state_home=self._sim_tmpdir,  # the parent sim's sandbox: the state file goes with it (#1264)
                 )
@@ -1778,6 +1785,6 @@ class FinishSimulationTool(Tool):
                 "reason": reason,
                 "summary": summary,
                 "total_turns": self._bridge.turn_count,
-                "total_actions": len(self._bridge.get_all_actions()),
+                "total_actions": len(self._bridge.get_agent_actions()),
             },
         )

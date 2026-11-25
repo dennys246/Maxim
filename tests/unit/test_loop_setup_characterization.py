@@ -277,6 +277,7 @@ def test_a_percept_source_builds_a_sim_adapter_and_ignores_sim_adapter(monkeypat
         tmp_path,
         events=events,
         percept_source=percepts,
+        response_policy=None,  # a test sim with no response policy answers no prompt (#1185)
         sim_adapter=SimpleNamespace(is_sim_mode=True),  # ignored, not refused
         memory_hub=hub,
     )
@@ -600,7 +601,9 @@ def test_a_sim_run_starts_the_default_network_and_stops_it(monkeypatch, tmp_path
     the sim AUT's DN ticking after the run)."""
     events: list[str] = []
     dn = _DN(events)
-    run = _run(monkeypatch, tmp_path, events=events, default_network=dn, percept_source=SimpleNamespace())
+    run = _run(
+        monkeypatch, tmp_path, events=events, default_network=dn, percept_source=SimpleNamespace(), response_policy=None
+    )
     assert events.count("dn.start") == 1 and run.ctrl.dn_enabled is True
     assert dn.stops == 1
 

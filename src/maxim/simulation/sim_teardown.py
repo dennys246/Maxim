@@ -442,6 +442,7 @@ def save_run_report(
         aut_nac=aut_nac,
         aut_memory_hub=aut_memory_hub,
         llm_router=llm_router,
+        aut_router=aut_router,  # its own calls' cost enters the totals in a two-model run (#1228)
         language_model=(
             # Prefer AUT router's model name when dual-LLM mode is active,
             # otherwise fall back to the shared router.

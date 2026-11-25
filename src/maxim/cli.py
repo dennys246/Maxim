@@ -246,6 +246,30 @@ def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
         _print_model_unavailable(getattr(exec_agent, "_refused_cause", None))
 
 
+def _cli_agentic_agent(args: Any, memory_path: str) -> Any:
+    """The CLI agentic path's ``MaximAgent``, on the ``--llm`` profile (moved out of ``_main_impl``, rule T, #1228).
+
+    ``shared_router=BUILD_OWN`` on purpose: this path's router is built by ExecAgent itself, with ``consent="ask"`` on
+    the main thread (:func:`_cli_agentic_llm_worker`), so the CLI hands the agent no router."""
+    from maxim.agents import MaximAgent
+    from maxim.agents.exec_agent import BUILD_OWN
+
+    # Get LLM profile
+    llm_profile = str(getattr(args, "language_model", "") or "").strip()
+    if not llm_profile:
+        llm_profile = "mistral-7b-instruct-v0.2"
+
+    # Create the agentic agent
+    return MaximAgent(
+        llm_profile=llm_profile,
+        memory_persistence_path=memory_path,
+        data_folder=args.home_dir,
+        enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
+        reset_on_startup=bool(getattr(args, "reset", False)),
+        shared_router=BUILD_OWN,
+    )
+
+
 def _cli_agentic_llm_worker(
     agentic_agent: Any,
     args: Any,
@@ -1567,8 +1591,8 @@ def _report_scenario_validation(
         print(f"  [{status}] {desc}")
         if not r.passed and r.detail:
             print(f"         {r.detail}")
-    print(f"\nActions recorded: {len(sim_sink.actions)}")
-    for a in sim_sink.actions[:20]:
+    print(f"\nActions recorded: {len(sim_sink.agent_actions)}")
+    for a in sim_sink.agent_actions[:20]:
         tag = "[BLOCKED]" if a.blocked else ("[OK]" if a.result_success else "[FAIL]")
         print(f"  {tag} {a.tool_name}")
 
@@ -1577,7 +1601,7 @@ def _report_scenario_validation(
         report = {
             "scenario": scenario_name,
             "passed": passed,
-            "action_count": len(sim_sink.actions),
+            "action_count": len(sim_sink.agent_actions),
             "expectations_met": [r.expectation.description or r.expectation.type for r in results if r.passed],
             "expectations_failed": [
                 f"{r.expectation.description or r.expectation.type}: {r.detail}" for r in results if not r.passed
@@ -1852,6 +1876,22 @@ def _reuse_bio_pain_bus_for_sim(args: Any, *, pain_bus: Any, hippocampus: Any, n
 
     args._sim_pain_bus = _sim_pain_bus
     args._sim_hippo = hippocampus
+
+
+def _cleanup_sim_sandbox(args: Any) -> None:
+    """Clean up simulation sandbox (but preserve the log): a --sim scenario's teardown (moved verbatim out of
+    ``_main_impl``, rule T for #1185, paying for its ``response_policy`` argument)."""
+    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
+    if sim_tmpdir is not None:
+        import shutil
+
+        original_cwd = getattr(args, "_sim_original_cwd", "/")
+        os.chdir(original_cwd)
+        try:
+            shutil.rmtree(str(sim_tmpdir))
+            print(f"  Sandbox cleaned up: {sim_tmpdir}")
+        except Exception as e:
+            print(f"  Warning: failed to clean sandbox: {e}")
 
 
 def _main_impl(argv: Sequence[str] | None = None) -> int:
@@ -2609,7 +2649,6 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if not _gpu_available():
                     _configure_cpu_fallback_model(logger, args.home_dir)
 
-                from maxim.agents import MaximAgent
                 from maxim.agents.autonomy import (
                     AutonomyController,
                     AutonomyLevel,
@@ -2646,19 +2685,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if memory_path is None:
                     memory_path = os.path.join(args.home_dir, "memory", "memories.json")
 
-                # Get LLM profile
-                llm_profile = str(getattr(args, "language_model", "") or "").strip()
-                if not llm_profile:
-                    llm_profile = "mistral-7b-instruct-v0.2"
-
-                # Create the agentic agent
-                agentic_agent = MaximAgent(
-                    llm_profile=llm_profile,
-                    memory_persistence_path=memory_path,
-                    data_folder=args.home_dir,
-                    enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
-                    reset_on_startup=bool(getattr(args, "reset", False)),
-                )
+                agentic_agent = _cli_agentic_agent(args, memory_path)
 
                 # Set up ResponseOutput for LLM responses; spoken replies through local speakers, or a refusal (#1437)
                 from pathlib import Path
@@ -2905,6 +2932,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         max_steps=epochs_value,
                         run_id=run_id,
                         percept_source=sim_source,
+                        response_policy=None,  # a scripted scenario has no response policy: it answers no prompt
                         action_sink=sim_sink,
                         pain_bus=getattr(args, "_sim_pain_bus", None) or _cli_pain_bus,
                         bio_enrichment_pipeline=_cli_bio_enrichment,
@@ -2928,18 +2956,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     if saved_log:
                         print(f"  Simulation log saved: {saved_log}")
 
-                    # Clean up simulation sandbox (but preserve the log)
-                    sim_tmpdir = getattr(args, "_sim_tmpdir", None)
-                    if sim_tmpdir is not None:
-                        import shutil
-
-                        original_cwd = getattr(args, "_sim_original_cwd", "/")
-                        os.chdir(original_cwd)
-                        try:
-                            shutil.rmtree(str(sim_tmpdir))
-                            print(f"  Sandbox cleaned up: {sim_tmpdir}")
-                        except Exception as e:
-                            print(f"  Warning: failed to clean sandbox: {e}")
+                    _cleanup_sim_sandbox(args)  # Clean up simulation sandbox (but preserve the log)
 
                     return 0 if passed else 1
 
@@ -3118,7 +3135,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             # subclass-level fix_hint surfaces as a loud AttributeError
             # instead of silently using a generic fallback string.
             user_warn(
-                f"{type(e).__name__}: {e}",
+                e.problem,  # str(e) already ends with the fix hint, which fix= prints on its own line (#1228)
                 fix=e.fix_hint,
                 source="backend",
                 event="backend_error_uncaught",

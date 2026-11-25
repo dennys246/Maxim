@@ -12,8 +12,9 @@ situation key as the autonomous path. Deleting the ``source=`` assignment fails 
 Driven through the real loop: substrate-primary (so no LLM worker is needed) with the substrate
 proposer replaced by one that returns a proposal carrying clusters, and a PLANNING controller
 whose queue is approved the moment the loop submits to it — standing in for the human (or
-embedder) who calls ``proposal_queue.approve``. The loop's own non-interactive auto-approve cannot
-serve: ``plan_approval`` is a critical context, so ``should_prompt`` is True in every mode.
+embedder) who calls ``proposal_queue.approve``, with ``interactive`` on, as an embedder that approves plans itself
+runs. In OFF mode the loop's own auto-approve would approve instead, a MACHINE approval (#1185) that lifts only the
+PLANNING gate, so it cannot stand in for a person here.
 """
 
 from __future__ import annotations
@@ -89,6 +90,10 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
     controller = AutonomyController()
     assert controller.current_level == AutonomyLevel.PLANNING
     queue = controller.proposal_queue
+    from maxim.simulation import sim_logger
+
+    # The operator approves plans itself, so it runs with interactive on (OFF mode is the machine's approval, #1185).
+    monkeypatch.setattr(sim_logger, "_interactive_mode", sim_logger.InteractiveMode.ON)
     real_submit = queue.submit
 
     def _submit_and_approve(proposal):
@@ -101,7 +106,7 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
     workspace = tmp_path / "ws"
     workspace.mkdir()
     AL.run_agentic_loop(
-        MaximAgent(),
+        MaximAgent(shared_router=None),
         FileSystemEnv(str(workspace)),
         state,
         build_memory(),

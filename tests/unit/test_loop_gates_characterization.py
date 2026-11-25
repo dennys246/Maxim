@@ -219,6 +219,7 @@ def _run(
     workspace.mkdir(exist_ok=True)
     if adapter is None and "percept_source" not in kwargs:
         adapter = _Adapter(ev)
+    kwargs.setdefault("response_policy", None)  # a test sim with no response policy answers no prompt (#1185)
     kwargs.setdefault("target_hz", 1e6)
     try:
         AL.run_agentic_loop(

@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
+from maxim.memory.text import Provenance
+from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
@@ -29,7 +31,7 @@ from maxim.runtime.bio_integration import (
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
-from maxim.runtime.loop_setup import build_loop_run
+from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
     inbound_comms_subscription,
@@ -45,6 +47,8 @@ from maxim.runtime.loop_controller import (
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import (
+    context_addresses_the_llm,
+    is_tool_followup,
     perceive,
     percept_enrichment_context,
     percept_text,
@@ -399,11 +403,34 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     return held
 
 
-def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:
-    """The input a §6 submit answers: the new input, else the follow-up's original query, else a pending plan
-    modification's text (moved out of ``_run_agentic_loop_body``, rule T for #1451)."""
+def _log_autonomy_check(action: dict[str, Any], can_execute: bool, reason: Any, confidence: Any) -> None:
+    """§4's autonomy-check log line and event (moved verbatim out of ``_run_agentic_loop_body``, rule T for #1185)."""
+    logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
+
+    # Log autonomy check
+    log_agentic(
+        "agent_loop",
+        "autonomy_check",
+        {
+            "tool": action.get("tool_name"),
+            "can_execute": can_execute,
+            "reason": reason if not can_execute else None,
+            "confidence": confidence,
+        },
+    )
+
+
+def _triggering(new_cli_input: Any, followup_original_query: str, pending_modification: Any, state: Any) -> dict:
+    """The input a §6 submit answers (the new input, else the follow-up's original query, else a pending plan
+    modification's text; moved out of ``_run_agentic_loop_body``, rule T for #1451), and where it came from: the source
+    ``store_user_input`` recorded for that same text (``pending_user_input_source``: "CLI" or "voice"), "" when the
+    text is not the stored input (#1519: the prompt labels a voice request as heard on the room mic)."""
     modification = pending_modification.get("user_modification", "") if pending_modification else ""
-    return new_cli_input or followup_original_query or modification
+    text = new_cli_input or followup_original_query or modification
+    data = state.data
+    stored = new_cli_input and str(data.get("pending_user_input", "")).strip() == str(new_cli_input).strip()
+    source = str(data.get("pending_user_input_source", "")) if stored else ""
+    return {"triggering_input": text, "triggering_input_source": source}
 
 
 def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any) -> bool:
@@ -476,6 +503,25 @@ def _compute_thought_salience(
     recall_score = min(n_memories / 4.0, 1.0)
     novelty_score = 1.0 - jaccard_with_previous
     return 0.3 * section_score + 0.3 * recall_score + 0.4 * novelty_score
+
+
+def _add_deliberation_thought(
+    working_memory: Any, *, cycle: int, enrichment: str, salience: float, goal: str | None
+) -> None:
+    """One deliberation cycle's enrichment as a THOUGHT in working memory: the agent's own composed text
+    (``Provenance.INTERNAL``), whose outside words are already framed inside it (#1519)."""
+    import uuid
+
+    from maxim.agents.working_memory import WorkingMemoryKind
+
+    working_memory.add(
+        WorkingMemoryKind.THOUGHT,
+        ref=f"thought:{uuid.uuid4().hex[:8]}",
+        content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": enrichment[:500]},
+        salience=salience,
+        goal_tag=goal,
+        provenance=Provenance.INTERNAL,
+    )
 
 
 def _run_deliberation_cycles(
@@ -612,16 +658,8 @@ def _run_deliberation_cycles(
 
         # 2. Add THOUGHT to working memory with computed salience
         if working_memory is not None and formatted:
-            import uuid
-
-            from maxim.agents.working_memory import WorkingMemoryKind
-
-            working_memory.add(
-                WorkingMemoryKind.THOUGHT,
-                ref=f"thought:{uuid.uuid4().hex[:8]}",
-                content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
-                salience=salience,
-                goal_tag=active_goal,
+            _add_deliberation_thought(
+                working_memory, cycle=cycle, enrichment=formatted, salience=salience, goal=active_goal
             )
 
         # 3. Build transcript entry (reasoning + bio-system response)
@@ -643,10 +681,7 @@ def _run_deliberation_cycles(
             from maxim.agents.working_memory import WorkingMemoryKind
 
             thought_entries = working_memory.by_kind({WorkingMemoryKind.THOUGHT}, limit=6)
-            context.working_memory_thoughts = [
-                str(e.content.get("enrichment", ""))[:200] if isinstance(e.content, dict) else str(e.content)[:200]
-                for e in thought_entries
-            ]
+            context.working_memory_thoughts = [e.prompt_text(limit=200) for e in thought_entries]  # #1519
 
         # 5. Re-submit to LLM and wait
         if not submit_fn(context):
@@ -963,11 +998,11 @@ def _followup_synthetic_input(followup: Any) -> str:
     external, and so is a tool that declares ``untrusted_output`` (recalled or stored text). The query
     is quoted so it cannot shift the parser's ``']: `` split.
     """
-    from maxim.modes.definitions import NETWORK_TOOLS
+    from maxim.modes.definitions import output_is_external
     from maxim.utils.content_safety import frame_tool_output
 
     tool = followup.tool
-    external = tool in NETWORK_TOOLS or tool == "batched_exploration" or followup.untrusted_output
+    external = output_is_external(tool, untrusted_output=followup.untrusted_output)
     result = frame_tool_output(tool, followup.result or "", external=external)
     query = str(followup.original_query or "").replace("'", "\u2019")
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
@@ -1010,6 +1045,7 @@ def run_agentic_loop(
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
+    response_policy: Any = RESPONSE_POLICY_UNSET,  # a sim's ResponsePolicy, or None: required with percept_source
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
@@ -1087,6 +1123,7 @@ def run_agentic_loop(
             use_tool_prompting=use_tool_prompting,
             protocol_registry=protocol_registry,
             percept_source=percept_source,
+            response_policy=response_policy,
             action_sink=action_sink,
             pain_bus=pain_bus,
             imagination_trigger=imagination_trigger,
@@ -1153,6 +1190,7 @@ def _run_agentic_loop_body(
     use_tool_prompting: bool = True,  # Enable tool-aware LLM prompts
     protocol_registry: Any | None = None,  # ProtocolRegistry for dynamic skills
     percept_source: Any | None = None,  # PerceptSource for simulation
+    response_policy: Any = RESPONSE_POLICY_UNSET,  # a sim's ResponsePolicy, or None: required with percept_source
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
@@ -1205,12 +1243,11 @@ def _run_agentic_loop_body(
     """
     from maxim.agents.autonomy import (
         AutonomyLevel,
-        Proposal,
         check_hard_stop,
     )
     from maxim.agents.llm_worker import ModeInfo
     from maxim.modes.definitions import get_mode
-    from maxim.runtime.loop_types import ActionFollowup, PendingConfirmation
+    from maxim.runtime.loop_types import ActionFollowup
 
     # The setup block (1.3.2 decomposition, slice 1): built once, unpacked into the local names the
     # body below has always read. ``ctrl`` stays the only mutable carrier (runtime/loop_setup.py).
@@ -1239,6 +1276,7 @@ def _run_agentic_loop_body(
         use_tool_prompting=use_tool_prompting,
         protocol_registry=protocol_registry,
         percept_source=percept_source,
+        response_policy=response_policy,
         action_sink=action_sink,
         pain_bus=pain_bus,
         aut_mode=aut_mode,
@@ -1392,7 +1430,7 @@ def _run_agentic_loop_body(
         seed_runtime_run_mode(state)  # keeps a mode already there (#963 Q5: the run mode, not the operational one)
 
         # The tick's input, read ONCE from every channel and memorized as it arrives (Session R): §1.2 enriches it
-        _user_input = take_user_input(observation, state, agent)
+        _user_input = take_user_input(observation, state, agent, sim_mode=sim.is_sim_mode)
         transcript, hard_override, cli_input, is_agentic_voice_input, _addressed = _user_input[:5]
         _percept_enrichment_text = ""
         _percept_text_for_cycle = ""
@@ -1510,21 +1548,9 @@ def _run_agentic_loop_body(
                         )
                         # Add THOUGHT to working memory with computed salience
                         if _wms is not None and _percept_enrichment_text:
-                            import uuid
-
-                            from maxim.agents.working_memory import WorkingMemoryKind
-
                             _c1_goal = state.data.get("active_goal") if hasattr(state, "data") else None
-                            _wms.add(
-                                WorkingMemoryKind.THOUGHT,
-                                ref=f"thought:{uuid.uuid4().hex[:8]}",
-                                content={
-                                    "source": "pfc_deliberation",
-                                    "cycle": 1,
-                                    "enrichment": _percept_enrichment_text[:500],
-                                },
-                                salience=_salience_c1,
-                                goal_tag=_c1_goal,
+                            _add_deliberation_thought(
+                                _wms, cycle=1, enrichment=_percept_enrichment_text, salience=_salience_c1, goal=_c1_goal
                             )
                     else:
                         from maxim.simulation.sim_logger import sim_pre_deliberation
@@ -1581,7 +1607,7 @@ def _run_agentic_loop_body(
             # When a new percept arrives from the orchestrator during this
             # loop, we must cancel the pending followup so the new input
             # gets submitted to the LLM instead.
-            if not cli_text.startswith("[ACTION_FOLLOWUP"):
+            if not is_tool_followup(cli_text):
                 ctrl.note_user_input(cli_text)  # a new user turn, whatever its channel (#1413)
                 if ctrl.pending_action_followup:
                     _preempted_tool = ctrl.pending_action_followup.tool
@@ -1612,28 +1638,25 @@ def _run_agentic_loop_body(
             # ───────────────────────────────────────────────────────────────
             # CONFIRMATION / TIMEOUT / PLAN APPROVAL — delegated to controller
             # ───────────────────────────────────────────────────────────────
-            if ctrl.handle_confirmation(
-                cli_text, execute_and_learn=_execute_and_learn, book_refusal=_book_refusal, observation=observation
+            if ctrl.answer_pending_prompt(
+                cli_text,
+                execute_and_learn=_execute_and_learn,
+                book_refusal=_book_refusal,
+                book_machine_refusal=_book_machine_refusal,
+                observation=observation,
+                sim=sim,
+                answer_source=_user_input.source,
+                answers=_user_input.answers,
             ):
-                cli_input = None
+                cli_input = None  # the answer to a pending prompt, never a new turn (#1185)
                 continue
 
-            if ctrl.handle_timeout_retry(cli_text):
-                cli_input = None
-                continue
-
-            # Store in state and memory (only reached if NOT a confirmation/timeout)
+            # Store in state and memory (only reached if NOT the answer to a pending prompt)
             ctrl.store_user_input(cli_text, source_type)
 
             # Speculative pre-fetching
             ctrl.run_prefetch(cli_text)
             pending_prefetch = ctrl.pending_prefetch
-
-            # Planning mode: check if this input is approval/rejection/modify
-            if ctrl.handle_plan_approval(cli_text, book_refusal=_book_refusal):
-                if ctrl.pending_proposal is None and ctrl.pending_plan_proposal is None:
-                    # Plan was rejected — don't send to LLM
-                    cli_input = None
 
         hard_stop_reason = check_hard_stop(transcript, hard_override)
         if hard_stop_reason:
@@ -1966,10 +1989,10 @@ def _run_agentic_loop_body(
                     _advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
                 )
                 _cap_msg = (
-                    f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
+                    f"SYSTEM: '{safe_tool_name(_this_tool)}' was called {_consecutive_same_tool_count} times "
                     f"with identical parameters — blocked to prevent a loop. "
                     f"Try a DIFFERENT tool or different parameters. "
-                    f"Available tools: {', '.join(_other_tools[:8]) if _other_tools else 'none'}"
+                    f"Available tools: {', '.join([t for t in _other_tools if safe_tool_name(t) == t][:8]) if _other_tools else 'none'}"
                 )
                 note_system_outcome(recent_outcomes, max_recent_outcomes, _this_tool, _cap_msg, "consecutive_tool_cap")
 
@@ -2022,39 +2045,13 @@ def _run_agentic_loop_body(
             # ───────────────────────────────────────────────────────────────
             # PLANNING MODE: Check if this proposal requires user approval
             # ───────────────────────────────────────────────────────────────
-            if getattr(ctrl.pending_proposal, "requires_approval", False) and ctrl.pending_proposal.plan_text:
-                # In sim mode, auto-resolve plan approval via response policy
-                sim_plan_response = sim.resolve_plan_approval(ctrl.pending_proposal.plan_text)
-                if sim_plan_response is not None:
-                    sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
-                    if sim_plan_response.lower() in ("yes", "y"):
-                        # Auto-approved — skip the approval flow, proceed to execution
-                        logger.info("Sim mode: plan auto-approved, executing")
-                    else:
-                        # Auto-rejected
-                        logger.info("Sim mode: plan auto-rejected")
-                        ctrl.pending_proposal = None
-                        continue
-                else:
-                    # Production mode: store and wait for real user
-                    logger.info("Proposal requires approval, showing plan to user")
-                    log_agentic(
-                        "agent_loop",
-                        "plan_awaiting_approval",
-                        {
-                            "tool": action.get("tool_name"),
-                            "plan_preview": ctrl.pending_proposal.plan_text[:100]
-                            if ctrl.pending_proposal.plan_text
-                            else None,
-                        },
-                    )
-
-                    state.data["pending_plan_text"] = ctrl.pending_proposal.plan_text
-                    state.data["pending_plan_tool"] = action.get("tool_name")
-
-                    ctrl.pending_plan_proposal = ctrl.pending_proposal
-                    ctrl.pending_proposal = None
-                    continue
+            if ctrl.gate_plan_approval(  # a plan: run once if approved, parked for the person, or refused
+                execute_and_learn=_execute_and_learn,
+                book_machine_refusal=_book_machine_refusal,
+                observation=observation,
+                sim=sim,
+            ):
+                continue
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)
 
@@ -2070,21 +2067,10 @@ def _run_agentic_loop_body(
                 },
             )
 
-            can_execute, reason = autonomy_controller.can_execute_action(action, confidence=confidence)
+            _verdict = autonomy_controller.action_verdict(action, confidence=confidence)  # typed (#1185)
+            can_execute, reason = _verdict.allowed, _verdict.reason
 
-            logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
-
-            # Log autonomy check
-            log_agentic(
-                "agent_loop",
-                "autonomy_check",
-                {
-                    "tool": action.get("tool_name"),
-                    "can_execute": can_execute,
-                    "reason": reason if not can_execute else None,
-                    "confidence": confidence,
-                },
-            )
+            _log_autonomy_check(action, can_execute, reason, confidence)  # moved out (rule T, #1185)
 
             if can_execute:
                 # Execute it and book what it teaches: ONE function for every path that runs an action
@@ -2102,84 +2088,12 @@ def _run_agentic_loop_body(
                 ctrl.pending_proposal = None
 
             elif autonomy_controller.current_level == AutonomyLevel.PLANNING:
-                # Queue for human approval
-                proposal = Proposal(
-                    id=ctrl.pending_proposal.request_id,
-                    action=action,
-                    reasoning=ctrl.pending_proposal.reasoning,
-                    confidence=confidence,
-                    strategy_used=ctrl.pending_proposal.strategy_used,
-                    citations=ctrl.pending_proposal.citations,
-                    source=ctrl.pending_proposal,  # its situation is credited at approval (#1083)
-                )
-                autonomy_controller.proposal_queue.submit(proposal)
-                autonomy_controller.log_action(
-                    action_type="proposed",
-                    action=action,
-                    reasoning=ctrl.pending_proposal.reasoning,
-                    mode=operational_mode(executor, state),
-                    confidence=confidence,
-                )
-
-                # Non-interactive: auto-approve if safety constraints pass.
-                # Prevents the proposal queue from silently expiring with
-                # no human to approve. The agent acts on its own judgment.
-                from maxim.simulation.sim_logger import should_prompt
-
-                if not should_prompt("plan_approval"):
-                    autonomy_controller.proposal_queue.approve(proposal.id, approved_by="auto:non-interactive")
-                    sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING): {action.get('tool_name')}")
-
-                ctrl.pending_proposal = None
+                ctrl.queue_for_approval(action, confidence=confidence, sim=sim)  # Queue for human approval
 
             else:
-                # Check if this is a confirmation request (not a hard rejection)
-                # Autonomy controller may say "requires approval" or "requires confirmation"
-                if reason and ("requires confirmation" in reason.lower() or "requires approval" in reason.lower()):
-                    # The typed record keeps the proposal as its ``source``, so the confirmed action is
-                    # credited to the situation it was proposed in (#1133; the proposal itself is cleared
-                    # below, as for every non-executed branch).
-                    _pending = PendingConfirmation.from_proposal(ctrl.pending_proposal)
-                    tool_name = _pending.tool_name
-                    params = action.get("params", {})
-
-                    # In sim mode, auto-resolve via response policy instead of blocking
-                    sim_response = sim.resolve_confirmation(_pending.policy_view())
-                    if sim_response is not None:
-                        # Inject the response as if the user typed it
-                        sim.log("PIPELINE", f"Auto-resolved confirmation for {tool_name}: {sim_response}")
-                        ctrl.pending_confirmation = _pending
-                        state.data["pending_loop_reply"] = sim_response
-                    else:
-                        # Production mode: display prompt if interactive, auto-resolve if not
-                        from maxim.simulation.sim_logger import should_prompt, display_scene
-
-                        if should_prompt("confirmation"):
-                            display_scene(f"\n  Action requires confirmation: {tool_name}")
-                            param_lines = []
-                            for key, value in params.items():
-                                param_lines.append(f"    {key}: {str(value)}")
-                            if param_lines:
-                                display_scene("\n".join(param_lines))
-                            if ctrl.pending_proposal.reasoning:
-                                display_scene(f"  Reasoning: {ctrl.pending_proposal.reasoning}")
-                            # Show confirmation prompt in the input panel so typed
-                            # characters are visible with question context.
-                            try:
-                                from maxim.simulation.sim_logger import get_active_display
-
-                                _conf_display = get_active_display()
-                                if _conf_display is not None:
-                                    _conf_display.set_prompt(f"Confirm {tool_name}? Type 'yes' or 'no'\n\n> ")
-                                    _conf_display.set_urgent(True)
-                            except Exception:
-                                display_scene("  Type 'yes' or 'no' to confirm/reject:")
-                        else:
-                            # Non-interactive: auto-approve via supervision policy
-                            state.data["pending_loop_reply"] = "yes"
-                            sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
-
-                        ctrl.pending_confirmation = _pending
+                # A confirmation request (a reason a person's approval satisfies), not a hard rejection (#1185: typed)
+                if _verdict.needs_confirmation:
+                    ctrl.park_confirmation(action, sim=sim)
                 else:  # Hard rejection: booked, then fed back to the model or the turn ends (#1413, tool_dispatch)
                     _rejected = _book_hard_rejection(
                         proposal=ctrl.pending_proposal,
@@ -2263,7 +2177,7 @@ def _run_agentic_loop_body(
                     # create a minimal context to ensure the followup gets processed.
                     # This fixes the bug where search results were returned but not
                     # processed because memory.build_context() returned None.
-                    if ctrl.pending_action_followup and context is None:
+                    if (ctrl.pending_action_followup or state.data.get("pending_modification")) and context is None:
                         from maxim.agents.bus import StructuredContext
 
                         context = StructuredContext(
@@ -2517,19 +2431,8 @@ def _run_agentic_loop_body(
                                         # Mark voice inputs without wake word as processed
                                         processed_cli_inputs.append(cli_input)
 
-                        # Check for speech with maxim keyword
-                        if context.detected_speech:
-                            for speech in context.detected_speech:
-                                if speech and "maxim" in speech.lower():
-                                    has_meaningful_input = True
-                                    break
-
-                        # Check for maxim keyword in current percept
-                        if context.current_percept and context.current_percept.has_maxim_keyword:
-                            has_meaningful_input = True
-
-                        # Check for hard override commands
-                        if context.current_percept and context.current_percept.hard_override:
+                        # Speech or a percept naming the agent, a hard override, or a requested change (#1185)
+                        if context_addresses_the_llm(context, state):
                             has_meaningful_input = True
 
                         # Check for pending action followup (tools that need LLM processing)
@@ -2873,9 +2776,7 @@ def _run_agentic_loop_body(
                             shared=_shared_submit,
                             autonomy_level=autonomy_controller.current_level,
                             _failed_tools=_failed_tools,
-                            triggering_input=_triggering_input(
-                                new_cli_input, followup_original_query, pending_modification
-                            ),
+                            **_triggering(new_cli_input, followup_original_query, pending_modification, state),
                             pending_modification=pending_modification,
                             prefetch_context_text=prefetch_context_text,
                             skip_exploration=skip_exploration,
@@ -2890,7 +2791,7 @@ def _run_agentic_loop_body(
                         if submitted:
                             # Check if this is a followup submission
                             is_followup = context.cli_inputs and any(
-                                inp.startswith("[ACTION_FOLLOWUP") for inp in context.cli_inputs
+                                is_tool_followup(inp) for inp in context.cli_inputs
                             )
                             if is_followup:
                                 logger.info("Submitted followup to LLM for processing")

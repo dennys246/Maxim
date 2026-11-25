@@ -338,6 +338,7 @@ def _record(nac: NAc, *, success: bool, bridge_booked: str | None, tool: str = T
         nac=nac,
         tool_params=params,
         bridge_booked=bridge_booked,
+        untrusted_output=False,
         refused=None,
     )
 

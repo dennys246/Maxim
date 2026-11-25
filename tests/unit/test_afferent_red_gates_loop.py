@@ -278,6 +278,7 @@ def body_rig(
         }
         if source is not None:
             kwargs["percept_source"] = source
+            kwargs["response_policy"] = None  # a test sim with no response policy answers no prompt (#1185)
         return Rig(executor=executor, bio=bio, kwargs=kwargs, percept_source=source)
 
     return build
@@ -430,7 +431,7 @@ def drive_loop(
 
         workspace = workdir / "workspace"
         workspace.mkdir(parents=True, exist_ok=True)
-        agent = MaximAgent()
+        agent = MaximAgent(shared_router=None)
         agent.wire_memory_hub(bio.memory_hub)
         state = RuntimeState()
         state.data["mode"] = "active"

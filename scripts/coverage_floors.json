@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 74.6,
-    "missing": 26107
+    "percent": 75.6,
+    "missing": 25351
   },
   "packages": {
     "maxim/<root>": {
@@ -16,8 +16,8 @@
       "missing": 8
     },
     "maxim/agents": {
-      "percent": 72.9,
-      "missing": 1869
+      "percent": 74.7,
+      "missing": 1770
     },
     "maxim/analysis": {
       "percent": 86.9,
@@ -92,8 +92,8 @@
       "missing": 536
     },
     "maxim/integration": {
-      "percent": 74.6,
-      "missing": 404
+      "percent": 76.3,
+      "missing": 377
     },
     "maxim/interactive": {
       "percent": 39.7,
@@ -144,8 +144,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 79.7,
-      "missing": 2943
+      "percent": 81.4,
+      "missing": 2773
     },
     "maxim/salience": {
       "percent": 71.0,
@@ -181,6 +181,10 @@
     }
   },
   "files": {
+    "src/maxim/agents/exec_agent_router.py": {
+      "percent": 100.0,
+      "missing": 0
+    },
     "src/maxim/models/language/router.py": {
       "percent": 78.8,
       "missing": 233
