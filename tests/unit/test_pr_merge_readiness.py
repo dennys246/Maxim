@@ -31,14 +31,17 @@ from pr_merge_readiness import (  # noqa: E402
 )
 
 _REQUIRED = [
-    {"name": "unit-tests", "status": "completed", "conclusion": "success", "output_title": None},
+    {"name": "unit-tests", "status": "completed", "conclusion": "success", "output_title": None, "app_id": 15368},
     {"name": "lint", "status": "completed", "conclusion": "success", "output_title": None},
     {"name": "Release build (wheel contents + version)", "status": "completed", "conclusion": "success"},
     {"name": "CodeQL", "status": "completed", "conclusion": "success", "output_title": "No new alerts"},
 ]
 
 
-def _eval(*, pr=None, checks=None, alerts=None, rules=None, contexts=None, errors=()):
+_ACTIONS = 15368  # the app scripts/repo_settings_expected.json pins for unit-tests
+
+
+def _eval(*, pr=None, checks=None, alerts=None, rules=None, contexts=None, errors=(), app_id=_ACTIONS, reuse=""):
     return evaluate(
         pr=pr or {"mergeStateStatus": "CLEAN", "mergeable": "MERGEABLE"},
         checks=checks if checks is not None else list(_REQUIRED),
@@ -46,6 +49,9 @@ def _eval(*, pr=None, checks=None, alerts=None, rules=None, contexts=None, error
         ruleset_rules=rules or [],
         required_contexts=contexts,
         fetch_errors=tuple(errors),
+        suite_app_id=app_id,
+        head_sha="abc123def4567890",
+        suite_reuse=reuse,
     )
 
 
@@ -285,7 +291,7 @@ class TestReplaysPr654:
         assert result.exit_code == READY
 
 
-def _run(name, conclusion, *, started_at, run_id, status="completed", app_id=None):
+def _run(name, conclusion, *, started_at, run_id, status="completed", app_id=_ACTIONS):
     return {
         "name": name,
         "status": status,
@@ -547,3 +553,175 @@ class TestBranchRulesFallback:
         monkeypatch.setattr(mod, "_gh_json", boom)
         _, _, err = mod._branch_rules("o/r", "main")
         assert err is not None and "could not read" in err
+
+
+class TestSuiteOfRecord:
+    """M64: CI's latest `unit-tests` run on the head SHA is the final full suite, so READY
+    must prove it ran green (docs/plans/ci_suite_of_record_m64_approach.md)."""
+
+    def _without_suite(self):
+        return [c for c in _REQUIRED if c["name"] != "unit-tests"]
+
+    def test_a_green_suite_is_named_as_the_final_full_suite(self):
+        result = _eval()
+        assert result.exit_code == READY
+        record = next(f for f in result.findings if f.code == "suite-of-record")
+        assert "abc123def456" in record.detail
+
+    def test_the_pinned_app_id_matches_the_live_expected_settings_file(self):
+        import pr_merge_readiness as mod
+
+        assert mod.pinned_suite_app_id() == _ACTIONS
+
+    def test_an_unreadable_settings_file_withholds_the_verdict(self, tmp_path):
+        import pr_merge_readiness as mod
+
+        assert mod.pinned_suite_app_id(tmp_path / "missing.json") is None
+        (tmp_path / "s.json").write_text('{"protection": {"required_status_checks": {"checks": []}}}')
+        assert mod.pinned_suite_app_id(tmp_path / "s.json") is None
+        result = _eval(app_id=None)
+        assert result.exit_code == UNSETTLED
+        assert "surface-unverified" in _codes(result)
+
+    def test_a_same_named_suite_from_another_app_does_not_count(self):
+        """Exact contexts match on name only; the suite of record also pins the app."""
+        checks = [*self._without_suite(), _run("unit-tests", "success", started_at="t", run_id=5, app_id=99)]
+        result = _eval(checks=checks, contexts=("unit-tests", "lint", "Release build (wheel contents + version)"))
+        assert result.exit_code == BLOCKED
+        assert "suite-of-record-absent" in _codes(result)
+
+    def test_absent_suite_blocks_even_when_the_ruleset_no_longer_requires_it(self):
+        result = _eval(checks=self._without_suite(), contexts=("lint",))
+        assert result.exit_code == BLOCKED
+        assert "suite-of-record-absent" in _codes(result)
+
+    def test_absent_suite_while_checks_run_is_unsettled_not_blocking(self):
+        checks = [*self._without_suite(), {"name": "lint2", "status": "queued", "conclusion": None}]
+        result = _eval(checks=checks)
+        assert result.exit_code == UNSETTLED
+        assert "suite-of-record-not-yet-present" in _codes(result)
+
+    def test_a_neutral_suite_is_not_green(self):
+        """`neutral` is only INFO for other checks; for the suite of record it must block."""
+        checks = [*self._without_suite(), _run("unit-tests", "neutral", started_at="t", run_id=5)]
+        result = _eval(checks=checks)
+        assert result.exit_code == BLOCKED
+        assert "suite-of-record-not-green" in _codes(result)
+
+    def test_a_cancelled_before_start_rerun_outranks_an_older_success(self):
+        """Design review finding 6: the newest run by id is judged, start time or not."""
+        checks = [
+            *self._without_suite(),
+            _run("unit-tests", "success", started_at="2026-10-23T10:00:00Z", run_id=1),
+            _run("unit-tests", "cancelled", started_at=None, run_id=2),
+        ]
+        result = _eval(checks=checks)
+        assert result.exit_code == BLOCKED
+        assert "suite-of-record-not-green" in _codes(result)
+
+    def test_a_running_suite_is_unsettled(self):
+        checks = [*self._without_suite(), _run("unit-tests", None, started_at="t", run_id=3, status="in_progress")]
+        result = _eval(checks=checks)
+        assert result.exit_code == UNSETTLED
+        assert "suite-of-record-running" in _codes(result)
+
+    def test_a_reused_measurement_is_stated(self):
+        result = _eval(reuse="reused")
+        assert result.exit_code == READY
+        assert "suite-of-record-reused" in _codes(result)
+
+    def test_an_unknown_reuse_is_info_never_a_blocker(self):
+        result = _eval(reuse="unknown: could not read job 1")
+        assert result.exit_code == READY
+        assert "suite-of-record-reuse-unknown" in _codes(result)
+
+    def test_evaluate_without_the_app_id_is_a_type_error(self):
+        """Forgetting the suite step must fail loudly, never skip it."""
+        with pytest.raises(TypeError):
+            evaluate(pr={}, checks=[], alerts=[], ruleset_rules=[])
+
+
+class TestMergeStateUnknown:
+    """Design review finding 2: UNKNOWN is GitHub still computing; a BEHIND PR reads this way."""
+
+    @pytest.mark.parametrize(
+        "pr",
+        [
+            {"state": "OPEN", "mergeStateStatus": "UNKNOWN", "mergeable": "MERGEABLE"},
+            {"state": "OPEN", "mergeStateStatus": "CLEAN", "mergeable": "UNKNOWN"},
+        ],
+    )
+    def test_unknown_is_unsettled(self, pr):
+        result = _eval(pr=pr)
+        assert result.exit_code == UNSETTLED
+        assert "merge-state-unknown" in _codes(result)
+
+
+class TestSuiteReuseLookup:
+    """`_suite_reuse` reads the run's own job, exact per attempt (design review finding 3)."""
+
+    def _run_with_job(self):
+        return {"conclusion": "success", "details_url": "https://github.com/o/r/actions/runs/9/job/42"}
+
+    @pytest.mark.parametrize(("step", "expected"), [("skipped", "reused"), ("success", "measured")])
+    def test_the_fast_suite_step_decides(self, monkeypatch, step, expected):
+        import pr_merge_readiness as mod
+
+        calls = []
+
+        def fake(args, **_):
+            calls.append(args)
+            return {"steps": [{"name": "Run required fast suite", "conclusion": step}]}
+
+        monkeypatch.setattr(mod, "_gh_json", fake)
+        assert mod._suite_reuse("o/r", self._run_with_job()) == expected
+        assert calls == [["api", "repos/o/r/actions/jobs/42"]]
+
+    def test_the_step_name_matches_the_workflow(self):
+        """If the workflow renames the step, every lookup would silently read 'unknown'."""
+        import pr_merge_readiness as mod
+
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/test.yml").read_text()
+        assert f"- name: {mod._FAST_SUITE_STEP}\n" in workflow
+
+    def test_a_failed_read_is_unknown(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        def boom(*a, **k):
+            raise RuntimeError("403")
+
+        monkeypatch.setattr(mod, "_gh_json", boom)
+        assert mod._suite_reuse("o/r", self._run_with_job()).startswith("unknown")
+
+    def test_no_lookup_for_a_run_that_did_not_pass(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", lambda *a, **k: pytest.fail("must not call gh"))
+        assert mod._suite_reuse("o/r", {"conclusion": "failure"}) == ""
+        assert mod._suite_reuse("o/r", None) == ""
+
+
+class TestHeadMovedDuringRead:
+    """Design review finding 1: a push between reads must withhold the verdict."""
+
+    def test_a_moved_head_is_a_fetch_error(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        heads = iter(["aaa", "bbb"])
+
+        def fake(args, **_):
+            if args[:2] == ["pr", "view"]:
+                fields = args[args.index("--json") + 1]
+                if fields == "headRefOid":
+                    return {"headRefOid": next(heads)}
+                return {"state": "OPEN", "headRefOid": next(heads), "baseRefName": "main"}
+            if args[:2] == ["repo", "view"]:
+                return {"nameWithOwner": "o/r"}
+            if "check-runs" in args[1]:
+                return [{"check_runs": []}]
+            return []
+
+        monkeypatch.setattr(mod, "_gh_json", fake)
+        surfaces = mod._fetch(1, None)
+        assert any("moved from aaa to bbb" in e for e in surfaces["fetch_errors"])
+        assert mod.evaluate(**surfaces).exit_code != READY

@@ -30,6 +30,15 @@ Usage:
     python scripts/pr_merge_readiness.py 654
     python scripts/pr_merge_readiness.py 654 --repo owner/name
 
+**The suite of record (M64, owner decisions 2026-10-16 and 2026-11-25).** CI's latest
+`unit-tests` run on the PR's head SHA is the final full test suite; no local full suite is
+owed before a merge. So READY also asserts: a `unit-tests` check run posted by the app
+pinned in `scripts/repo_settings_expected.json` exists on the head, its newest run (by
+check-run id, which GitHub assigns in creation order) settled as exactly `success`, and the
+head did not move while the checks were read. A floors-only push that re-used an earlier
+measurement (#1640) is named as such. Approach note and its design review:
+docs/plans/ci_suite_of_record_m64_approach.md.
+
 Exit codes: 0 ready · 1 blocked (reasons printed) · 2 unsettled/unverified (no verdict —
 re-run when it settles) · 3 tool error.
 """
@@ -38,14 +47,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 # Fallback only — the effective ruleset contexts are preferred when readable.
 # CodeQL is included per bugs ledger D63, whose durable fix names it explicitly.
 REQUIRED_CHECK_PATTERNS: tuple[str, ...] = ("unit-tests", "lint", "release build", "codeql")
+
+# M64: the check whose green run on the head SHA is the final full suite, the settings file
+# that pins which app may post it, and the step a floors-only re-use (#1640) skips.
+SUITE_OF_RECORD = "unit-tests"
+_EXPECTED_SETTINGS = Path(__file__).resolve().parent / "repo_settings_expected.json"
+_FAST_SUITE_STEP = "Run required fast suite"
 
 _UNSETTLED = frozenset({"queued", "in_progress", "pending", "waiting", "requested"})
 _BAD_CONCLUSIONS = frozenset({"failure", "timed_out", "cancelled", "action_required", "stale", "startup_failure"})
@@ -78,13 +95,16 @@ class Readiness:
     findings: list[Finding] = field(default_factory=list)
 
     def render(self) -> str:
+        ready = "READY: no gating surface reports a problem."
         if not self.findings:
-            return "READY: no gating surface reports a problem."
+            return ready
         order = {"BLOCKING": 0, "UNSETTLED": 1, "INFO": 2}
-        return "\n".join(
+        lines = [
             f"[{f.severity}] {f.code}: {f.detail}"
             for f in sorted(self.findings, key=lambda f: (order.get(f.severity, 9), f.code))
-        )
+        ]
+        # A READY verdict always carries the suite-of-record INFO row (M64), so say READY first.
+        return "\n".join([ready, *lines] if self.exit_code == READY else lines)
 
 
 def _latest_run_per_check(checks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
@@ -132,6 +152,108 @@ def _required_missing(
     return [p for p in required_patterns if p.lower() not in joined]
 
 
+def pinned_suite_app_id(path: Path = _EXPECTED_SETTINGS) -> int | None:
+    """The app id the expected settings pin for the `unit-tests` context, or None if unreadable.
+
+    The expected-settings file, not live protection: reading protection needs admin scope, and
+    the nightly `scripts/check_repo_settings.py` fails when the two drift.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    checks = ((data.get("protection") or {}).get("required_status_checks") or {}).get("checks") or []
+    for chk in checks:
+        if chk.get("context") == SUITE_OF_RECORD and isinstance(chk.get("app_id"), int):
+            return int(chk["app_id"])
+    return None
+
+
+def suite_of_record_run(checks: list[dict[str, Any]], app_id: int | None) -> dict[str, Any] | None:
+    """The newest `unit-tests` run from the pinned app, by check-run id.
+
+    Ids, not `started_at`: a run cancelled before it began has no start time but is still the
+    newest run GitHub's gate judges (design review finding 6), and a re-run gets a new id.
+    """
+    if app_id is None:
+        return None
+    runs = [c for c in checks if c.get("name") == SUITE_OF_RECORD and c.get("app_id") == app_id]
+    if not runs:
+        return None
+    return max(runs, key=lambda c: c.get("id") if isinstance(c.get("id"), int) else 0)
+
+
+def _suite_of_record_findings(
+    raw_checks: list[dict[str, Any]],
+    *,
+    app_id: int | None,
+    head_sha: str,
+    reuse: str,
+    anything_unsettled: bool,
+) -> list[Finding]:
+    """M64: CI's `unit-tests` run on the head is the final full suite, so READY must prove it ran green."""
+    if app_id is None:
+        return [
+            Finding(
+                "UNSETTLED",
+                "surface-unverified",
+                "cannot pin which app posts the suite of record: scripts/repo_settings_expected.json is "
+                "unreadable or has no unit-tests entry — the final full suite was NOT checked",
+            )
+        ]
+    run = suite_of_record_run(raw_checks, app_id)
+    if run is None:
+        if anything_unsettled:
+            return [
+                Finding(
+                    "UNSETTLED",
+                    "suite-of-record-not-yet-present",
+                    f"no {SUITE_OF_RECORD} run from app {app_id} on this head yet, and checks are still in flight",
+                )
+            ]
+        return [
+            Finding(
+                "BLOCKING",
+                "suite-of-record-absent",
+                f"no {SUITE_OF_RECORD} run from app {app_id} ran on this head — the final full suite never ran "
+                "(a same-named check from another app does not count)",
+            )
+        ]
+    status = str(run.get("status", "")).lower()
+    if status in _UNSETTLED:
+        return [Finding("UNSETTLED", "suite-of-record-running", f"{SUITE_OF_RECORD} run {run.get('id')} is {status}")]
+    conclusion = str(run.get("conclusion") or "").lower()
+    if conclusion != "success":
+        return [
+            Finding(
+                "BLOCKING",
+                "suite-of-record-not-green",
+                f"the newest {SUITE_OF_RECORD} run ({run.get('id')}) ended {conclusion or 'without a conclusion'}; "
+                "only `success` counts as the final full suite",
+            )
+        ]
+    findings = [
+        Finding(
+            "INFO",
+            "suite-of-record",
+            f"{SUITE_OF_RECORD} run {run.get('id')} passed on head {head_sha[:12] or '(unknown)'} — "
+            "this is the final full suite (M64)",
+        )
+    ]
+    if reuse == "reused":
+        findings.append(
+            Finding(
+                "INFO",
+                "suite-of-record-reused",
+                "this run re-used an earlier run's measurement (a floors-only push, #1640): its tests ran on a "
+                "commit that differs from this head only in scripts/coverage_floors.json",
+            )
+        )
+    elif reuse.startswith("unknown"):
+        findings.append(Finding("INFO", "suite-of-record-reuse-unknown", f"could not tell whether it re-used: {reuse}"))
+    return findings
+
+
 def evaluate(
     *,
     pr: dict[str, Any],
@@ -141,9 +263,17 @@ def evaluate(
     required_patterns: tuple[str, ...] = REQUIRED_CHECK_PATTERNS,
     required_contexts: tuple[str, ...] | None = None,
     fetch_errors: tuple[str, ...] = (),
+    suite_app_id: int | None,
+    head_sha: str = "",
+    suite_reuse: str = "",
 ) -> Readiness:
-    """Pure verdict over already-fetched data (so this is testable without network)."""
+    """Pure verdict over already-fetched data (so this is testable without network).
+
+    ``suite_app_id`` is required (keyword-only, no default): a caller that forgets it must
+    get a TypeError, not a verdict with the suite-of-record step silently skipped.
+    """
     findings: list[Finding] = []
+    raw_checks = checks
     checks, superseded = _latest_run_per_check(checks)
     if superseded:
         findings.append(
@@ -177,6 +307,16 @@ def evaluate(
         findings.append(Finding("BLOCKING", "merge-conflict", "mergeable=CONFLICTING — resolve conflicts and push"))
     if state in _BAD_MERGE_STATES and not (state == "BLOCKED"):
         findings.append(Finding("BLOCKING", f"merge-state-{state.lower()}", _BAD_MERGE_STATES[state]))
+    if "UNKNOWN" in (state, mergeable):
+        # GitHub is still computing it, so BEHIND (strict protection) cannot be ruled out yet.
+        findings.append(
+            Finding(
+                "UNSETTLED",
+                "merge-state-unknown",
+                f"mergeStateStatus={state or '?'} mergeable={mergeable or '?'}: GitHub has not finished "
+                "computing whether this PR can merge (a BEHIND branch would read this way) — re-run shortly",
+            )
+        )
 
     # ── 4. Required checks PRESENT — a negative claim, so gate it on settledness.
     missing = _required_missing(checks, required_contexts, required_patterns)
@@ -233,6 +373,17 @@ def evaluate(
                     "'nothing to report', NOT a failure — do not act on it while anything is in flight)",
                 )
             )
+
+    # ── 5b. The suite of record (M64): CI's unit-tests run IS the final full suite.
+    findings.extend(
+        _suite_of_record_findings(
+            raw_checks,
+            app_id=suite_app_id,
+            head_sha=head_sha,
+            reuse=suite_reuse,
+            anything_unsettled=bool(unsettled),
+        )
+    )
 
     # ── 6. Code-scanning alerts gate via a ruleset and render as no check row. ─
     for a in alerts:
@@ -306,14 +457,41 @@ def _slurped_check_runs(slug: str, sha: str) -> list[dict[str, Any]]:
             "status": c.get("status"),
             "conclusion": c.get("conclusion"),
             "output_title": (c.get("output") or {}).get("title"),
+            "details_url": c.get("details_url"),
         }
         for c in runs
     ]
 
 
-def _fetch(
-    pr_number: int, repo: str | None
-) -> tuple[dict, list[dict], list[dict], list[str], tuple[str, ...], list[str]]:
+def _suite_reuse(slug: str, run: dict[str, Any] | None) -> str:
+    """'measured', 'reused', '' (nothing to look up) or 'unknown: <why>' for the suite-of-record run.
+
+    Read from the run's own job (exact per attempt), not the run's artifact list, which keeps
+    an attempt-1 `coverage-reused-from-1` listed after an attempt-2 re-run that measured.
+    A failed read is reported, never a blocker: re-use is a fact worth stating, not a gate.
+    """
+    if run is None or str(run.get("conclusion") or "").lower() != "success":
+        return ""
+    match = re.search(r"/job/(\d+)", str(run.get("details_url") or ""))
+    if not match:
+        return "unknown: the unit-tests check run names no job"
+    try:
+        job = _gh_json(["api", f"repos/{slug}/actions/jobs/{match.group(1)}"]) or {}
+    except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        return f"unknown: could not read job {match.group(1)} ({exc})"
+    for step in job.get("steps") or []:
+        if step.get("name") == _FAST_SUITE_STEP:
+            conclusion = str(step.get("conclusion") or "").lower()
+            if conclusion == "skipped":
+                return "reused"
+            if conclusion == "success":
+                return "measured"
+            return f"unknown: the {_FAST_SUITE_STEP!r} step ended {conclusion or 'without a conclusion'}"
+    return f"unknown: job {match.group(1)} has no {_FAST_SUITE_STEP!r} step"
+
+
+def _fetch(pr_number: int, repo: str | None) -> dict[str, Any]:
+    """Every gating surface, returned as `evaluate`'s keyword arguments."""
     repo_args = ["--repo", repo] if repo else []
     pr = _gh_json(
         ["pr", "view", str(pr_number), *repo_args, "--json", "mergeable,mergeStateStatus,headRefOid,baseRefName,state"]
@@ -322,6 +500,12 @@ def _fetch(
     errors: list[str] = []
 
     checks = _slurped_check_runs(slug, pr["headRefOid"])
+    suite_app_id = pinned_suite_app_id()
+    suite_reuse = _suite_reuse(slug, suite_of_record_run(checks, suite_app_id))
+    # A push between the two reads would make READY name checks of a stale head (design review finding 1).
+    head_now = (_gh_json(["pr", "view", str(pr_number), *repo_args, "--json", "headRefOid"]) or {}).get("headRefOid")
+    if head_now != pr["headRefOid"]:
+        errors.append(f"the PR head moved from {pr['headRefOid']} to {head_now} while its checks were read")
 
     alerts: list[dict[str, Any]] = []
     try:
@@ -345,7 +529,17 @@ def _fetch(
     if rule_err:
         errors.append(rule_err)
 
-    return pr, checks, alerts, rules, tuple(contexts), errors
+    return {
+        "pr": pr,
+        "checks": checks,
+        "alerts": alerts,
+        "ruleset_rules": rules,
+        "required_contexts": tuple(contexts) or None,
+        "fetch_errors": tuple(errors),
+        "suite_app_id": suite_app_id,
+        "head_sha": pr["headRefOid"],
+        "suite_reuse": suite_reuse,
+    }
 
 
 def _branch_rules(slug: str, base: str) -> tuple[list[str], list[str], str | None]:
@@ -397,21 +591,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        pr, checks, alerts, rules, contexts, errors = _fetch(args.pr, args.repo)
+        surfaces = _fetch(args.pr, args.repo)
     except (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError) as exc:
         print(f"error: could not read PR state: {exc}", file=sys.stderr)
         return TOOL_ERROR
 
-    result = evaluate(
-        pr=pr,
-        checks=checks,
-        alerts=alerts,
-        ruleset_rules=rules,
-        required_contexts=contexts or None,
-        fetch_errors=tuple(errors),
+    result = evaluate(**surfaces)
+    pr = surfaces["pr"]
+    print(
+        f"PR #{args.pr}: {pr.get('state')} / mergeable={pr.get('mergeable')} / {pr.get('mergeStateStatus')}"
+        f" / head {pr.get('headRefOid')}"
     )
-    print(f"PR #{args.pr}: {pr.get('state')} / mergeable={pr.get('mergeable')} / {pr.get('mergeStateStatus')}")
     print(result.render())
+    if result.exit_code == READY and str(pr.get("state", "")).upper() == "OPEN":
+        print(f"\nThis verdict is for head {pr.get('headRefOid')}; a later push needs a fresh run.")
     if result.exit_code == UNSETTLED:
         print("\nNo verdict: something is still in flight or unverified. Re-run when it settles.")
     return result.exit_code
