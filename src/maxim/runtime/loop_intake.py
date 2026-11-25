@@ -53,6 +53,7 @@ from typing import Any
 from maxim.agents.bus import StreamEvent
 from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import _handle_planning_failure
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -309,7 +310,9 @@ def take_llm_proposal(
                     {
                         "tool": tool_name,
                         "confidence": round(new_proposal.confidence, 2),
-                        "reasoning": new_proposal.reasoning[:80] if new_proposal.reasoning else None,
+                        "reasoning": text_shape(new_proposal.reasoning)
+                        if new_proposal.reasoning
+                        else None,  # #1775: shape only
                         "has_plan": bool(getattr(new_proposal, "plan_text", None)),
                         "requires_approval": getattr(new_proposal, "requires_approval", False),
                     },

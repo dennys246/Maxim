@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.prompt_text import Provenance
 from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
@@ -401,6 +402,21 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
         # With "received CLI input" and "Submitted", tells an input that waited its turn from a stranded one (#1488).
         logger.debug("Planning job %s (#1048)", "in flight: new inputs wait" if held else "done: inputs are free")
     return held
+
+
+def _log_goal_proposed(*, tool: Any, confidence: Any, reasoning: str | None) -> None:
+    """§4's ``goal_proposed`` event (moved out of ``_run_agentic_loop_body``, rule T for #1775). The model's reasoning
+    is logged by its shape only: the stream reaches stdout and can quote a PRIVATE tool's output."""
+    log_agentic(
+        "agent_loop",
+        "goal_proposed",
+        {
+            "tool": tool,
+            "confidence": confidence,
+            "reasoning": text_shape(reasoning) if reasoning else None,
+            "source": "llm_worker",
+        },
+    )
 
 
 def _log_autonomy_check(action: dict[str, Any], can_execute: bool, reason: Any, confidence: Any) -> None:
@@ -2055,16 +2071,8 @@ def _run_agentic_loop_body(
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)
 
-            # Log LLM proposal received
-            log_agentic(
-                "agent_loop",
-                "goal_proposed",
-                {
-                    "tool": action.get("tool_name"),
-                    "confidence": confidence,
-                    "reasoning": ctrl.pending_proposal.reasoning[:100] if ctrl.pending_proposal.reasoning else None,
-                    "source": "llm_worker",
-                },
+            _log_goal_proposed(
+                tool=action.get("tool_name"), confidence=confidence, reasoning=ctrl.pending_proposal.reasoning
             )
 
             _verdict = autonomy_controller.action_verdict(action, confidence=confidence)  # typed (#1185)
