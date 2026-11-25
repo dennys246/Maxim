@@ -208,6 +208,14 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
     ("report.py", "_record_dict"): (
         "#997: the one serialization point both report writers share, reducing endpoint URLs; not orchestrator run code"
     ),
+    ("report.py", "_router_cost"): (
+        "#1228: build_report's per-router cost read moved out (rule T) so the report can split narrator_* from aut_*"
+        " cost; report assembly, not orchestrator run code"
+    ),
+    ("report.py", "_run_costs"): (
+        "#1228 owner decision C: the report's cost fields, narrator and AUT routers counted once each and summed;"
+        " report assembly, not orchestrator run code"
+    ),
     ("report.py", "_tool_usage"): (
         "#1185: build_report's tool usage breakdown moved out verbatim (rule T, after the synthetic-marker filter "
         "touched it); report assembly, not orchestrator run code"

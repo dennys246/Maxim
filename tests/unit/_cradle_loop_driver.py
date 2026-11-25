@@ -183,7 +183,7 @@ def run_cradle(
     state = RuntimeState()
     state.data["mode"] = "active"
     hub, hippo = bio.memory_hub, bio.hippocampus
-    agent = MaximAgent()
+    agent = MaximAgent(shared_router=None)
     agent.wire_memory_hub(hub)
     clock.install()
     try:

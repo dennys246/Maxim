@@ -372,7 +372,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 4,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -403,6 +405,7 @@
      ],
      "total_links": 4
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -427,6 +430,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -1315,7 +1321,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 3,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -1340,6 +1348,7 @@
      ],
      "total_links": 3
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -1364,6 +1373,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -2216,7 +2228,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 4,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "orch-golden-fake",
     "aut_nac_summary": {
      "top_links": [
@@ -2247,6 +2261,7 @@
      ],
      "total_links": 4
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -2271,6 +2286,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -3124,7 +3142,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 2,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -3143,6 +3163,7 @@
      ],
      "total_links": 2
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -3167,6 +3188,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -4143,7 +4167,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 3,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -4168,6 +4194,7 @@
      ],
      "total_links": 3
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -4192,6 +4219,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -4988,7 +5018,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 5,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -5025,6 +5057,7 @@
      ],
      "total_links": 5
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -5049,6 +5082,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -6159,7 +6195,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 5,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -6196,6 +6234,7 @@
      ],
      "total_links": 5
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -6220,6 +6259,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -7171,7 +7213,9 @@
     },
     "aut_backend_class": "",
     "aut_causal_links": 5,
+    "aut_cost_usd": 0.0,
     "aut_endpoint": "",
+    "aut_input_tokens": 0,
     "aut_model": "",
     "aut_nac_summary": {
      "top_links": [
@@ -7208,6 +7252,7 @@
      ],
      "total_links": 5
     },
+    "aut_output_tokens": 0,
     "aut_provider": "",
     "bio_telemetry_path": "<WORK>/data/sim_reports/<STAMP>/bio_telemetry.jsonl",
     "blocked_actions": 0,
@@ -7232,6 +7277,9 @@
     ],
     "llm_summary": "golden roundup",
     "mode": "generative",
+    "narrator_cost_usd": 0.0,
+    "narrator_input_tokens": 0,
+    "narrator_output_tokens": 0,
     "pain_events_count": 0,
     "provenance": {
      "aut_budget_n_ctx": 8192,
@@ -7783,5 +7831,5 @@
    "unsorted_prompts": []
   }
  },
- "generated_at_commit": "7f7e258422db"
+ "generated_at_commit": "5effb972ddb8"
 }
