@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "links": {
+    "tool:look_around": [
+      {
+        "id": "1171bd0af327bdbe",
+        "event_type": "tool_call",
+        "event_signature": "tool:look_around",
+        "event_context": {
+          "agent_id": "wc5"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "done",
+        "outcome_valence": "positive",
+        "temporal_delta": {
+          "observed_deltas": [
+            1.5,
+            1.5
+          ]
+        },
+        "predicted_value": 0.6302000000000001,
+        "prediction_history": [
+          0.5,
+          0.5700000000000001
+        ],
+        "observation_count": 2,
+        "confidence": 0.6414213562373096,
+        "last_observed": 1764000060.25,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.42999999999999994,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ],
+    "tool:speak": [
+      {
+        "id": "73300091d6ebfba9",
+        "event_type": "tool_call",
+        "event_signature": "tool:speak",
+        "event_context": {
+          "agent_id": "wc5"
+        },
+        "outcome_type": "tool_result",
+        "outcome_signature": "done",
+        "outcome_valence": "negative",
+        "temporal_delta": {
+          "observed_deltas": [
+            1.5
+          ]
+        },
+        "predicted_value": 0.43,
+        "prediction_history": [
+          0.5
+        ],
+        "observation_count": 1,
+        "confidence": 0.5,
+        "last_observed": 1764000052.75,
+        "memory_ids": [],
+        "context_factors": {},
+        "last_rpe": 0.5,
+        "percept_refs": [],
+        "imagined": false,
+        "source": "local",
+        "domain": null,
+        "contributors": []
+      }
+    ]
+  },
+  "outcome_index": {
+    "done": [
+      "73300091d6ebfba9",
+      "1171bd0af327bdbe"
+    ]
+  },
+  "priors": {},
+  "total_observations": 3,
+  "reward_bias": {},
+  "goal_reward_bias": {},
+  "cluster_reward_bias": {},
+  "cluster_reward_source": {},
+  "inherent_bias_keys": [],
+  "percept_valences": {},
+  "cluster_fear": {},
+  "event_outcome_welford": {},
+  "saved_at": 1764000067.75,
+  "_format_version": "1.4"
+}
