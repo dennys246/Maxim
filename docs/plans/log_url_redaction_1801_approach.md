@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v14 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v15 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -60,6 +60,10 @@
 >   - FAIL-OPEN: U1, U2 and U3 (covered classes).
 >   - U5 (`PureWindowsPath`) is tagged fail-closed by the reader but does leak, so it is fixed, not stated.
 >   - A delta round 14 is owed on U1–U5 only.
+> - **Round 14 (delta, a different reader):** 0 DO-NOT-BUILD, 3 SHOULD-FIX and 3 NITs, folded and tagged V1–V6.
+>   - FAIL-OPEN: V1 (the composed regex), V2 (bind-then-cut), V4 and V6 (covered classes). V6 is fixed, not stated.
+>   - The regex is now PINNED (V1): the reader's prototype passes 104/104 existing redaction tests.
+>   - A delta round 15 is owed on V1–V6 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -133,14 +137,17 @@ written later.
         `__str__` objects when only `str` and exceptions were proxied (Q1; probed, 0 leaks with this rule). A
         1-character `str` passes through unproxied, so `%c` renders as today (Q4). The pass-through test is by EXACT type,
         never `isinstance` (T1): `type(a) in {NoneType, bool, int, float, complex, Decimal, Fraction}`, or
-        a numpy NUMERIC scalar (`type(a).__module__ == "numpy"`, not an `ndarray`, and `a.dtype.kind in "biufc"`), or
+        a numpy NUMERIC scalar by EXACT type: `type(a) in _NUMPY_NUMERIC`, a frozenset built from numpy's own scalar
+        types (`np.sctypeDict` values whose `np.dtype(t).kind` is one of `b i u f c`, a non-empty kind), so a subclass
+        or a fake class setting `__module__ = "numpy"` is proxied (V4); or
         `type(a) is str and len(a) == 1`. `np.str_`, `np.bytes_` and every ndarray are proxied: `"%.15s" %
         np.str_("https://ghp_TOKEN@github.com")` kept `https://ghp_TOK` under a module-only test (U1). A user class
         that sets `__module__ = "numpy"` without a numeric `dtype` is proxied too. A subclass with its own `__str__`
         (`NInt(int)`, a 1-char `S1(str)`) returning a URL is proxied (probed: it leaked under `isinstance`);
       - the proxy forwards `__float__`, `__int__` and `__index__` through `type(o).__float__(o)` and
-        `operator.index(o)`, never `float(o)`, which would make `%f` accept a str. When `type(o)` lacks the dunder, the proxy
-        raises `TypeError` (not `AttributeError`), as the unproxied value would (U4). So `%f`/`%d`/`%x` of a 0-d
+        `operator.index(o)`, never `float(o)`, which would make `%f` accept a str. `__int__`/`__float__` fall back to
+        `operator.index(o)` as CPython does, so an object with only `__index__` still renders `%d`/`%f` (V5). When
+        neither exists, the proxy raises `TypeError` (not `AttributeError`), as the unproxied value would (U4). So `%f`/`%d`/`%x` of a 0-d
         ndarray or a torch tensor render as today instead of losing the line to `handleError` (T3); So a precision cut in the message
         (`%.50s`, `%.50r`, `%.50a`, `{:.50}`), whatever the logger's name, a message held in a variable, or
         `logger.log(level, …)`, truncates text that is already reduced;
@@ -248,9 +255,15 @@ written later.
     - **`Path` and other single-slash forms (T4):** `pathlib.Path` collapses `://` to `:/`, so `Path("/a/" + URL)`
     renders `https:/u:PW@host/…` and the regex never saw a URL. For the `http`/`https` schemes the regex accepts `:/`
     as well as `://` (and `:\/` for the JSON-escaped form), matched CASE-INSENSITIVELY and anchored on the scheme
-    run: `(?<![A-Za-z0-9+.-])(?i:[A-Za-z0-9+.-]*https?):\\?/`. So `Path("/a/HTTPS://…")` and a glued `/a/1https:/…`
-    are caught (U2; probed linear, at most 1.3 ms on 50k characters, with no change to `test_report_redaction_997.py`
-    or `test_actions_jsonl_scrub_1404.py`). `PureWindowsPath` renders `https:\u:PW@h\p`, so for http(s) a
+    run. **The exact regex, pinned (V1):** the scheme run
+    `(?<![A-Za-z0-9+.-])(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?))` (V6: the single-slash `Path` form for `ws`/`wss`/
+    `ftp`/`ftps` leaked under http(s)-only), then `:`, then an ATOMIC separator `(?>(?:\\?/){1,2}|\\{1,2})`, then
+    the quote-tolerant userinfo `(?:[^\s/@]*@)?`, then the rest of today's host/path pattern. A non-atomic `\\?/`
+    let `https:/` match first and skip the userinfo group, so `https://to"k@h/p` leaked `"k@h/p` and
+    `test_redact_urls_never_raises_and_keeps_no_password_tail` failed. The atomic form passes 104/104 across the 997,
+    1404-scrub, `_loggable_url` and `http_client` tests (probed). Python 3.11+ is needed for atomic groups; the
+    project's floor meets it. So `Path("/a/HTTPS://…")` and a glued `/a/1https:/…`
+    are caught (U2; probed linear, at most 1.8 ms on 50k characters). `PureWindowsPath` renders `https:\u:PW@h\p`, so for http(s) a
     backslash separator (`:\`) is accepted too (U5). The over-match risk in prose (`http:/` written by hand)
     is fail-closed: it can only reduce text. A test pins `Path("/a/https://u:PW@h/p")`.
   - The user part excludes `\`, so the JSON-escaped form cannot reach into the userinfo (G5).
@@ -312,9 +325,11 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   - **any subscript of tainted text whose index is not a literal int** (`str(e)[sl]`, `str(e)[slice(0, 50)]`), any
     DUNDER method call on tainted text (`.__getitem__(…)`, `.__format__(…)`), `operator.getitem`, and any
     `reprlib.*` call over tainted text (T2);
-  - any `textwrap.*`, `itertools.*` or `collections.deque` call over tainted text, and a literal-int subscript of
-    a `split`/`rsplit`/`partition`/`rpartition` result of tainted text (`.partition("@")[0]`), all of which leave
-    token text that `redact_urls` keeps (U3).
+  - any `textwrap.*`, `itertools.*` or `collections.deque` call over tainted text (U3);
+  - **every** `split`/`rsplit`/`partition`/`rpartition`/`splitlines` call on tainted text, unless its receiver is
+    a `redact_urls(...)` call. Flagging only a subscript on the call itself missed `head, _, _ =
+    str(e).partition("@")`, `.split("@").pop(0)` and `parts = …; parts[0]` (V2). This adds about 30 lines on
+    src/maxim, each rewritten to split the reduced text or allowlisted with a reason (V2).
   - the logger form (`log.warning("failed: %.50s", e)`) is NOT a lint rule. The factory's argument proxies make it
     cut reduced text, whatever the logger is called (P1);
   - `%`-formatting matches `\.(\d+|\*)[sra]` (`%.50r` and `%.50a` cut too, P1); a non-literal format string or spec
@@ -327,8 +342,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   assignment from `redact_urls(...)`/`url_scrubbed(...)` is an untainted assignment, so `s = redact_urls(str(e));
   s[:50]` passes and the branched form fails. Rebinding a tainted name, a parameter or a local, does not clear it
   (`s = str(e); s = redact_urls(s); s[:50]` fails), so the code binds a new name: `safe = redact_urls(str(e))`
-  (K4, L5); On 0f50fdc9 the rule gives 23 unique lines (26 raw hits, less 3 reported twice
-  for nested functions) (M4), every one a listed site or an allowlist entry (L5) (prototype: `scratchpad/rt1801f/lint_h1.py`, the rule as written here; `rt1801e/lint_proto.py`, which gave 12, had no
+  (K4, L5); The hit set is RE-MEASURED by the code round with the final rule, and every hit is
+  listed or allowlisted. It was 23 lines before U3/V2; U3 adds `platform_detect::detect_lan_ip`,
+  `leader_proxy::_query_nvidia_smi`, `system_metrics::collect_gpu`, `system_metrics::_wifi_linux` (2) and
+  `optional_deps::import_refused` (V3), and V2 adds about 30 split sites (M4, V3), every one a listed site or an allowlist entry (L5) (prototype: `scratchpad/rt1801f/lint_h1.py`, the rule as written here; `rt1801e/lint_proto.py`, which gave 12, had no
   parameter or `.attr` sources) (J3). The narrower rule round 4 proposed missed
   `_abort_drain`'s and `_sanitize_error_message`'s parameters;
 - **attributes each hit to its innermost enclosing function only** (a hit in a nested function is not also reported
@@ -401,6 +418,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- V1: `https://to"k@h/p` reduces to the origin, and the existing 104 redaction tests pass with the pinned regex. V6:
+  `Path("/a/ftp://u:PW@h")` and `Path("/a/wss://u:PW@h")` render reduced. V2: the lint fails on `head, _, _ =
+  str(e).partition("@")`, `.split("@").pop(0)` and a bound `parts[0]`. V4: an `np.float64` subclass with a URL
+  `__str__` and a fake `__module__ = "numpy"` class render reduced. V5: an `__index__`-only object renders `%d`.
 - U1: `np.str_`, `np.bytes_` and `np.array([url])` carrying a credential URL render reduced at every cut length, and
   `%d`/`%f` of numpy numeric scalars are unchanged. U2/U5: `Path("/a/HTTPS://u:PW@h/p")`, `/a/1https:/u:PW@h/p` and
   `PureWindowsPath`'s `https:\u:PW@h\p` render reduced. U3: the lint fails on `textwrap.wrap(s,20)[1]`,
