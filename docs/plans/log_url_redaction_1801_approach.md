@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v17 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v18 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -79,6 +79,25 @@
 >   - X1 and X2 (the whitespace-password branch) are FIXED in the regex, not stated. The author re-verified:
 >     104/104, and 3.10 compiles it.
 >   - A delta round 17 is owed on X1–X5 only.
+> - **Round 17 (delta, a different reader; reproduced 104/104 on 3.10.19 and 3.12):** 0 DO-NOT-BUILD, 5 SHOULD-FIX
+>   (4 FAIL-OPEN in covered classes, 1 FAIL-CLOSED) and 1 NIT, folded and tagged Y1–Y6. Y1–Y3 are verified by the
+>   author on the scratch patch: 104/104, 3.10 compiles, linear.
+> - **Owner exceptions, 2026-11-25** (machine-readable; the code PR's boundary tests cite each by id):
+>
+>   ```yaml
+>   owner_exceptions:
+>     - id: E1801-1
+>       accepts: "userinfo containing whitespace whose user part exceeds 64 or a password segment exceeds 256 characters leaks its tail"
+>       why: "a bounded regex is linear; an unbounded one is quadratic on adversarial lines inside the logging path; httpx percent-encodes userinfo, so real transport errors never carry such text"
+>       class: fail-open residual, accepted
+>       pinned_by: "a test at the 256/257 boundary (reduced at 256, leaks at 257, the leak asserted so a change is noticed)"
+>     - id: E1801-2
+>       accepts: "prose after a URL that contains `user:…@` (or `host:port … @`) is erased to `<url>`"
+>       why: "fail-closed: no leak and no wrong host; Maxim's own log formats never put a URL next to an `@` (0 grep hits)"
+>       class: fail-closed over-match, accepted
+>       pinned_by: "tests for `see https://a.com and user:x@y` and `https://h:8080 failed, mail bob@ex.com`"
+>   ```
+>   - A delta round 18 is owed on Y1–Y6 only. E1801-1 and E1801-2 count as covered, not as fail-open.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -155,7 +174,10 @@ written later.
         a numpy NUMERIC scalar by EXACT type: `type(a) in _NUMPY_NUMERIC`, a frozenset built lazily on first proxy use, WITHOUT importing:
         `np = sys.modules.get("numpy")`, and while it is absent the set is empty and NOT cached, since no numpy scalar
         can exist before numpy is imported. An import inside `getMessage` runs with the handler lock held, and could
-        deadlock against a thread part-way through importing numpy that logs (X5; W4). Built from numpy's own scalar
+        deadlock against a thread part-way through importing numpy that logs (X5; W4). While numpy is part-way
+        imported it is in `sys.modules` with `__spec__._initializing` True and no `sctypeDict`. In that case, or if
+        the build raises `AttributeError`, the set is empty and NOT cached, logged once in the Stage-1 form, so the
+        record is proxied (safe) rather than lost to `handleError` (Y5). Built from numpy's own scalar
         types (`np.sctypeDict` values whose `np.dtype(t).kind` is one of `b i u f c`, a non-empty kind), so a subclass
         or a fake class setting `__module__ = "numpy"` is proxied (V4); or
         `type(a) is str and len(a) == 1`. `np.str_`, `np.bytes_` and every ndarray are proxied: `"%.15s" %
@@ -280,7 +302,9 @@ written later.
         r"(?<![A-Za-z0-9+.-])"
         r"(?:[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's branch, unchanged)
         r"|(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?:\\?/){1,2}|\\{1,2}))(?P=sep))"
-        r"(?:(?P<wsui>[^\s/@:\\]*:[^\r\n]{0,64}?\s[^\r\n]{0,64}?@)|[^\s/@]*@)?"
+        r"(?:(?P<wsui>[^/@:\\\r\n]{0,64}:\S{0,256}\s[^\r\n]{0,256}@"
+        r"|[^\s/@:\\]*\s[^/@:\\\r\n]{0,64}:[^\s@]{0,256}@)"
+        r"|[^\s/@]*@)?"
         r"[^\s'\"<>]+"
     )
     ```
@@ -290,14 +314,24 @@ written later.
       ftp(s) only (U2, U5, V6), case-insensitively. Its separator is atomic by a lookahead plus a backreference,
       which keeps Python 3.10, the floor (`requires-python = ">=3.10"`, CI's matrix runs 3.10), able to compile it,
       where `(?>…)` would not.
-    - The userinfo has two alternatives: `wsui`, a user (possibly EMPTY, the normal Redis form `redis://:PW D@…`,
-      X1), `:`, then within 64 characters on one line a whitespace and an `@`, where the password may itself hold an
-      `@` (`https://u:p@ss w@h/p`, X2). `_reduce` emits `<url>` when it matched (Na). The other alternative is today's
+    - The userinfo has two alternatives. `wsui` is a userinfo that holds whitespace, matched GREEDILY to the LAST `@`
+      within its bounds (Y1: lazy quantifiers stopped at the first `@`, so `https://u:a b@c d@h/p` leaked `d@h/p`).
+      It has two forms:
+      - whitespace in the password: a user (possibly empty, the normal Redis form `redis://:PW D@…`; up to 64
+        characters, which may itself hold whitespace), `:`, up to 256 non-space characters, a whitespace, then up to
+        256 characters to an `@` (X1, X2, Y1, Y2);
+      - whitespace in the user: `https://us er:pw@h/p` passed raw before (Y3).
+      Past those bounds a tail leaks: accepted as owner exception E1801-1. `_reduce` emits `<url>` when it matched (Na). The other alternative is today's
       quote-tolerant `[^\s/@]*@`.
-    - Verified on the scratch patch: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` give
-      `<url>`, and `https://a:b c@h1 https://d@h2` gives `<url> https://h2`. Linear: 236 ms at 233k characters in the
-      worst family, 4× the input for 4× the time (X1, X2).
-    - Accepted over-match (fail-closed, X4): `https://h:8080 failed, mail bob@ex.com` becomes `<url>`. A test pins it.
+    - Verified on the scratch patch (`scratchpad/regex1801/regex_candidate.patch`): every Y1–Y3 case, `redis://:PW
+      D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` give `<url>`, and 104/104 tests pass. Linear in
+      every family probed, the reviewer's two worst included: `("a://:"+" ")*n` takes 261 ms at 300k characters and
+      1,044 ms at 1.2M (Y4). Because greedy-to-the-last-`@` now spans URLs, `https://a:b c@h1 https://d@h2` gives one
+      `<url>` (fail-closed).
+    - Accepted over-match (fail-closed, X4, E1801-2): `https://h:8080 failed, mail bob@ex.com` and `see https://a.com
+      and user:x@y` become `<url>`. `\s` matches a newline between the password and the `@`, so the over-match can
+      span one line break: `http://h:8100/x\nbob@ex.com` becomes `<url>`, at most about 130 characters lost (Y6).
+      Tests pin all three.
     - A form branch 2 matches but `url_origin` cannot parse reduces to `<url>` (fail-closed): `x https:/u:PW@h/p`
       gives `x <url>`, and the JSON-escaped form gives `"<url>"`.
     - Prose is untouched: `see https://a.com and user:x@y` and `C:\Users\me` stay as they are.
@@ -367,8 +401,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     `reprlib.*` call over tainted text (T2);
   - any `textwrap.*`, `itertools.*` or `collections.deque` call over tainted text (U3);
   - callee indirection (X3): the lint fails on any reference to a split-family attribute (`str.partition`,
-    `x.split`) that is not called on the spot (`sp = str.partition`); on `getattr` with a split-family or non-literal
-    name, `operator.methodcaller` naming a split-family method, and `functools.partial` over one, when the text is
+    `x.split`) that is not called on the spot (`sp = str.partition`); on `getattr`, `operator.attrgetter` and
+    `operator.methodcaller` with a split-family literal name WHATEVER their object (`getattr(str, "partition")(str(e),
+    "@")[0]` evaded a tainted-object test; 0 such uses in src/maxim, so no flood, Y4), on `getattr` with a non-literal
+    name over tainted text, and `functools.partial` over one, when the text is
     tainted; and on `re` reached through an import alias or `from re import …`. It resolves import aliases for
     `textwrap`, `itertools`, `collections`, `reprlib`, `operator` and `string` the same way;
   - **every** `split`/`rsplit`/`partition`/`rpartition`/`splitlines` call where ANY argument or the receiver is
@@ -464,6 +500,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- Y1–Y3: `https://u:a b@c d@h/p`, a 70-character password tail on either side of the space, and `https://us
+  er:pw@h/p` reduce to `<url>`. E1801-1: the 256/257 boundary test. Y5: a part-way-imported numpy (fake package, `_initializing`)
+  neither loses the record nor caches the empty set. Y6: the three over-match pins. Y4: `getattr(str, "partition")(str(e),
+  "@")[0]` fails the lint.
 - X1/X2: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` reduce to `<url>`. X3: the lint
   fails on `sp = str.partition; sp(str(e), "@")[0]`, `getattr(str(e), "partition")("@")[0]`,
   `operator.methodcaller("split", "@")(str(e))[0]`, `functools.partial(str.split, sep="@")`, `import re as R` and
