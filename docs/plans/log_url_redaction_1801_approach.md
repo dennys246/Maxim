@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v11 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v12 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -45,6 +45,12 @@
 > - **Round 10 (delta, a different reader):** 0 DO-NOT-BUILD, 3 SHOULD-FIX (all FAIL-OPEN, all latent: 0 sites in
 >   src) and 1 NIT, folded and tagged P1–P4. P1's logger cut is now fixed at the root, in the factory, not in the
 >   lint. M1, M3, M4 and M5 hold.
+> - **Owner, 2026-11-25 (again, after round 10):** keep the stop rule literal. Every lint-evasion form counts as
+>   fail-open.
+> - **Round 11 (delta, a different reader):** 0 DO-NOT-BUILD, 2 SHOULD-FIX and 2 NITs, folded and tagged Q1–Q4.
+>   - FAIL-OPEN: Q1 and Q2 (class F2) and Q3 (lint evasion, 0 sites).
+>   - P1 holds for every format directive probed, and the proxies are lazy.
+>   - A delta round 12 is owed on Q1–Q4 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -111,12 +117,17 @@ written later.
     - a record whose `type(record) is logging.LogRecord` (the stock class, whoever built it) has its
       `record.__class__` set to the module-level `_RedactingLogRecord(logging.LogRecord)`. Its `getMessage` reduces
       BEFORE and AFTER formatting (P1):
-      - each `str` or exception argument is wrapped in a module-level proxy whose `__str__`, `__repr__` and
-        `__format__` return the reduced text, then `msg % args` runs. So a precision cut in the message
+      - **every argument except `None`, `bool` and a `numbers.Number`** is wrapped in a module-level proxy whose
+        `__str__`, `__repr__` and `__format__` return the reduced text, and so are the VALUES of a single Mapping
+        argument (`%(k).Ns`: `LogRecord.__init__` unwraps it to a dict). Then `msg % args` runs. A token-as-username
+        URL leaked through Mapping values, `list`/`tuple` (including `e.args`), `bytes`, `httpx.URL` and custom
+        `__str__` objects when only `str` and exceptions were proxied (Q1; probed, 0 leaks with this rule). A
+        1-character `str` passes through unproxied, so `%c` renders as today (Q4). So a precision cut in the message
         (`%.50s`, `%.50r`, `%.50a`, `{:.50}`), whatever the logger's name, a message held in a variable, or
         `logger.log(level, …)`, truncates text that is already reduced;
       - the result is reduced again (a URL built across arguments, or one in `msg` itself);
-      - other arguments (numbers, None) pass through untouched, so `%d`/`%f` behave as today. That keeps any foreign attributes and pickles, and `makePickle` is clean (probed);
+      - numbers and None pass through untouched, so `%d`/`%f`/`%x` behave as today, numpy scalars included
+        (probed). That keeps any foreign attributes and pickles, and `makePickle` is clean (probed);
     - a record of a real subclass is rendered eagerly, `msg = redact_urls(getMessage())` and `args = ()`. That pays
       R3's cost only on this rare path. The render is wrapped in `try`: a bad format (`warning("x %d", "notint")`)
       must not raise out of the `logger` call, where inside an `except` block it would mask the original exception.
@@ -269,6 +280,8 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   - `%`-formatting with a precision (`"%.50s" % e`, `"%.*s" % (50, e)`);
   - `"{:.50}".format(e)` and `format(e, ".50")`;
   - `textwrap.shorten(<tainted>, …)`;
+  - the format CALLEES given tainted text, whatever their spec: `str.__mod__`, `operator.mod`, `str.format_map` and
+    `string.Formatter().format`/`vformat` (Q3);
   - the logger form (`log.warning("failed: %.50s", e)`) is NOT a lint rule. The factory's argument proxies make it
     cut reduced text, whatever the logger is called (P1);
   - `%`-formatting matches `\.(\d+|\*)[sra]` (`%.50r` and `%.50a` cut too, P1); a non-literal format string or spec
@@ -289,7 +302,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
   under the outer one), and keys each allowlist entry as `file::innermost_function` plus the `ast.unparse` text of
   the sliced expression. Any hit that matches no entry fails. With a function-only key, a future `str(e)[:200]` in
   an allowlisted function would pass silently (M2). Each entry also carries a `count`; more hits than that under one
-  key fail, so two identical `str(e)[:50]` in one function cannot share one entry (P2);
+  key fail, so two identical `str(e)[:50]` in one function cannot share one entry (P2). The match is EXACT: fewer
+  hits than `count` (zero included) also fail, as a stale entry, so a removed hit cannot leave a spare slot that
+  later admits a new cut silently (Q2);
 - **scope (P3):** the lint scans module level and class bodies too (keyed `<module>` and `Class.<body>`), and keys a
   lambda to its enclosing def, where a lambda's `e`/`exc`/`err` parameters are sources. It detects with the
   enclosing scope's taint (a closure over an outer `e` is tainted) and attributes the hit to the innermost def;
@@ -353,6 +368,10 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- Q1: the same credential URL as a Mapping value (`%(k).30s`), in a list, in `e.args`, as `bytes`, as an `httpx.URL`
+  and in a custom `__str__` object renders reduced at every cut length; `%d`/`%5.2f` with numpy scalars, `%x`, `%c`
+  and `%s None` render unchanged. Q2: an entry with fewer hits than its `count` fails as stale. Q3: the lint fails on
+  `"%.50s".__mod__(e)`, `operator.mod`, `format_map` and `vformat` over tainted text.
 - P1: `log.warning("failed: %.50s", e)`, `self.log.warning(...)`, `logger.log(30, "%.50r", e)` and a variable message,
   each with a credential URL in `e`, all render reduced; `%d`/`%f` arguments render unchanged. P2: a second identical
   hit beyond an entry's `count` fails. P3: a module-level `except … as e: str(e)[:50]`, a class-body one, a lambda
