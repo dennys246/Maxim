@@ -739,6 +739,7 @@ def exec_agent(monkeypatch, tmp_path):
     monkeypatch.setattr("maxim.models.language.router.LLMRouter", _Router)  # built by models/download.consented_router
     agent = object.__new__(mod.ExecAgent)
     agent._router = None
+    agent._builds_own = True  # shared_router=BUILD_OWN: the lazy build (#1228)
     agent._refused_profile = None
     agent._refused_cause = None
     return agent

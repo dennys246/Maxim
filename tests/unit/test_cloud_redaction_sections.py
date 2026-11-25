@@ -8,6 +8,7 @@ provider (``_cloud_user``, which mirrors ``LLMRouter._generate_tool_response``),
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -166,7 +167,8 @@ def test_the_json_trailer_survives_when_the_last_section_is_private() -> None:
     context = StructuredContext(timestamp=time.time())
     context.relevant_memories = [{"content": {"goal": f"find {SECRET}"}, "source": "episodic", "salience": 0.9}]
     prompt = _builder().build_prompt(_request(context=context))
-    assert prompt.rstrip().endswith(f"find {SECRET}"), "the memory section must be the prompt's last for this test"
+    # the memory section is the prompt's last (its recalled summary framed, #1519: the frame's closer ends it)
+    assert re.search(rf"find {SECRET}\n<</TOOL_OUTPUT id=[0-9a-f]+>>$", prompt.rstrip()), "memory section not last"
     result = _strict(_cloud_user(prompt))
     assert SECRET not in result.user and result.user.endswith(JSON_TRAILER)
 

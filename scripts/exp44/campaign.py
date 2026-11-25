@@ -64,6 +64,9 @@ if str(_REPO / "src") not in sys.path:
 import _provenance  # noqa: E402
 from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 MIN_BIAS_DEFAULT = 0.9
 MIN_CAPTURE_PAIRS = 5
 LEARN_TIMEOUT_S = 7200  # runbook lesson: 1800s default killed healthy 56-turn runs
@@ -168,7 +171,7 @@ _SCRUBBED_ENV_VARS = (
 
 
 def _sub_env(data_home: Path, *, profile: str | None, extra: dict[str, str]) -> dict[str, str]:
-    env = os.environ.copy()
+    env = child_env()
     for var in _SCRUBBED_ENV_VARS:
         env.pop(var, None)
     env["MAXIM_DATA_HOME"] = str(data_home)
@@ -637,7 +640,7 @@ def stage_requery(
         str(ent.get("hi", 0.5)),
     ]
     out.parent.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
+    env = child_env()
     env["MAXIM_LLM_PROFILE"] = model
     env["MAXIM_LLM_CLOUD_ENABLED"] = "0"  # a cloud-mapped model must not silently spend
     env["MAXIM_DATA_HOME"] = str(arm_dir / f"seed{seed}")
@@ -786,7 +789,8 @@ def main() -> int:
                 str(campaign_dir),
                 "--config",
                 args.config,
-            ]
+            ],
+            env=child_env(),
         ).returncode
         return rc or (1 if failed_cells else 0)
     return 1 if failed_cells else 0

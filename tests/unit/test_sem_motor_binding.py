@@ -303,6 +303,7 @@ class TestCreditMillGuard:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="a",
             tool_name="reachy_mini_turn_left",
@@ -330,6 +331,7 @@ class TestCreditMillGuard:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="a",
             tool_name="reachy_mini_turn_left",
@@ -569,6 +571,7 @@ class TestMeasuredReliefCredit:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="a",
             tool_name="reachy_mini_turn_left",
@@ -600,6 +603,7 @@ class TestMeasuredReliefCredit:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="a",
             tool_name="warm_self",
@@ -625,6 +629,7 @@ class TestMeasuredReliefCredit:
         nac = MagicMock()
         record_outcome(
             bridge_booked=None,
+            untrusted_output=False,
             refused=None,
             agent_id="a",
             tool_name="say",

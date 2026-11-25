@@ -26,6 +26,7 @@ from maxim.runtime.loop_types import (
     TimeoutRetry,
 )
 from maxim.utils.input_source import InputSource
+from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -1112,9 +1113,33 @@ def note_system_outcome(recent_outcomes: list[Any], max_recent: int, tool: str, 
     """Tell the agent, through the recent outcomes its next prompt shows, why its call did not run: the
     consecutive-same-tool cap (moved out of the loop's body) and a run-ending answer set aside (#1451). A failed outcome
     of ``tool`` carrying a ``SYSTEM:`` message; the list is trimmed to its newest ``max_recent``. Never
-    ``pending_cli_input``: that single-slot user-input channel would overwrite real input."""
+    ``pending_cli_input``: that single-slot user-input channel would overwrite real input.
+
+    The note is SYSTEM-WRITTEN guidance (``system_note``), shown unframed (#1519): an instruction, so it never carries
+    outside text. Callers name a tool only through ``content_safety.safe_tool_name`` (a model-proposed name is
+    cleaned to ``[\\w-]``), and ``tool`` is cleaned here too. The checks below guard against a PROGRAMMER error
+    only (model output cannot reach them once names are cleaned): one ``SYSTEM:`` line by the one splitter, no C0/C1
+    control or format character, no frame-marker shape."""
+    from maxim.utils.content_safety import defang_frame_markers, has_format_character, split_lines
+
+    controls = any(ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 for c in message) or has_format_character(message)
+    if not message.startswith("SYSTEM: ") or split_lines(message) != [message] or controls:
+        raise ValueError(
+            f"a system outcome note is one 'SYSTEM: ' line with no control character, got {message[:80]!r}"
+        )
+    if defang_frame_markers(message)[1]:
+        raise ValueError(f"a system outcome note carries a frame-marker shape: {message[:80]!r}")
+    tool = safe_tool_name(tool)
     recent_outcomes.append(
-        {"tool": tool, "tool_name": tool, "success": False, "result": message, "error": error, "timestamp": time.time()}
+        {
+            "tool": tool,
+            "tool_name": tool,
+            "success": False,
+            "result": message,
+            "error": error,
+            "timestamp": time.time(),
+            "system_note": True,
+        }
     )
     if len(recent_outcomes) > max_recent:
         recent_outcomes.pop(0)
@@ -1199,7 +1224,8 @@ def set_aside_run_end(ctrl: Any, memory: Any, executor: Any, sim: Any, liveness_
     # The prompt shows an outcome's first 50 characters (``PromptBuilder._add_perception_sections``): the
     # instruction leads.
     note = (
-        f"SYSTEM: {len(unread)} new input(s) to read before finishing. Your {tool_name} was set aside because they "
+        f"SYSTEM: {len(unread)} new input(s) to read before finishing. Your {safe_tool_name(tool_name)} was set aside "
+        "because they "
         "arrived while it was being planned: act on them, or finish again."
     )
     note_system_outcome(ctrl.recent_outcomes, ctrl.max_recent_outcomes, tool_name, note, "set_aside_for_held_inputs")

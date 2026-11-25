@@ -42,6 +42,7 @@ from maxim.runtime.config_loader import (
     load_config,
     resolve_setting,
 )
+from maxim.utils.child_env import child_env
 
 logger = logging.getLogger(__name__)
 
@@ -315,7 +316,7 @@ def _cmd_edit(argv: list[str]) -> int:
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
 
     try:
-        rc = subprocess.call([editor, str(target)])
+        rc = subprocess.call([editor, str(target)], env=child_env())  # $EDITOR may be a Python tool (#1593)
     except FileNotFoundError:
         print(
             f"✗ editor not found: {editor!r}. Set $EDITOR or $VISUAL.",

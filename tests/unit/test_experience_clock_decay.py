@@ -783,13 +783,12 @@ def test_s0_which_builders_give_a_nac_without_a_hippocampus(tmp_path):
     finally:
         bare.shutdown()
 
-    full = factory.create_full_agent(
+    # A bio-stack always builds a Hippocampus, so remembers=False beside it is refused where the config is built
+    # (#1225); it used to be undone in silence by create_full_agent.
+    from maxim.exceptions import AgentConfigContradiction
+
+    with pytest.raises(AgentConfigContradiction):
         AgentConfig(agent_id="xclock_full", remembers=False, learns=True, with_bio_stack=True, policy=None)
-    )
-    try:  # with a bio-stack, remembers=False does NOT drop the Hippocampus: the bio-stack's replaces it
-        assert full.nac is not None and full.memory_hub.hippocampus is not None
-    finally:
-        full.shutdown()
 
 
 def _count_decays(monkeypatch: pytest.MonkeyPatch) -> list[int]:
