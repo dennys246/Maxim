@@ -40,6 +40,9 @@ import sys
 import tomllib
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 REPO = Path(__file__).resolve().parent.parent
 
 # Any change here can break every cell, so a PR touching one runs them all.
@@ -155,7 +158,7 @@ def latest_pins(reqs: list[str], report: dict) -> list[str]:
 
 def _resolve_latest_report(extra: str) -> dict:
     cmd = [sys.executable, "-m", "pip", "install", "--dry-run", "--ignore-installed", "--quiet", "--report", "-"]
-    r = subprocess.run([*cmd, f".[{extra}]"], cwd=REPO, capture_output=True, text=True, check=False)
+    r = subprocess.run([*cmd, f".[{extra}]"], cwd=REPO, capture_output=True, text=True, check=False, env=child_env())
     if r.returncode != 0:
         raise InputError(f"pip --dry-run failed ({r.returncode}): {r.stderr[-500:]}")
     try:

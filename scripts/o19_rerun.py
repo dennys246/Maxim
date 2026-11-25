@@ -72,6 +72,9 @@ REPO_ROOT = SCRIPTS_DIR.parent
 import _provenance  # noqa: E402
 import o19_verdict as v  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 HARNESS = "o19_rerun"
 POLL_S = 5.0
 SERVED_EVERY_S = 30.0
@@ -88,7 +91,7 @@ class Refused(Exception):
 def base_env() -> tuple[dict[str, str], list[str]]:
     """The operator's environment minus every ``MAXIM_*`` key, and the keys dropped (recorded in the row)."""
     dropped = sorted(k for k in os.environ if k.startswith("MAXIM_"))
-    return {k: val for k, val in os.environ.items() if not k.startswith("MAXIM_")}, dropped
+    return child_env({k: val for k, val in os.environ.items() if not k.startswith("MAXIM_")}), dropped
 
 
 # Per-run values the harness itself sets: present on every sim, recorded by presence (their values are run-local).
