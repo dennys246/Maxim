@@ -42,14 +42,19 @@ It has two parts, and neither trusts the other.
   These are refused outside `time/agent_time.py` and the allowlist.
 - **`uuid1` and `uuid4` are census-only.** The lint warns and does not fail, because D-WC1 offers no `IdSource`, so
   failing on them would be a new id rule the owner deferred.
-- **Its own alias resolver,** about 40 lines. Neither `lint_dead_imports`' resolver (maxim-internal targets) nor
-  `lint_atomic_io_ratchet._module_aliases` (`import X as Y` only) resolves local stdlib bindings. The new resolver
-  handles these forms:
+- **The alias resolver is shared:** `scripts/_clock_refs.py`, built in PR 0 for the census, which PR 1's lint imports
+  with the banned names and both scopes, so the two cannot drift. Neither `lint_dead_imports`' resolver
+  (maxim-internal targets) nor `lint_atomic_io_ratchet._module_aliases` (`import X as Y` only) resolves local stdlib
+  bindings. The census and the lint still judge independently: the lint never reads the census's verdicts. The
+  resolver handles these forms, each with a planted test:
   - `import time as _t`;
   - `from time import time as now`;
   - `from datetime import datetime`;
   - `import datetime as dt`;
   - `from datetime import datetime as DT`.
+- **Bindings it cannot resolve one way fail closed.** A name bound to two clock targets in one module (a
+  function-local `from datetime import datetime` beside a module-level `import datetime`) or a star import from a
+  clock module is reported, not guessed. The census prints it and the lint fails on it.
 
 ### 2. The dynamic half: G-long
 
@@ -71,7 +76,7 @@ It has two parts, and neither trusts the other.
 | Input | How it lies | What catches it |
 |---|---|---|
 | **The scope lists** | A new module that renders or stamps time is in neither list | Machinery: G-long, where its reach allows (§2). Prompt: G-render, G-tz and G-scn, which build real prompts. The list itself: **M99**, which derives the prompt scope. *Stated blind spot until M99.* |
-| **Import aliasing** | `import time as _time` (as `embodiment/spec.py` does), `from datetime import datetime`, and the other forms in §1 | The new resolver, with a planted test case for each form |
+| **Import aliasing** | `import time as _time` (as `embodiment/spec.py` does), `from datetime import datetime`, and the other forms in §1 | The shared resolver (`scripts/_clock_refs.py`), with a planted test case for each form. A conflicting binding or a clock-module star import is reported and fails closed |
 | **Non-call references** | `default_factory=time.time` binds at class definition, so a call-only scan misses it | `Attribute`/`Name` matching. Planted: a dataclass stamp. G-long cannot see this case (§2), so the static half must. |
 | **C-level calendar reads** | `datetime.now()`, `fromtimestamp` | Static only (§2). Planted: one of each in a prompt-scope fixture. |
 | **Dynamic access** | `getattr(time, "time")`, `importlib`, a callable passed in | *Static blind spot, stated.* G-long catches it if the read goes through `time.time` and reaches state. |
@@ -79,7 +84,7 @@ It has two parts, and neither trusts the other.
 | **The allowlist** | A rubber-stamp entry, or an entry that outlives its site | Entries are keyed `file::function` with a fixed category (`process`, `scheduling`, `motor-io`, `real-world-io`, `cost`, `pending:<where>`) and a reason. A `pending` entry names the PR that removes it. An entry whose function no longer reads a banned name **fails** the lint. New entries show in the diff. |
 | **The ratchet's reference** | `origin/main` is stale or missing, for example in a shallow clone | `_lint_git.base_ref`: a ref it cannot read exits 2 and is never a pass |
 | **Swaps at an equal count** | `count_ratchet` counts hits in changed files, so replacing an allowlisted read with a leak in the same function, or one leak with another, passes | Allowlisted references are not counted, so a leak swapped *in* raises the count. A leak swapped for another leak is invisible to a count. That is why a file pins **absolute** once it reaches zero, and why the end state is absolute (§1). *Stated blind spot while ratcheted.* |
-| **Legitimate durations** | A timeout's `monotonic()` looks the same as a leak | Category `process`. A duration that feeds learning (OD-A4's tool duration) is never `process`: it is `pending:A-post`, with G-tool-duration red. |
+| **Legitimate durations** | A timeout's `monotonic()` looks the same as a leak | Category `process`. A duration meant to feed learning (OD-A4's tool duration) is never `process`: it is `pending:A-post`. It reaches no learning today (#1788), and G-tool-duration lands red in the PR that wires it. |
 | **G-long's sentinel** | A frozen fake clock hides cadence bugs, and a wall read used only as a difference looks normal | The wall **advances** by huge, varying jumps, two schedules are compared, and the machinery clock advances too |
 | **Threads** | The ConceptExtractor reads the wall off the stepped thread | G-long builds without ATL, so `MemoryHub._restore_on_open` cannot revive the extractor across a session cycle, and with `build_memory_hub(start_background_workers=False)`. *Stated blind spot:* host-driven threads are OD-A12's. |
 | **TZ** | The prompt test runs where `time.tzset` is missing (Windows) and passes vacuously | G-tz skips **loudly** with a reason and runs in CI on Linux. A skip is never counted as a pass. |
