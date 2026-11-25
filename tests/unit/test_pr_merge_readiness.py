@@ -684,6 +684,25 @@ class TestSuiteReuseLookup:
         workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/test.yml").read_text()
         assert f"- name: {mod._FAST_SUITE_STEP}\n" in workflow
 
+    @pytest.mark.parametrize(
+        ("run", "job", "reason"),
+        [
+            ({"conclusion": "success", "details_url": "https://github.com/o/r/runs/9"}, None, "names no job"),
+            (
+                None,
+                {"steps": [{"name": "Run required fast suite", "conclusion": "failure"}]},
+                "ended failure",
+            ),
+            (None, {"steps": [{"name": "something else", "conclusion": "success"}]}, "has no"),
+        ],
+    )
+    def test_every_unknown_path_says_why(self, monkeypatch, run, job, reason):
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", lambda *a, **k: job)
+        got = mod._suite_reuse("o/r", run or self._run_with_job())
+        assert got.startswith("unknown") and reason in got
+
     def test_a_failed_read_is_unknown(self, monkeypatch):
         import pr_merge_readiness as mod
 
@@ -699,6 +718,110 @@ class TestSuiteReuseLookup:
         monkeypatch.setattr(mod, "_gh_json", lambda *a, **k: pytest.fail("must not call gh"))
         assert mod._suite_reuse("o/r", {"conclusion": "failure"}) == ""
         assert mod._suite_reuse("o/r", None) == ""
+
+
+class TestSuiteAppPin:
+    """The pin is read from the PR's BASE branch, and any odd shape is 'unpinned', never a crash."""
+
+    @pytest.mark.parametrize(
+        "data", [[1], None, "x", {"protection": []}, {"protection": {"required_status_checks": 3}}]
+    )
+    def test_odd_shapes_are_unpinned(self, data):
+        import pr_merge_readiness as mod
+
+        assert mod.suite_app_id_from_settings(data) is None
+
+    def test_the_pin_is_read_from_the_base_branch(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        seen = []
+
+        def fake(args, **_):
+            seen.append(args)
+            return {"protection": {"required_status_checks": {"checks": [{"context": "unit-tests", "app_id": 7}]}}}
+
+        monkeypatch.setattr(mod, "_gh_json", fake)
+        assert mod._base_suite_app_id("o/r", "main") == (7, None)
+        assert seen[0][-1] == "repos/o/r/contents/scripts/repo_settings_expected.json?ref=main"
+
+    def test_an_unreadable_base_pin_is_a_fetch_error(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        def boom(*a, **k):
+            raise RuntimeError("404")
+
+        monkeypatch.setattr(mod, "_gh_json", boom)
+        app_id, err = mod._base_suite_app_id("o/r", "main")
+        assert app_id is None and "could not read" in err
+        assert mod._base_suite_app_id("o/r", "")[0] is None
+
+
+def _fake_gh(*, heads, suite_conclusion="success", base_pin=15368):
+    """A whole-repo `gh` stand-in: PR view (twice), check runs, alerts, rules, the base pin, the job."""
+    heads = iter(heads)
+
+    def fake(args, **_):
+        if args[:2] == ["pr", "view"]:
+            fields = args[args.index("--json") + 1]
+            if fields == "headRefOid":
+                return {"headRefOid": next(heads)}
+            return {
+                "state": "OPEN",
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "headRefOid": next(heads),
+                "baseRefName": "main",
+            }
+        if args[:2] == ["repo", "view"]:
+            return {"nameWithOwner": "o/r"}
+        path = " ".join(args)
+        if "check-runs" in path:
+            runs = [
+                {"name": c["name"], "id": i, "status": "completed", "conclusion": "success", "app": {"id": 15368}}
+                for i, c in enumerate(_REQUIRED, 1)
+            ]
+            runs[0]["conclusion"] = suite_conclusion
+            runs[0]["details_url"] = "https://github.com/o/r/actions/runs/9/job/42"
+            return [{"check_runs": runs}]
+        if "contents/scripts/repo_settings_expected.json" in path:
+            return {
+                "protection": {"required_status_checks": {"checks": [{"context": "unit-tests", "app_id": base_pin}]}}
+            }
+        if "actions/jobs/42" in path:
+            return {"steps": [{"name": "Run required fast suite", "conclusion": "success"}]}
+        return []
+
+    return fake
+
+
+class TestMainEndToEnd:
+    """Executor finding 2: the real `main()` composition, `_fetch` keys feeding `evaluate`."""
+
+    def test_a_green_pr_is_ready_and_names_its_head(self, monkeypatch, capsys):
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", _fake_gh(heads=["aaa", "aaa"]))
+        assert mod.main(["7"]) == READY
+        out = capsys.readouterr().out
+        assert "head aaa" in out and "suite-of-record" in out and "verdict is for head aaa" in out
+        assert out.splitlines()[1].startswith("READY")
+
+    def test_a_red_suite_blocks_through_main(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", _fake_gh(heads=["aaa", "aaa"], suite_conclusion="neutral"))
+        assert mod.main(["7"]) == BLOCKED
+
+    def test_a_base_pin_for_another_app_blocks(self, monkeypatch):
+        """The base branch's pin, not the checkout's, decides which app's unit-tests counts."""
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", _fake_gh(heads=["aaa", "aaa"], base_pin=99))
+        assert mod.main(["7"]) == BLOCKED
+
+    def test_a_merged_pr_prints_no_ready_line(self):
+        result = _eval(pr={"state": "MERGED", "mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN"})
+        assert not result.render().startswith("READY")
 
 
 class TestHeadMovedDuringRead:
@@ -725,3 +848,11 @@ class TestHeadMovedDuringRead:
         surfaces = mod._fetch(1, None)
         assert any("moved from aaa to bbb" in e for e in surfaces["fetch_errors"])
         assert mod.evaluate(**surfaces).exit_code != READY
+
+    def test_a_head_that_cannot_be_re_read_says_so(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        fake = _fake_gh(heads=["aaa", None])
+        monkeypatch.setattr(mod, "_gh_json", fake)
+        errors = mod._fetch(1, None)["fetch_errors"]
+        assert any("could not re-read the PR head" in e for e in errors)

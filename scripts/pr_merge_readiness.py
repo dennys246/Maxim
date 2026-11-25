@@ -62,6 +62,7 @@ REQUIRED_CHECK_PATTERNS: tuple[str, ...] = ("unit-tests", "lint", "release build
 # that pins which app may post it, and the step a floors-only re-use (#1640) skips.
 SUITE_OF_RECORD = "unit-tests"
 _EXPECTED_SETTINGS = Path(__file__).resolve().parent / "repo_settings_expected.json"
+_EXPECTED_SETTINGS_REPO_PATH = "scripts/repo_settings_expected.json"
 _FAST_SUITE_STEP = "Run required fast suite"
 
 _UNSETTLED = frozenset({"queued", "in_progress", "pending", "waiting", "requested"})
@@ -104,7 +105,8 @@ class Readiness:
             for f in sorted(self.findings, key=lambda f: (order.get(f.severity, 9), f.code))
         ]
         # A READY verdict always carries the suite-of-record INFO row (M64), so say READY first.
-        return "\n".join([ready, *lines] if self.exit_code == READY else lines)
+        closed = any(f.code == "already-closed" for f in self.findings)
+        return "\n".join([ready, *lines] if self.exit_code == READY and not closed else lines)
 
 
 def _latest_run_per_check(checks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
@@ -152,21 +154,52 @@ def _required_missing(
     return [p for p in required_patterns if p.lower() not in joined]
 
 
-def pinned_suite_app_id(path: Path = _EXPECTED_SETTINGS) -> int | None:
-    """The app id the expected settings pin for the `unit-tests` context, or None if unreadable.
+def suite_app_id_from_settings(data: Any) -> int | None:
+    """The app id an expected-settings payload pins for the `unit-tests` context, or None.
 
     The expected-settings file, not live protection: reading protection needs admin scope, and
-    the nightly `scripts/check_repo_settings.py` fails when the two drift.
+    the nightly `scripts/check_repo_settings.py` fails when the two drift. Any other shape is
+    None (unpinned, so the verdict is withheld), never a crash.
     """
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    if not isinstance(data, dict):
         return None
-    checks = ((data.get("protection") or {}).get("required_status_checks") or {}).get("checks") or []
-    for chk in checks:
-        if chk.get("context") == SUITE_OF_RECORD and isinstance(chk.get("app_id"), int):
+    protection = data.get("protection")
+    status = protection.get("required_status_checks") if isinstance(protection, dict) else None
+    checks = status.get("checks") if isinstance(status, dict) else None
+    for chk in checks if isinstance(checks, list) else []:
+        if isinstance(chk, dict) and chk.get("context") == SUITE_OF_RECORD and isinstance(chk.get("app_id"), int):
             return int(chk["app_id"])
     return None
+
+
+def pinned_suite_app_id(path: Path = _EXPECTED_SETTINGS) -> int | None:
+    """The pin in a local copy of the expected settings (tests, offline use); None if unreadable."""
+    try:
+        return suite_app_id_from_settings(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _base_suite_app_id(slug: str, base: str) -> tuple[int | None, str | None]:
+    """The pin as the PR's BASE branch has it, read through the API (review round, 2026-11-25).
+
+    Never the running checkout's copy: run from the PR's own worktree, a PR that edits the file
+    would supply its own pin, and a stale checkout reads a stale one.
+    """
+    if not base:
+        return None, "the PR names no base branch, so the suite-of-record app pin was not read"
+    try:
+        data = _gh_json(
+            [
+                "api",
+                "-H",
+                "Accept: application/vnd.github.raw+json",
+                f"repos/{slug}/contents/{_EXPECTED_SETTINGS_REPO_PATH}?ref={base}",
+            ]
+        )
+    except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        return None, f"could not read {_EXPECTED_SETTINGS_REPO_PATH} on {base} ({exc})"
+    return suite_app_id_from_settings(data), None
 
 
 def suite_of_record_run(checks: list[dict[str, Any]], app_id: int | None) -> dict[str, Any] | None:
@@ -500,11 +533,15 @@ def _fetch(pr_number: int, repo: str | None) -> dict[str, Any]:
     errors: list[str] = []
 
     checks = _slurped_check_runs(slug, pr["headRefOid"])
-    suite_app_id = pinned_suite_app_id()
+    suite_app_id, pin_err = _base_suite_app_id(slug, pr.get("baseRefName") or "")
+    if pin_err:
+        errors.append(pin_err)
     suite_reuse = _suite_reuse(slug, suite_of_record_run(checks, suite_app_id))
     # A push between the two reads would make READY name checks of a stale head (design review finding 1).
     head_now = (_gh_json(["pr", "view", str(pr_number), *repo_args, "--json", "headRefOid"]) or {}).get("headRefOid")
-    if head_now != pr["headRefOid"]:
+    if not head_now:
+        errors.append("could not re-read the PR head after reading its checks, so they may be of a stale head")
+    elif head_now != pr["headRefOid"]:
         errors.append(f"the PR head moved from {pr['headRefOid']} to {head_now} while its checks were read")
 
     alerts: list[dict[str, Any]] = []

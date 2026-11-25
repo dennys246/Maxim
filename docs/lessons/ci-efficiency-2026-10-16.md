@@ -54,7 +54,8 @@ real-repo test (43 s), `test_b1_floor_run` (87 s for the file) and `test_water_t
    "Enforced, or on the backlog" principle the rule text in CLAUDE.md ("Faster without lowering the bar" item 2)
    and [development-flow-speed.md](development-flow-speed.md) §2 changes only when M64 lands. M64 makes
    `scripts/pr_merge_readiness.py` assert a green, non-cancelled `unit-tests` run on the PR's `headRefOid`. Until
-   then the last local full suite still runs on the exact commit pushed.
+   then the last local full suite still runs on the exact commit pushed. *(Superseded 2026-11-25: M64 shipped, so
+   CI's run is the final suite; see [ci-testing.md](../agents/ci-testing.md) §1.)*
 2. **Coverage-ratchet redesign.** A rise above a pin becomes a warning or an auto-bump, and pins come from CI's
    Linux artifact. Adopted, pending the adversarial design pass any gate change owes (M60).
 3. **The `edited` trigger** gets a per-job guard plus a workflow-shape test that every job carries it (M61). The
