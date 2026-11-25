@@ -1535,7 +1535,9 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         status="completed",
         reply=result.get("response"),
         detail=(
-            "Turn timed out before a reply — the response may still arrive on /ws."
+            "The model chose not to act on this turn."  # a declined turn's no-op marker settled it (#1743)
+            if timed_out and result.get("noop_count")
+            else "Turn timed out before a reply — the response may still arrive on /ws."
             if timed_out
             else f"Turn complete ({len(result.get('actions') or [])} action(s)); also on /ws as kind='response'."
         ),

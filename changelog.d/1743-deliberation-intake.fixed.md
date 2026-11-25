@@ -10,7 +10,11 @@
   - A planning retry budget spent anywhere now aborts the run on the next pass (`loop_gates.pre_tick_gate` reads the
     latch), so a budget spent in the deliberation's intake cannot leave the loop idling. Under planning liveness a
     declined deliberation turn is dropped, not retried; no shipped loop combines liveness with a deliberation today.
-  - A turn that ends with no action and no retry (a declined deliberation, or an action-less answer with planning
-    liveness off) now records the sim's no-op marker, so the bridge ends that turn after its settle window instead
-    of waiting out the 120 s response timeout. It still reports `timed_out` and counts no action; the turn's
-    `noop_count` is 1. The marker existed since 0.8 but nothing recorded it.
+  - A turn that ends with nothing done and nothing retried now records the sim's no-op marker
+    (`_deliberation_noop`), so the bridge ends that turn after its settle window instead of waiting out the 120 s
+    response timeout: a declined deliberation, and, with planning liveness off, an action-less or error answer to a
+    fresh input or a stale drop of one. A late answer to a tool follow-up or a deliberation continuation records
+    nothing, so it cannot end the next turn early. The turn still reports `timed_out` and counts no action; the
+    console says the model chose not to act instead of "timed out". The marker existed since 0.8 but nothing
+    recorded it. The Exp 41/42 action loaders and the sub-simulation report's `total_actions` now leave the loop's
+    markers out, as the other counters already did.

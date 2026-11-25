@@ -220,7 +220,7 @@ class TestDeliberationCycles:
         first = _make_proposal(ready_to_act=False, reasoning="initial thoughts no action", action=None)
 
         with (
-            patch("maxim.simulation.sim_logger.sim_log"),
+            patch("maxim.simulation.sim_logger.sim_log") as sim_log,
             patch("maxim.simulation.sim_logger.sim_pre_deliberation"),
             patch("maxim.simulation.sim_logger.sim_contemplation"),
         ):
@@ -239,6 +239,7 @@ class TestDeliberationCycles:
             )
 
         assert result is not None and not result.action
+        sim_log.assert_any_call("DELIBERATION", "max cycles (2) reached, no action")  # not "forcing action"
 
     def test_convergence_detection(self, bio, wms, ctx, gate):
         """When reasoning converges (Jaccard >= 0.8), returns proposal."""

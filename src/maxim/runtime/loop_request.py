@@ -716,6 +716,7 @@ def _deliberate(
             _planning_liveness_on=_planning_liveness_on,
             _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
             declined_is_failure=False,  # a declined turn is not retried (owner decision 2026-11-24)
+            ends_turn=True,  # this pass's submit, answered synchronously: the bridge's turn
         )
 
     _outcome = IntakeOutcome(exhausted=False, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
@@ -761,15 +762,14 @@ def _deliberate(
                     max_cycles=_max_cyc,
                     ctrl=ctrl,
                 )
-                if _delib is not None:  # every answer it consumed since #1743; one with no action, the intake drops
-                    _outcome = _accept(_delib)
-                    sim.log(
-                        "DELIBERATION",
-                        f"multi-cycle deliberation yielded proposal: "
-                        f"tool={_delib.action.get('tool_name') if isinstance(_delib.action, dict) else None}",
-                    )
-                else:
-                    sim.log("DELIBERATION", "multi-cycle deliberation returned None (IDLE)")
+                _outcome = _accept(_delib)  # the answer it settled on (#1743: never None); the intake decides
+                sim.log(
+                    "DELIBERATION",
+                    f"multi-cycle deliberation yielded proposal: "
+                    f"tool={_delib.action.get('tool_name') if isinstance(_delib.action, dict) else None}"
+                    if ctrl.pending_proposal is _delib
+                    else "multi-cycle deliberation declined: the intake took no action",
+                )
             else:
                 # ready_to_act == True on cycle 1 — use directly
                 _outcome = _accept(_first)

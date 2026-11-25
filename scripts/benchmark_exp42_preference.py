@@ -204,6 +204,8 @@ def _resolve_maxim_binary() -> str:
 def _load_action_tools(session_dir: Path) -> list[str]:
     """Read THE session's actions.jsonl (the one this run's spawn wrote, found by run id) and return executed
     tool names. Mirrors benchmark_exp41_exploration._load_action_tools."""
+    from maxim.simulation.sinks import SYNTHETIC_TOOL_NAMES
+
     actions = session_dir / "actions.jsonl"
     if not actions.exists():
         raise RuntimeError(f"no actions.jsonl in {session_dir}")
@@ -219,7 +221,7 @@ def _load_action_tools(session_dir: Path) -> list[str]:
         if not isinstance(rec, dict) or rec.get("_record_kind") == "header":
             continue
         tool = rec.get("tool") or (rec.get("action") or {}).get("tool_name")
-        if tool:
+        if tool and tool not in SYNTHETIC_TOOL_NAMES:  # the loop's own markers are not executed tools (#1185, #1743)
             tools.append(str(tool))
     return tools
 

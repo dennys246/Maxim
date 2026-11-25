@@ -107,7 +107,11 @@ class _Worker:
         self.submits.append({"cli_inputs": list(getattr(ctx, "cli_inputs", None) or []), "context": ctx, "kw": kw})
         n = len(self.submits) - 1
         if n < len(self.answers) and self.answers[n] is not None:
-            self._owed.append(self.answers[n])
+            answer = self.answers[n]
+            if getattr(answer, "original_request", None) is None:  # as the real worker stamps it (D13), same object
+                request = SimpleNamespace(triggering_input=kw.get("triggering_input", ""), context=ctx)
+                object.__setattr__(answer, "original_request", request)
+            self._owed.append(answer)
         if self.stop is not None:  # the run stops while the submit is in flight
             self.stop.set()
         if n == self.raise_on:  # recorded, then the submit itself raises
@@ -919,6 +923,56 @@ def test_1743_a_turn_ending_with_no_action_records_the_noop_marker(
     assert noops == ([(DELIBERATION_NOOP, "proposal_completed_without_action")] if marked else [])
 
 
+def _noops(sink: Any) -> list[str]:
+    from maxim.simulation.sinks import DELIBERATION_NOOP
+
+    return [a.result_output for a in sink.actions if a.tool_name == DELIBERATION_NOOP]
+
+
+@pytest.mark.parametrize(
+    "answer, marked",
+    [
+        pytest.param(dict(error="model boom"), ["proposal_error"], id="an-error-not-retried"),
+        pytest.param(dict(error="shutdown"), [], id="shutdown-ends-the-run"),
+        pytest.param(dict(stale=True), ["stale_proposal_dropped"], id="a-stale-drop-not-retried"),
+    ],
+)
+def test_1743_other_turn_ends_with_nothing_done_record_the_marker(monkeypatch, tmp_path, answer, marked):
+    """Planning liveness off, §2 (no deliberation): an error or a stale drop is not retried either, so the turn is over
+    (owner decision 2026-11-24); a shutdown error ends the run, not a turn."""
+    import dataclasses
+
+    from maxim.simulation.sinks import RecordingSink
+
+    proposal = dataclasses.replace(_proposal(), error=answer.get("error"))
+    if answer.get("stale"):
+        object.__setattr__(proposal, "timestamp", time.time() - 3600)
+    sink = RecordingSink()
+    _run(monkeypatch, tmp_path, inputs={0: "one"}, worker=_Worker(answers=[proposal]), action_sink=sink, steps=2)
+    assert _noops(sink) == marked
+
+
+def test_1743_a_late_follow_up_answer_does_not_end_the_next_turn(monkeypatch, tmp_path):
+    """A tool follow-up's action-less answer can land after the bridge settled on the tool's record and moved on:
+    it must not record a marker into the next turn's window (delta round, executor SF1). Neither may a deliberation
+    continuation's late answer (no triggering input)."""
+    from maxim.agents.llm_types import LLMProposal
+    from maxim.simulation.sinks import RecordingSink
+
+    sink = RecordingSink()
+    followup = SimpleNamespace(triggering_input="one", context=SimpleNamespace(cli_inputs=["[ACTION_FOLLOWUP x"]))
+    continuation = SimpleNamespace(triggering_input="", context=SimpleNamespace(cli_inputs=["one"]))
+    answers = []
+    for request in (followup, continuation):
+        p = _proposal(reasoning="done")
+        object.__setattr__(p, "original_request", request)
+        answers.append(p)
+    worker = _Worker(answers=answers)
+    _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, action_sink=sink, steps=4)
+    assert len(worker.submits) == 2 and isinstance(answers[0], LLMProposal)
+    assert _noops(sink) == []
+
+
 def test_1743_a_ready_answer_queues_its_next_actions(monkeypatch, tmp_path):
     """The deliberation's answers dropped their ``next_actions``; §2's intake queues them for ``multi_step``."""
     import dataclasses
@@ -995,7 +1049,7 @@ def test_not_ready_with_no_actionable_answer_idles(monkeypatch, tmp_path):
     pipeline = _Pipeline([_enriched(1), None])
     obs = _run(monkeypatch, tmp_path, inputs={0: "hi"}, worker=worker, pipeline=pipeline, steps=1)
     assert obs.ctrl.pending_proposal is None and len(obs.worker.submits) == 1
-    assert ("DELIBERATION", "multi-cycle deliberation yielded proposal: tool=None") in obs.adapter_logs
+    assert ("DELIBERATION", "multi-cycle deliberation declined: the intake took no action") in obs.adapter_logs
 
 
 def test_the_deliberation_cap_override_reaches_the_cycles(monkeypatch, tmp_path):

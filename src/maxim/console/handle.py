@@ -67,6 +67,8 @@ def _describe_silent_turn(turn: dict[str, Any]) -> str:
     what happened, which is the difference between a wedge and a degraded
     state that is SHOWN.
     """
+    if turn.get("timed_out") and turn.get("noop_count"):  # the AUT answered and chose to do nothing (#1743)
+        return "(no reply — the model chose not to act on this one)"
     if turn.get("timed_out"):
         return "(no reply — the turn timed out before finishing)"
     refused_records = [

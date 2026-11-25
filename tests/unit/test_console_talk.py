@@ -496,6 +496,9 @@ class TestSilentTurnsExplainThemselves:
         from maxim.console.handle import _describe_silent_turn
 
         assert "timed out" in _describe_silent_turn({"actions": [], "timed_out": True})
+        # #1743: a turn the model declined settles on its no-op marker; it did not run out of time
+        declined = _describe_silent_turn({"actions": [], "timed_out": True, "noop_count": 1})
+        assert "chose not to act" in declined and "timed out" not in declined
 
     def test_placeholder_carries_structured_reason_on_the_wire(self, sim_logging, monkeypatch):
         # The web chat renders from the stream, so the reason must be in the

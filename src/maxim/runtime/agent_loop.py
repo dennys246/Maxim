@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import functools
 import logging
 import os
 import time
@@ -344,6 +345,24 @@ def run_agent_loop(
 # ─────────────────────────────────────────────────────────────────────────
 
 
+def _end_deliberation(
+    cycle: int, log_text: str, summary: str, *, max_cycles: int, thought_gate: Any, step_num: int
+) -> None:
+    """One exit of ``_run_deliberation_cycles`` (each of its three, verbatim but for the names, #1743's rule-T carry):
+    the contemplation and end events, the sim log line, and the thought gate's refractory reset."""
+    from maxim.simulation.sim_logger import sim_contemplation, sim_deliberation_end, sim_log
+
+    sim_contemplation(
+        gate_passed=True,
+        refined=True,
+        score=0.0,
+    )
+    sim_log("DELIBERATION", log_text)
+    sim_deliberation_end(cycle=cycle, max_cycles=max_cycles, summary=summary)
+    if thought_gate is not None:
+        thought_gate.reset_refractory(step_num)
+
+
 def _wait_for_proposal(
     llm_worker: Any,
     stop_event: Any,
@@ -498,7 +517,7 @@ def _run_deliberation_cycles(
     step_num: int,
     max_cycles: int = 3,
     ctrl: Any | None = None,
-) -> Any | None:
+) -> Any:
     """PFC deliberation cycles 2+ — recurrence after first proposal.
 
     Called from the LLM submission point (section 6) when cycle 1 returned
@@ -523,15 +542,11 @@ def _run_deliberation_cycles(
         max_cycles: Hard cap including cycle 1 (default 3).
 
     Returns:
-        LLMProposal or None.
+        The last answer consumed, never None: one with no action is a declined turn, which §2's intake drops (#1743).
     """
-    from maxim.simulation.sim_logger import (
-        sim_log,
-        sim_pre_deliberation,
-        sim_contemplation,
-        sim_deliberation_update,
-        sim_deliberation_end,
-    )
+    from maxim.simulation.sim_logger import sim_deliberation_update, sim_log, sim_pre_deliberation
+
+    _end = functools.partial(_end_deliberation, max_cycles=max_cycles, thought_gate=thought_gate, step_num=step_num)
 
     recent_keywords: list[set[str]] = []
     last_proposal = first_proposal
@@ -656,15 +671,11 @@ def _run_deliberation_cycles(
 
         # 6. Check ready_to_act
         if proposal.ready_to_act:
-            sim_contemplation(
-                gate_passed=True,
-                refined=True,
-                score=0.0,
+            _end(
+                cycle,
+                f"deliberation converged: ready_to_act after {cycle} cycles",
+                f"Ready to act after {cycle} cycles",
             )
-            sim_log("DELIBERATION", f"deliberation converged: ready_to_act after {cycle} cycles")
-            sim_deliberation_end(cycle=cycle, max_cycles=max_cycles, summary=f"Ready to act after {cycle} cycles")
-            if thought_gate is not None:
-                thought_gate.reset_refractory(step_num)
             return proposal
 
         # 7. Not ready — check convergence before looping
@@ -674,17 +685,11 @@ def _run_deliberation_cycles(
 
         if len(recent_keywords) >= 2 and _jaccard_convergence(recent_keywords[-1], recent_keywords[-2]):
             logger.info("Deliberation converged after %d cycles (Jaccard >= 0.8)", cycle)
-            sim_contemplation(
-                gate_passed=True,
-                refined=True,
-                score=0.0,
+            _end(
+                cycle,
+                f"deliberation converged (Jaccard) after {cycle} cycles",
+                f"Converged (Jaccard) after {cycle} cycles",
             )
-            sim_log("DELIBERATION", f"deliberation converged (Jaccard) after {cycle} cycles")
-            sim_deliberation_end(
-                cycle=cycle, max_cycles=max_cycles, summary=f"Converged (Jaccard) after {cycle} cycles"
-            )
-            if thought_gate is not None:
-                thought_gate.reset_refractory(step_num)
             return proposal  # one with no action is a declined turn: the intake drops it (#1743)
 
         # 8. Feed reasoning back for next enrichment
@@ -692,18 +697,8 @@ def _run_deliberation_cycles(
         logger.debug("Deliberation cycle %d: reasoning fed back for enrichment (%d chars)", cycle, len(reasoning))
 
     # Max cycles reached without ready_to_act
-    sim_contemplation(
-        gate_passed=True,
-        refined=True,
-        score=0.0,
-    )
-    sim_log("DELIBERATION", f"max cycles ({max_cycles}) reached, forcing action")
-    sim_deliberation_end(
-        cycle=max_cycles, max_cycles=max_cycles, summary=f"Max cycles ({max_cycles}) reached, forcing action"
-    )
-    if thought_gate is not None:
-        thought_gate.reset_refractory(step_num)
-
+    _forced = "forcing action" if last_proposal.action else "no action"  # #1743: the intake drops an action-less one
+    _end(max_cycles, f"max cycles ({max_cycles}) reached, {_forced}", f"Max cycles ({max_cycles}) reached, {_forced}")
     return last_proposal  # as above: the intake (loop_intake.accept_llm_proposal) drops one with no action (#1743)
 
 

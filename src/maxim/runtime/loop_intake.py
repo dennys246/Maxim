@@ -58,6 +58,7 @@ from typing import Any
 from maxim.agents.bus import StreamEvent
 from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import _handle_planning_failure
+from maxim.runtime.loop_perception import is_tool_followup
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
@@ -289,6 +290,7 @@ def take_llm_proposal(
             _planning_liveness_on=_planning_liveness_on,
             _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
             declined_is_failure=True,  # §2's rule: an action-less answer is a planning failure, retried
+            ends_turn=answers_a_fresh_input(new_proposal),
         )
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 
@@ -308,6 +310,7 @@ def accept_llm_proposal(
     _planning_liveness_on: bool,
     _consecutive_llm_fallbacks: int,
     declined_is_failure: bool,
+    ends_turn: bool,
 ) -> IntakeOutcome:
     """The ONE intake of a worker's answer (#1743): §2 calls it with what it polled, ``loop_request._deliberate``
     with each answer the PFC deliberation consumed outside §2's poll. A stale answer and a sim-skipped fallback are
@@ -323,6 +326,12 @@ def accept_llm_proposal(
     AUT and the CLI have liveness off), so the False branch guards a future one; with liveness off both callers drop
     the answer alike, and leave the pending user input for ``has_pending_llm_input``'s own 30 s expiry.
 
+    ``ends_turn``: whether this answer ends the sim bridge's current turn, so that, when the turn ends with nothing
+    done and nothing retried, ``_record_declined_turn`` tells the bridge (owner decision 2026-11-24). The
+    deliberation passes True (its answers answer this pass's submit, synchronously); §2 passes
+    ``answers_a_fresh_input``, so a late answer to a tool follow-up or to a deliberation's continuation, which can
+    land after the bridge has moved on, never ends the next turn early.
+
     For the deliberation the stale rule bites in one case: when cycles 2+ stop early (a wait timed out), the answer
     they return is an earlier cycle's, possibly older than ``_STALE_PROPOSAL_AGE_S``, and it is dropped, not run.
     """
@@ -332,6 +341,8 @@ def accept_llm_proposal(
             new_proposal, ctrl=ctrl, llm_worker=llm_worker, sim=sim, liveness_on=_planning_liveness_on
         )
         _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
+        if new_proposal is None and ends_turn and not _planning_liveness_on:  # dropped, not retried: the turn is over
+            _record_declined_turn(action_sink, "stale_proposal_dropped")
     # In simulation mode, skip fallback proposals — wait for real LLM
     if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
         _dropped = _drop_skipped_fallback(
@@ -446,20 +457,47 @@ def accept_llm_proposal(
                     exhausted_status="planning_failed",
                 ):
                     _planning_liveness_exhausted = True
-        if not (new_proposal.action or new_proposal.error or (_planning_liveness_on and declined_is_failure)):
-            _record_declined_turn(action_sink, new_proposal)  # not retried: the turn is over
+        if ends_turn and _turn_is_over(new_proposal, liveness_on=_planning_liveness_on, retries=declined_is_failure):
+            _record_declined_turn(action_sink, _proposal_without_action_reason(new_proposal) or "proposal_error")
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 
 
-def _record_declined_turn(action_sink: Any, proposal: Any) -> None:
-    """A turn that ended with no action and no retry records the sink's no-op marker (``sinks.DELIBERATION_NOOP``),
-    so the sim bridge sees the AUT answered and settles instead of waiting out its response timeout; the bridge
-    counts it as ``noop_count``, never as an action, so ``timed_out`` and the action cap are unchanged. Built for
-    this in 0.8 (Stage 4, F2) and never called until #1743 (owner decision 2026-11-24). A sink without the
-    method (any ``ActionSink`` but ``RecordingSink``) or no sink: nothing."""
-    record_noop = getattr(action_sink, "record_noop", None)
-    if callable(record_noop):
-        record_noop(reason=_proposal_without_action_reason(proposal) or "proposal_without_action")
+def answers_a_fresh_input(proposal: Any) -> bool:
+    """Whether §2's answer answers a fresh input (a person's words or a plan modification), the thing the sim bridge's
+    current turn waits on: its request had a triggering input and no tool follow-up among its inputs. A deliberation
+    continuation (no triggering input) and a tool follow-up's answer do not: they can arrive after the bridge settled
+    on an earlier record and moved on (#1743 delta round)."""
+    request = getattr(proposal, "original_request", None)
+    if request is None or not getattr(request, "triggering_input", ""):
+        return False
+    inputs = getattr(getattr(request, "context", None), "cli_inputs", None) or []
+    return not any(is_tool_followup(text) for text in inputs)
+
+
+def _turn_is_over(proposal: Any, *, liveness_on: bool, retries: bool) -> bool:
+    """An answer with no action that nothing retries: an error (but shutdown, which ends the run) is retried only under
+    planning liveness; an action-less answer only under liveness with ``declined_is_failure``."""
+    if proposal.action:
+        return False
+    if proposal.error:
+        return proposal.error != "shutdown" and not liveness_on
+    return not (liveness_on and retries)
+
+
+def _record_declined_turn(action_sink: Any, reason: str) -> None:
+    """A turn that ended with nothing done and nothing retried records the sink's no-op marker
+    (``sinks.DELIBERATION_NOOP``): the deliberation's declined turns and §2's (an action-less answer, an error or a
+    stale drop, all with planning liveness off). The sim bridge then sees the AUT answered and settles instead of
+    waiting out its response timeout; it counts the marker as ``noop_count``, never as an action, so ``timed_out``
+    and the action cap are unchanged. Built in 0.8 (Stage 4, F2), first recorded by #1743 (owner decision
+    2026-11-24), through the ``ActionSink`` protocol's ``record`` as ``_drop_skipped_fallback``'s marker is."""
+    if action_sink is None:
+        return
+    from maxim.simulation.sinks import DELIBERATION_NOOP, ActionRecord
+
+    action_sink.record(
+        ActionRecord(timestamp=time.time(), tool_name=DELIBERATION_NOOP, result_success=True, result_output=reason)
+    )
 
 
 def take_queued_next_action(*, ctrl: Any, pending_next_actions: list[dict[str, Any]]) -> None:

@@ -120,11 +120,6 @@
     },
     {
       "file": "src/maxim/runtime/agent_loop.py",
-      "qualname": "_run_deliberation_cycles",
-      "lines": 221
-    },
-    {
-      "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agent_loop",
       "lines": 230
     },

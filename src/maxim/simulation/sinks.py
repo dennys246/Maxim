@@ -40,7 +40,7 @@ from typing import Any, Protocol, runtime_checkable
 # The loop's own records, not actions the agent took (``ActionRecord.is_synthetic``, #1185).
 GATING_PROMPT = "_gating_prompt"  # a gating prompt shown to a simulated person (``SimulationAdapter.emit_prompt``)
 LLM_UNAVAILABLE = "_llm_unavailable"  # the agent loop's LLM-stall marker (it breaks the bridge's settle loop)
-DELIBERATION_NOOP = "_deliberation_noop"  # ``RecordingSink.record_noop``'s marker
+DELIBERATION_NOOP = "_deliberation_noop"  # a turn over with nothing done (loop_intake._record_declined_turn, #1743)
 SYNTHETIC_TOOL_NAMES: frozenset[str] = frozenset({GATING_PROMPT, LLM_UNAVAILABLE, DELIBERATION_NOOP})
 
 
@@ -220,7 +220,8 @@ class RecordingSink:
         return results
 
     def record_noop(self, reason: str = "") -> None:
-        """Record a deliberation NoOp marker (Stage 4, F2 fix).
+        """Record a deliberation NoOp marker (Stage 4, F2 fix). The loop records the same marker through ``record``
+        (``loop_intake._record_declined_turn``, #1743), for any turn over with nothing done, not only a deliberation's.
 
         The bridge watches ``len(self.actions)`` for growth.  A NoOp
         deliberation tick records this marker so the bridge sees

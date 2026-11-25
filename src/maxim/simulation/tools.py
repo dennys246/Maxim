@@ -1639,7 +1639,7 @@ class SpawnSubSimulationTool(Tool):
             "turn": result["turn"],
             "response": result["response"],
             "actions": action_summaries,
-            "total_actions": len(result["actions"]),
+            "total_actions": sum(1 for a in result["actions"] if not a.is_synthetic),  # markers aren't actions
             "blocked_actions": len(result["blocked"]),
             "timed_out": result["timed_out"],
         }
