@@ -72,7 +72,7 @@ from maxim.agents.bus import StreamEvent
 from maxim.runtime import loop_state as _lstate
 from maxim.runtime.loop_controller import take_replan_inputs
 from maxim.runtime.loop_external import planning_submit_shared_kwargs, submit_tick_context
-from maxim.runtime.loop_intake import IntakeOutcome, accept_llm_proposal
+from maxim.runtime.loop_intake import IntakeOutcome, accept_llm_proposal, answers_a_fresh_input
 from maxim.runtime.loop_perception import is_tool_followup
 from maxim.runtime.loop_planning import annotate_tool_variance
 from maxim.runtime.loop_state import operational_mode
@@ -701,7 +701,7 @@ def _deliberate(
     ``loop_intake.accept_llm_proposal``, §2's one intake (#1743), given the arguments after ``_wait_for_proposal`` as
     §2 passes them; returns that intake's outcome (an unchanged one when it took no answer)."""
 
-    def _accept(proposal: Any) -> IntakeOutcome:
+    def _accept(proposal: Any, ends_turn: bool) -> IntakeOutcome:
         return accept_llm_proposal(
             proposal,
             llm_worker=llm_worker,
@@ -716,7 +716,7 @@ def _deliberate(
             _planning_liveness_on=_planning_liveness_on,
             _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
             declined_is_failure=False,  # a declined turn is not retried (owner decision 2026-11-24)
-            ends_turn=True,  # this pass's submit, answered synchronously: the bridge's turn
+            ends_turn=ends_turn,
         )
 
     _outcome = IntakeOutcome(exhausted=False, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
@@ -726,6 +726,9 @@ def _deliberate(
     # right here where all submission params are in scope.
     if submitted and _pfc_gate_passed and bio_enrichment_pipeline is not None:
         _first = _wait_for_proposal(llm_worker, stop_event, ctrl=ctrl)
+        # Whether this submit's answers end the bridge's turn: cycle 1's request decides for cycles 2+ too, whose
+        # continuations carry no triggering input (#1743 delta 2: a deliberation on a tool follow-up does not).
+        _ends_turn = answers_a_fresh_input(_first)
         if _first is not None:
             _max_cyc = (
                 _max_cycles_override if _max_cycles_override is not None else (3 if percept_source is not None else 2)
@@ -762,7 +765,9 @@ def _deliberate(
                     max_cycles=_max_cyc,
                     ctrl=ctrl,
                 )
-                _outcome = _accept(_delib)  # the answer it settled on (#1743: never None); the intake decides
+                _outcome = _accept(
+                    _delib, _ends_turn
+                )  # the answer it settled on (#1743: never None); the intake decides
                 sim.log(
                     "DELIBERATION",
                     f"multi-cycle deliberation yielded proposal: "
@@ -772,7 +777,7 @@ def _deliberate(
                 )
             else:
                 # ready_to_act == True on cycle 1 — use directly
-                _outcome = _accept(_first)
+                _outcome = _accept(_first, _ends_turn)
                 from maxim.simulation.sim_logger import (
                     sim_contemplation,
                     sim_deliberation_end,

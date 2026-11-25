@@ -298,6 +298,35 @@ class TestTalkEndpoint:
         assert seen_run_ids == [srv._TALK_RUN_ID]  # stamped during the turn
         assert srv._event_hub._run_id is None  # and cleared after
 
+    @pytest.mark.parametrize(
+        "reason, noop_count, says",
+        [
+            ("proposal_completed_without_action", 1, "chose not to act"),
+            ("proposal_error:Invalid LLM response", 1, "answer failed (Invalid LLM response)"),
+            ("stale_proposal_dropped", 1, "too late"),
+            (None, 0, "timed out before a reply"),
+        ],
+        ids=["declined", "error", "stale", "timed-out"],
+    )
+    def test_a_declined_turn_is_not_reported_as_timed_out(self, monkeypatch, reason, noop_count, says):
+        """#1743: a turn that settled on the loop's no-op marker says why (the marker's reason); ``timed_out`` stays
+        True (no action). An error is never called the model's choice."""
+        from maxim.console import server as srv
+        from maxim.simulation.sinks import DELIBERATION_NOOP, ActionRecord
+
+        actions = [] if reason is None else [ActionRecord(0.0, DELIBERATION_NOOP, result_output=reason)]
+
+        class DeclinedHandle:
+            agent_id = "console_agent"
+
+            def talk(self, text, **kw):
+                return {"turn": 1, "response": None, "actions": actions, "timed_out": True, "noop_count": noop_count}
+
+        monkeypatch.setattr(srv, "_get_handle", lambda: DeclinedHandle())
+        with TestClient(build_app(None, auth_token=_TOKEN), headers=_AUTH) as c:
+            r = c.post("/api/run", json={"mode": "talk", "input": "hello"})
+        assert r.status_code == 200 and says in r.json()["detail"]
+
     def test_talk_rejected_while_an_adventure_runs(self, monkeypatch):
         from maxim.console import server as srv
 
@@ -497,8 +526,13 @@ class TestSilentTurnsExplainThemselves:
 
         assert "timed out" in _describe_silent_turn({"actions": [], "timed_out": True})
         # #1743: a turn the model declined settles on its no-op marker; it did not run out of time
+        from maxim.simulation.sinks import DELIBERATION_NOOP, ActionRecord
+
         declined = _describe_silent_turn({"actions": [], "timed_out": True, "noop_count": 1})
         assert "chose not to act" in declined and "timed out" not in declined
+        marker = ActionRecord(0.0, DELIBERATION_NOOP, result_output="proposal_error:boom")
+        failed = _describe_silent_turn({"actions": [marker], "timed_out": True, "noop_count": 1})
+        assert "answer failed (boom)" in failed and "chose" not in failed
 
     def test_placeholder_carries_structured_reason_on_the_wire(self, sim_logging, monkeypatch):
         # The web chat renders from the stream, so the reason must be in the

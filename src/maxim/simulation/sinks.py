@@ -44,6 +44,23 @@ DELIBERATION_NOOP = "_deliberation_noop"  # a turn over with nothing done (loop_
 SYNTHETIC_TOOL_NAMES: frozenset[str] = frozenset({GATING_PROMPT, LLM_UNAVAILABLE, DELIBERATION_NOOP})
 
 
+def nothing_done_reason(actions: Any) -> str | None:
+    """Why a turn settled on a ``DELIBERATION_NOOP`` marker, in a person's words, or None when it did not: the model
+    declined, its answer failed (the marker's ``proposal_error:<text>``), or its answer was dropped as stale (the
+    reasons ``loop_intake._record_declined_turn`` records, #1743). The console's two talk surfaces read this."""
+    for record in reversed(list(actions or [])):
+        if getattr(record, "tool_name", None) != DELIBERATION_NOOP:
+            continue
+        reason = str(getattr(record, "result_output", "") or "")
+        if reason.startswith("proposal_error"):
+            detail = reason.partition(":")[2].strip()
+            return f"the model's answer failed ({detail})" if detail else "the model's answer failed"
+        if reason == "stale_proposal_dropped":
+            return "the model's answer came too late and was dropped"
+        return "the model chose not to act on this one"
+    return None
+
+
 @dataclass(frozen=True)
 class ActionRecord:
     """Captured output action from the agent pipeline.

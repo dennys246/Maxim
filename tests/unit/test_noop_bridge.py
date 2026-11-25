@@ -143,3 +143,40 @@ class TestBridgeNoopHandling:
         t.join(timeout=2)
         assert result["noop_count"] == 1
         assert result["response"] == "actual response"
+
+
+def test_the_sub_simulation_report_counts_no_marker_as_an_action(monkeypatch, tmp_path):
+    """#1743: a sub-sim AUT's declined turn records ``_deliberation_noop``; the report the narrator reads counts the
+    agent's actions only (``ActionRecord.is_synthetic``), as every other counter does."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    import maxim.runtime.agent_loop as agent_loop
+    import maxim.simulation.bridge as bridge_mod
+    from maxim.simulation.sinks import DELIBERATION_NOOP
+    from maxim.simulation.tools import SpawnSubSimulationTool
+
+    monkeypatch.chdir(tmp_path)
+    records = [
+        ActionRecord(timestamp=time.time(), tool_name="respond", result_success=True),
+        ActionRecord(timestamp=time.time(), tool_name=DELIBERATION_NOOP, result_success=True),
+    ]
+    monkeypatch.setattr(agent_loop, "run_agentic_loop", lambda *a, **kw: None)
+    monkeypatch.setattr("maxim.agents.maxim_agent.MaximAgent", lambda *a, **kw: MagicMock(name="sub_agent"))
+    monkeypatch.setattr(
+        bridge_mod.SimulationBridge,
+        "send_and_wait",
+        lambda self, goal: {"turn": 0, "response": None, "actions": records, "blocked": [], "timed_out": False},
+    )
+    from maxim.runtime.bootstrap import build_executor
+    from maxim.tools.registry import ToolRegistry
+    from tests.policy_helpers import TEST_POLICY
+
+    tool = SpawnSubSimulationTool(llm_router=None, sim_tmpdir=str(tmp_path), sandbox_dirs=[str(tmp_path)])
+    executor = build_executor(ToolRegistry([tool]), pain_bus=None, policy=TEST_POLICY)
+    out = executor.execute({"tool_name": "spawn_sub_simulation", "params": {"goal": "hello"}})
+    if tool._sub_thread is not None:
+        tool._sub_thread.join(timeout=10)
+    report = out.output if isinstance(out.output, dict) else SimpleNamespace(get=lambda k: None)
+    assert out.success, out
+    assert report.get("total_actions") == 1 and len(report.get("actions")) == 2

@@ -930,14 +930,15 @@ def _noops(sink: Any) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    "answer, marked",
+    "answer, liveness, marked",
     [
-        pytest.param(dict(error="model boom"), ["proposal_error"], id="an-error-not-retried"),
-        pytest.param(dict(error="shutdown"), [], id="shutdown-ends-the-run"),
-        pytest.param(dict(stale=True), ["stale_proposal_dropped"], id="a-stale-drop-not-retried"),
+        pytest.param(dict(error="model boom"), False, ["proposal_error:model boom"], id="an-error-not-retried"),
+        pytest.param(dict(error="shutdown"), False, [], id="shutdown-ends-the-run"),
+        pytest.param(dict(stale=True), False, ["stale_proposal_dropped"], id="a-stale-drop-not-retried"),
+        pytest.param(dict(stale=True), True, [], id="a-stale-drop-retried-under-liveness"),  # the retry ends the turn
     ],
 )
-def test_1743_other_turn_ends_with_nothing_done_record_the_marker(monkeypatch, tmp_path, answer, marked):
+def test_1743_other_turn_ends_with_nothing_done_record_the_marker(monkeypatch, tmp_path, answer, liveness, marked):
     """Planning liveness off, §2 (no deliberation): an error or a stale drop is not retried either, so the turn is over
     (owner decision 2026-11-24); a shutdown error ends the run, not a turn."""
     import dataclasses
@@ -948,7 +949,15 @@ def test_1743_other_turn_ends_with_nothing_done_record_the_marker(monkeypatch, t
     if answer.get("stale"):
         object.__setattr__(proposal, "timestamp", time.time() - 3600)
     sink = RecordingSink()
-    _run(monkeypatch, tmp_path, inputs={0: "one"}, worker=_Worker(answers=[proposal]), action_sink=sink, steps=2)
+    _run(
+        monkeypatch,
+        tmp_path,
+        inputs={0: "one"},
+        worker=_Worker(answers=[proposal]),
+        planning_liveness=liveness,
+        action_sink=sink,
+        steps=2,
+    )
     assert _noops(sink) == marked
 
 
@@ -970,6 +979,30 @@ def test_1743_a_late_follow_up_answer_does_not_end_the_next_turn(monkeypatch, tm
     worker = _Worker(answers=answers)
     _run(monkeypatch, tmp_path, inputs={0: "one", 2: "two"}, worker=worker, action_sink=sink, steps=4)
     assert len(worker.submits) == 2 and isinstance(answers[0], LLMProposal)
+    assert _noops(sink) == []
+
+
+@pytest.mark.parametrize("deliberates", [True, False], ids=["deliberated", "section-2"])
+def test_1743_a_declined_answer_to_a_tool_follow_up_records_no_marker(monkeypatch, tmp_path, deliberates):
+    """The composed path: a real pending follow-up (``_scan_context_inputs`` adds its line, ``_keep_newest_cli_input``
+    keeps it), answered with no action. The bridge settled on the tool's own record, so a marker here could land in
+    its next turn (delta round 2: the deliberation decided with cycle 1's request, as §2 does)."""
+    from maxim.simulation.sinks import RecordingSink
+
+    sink = RecordingSink()
+    worker = _Worker(answers=[_proposal(reasoning="nothing more to do")])
+    obs = _run(
+        monkeypatch,
+        tmp_path,
+        hooks={0: _followup_hook},
+        observations={0: {"raw_transcript_text": "a sound nearby"}},  # percept text: §1.2's gate passes
+        worker=worker,
+        pipeline=_Pipeline() if deliberates else None,
+        action_sink=sink,
+        steps=2,
+    )
+    assert worker.submits and worker.submits[0]["cli_inputs"][0].startswith("[ACTION_FOLLOWUP")
+    assert (len(obs.delib_updates) > 0) is deliberates  # the deliberation did (or did not) run
     assert _noops(sink) == []
 
 

@@ -327,10 +327,10 @@ def accept_llm_proposal(
     the answer alike, and leave the pending user input for ``has_pending_llm_input``'s own 30 s expiry.
 
     ``ends_turn``: whether this answer ends the sim bridge's current turn, so that, when the turn ends with nothing
-    done and nothing retried, ``_record_declined_turn`` tells the bridge (owner decision 2026-11-24). The
-    deliberation passes True (its answers answer this pass's submit, synchronously); §2 passes
-    ``answers_a_fresh_input``, so a late answer to a tool follow-up or to a deliberation's continuation, which can
-    land after the bridge has moved on, never ends the next turn early.
+    done and nothing retried, ``_record_declined_turn`` tells the bridge (owner decision 2026-11-24). Both callers
+    pass ``answers_a_fresh_input``: §2 of the answer it polled, the deliberation of its cycle-1 answer (its
+    continuations carry no triggering input), so an answer to a tool follow-up or to a deliberation's continuation,
+    which can land after the bridge has moved on, never ends the next turn early.
 
     For the deliberation the stale rule bites in one case: when cycles 2+ stop early (a wait timed out), the answer
     they return is an earlier cycle's, possibly older than ``_STALE_PROPOSAL_AGE_S``, and it is dropped, not run.
@@ -458,7 +458,10 @@ def accept_llm_proposal(
                 ):
                     _planning_liveness_exhausted = True
         if ends_turn and _turn_is_over(new_proposal, liveness_on=_planning_liveness_on, retries=declined_is_failure):
-            _record_declined_turn(action_sink, _proposal_without_action_reason(new_proposal) or "proposal_error")
+            _record_declined_turn(
+                action_sink,
+                _proposal_without_action_reason(new_proposal) or f"proposal_error:{str(new_proposal.error)[:60]}",
+            )
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 
 
@@ -466,7 +469,11 @@ def answers_a_fresh_input(proposal: Any) -> bool:
     """Whether §2's answer answers a fresh input (a person's words or a plan modification), the thing the sim bridge's
     current turn waits on: its request had a triggering input and no tool follow-up among its inputs. A deliberation
     continuation (no triggering input) and a tool follow-up's answer do not: they can arrive after the bridge settled
-    on an earlier record and moved on (#1743 delta round)."""
+    on an earlier record and moved on (#1743 delta round).
+
+    A proxy, not a turn binding: the bridge has no turn token (it counts any growth of the sink), so a fresh input's
+    answer that lands after the bridge's response timeout still falls in the next turn, exactly as a late action
+    always has."""
     request = getattr(proposal, "original_request", None)
     if request is None or not getattr(request, "triggering_input", ""):
         return False

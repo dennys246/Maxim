@@ -12,9 +12,10 @@
     declined deliberation turn is dropped, not retried; no shipped loop combines liveness with a deliberation today.
   - A turn that ends with nothing done and nothing retried now records the sim's no-op marker
     (`_deliberation_noop`), so the bridge ends that turn after its settle window instead of waiting out the 120 s
-    response timeout: a declined deliberation, and, with planning liveness off, an action-less or error answer to a
-    fresh input or a stale drop of one. A late answer to a tool follow-up or a deliberation continuation records
-    nothing, so it cannot end the next turn early. The turn still reports `timed_out` and counts no action; the
-    console says the model chose not to act instead of "timed out". The marker existed since 0.8 but nothing
+    response timeout: a declined deliberation on a fresh input, and, with planning liveness off, an action-less or error answer to a
+    fresh input or a stale drop of one. An answer to a tool follow-up (deliberated or not) or a deliberation
+    continuation records nothing, so it cannot end the next turn early. The turn still reports `timed_out` and counts no action; the
+    console says why instead of "timed out": the model chose not to act, its answer failed (with the error), or its
+    answer came too late. The marker existed since 0.8 but nothing
     recorded it. The Exp 41/42 action loaders and the sub-simulation report's `total_actions` now leave the loop's
     markers out, as the other counters already did.
