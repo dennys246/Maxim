@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v15 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v16 2026-11-25 (Session A). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -64,6 +64,16 @@
 >   - FAIL-OPEN: V1 (the composed regex), V2 (bind-then-cut), V4 and V6 (covered classes). V6 is fixed, not stated.
 >   - The regex is now PINNED (V1): the reader's prototype passes 104/104 existing redaction tests.
 >   - A delta round 15 is owed on V1–V6 only.
+> - **Round 15 (delta, a different reader, probed on Python 3.10.19 and 3.12):** 1 DO-NOT-BUILD, 2 SHOULD-FIX and 1 NIT,
+>   folded and tagged W1–W4.
+>   - W1 (DO-NOT-BUILD, FAIL-OPEN): v15's pin restricted EVERY scheme to http/ws/ftp, so `postgres://`, `redis://`,
+>     `git+ssh://` and `unix://` passed raw, and it dropped the whitespace-password branch. Its "104/104" was false
+>     for the regex as written (2 of 104 failed).
+>   - W1's fold was VERIFIED BY THE AUTHOR, not by prose: the regex below, patched into a scratch copy, passes all 104
+>     redaction tests, gives identical matches on 3.10 and 3.12, and leaks nothing on any form in this note. The
+>     patch is at `scratchpad/regex1801/regex_candidate.patch`.
+>   - W2 (FAIL-OPEN, lint evasion) is folded; W3/W4 are fail-closed.
+>   - A delta round 16 is owed on W1–W4 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -137,7 +147,8 @@ written later.
         `__str__` objects when only `str` and exceptions were proxied (Q1; probed, 0 leaks with this rule). A
         1-character `str` passes through unproxied, so `%c` renders as today (Q4). The pass-through test is by EXACT type,
         never `isinstance` (T1): `type(a) in {NoneType, bool, int, float, complex, Decimal, Fraction}`, or
-        a numpy NUMERIC scalar by EXACT type: `type(a) in _NUMPY_NUMERIC`, a frozenset built from numpy's own scalar
+        a numpy NUMERIC scalar by EXACT type: `type(a) in _NUMPY_NUMERIC`, a frozenset built lazily, behind `functools.cache` on first
+        proxy use (importing numpy costs about 74 ms; numpy is a core dependency, W4), from numpy's own scalar
         types (`np.sctypeDict` values whose `np.dtype(t).kind` is one of `b i u f c`, a non-empty kind), so a subclass
         or a fake class setting `__module__ = "numpy"` is proxied (V4); or
         `type(a) is str and len(a) == 1`. `np.str_`, `np.bytes_` and every ndarray are proxied: `"%.15s" %
@@ -145,8 +156,8 @@ written later.
         that sets `__module__ = "numpy"` without a numeric `dtype` is proxied too. A subclass with its own `__str__`
         (`NInt(int)`, a 1-char `S1(str)`) returning a URL is proxied (probed: it leaked under `isinstance`);
       - the proxy forwards `__float__`, `__int__` and `__index__` through `type(o).__float__(o)` and
-        `operator.index(o)`, never `float(o)`, which would make `%f` accept a str. `__int__`/`__float__` fall back to
-        `operator.index(o)` as CPython does, so an object with only `__index__` still renders `%d`/`%f` (V5). When
+        `operator.index(o)`, never `float(o)`, which would make `%f` accept a str. `__int__` falls back to `operator.index(o)` and
+        `__float__` to `float(operator.index(o))` (an int from `__float__` raises, W3), as CPython does, so an object with only `__index__` still renders `%d`/`%f` (V5). When
         neither exists, the proxy raises `TypeError` (not `AttributeError`), as the unproxied value would (U4). So `%f`/`%d`/`%x` of a 0-d
         ndarray or a torch tensor render as today instead of losing the line to `handleError` (T3); So a precision cut in the message
         (`%.50s`, `%.50r`, `%.50a`, `{:.50}`), whatever the logger's name, a message held in a variable, or
@@ -255,18 +266,32 @@ written later.
     - **`Path` and other single-slash forms (T4):** `pathlib.Path` collapses `://` to `:/`, so `Path("/a/" + URL)`
     renders `https:/u:PW@host/…` and the regex never saw a URL. For the `http`/`https` schemes the regex accepts `:/`
     as well as `://` (and `:\/` for the JSON-escaped form), matched CASE-INSENSITIVELY and anchored on the scheme
-    run. **The exact regex, pinned (V1):** the scheme run
-    `(?<![A-Za-z0-9+.-])(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?))` (V6: the single-slash `Path` form for `ws`/`wss`/
-    `ftp`/`ftps` leaked under http(s)-only), then `:`, then an ATOMIC separator, written `(?=(?P<sep>(?:\\?/){1,2}|\\{1,2}))(?P=sep)` (a lookahead plus a backreference: the same
-    semantics as `(?>…)`, which is a syntax error before Python 3.11), then
-    the quote-tolerant userinfo `(?:[^\s/@]*@)?`, then the rest of today's host/path pattern. A non-atomic `\\?/`
-    let `https:/` match first and skip the userinfo group, so `https://to"k@h/p` leaked `"k@h/p` and
-    `test_redact_urls_never_raises_and_keeps_no_password_tail` failed. The atomic form passes 104/104 across the 997,
-    1404-scrub, `_loggable_url` and `http_client` tests (probed). The project's floor is Python 3.10 (`requires-python = ">=3.10"`, and CI's
-    compatibility matrix runs 3.10), so the atomic group is emulated rather than written as `(?>…)`, and a test runs
-    the pinned regex on CI's 3.10 cell (V1). So `Path("/a/HTTPS://…")` and a glued `/a/1https:/…`
-    are caught (U2; probed linear, at most 1.8 ms on 50k characters). `PureWindowsPath` renders `https:\u:PW@h\p`, so for http(s) a
-    backslash separator (`:\`) is accepted too (U5). The over-match risk in prose (`http:/` written by hand)
+    run. **The exact regex, pinned and verified (W1):**
+
+    ```python
+    _URL_IN_TEXT = re.compile(
+        r"(?<![A-Za-z0-9+.-])"
+        r"(?:[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's branch, unchanged)
+        r"|(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?:\\?/){1,2}|\\{1,2}))(?P=sep))"
+        r"(?:(?P<wsui>[^\s/@:\\]+:(?=[^@]{0,64}@)[^@]*?\s[^@]*?@)|[^\s/@]*@)?"
+        r"[^\s'\"<>]+"
+    )
+    ```
+
+    - Branch 1 is today's pattern, which keeps every scheme (`postgres`, `redis`, `git+ssh`, `unix`, `123://`).
+    - Branch 2 adds the single-slash `Path` form, the JSON-escaped `:\/\/` and the Windows `:\` for http(s)/ws(s)/
+      ftp(s) only (U2, U5, V6), case-insensitively. Its separator is atomic by a lookahead plus a backreference,
+      which keeps Python 3.10, the floor (`requires-python = ">=3.10"`, CI's matrix runs 3.10), able to compile it,
+      where `(?>…)` would not.
+    - The userinfo has two alternatives: `wsui`, a `user:` password of up to 64 characters that contains whitespace
+      (`_reduce` emits `<url>` when it matched, Na), or today's quote-tolerant `[^\s/@]*@`.
+    - A form branch 2 matches but `url_origin` cannot parse reduces to `<url>` (fail-closed): `x https:/u:PW@h/p`
+      gives `x <url>`, and the JSON-escaped form gives `"<url>"`.
+    - Prose is untouched: `see https://a.com and user:x@y` and `C:\Users\me` stay as they are.
+    - A test runs this regex on CI's 3.10 cell, with a case per scheme above (W1).
+    - Caught by branch 2: `Path("/a/HTTPS://…")`, a glued `/a/1https:/…` (U2) and `PureWindowsPath`'s
+      `https:\u:PW@h\p` (U5). The scan is linear (at most 1.8 ms on 50k characters, about 7 ms on adversarial runs,
+      W1). The over-match risk in prose (`http:/` written by hand)
     is fail-closed: it can only reduce text. A test pins `Path("/a/https://u:PW@h/p")`.
   - The user part excludes `\`, so the JSON-escaped form cannot reach into the userinfo (G5).
     - Gaps, stated: a password longer than 64 characters that contains whitespace still leaks its tail; so does a
@@ -328,10 +353,11 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
     DUNDER method call on tainted text (`.__getitem__(…)`, `.__format__(…)`), `operator.getitem`, and any
     `reprlib.*` call over tainted text (T2);
   - any `textwrap.*`, `itertools.*` or `collections.deque` call over tainted text (U3);
-  - **every** `split`/`rsplit`/`partition`/`rpartition`/`splitlines` call on tainted text, unless its receiver is
-    a `redact_urls(...)` call. Flagging only a subscript on the call itself missed `head, _, _ =
-    str(e).partition("@")`, `.split("@").pop(0)` and `parts = …; parts[0]` (V2). This adds about 30 lines on
-    src/maxim, each rewritten to split the reduced text or allowlisted with a reason (V2).
+  - **every** `split`/`rsplit`/`partition`/`rpartition`/`splitlines` call where ANY argument or the receiver is
+    tainted (`re.split("@", str(e))`, `str.partition(e, "@")`), and every `re.*` call over tainted text, unless
+    the tainted value is a `redact_urls(...)` call (V2, W2). Flagging only a subscript on the call itself missed `head, _, _ =
+    str(e).partition("@")`, `.split("@").pop(0)` and `parts = …; parts[0]` (V2). This adds lines on src/maxim (17 by a direct-receiver grep, more with
+    W2's form; the code round measures it), each rewritten to split the reduced text or allowlisted with a reason (V2).
   - the logger form (`log.warning("failed: %.50s", e)`) is NOT a lint rule. The factory's argument proxies make it
     cut reduced text, whatever the logger is called (P1);
   - `%`-formatting matches `\.(\d+|\*)[sra]` (`%.50r` and `%.50a` cut too, P1); a non-literal format string or spec
@@ -420,6 +446,9 @@ f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to
 - H4/J2: a `roy_runner` result.json and summary.md written after a failed health check hold no credential.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
+- W1: `postgres://u:PW@db`, `redis://:PW@h`, `git+ssh://u:PW@h`, `unix:///s.sock` and `123://u:p@h` reduce;
+  `https://u:p w@h/p` gives `<url>`; the case table matches identically on 3.10 and 3.12. W2: the lint fails on
+  `re.split("@", str(e))[0]` and `str.partition(e, "@")[0]`. W3: `%f` of an `__index__`-only object renders.
 - V1: `https://to"k@h/p` reduces to the origin, and the existing 104 redaction tests pass with the pinned regex. V6:
   `Path("/a/ftp://u:PW@h")` and `Path("/a/wss://u:PW@h")` render reduced. V2: the lint fails on `head, _, _ =
   str(e).partition("@")`, `.split("@").pop(0)` and a bound `parts[0]`. V4: an `np.float64` subclass with a URL
