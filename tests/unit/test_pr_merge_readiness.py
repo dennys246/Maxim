@@ -581,7 +581,7 @@ class TestSuiteOfRecord:
         assert mod.pinned_suite_app_id(tmp_path / "s.json") is None
         result = _eval(app_id=None)
         assert result.exit_code == UNSETTLED
-        assert "surface-unverified" in _codes(result)
+        assert "suite-of-record-unpinned" in _codes(result)
 
     def test_a_same_named_suite_from_another_app_does_not_count(self):
         """Exact contexts match on name only; the suite of record also pins the app."""
@@ -895,7 +895,7 @@ class TestWait:
         checks = [_run("unit-tests", None, started_at="t", run_id=5, status="in_progress"), *_REQUIRED[1:]]
         return self._surfaces(checks=checks, state=state)
 
-    def _wait(self, mod, *, timeout_s=1000.0):
+    def _wait(self, mod, *, timeout_s=1000.0, grace_s=25.0):
         now = [0.0]
         sleeps = []
 
@@ -903,9 +903,10 @@ class TestWait:
             sleeps.append(s)
             now[0] += s
 
-        return mod._wait_for_verdict(
-            1, None, timeout_s=timeout_s, interval_s=10, clock=lambda: now[0], sleep=sleep
-        ), sleeps
+        waited = mod._wait_for_verdict(
+            1, None, timeout_s=timeout_s, interval_s=10, absent_grace_s=grace_s, clock=lambda: now[0], sleep=sleep
+        )
+        return waited, sleeps
 
     def test_waits_through_draft_until_ci_settles(self, monkeypatch):
         mod = self._snapshots(monkeypatch, [self._running(), self._running(), self._surfaces()])
@@ -949,3 +950,65 @@ class TestWait:
         assert mod.main(["7", "--wait", "--interval", "0"]) == READY
         out = capsys.readouterr().out
         assert out.count("PR #7:") == 1 and "suite-of-record" in out
+
+    def test_a_wait_right_after_a_push_waits_for_the_check_runs_to_appear(self, monkeypatch):
+        """Review SHOULD-FIX 1: no check runs yet is not 'absent' until the grace window passes."""
+        none_yet = self._surfaces(checks=[], state="DRAFT")
+        mod = self._snapshots(monkeypatch, [none_yet, self._running(), self._surfaces()])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 2
+
+    def test_checks_still_absent_after_the_grace_window_block(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._surfaces(checks=[])] * 10)
+        (_, result), sleeps = self._wait(mod, grace_s=25)
+        assert result.exit_code == BLOCKED and "suite-of-record-absent" in _codes(result)
+        assert sum(sleeps) >= 25
+
+    def test_a_new_head_restarts_the_grace_window(self, monkeypatch):
+        first = self._surfaces(checks=[])
+        moved = {**self._surfaces(checks=[]), "head_sha": "bbb"}
+        mod = self._snapshots(monkeypatch, [first, first, moved, moved, moved, moved])
+        (surfaces, _), sleeps = self._wait(mod, grace_s=15)
+        assert surfaces["head_sha"] == "bbb" and len(sleeps) == 4
+
+    def test_a_merge_conflict_ends_the_wait(self, monkeypatch):
+        conflicted = self._running(state="DIRTY")
+        conflicted["pr"]["mergeable"] = "CONFLICTING"
+        mod = self._snapshots(monkeypatch, [conflicted])
+        (_, result), sleeps = self._wait(mod)
+        assert "merge-conflict" in _codes(result) and not sleeps
+
+    def test_a_failed_non_suite_check_ends_the_wait(self, monkeypatch):
+        checks = [
+            _run("unit-tests", None, started_at="t", run_id=5, status="in_progress"),
+            _run("lint", "failure", started_at="t", run_id=6),
+            *_REQUIRED[2:],
+        ]
+        mod = self._snapshots(monkeypatch, [self._surfaces(checks=checks, state="DRAFT")])
+        (_, result), sleeps = self._wait(mod)
+        assert "check-failed" in _codes(result) and not sleeps
+
+    def test_an_unpinned_suite_ends_the_wait_at_once(self, monkeypatch):
+        unpinned = {**self._running(), "suite_app_id": None}
+        mod = self._snapshots(monkeypatch, [unpinned])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code != READY and "suite-of-record-unpinned" in _codes(result) and not sleeps
+
+    def test_the_error_counter_resets_after_a_good_read(self, monkeypatch):
+        boom = RuntimeError("502")
+        mod = self._snapshots(monkeypatch, [boom, self._running(), boom, boom, self._surfaces()])
+        (_, result), _ = self._wait(mod)
+        assert result.exit_code == READY
+
+    def test_a_timeout_with_no_successful_read_is_a_tool_error(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [RuntimeError("502")])
+        waited, _ = self._wait(mod, timeout_s=0)
+        assert waited == mod.TOOL_ERROR
+
+    @pytest.mark.parametrize("flag", ["--interval", "--timeout"])
+    def test_negative_durations_are_refused(self, flag):
+        import pr_merge_readiness as mod
+
+        with pytest.raises(SystemExit) as exc:
+            mod.main(["7", "--wait", flag, "-1"])
+        assert exc.value.code == 2

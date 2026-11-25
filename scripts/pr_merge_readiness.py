@@ -238,7 +238,7 @@ def _suite_of_record_findings(
         return [
             Finding(
                 "UNSETTLED",
-                "surface-unverified",
+                "suite-of-record-unpinned",
                 "cannot pin which app posts the suite of record: scripts/repo_settings_expected.json is "
                 "unreadable or has no unit-tests entry — the final full suite was NOT checked",
             )
@@ -632,15 +632,23 @@ def _branch_rules(slug: str, base: str) -> tuple[list[str], list[str], str | Non
 
 _FETCH_ERRORS = (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError)
 # A settled failure ends a --wait early: the verdict cannot turn READY without a new push.
-_FAIL_FAST = frozenset({"check-failed", "suite-of-record-not-green", "suite-of-record-absent", "merge-conflict"})
+_FAIL_FAST = frozenset({"check-failed", "suite-of-record-not-green", "merge-conflict"})
+# Unsettled findings that never clear by waiting: the pin is a config fact, not a run in flight.
+_NEVER_CLEARS = frozenset({"suite-of-record-unpinned"})
+# Absences are BLOCKING once nothing is in flight, but right after a push the workflow may not
+# have created its check runs yet (review round): under --wait they count as in flight until the
+# same head has shown them absent for the grace window.
+_ABSENCES = frozenset({"suite-of-record-absent", "required-check-absent"})
 _WAIT_MAX_CONSECUTIVE_ERRORS = 3
 
 
-def still_waiting(result: Readiness) -> bool:
+def still_waiting(result: Readiness, *, absence_is_final: bool = True) -> bool:
     """True while a --wait should keep polling: something is in flight and nothing has failed."""
     codes = {f.code for f in result.findings}
-    if codes & _FAIL_FAST:
+    if codes & (_FAIL_FAST | _NEVER_CLEARS):
         return False
+    if not absence_is_final and codes & _ABSENCES:
+        return True
     return any(f.severity == "UNSETTLED" for f in result.findings)
 
 
@@ -650,19 +658,21 @@ def _wait_for_verdict(
     *,
     timeout_s: float,
     interval_s: float,
+    absent_grace_s: float = 300.0,
     clock: Any = None,
     sleep: Any = None,
 ) -> tuple[dict[str, Any], Readiness] | int:
     """Poll `_fetch` + `evaluate` until `still_waiting` is False or the timeout passes.
 
-    Returns the last surfaces and verdict, or TOOL_ERROR after three read errors in a row.
-    ``clock``/``sleep`` are injectable so tests do not wait.
+    Returns the last surfaces and verdict, or TOOL_ERROR after three read errors in a row (or a
+    timeout with no successful read). ``clock``/``sleep`` are injectable so tests do not wait.
     """
     clock = clock or time.monotonic
     sleep = sleep or time.sleep
     deadline = clock() + timeout_s
     errors_in_a_row = 0
     last: tuple[dict[str, Any], Readiness] | None = None
+    absent_since: tuple[str, float] | None = None  # (head, first time it showed an absence)
     while True:
         try:
             surfaces = _fetch(pr_number, repo)
@@ -674,19 +684,37 @@ def _wait_for_verdict(
                 return TOOL_ERROR
         else:
             errors_in_a_row = 0
-            last = (surfaces, evaluate(**surfaces))
-            if not still_waiting(last[1]):
+            result = evaluate(**surfaces)
+            last = (surfaces, result)
+            head = str(surfaces.get("head_sha") or "")
+            if {f.code for f in result.findings} & _ABSENCES:
+                if absent_since is None or absent_since[0] != head:
+                    absent_since = (head, clock())
+            else:
+                absent_since = None
+            absence_is_final = absent_since is not None and clock() - absent_since[1] >= absent_grace_s
+            if not still_waiting(result, absence_is_final=absence_is_final):
                 return last
-            pending = sorted(f.code for f in last[1].findings if f.severity == "UNSETTLED")
+            pending = sorted(f.code for f in result.findings if f.severity == "UNSETTLED" or f.code in _ABSENCES)
             print(f"wait: still in flight ({', '.join(pending)})", file=sys.stderr)
         if clock() >= deadline:
             if last is None:
+                print("error: timed out without one successful read of the PR", file=sys.stderr)
                 return TOOL_ERROR
-            print("wait: timed out; reporting the last snapshot", file=sys.stderr)
             surfaces, result = last
-            # A timeout is never a verdict: report it as unsettled even if the last read was BLOCKED by DRAFT.
+            blocking = sorted({f.code for f in result.findings if f.severity == "BLOCKING"})
+            note = f"; it already shows BLOCKING {', '.join(blocking)}" if blocking else ""
+            print(f"wait: timed out; reporting the last snapshot as unsettled{note}", file=sys.stderr)
+            # A timeout is never a verdict: report it as unsettled even if the last read was BLOCKED.
             return surfaces, Readiness(UNSETTLED, result.findings)
         sleep(interval_s)
+
+
+def _non_negative(text: str) -> float:
+    value = float(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {text}")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -694,8 +722,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("pr", type=int, help="PR number")
     parser.add_argument("--repo", default=None, help="owner/name (defaults to the current repo)")
     parser.add_argument("--wait", action="store_true", help="poll until nothing is in flight, then report")
-    parser.add_argument("--timeout", type=float, default=60.0, help="--wait: give up after this many minutes")
-    parser.add_argument("--interval", type=float, default=90.0, help="--wait: seconds between reads")
+    parser.add_argument("--timeout", type=_non_negative, default=60.0, help="--wait: give up after this many minutes")
+    parser.add_argument("--interval", type=_non_negative, default=90.0, help="--wait: seconds between reads")
     args = parser.parse_args(argv)
 
     if args.wait:
