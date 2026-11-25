@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._child_env import isolation_env
+
 SRC = Path(__file__).resolve().parents[2] / "src"
 SEEDS = ("1", "2")
 IDS = [f"mem-{i:02d}-{'abcdefgh'[i % 8]}" for i in range(12)]
@@ -36,8 +38,15 @@ def _save_in_two_processes(tmp_path: Path, body: str, source: Path | None = None
         out = tmp_path / f"out-{seed}.json"
         home = tmp_path / f"home-{seed}"
         home.mkdir()
-        # A minimal environment: nothing inherited (no MAXIM_* paths, no PYTHONPATH) beyond what Python needs.
-        env = {"PATH": os.environ.get("PATH", ""), "PYTHONHASHSEED": seed, "PYTHONPATH": str(SRC), "HOME": str(home)}
+        # A minimal environment beside a scratch HOME: no MAXIM_* overrides and no inherited PYTHONPATH, only the
+        # suite's isolation variables (tests/_child_env.py) and what Python needs.
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONHASHSEED": seed,
+            "PYTHONPATH": str(SRC),
+            "HOME": str(home),
+            **isolation_env(),
+        }
         script = "import time\ntime.time = lambda: 1_764_000_000.5\n" + textwrap.dedent(body)
         proc = subprocess.run(
             [sys.executable, "-c", script, str(source or ""), str(out)],
