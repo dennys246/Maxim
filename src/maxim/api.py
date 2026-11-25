@@ -1673,6 +1673,10 @@ def benchmark(
     Returns:
         BenchmarkResult with per-model scores and summary.
 
+    Raises:
+        LeaderRefusal, OfflineRefusal: a leader or offline refusal (``maxim.exceptions.SECURITY_REFUSALS``) stops
+            the benchmark; the report so far is saved under the benchmarks directory first (#1315 item 10a).
+
     Note:
         When ``suite`` is a bare name (e.g. ``"cognitive"``) rather than
         an absolute path, lookup is relative to the *current working
