@@ -3581,8 +3581,10 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
     # Address: config host: verbatim, else <robot_name>.local (PR 0 keeps doctor's own choice).
     host = config.get("host")
     target = str(host) if host else str(config.get("robot_name", "reachy_mini")).replace("_", "-") + ".local"
-    outcome = reachy_probe.probe_daemon(target, deadline_s=4.0)
+    outcome = reachy_probe.probe_daemon(target, deadline_s=2.0)  # per stage, as the old checks (review E2)
 
+    if outcome.failure == "unsupported":
+        return CheckResult(name, "info", f"{target}: {outcome.error}; the robot run still connects to it as given")
     if outcome.failure == "resolve":
         if host:
             fix = f"check host: {target} in {_robots_yaml_path_text()} (an IP is more reliable than a name)"

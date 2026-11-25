@@ -143,9 +143,9 @@ class TestControllerConnect:
         assert sdk.ReachyMini.call_args.kwargs["host"] == "192.168.50.150"
 
     def test_connect_caps_mdns_timeout_at_5s(self):
-        """The probe's stage budget is capped at 5 s (+3 s for the status read) even with a larger connect timeout."""
+        """Each probe stage (lookup, TCP, status) is capped at 5 s even with a larger connect timeout (review E2)."""
         _, _, probe, _ = self._connect(30.0, return_value="192.168.50.150")
-        assert probe.call_args.kwargs["deadline_s"] == 8.0
+        assert probe.call_args.kwargs["deadline_s"] == 5.0
 
     def test_connect_uses_network_mode(self):
         """connect() passes connection_mode='network' to SDK."""

@@ -31,3 +31,36 @@ def test_the_rest_doa_reader_dials_the_daemon_directly(monkeypatch) -> None:
     assert seen["url"].startswith("http://10.0.0.5:")
     assert seen.get("address_policy") == "private"
     assert seen.get("proxy") == "never"
+
+
+def test_maxim_diagnostics_docs_read_is_direct(monkeypatch) -> None:
+    """#1806 PR 0 (review W-2): maxim-diagnostics' /docs read is a daemon read too."""
+    import inspect
+
+    import maxim.utils.reachy_diagnostics as diag
+
+    src = inspect.getsource(diag)
+    docs_call = src[src.index('8000/docs"') - 80 : src.index('8000/docs"') + 120]
+    assert 'address_policy="private"' in docs_call and 'proxy="never"' in docs_call
+
+
+def test_edit_file_invalidates_the_result_cache_like_write_file() -> None:
+    """#1806 PR 0 (review A13): a successful edit_file drops cached reads of that path."""
+    from maxim.runtime.tool_dispatch import _invalidate_cache_after_write
+
+    class _Cache:
+        def __init__(self) -> None:
+            self.paths: list[str] = []
+
+        def invalidate(self, *, path: str) -> int:
+            self.paths.append(path)
+            return 1
+
+    for tool in ("write_file", "edit_file"):
+        cache = _Cache()
+        _invalidate_cache_after_write(cache, {"tool_name": tool, "params": {"path": "a.py"}}, True)
+        assert cache.paths == ["a.py"], tool
+    cache = _Cache()
+    _invalidate_cache_after_write(cache, {"tool_name": "edit_file", "params": {"path": "a.py"}}, False)
+    _invalidate_cache_after_write(cache, {"tool_name": "read_file", "params": {"path": "a.py"}}, True)
+    assert cache.paths == []

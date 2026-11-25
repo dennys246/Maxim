@@ -246,3 +246,61 @@ def test_maxim_diagnostics_warns_when_a_connect_check_would_refuse(monkeypatch, 
     assert diag.diagnose_reachy("10.6.0.63") == 0
     out = capsys.readouterr().out
     assert "version=1.9.0 state=running" in out and "minor-version mismatch" in out
+
+
+def test_an_ipv6_host_is_unsupported_not_unresolvable(monkeypatch) -> None:
+    """Review E1: an IPv6 literal, or an AAAA-only name, is never reported as 'does not resolve'."""
+    import socket
+
+    from maxim.hardware.reachy import probe
+
+    out = probe.probe_daemon("::1", deadline_s=1.0)
+    assert out.failure == "unsupported" and "IPv6" in (out.error or "")
+    out = probe.probe_daemon("[fe80::1]", deadline_s=1.0)
+    assert out.failure == "unsupported"
+
+    def _no_v4(name, *, timeout):
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    monkeypatch.setattr(probe, "resolve_ipv4", _no_v4)
+    monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET6, 1, 6, "", ("::1", 0))])
+    assert probe.probe_daemon("v6only.local", deadline_s=1.0).failure == "unsupported"
+    monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: (_ for _ in ()).throw(socket.gaierror(8, "x")))
+    assert probe.probe_daemon("nothing.local", deadline_s=1.0).failure == "resolve"
+
+
+def test_each_stage_gets_the_whole_deadline(monkeypatch) -> None:
+    """Review E2: a slow lookup does not starve the TCP connect or the status read."""
+    import time
+
+    from maxim.hardware.reachy import probe
+
+    seen: dict[str, float] = {}
+
+    def _slow_resolve(name, *, timeout):
+        seen["resolve"] = timeout
+        time.sleep(0.3)
+        return "10.0.0.9"
+
+    def _tcp(address, port, *, timeout):
+        seen["tcp"] = timeout
+        return None
+
+    def _status(address, port, *, deadline_s):
+        seen["status"] = deadline_s
+        return {"version": "1.8.3", "state": "running"}
+
+    monkeypatch.setattr(probe, "resolve_ipv4", _slow_resolve)
+    monkeypatch.setattr(probe, "tcp_connect_error", _tcp)
+    monkeypatch.setattr(probe, "read_daemon_status", _status)
+    out = probe.probe_daemon("slow.local", deadline_s=0.2)
+    assert out.failure is None
+    assert seen == {"resolve": 0.2, "tcp": 0.2, "status": 0.2}
+
+
+def test_the_controller_connects_an_explicit_ipv6_host_as_given(monkeypatch) -> None:
+    """Review E1: main dialled an explicit IPv6 host; the pre-check must not turn that into a refusal."""
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    ctl = ReachyMiniController(host="fd00::5")
+    assert ctl._precheck_daemon("network", 5.0) == ("fd00::5", None)

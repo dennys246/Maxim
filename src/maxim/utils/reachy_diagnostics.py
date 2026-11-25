@@ -160,7 +160,9 @@ def diagnose_reachy(host: str) -> int:
     try:
         from maxim.utils import http as maxim_http
 
-        resp = maxim_http.fetch_url(f"http://{host}:8000/docs", timeout=3)
+        resp = maxim_http.fetch_url(
+            f"http://{host}:8000/docs", timeout=3, address_policy="private", proxy="never"
+        )  # #1806 PR 0: every daemon read is dialled directly
         success = resp.status == 200
         message = "HTTP 200" if success else f"HTTP {resp.status}"
     except Exception as e:  # noqa: BLE001

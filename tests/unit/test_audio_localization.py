@@ -216,11 +216,18 @@ class TestRestDoAReader:
                 return {"angle": math.pi, "speech_detected": True}
 
         orig = maxim_http.fetch_url
-        maxim_http.fetch_url = lambda url, timeout=None: (calls.setdefault("url", url), _Resp())[1]
+
+        def _fake(url, timeout=None, **kw):
+            calls["url"] = url
+            calls["kw"] = kw
+            return _Resp()
+
+        maxim_http.fetch_url = _fake
         try:
             reader = make_reachy_rest_doa_reader("10.0.0.5")
             assert reader() == (math.pi, True)
             assert calls["url"] == "http://10.0.0.5:8000/api/state/doa"
+            assert calls["kw"] == {"address_policy": "private", "proxy": "never"}  # #1806 PR 0
         finally:
             maxim_http.fetch_url = orig
 
@@ -229,12 +236,17 @@ class TestRestDoAReader:
 
         orig = maxim_http.fetch_url
 
-        def _boom(url, timeout=None):
+        ran = []
+
+        def _boom(url, timeout=None, **kw):
+            ran.append(kw)
             raise RuntimeError("network down")
 
         maxim_http.fetch_url = _boom
         try:
             assert make_reachy_rest_doa_reader("h")() is None
+            # #1806 PR 0: the error path really ran (not a TypeError from a stale fake signature)
+            assert ran == [{"address_policy": "private", "proxy": "never"}]
         finally:
             maxim_http.fetch_url = orig
 
@@ -286,7 +298,7 @@ class TestBuildReachyAudioOrientingSource:
                 return {"angle": math.pi, "speech_detected": True}
 
         orig = maxim_http.fetch_url
-        maxim_http.fetch_url = lambda url, timeout=None: _Resp()
+        maxim_http.fetch_url = lambda url, timeout=None, **kw: _Resp()
         try:
             src = build_reachy_audio_orienting_source(connection_mode="network", host="1.2.3.4")
             percept = src.next_percept()

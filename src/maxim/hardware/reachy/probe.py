@@ -29,9 +29,10 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-import time
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Literal
+
+from maxim.exceptions import MaximConnectionError
 
 if TYPE_CHECKING:
     from maxim.hardware.config import RobotConfig
@@ -40,7 +41,7 @@ DAEMON_PORT = 8000
 STATUS_PATH = "/api/daemon/status"
 _MAX_FIELD_LEN = 128
 
-ProbeStage = Literal["resolve", "tcp", "status"]
+ProbeStage = Literal["unsupported", "resolve", "tcp", "status"]
 EraVerdict = Literal["match", "minor_drift", "era_mismatch", "sdk_missing", "unknown"]
 
 
@@ -92,8 +93,12 @@ class ProbeOutcome:
         return self.failure is None
 
 
-class DaemonStatusUnreadable(Exception):
-    """``GET /api/daemon/status`` gave no JSON object (a pre-1.5 daemon, a moved endpoint, a refused address)."""
+class DaemonStatusUnreadable(MaximConnectionError):
+    """``GET /api/daemon/status`` gave no JSON object (a pre-1.5 daemon, a moved endpoint, a refused address).
+
+    Under the stable ``maxim.exceptions.MaximConnectionError`` (review A7), so a caller catching connection
+    failures catches it too.
+    """
 
 
 # ─── the seams (tests patch these module attributes; production calls them through the module) ───
@@ -120,6 +125,25 @@ def installed_sdk_version() -> tuple[int, int] | None:
         return parse_major_minor(version("reachy-mini"))
     except PackageNotFoundError:
         return None
+
+
+_IPV6_NOT_PROBED = "IPv6 host: not probed (the daemon probe is IPv4 only)"
+
+
+def _is_ipv6_literal(name: str) -> bool:
+    try:
+        ipaddress.IPv6Address(name.strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
+def _has_ipv6_address(name: str) -> bool:
+    """Whether ``name`` resolves to an IPv6 address (it failed the IPv4 lookup): an AAAA-only host."""
+    try:
+        return bool(socket.getaddrinfo(name, None, socket.AF_INET6))
+    except OSError:
+        return False
 
 
 def resolve_ipv4(name: str, *, timeout: float) -> str:
@@ -203,38 +227,32 @@ def _era(sdk: tuple[int, int] | None, daemon: tuple[int, int] | None) -> EraVerd
 def probe_daemon(host_or_ip: str, *, port: int = DAEMON_PORT, deadline_s: float) -> ProbeOutcome:
     """Probe the Reachy daemon at ``host_or_ip``: resolve -> TCP ``port`` -> status -> era -> state.
 
-    ``deadline_s`` bounds the WHOLE probe: each stage gets what is left of it (a name lookup itself is not
-    interruptible, the same residual ``fetch_url`` states for DNS). Never raises for a network outcome: every
-    failure is recorded as ``ProbeOutcome.failure`` + ``error``.
+    ``deadline_s`` bounds EACH network stage on its own (the lookup, the TCP connect, the status read), as the
+    three copies this replaced did: one shared budget let a slow lookup starve the later stages, so a slow
+    resolver read as "daemon port unreachable" (review E2). A name lookup itself is not interruptible, the same
+    residual ``fetch_url`` states for DNS. The probe is IPv4 only: an IPv6 literal, or a name with only an IPv6
+    address, is ``failure="unsupported"`` (never reported as "does not resolve"; review E1). Never raises for a
+    network outcome: every failure is recorded as ``ProbeOutcome.failure`` + ``error``.
     """
     if not (isinstance(deadline_s, (int, float)) and deadline_s > 0):
         raise ValueError(f"deadline_s must be a positive number of seconds, got {deadline_s!r}")
-    start = time.monotonic()
-
-    def remaining() -> float:
-        return deadline_s - (time.monotonic() - start)
-
     target = str(host_or_ip)
     sdk = installed_sdk_version()
+    if _is_ipv6_literal(target):
+        return ProbeOutcome(target=target, port=port, failure="unsupported", error=_IPV6_NOT_PROBED)
     try:
-        address = resolve_ipv4(target, timeout=max(remaining(), 0.1))
+        address = resolve_ipv4(target, timeout=deadline_s)
     except OSError as e:
+        if _has_ipv6_address(target):
+            return ProbeOutcome(target=target, port=port, failure="unsupported", error=_IPV6_NOT_PROBED)
         return ProbeOutcome(
             target=target, port=port, failure="resolve", error=_bounded(f"{target} does not resolve: {e}")
         )
-    left = remaining()
-    if left <= 0:
-        return ProbeOutcome(
-            target=target, port=port, address=address, failure="tcp", error="probe deadline spent before TCP"
-        )
-    tcp_error = tcp_connect_error(address, port, timeout=left)
+    tcp_error = tcp_connect_error(address, port, timeout=deadline_s)
     if tcp_error is not None:
         return ProbeOutcome(target=target, port=port, address=address, failure="tcp", error=tcp_error)
-    left = remaining()
     try:
-        if left <= 0:
-            raise DaemonStatusUnreadable("probe deadline spent before the status read")
-        status = read_daemon_status(address, port, deadline_s=left)
+        status = read_daemon_status(address, port, deadline_s=deadline_s)
     except DaemonStatusUnreadable as e:
         return ProbeOutcome(target=target, port=port, address=address, failure="status", error=str(e), sdk_version=sdk)
     version = _bounded(status.get("version"))
@@ -269,6 +287,8 @@ def refusal(outcome: ProbeOutcome, entry: RobotConfig | None) -> str | None:
     so every strict consumer (the ``embody`` preflight, the controller's step 1) gets them from one function. PR 0
     reads nothing from ``entry``: it has no pin to compare yet.
     """
+    if outcome.failure == "unsupported":
+        return f"not probed: {outcome.error}"
     if outcome.failure == "resolve":
         return f"unreachable: {outcome.error or outcome.target + ' does not resolve'}"
     if outcome.failure == "tcp":

@@ -21,6 +21,16 @@
   - `ok` now also requires a readable daemon version, so an unparseable version is a `warn`;
   - a `host:` name that does not resolve fails with "does not resolve" instead of a TCP error;
   - a broken `robots.yaml` gets its own warning with the fix, and every message names the resolved
-    `<data home>/robots.yaml` path rather than `~/.maxim/robots.yaml`.
+    `<data home>/robots.yaml` path rather than `~/.maxim/robots.yaml`;
+  - a daemon status with no `state` now grades `warn` instead of `ok`;
+  - an IPv6 `host:` (or a name with only an IPv6 address) is reported as not probed, IPv4 only, instead of failing;
+    the robot run still connects to it as given.
+- **`hardware.load_robots_config` and `RobotsConfig.from_yaml` raise `RobotsConfigError` for a broken file**
+  (#1806 PR 0), for Python callers too, where they used to return an empty configuration. A missing file still
+  returns an empty one.
+- **`create_sandbox_script` returns the script's resolved path** (on macOS `/private/var/...` rather than
+  `/var/...`) and refuses names with spaces or non-ASCII characters.
+- **`edit_file` now invalidates the tool-result cache like `write_file`** (#1806 PR 0): a read after a successful
+  edit could return the pre-edit content.
 - **A non-number `MAXIM_ROBOT_TIMEOUT` raises a `ConfigurationError`** naming the variable instead of a bare
   `ValueError`.

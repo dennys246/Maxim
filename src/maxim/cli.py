@@ -1007,7 +1007,9 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
 
     if isinstance(error, (BackendError, LeaderRefusal, SpeechOutputUnavailable)):
         raise error
-    if isinstance(error, (RobotsConfigError, InvalidConfigError)):
+    # Exactly these two, not InvalidConfigError subclasses (InvalidAgentIdError, AgentConfigContradiction): those
+    # keep their pre-#1806 exit 1 and logged traceback (review E3).
+    if isinstance(error, RobotsConfigError) or type(error) is InvalidConfigError:
         from maxim.utils.logging import user_warn
 
         logger.debug("robot run configuration refused", exc_info=error)
@@ -1015,7 +1017,7 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
         user_warn(
             f"{type(error).__name__}: {error}" + (f"\n    → {fix}" if fix else ""),
             source="config",
-            event="robot_config_invalid",
+            event="run_config_invalid",
         )
         return 2
     log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
