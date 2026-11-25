@@ -246,11 +246,13 @@ def _refuse_if_named_model_missing(args: Any, exec_agent: Any) -> None:
         _print_model_unavailable(getattr(exec_agent, "_refused_cause", None))
 
 
-def _build_cli_agentic_agent(args: Any, memory_path: str) -> Any:
-    """The CLI agentic path's MaximAgent (moved out of ``_main_impl`` with the edit, rule T). ``llm_router=None``: this
-    agent builds the run's router itself, on the main thread, in :func:`_cli_agentic_llm_worker` (owner decision
-    V29)."""
+def _cli_agentic_agent(args: Any, memory_path: str) -> Any:
+    """The CLI agentic path's ``MaximAgent``, on the ``--llm`` profile (moved out of ``_main_impl``, rule T, #1228).
+
+    ``shared_router=BUILD_OWN`` on purpose: this path's router is built by ExecAgent itself, with ``consent="ask"`` on
+    the main thread (:func:`_cli_agentic_llm_worker`), so the CLI hands the agent no router."""
     from maxim.agents import MaximAgent
+    from maxim.agents.exec_agent import BUILD_OWN
 
     # Get LLM profile
     llm_profile = str(getattr(args, "language_model", "") or "").strip()
@@ -259,12 +261,12 @@ def _build_cli_agentic_agent(args: Any, memory_path: str) -> Any:
 
     # Create the agentic agent
     return MaximAgent(
-        llm_router=None,
         llm_profile=llm_profile,
         memory_persistence_path=memory_path,
         data_folder=args.home_dir,
         enable_embeddings=bool(getattr(args, "enable_embeddings", False)),
         reset_on_startup=bool(getattr(args, "reset", False)),
+        shared_router=BUILD_OWN,
     )
 
 
@@ -663,6 +665,7 @@ def _run_menu_sim(action: str) -> None:
     from pathlib import Path
 
     from maxim import cli_signals
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.utils.cancellation import interruptible
 
     cli_signals.entered_sim_mode()  # a stop from here on exits 4 (#1344)
@@ -722,6 +725,8 @@ def _run_menu_sim(action: str) -> None:
                 max_turns=100,
             )
         except KeyboardInterrupt:
+            raise
+        except SECURITY_REFUSALS:  # a leader/offline refusal reaches _main_guarded's refusal, not "failed to load"
             raise
         except Exception as e:
             print(f"  Failed to load campaign: {e}")
@@ -2695,7 +2700,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 if memory_path is None:
                     memory_path = os.path.join(args.home_dir, "memory", "memories.json")
 
-                agentic_agent = _build_cli_agentic_agent(args, memory_path)
+                agentic_agent = _cli_agentic_agent(args, memory_path)
 
                 # Set up ResponseOutput for LLM responses; spoken replies through local speakers, or a refusal (#1437)
                 from pathlib import Path
@@ -3153,7 +3158,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             # subclass-level fix_hint surfaces as a loud AttributeError
             # instead of silently using a generic fallback string.
             user_warn(
-                f"{type(e).__name__}: {e}",
+                e.problem,  # str(e) already ends with the fix hint, which fix= prints on its own line (#1228)
                 fix=e.fix_hint,
                 source="backend",
                 event="backend_error_uncaught",

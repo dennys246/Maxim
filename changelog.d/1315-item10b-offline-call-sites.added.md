@@ -24,6 +24,5 @@
   templates, and a leader boot refused offline says so instead of reporting a port conflict. A model named by
   `maxim.run(model=)`, `--aut-model` or research's `language_model` counts as chosen: offline it is refused by name,
   never swapped.
-- **One router per run** (owner decision V29; the constructor change is under Breaking): every run hands its router
-  to its `MaximAgent`, so the ExecAgent never builds a second router or loads a second model of its own. An ExecAgent
-  whose router is refused stops proposing and says why once, instead of logging a language-model error every turn.
+- **A refused ExecAgent stops proposing**: an ExecAgent whose router is refused (offline, a leader refusal) says why
+  once and stops, instead of logging a language-model error every turn.

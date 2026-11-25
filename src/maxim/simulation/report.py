@@ -80,10 +80,19 @@ class SimulationReport:
     aut_causal_links: int = 0
     aut_nac_summary: dict[str, Any] = field(default_factory=dict)
 
-    # Cost
+    # Cost. The three totals are the whole run's: every router the run built, the narrator's and, in a two-model
+    # run (``aut_model``), the AUT's (owner decision C, #1228; before it a two-model run counted the narrator's only).
+    # The split follows, one triple per role; in a one-model run the AUT shares the narrator's router, so its triple
+    # stays 0 and the narrator's equals the totals. Additive keys: ``_format_version`` stays "1.0".
     cost_usd: float = 0.0
     total_input_tokens: int = 0
     total_output_tokens: int = 0
+    narrator_cost_usd: float = 0.0
+    narrator_input_tokens: int = 0
+    narrator_output_tokens: int = 0
+    aut_cost_usd: float = 0.0
+    aut_input_tokens: int = 0
+    aut_output_tokens: int = 0
 
     # Lane / latency breakdown (from MetricsRegistry — populated when at least
     # one LLM call landed). Each lane name maps to its snapshot dict
@@ -421,6 +430,51 @@ def _provider_failures(llm_router: Any | None) -> dict[str, dict[str, Any]]:
     return provider_failures
 
 
+def _router_cost(router: Any | None) -> tuple[float, int, int]:
+    """``router``'s (cost USD, input tokens, output tokens) for this sim (0s for None).
+
+    Cost data — session_cost is exact USD accumulated by the router during
+    THIS sim's lifetime, incremented at router.py:786 on every LLM request.
+    We deliberately do NOT fall back to the CostTracker hourly rolling
+    window: that window is persisted across process invocations and counts
+    cost events from prior unrelated sims (including past cloud runs), so
+    a local mistral run with zero actual cost would otherwise display the
+    previous Claude run's cost as its own. session_cost == 0 means this
+    session spent nothing, full stop. (Moved out of ``build_report``, #1228 rule T.)"""
+    cost_usd = 0.0
+    input_tokens = 0
+    output_tokens = 0
+    if router is not None:
+        try:
+            cost_usd = float(getattr(router, "session_cost", 0.0) or 0.0)
+            tracker = getattr(router, "_cost_tracker", None)
+            if tracker and hasattr(tracker, "get_session_tokens"):
+                tokens = tracker.get_session_tokens()
+                input_tokens = int(tokens.get("input_tokens", 0))
+                output_tokens = int(tokens.get("output_tokens", 0))
+        except Exception as e:
+            logger.debug("cost/token lookup failed: %s", e)
+    return cost_usd, input_tokens, output_tokens
+
+
+def _run_costs(llm_router: Any | None, aut_router: Any | None) -> dict[str, Any]:
+    """The report's cost fields: the narrator's router, the AUT's when it is its own (a two-model run), and their sum
+    (owner decision C, #1228). A shared AUT router is counted once, as the narrator's."""
+    narrator = _router_cost(llm_router)
+    aut = _router_cost(aut_router) if aut_router is not None and aut_router is not llm_router else (0.0, 0, 0)
+    return {
+        "cost_usd": round(narrator[0] + aut[0], 4),
+        "total_input_tokens": narrator[1] + aut[1],
+        "total_output_tokens": narrator[2] + aut[2],
+        "narrator_cost_usd": round(narrator[0], 4),
+        "narrator_input_tokens": narrator[1],
+        "narrator_output_tokens": narrator[2],
+        "aut_cost_usd": round(aut[0], 4),
+        "aut_input_tokens": aut[1],
+        "aut_output_tokens": aut[2],
+    }
+
+
 def _tool_usage(all_actions: list[Any]) -> tuple[dict[str, int], dict[str, float], list[str]]:
     """The report's tool usage breakdown: counts, success rates and the words said (moved verbatim out of
     ``build_report``, rule T for #1185). ``all_actions`` is the agent's (synthetic markers left out)."""
@@ -452,6 +506,7 @@ def build_report(
     aut_nac: Any | None = None,
     aut_memory_hub: Any | None = None,
     llm_router: Any | None = None,
+    aut_router: Any | None = None,
     language_model: str = "",
     language_provider: str = "",
     language_backend_class: str = "",
@@ -517,27 +572,7 @@ def build_report(
         except Exception:
             pass
 
-    # Cost data — session_cost is exact USD accumulated by the router during
-    # THIS sim's lifetime, incremented at router.py:786 on every LLM request.
-    # We deliberately do NOT fall back to the CostTracker hourly rolling
-    # window: that window is persisted across process invocations and counts
-    # cost events from prior unrelated sims (including past cloud runs), so
-    # a local mistral run with zero actual cost would otherwise display the
-    # previous Claude run's cost as its own. session_cost == 0 means this
-    # session spent nothing, full stop.
-    cost_usd = 0.0
-    input_tokens = 0
-    output_tokens = 0
-    if llm_router is not None:
-        try:
-            cost_usd = float(getattr(llm_router, "session_cost", 0.0) or 0.0)
-            tracker = getattr(llm_router, "_cost_tracker", None)
-            if tracker and hasattr(tracker, "get_session_tokens"):
-                tokens = tracker.get_session_tokens()
-                input_tokens = int(tokens.get("input_tokens", 0))
-                output_tokens = int(tokens.get("output_tokens", 0))
-        except Exception as e:
-            logger.debug("cost/token lookup failed: %s", e)
+    costs = _run_costs(llm_router, aut_router)  # the narrator's, the AUT's own (two-model run) and their sum
 
     # Lane / latency breakdown from MetricsRegistry.  Aggregates p50/p99
     # weighted by jobs_completed across lanes; the per-lane snapshots stay
@@ -622,9 +657,7 @@ def build_report(
         aut_memories_formed=aut_memories,
         aut_causal_links=aut_links,
         aut_nac_summary=nac_summary,
-        cost_usd=round(cost_usd, 4),
-        total_input_tokens=input_tokens,
-        total_output_tokens=output_tokens,
+        **costs,
         lane_breakdown=lane_breakdown,
         latency_p50_ms=latency_p50_ms,
         latency_p99_ms=latency_p99_ms,

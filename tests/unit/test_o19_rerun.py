@@ -43,6 +43,67 @@ def _executed_text():
     return module
 
 
+_EXECUTED_FRAMES_PATH = REPO / "tests" / "fixtures" / "exp63b" / "executed_content_safety.py"
+
+
+@pytest.fixture
+def executed_frames(monkeypatch):
+    """The shipped stores frame-strip stored text as the EXECUTED commits did (owner decision 2026-11-21, #1519):
+    ``content_safety``'s ``outside_tool_output`` and ``drop_unbalanced_frames`` stand in from the vendored executed
+    copy (``tests/fixtures/exp63b/executed_content_safety.py``), so a port pin compares the frozen port with the
+    shipped code at the commits Exp 63b and 63c ran on, never with a later frame rule."""
+    import importlib.util
+    import sys
+    from types import SimpleNamespace
+
+    from maxim.utils import content_safety
+
+    name = "exp63_executed_content_safety"
+    spec = importlib.util.spec_from_file_location(name, _EXECUTED_FRAMES_PATH)
+    assert spec is not None and spec.loader is not None
+    executed = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, executed)  # its dataclasses resolve their module while it loads
+    spec.loader.exec_module(executed)
+    shipped = SimpleNamespace(
+        outside_tool_output=content_safety.outside_tool_output,
+        drop_unbalanced_frames=content_safety.drop_unbalanced_frames,
+    )
+    monkeypatch.setattr(content_safety, "outside_tool_output", executed.outside_tool_output)
+    monkeypatch.setattr(content_safety, "drop_unbalanced_frames", executed.drop_unbalanced_frames)
+    return SimpleNamespace(executed=executed, shipped=shipped)
+
+
+def test_the_vendored_frame_rule_is_the_executed_commits() -> None:
+    """The vendored frame rule is ``content_safety.py`` byte for byte at Exp 63b's and 63c's executed commits."""
+    import subprocess
+
+    vendored = _EXECUTED_FRAMES_PATH.read_text()
+    body = vendored[vendored.index(_EXECUTED_TEXT_MARKER) + len(_EXECUTED_TEXT_MARKER) :]
+    for commit in ("e841abca", "9176025a"):
+        try:
+            src = subprocess.run(
+                ["git", "show", f"{commit}:src/maxim/utils/content_safety.py"],
+                cwd=REPO,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError):
+            pytest.skip("the executed commits are not in this clone's history")
+        assert body == src, commit
+
+
+def test_the_shipped_frame_rule_is_not_the_executed_one(executed_frames) -> None:
+    """The fixture is live: on repeated same-id openers the shipped rule (#1519) and the executed one strip
+    differently, so a pin that reached the shipped rule would be judged on the wrong text."""
+    executed, shipped = executed_frames.executed, executed_frames.shipped
+    edge = "a <<TOOL_OUTPUT id=ab12 tool=x>> b <<TOOL_OUTPUT id=ab12 tool=x>> c <</TOOL_OUTPUT id=ab12>> d"
+    assert (
+        executed.drop_unbalanced_frames(executed.outside_tool_output(edge))[0]
+        != (shipped.drop_unbalanced_frames(shipped.outside_tool_output(edge))[0])
+    )
+
+
 @pytest.fixture
 def keying_63c():
     """Requested by a test that judges Exp 63c: it runs on the keying Exp 63c executes, which is the SHIPPED
@@ -3364,7 +3425,7 @@ def test_the_shipped_keying_is_not_the_executed_keying() -> None:
     assert shipped.key_tokens("move moving") == ["mov", "mov"] != text.key_tokens("move moving")
 
 
-def test_exp63b_the_port_is_the_executed_keying() -> None:
+def test_exp63b_the_port_is_the_executed_keying(executed_frames) -> None:
     from maxim.memory.hippocampus_persistence import store_digest
     from maxim.memory.types import CompressedMemory, EpisodicMemory
 
@@ -3439,7 +3500,7 @@ def test_exp63c_the_port_is_the_shipped_keying(keying_63c) -> None:
     assert v.KEYINGS == {"63b": v.p_key_tokens, "63c": v.c_key_tokens} and v.keying_of("63b") is v.p_key_tokens
 
 
-def test_exp63c_the_port_reads_records_as_the_shipped_store(keying_63c) -> None:
+def test_exp63c_the_port_reads_records_as_the_shipped_store(keying_63c, executed_frames) -> None:
     """Under the shipped keying, the port's record keys and I1 digest (``key=c_key_tokens``) are the shipped
     records' ``content_tokens()`` and ``store_digest``; under 63b's keying they would not be (the pin is not vacuous)."""
     from maxim.memory.hippocampus_persistence import store_digest

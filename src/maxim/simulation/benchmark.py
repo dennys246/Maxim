@@ -95,7 +95,7 @@ class ModelResult:
     #: Whether the applied thresholds held, on their own. ``passed`` is the verdict: thresholds held, at least one
     #: applied, every expectation met, no run errored (owner decision 2026-10-17). None = a report saved before it.
     thresholds_passed: bool | None = None
-    #: Why every run of this model was refused (offline, a leader refusal), or None: a refused model is reported, not
+    #: Why a run of this model was refused (offline, a leader refusal), or None: a refused model is reported, not
     #: scored or ranked (#1315 item 10b, owner decision V26).
     refused: str | None = None
 
@@ -647,10 +647,13 @@ class BenchmarkRunner:
 
     def _aggregate_runs(self, model: str, runs: list[RunResult]) -> ModelResult:
         """Aggregate metrics across multiple runs of the same model."""
+        # A model with any refused run is refused, not scored: refused part-way, its scored runs are partial (V26).
+        refused_runs = [r for r in runs if r.refused]
+        if refused_runs:
+            return ModelResult(model=model, runs=runs, passed=False, refused=refused_runs[0].error)
         successful = [r for r in runs if r.error is None]
         if not successful:
-            refused = runs[0].error if runs and all(r.refused for r in runs) else None
-            return ModelResult(model=model, runs=runs, passed=False, refused=refused)
+            return ModelResult(model=model, runs=runs, passed=False)
 
         # Collect all metric keys
         all_keys: set[str] = set()
@@ -861,6 +864,7 @@ class BenchmarkRunner:
                 per_scenario=mr_data.get("per_scenario", {}),
                 thresholds_checked=mr_data.get("thresholds_checked"),
                 thresholds_passed=mr_data.get("thresholds_passed"),
+                refused=mr_data.get("refused"),
             )
 
         return BenchmarkReport(

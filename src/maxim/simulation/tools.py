@@ -1377,6 +1377,9 @@ class SpawnSubSimulationTool(Tool):
     returns a structured sub-report. The sub-AUT stays alive for potential
     extend_simulation follow-ups (lazy cleanup). The next spawn call tears
     down the previous sub-AUT.
+
+    ``llm_router`` is the router the sub-AUT runs on, all of it (its ExecAgent, FearAgent and LLMWorker): the
+    sub-AUT is an agent under test, so the orchestrator hands it the run's AUT router (owner decision A, #1228).
     """
 
     name = "spawn_sub_simulation"
@@ -1548,7 +1551,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent(llm_router=self._llm_router)  # the parent sim's router, never a second (V29)
+        sub_agent = MaximAgent(shared_router=self._llm_router)  # the sub-AUT's router (#1228)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(

@@ -23,8 +23,6 @@ from maxim.agents.exec_agent import ExecAgent
 from maxim.agents.agentic_goal_agent import AgenticGoalAgent
 
 if TYPE_CHECKING:
-    from maxim.agents.llm_worker import LLMWorker
-    from maxim.models.language.router import LLMRouter
     from maxim.runtime.capture import CaptureManager
 
 
@@ -47,13 +45,6 @@ class MaximAgent(Agent):
     4. ExecAgent → proposes ProposedGoal based on context + LLM
     5. AgenticGoalAgent → accepts/rejects goal, executes via tools
     6. ToolResult → fed back to MemoryAgent for outcome tracking
-
-    The run's LLM (owner decision V29, #1315 item 10b): ``llm_router`` is required, keyword-only, so every builder
-    says which router the ExecAgent uses; the ExecAgent never builds a second one of its own (a second model load, and
-    a second router build the offline latch would refuse where nothing reports it). ``None`` means the run has no
-    router yet: it is shared later with :meth:`share_run_llm` (the robot runtime, which builds its LLM after the agent),
-    built by the ExecAgent only when its owner asks (the CLI agentic path's ``_ensure_router(consent="ask")``), or the
-    run has no LLM (the minecraft harness).
     """
 
     agent_name = "maxim"
@@ -64,8 +55,6 @@ class MaximAgent(Agent):
     def __init__(
         self,
         *,
-        llm_router: LLMRouter | None,
-        llm_worker: LLMWorker | None = None,
         name: str | None = None,
         enabled: bool = True,
         interests: list[int] | None = None,
@@ -77,7 +66,18 @@ class MaximAgent(Agent):
         reset_on_startup: bool = False,
         capture_manager: CaptureManager | None = None,
         agent_id: str = "maxim",
+        shared_router: Any,
     ) -> None:
+        """``shared_router`` (REQUIRED, keyword-only, #1228) is the router this agent's ExecAgent runs on, a choice every
+        caller states: a router (the one its runtime built, so no second one is built), ``None`` (no LLM, and none
+        built), or ``exec_agent.BUILD_OWN`` (ExecAgent builds its own lazily from ``load_llm_config()``, as the CLI's
+        agentic path does to ask for download consent). A router handed in bypasses the ``agent_profiles.exec_agent``
+        override, which applies only to a router ExecAgent builds itself (a WARNING says so when they differ).
+
+        In the sim the ExecAgent goal-proposal path is dormant (``_worker_loop`` starts only from :meth:`on_start`,
+        which no production runtime calls), so no private router was ever built there; the AUT's ExecAgent slot now
+        holds the AUT's router all the same. Its default used to be a lazy build, so the dual-LLM AUT's slot would
+        have built the narrator's profile (#1228)."""
         super().__init__(name=name, enabled=enabled)
         self._agent_id = agent_id
 
@@ -121,9 +121,8 @@ class MaximAgent(Agent):
             self.memory,
             llm_profile=llm_profile,
             quantization=quantization,
+            shared_router=shared_router,
             agent_id=agent_id,
-            shared_router=llm_router,
-            shared_llm_worker=llm_worker,
         )
 
         # Wire WorkingMemorySet: Exec owns it, MemoryAgent writes to it (0.8).
@@ -275,11 +274,6 @@ class MaximAgent(Agent):
                 hub._concept_grounder._collector = collector
             if hub.nac:
                 hub.nac._collector = collector
-
-    def share_run_llm(self, llm_router: LLMRouter | None, llm_worker: LLMWorker | None = None) -> None:
-        """Hand the ExecAgent the run's router and worker when they are built after the agent (owner decision V29);
-        :meth:`ExecAgent.share_run_llm` owns the rule."""
-        self.exec_agent.share_run_llm(llm_router, llm_worker)
 
     def on_start(self, **kwargs: Any) -> None:
         """Start all component agents."""

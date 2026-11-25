@@ -467,7 +467,7 @@ def run_once(
     hub = _Hub(obs)
     try:
         AL.run_agentic_loop(
-            MaximAgent(llm_router=None),
+            MaximAgent(shared_router=None),
             env,
             state,
             build_memory(),

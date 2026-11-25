@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 from maxim.utils.paths import AGENT_HOME_PATTERNS, RUNTIME_STATE_DIR
+from maxim.utils.child_env import child_env
 
 
 def normalize_epoch_value(value: object) -> int:
@@ -524,7 +525,7 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
 
 
 def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
-    """Restart the process in a new mode via os.execv.
+    """Restart the process in a new mode via os.execve, with ``child_env()`` (#1593).
 
     Two vocabularies (#829): an OPERATIONAL name (passive / active / singularity) re-execs with the SAME
     run mode and ``--operational-mode <name>``; any other name is a RUN mode (``--mode <name>``) and
@@ -584,7 +585,7 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         argv.append("--enable-embeddings")
     if operational:
         argv.extend(["--operational-mode", operational])
-    os.execv(sys.executable, argv)
+    os.execve(sys.executable, argv, child_env())  # not execv: see maxim.utils.child_env (#1593)
 
 
 # Memory targets for --clear-memory, as glob patterns relative to the data home (``utils/paths.py::data_home``).

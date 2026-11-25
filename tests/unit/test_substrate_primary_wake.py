@@ -194,7 +194,7 @@ def test_planning_level_never_executes_a_body_affordance(tmp_path):
     th = threading.Thread(
         target=run_agentic_loop,
         args=(
-            MaximAgent(llm_router=None),
+            MaximAgent(shared_router=None),
             FileSystemEnv(str(tmp_path / "ws")),
             state,
             build_memory(),

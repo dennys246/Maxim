@@ -121,7 +121,8 @@ class BackendError(Exception):
     order. The one exception is a build-time subclass that no provider
     raises (``LocalModelUnavailable``, raised while a router is being
     built, before any provider runs): it has no ``_try_provider``
-    branch, and its docstring says so (#1396 bullet 2). Adding a
+    branch, and its docstring says so (#1396 bullet 2; ``AutRouterUnavailable``,
+    #1228, is the second). Adding a
     *required* field post-1.0 is a major-version-bump change.
     """
 
@@ -134,13 +135,22 @@ class BackendError(Exception):
         *,
         status: int | None = None,
         fix_hint: str = "",
+        detail: str = "",
     ) -> None:
         self.provider_key = provider_key
         self.status = status
         if fix_hint:
             self.fix_hint = fix_hint
+        self.detail = detail  # what went wrong, beyond the class (a raiser's cause; never the fix hint, #1228)
         self.response: Any | None = None  # attached by the router on body-bearing errors
-        super().__init__(f"{type(self).__name__}[{provider_key}]: {self.fix_hint}")
+        super().__init__(f"{self.problem}: {self.fix_hint}")
+
+    @property
+    def problem(self) -> str:
+        """The error without its fix hint: ``Class[provider_key]`` and the detail, if any. ``str(e)`` is this plus the
+        fix hint; a renderer that prints the hint on its own line prints this, so the hint appears once (#1228)."""
+        head = f"{type(self).__name__}[{self.provider_key}]"
+        return f"{head} {self.detail}" if self.detail else head
 
 
 class BackendOverloaded(BackendError):
@@ -254,6 +264,29 @@ class LocalModelUnavailable(BackendError, ConfigurationError):
         self.profile = profile
         self.cause = cause
         super().__init__(profile, status=None, fix_hint=fix_hint or self._FIX_HINTS[cause])
+
+
+class AutRouterUnavailable(BackendError, ConfigurationError):
+    """``--aut-model`` named the AUT's own model and its router could not be built, so the run refuses (#1228, owner
+    decision B 2026-11-21).
+
+    Raised by ``simulation/orchestrator.py::_build_aut_router`` when the build returns no router or raises anything other
+    than :class:`LocalModelUnavailable` (which propagates as itself). A build-time subclass, so no
+    ``LLMRouter._try_provider`` branch (no provider raises it). A two-model run never silently becomes a one-model
+    run: the AUT used to fall back to the narrator's router, and every "the AUT ran on X" statement then named the wrong
+    model. The CLI renders ``fix_hint`` and exits 2 (``cli.py::_main_guarded``, the ``BackendError`` branch).
+    ``profile`` is the AUT model the run asked for.
+    """
+
+    fix_hint = (
+        "The AUT's model (--aut-model) could not be served. Check that the profile exists (`maxim --list-models`) and "
+        "that its backend is reachable (`maxim doctor`), or run without --aut-model to put the AUT on the shared model."
+    )
+
+    def __init__(self, profile: str, *, reason: str = "") -> None:
+        self.profile = profile
+        self.reason = reason  # why the build failed; in str(e) through ``detail``, never in the static fix_hint
+        super().__init__(profile, status=None, detail=f"({reason})" if reason else "")
 
 
 class BackendInferenceBroken(BackendError):

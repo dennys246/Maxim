@@ -446,7 +446,8 @@ class TestContemplationLLMCall:
     def test_routes_through_legacy_llm_when_no_router(self):
         mock_llm = MagicMock()
         mock_llm.generate_json.return_value = {"confidence": 0.5}
-        agent = _make_exec_agent(llm=mock_llm)  # an LLM its owner built; the call never builds one (V29)
+        agent = _make_exec_agent(llm=mock_llm)
+        agent._ensure_llm = MagicMock(return_value=mock_llm)
 
         result = agent._contemplation_llm_call(system="sys", user="usr", max_tokens=384)
         assert result == {"confidence": 0.5}
@@ -454,7 +455,7 @@ class TestContemplationLLMCall:
 
     def test_returns_none_when_no_backend(self):
         agent = _make_exec_agent()
-        agent._ensure_llm = MagicMock(side_effect=AssertionError("built an LLM of its own"))  # V29: never called
+        agent._ensure_llm = MagicMock(return_value=None)
 
         result = agent._contemplation_llm_call(system="sys", user="usr", max_tokens=384)
         assert result is None

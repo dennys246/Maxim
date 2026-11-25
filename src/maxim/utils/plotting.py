@@ -10,6 +10,7 @@ from typing import Sequence
 
 from maxim.utils.config import DEFAULT_SAVE_ROOT
 from maxim.utils.logging import warn
+from maxim.utils.child_env import child_env
 
 
 def _is_truthy(value: str | None) -> bool:
@@ -64,7 +65,7 @@ def preflight_matplotlib_fonts(
             warn("Failed to create MPLCONFIGDIR '%s': %s (using default cache)", config_dir, e, logger=logger)
             config_dir = None
 
-    env = os.environ.copy()
+    env = child_env()  # the preflight is a Python child (#1593)
     if config_dir:
         env["MPLCONFIGDIR"] = config_dir
     env.setdefault("MPLBACKEND", "Agg")

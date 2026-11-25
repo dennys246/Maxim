@@ -106,7 +106,7 @@ def _run_loop_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> tuple[list[dict
     workspace = tmp_path / "ws"
     workspace.mkdir()
     AL.run_agentic_loop(
-        MaximAgent(llm_router=None),
+        MaximAgent(shared_router=None),
         FileSystemEnv(str(workspace)),
         state,
         build_memory(),
