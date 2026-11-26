@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 
 from maxim._offline import OfflineRefusal
 from maxim.utils.child_env import child_env
+from maxim.utils.net import redact_urls
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -345,6 +346,14 @@ class ToolOutput:
     # None: ``tool_dispatch.record_outcome`` skips its own NEGATIVE for exactly that signature, so a failure
     # is booked once. Stamped by the executor; tools never set it. ``repr=False`` for the same reason as above.
     nac_failure_booked: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        # ``error`` is URL-reduced at construction (#1801 D5, option a): its text reaches the planning LLM's prompt
+        # (and so a cloud provider), the narrator, the console and memory, and httpx puts the request URL in its
+        # errors. A non-str error becomes a str. ``object.__setattr__``, never zero-arg ``super()`` (which raises
+        # ``TypeError`` in a slotted dataclass). ``output`` is deliberately NOT reduced: fetched content keeps its URLs.
+        if self.error is not None:
+            object.__setattr__(self, "error", redact_urls(str(self.error)))
 
 
 # Backward-compat alias — existing tools that import ToolResult keep working.

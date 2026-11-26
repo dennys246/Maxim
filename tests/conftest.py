@@ -377,6 +377,26 @@ _SESSION_SIGINT_HANDLER = signal.getsignal(signal.SIGINT)
 
 
 @pytest.fixture(autouse=True)
+def _restore_log_record_factory():
+    """#1801 R6: ``configure_logging`` installs the URL-redacting record factory, and 14+ test files call it (or
+    ``cli.main``) without restoring it, so one test's factory would shape every later test's records. Save and
+    restore the process factory and the module's chain state around every test."""
+    import logging
+
+    from maxim.utils import logging as maxim_logging
+
+    saved = (
+        logging.getLogRecordFactory(),
+        maxim_logging._chained_factory,
+        maxim_logging._factory_installed_once,
+    )
+    yield
+    logging.setLogRecordFactory(saved[0])
+    maxim_logging._chained_factory = saved[1]
+    maxim_logging._factory_installed_once = saved[2]
+
+
+@pytest.fixture(autouse=True)
 def _clear_stop_request():
     """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield.
 

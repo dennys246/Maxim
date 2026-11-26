@@ -201,9 +201,9 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
         "#1315 item 10b (owner decision V27): an offline run's provenance lists its refusals and degraded "
         "fallbacks; report assembly, not orchestrator run code"
     ),
-    ("report.py", "_url_scrubbed"): (
-        "#1404 item 2: the recursive URL scrub save_action_log applies to actions.jsonl's params/output/error/"
-        "block_reason; record redaction, not orchestrator run code"
+    ("sim_logger.py", "_sink_record"): (
+        "#1801 (owner, 2026-11-25): the record sim_log's sinks get, the conversation (RESPONSE, USER) whole and "
+        "everything else URL-reduced; log routing, not orchestrator run code"
     ),
     ("report.py", "_provider_failures"): (
         "#997: build_report's provider-failure attribution block moved out verbatim (rule T, after the URL scrub "
