@@ -767,7 +767,7 @@ class SCN(StoreFileOwnership):
             "monthly_bins": {str(k): v.to_list() for k, v in self._monthly_bins.items() if v},
             "annual_bins": {str(k): v.to_list() for k, v in self._annual_bins.items() if v},
             "signatures": {k: v.to_dict() for k, v in self._signatures.items()},
-            "priors": {k: list(v) for k, v in self._priors.items()},
+            "priors": {k: sorted(v) for k, v in self._priors.items()},
         }
         if self._oscillator is not None:
             data["oscillator"] = self._oscillator.to_dict()

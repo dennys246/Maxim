@@ -51,8 +51,9 @@ goes to the lines below.
   cut. **Risk:** B2's entry condition is the `start_simulation_mode` decomposition (baseline_floors.md §B2), and B4
   is the longest chain to 1.4.0 (roadmap_1_3_x.md §Risks 4). If line 4 stalls, 1.4.0 slips. D9's owner for line 4
   is the mitigation.
-- **D2. 10b's breaking change ships in a patch.** `MaximAgent(llm_router=)` becomes required (V29). It ships with a
-  `changelog.d/<slug>.breaking.md` fragment in 10b's PR that carries the migration.
+- **D2. The `MaximAgent` breaking change ships in a patch.** `MaximAgent(shared_router=)` is required. #1228 landed it
+  with its `changelog.d/1228-maxim-agent-router.breaking.md` fragment, which carries the migration; 10b's own V29
+  version (`llm_router=`) was dropped in favour of it when 10b merged main (2026-11-25).
 - **D3. 1.3.5 takes its own T1-2 clause.** It is called `release-1.3.5-T1-2`, in
   `docs/experiments/evidence_exceptions.json`, under the 2026-10-18 per-patch amendment (which covers 1.3.3 to
   1.3.6). It lands on `main` before the bump PR. At the clause's commit, someone re-checks by hand that T1-2 is the

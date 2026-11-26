@@ -8,16 +8,16 @@
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 74.8,
-      "missing": 1033
+      "percent": 76.0,
+      "missing": 1009
     },
     "maxim/advisor": {
       "percent": 98.9,
       "missing": 8
     },
     "maxim/agents": {
-      "percent": 74.7,
-      "missing": 1770
+      "percent": 75.8,
+      "missing": 1717
     },
     "maxim/analysis": {
       "percent": 86.9,
@@ -56,7 +56,7 @@
       "missing": 1068
     },
     "maxim/doctor": {
-      "percent": 73.6,
+      "percent": 74.6,
       "missing": 460
     },
     "maxim/embodied_runtime": {
@@ -88,8 +88,8 @@
       "missing": 60
     },
     "maxim/inference": {
-      "percent": 23.5,
-      "missing": 536
+      "percent": 26.0,
+      "missing": 525
     },
     "maxim/integration": {
       "percent": 76.3,
@@ -108,8 +108,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 65.9,
-      "missing": 2178
+      "percent": 67.4,
+      "missing": 2110
     },
     "maxim/modes": {
       "percent": 80.6,
@@ -186,8 +186,8 @@
       "missing": 0
     },
     "src/maxim/models/language/router.py": {
-      "percent": 78.8,
-      "missing": 233
+      "percent": 80.8,
+      "missing": 211
     },
     "src/maxim/simulation/orchestrator.py": {
       "percent": 76.8,

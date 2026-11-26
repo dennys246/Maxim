@@ -26,6 +26,7 @@ import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, ParamSpec, TypeVar
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import log_swallowed_exception
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,51 @@ def _ensure_sim_bridge_handlers() -> None:
     for handler_id, h in root_jsonl.items():
         if handler_id not in bridge_ids:
             _sim_bridge_logger.addHandler(h)
+
+
+# #1775 (owner, 2026-11-24): subsystems that carry model-written or incoming text, as ``data["text"]`` and, for
+# RESPONSE, SCENE and PERCEPT, as the message itself (DELIBERATION's message is a cycle counter; its text is the
+# reasoning parsed from the reply). SCENE is ``display_scene``: the narrator's prose, and the approval prompt's lines
+# quoting a proposal's reasoning and the agent's question. PERCEPT is the agent's incoming text (in its message only):
+# the narrator's prose arrives as a ``cli`` percept, like the person's typing, and NPC lines and comms messages are
+# percepts too; its ``data["source"]`` stays readable. The sim-session JSONL and the sinks (the console's Talk view, the web
+# ThinkingPanel, the Adventure view) keep the text; the MAXIM_LOG_FILE mirror carries only its shape, because the text
+# can quote a PRIVATE tool's output and the log file is not a display surface. A silent RESPONSE turn (``text`` None)
+# keeps its message: a tool-name summary, not a reply. Value: whether the message is the text.
+_REPLY_SUBSYSTEMS: dict[str, bool] = {"RESPONSE": True, "SCENE": True, "PERCEPT": True, "DELIBERATION": False}
+
+
+def _bridge_to_log_file(
+    subsystem: str,
+    message: str,
+    data: dict[str, Any] | None,
+    *,
+    elapsed: float,
+    agent_id: str | None,
+    nickname: str | None,
+) -> None:
+    """Mirror one sim_log record into the unified ``MAXIM_LOG_FILE`` stream (reply text by shape only)."""
+    fields = dict(data or {})
+    if subsystem in _REPLY_SUBSYSTEMS:
+        if _REPLY_SUBSYSTEMS[subsystem] and fields.get("text", message) is not None:
+            message = text_shape(str(message))
+        if isinstance(fields.get("text"), str):
+            fields["text"] = text_shape(fields["text"])
+    _ensure_sim_bridge_handlers()
+    _sim_bridge_logger.info(
+        message,
+        extra={
+            "event": f"sim_{subsystem.lower()}",
+            "data": {
+                "subsystem": subsystem,
+                "message": message,
+                "elapsed_s": round(elapsed, 3),
+                "agent_id": agent_id,
+                "agent": nickname,
+                **fields,
+            },
+        },
+    )
 
 
 # ContextVar for implicit agent_id threading. The agent loop sets this
@@ -1049,21 +1095,7 @@ def sim_log(
     # picks up `event` + `data` from the `extra=` dict; we route through a
     # dedicated logger with propagate=False so stdout handlers never see
     # these emissions (they have their own terminal path below).
-    _ensure_sim_bridge_handlers()
-    _sim_bridge_logger.info(
-        message,
-        extra={
-            "event": f"sim_{subsystem.lower()}",
-            "data": {
-                "subsystem": subsystem,
-                "message": message,
-                "elapsed_s": round(elapsed, 3),
-                "agent_id": agent_id,
-                "agent": nickname,
-                **(data or {}),
-            },
-        },
-    )
+    _bridge_to_log_file(subsystem, message, data, elapsed=elapsed, agent_id=agent_id, nickname=nickname)
 
     # `_terminal=False`: record ONLY (sinks + JSONL + bridge, already done
     # above) and skip terminal rendering. Used by the display_* helpers, which
@@ -1122,8 +1154,13 @@ def sim_log(
 
 @_contained
 def sim_percept(source: str, summary: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
-    """Log an incoming percept."""
-    sim_log("PERCEPT", f"👁️ [{source}] {summary}", kwargs if kwargs else None, agent_id=agent_id)
+    """Log an incoming percept.
+
+    ``source`` rides in the data too (#1775), so the MAXIM_LOG_FILE mirror, which logs a PERCEPT's message by shape
+    only, still says where the percept came from. The text itself stays in the message alone: a ``text`` key would be
+    echoed a second time by the terminal renderer's details.
+    """
+    sim_log("PERCEPT", f"👁️ [{source}] {summary}", {"source": source, **kwargs}, agent_id=agent_id)
 
 
 @_contained

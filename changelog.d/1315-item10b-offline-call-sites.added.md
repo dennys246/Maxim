@@ -1,0 +1,28 @@
+- **Offline call sites refuse first** (#1315 item 10b): under `llm.offline`, each library path that would fetch or
+  spawn refuses early with a typed `OfflineRefusal` instead of failing deep in a library: docker (an explicit
+  `--sandbox docker` refuses; `--sandbox auto` runs in a tmpdir sandbox), ddgs web search (a native client the latch
+  cannot see), ultralytics weight downloads and `YOLO(name)` (only an existing weight file loads; a missing pose
+  weight only turns pose off), twilio SMS and calls (before anything is recorded as sent), model and TTS-voice
+  downloads (before any consent prompt), RTM vision weights, and a faster-whisper model that is not cached. Hugging
+  Face loads (sentence-transformers, faster-whisper) pass `local_files_only` where the library takes it, and
+  transformers loads local-only and never runs remote code offline.
+- **A missing model offline** (owner decisions V25, V28, V31): a profile you chose (`--llm`, `llm.profile`, or a
+  tier's `model_profile` in llm.json) is refused by name and never swapped; an auto-detected tier falls back to a
+  model already on disk, and the run records that as degraded (a lane left with no model is recorded as having
+  none). On an agentic run without a GPU (`--mode agentic`, or the robot runtime), Maxim's default model
+  (`smollm-1.7b-instruct`) is set for the session like a profile you chose, so offline a missing one is refused
+  by name rather than replaced (#1737 tracks a fallback for it).
+- **An offline run says what it could not do** (owner decision V27): the sim's `report.json` provenance gains an
+  `offline` block (the refusals, the exact count, and each degraded fallback), and `lane_decisions.jsonl` records
+  `offline` and `offline_degraded`. A missing encoder or semantic model still falls back to hashing, now said once.
+- **Refusals stay refusals**: a robot run or an NPC line stopped by an offline refusal reports it as a refusal (exit
+  2), not a crash. A benchmark records a refused model (offline, or a leader refusal) as refused, not failed: it is
+  not scored or ranked, the other models still run, and the run exits 2 (owner decision V26); a refused
+  `--write-paper` writer exits 2 too, whether the refusal comes at its router build or at a section call.
+  `maxim doctor` keeps a check's own rows and adds a "refused (offline)" row; each robot says so by name.
+  `--auto-curate` and `--foundry` with a model offline cannot run refuse (exit 2) instead of falling back to
+  templates, and a leader boot refused offline says so instead of reporting a port conflict. A model named by
+  `maxim.run(model=)`, `--aut-model` or research's `language_model` counts as chosen: offline it is refused by name,
+  never swapped.
+- **A refused ExecAgent stops proposing**: an ExecAgent whose router is refused (offline, a leader refusal) says why
+  once and stops, instead of logging a language-model error every turn.
