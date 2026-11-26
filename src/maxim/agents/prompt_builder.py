@@ -30,7 +30,7 @@ from maxim.agents.prompt_budgeter import (
     _truncate_tool_guidance,
 )
 from maxim.utils.coding_guidelines import build_coding_context
-from maxim.memory.text import frame_external, whole_frames
+from maxim.utils.prompt_text import frame_external, whole_frames
 from maxim.utils.cloud_redaction import text_shape, tool_result_header
 from maxim.utils.content_safety import (
     INBOUND_WORDING,
@@ -1074,7 +1074,7 @@ def cost_energy_divergence(policy: Any, totals: dict[str, float]) -> str:
 def _whole_frames(text: str) -> str:
     """``text`` without any partial untrusted-content frame (Session R, rule 2): the loop stores enrichment text cut to
     a length (``[:500]``, ``[:200]``, ``[:800]``), and a cut through a recalled frame would show its body bare. The
-    label a dropped frame leaves goes too (``memory/text.py::whole_frames``, #1519)."""
+    label a dropped frame leaves goes too (``utils/prompt_text.py::whole_frames``, #1519)."""
     return whole_frames(text)
 
 

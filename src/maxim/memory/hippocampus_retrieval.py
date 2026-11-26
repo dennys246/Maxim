@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.text import Provenance
+from maxim.utils.prompt_text import Provenance
 from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label, record_active_goal
 from maxim.utils.logging import log_swallowed_exception
 
