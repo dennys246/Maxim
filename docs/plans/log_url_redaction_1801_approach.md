@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v28 2026-11-25 (Session A). **DESIGN SETTLED: the stop rule held at round 27.** Code is next, then the three-lens code review. On on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v29 2026-11-25 (Session A). **DESIGN SETTLED: the stop rule held at round 27.** Code built; code review round 1 folded (entry at the end of this block). On on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -209,11 +209,36 @@
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
->     - the factory is installed only by `configure_logging`;
+>     - the factory is installed only by `configure_logging`; the second installer is
+>       `leader_proxy._ensure_log_buffer`, which runs the same chained install on each `_LogBuffer` install (the R4
+>       chain check), so it adds no embedding exposure `configure_logging` does not;
 >     - `sim_log` and `log_agentic` are reduced in this PR;
 >     - `redact_urls`' whitespace-in-password gap is fixed here;
 >     - children are covered by their entry points plus one two-process guard.
 >   - D5 (2026-11-25): `ToolOutput.error` is reduced at construction (option a).
+> - **Delta code review round 2 (2026-11-25): clean on both lenses** (0 DO-NOT-MERGE, 0 SHOULD-FIX). It also
+>   covers two `AgentOutputManager` fixes folded under filing-is-not-fixing (the first-write deadlock, now an
+>   RLock; `is None` for the buffer). NITs: the tests were tightened; the private `_numpy_numeric_types` import
+>   is kept, as the comment documents (a rename would owe another round).
+> - **Code review round 1 (three lenses: Executor, Architecture, Wire integrity), 2026-11-25.** Wire returned a
+>   DO-NOT-MERGE on the chat; the rest SHOULD-FIX and NITs, all folded test-first, each guard proven by deletion:
+>   - **Owner decision, 2026-11-25 (the Wire DO-NOT-MERGE):** the conversation, `sim_log`'s RESPONSE (the agent's
+>     reply) and USER (the person's input) records (`sim_logger.CONVERSATION_SUBSYSTEMS`), reaches the sinks (`/ws`)
+>     and the console fan-out (`_EventHub._fanout`) UNREDUCED, so the person sees full links in the chat. Every
+>     persisted or logged destination stays reduced: the trail, the sim JSONL, `_bridge_to_log_file`, the terminal
+>     and `StructuredFormatter`. Every other subsystem is still reduced at the sinks.
+>   - Executor SF1: `ensure_redacting_record_factory`'s check and install run under a module-level `RLock`.
+>   - Executor SF2: `_render_subclass_record` catches `Exception` in the Stage-1 form.
+>   - Wire SF1: `record_outcome` reduces only the error part of NAc's outcome summary, never a success summary.
+>   - Wire SF2: D5's consequences for Hippocampus and NAc keys stated (§Decisions, bio-memory.md §4).
+>   - Same pattern, pre-existing: the agentic scrub moved into `AbstractionBuffer.append`, so
+>     `AgentOutputManager.write`/`write_to_stream`, which append directly, are reduced too.
+>   - Wire NIT: `url_scrubbed` keeps numpy NUMERIC scalars by exact type (never importing numpy).
+>   - Architecture NITs: `http` no longer re-exports `_URL_IN_TEXT`/`_URL_PATH_SCHEMES`/`_URL_START`; the unread
+>     factory marker is deleted; D1 names `_ensure_log_buffer` as the second installer; `serving_provenance` imports
+>     the reducers from `maxim.utils.net`.
+>   - Executor NITs: `leader_proxy._reduced_error_body` catches `RecursionError` (a deeply nested JSON body), failing
+>     CLOSED to reducing the decoded text; subclass records use a stock `Formatter().formatException` (stated).
 
 ## Why
 
@@ -262,7 +287,10 @@ written later.
 
 ## Shape
 
-- **Family 1, part a: a chained `logging` record factory**, installed by `configure_logging` (D1). It leaves `msg`
+- **Family 1, part a: a chained `logging` record factory**, installed by `configure_logging` (D1) and re-checked
+  by `leader_proxy._ensure_log_buffer`, the second installer, on each `_LogBuffer` install. The check and the install
+  run under one module-level `threading.RLock` (`_factory_install_lock`), so two installs racing on different
+  threads cannot drop a chained host factory or log a false WARNING (code review SF1). It leaves `msg`
   and `args` untouched (R3: rendering at creation costs up to 598 µs for one large dict argument, it would render
   all 423 `logger.debug` sites under `MAXIM_LOG_FILE`'s root=DEBUG, and it hollows out tests that read
   `record.args`). Instead it:
@@ -311,12 +339,14 @@ written later.
     - a record of a real subclass is rendered eagerly, `msg = redact_urls(getMessage())` and `args = ()`. That pays
       R3's cost only on this rare path. The render is wrapped in `try`: a bad format (`warning("x %d", "notint")`)
       must not raise out of the `logger` call, where inside an `except` block it would mask the original exception.
-      On a failure (`TypeError`/`ValueError`/`KeyError`) the record is left untouched: no class swap, which would
+      On ANY failure (`Exception`, code review SF2: an argument whose `__str__` raises `RuntimeError` must not
+      escape either) the record is left untouched: no class swap, which would
       drop a subclass's own `getMessage`, or raise `TypeError` on a subclass with `__slots__` (H3). `handleError`
       then reports the bad format at emit, as it does today. The `except` is recorded with the swallow lint, in the
       Stage-1 form (H3). The subclass path also reduces the traceback fields in place, OUTSIDE the message-render
       `try`, so a bad format string cannot leave them raw (K5). Guarded as the stdlib guards it: `if record.exc_info:
-      exc_text = redact_urls(logging.Formatter().formatException(exc_info))` (it raises `TypeError` on `None`, L3),
+      exc_text = redact_urls(logging.Formatter().formatException(exc_info))` (it raises `TypeError` on `None`, L3);
+      a STOCK `Formatter().formatException`, so a handler's custom `formatException` is not used for that field,
       and `stack_info` is reduced only when it is set (J5; latent, since there is no `LogRecord`
       subclass in `src/` or the venv). A failed render's `getMessage` raises again at emit and goes to
       `handleError`'s stderr dump: the stated terminal-only gap;
@@ -331,8 +361,9 @@ written later.
     stated: `makeLogRecord`'s dict update bypasses `__set__`, so that record's `__dict__` stays raw (latent; no
     receiver in `src/`) (H2). The clean-through-`pickle`/`copy`/`QueueHandler.prepare` claim covers `exc_text` and
     `stack_info` ONLY (K1);
-  - carries a marker attribute, but whether to install is decided by the behavioural check, not by the marker. A
-    chaining wrapper placed over ours hides the marker, and the outcome is a harmless double wrap (N2).
+  - carries no marker attribute (code review NIT2 deleted the unread one): whether to install is decided by the
+    behavioural check alone. A chaining wrapper placed over ours would hide any marker, and the outcome is a
+    harmless double wrap (N2).
 
   It is a factory rather than a handler filter because `basicConfig(force=True)` and `sim_logger`'s reconciliation
   rebuild handlers, while the factory survives both (probed, as did `dictConfig`). The bridge logger with
@@ -526,7 +557,7 @@ whose every assignment is one.
 | install order | records before `configure_logging`; Python's last-resort stderr handler; a later factory that does not chain | before setup there are no Maxim sinks except stderr (a gap, stated). The behavioural chain check catches a later factory at each install point; one set after the last check point is caught only at the next `configure_logging`, and nothing in the venv calls `setLogRecordFactory` (a gap, stated; N2). `logging.makeLogRecord` and `deepcopy` keep the reduced text (probed) |
 | raw `__dict__` (K1) | `msg` as an exception object, `args`, `exc_info` and `extra=` keys stay raw in `__dict__`, so `vars()`, `pickle` and `copy` carry them; `extra=` keys survive even `makePickle` and `QueueHandler.prepare` | a gap, stated: the boundary reduces what a handler RENDERS, not a record's raw attributes. Latent, since there is no pickling or `__dict__` receiver in `src/` (no `SocketHandler`/`QueueListener`/`makeLogRecord`). The `StructuredFormatter` path reduces `data` on render (R1) |
 | serialization (S3) | a closure `getMessage` cannot be pickled, so `SocketHandler` and a multiprocessing queue drop the record | a module-level `LogRecord` subclass set by `__class__` swap on a stock record (F1); a real subclass is rendered eagerly. Bound methods are NOT used (F1) |
-| embedding | a global factory rewrites the host app's records | installed only by `configure_logging` (D1) |
+| embedding | a global factory rewrites the host app's records | installed only by `configure_logging` (D1) and re-checked by `leader_proxy._ensure_log_buffer` |
 | children (R5) | the LLM server runs `python -m llama_cpp.server`, and `maxim-diagnostics` never calls `configure_logging` | both write only to the terminal or to DEVNULL (stated). Every `cli.py::main` child is covered |
 | tests (R6) | 14 test files call `configure_logging` or `cli.main` and never restore the factory | an autouse `tests/conftest.py` fixture saves and restores `logging.getLogRecordFactory()` |
 | double application | a per-site wrap followed by the boundary | `redact_urls` is idempotent |
@@ -642,6 +673,12 @@ whose every assignment is one.
     the path that failed. The model chose the URL, so the path is in its own action.
   - (b) Reduce it only where it is rendered into a prompt.
   - (c) Leave it, and file it.
+  - **Consequences (code review Wire SF2, 2026-11-25):** Hippocampus failure episodes now store the reduced error.
+    So `EpisodicMemory.copy_key`'s dedupe (words, tool and outcome by `repr`) merges failures that differ only by
+    URL path or query, and a failed fetch is no longer recallable by its path. NAc link keys for ERROR outcomes
+    (`outcome_signature`, the first 50 characters of the error) change too: an old link whose first 50 characters
+    held a URL stops matching and relearns. A SUCCESS `result_summary` is outside D5's error scope and is NOT reduced
+    (code review Wire SF1), so success-path NAc keys are unchanged. Stated in docs/agents/bio-memory.md §4.
 
 ## Not in scope (stated)
 

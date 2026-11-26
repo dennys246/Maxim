@@ -38,7 +38,6 @@ import logging
 import math
 import socket
 import os
-import re
 import threading
 import time
 import zlib
@@ -46,7 +45,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
-from urllib.parse import urlsplit
 
 import httpcore
 import httpx
@@ -54,6 +52,7 @@ import httpx
 from maxim import _offline
 from maxim.utils.net import AddressPolicy
 from maxim.utils.net import is_public_address as _is_public_address
+from maxim.utils.net import redact_urls, url_origin, url_scrubbed
 from maxim.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -1093,47 +1092,7 @@ def _classify_status(
     )
 
 
-def url_origin(url: str | None) -> str:
-    """An endpoint as a committed record keeps it: ``scheme://host[:port]`` (#997). Userinfo, path, query and
-    fragment (where a tunnel's credentials or token live) are dropped; the port stays, because two local servers
-    differ only by it and it is no secret. Anything that is not an http(s) URL with a host, that does not parse
-    (an unbalanced IPv6 bracket), or whose port is invalid or whose host holds a ``%`` (a percent-encoded
-    ``user:pass@`` urlsplit leaves in the host) or a backslash (urlsplit does not end the host
-    at one) gives ``""``. Never raises. ``scripts/o19_verdict.py::
-    _endpoint_origin`` is a stdlib copy (that script imports no ``maxim``); a parity test pins the two."""
-    try:
-        parts = urlsplit(str(url or "").strip())
-        port = parts.port
-    except ValueError:
-        return ""
-    host = parts.hostname
-    if parts.scheme.lower() not in ("http", "https") or not host or "%" in host or "\\" in host:
-        return ""
-    host = f"[{host}]" if ":" in host else host
-    return f"{parts.scheme.lower()}://{host}" + (f":{port}" if port is not None else "")
-
-
-# A URL in free text: a whole run of scheme characters (the lookbehind keeps the scan linear: a match starts only at
-# the start of a run, and taking the whole run means a URL glued to a digit or ``.+-`` is still matched), then
-# optional userinfo up to its ``@`` (which may hold a quote, so a password's tail is not left behind), then
-# everything up to whitespace, a quote or an angle bracket.
-_URL_IN_TEXT = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z0-9+.-]+://(?:[^\s/@]*@)?[^\s'\"<>]+")
-_URL_TRAILING_PUNCT = ".,;:!?)"
-_URL_NON_SCHEME_START = "0123456789+.-"  # characters a scheme may hold but not start with
-
-
-def redact_urls(text: str) -> str:
-    """``text`` with every URL in it reduced by :func:`url_origin` (``"<url>"`` where nothing is left), and the
-    sentence punctuation after a URL kept: for free text a record keeps, such as an exception string, which httpx
-    formats with the request URL (#997). Never raises."""
-
-    def _reduce(match: re.Match[str]) -> str:
-        raw = match.group(0)
-        core = raw.rstrip(_URL_TRAILING_PUNCT)
-        lead = core[: len(core) - len(core.lstrip(_URL_NON_SCHEME_START))]  # ``1https://`` keeps ``1``
-        return lead + (url_origin(core[len(lead) :]) or "<url>") + raw[len(core) :]
-
-    return _URL_IN_TEXT.sub(_reduce, str(text))
+# The URL text helpers live in the stdlib-only ``utils/net.py`` (#1801 S5) and are re-exported here.
 
 
 def _loggable_url(url: str) -> str:
@@ -1928,6 +1887,7 @@ __all__ = [
     # Redaction (#997)
     "url_origin",
     "redact_urls",
+    "url_scrubbed",
     # Constants
     "MAX_HEADER_VALUE_LEN",
     "DEFAULT_POOL_PER_ENDPOINT",

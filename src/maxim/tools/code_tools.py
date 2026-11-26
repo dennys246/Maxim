@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput
+from maxim.utils.net import redact_urls
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
 
@@ -183,8 +184,10 @@ class RunTestsTool(Tool):
             )
 
         success = result.returncode == 0
-        output_text = result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout
-        error_text = result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr
+        # Reduce, then cut (#1801 F2): a tail cut can drop a URL's scheme, so no URL is seen after it.
+        stdout_text, stderr_text = redact_urls(result.stdout), redact_urls(result.stderr)
+        output_text = stdout_text[-2000:] if len(stdout_text) > 2000 else stdout_text
+        error_text = stderr_text[-1000:] if len(stderr_text) > 1000 else stderr_text
 
         return ToolOutput(
             success=success,

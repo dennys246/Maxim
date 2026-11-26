@@ -17,9 +17,12 @@ import json
 import logging
 import os
 import threading
+import dataclasses
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
+
+from maxim.utils.net import url_scrubbed
 
 
 class AgenticVerbosity(enum.IntEnum):
@@ -168,8 +171,15 @@ class LogRecord:
         return f"{ts}.{ms:03d} [{self.source}] {self.event}{data_str}"
 
 
+def _scrubbed_data(data: Any) -> dict[str, Any]:
+    """``data`` with every URL in it reduced (#1801): the record factory runs before ``extra=`` is attached and cannot
+    see it (R1). A non-dict payload is kept under ``"value"`` rather than lost."""
+    scrubbed = url_scrubbed(data if data is not None else {})
+    return scrubbed if isinstance(scrubbed, dict) else {"value": scrubbed}
+
+
 class StructuredFormatter(logging.Formatter):
-    """Formatter that outputs compact JSON for log aggregation."""
+    """Formatter that outputs compact JSON for log aggregation. ``data`` is URL-reduced (#1801 R1)."""
 
     def format(self, record: logging.LogRecord) -> str:
         log_record = LogRecord(
@@ -177,7 +187,7 @@ class StructuredFormatter(logging.Formatter):
             level=record.levelname,
             source=record.name.split(".")[-1],
             event=getattr(record, "event", "log"),
-            data=getattr(record, "data", {}),
+            data=_scrubbed_data(getattr(record, "data", {})),
         )
         return log_record.to_json()
 
@@ -229,11 +239,15 @@ class AbstractionBuffer:
                 self._callbacks.remove(callback)
 
     def append(self, record: LogRecord) -> None:
-        """Append a record, respecting verbosity filtering."""
+        """Append a record, respecting verbosity filtering. ``data`` is URL-reduced here, the one choke point every
+        producer reaches (``log_agentic``, ``log_structured``, ``AgentOutputManager.write``/``write_to_stream``):
+        ``get_recent`` feeds the memory agent's LLM context (#1801). The stored record is a copy; the producer's
+        record and dict are not mutated."""
         # Check if this event passes the verbosity filter
         event_min_verbosity = EVENT_VERBOSITY.get(record.event, 1)
         if event_min_verbosity > self._verbosity:
             return  # Skip this event based on verbosity
+        record = dataclasses.replace(record, data=_scrubbed_data(record.data))
 
         with self._lock:
             self._entries.append(record)
@@ -361,7 +375,8 @@ def log_structured(
     data: dict[str, Any] | None = None,
     msg: str = "",
 ) -> None:
-    """Log a structured event that flows to the abstraction stream."""
+    """Log a structured event that flows to the abstraction stream. ``data`` is URL-reduced first (#1801)."""
+    data = _scrubbed_data(data)
     record = LogRecord(
         timestamp=time.time(),
         level=logging.getLevelName(level),
@@ -397,6 +412,9 @@ def log_agentic(
         event: Event type (e.g., "goal_proposed", "tool_called")
         data: Additional event data
         level: Log level (INFO, DEBUG, WARNING, ERROR)
+
+    ``data`` is URL-reduced by ``AbstractionBuffer.append`` (#1801): ``get_recent`` feeds the memory agent's LLM
+    context.
     """
     record = LogRecord(
         timestamp=time.time(),
