@@ -278,14 +278,22 @@ class _OpenAIBackend:
                 "base_url": base_url,
                 "timeout": self._get_timeout(),
             }
-            if base_url:
-                from maxim.utils import http as _http
+            from maxim.utils import http as _http
+
+            provider_cfg = self._provider_cfg()
+            # #1782: a provider entry may refuse every env proxy (NO_PROXY is honoured without it, D16), with or
+            # without a base_url (none: the SDK's default host, which would read HTTPS_PROXY itself)
+            strict = _http.provider_strict_address_check(provider_cfg)
+            if base_url or strict:
                 from maxim.utils.net import base_url_address_policy
 
                 # #921: validate_base_url's rules, enforced on the address the SDK actually dials
-                allow_local = bool(self._provider_cfg().get("allow_local_endpoints", False))
+                allow_local = bool(provider_cfg.get("allow_local_endpoints", False))
                 checked = _http.address_checked_client(
-                    base_url_address_policy(base_url, allow_local), timeout=self._get_timeout(), base_url=base_url
+                    base_url_address_policy(base_url, allow_local) if base_url else "any",
+                    timeout=self._get_timeout(),
+                    base_url=base_url,
+                    strict=strict,
                 )
                 if checked is not None:
                     client_kwargs["http_client"] = checked

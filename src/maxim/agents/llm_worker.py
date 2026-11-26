@@ -94,6 +94,7 @@ except ImportError:
     _HAS_ENERGY_TRACKING = False
     LLMEnergyTracker = None  # type: ignore
 
+
 if TYPE_CHECKING:
     from maxim.agents.bus import StructuredContext
     from maxim.runtime.worker_pool import WorkerPool
@@ -657,6 +658,8 @@ class LLMWorker:
             self._requests_processed += 1
             return proposal
 
+        from maxim.runtime.worker_pool import LaneStopped  # the stopped-lane refusal (accepted client scope)
+
         try:
             self._pool.submit(
                 lane=PLANNING_LANE,
@@ -665,7 +668,7 @@ class LLMWorker:
                 priority=-request.priority,
             )
             return True
-        except queue.Full:
+        except (queue.Full, LaneStopped):  # LaneStopped: a requeue that raced stop()
             self._reject_attempt()
             self._requests_dropped += 1
             return False
@@ -1138,6 +1141,8 @@ class LLMWorker:
                 self._requests_processed += 1
                 return proposal
 
+            from maxim.runtime.worker_pool import LaneStopped  # the stopped-lane refusal (accepted client scope)
+
             try:
                 # Negate priority: higher caller priority -> lower queue value
                 self._pool.submit(
@@ -1147,11 +1152,12 @@ class LLMWorker:
                     priority=-priority,
                 )
                 return True
-            except queue.Full:
+            except (queue.Full, LaneStopped) as exc:  # LaneStopped: a request that raced stop()
                 self._reject_attempt()
                 self._requests_dropped += 1
                 logger.warning(
-                    "LLM request dropped (queue full): %s (total dropped: %d)",
+                    "LLM request dropped (%s): %s (total dropped: %d)",
+                    "lane stopped" if isinstance(exc, LaneStopped) else "queue full",
                     request.request_id if hasattr(request, "request_id") else "unknown",
                     self._requests_dropped,
                 )
