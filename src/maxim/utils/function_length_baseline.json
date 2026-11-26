@@ -101,7 +101,7 @@
     {
       "file": "src/maxim/models/language/config.py",
       "qualname": "load_llm_config",
-      "lines": 269
+      "lines": 261
     },
     {
       "file": "src/maxim/models/language/router.py",

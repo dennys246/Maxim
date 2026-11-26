@@ -631,11 +631,16 @@ def _llm_config_candidates() -> list[str]:
         candidates.append(str(user_config() / "llm.json"))
     except (ImportError, OSError):
         pass
-    repo_root = _source_checkout_root()
-    if repo_root is not None:
-        candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
-        candidates.append(os.path.join(repo_root, "llm.json"))
+    candidates.extend(_repo_root_candidates())
     return candidates
+
+
+def _repo_root_candidates() -> list[str]:
+    """The source checkout's own ``data/util/llm.json`` and ``llm.json``; empty for an installed package."""
+    repo_root = _source_checkout_root()
+    if repo_root is None:
+        return []
+    return [os.path.join(repo_root, "data", "util", "llm.json"), os.path.join(repo_root, "llm.json")]
 
 
 def _source_checkout_root(package_file: str = __file__) -> str | None:
@@ -666,11 +671,14 @@ def _warn_ignored_cwd_llm_json(winner: str | None, candidates: list[str]) -> Non
     Before #1806 such a file was the config when the data home had none, and the docs said to put one there, so a
     user's stricter ``routing`` caps there would otherwise drop to the defaults without a word. A file that is itself
     a discovery candidate (a source checkout run from its root) is not "ignored", only shadowed, which
-    :func:`_log_shadowed_llm_configs` reports (round 5 S1).
+    :func:`_log_shadowed_llm_configs` reports (round 5 S1). Nor is one the pre-#1806 order would also have skipped,
+    because an env-named or user-config file won.
     """
     global _ignored_cwd_warning_emitted
     if _ignored_cwd_warning_emitted:
         return
+    if winner is not None and winner not in _repo_root_candidates():
+        return  # an env or user-config file won: the old order read no launch-directory file here either (fold NIT)
     try:
         cwd = os.getcwd()
     except OSError as exc:  # a deleted launch directory: nothing there to warn about, and loading must not fail (S2)
@@ -910,9 +918,12 @@ def _log_shadowed_llm_configs(winner: str, losers: list[str]) -> None:
         logger.info("llm.json loaded from %s (shadowing: %s)", winner, ", ".join(shadowed))
 
 
-def load_llm_config(profile_override: str | None = None) -> LLMConfig:
-    default = LLMConfig()
+def _read_discovered_llm_config() -> dict[str, Any]:
+    """The first existing :func:`_llm_config_candidates` file's JSON object (``{}`` when none, or not an object).
 
+    Logs the candidates it shadows and, once, an ignored launch-directory ``llm.json`` (#1806 PR 0; moved out of
+    :func:`load_llm_config` by the touch rule).
+    """
     raw: dict[str, Any] = {}
     candidates = _llm_config_candidates()
     winner: str | None = None
@@ -925,6 +936,13 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
             _log_shadowed_llm_configs(path, candidates[i + 1 :])
             break
     _warn_ignored_cwd_llm_json(winner, candidates)
+    return raw
+
+
+def load_llm_config(profile_override: str | None = None) -> LLMConfig:
+    default = LLMConfig()
+
+    raw = _read_discovered_llm_config()
 
     profile_raw = profile_override or os.getenv("MAXIM_LLM_PROFILE")
     if profile_raw is None:

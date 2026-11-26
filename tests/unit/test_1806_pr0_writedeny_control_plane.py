@@ -491,6 +491,33 @@ def test_a_checkout_run_from_its_root_does_not_warn(tmp_path: Path, monkeypatch,
     paths._reset_caches()
 
 
+def test_no_warning_when_the_user_config_wins(tmp_path: Path, monkeypatch, caplog) -> None:
+    """Round 5 fold NIT: with a user-config ``llm.json``, a launch-directory one was never read (before #1806 either),
+    so a "NOT read ... Move it to <that same file>" WARNING would only invite overwriting the config in use."""
+    import json
+    import logging
+
+    from maxim.models.language import config as C
+    from maxim.utils import paths
+
+    home = tmp_path / "data-home"
+    (home / "config").mkdir(parents=True)
+    (home / "config" / "llm.json").write_text(json.dumps({"cloud_enabled": False}))
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(home))
+    monkeypatch.delenv("MAXIM_LLM_CONFIG", raising=False)
+    paths._reset_caches()
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "llm.json").write_text(json.dumps({"cloud_enabled": True}))
+    monkeypatch.chdir(work)
+    monkeypatch.setattr(C, "_source_checkout_root", lambda package_file=None: None)
+    monkeypatch.setattr(C, "_ignored_cwd_warning_emitted", False)
+    with caplog.at_level(logging.WARNING, logger=C.__name__):
+        assert C.load_llm_config().cloud_enabled is False
+    assert not [r for r in caplog.records if "is NOT read" in r.getMessage()]
+    paths._reset_caches()
+
+
 def test_a_deleted_launch_directory_does_not_break_loading(tmp_path: Path, monkeypatch) -> None:
     """Round 5 S2: the launch-directory check must not turn ``os.getcwd()``'s FileNotFoundError into a load failure."""
     from maxim.models.language import config as C
