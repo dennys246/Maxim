@@ -48,6 +48,7 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.models.download import LLM_DISABLED, consent_interactive, consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
@@ -1395,6 +1396,8 @@ Based on this context, what goal should be proposed?"""
             )
             return goal
 
+        except SECURITY_REFUSALS:
+            raise  # a refusal is not a "language model error" (#1315 item 10b); the worker loop ends on it
         except Exception as e:
             warn("Language model error during plan generation: %s", e)
             return None
@@ -1810,7 +1813,14 @@ Based on this context, what goal should be proposed?"""
 
             # Build context and propose
             ctx = self._memory.build_context()
-            proposal = self._propose_goal(ctx)
+            try:
+                proposal = self._propose_goal(ctx)
+            except SECURITY_REFUSALS as refusal:
+                # The run's router was refused (#1315 item 10b): said once, by name, and the worker ends, rather than
+                # a dead thread or a "language model error" every turn. No caller starts this worker today
+                # (MaximAgent.on_start is never called); this keeps the refusal typed for when one does.
+                warn("ExecAgent stops proposing: %s", refusal)
+                return
 
             if proposal:
                 with self._proposal_lock:

@@ -36,6 +36,7 @@
     {"kind": "pragma", "file": "src/maxim/utils/http.py", "count": 10, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
     {"kind": "pragma", "file": "src/maxim/utils/reachy_diagnostics.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
     {"kind": "pragma", "file": "src/maxim/utils/response_output.py", "count": 1, "reason": "grandfathered at the gate (2026-10-04)", "ref": null},
-    {"kind": "excluded_statements", "file": "src/maxim/simulation/tty_stdin.py", "count": 204, "reason": "the TTY read loops moved out of orchestrator.py::start_simulation_mode, verbatim apart from the closure-to-parameter rewrite (1.3.2 orchestrator slice 0, owner decision SF-4, 2026-10-13); growth needs a new ref'd entry", "ref": "#947"}
+    {"kind": "excluded_statements", "file": "src/maxim/simulation/tty_stdin.py", "count": 204, "reason": "the TTY read loops moved out of orchestrator.py::start_simulation_mode, verbatim apart from the closure-to-parameter rewrite (1.3.2 orchestrator slice 0, owner decision SF-4, 2026-10-13); growth needs a new ref'd entry", "ref": "#947"},
+    {"kind": "excluded_statements", "file": "src/maxim/embodied_runtime/selfy.py", "count": 500, "reason": "the `python -m maxim.embodied_runtime.selfy` entry engages the offline latch from llm.offline before it builds the robot runtime (2 statements; #1315 item 10b, notes §6 'Engaging the latch'); growth needs a new ref'd entry", "ref": "#1315"}
   ]
 }
