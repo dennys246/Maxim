@@ -594,8 +594,8 @@ class LLMRouter:
 
     def _budget_status(self, now: float) -> tuple[str, dict[str, float]]:
         policy = self._routing_policy
-        # The tracker reads the wall itself (D-WC5, #1769), so ``now`` no longer reaches it; the parameter stays for
-        # the routing path that passes it.
+        # The tracker reads the wall itself (D-WC5, #1769): ``now`` is unused here now, kept so the hot file's change
+        # stays two lines (its callers pass it).
         totals = self._cost_tracker.get_totals()
         ratios: dict[str, float] = {}
         if policy.max_cost_per_hour > 0:

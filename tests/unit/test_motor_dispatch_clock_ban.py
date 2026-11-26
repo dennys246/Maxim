@@ -7,7 +7,9 @@ the dotted attribute chain after ``import maxim.time``, or the module named in a
 any ``MachineryClock`` / ``PerceivedTime`` annotation, or parameter named for either collaborator. Each form is proven
 by planting it.
 
-Stated blind spots: an untyped object passed in under another name (a parameter named something else holding a
+Stated blind spots: a reference through an alias of a parent package (``import maxim.time as mt`` then
+``mt.agent_time``, ``from maxim import time as t``, ``from .. import time`` then ``time.agent_time``); an untyped
+object passed in under another name (a parameter named something else holding a
 clock); an unannotated ``port=`` parameter (the gates' keyword, but serial and network ports are real motor-side
 parameters, so the name alone is not refused). Nothing static can see these without types; the rule is that motor
 code takes no clock collaborator at all.

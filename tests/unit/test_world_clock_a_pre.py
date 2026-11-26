@@ -24,6 +24,7 @@ import functools
 import inspect
 import json
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -555,8 +556,11 @@ def test_g_render_setup_the_host_port_renders_the_planted_time(
     """G-render's positive control: under today's host default the planted date and time DO reach the text."""
     from maxim.time.agent_time import HOST_PERCEIVED_TIME
 
-    text = "\n".join(_calendar_prompts(monkeypatch, HOST_PERCEIVED_TIME))
+    *prompts, pool_text = _calendar_prompts(monkeypatch, HOST_PERCEIVED_TIME)
+    text = "\n".join(prompts)
     assert SENTINEL.strftime("%A, %B %d, %Y") in text and SENTINEL.strftime("%I:%M %p") in text
+    # The context pool's half: its entries carry the planted wall stamp, rendered.
+    assert f"[{SENTINEL.strftime('%H:%M:%S')}]" in pool_text, pool_text
 
 
 @pytest.mark.xfail(
@@ -601,7 +605,7 @@ def _prompts_in_two_timezones(tmp_path: Path, port_name: str) -> list[str]:
     outputs = []
     for tz in ("UTC", "Etc/GMT-13"):  # each child starts under its TZ (tzset at interpreter start)
         home = tmp_path / f"home-{port_name}-{tz.replace('/', '_')}"
-        home.mkdir()
+        home.mkdir(parents=True)
         env = {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(repo / "src"), "HOME": str(home), "TZ": tz}
         env.update(isolation_env())
         proc = subprocess.run(
@@ -618,10 +622,28 @@ def _prompts_in_two_timezones(tmp_path: Path, port_name: str) -> list[str]:
     return outputs
 
 
+_SUB_HOUR = re.compile(r"(\d{1,2}):\d{2}(?::\d{2})?")
+
+
+def _hours_only(text: str) -> str:
+    """Every clock reading cut to its hour: the children run seconds apart on the real clock, and only a timezone moves
+    the hour (a minute or second rollover between them must not count as a difference, or as an equality)."""
+    return _SUB_HOUR.sub(r"\1:<mm>", text)
+
+
 def test_g_tz_setup_the_host_prompt_depends_on_the_timezone(tmp_path: Path) -> None:
-    """G-tz's positive control: under today's host default the two timezones' prompts differ (13 hours apart)."""
-    first, second = _prompts_in_two_timezones(tmp_path, "host")
-    assert first != second, "the host prompt renders no local time: G-tz could not fail"
+    """G-tz's positive control: under today's host default the timezone, and only the timezone, moves the prompt.
+
+    Two children in the same timezone agree once their clock readings are cut to the hour; two 13 hours apart do not.
+    An hour boundary falling between the two same-timezone children is retried once.
+    """
+    for attempt in range(2):
+        utc, shifted = _prompts_in_two_timezones(tmp_path / f"a{attempt}", "host")
+        utc_again, _ = _prompts_in_two_timezones(tmp_path / f"b{attempt}", "host")
+        if _hours_only(utc) == _hours_only(utc_again):
+            break
+    assert _hours_only(utc) == _hours_only(utc_again), "two same-timezone host prompts differ beyond their minutes"
+    assert _hours_only(utc) != _hours_only(shifted), "the host prompt renders no local time: G-tz could not fail"
 
 
 @pytest.mark.xfail(
@@ -634,7 +656,8 @@ def test_g_tz_a_no_calendar_prompt_is_the_same_in_every_timezone(tmp_path: Path)
     for fn in (LLMWorker.__init__, ContextPool.__init__):
         assert _takes(fn, "port"), f"{fn.__qualname__} takes no port yet (PR 2)"
     first, second = _prompts_in_two_timezones(tmp_path, "none")
-    assert first == second, "a NO_CALENDAR prompt depends on the timezone"
+    # Cut to the hour, as the control is: a stamp left under NO_CALENDAR is G-render's to catch; this gate is the zone.
+    assert _hours_only(first) == _hours_only(second), "a NO_CALENDAR prompt depends on the timezone"
 
 
 def _scn_derived(port: Any, tmp_path: Path, name: str, monkeypatch: Any) -> tuple[bytes, dict[str, Any]]:
