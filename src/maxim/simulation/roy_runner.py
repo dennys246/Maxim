@@ -78,6 +78,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from maxim.simulation.sim_types import is_simulation_run_failure
+from maxim.utils.net import redact_urls, url_scrubbed
 
 logger = logging.getLogger(__name__)
 
@@ -821,9 +822,12 @@ def _persist_result(
     atomic_write_text: Callable[..., None],
     with_format_version: Callable[..., dict[str, Any]],
 ) -> None:
-    payload = with_format_version(_result_to_dict(result))
+    # Roy artifacts are committed (#1801 H4, J2): the health-check probe's and the preflight's ``detail`` (an
+    # exception's text), ``priming["error"]`` and a raw ``"url"`` are URL-reduced over the whole payload, and the
+    # summary rendered from the same raw fields is reduced as one text.
+    payload = with_format_version(url_scrubbed(_result_to_dict(result)))
     atomic_write_json(str(artifact_dir / "result.json"), payload)
-    atomic_write_text(str(artifact_dir / "summary.md"), _format_summary(result))
+    atomic_write_text(str(artifact_dir / "summary.md"), redact_urls(_format_summary(result)))
 
 
 def _format_summary(r: RoyIterationResult) -> str:

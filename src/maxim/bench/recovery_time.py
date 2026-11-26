@@ -88,6 +88,7 @@ from maxim.utils.http import (
     set_context,
 )
 from maxim.utils.structured_logging import log_structured
+from maxim.utils.net import redact_urls
 
 logger = logging.getLogger("maxim.bench.recovery_time")
 
@@ -178,7 +179,14 @@ class BenchResult:
 
 
 def _classify_error(exc: Exception) -> tuple[str, str]:
-    """Return (outcome_tag, fix_hint) for a raised exception.
+    """Return (outcome_tag, fix_hint) for a raised exception, the hint URL-reduced at the exit (#1801 K2, L1), so
+    every branch is covered: the ``unhandled_*`` branch, the likeliest to carry a raw httpx URL, included."""
+    outcome, hint = _classify_error_raw(exc)
+    return outcome, redact_urls(hint)
+
+
+def _classify_error_raw(exc: Exception) -> tuple[str, str]:
+    """Return (outcome_tag, fix_hint) for a raised exception, unreduced.
 
     The tag matches the production ``peer_backend_failed`` ``outcome``
     field exactly so existing ``jq`` queries filter the same way on
@@ -446,7 +454,7 @@ def run_recovery_benchmark(
                     provider=bench_provider_key,
                     model=model or "",
                     error=type(exc).__name__,
-                    fix_hint=fix_hint[:500],
+                    fix_hint=redact_urls(fix_hint)[:500],
                     http_status=getattr(exc, "status", None),
                 )
             )

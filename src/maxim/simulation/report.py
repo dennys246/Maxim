@@ -20,7 +20,8 @@ from typing import Any
 from maxim.exceptions import StoreOverwriteRefused
 from maxim.utils import code_tree
 from maxim.utils.deadline import Deadline
-from maxim.utils.http import redact_urls, url_origin
+from maxim.utils.net import redact_urls, url_origin
+from maxim.utils.net import url_scrubbed as _url_scrubbed
 
 logger = logging.getLogger(__name__)
 
@@ -712,26 +713,6 @@ A future change that requires readers to handle a removed field is a major
 bump."""
 
 
-def _url_scrubbed(value: Any, _depth: int = 0) -> Any:
-    """``value`` with every string in it passed through ``redact_urls`` (#1404 item 2): dict values, list and tuple
-    items and string keys, at any depth up to 16 (deeper structure, a cycle included, is written as its scrubbed
-    ``str``). Numbers, bools and None are kept, and text without a ``scheme://`` URL is unchanged. Any other leaf (a Path, a custom object) becomes its scrubbed
-    ``str`` here, since ``json.dumps(default=str)`` would otherwise stringify it after the scrub."""
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    if isinstance(value, str):
-        return redact_urls(value)
-    if _depth >= 16:
-        return redact_urls(str(value))
-    if isinstance(value, dict):
-        # String keys too: a map keyed by URL would otherwise keep the URL whole. Keys that share an origin
-        # collapse into one, the later value winning: a URL-keyed map loses entries (rare in tool args).
-        return {(redact_urls(k) if isinstance(k, str) else k): _url_scrubbed(v, _depth + 1) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_url_scrubbed(v, _depth + 1) for v in value]
-    return redact_urls(str(value))
-
-
 def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
     """Save all action records as JSONL for post-hoc analysis.
 
@@ -936,7 +917,7 @@ def analyze_simulation(
 
     except Exception as e:
         logger.warning("LLM roundup failed: %s", e)
-        report.llm_summary = f"Roundup failed: {e}"
+        report.llm_summary = redact_urls(f"Roundup failed: {e}")  # scrubbed with the report's other fields (#1801)
 
     return report
 
