@@ -27,7 +27,7 @@ REFUSAL = "control-plane"
 
 @pytest.fixture
 def env(tmp_path: Path, monkeypatch):
-    """A fake operator: HOME = passwd home = ``tmp/home``, no XDG, no MAXIM_DATA_HOME; the workspace is ``tmp/ws``."""
+    """A fake operator: HOME and the passwd home are both ``tmp/home``, no XDG, no MAXIM_DATA_HOME; the workspace is ``tmp/ws``."""
     import pwd
 
     from maxim.tools.filesystem import EditFileTool, WriteFileTool
