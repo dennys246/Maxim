@@ -60,7 +60,7 @@ from maxim.utils.logging import warn
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
-from maxim.memory.text import Provenance, frame_external, stored_percept_text
+from maxim.utils.prompt_text import Provenance, frame_external, stored_percept_text
 
 
 def _issue_count(critique: Any) -> int:
