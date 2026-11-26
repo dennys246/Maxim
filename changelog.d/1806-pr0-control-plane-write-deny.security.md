@@ -11,7 +11,9 @@
 - **Maxim no longer reads an `llm.json` from the directory it was started from** (#1806 PR 0): with no
   `~/.maxim/config/llm.json`, `./llm.json` and `./data/util/llm.json` were the LLM config, so an agent working in the
   launch directory could plant one to raise its budget or turn on cloud calls. Move such a file to
-  `~/.maxim/config/llm.json`. The CPU fallback's llama.cpp check now reads the same file as the loader, instead of
+  `~/.maxim/config/llm.json`; Maxim logs a warning naming one it finds and ignores. An installed package no longer
+  reads `llm.json` next to its virtualenv's `lib/python3.X/` either (only a source checkout keeps its own
+  `data/util/llm.json`). The CPU fallback's llama.cpp check now reads the same file as the loader, instead of
   its own `<home_dir>/util/llm.json`.
   Before this, an agent started from your home directory could repoint or delete them. Code-execution tools
   (`bash`, `execute_file`, opted-in `run_tests`) are not covered; passive mode refuses those.

@@ -417,18 +417,24 @@ def test_the_llm_config_is_refused(env, tool: str, monkeypatch) -> None:
     _assert_refused(env, tool, child / "config" / "llm.json", seed=False)  # a new one, under a new config/
 
 
-def test_an_llm_json_planted_in_the_launch_directory_is_not_read(tmp_path: Path, monkeypatch) -> None:
-    """Round 3 (owner decision): with no data-home llm.json, a ``./llm.json`` or ``./data/util/llm.json`` an agent
-    planted in the launch directory is NOT the config: neither the loader nor either CPU fallback reads it."""
+def test_an_llm_json_planted_in_the_launch_directory_is_not_read(tmp_path: Path, monkeypatch, caplog) -> None:
+    """Round 3 (owner decision) + round 4 S2/S3: with no data-home llm.json, a ``./llm.json`` or
+    ``./data/util/llm.json`` an agent planted in the launch directory is NOT the config: the loader ignores it (with
+    one WARNING naming it), and neither CPU fallback reads it either (each still applies the CPU profile pin)."""
     import json
+    import logging
+    import types
 
+    from maxim import cli_utils
+    from maxim.embodied_runtime import agentic_runtime
     from maxim.models.language import config as C
     from maxim.utils import paths
 
     home = tmp_path / "data-home"
     home.mkdir()
     monkeypatch.setenv("MAXIM_DATA_HOME", str(home))
-    monkeypatch.delenv("MAXIM_LLM_CONFIG", raising=False)
+    for name in ("MAXIM_LLM_CONFIG", "MAXIM_LLM_PROFILE", "MAXIM_LLM_N_GPU_LAYERS", "CUDA_VISIBLE_DEVICES"):
+        monkeypatch.delenv(name, raising=False)
     paths._reset_caches()
     work = tmp_path / "work"
     (work / "data" / "util").mkdir(parents=True)
@@ -436,27 +442,63 @@ def test_an_llm_json_planted_in_the_launch_directory_is_not_read(tmp_path: Path,
     for rel in ("llm.json", "data/util/llm.json"):
         (work / rel).write_text(json.dumps(planted))
     monkeypatch.chdir(work)
-    # the repo-root candidates are a source checkout's own files, a stated residual: keep them out of this test
-    monkeypatch.setattr(C.os.path, "isfile", lambda p, _f=os.path.isfile: _f(p) and str(work) in p)
+    # as on a wheel install: no source checkout, so no repo-root candidates (those are a stated residual)
+    monkeypatch.setattr(C, "_source_checkout_root", lambda package_file=None: None)
+    monkeypatch.setattr(C, "_ignored_cwd_warning_emitted", False)
     assert C.llm_config_file() is None
     assert C.configured_profile_uses_llama_cpp() is False
-    assert C.load_llm_config().cloud_enabled is False
+    with caplog.at_level(logging.WARNING, logger=C.__name__):
+        assert C.load_llm_config().cloud_enabled is False
+    warned = [r.getMessage() for r in caplog.records if "is NOT read" in r.getMessage()]
+    assert len(warned) == 1 and str(work / "data" / "util" / "llm.json") in warned[0]
+
+    # the CLI fallback, handed the planted directory as its home_dir, still pins the CPU profile
+    cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(work / "data"))
+    assert os.environ.get("MAXIM_LLM_PROFILE") == "smollm-1.7b-instruct"
+    monkeypatch.delenv("MAXIM_LLM_PROFILE")
+    # ... and so does the robot runtime's twin
+    monkeypatch.setattr(agentic_runtime, "is_gpu_available", lambda: False)
+    runtime = types.SimpleNamespace(home_dir=str(work / "data"), log=logging.getLogger("test"))
+    agentic_runtime.AgenticRuntimeMixin._apply_llm_backend_fallback(runtime)  # type: ignore[arg-type]
+    assert os.environ.get("MAXIM_LLM_PROFILE") == "smollm-1.7b-instruct"
     paths._reset_caches()
 
 
+def test_repo_root_candidates_only_in_a_source_checkout(tmp_path: Path) -> None:
+    """Round 4 S1: on a wheel install the repo-root arithmetic lands in ``<venv>/lib/python3.X/`` (an in-project
+    ``.venv`` an agent can write), so those candidates exist only for a real checkout."""
+    from maxim.models.language import config as C
+
+    wheel = tmp_path / ".venv" / "lib" / "python3.12" / "site-packages" / "maxim" / "models" / "language"
+    wheel.mkdir(parents=True)
+    (tmp_path / ".venv" / "lib" / "pyproject.toml").write_text("")  # even a stray pyproject there does not count
+    assert C._source_checkout_root(str(wheel / "config.py")) is None
+    checkout = tmp_path / "repo" / "src" / "maxim" / "models" / "language"
+    checkout.mkdir(parents=True)
+    assert C._source_checkout_root(str(checkout / "config.py")) is None  # no pyproject.toml
+    (tmp_path / "repo" / "pyproject.toml").write_text("")
+    assert C._source_checkout_root(str(checkout / "config.py")) == str((tmp_path / "repo").resolve())
+
+
 def test_the_cpu_fallbacks_read_the_loaders_llm_json(tmp_path: Path, monkeypatch) -> None:
-    """Round 3: both CPU fallbacks ask ``configured_profile_uses_llama_cpp``, which reads the loader's own file."""
+    """Round 3: ``configured_profile_uses_llama_cpp`` reads the loader's own file; only an explicit llama.cpp
+    profile entry counts (round 4 N1: a non-string ``profile`` is no entry, not a crash)."""
     import json
 
     from maxim.models.language import config as C
 
     cfg = tmp_path / "llm.json"
     monkeypatch.setenv("MAXIM_LLM_CONFIG", str(cfg))
-    assert C.configured_profile_uses_llama_cpp() is False or C.llm_config_file() != str(cfg)
     cfg.write_text(json.dumps({"profile": "p", "profiles": {"p": {"backend": "llama_cpp"}}}))
     assert C.llm_config_file() == str(cfg)
     assert C.configured_profile_uses_llama_cpp() is True
-    cfg.write_text(json.dumps({"profile": "p", "profiles": {"p": {"backend": "transformers"}}}))
-    assert C.configured_profile_uses_llama_cpp() is False
+    for raw in (
+        {"profile": "p", "profiles": {"p": {"backend": "transformers"}}},
+        {"profile": ["p"], "profiles": {"p": {"backend": "llama_cpp"}}},
+        {"profile": "p", "profiles": ["p"]},
+        ["not", "a", "mapping"],
+    ):
+        cfg.write_text(json.dumps(raw))
+        assert C.configured_profile_uses_llama_cpp() is False, raw
     cfg.write_text("{not json")
     assert C.configured_profile_uses_llama_cpp() is False

@@ -354,7 +354,7 @@ maxim config set llm.profile qwen2.5-32b-instruct
 maxim config set lanes.large.remote_url https://leader.example.com/v1
 ```
 
-The legacy `~/.maxim/config/llm.json` file was the pre-0.9 LLM config store. Its role has been absorbed by `config.json`. If you have a hand-edited `llm.json`, migrate the relevant fields via `maxim config set` and remove the old file — it is no longer read by the current runtime.
+The legacy `~/.maxim/config/llm.json` file was the pre-0.9 LLM config store. Most of its role has been absorbed by `config.json`, but the runtime still reads it for profiles and for `routing` (the cloud budget caps); migrate what `maxim config set` covers. Since #1806 an `llm.json` in the working directory is not read (a warning names it), and the agent's file tools cannot write `~/.maxim/config/llm.json`.
 
 > **Checking what the runtime actually sees:** `maxim config get` shows each field annotated with its source (`cli`, `env`, `config.json`, or `default`). `maxim doctor` shows the full Resolved Config section and flags any env/config mismatches at WARNING.
 
