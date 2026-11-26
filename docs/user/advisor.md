@@ -148,3 +148,102 @@ yet reach, **your sandbox is the only guard**.
 | Disk | Python-level writes go to `report_dir` only. A C-level Metal shader cache write on macOS is not yet measured (#1566). | Maxim (Python level); sandbox (C level, until item 7) |
 | Inbound | None: events arrive only as `ingest()` arguments. | Maxim |
 | **The report and the log** | **They carry the model's text.** Treat `happening`, `rationale`, `would_do`, proposals and refusal reasons as untrusted input wherever you display or forward them. | You |
+
+## Conformance with AvServ plan 50 §18 (1.3.5, #1783)
+
+**Status: final for 1.3.5.** Checked against AvServ `origin/main` a59a0fe and first drafted on Maxim `origin/main`
+f145e27b. It was re-checked on Maxim `origin/main` 77880606, after #1603 (item 10a, merged as 0f50fdc9) and #1735
+(item 10b, merged as 77880606). Neither PR changed anything under `maxim/advisor/` or in
+`models/language/closed_local.py`, and no §18 verdict below changed. What they added to the offline latch is listed
+under its boundary.
+
+AvServ's read-only observer (plan 50, steps S4a–S5b) builds on this package, and its safety case depends on the points
+below. Each point names the code that implements it and the test that fails if it stops holding. "Holds" means the
+released code does what §18 says. "Differs" means §18 says less than, or something other than, what the code does,
+and AvServ's runner should follow the code.
+
+| # | §18 says | Verdict | Code | Test |
+|---|---|---|---|---|
+| 1 | `open(n_ctx, max_prompt_tokens, n_gpu_layers)` feed `session.limits`; `n_ctx=None` is at most 8192, clamped by the model; `max_prompt_tokens` defaults to `n_ctx - 1024`, and a cap that does not fit is refused | Holds | `advisor/_session.py::_resolve_limits`, `models/language/closed_local.py::DEFAULT_CTX_CAP` | `tests/integration/test_advisor_gate.py::test_open_exposes_limits`, `::test_closed_local_default_context_is_clamped`, `tests/unit/test_advisor_session.py::test_open_refuses_out_of_range_limits` |
+| 2 | Cursors are opaque and per event; once one is in play every event carries one (else `AdvisorInputError`); `cursor_out` is the last event's cursor on `ok` and equals `cursor_in` on `error`/`abandoned` | Holds | `advisor/_session.py::AdvisorSession.ingest`, `::_turn` | `test_advisor_gate.py::test_cursor_out_follows_the_last_event`, `::test_cursor_required_on_every_event_when_used`, `::test_cursor_carries_across_ingests` |
+| 3 | `ok` means every event was judged or listed as rejected; there are no partial results | Holds for the **report**. See difference C below for the log | `advisor/_session.py::_judge` (only its last return is `ok`) | `test_advisor_gate.py::test_report_status_rows`, `tests/unit/test_advisor_session.py::test_a_stop_between_dispatches_abandons_the_turn` |
+| 4 | `request_stop(deadline_s, reason="yield")` is signal-safe; the turn ends `abandoned` with `stop_reason` set; every later `ingest()` raises `AdvisorStopped` | Holds. The report's `reason` is `"stopped"`, and `stop_reason` carries your reason | `advisor/_session.py::AdvisorSession.request_stop` | `test_advisor_gate.py::test_session_stop_abandons_at_the_next_token`, `tests/unit/test_advisor_session.py::test_request_stop_reads_only_plain_values`, `::test_an_ingest_waiting_on_the_lock_runs_no_turn_after_a_stop` |
+| 5 | A `prompt_too_long` report carries the token counts, and the model never runs | Holds. The counts are in the report's `prompt` (`tokens`, `max_tokens`), not in `extra` | `advisor/_session.py::_judge` (checked before any sampling) | `test_advisor_gate.py::test_prompt_too_long_reports_token_counts` |
+| 6 | The library installs no signal handlers and never exits the process | Holds. No module the observer loads calls `signal.signal`. Before 1.3.5 nothing enforced this; this PR adds the guard, which was proven by planting a handler | `advisor/`, `closed_local.py` (no `signal` use) | `test_advisor_gate.py::test_observer_installs_no_signal_handler` (fake and real backends) |
+| 7 | The offline latch refuses network and subprocess for the whole process once `open()` runs | Holds **at the Python level only**. See the boundary below | `_offline.py::engage`, called first in `advisor/_session.py::open_session` | `tests/unit/test_advisor_session.py::test_open_engages_the_offline_latch_before_it_builds_anything`, `tests/integration/test_offline_latch.py::test_engaged_latch_refuses_each_channel`, `::test_engaged_latch_allows_inbound_listen` |
+
+### The offline latch's boundary
+
+`open()` engages the latch before it builds anything, and the latch is one way: nothing in the process lowers it.
+It is a `sys.addaudithook` hook, so it sees only what CPython's `socket`, `os` and `subprocess` modules announce as
+audit events. While the latch is up, it refuses:
+- every outbound `connect`/`connect_ex`, loopback and `AF_UNIX` included;
+- every `sendto`/`sendmsg` to an explicit address;
+- every forward and reverse DNS lookup;
+- creating a socket of any family other than INET, INET6 and UNIX;
+- `subprocess.Popen`, `os.system`, `os.exec*`, `os.posix_spawn*`, `os.spawn*`, `os.fork` and `os.forkpty`.
+
+Inbound `bind`, `listen` and `accept` pass.
+
+**What 10a and 10b added to the latch (1.3.5).** The set of refused events above is unchanged. New:
+- each refusal-ledger entry (`_offline.Refusal`, a NamedTuple) gains a fourth field, `thread`, the ident of the
+  refusing thread (default 0). A reader that unpacks entries **by position** into three names breaks; read the fields
+  by name;
+- a `Degraded` record, written by `mark_degraded(site, reason)` when the latch forces a fallback, with one WARNING per
+  site, and read by `degraded()`;
+- `local_files_only_kwargs()`, so the Hugging Face load sites pass `local_files_only=True` while the latch is up;
+- `refuse_if_offline(site)`, the typed early refusal the agent's call sites put before a side effect;
+- `maxim.exceptions.SECURITY_REFUSALS = (LeaderRefusal, OfflineRefusal)`, the errors a broad handler around building
+  the LLM must re-raise.
+
+The observer reads none of them (no module under `maxim/advisor/` and not `closed_local.py`), so none reaches a report
+or the log.
+
+**It does not see:**
+- **native code.** Networking or process creation done in C, C++ or Rust raises no audit event. That includes
+  libuv, gRPC, libzmq, libcurl, Rust HTTP clients, and `ctypes` calls into libc.
+- **a connection opened before the latch went up.** `send`/`sendall` raise no audit event, and neither does a socket
+  adopted from such an fd with an explicit family. In the observer, `open()` engages first, so the only such
+  sockets are ones the embedding process opened before it called `open()`.
+- **`_posixsubprocess.fork_exec`.** It is what multiprocessing's `"spawn"` start method calls, and it can be called
+  directly. So §18.1's "every `Popen`/`exec`/`spawn`" holds for the Python APIs named above, not for every way a
+  process can start one.
+- **any platform other than POSIX.** There `open()` refuses with `AdvisorCompositionError` instead of running
+  without the latch (#1687).
+
+The OS sandbox covers everything in that list. Profile B2's `--network none` covers the network half. Nothing in
+B2's row of §9 stops a process from executing a binary already in the image. If the safety case needs "no
+subprocess" to hold below Python, that is a job for the container (for example a seccomp profile that refuses
+`execve`), not for this library.
+
+### Where the code says more than §18
+
+- **A. An eighth refusal `layer`, `tool`.** §18.2 lists `forbid`, `mode`, `registry`, `permissions`, `ceiling`, `pin`
+  and `offline`. A `propose_action` call that ran and refused its own arguments is recorded with layer `tool` (owner
+  decision 2026-11-02). It is not a gate refusal, and the digest should count it as its own value.
+- **B. `AdvisorReportWriteFailed`.** When the report cannot be written durably (a full disk), `ingest()` raises it
+  instead of returning a report, and the session's cursor does not advance. Treat it as a turn that was not judged,
+  like a crash: re-ingest the batch in a new session or record a gap. Guard:
+  `tests/unit/test_advisor_session.py::test_a_failed_report_write_raises_typed_and_keeps_the_cursor`.
+- **C. A non-`ok` turn can leave records in the log.** Each proposal and refusal is fsynced to the log before the
+  next call runs. So a stop or a log failure that lands between two calls leaves the earlier records in the log under
+  that `report_id`, while the report itself is `abandoned` (or `error`) with no proposals. The report is the
+  judgement. A log record whose report is not `ok` is not a judgement and must not be counted as one. Guard: the
+  `log_last_seq == 1` assertion in `test_a_stop_between_dispatches_abandons_the_turn`.
+- **D. `prompt_build_error` reports `prompt.tokens = 0`.** When the tokenizer fails, the report is `error` with reason
+  `prompt_build_error: …`, nothing is sampled, and `prompt.tokens` is 0. §18.3's batch sizing uses
+  `prompt.tokens` per event. Size from `prompt_too_long` and `ok` reports only, never from this one.
+- **E. Report fields that §18.2's table omits:** `stop_reason`, `created_at` and `extra` (an empty object). A reader
+  that refuses only an unknown `schema` or major `_format_version`, as §18.2 says, accepts them.
+
+### Smaller notes
+
+- `log_mode` defaults to `0o600`, so the runner must pass `log_mode=0o640` for the `digest` job's group read, as §18.2
+  shows. Only those two modes are accepted.
+- §9's B2 row says the observer reads no `MAXIM_*` variable. It reads one, `MAXIM_OFFLINE` (the latch's own). And
+  `engage()` writes five variables into its own process environment: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`,
+  `HF_HUB_DISABLE_TELEMETRY`, `YOLO_OFFLINE` and `MAXIM_OFFLINE`. Neither changes anything for B2.
+- `degraded` is still never produced, as §18.4 expects. That stays true with item 10b: the offline latch's new
+  `degraded()` record is not read by the observer and never reaches a report. An embedder that also loads Maxim's
+  agent stack in the same process can see `maxim.offline` "degraded" WARNINGs in its own log; those are not observer
+  output.
