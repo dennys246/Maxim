@@ -168,16 +168,16 @@
       "missing": 90
     },
     "maxim/tools": {
-      "percent": 71.3,
-      "missing": 1242
+      "percent": 72.3,
+      "missing": 1230
     },
     "maxim/tunnel": {
       "percent": 76.8,
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 69.2,
-      "missing": 2077
+      "percent": 71.6,
+      "missing": 1968
     }
   },
   "files": {
@@ -186,8 +186,8 @@
       "missing": 0
     },
     "src/maxim/models/language/router.py": {
-      "percent": 80.8,
-      "missing": 211
+      "percent": 81.8,
+      "missing": 204
     },
     "src/maxim/simulation/orchestrator.py": {
       "percent": 76.8,
