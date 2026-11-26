@@ -7,7 +7,9 @@ Fields:
   url          — leader's OpenAI-compatible endpoint (e.g., tunnel URL or LAN IP)
   api_key      — Bearer token shared by the leader
   model        — optional; model name to send (defaults to whatever /v1/models returns)
-  is_cloud     — optional; forces MAXIM_MAX_CLOUD_LANES=1 for public URLs
+  is_cloud     — optional; records that the URL is public-facing. Nothing
+                 routes on it: MAXIM_MAX_CLOUD_LANES=1 is set for every
+                 peer URL, whatever this says (#1780)
 
 `build_primary_router` consults this file at startup and uses its values
 as defaults for the large-lane remote config. Env vars (MAXIM_LANE_LARGE_*)

@@ -8,6 +8,7 @@ waiting for those dependencies to resolve.
 
 from __future__ import annotations
 
+import functools
 import itertools
 import logging
 import queue
@@ -23,6 +24,10 @@ if TYPE_CHECKING:
     from maxim.utils.thread_manager import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+
+
+class LaneStopped(RuntimeError):
+    """A job offered to, or left in, a lane that has stopped: it will never run."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,13 +522,19 @@ class Lane:
         )
         self._stop = threading.Event()
         self._dispatcher: threading.Thread | None = None
+        # Guards the hand-off to the executor against ``stop()`` shutting it down: the dispatcher can outlive its
+        # bounded join, and a gate-watcher thread is never joined, so either could submit to a shut-down executor.
+        self._handoff_lock = threading.Lock()
+        self._closed = False
 
     @property
     def name(self) -> str:
         return self._config.name
 
     def start(self) -> None:
-        """Start the dispatcher thread."""
+        """Start the dispatcher thread. A stopped lane cannot restart: its executor is shut down."""
+        if self._closed:
+            raise LaneStopped(f"lane {self._config.name!r} was stopped; build a new one")
         self._stop.clear()
         self._dispatcher = threading.Thread(
             target=self._dispatch_loop,
@@ -533,31 +544,46 @@ class Lane:
         self._dispatcher.start()
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the dispatcher and drain the executor."""
+        """Stop the dispatcher and drain the executor; every job this lane never ran ends FAILED (a gated job when its
+        dependency wait ends, at most ``DependencySpec.timeout_s`` later), none stays PENDING.
+
+        Closing under ``_handoff_lock`` means no job is submitted to the executor after it shuts down, and no job is
+        enqueued after the drain (``submit`` checks the flag under the same lock). The jobs still queued are failed by
+        ``cancel_pending``; the executor's own queued futures, cancelled by ``shutdown``, fail through the callback
+        ``_hand_off`` attached; a dispatcher that outlived the join, or a gate-watcher thread, fails its job in
+        ``_hand_off``. So no waiter waits forever on a stopped lane.
+        """
         self._stop.set()
         if self._dispatcher and self._dispatcher.is_alive():
             self._dispatcher.join(timeout=timeout)
+        with self._handoff_lock:
+            self._closed = True
+        self.cancel_pending()
         self._executor.shutdown(wait=True, cancel_futures=True)
 
     def submit(self, job: Job) -> None:
         """Enqueue a job. Starts early prefetch immediately.
 
-        Raises queue.Full if the lane queue is at capacity.
+        Raises queue.Full if the lane queue is at capacity, and RuntimeError once the lane has stopped (a job
+        accepted then would never run, and its waiters would wait forever).
         """
         job.lane = self._config.name
-        if job.deps:
-            job.gate = DependencyGate(job.deps, self._registry)
-            job.gate.start_early_prefetch()
-        self._registry.register(job)
-        try:
-            self._queue.put_nowait((job.priority, next(self._counter), job))
-        except queue.Full:
-            # Registration precedes enqueue so the dispatcher can never race
-            # an unknown job. Roll it back if the bounded queue rejects the
-            # submission; otherwise the registry retains a PENDING job that
-            # can never run and liveness observers wait forever.
-            self._registry.discard(job.job_id)
-            raise
+        with self._handoff_lock:
+            if self._closed:
+                raise LaneStopped(f"lane {self._config.name!r} is stopped; job {job.job_id} was not accepted")
+            if job.deps:
+                job.gate = DependencyGate(job.deps, self._registry)
+                job.gate.start_early_prefetch()
+            self._registry.register(job)
+            try:
+                self._queue.put_nowait((job.priority, next(self._counter), job))
+            except queue.Full:
+                # Registration precedes enqueue so the dispatcher can never race
+                # an unknown job. Roll it back if the bounded queue rejects the
+                # submission; otherwise the registry retains a PENDING job that
+                # can never run and liveness observers wait forever.
+                self._registry.discard(job.job_id)
+                raise
 
     def cancel_pending(self) -> int:
         """Drain and cancel all pending jobs."""
@@ -594,7 +620,7 @@ class Lane:
                     name=f"gate-{job.job_id}",
                 ).start()
             else:
-                self._executor.submit(self._execute_job, job)
+                self._hand_off(job)
             self._queue.task_done()
 
     def _wait_then_dispatch(self, job: Job) -> None:
@@ -607,7 +633,30 @@ class Lane:
                 failed,
             )
         job._prefetched = prefetched
-        self._executor.submit(self._execute_job, job)
+        self._hand_off(job)
+
+    def _hand_off(self, job: Job) -> None:
+        """Submit ``job`` to the executor, or fail it when the lane has stopped.
+
+        ``stop()`` closes the lane under the same lock before it shuts the executor down, so no job is submitted to a
+        shut-down executor (that raised ``RuntimeError: cannot schedule new futures after shutdown`` inside the
+        dispatcher thread, killing it, and the job's waiters waited forever). A job that arrives after the close is
+        marked failed, which wakes its waiters.
+        """
+        if self._registry.get_status(job.job_id) == JobStatus.CANCELLED:
+            return  # cancelled while queued or gated: leave it CANCELLED
+        with self._handoff_lock:
+            if not self._closed:
+                future = self._executor.submit(self._execute_job, job)
+                future.add_done_callback(functools.partial(self._fail_if_cancelled, job_id=job.job_id))
+                return
+        logger.warning("Job %s: lane %s stopped before it could run", job.job_id, self._config.name)
+        self._registry.mark_failed(job.job_id, error=LaneStopped(f"lane {self._config.name!r} stopped"))
+
+    def _fail_if_cancelled(self, future: Any, job_id: str) -> None:
+        """A future ``stop()``'s shutdown cancelled before it ran: its job ends FAILED, not PENDING forever."""
+        if future.cancelled() and self._registry.get_status(job_id) != JobStatus.CANCELLED:
+            self._registry.mark_failed(job_id, error=LaneStopped(f"lane {self._config.name!r} stopped"))
 
     def _execute_job(self, job: Job) -> None:
         """Run the job callable. Deps already resolved by dispatcher."""

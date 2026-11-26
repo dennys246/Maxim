@@ -202,6 +202,7 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer logs [-f]` | Show recent leader logs. `-f` follows in real time (Ctrl+C to stop) |
 | `maxim peer llm <model>` | Hot-swap the leader's LLM to a different model. Needs the leader's opt-in (`maxim config set proxy.allow_remote_update true`). |
 | `maxim peer llm --status` | Show active model, uptime, GPU, and lane metrics |
+| `maxim peer connect <url> [--key KEY] [--model M] [--cloud] [--skip-test]` | Save a leader URL and key so `maxim` routes to it. It points the large lane, the one every model call goes through, at the leader. `--cloud` marks the URL public-facing in peer.yml only. Setup over Tailscale: [tailscale_peer.md](../troubleshooting/tailscale_peer.md) |
 | `maxim peer test <url>` | Verify peer connectivity to a leader URL |
 | `maxim peer install <extras>` | Install optional extras on leader (e.g., `semantic`, `llm-torch`). Accepts comma-separated extras or raw pip package names. Needs the leader's opt-in (`maxim config set proxy.allow_remote_update true`). |
 | `maxim peer deps` | Show installed packages and extras status on the leader |

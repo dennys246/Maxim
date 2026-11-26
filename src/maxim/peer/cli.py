@@ -55,6 +55,11 @@ Options:
   --key KEY        Bearer token (prompts if omitted)
   --model MODEL    Model name to send (optional; server picks default)
   --skip-test      Don't verify connectivity before saving
+  --cloud          Mark the URL public-facing (stored in peer.yml only;
+                   it does not enable cloud-provider routing)
+
+Maxim sends its model calls through the large lane, which this command points
+at the leader. The medium and small lanes serve no model calls.
 """
 
 
@@ -213,6 +218,9 @@ def _cmd_connect(argv: list[str]) -> int:
         elif a == "--skip-test":
             skip_test = True
             i += 1
+        elif a == "--cloud":
+            # Read below as is_cloud. The parser used to reject it as an unknown option (#1780).
+            i += 1
         else:
             print(f"Unknown option: {a}", file=sys.stderr)
             return 2
@@ -241,8 +249,8 @@ def _cmd_connect(argv: list[str]) -> int:
         return 1
 
     # Peer connections are to your own infrastructure (leader behind a
-    # tunnel). Default to is_cloud=False so the cloud lane gate doesn't
-    # block inference. Use --cloud for actual cloud providers (Anthropic, etc).
+    # tunnel), so is_cloud defaults to False. --cloud only records that the
+    # URL is public-facing, in peer.yml; nothing routes on it (#1780).
     is_cloud = "--cloud" in argv
 
     print()
@@ -282,8 +290,11 @@ def _cmd_connect(argv: list[str]) -> int:
     if model:
         print(f"  model:    {model}")
     if is_cloud:
-        print("  is_cloud: true (cloud-lane gate will be auto-enabled)")
+        print("  is_cloud: true (peer.yml only; cloud-provider routing is unchanged)")
     print()
+    print("Maxim sends its model calls through the large lane, which now points at this")
+    print("leader (the medium and small lanes serve no model calls). If the leader is")
+    print("unreachable when maxim starts, the large lane runs locally instead.")
     print("You can now run `maxim` — it will auto-route to this leader.")
     return 0
 
