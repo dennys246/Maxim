@@ -74,8 +74,8 @@ def test_ruff_runs_exactly_as_ci_runs_it():
     ruff = [s for s in P.load_plan(ROOT).steps if "ruff check" in s.script]
     assert len(ruff) == 1
     lines = [ln.strip() for ln in ruff[0].script.splitlines()]
-    assert "ruff check src/ tests/" in lines
-    assert "ruff format --check src/ tests/" in lines
+    assert "ruff check src/ tests/ scripts/" in lines
+    assert "ruff format --check src/ tests/ scripts/" in lines
     assert any("ruff==" in d for d in ruff[0].dropped)  # the pin is compared, not lost
 
 

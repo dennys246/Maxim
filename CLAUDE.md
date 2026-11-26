@@ -10,8 +10,8 @@ Run these before considering any non-trivial task done:
 
 ```bash
 # Lint + format
-ruff check src/ tests/
-ruff format src/ tests/
+ruff check src/ tests/ scripts/
+ruff format src/ tests/ scripts/
 
 # Tests (fast suite)
 python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
@@ -28,7 +28,7 @@ Additional guardrails:
 - If you touch provenance, run a sim with `MAXIM_PROVENANCE_VERBOSITY=2` and eyeball the trace
 - **Run `scripts/prepr.sh` before opening or pushing a PR** — CI's lint job + the mypy step, read from test.yml; only exit 0 (`prepr: PASS`) clears a push (details: [docs/agents/ci-testing.md](docs/agents/ci-testing.md) §4; mechanization backlog M66).
 - **Run `scripts/run_mypy_public.sh`** after changing any file it lists — the script CI runs (mypy pinned at 1.20.0) and the one place the file list lives.
-- **Run `ruff format`** after any changes: `ruff format src/ tests/`
+- **Run `ruff format`** after any changes: `ruff format src/ tests/ scripts/`
 - **Parallel sessions use worktrees, and worktrees live under `.worktrees/`.** When ≥2 Claude sessions run concurrently, each uses `git worktree add .worktrees/<branch-slug> -b <full-branch> origin/main` and absolute paths within it, never a sibling `../Maxim-wt-*`; single-session work stays in the main checkout. Tests there need `export PYTHONPATH="$PWD/src"` (absolute, its own line). `~/.maxim/` is shared across worktrees, so no concurrent sims. Why, and cleanup: [docs/agents/ci-testing.md](docs/agents/ci-testing.md) §4.
 
 ## Where the knowledge lives (routing table)
