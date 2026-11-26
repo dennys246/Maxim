@@ -38,7 +38,7 @@ from typing import Any
 
 from maxim.models.language import call_accounting
 from maxim.utils import scenario_inputs
-from maxim.utils.http import redact_urls, url_origin
+from maxim.utils.net import redact_urls, url_origin
 from maxim.utils.file_digest import BackgroundDigest, file_stat
 from maxim.utils.deadline import Deadline
 
