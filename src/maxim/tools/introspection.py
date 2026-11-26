@@ -14,6 +14,7 @@ from typing import Any
 from maxim.memory.layer import activate_after_use
 from maxim.memory.types import record_active_goal, record_success
 from maxim.tools.base import Effect, Tool, ToolResult
+from maxim.utils.net import redact_urls
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +327,7 @@ class PainHistoryTool(Tool):
                     "findings": [str(f) for f in review.findings[:5]],
                 }
             except Exception as e:
-                result["fear_check"] = {"error": str(e)}
+                result["fear_check"] = {"error": redact_urls(str(e))}  # inside a successful ToolResult (#1801 G6)
 
         return ToolResult(success=True, output=result)
 
@@ -718,7 +719,7 @@ class SystemStatsTool(Tool):
                     else:
                         stats[name] = {"available": True, "stats_method": "not found"}
                 except Exception as e:
-                    stats[name] = {"error": str(e)}
+                    stats[name] = {"error": redact_urls(str(e))}  # inside a successful ToolResult (#1801 G6)
             else:
                 stats[name] = {"available": False}
 
