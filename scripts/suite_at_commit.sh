@@ -13,10 +13,11 @@
 #
 # By default the fast suite runs with CI's exact coverage command and is followed by
 # `scripts/lint_coverage.py --local`, so the coverage ratchet's diff-coverage gate and its measurement-free pin rule
-# fail HERE, on the exact commit about to be pushed, not in CI (#1213 and #1232 failed CI on diff coverage). No floor
+# fail HERE, on the commit tested, not in CI (#1213 and #1232 failed CI on diff coverage). Since M64 a local full
+# suite is optional (CI's `unit-tests` run on the head is the final suite; docs/agents/ci-testing.md §1). No floor
 # gates locally, in either direction (M60a, 2026-10-27): floors are measured in CI's environment, so they are notes,
 # and a rise is pinned from the PR's own CI run with `lint_coverage.py --pins-from-run <run-id>`.
-# `--no-cov` skips the measurement for a quicker run that is not the pre-push check.
+# `--no-cov` skips the measurement for a quicker run with no local coverage check.
 #
 # No -x, deliberately: a full failure list is worth more than the first one.
 set -euo pipefail
