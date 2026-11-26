@@ -24,7 +24,7 @@ from typing import Any
 
 from maxim.simulation.stdin_lines import OperatorLines, read_operator_lines
 from maxim.simulation.tty_stdin import read_post_sim_goal_raw, stdin_reader_raw
-from maxim.exceptions import StopStillPending
+from maxim.exceptions import SECURITY_REFUSALS, StopStillPending
 from maxim.utils.cancellation import current_stop
 
 
@@ -156,6 +156,8 @@ def _setup_sim_sandbox(
                 backend,
                 actual_backend,
             )
+    except SECURITY_REFUSALS:
+        raise  # --sandbox docker refused offline: never "no sandbox at all" (#1315 item 10b)
     except Exception as e:
         logger.warning("Sandbox creation failed: %s", e)
 

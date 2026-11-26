@@ -3585,7 +3585,11 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
     """
     import socket
 
+    from maxim import _offline
+
     name = f"robot:{robot.robot_id}"
+    if _offline.is_offline():  # every probe below dials or resolves: say so per robot, before any of them
+        return CheckResult(name, "info", "refused (offline): the robot probe needs the network", retry_id="robot")
 
     # 1. Resolve — config host: verbatim; else IPv4-only gethostbyname of
     # <robot_name>.local (sidesteps the getaddrinfo/IPv6-first flake).
@@ -3937,7 +3941,9 @@ __all__ = [
 
 
 def _refused_offline_row(fn: Any) -> Any:
+    import dataclasses
     import functools
+    import threading
 
     from maxim import _offline
 
@@ -3948,6 +3954,11 @@ def _refused_offline_row(fn: Any) -> Any:
         row = CheckResult(name=name, status="info", message=f"refused (offline): {detail}")
         return [row] if returns_list else row
 
+    def mark(row: CheckResult, detail: str) -> CheckResult:
+        if row.status == "ok":
+            return row
+        return dataclasses.replace(row, status="info", message=f"refused (offline): {detail} — {row.message}")
+
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         booked = len(_offline.ledger())
@@ -3955,12 +3966,19 @@ def _refused_offline_row(fn: Any) -> Any:
             result = fn(*args, **kwargs)
         except _offline.OfflineRefusal as e:
             return refused(e)
-        # A check that caught the refusal itself would report it as its own verdict ("nothing responding",
-        # "probe failed"), which offline is not: the ledger says the latch answered, so its row says so.
-        new = _offline.ledger()[booked:]
-        if new:
-            return refused(f"{new[-1].event}: {new[-1].detail}")
-        return result
+        # A check that caught the refusal itself reports it as its own verdict ("nothing responding", "probe
+        # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered. A
+        # single-row check's row keeps its name and message, marked as refused rather than failed. A list check
+        # cannot say which of its rows the latch answered (one robot's probe, another's real failure), so its rows
+        # stand and one "refused (offline)" row is added; a per-item probe that knows (``_check_one_robot``) says
+        # so itself, by name.
+        mine = [r for r in _offline.ledger()[booked:] if r.thread == threading.get_ident()]
+        if not mine:
+            return result
+        detail = f"{mine[-1].event}: {mine[-1].detail}"
+        if isinstance(result, list):
+            return [*result, CheckResult(name=name, status="info", message=f"refused (offline): {detail}")]
+        return mark(result, detail) if isinstance(result, CheckResult) else result
 
     return wrapper
 
@@ -3970,7 +3988,9 @@ def _wrap_checks_for_offline() -> None:
 
     module = globals()
     for attr, value in list(module.items()):
-        if attr.startswith("check_") and inspect.isfunction(value) and value.__module__ == __name__:
+        if not (inspect.isfunction(value) and value.__module__ == __name__):
+            continue
+        if attr.startswith("check_"):
             module[attr] = _refused_offline_row(value)
 
 

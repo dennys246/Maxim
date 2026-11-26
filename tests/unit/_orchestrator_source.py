@@ -197,6 +197,10 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
         "#1261: the narrator-facing per-action summary, factored out of SendMessageTool, ExtendSimulationTool and "
         "SpawnSubSimulationTool (three identical copies) to add the utterance; not orchestrator run code"
     ),
+    ("report.py", "_offline_stamp"): (
+        "#1315 item 10b (owner decision V27): an offline run's provenance lists its refusals and degraded "
+        "fallbacks; report assembly, not orchestrator run code"
+    ),
     ("sim_logger.py", "_sink_record"): (
         "#1801 (owner, 2026-11-25): the record sim_log's sinks get, the conversation (RESPONSE, USER) whole and "
         "everything else URL-reduced; log routing, not orchestrator run code"

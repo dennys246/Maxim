@@ -6,7 +6,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1118
+      "lines": 1116
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -388,6 +388,8 @@
     "api.py::run tightened 208 -> 201 on 2026-11-18 (#1264 home_dir half, owner decision, rule T): the pre-startup auto-curation moved verbatim to api._auto_curate_before_run, paying for the state_home=effective_home forward and the home_dir docstring.",
     "HttpFetchTool.execute tightened 243 -> 236 on 2026-11-20 (#1715, rule T): the page fetch moved to http_fetch._fetch_page, paying for the one-budget deadline and the pool_s rename.",
     "api.py::run 201 -> 186 (entry removed: under the threshold) and _maybe_auto_spawn_server 205 -> 201 on 2026-11-20 (#1315 item 10a merged with main, rule T): run's first step, the offline engage plus the goal/robot checks moved verbatim, is api.py::_run_preflight; the auto-spawn guards that need no lane (the offline return, the env opt-out, the GPU check) are lane_backends._auto_spawn_ruled_out. build_primary_router stays under the threshold: its first step is lane_backends._router_build_preflight (the offline engage, then #1610's process services and _require_valid_user_profiles). check_resolved_config walks config_loader.SETTABLE_FIELDS and its role row is doctor/checks.py::_role_row.",
+    "_main_impl tightened 1195 -> 1193 on 2026-11-21 (#1315 item 10b merged with main, rule T): both benchmark exits are one call to simulation/benchmark.py::BenchmarkReport.exit_code (2 when a model was refused, owner decision V26).",
+    "_main_impl 1193 -> 1180, AgenticRuntimeMixin._start_agentic_runtime 796 -> 792 and start_simulation_mode 1895 -> 1889 on 2026-11-21 (#1315 item 10b, owner decision V29: every MaximAgent takes the run's router, rule T): the CLI agentic agent's build moved to cli.py::_build_cli_agentic_agent and the AUT agent's (with its event bridge) to orchestrator.py::_build_aut_agent, carrying the llm_router= edits; the robot runtime's hand-written ExecAgent share is one MaximAgent.share_run_llm call.",
     "#1519 fold (2026-11-21, rule T, no exemption): _run_agentic_loop_body 2140 -> 2128 and _run_deliberation_cycles 235 -> 227: both THOUGHT writes into working memory moved to agent_loop._add_deliberation_thought, paying for the required provenance= keyword WorkingMemorySet.add now takes; then 227 -> 224 (delta round): the thoughts reader became one WMEntry.prompt_text call. Delta 2: _run_agentic_loop_body 2128 -> 2126, the submit's triggering input and its source built by agent_loop._triggering in one splat.",
     "#1519 delta 4 (2026-11-21, rule T, no exemption): record_outcome 392 -> 385 (the recent-outcome append and trim to tool_dispatch._append_recent_outcome, paying for the untrusted_output keyword it records); execute_and_learn 342 -> 336 (the follow-up type and result text to tool_dispatch._followup_type_and_text, paying for passing untrusted_output). Delta 5: execute_and_learn 336 -> 328 (the error branch's audit entry to tool_dispatch._audit_execution_error, paying for the now-required untrusted_output on its exception booking). Suite fold (2026-11-22): the follow-up type returns to execute_and_learn (lint_loop_mode_reads rule E: its sink reads the one mode the tick read), so _followup_type_and_text becomes tool_dispatch._followup_text_for (result text only); execute_and_learn stays at 328, paid for by the think check moving into tool_dispatch._reset_deliberation.",
     "start_research_mode tightened 241 -> 233 on 2026-11-21 (#1621, rule T): an explicit campaign is loaded strictly before the session dir and the LLM build and raises instead of falling back to a free-form sim, so the fallback goal (researcher_goal) was deleted.",
@@ -413,6 +415,7 @@
     "#1519 re-merged onto #1751 (#1776) on 2026-11-23: _run_agentic_loop_body 1917 -> 1903 and execute_and_learn 325 -> 311, the same 14 lines each that #1519 moved out on the branch.",
     "#1519 re-merged onto #1185 (#1779) on 2026-11-24: _run_agentic_loop_body 1795 -> 1781, the same 14 lines #1519 moved out on the branch.",
     "#1228 re-merged onto #1519 (#1778) and #1185 (#1779) on 2026-11-24: _main_impl 1131 -> 1118 and start_simulation_mode 1832 -> 1816 (the same 13 and 16 lines #1228 moved out); report.py::build_report stays under the threshold with both sides' extractions (_router_cost/_run_costs and _tool_usage).",
+    "#1315 item 10b merged with main (2026-11-25): 10b's V29 `MaximAgent(llm_router=)` was dropped for main's #1228 `shared_router=` (the same rule), so the re-measured pins are main's: AgenticRuntimeMixin._start_agentic_runtime 774 and start_simulation_mode 1816; _main_impl stays 1116.",
     "#1775 (2026-11-24, rule T; Session A's grant): _run_agentic_loop_body 1781 -> 1773, section 4's goal_proposed event moved to agent_loop._log_goal_proposed, paying for its reasoning now logged by text_shape.",
     "#1801 (2026-11-25, rule T, no exemption): record_outcome 385 -> 381: its agent_id guard moved to tool_dispatch._require_agent_id, paying for the URL reduction of error at its top and before the NAc summary cut."
   ],

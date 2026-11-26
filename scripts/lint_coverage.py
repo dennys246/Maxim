@@ -2763,7 +2763,7 @@ def main(argv: list[str] | None = None) -> int:
         return stamp_main(REPO_ROOT)
     if argv == ["--missing-floors"]:
         return missing_floors_main(REPO_ROOT)
-    # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
+    # --local: the run scripts/suite_at_commit.sh makes on the commit it tests (optional since M64). Floors are measured
     # in CI's environment (macOS reads 1-2 pt off Linux), so locally NO floor gates, in either direction (M60a, owner
     # decision 2026-10-27; it gated the touched packages' floors before, which gave false reds and false greens): every
     # floor result and a PR's own floor-pin edits are printed as notes -- except a pinned ``missing`` that rose above

@@ -51,8 +51,9 @@ goes to the lines below.
   cut. **Risk:** B2's entry condition is the `start_simulation_mode` decomposition (baseline_floors.md §B2), and B4
   is the longest chain to 1.4.0 (roadmap_1_3_x.md §Risks 4). If line 4 stalls, 1.4.0 slips. D9's owner for line 4
   is the mitigation.
-- **D2. 10b's breaking change ships in a patch.** `MaximAgent(llm_router=)` becomes required (V29). It ships with a
-  `changelog.d/<slug>.breaking.md` fragment in 10b's PR that carries the migration.
+- **D2. The `MaximAgent` breaking change ships in a patch.** `MaximAgent(shared_router=)` is required. #1228 landed it
+  with its `changelog.d/1228-maxim-agent-router.breaking.md` fragment, which carries the migration; 10b's own V29
+  version (`llm_router=`) was dropped in favour of it when 10b merged main (2026-11-25).
 - **D3. 1.3.5 takes its own T1-2 clause.** It is called `release-1.3.5-T1-2`, in
   `docs/experiments/evidence_exceptions.json`, under the 2026-10-18 per-patch amendment (which covers 1.3.3 to
   1.3.6). It lands on `main` before the bump PR. At the clause's commit, someone re-checks by hand that T1-2 is the
@@ -125,6 +126,12 @@ goes to the lines below.
 - **D17.** The owner grants one short rig window, about 30 minutes outside any experiment run, for line 6 item 1.
   It runs from the laptop, before item 2 reaches the mini.
 - **D18.** An Overdrive session writes `maxim_response_2` from §Answers to Overdrive, through Overdrive's process.
+
+**Fourth batch (owner, 2026-11-25):**
+- **D19. #1802 joins line 5.** A failure mode's pain has no onset latch, so it re-fires on every tick while the
+  trigger holds and floods the PainBus learners. Overdrive's slice 2 session reported it, and a sustained heat stage
+  would hit it directly. Its companion #1803 (`_human_is_driving()` is process-wide) is filed but stays out of
+  1.3.5 (owner-decision on per-agent ownership).
 
 ## The lines
 
@@ -226,7 +233,7 @@ Line 3 does not gate the 1.3.5 cut.
 | The agent gets the wrong model or the wrong stores (B0b) | #1225, #1227, #1228 (branch exists), #1728; the `arm_effective` stamp that M46's floor check needs is built with #1227. Whatever release it lands in, it must land before B4 (owner 2026-10-18). | Runtime correctness | S–M | exec_agent, orchestrator, cli |
 | CI that tells the truth | M95 (open an issue when a nightly goes red); the flakes #1710, #1534, #1557, #954, #1553, #1576, #1493, #1456, each closed on a structural probe; the tooling items #1313 (which unblocks M60b), #1271, #1325, #1384, #1031, #1246 | Test/CI truthfulness | ~3–4 days | none |
 | Unsafe loads and stray writes | #1666; #1390 with #1676; #1342; #1404's residuals (`$HOME` to `~`); the 12 hand-rolled atomic renames down to 0 (#1685 and #1531 are in line 2) | Runtime correctness, persistence | ~2 days | #1390 touches exec_agent and cli |
-| Small standalone defects | #1680 (branch exists), #1692, #1742, #1596 (`--sandbox docker` silently runs with no sandbox), #1670 | Runtime correctness | S each | #1680: cli, orchestrator, exec_agent; #1596: orchestrator |
+| Small standalone defects | #1680 (branch exists), #1692, #1742, #1596 (`--sandbox docker` silently runs with no sandbox), #1670, #1802 (failure-mode pain has no onset latch, D19) | Runtime correctness | S each | #1680: cli, orchestrator, exec_agent; #1596: orchestrator; #1802: embodiment/sem.py, body.py |
 | Console truth and health | #1430, #1285, #1286, #1287, #1291 | Runtime correctness | S–M each | none |
 | Routing setup truth | #1396 (routers built outside `build_primary_router` never ask to download a model), #1295 (doctor checks the installed version against published advisories) | Runtime correctness | S–M | #1396: router, after 10a and 10b |
 | Bio-memory state, the small items | #982, #988, #985, #1474, #1471, #1532, #1575 | Runtime correctness | S each | none |
