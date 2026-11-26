@@ -392,7 +392,20 @@ _CHILD_SCRIPT = textwrap.dedent(
     sys.path.insert(0, CFG["src"])
     sys.dont_write_bytecode = True
     import os, atexit, importlib, importlib.util
+    import signal as _signal
     from collections.abc import MutableMapping
+
+    def _signal_handlers():
+        # Every signal's handler as a stable token (#1783 point 6: the library installs no handler).
+        out = {}
+        for s in _signal.valid_signals():
+            try:
+                out[int(s)] = repr(_signal.getsignal(s))
+            except (OSError, ValueError):
+                continue
+        return out
+
+    SIGNALS_BEFORE = _signal_handlers()  # before ``import maxim.advisor``
 
     OUT = {"events": [], "env_reads": [], "env_wild": [], "env_writes": [], "error": None}
     STATE = {"hook": True, "env": True}
@@ -598,6 +611,10 @@ _CHILD_SCRIPT = textwrap.dedent(
                     OUT["fake_templates"] = fake.templates
                 OUT["session_attrs"] = sorted(set(dir(session)) | set(dir(type(session))))
                 session.close()
+                after = _signal_handlers()
+                OUT["signal_changes"] = sorted(
+                    str(k) for k in set(SIGNALS_BEFORE) | set(after) if SIGNALS_BEFORE.get(k) != after.get(k)
+                )
                 OUT["report_status"] = (dict(report) if hasattr(report, "keys") else report.to_dict()).get("status")
     except BaseException as exc:  # reported to the parent, which asserts on it
         import traceback
@@ -845,6 +862,15 @@ def test_import_closure(tmp_path: Path, backend: str) -> None:
         assert "llama_cpp" not in out["modules_after_ingest"], (
             "the fake-backend session imported llama_cpp: only closed_local may, and only to build the backend"
         )
+
+
+@pytest.mark.parametrize("backend", ["fake", "real"])
+def test_observer_installs_no_signal_handler(tmp_path: Path, backend: str) -> None:
+    """From before ``import maxim.advisor`` through ``open()``, one ``ingest()`` and ``close()``, no signal's handler
+    changes: the library never takes SIGTERM/SIGINT from its embedder (AvServ plan 50 §18.4; #1783 point 6)."""
+    out, _sb = _child_session(tmp_path, backend)
+    assert "signal_changes" in out, "the child never reached close(): the snapshot was not taken"
+    assert out["signal_changes"] == [], f"the observer changed these signals' handlers: {out['signal_changes']}"
 
 
 # ── 2. env read set ───────────────────────────────────────────────────────
