@@ -14,8 +14,8 @@ pip install -e ".[test]"
 python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 
 # Lint
-ruff check src/ tests/
-ruff format src/ tests/
+ruff check src/ tests/ scripts/
+ruff format src/ tests/ scripts/
 ```
 
 ## Code Style
@@ -60,7 +60,7 @@ python -m pytest tests/integration/test_memory_hub.py -q
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Make your changes with tests
-4. Run `ruff check src/ tests/` and `python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py`
+4. Run `ruff check src/ tests/ scripts/` and `python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py`
 5. Commit with a descriptive message (see format below)
 6. Push to your fork and open a PR
 
