@@ -1603,6 +1603,13 @@ jobs:
         run: |
           python3 scripts/lint_dead_imports.py
 
+      - name: Wall-clock reads lint (M72, world clock A-pre D-WC4)
+        # No wall-clock or calendar read in M72's machinery and prompt scopes outside
+        # scripts/wall_clock_allowlist.json, each entry pinning its function's exact read count.
+        # Absolute from birth (owner, PR 1b). Positive control: tests/unit/test_lint_wall_clock_reads.py.
+        run: |
+          python3 scripts/lint_wall_clock_reads.py
+
       - name: Harness provenance lint (Exp 42b retraction lesson)
         run: |
           # Any scripts/**/*.py that spawns `maxim` sub-sims must call

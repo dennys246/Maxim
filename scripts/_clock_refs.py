@@ -67,6 +67,8 @@ MACHINERY_SCOPE = (
     "embodiment/spec.py",
     "proprioception/pain.py",
     "proprioception/pain_bus.py",
+    # M72's original row names focus_learner's _apply_decay; the whole file is in scope (owner, PR 1b, 2026-11-26).
+    "proprioception/focus_learner.py",
     "reactions/bus.py",
     "models/language/cost_tracker.py",
 )

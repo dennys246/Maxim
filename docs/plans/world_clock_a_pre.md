@@ -195,8 +195,9 @@ A-pre's closed pairs:
 
 ### What stays on the wall, on purpose
 
-The M72 allowlist is experience_clock_decay.md §(g)'s table (amended here, D-WC3 and D-WC4). It is keyed by
-`file::function`, and each entry has one category:
+The M72 allowlist is [`scripts/wall_clock_allowlist.json`](../../scripts/wall_clock_allowlist.json) (PR 1b), whose
+categories experience_clock_decay.md §(g) defines (amended here, D-WC3 and D-WC4). It is keyed by `file::function`;
+each entry has one category, the exact number of reads in its function, and a reason:
 
 | Category | Examples |
 |---|---|
@@ -341,6 +342,14 @@ PR 0's precondition tests found two premises of this plan false on main:
 - **Every gate has a green positive control** beside it: the same render or decision under the host default does show
   the time, so a gate that could not fail is caught in 1a, not when it flips. Each gate is then proven again by deletion
   in the PR that flips it.
+
+**Decided at PR 1b's start (owner, 2026-11-26):**
+- **M72 is absolute from birth.** 1b placed all 183 in-scope reads (the 88 `UNPLACED` at PR 0, the ones the census
+  rules already placed, and focus_learner's 7), so no file starts above zero and the ratchet is not built.
+- **Each allowlist entry pins its function's read count.** A key alone would let a leak hide beside an allowlisted
+  read in the same function.
+- **`proprioception/focus_learner.py` joins the machinery scope, whole.** Its `_apply_decay` and
+  `MemoryAgent._apply_decay` are `pending:#1361`; its movement-settle reads are `motor-io`.
 
 **Exit tests chosen from OD-WC1 to OD-WC7:**
 - **WC5, robots unchanged, is mandatory.** It lands green in PR 0 as characterization:

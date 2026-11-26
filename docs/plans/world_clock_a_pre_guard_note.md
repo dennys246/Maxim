@@ -6,6 +6,18 @@
 >   run (BD-14.2), which supersedes the draft's `sys.setprofile` tripwire (draft §3.3).
 > - **Revised** after the plan's three-lens review on `1e1eed8d`. The review corrected four claims: the dynamic half's
 >   reach, the resolver this note cited, the ratchet's semantics and the scope list.
+> - **Built 2026-11-26 in PR 1b, amended by the owner at its start.** Each amendment is stricter than the
+>   design below, which stays as written:
+>   - **Absolute from birth.** Every in-scope read got an allowlist entry, so every file was at zero on day one and
+>     the migration ratchet (§1 "Migration") would never have run. It is not built; a read without an entry fails.
+>     The "swaps at an equal count" row below no longer has a ratchet to fool.
+>   - **Each entry pins its function's exact read count** (`reads`). A read added to an allowlisted function fails,
+>     closing the blind spot a `file::function` key alone leaves (a leak hidden beside an allowlisted read); a read
+>     removed fails too, so the "stale entry" rule covers a partly stale one.
+>   - **`proprioception/focus_learner.py` joins the machinery scope, whole.** M72's original row names its
+>     `_apply_decay`; PR 0's `_clock_refs.MACHINERY_SCOPE` had omitted it.
+>   - The allowlist is [`scripts/wall_clock_allowlist.json`](../../scripts/wall_clock_allowlist.json); the categories
+>     are defined in experience_clock_decay.md §(g).
 
 ## What the guard is
 

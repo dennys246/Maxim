@@ -250,6 +250,7 @@ def test_temporal_callers_record_input_and_output_use() -> None:
         ("src/maxim/integration/memory_hub.py", "MemoryHub._on_memory_captured_scn", "wall", "with the stamp half"),
         ("src/maxim/memory/hippocampus_consolidation.py", "ConsolidationMixin.sleep", "wall", "A-post: OD-A4 stamp"),
         ("src/maxim/memory/hippocampus.py", "Hippocampus.unnamed_reader", "wall", "UNPLACED"),
+        ("src/maxim/memory/hippo_tracer.py", "_ts", "calendar", "allowlist: process"),
         ("src/maxim/peer/client.py", "Client.ping", "wall", "outside M72's scopes"),
     ],
 )
@@ -257,11 +258,22 @@ def test_placement_rules(path: str, function: str, kind: str, expected: str) -> 
     assert census_mod.placement_of(path, function, kind).startswith(expected)
 
 
+def test_an_unreadable_allowlist_prints_unplaced_not_a_guess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(census_mod, "ALLOWLIST", tmp_path / "missing.json")
+    census_mod._allowlisted.cache_clear()
+    try:
+        assert census_mod.placement_of("src/maxim/memory/hippo_tracer.py", "_ts", "calendar") == "UNPLACED"
+    finally:
+        census_mod._allowlisted.cache_clear()
+
+
 def test_scopes_follow_the_guard_note() -> None:
     assert census_mod.scope_of("src/maxim/agents/context_pool.py") == "machinery+prompt"
     assert census_mod.scope_of("src/maxim/memory/atl.py") == "machinery"
     assert census_mod.scope_of("src/maxim/tools/introspection.py") == "prompt"
     assert census_mod.scope_of("src/maxim/peer/client.py") == "-"
+    # M72's original row names focus_learner's _apply_decay (added in PR 1b).
+    assert census_mod.scope_of("src/maxim/proprioception/focus_learner.py") == "machinery"
     # A directory prefix needs its slash: decisions_extra.py is not under decisions/.
     assert census_mod.scope_of("src/maxim/decisions_extra.py") == "-"
 

@@ -20,8 +20,9 @@ where each site goes. This script prints, from the AST alone (it imports nothing
    module. The census does not guess; M72's lint fails closed on them.
 
 The output is for review. Neither the M72 lint nor G-long reads its verdicts; they rescan. A site inside an M72
-scope that no rule places prints as ``UNPLACED``, so a reviewer sees it rather than a guessed placement; PR 1
-gives each one an allowlist entry, a ``pending:`` pin or a move before M72 goes live. A site outside both scopes
+scope that no rule places prints its M72 allowlist entry (``allowlist: <category>``, read from
+``scripts/wall_clock_allowlist.json`` as data, PR 1b), or ``UNPLACED`` when nothing places it, so a reviewer sees it
+rather than a guessed placement (M72's lint fails on the same site). A site outside both scopes
 prints as ``outside M72's scopes``. ``tests/unit/test_world_clock_census.py`` fails when a placement rule matches
 nothing on the tree (a rule naming a function that moved), unless the rule says why it is empty today.
 
@@ -40,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import json
 import re
 import subprocess
@@ -157,11 +159,31 @@ def match_rule(path: str, function: str, kind: str | None) -> int | None:
     return None
 
 
+ALLOWLIST = REPO_ROOT / "scripts" / "wall_clock_allowlist.json"
+
+
+@functools.cache
+def _allowlisted() -> dict[str, str]:
+    """M72's allowlist as ``file::function`` → category (PR 1b). Data only: the census never reads the lint's verdicts.
+
+    A missing or unreadable file reads as empty, so every site no rule names prints ``UNPLACED`` again: loud, never a
+    guessed placement. The lint itself exits 2 on that file."""
+    try:
+        data = json.loads(ALLOWLIST.read_text(encoding="utf-8"))
+        return {e["site"]: e["category"] for e in data["entries"]}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"census: M72's allowlist unreadable ({exc}); sites it places print UNPLACED", file=sys.stderr)
+        return {}
+
+
 def placement_of(path: str, function: str, kind: str | None) -> str:
     i = match_rule(path, function, kind)
     if i is not None:
         return PLACEMENT_RULES[i].placement
-    # A site in neither M72 scope is not A-pre's to place; one inside a scope that no rule names is a finding.
+    category = _allowlisted().get(f"{rel_to_src(path)}::{function}")
+    if category is not None and scope_of(path) != "-":
+        return f"allowlist: {category}"
+    # A site in neither M72 scope is not A-pre's to place; one inside a scope that nothing places is a finding.
     return "UNPLACED" if scope_of(path) != "-" else "outside M72's scopes"
 
 
