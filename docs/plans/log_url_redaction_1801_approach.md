@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v27 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v28 2026-11-25 (Session A). **DESIGN SETTLED: the stop rule held at round 27.** Code is next, then the three-lens code review. On on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -99,9 +99,9 @@
 >       pinned_by: "tests for `see https://a.com and user:x@y`, `https://h:8080 failed, mail bob@ex.com`, `https://u:p@h/x, contact a@b` and a cross-line case"
 >     - id: E1801-3
 >       accepts: "an unlisted scheme (outside http(s)/ws(s)/ftp(s) and the stated list: postgres, postgresql, mysql, redis, rediss, mongodb, mongodb+srv, amqp, amqps, ssh, sftp, git+ssh, s3) is not recognised in the lone-`/` Path form or the bare-backslash Windows form (`zzz:\\u…`), so its userinfo can pass raw; any scheme IS recognised with a JSON-escaped slash (`zzz:\\/\\/…`) (owner, AG2)"
->       why: "taking any scheme there would erase ordinary log text such as `path:/Users/me`; backslash-holding separator forms take any scheme of 2+ characters; main recognises none of these forms today"
+>       why: "taking any scheme in the lone-`/` or bare-backslash forms would erase ordinary log text such as `path:/Users/me` and `nearby:\\n` (59 hits in 1.24M real sim-report fields, AG2); main recognises none of these forms today"
 >       class: fail-open residual, accepted (no worse than main)
->       pinned_by: "a test that Path('/a/redis://:SECRET@h') reduces (a listed scheme) and Path('/a/zzz://:SECRET@h') leaks (asserted, so a change is noticed)"
+>       pinned_by: "tests that Path('/a/redis://:SECRET@h') and `postgres:\\u:SECRET@h` reduce (listed schemes), and that Path('/a/zzz://:SECRET@h') and `zzz:\\u:SECRET@h` leak (both asserted, so a change is noticed) (AH3)"
 >     - id: E1801-4
 >       accepts: "a URL start (`scheme://`, or a separator form) inside a whitespace-holding userinfo, between the whitespace and its `@`, ends the outer match there, so the outer userinfo leaks: `https://tok SECRET https://x@h` gives `https://tok SECRET https://h` (owner 2026-11-25, AG1)"
 >       why: "tempering (AF1) is what stops one URL's match from swallowing a later URL's userinfo and leaking ITS secret (round 25, 12/12 combinations); the residual it leaves is rarer (a URL-shaped string inside a password with whitespace); main leaks both"
@@ -197,6 +197,15 @@
 >     - 3.10 compiles it;
 >     - linear: ratio 3.6–5.3 for 4× the input, at most 171 ms at 256k.
 >   - A round 27 is owed on AG1–AG4 only.
+> - **Round 27 (delta, a different reader): 0 DO-NOT-BUILD, 0 SHOULD-FIX and 3 NITs (fail-closed or docs-only). The
+>   STOP RULE HOLDS.**
+>   - 104/104 on 3.10.19 and 3.12.12.
+>   - 0 leaks outside E1801-1..4 in every case set and in the 12 two-URL combinations.
+>   - In a 300k random-string fuzz, the regex never matched where `_URL_START` did not.
+>   - Linear: the 5.3 ratio was noise; `a://@\n` takes 34, 132 and 513 ms at 64k, 256k and 1M, about 3.9× per
+>     step, and all 11 families fall within 3.1–4.1.
+>   - The regex block is character-identical to the patch.
+>   - NITs AH1–AH3 are folded.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -432,7 +441,10 @@ written later.
       mongodb(+srv), amqp(s), ssh, s3, and any scheme ending in one of them, such as `git+ssh`) with any
       backslash-holding separator (Windows `\`/`\\`, mixes), or a lone `/` (the `Path` form).
 
-    Everything else is E1801-3. If
+    Everything else is E1801-3. A fail-closed over-match follows from the `[A-Za-z0-9+.-]*` prefix: any word ENDING
+    in a listed scheme counts as one, so `follows:\n1.`, `Windows:\n`, `views:/x` and `mysql:\n` are erased and
+    also act as tempering starts (E1801-4). It loses text and leaks nothing: 0 hits in 6.19M decoded real
+    sim-report string fields. A test pins it (AH1). If
     the catch-all does not apply, the whole non-space token is taken. It always reduces to `<url>`, because
     `url_origin` cannot parse these forms. The separator is atomic by a lookahead plus a backreference, which keeps
     Python 3.10 (the floor) able to compile it.
