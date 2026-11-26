@@ -170,7 +170,10 @@ def test_every_external_client_transport_carries_the_deadline_backend():
     dead attribute and this would still pass; the real-socket drip tests above are what fail then, so they are not
     redundant with it."""
     http._ensure_external_endpoint()
-    names = [http._EXTERNAL_ENDPOINT, http._EXTERNAL_PUBLIC_ENDPOINT, *http._EXTERNAL_POLICY_ENDPOINTS.values()]
+    # every registered _external* endpoint, so a new one (the #1782 strict ones, say) cannot be left off a list
+    with http._registry._lock:
+        names = sorted(n for n in http._registry._endpoints if n.startswith("_external"))
+    assert len(names) >= 7, names  # _external, _external_public, 2 policy, 3 strict (#1782)
     for name in names:
         client = http._registry.get_client(name)
         transports = [client._transport, *(t for t in client._mounts.values() if t is not None)]

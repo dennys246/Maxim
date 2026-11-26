@@ -222,9 +222,11 @@ class HTTPEndpoint:
     # (#824, #921): "public" (globally routable only), "private" (LAN/loopback only -- a cleartext
     # ``http://`` backend), or "any". See ``utils/net.py::AddressPolicy``.
     address_policy: AddressPolicy = "any"
-    # True = never route through an env proxy, so the check always holds (the MODEL-chosen fetch, #824).
-    # False = an env proxy that applies to the base URL wins, with one warning: the proxy dials, so the
-    # check cannot apply (owner decision 2026-09-28, #921).
+    # True = never route through an env proxy, so the check always holds (the MODEL-chosen fetch, #824). On an
+    # "any" endpoint, which has no check, it still means no env proxy (#1782); the env CA (SSL_CERT_FILE /
+    # SSL_CERT_DIR) is still honoured on every endpoint. False = an env proxy that applies to the URL wins, with
+    # one warning: the proxy dials, so the check cannot apply (owner decision 2026-09-28, #921), and NO_PROXY
+    # hosts are dialled directly (D16). Strict needs no NO_PROXY.
     strict_address_check: bool = False
 
     # Runtime-only registry entry, never persisted or sent: CC3 does not apply.
@@ -504,12 +506,17 @@ class _EndpointRegistry:
                     max_keepalive_connections=ep.max_pool_connections,
                 )
                 backend = _policy_backend(ep.address_policy)
-                if backend is None:
+                if backend is None and (_offline.is_offline() or ep.strict_address_check):
+                    # offline: no env proxy (#1315 §6 layer 2); strict: none either (#1782)
+                    self._clients[name] = _proxyless_client(
+                        limits=limits, timeout=ep.timeouts.to_httpx(), base_url=ep.base_url or ""
+                    )
+                elif backend is None:
                     self._clients[name] = httpx.Client(
                         base_url=ep.base_url or "",
                         timeout=ep.timeouts.to_httpx(),
                         limits=limits,
-                        trust_env=not _offline.is_offline(),  # offline: no env proxy (#1315 §6 layer 2)
+                        trust_env=True,
                         event_hooks=_OFFLINE_EVENT_HOOKS,
                     )
                 else:
@@ -884,6 +891,33 @@ def _checked_client(
     )
 
 
+def provider_strict_address_check(provider_cfg: Mapping[str, Any]) -> bool:
+    """A provider entry's ``strict_address_check`` (#1782), read the same way by every backend: a bool as is, a
+    string through the canonical truthy parser (a JSON ``"false"`` is False), anything else False."""
+    value = provider_cfg.get("strict_address_check", False)
+    if isinstance(value, str):
+        return _offline.truthy(value)
+    return value is True
+
+
+def _proxyless_client(
+    *, limits: httpx.Limits, timeout: Any, base_url: str = "", follow_redirects: bool = False
+) -> httpx.Client:
+    """An unchecked ("any") client that reads no env or system proxy (strict, #1782; offline, #1315 §6).
+
+    ``trust_env=False`` on the client alone would also drop ``SSL_CERT_FILE`` / ``SSL_CERT_DIR``: httpx builds the
+    default transport's TLS context from the client's ``trust_env``. So the transport is built here with its own
+    ``trust_env`` (True: the env CA is honoured), as ``_checked_client``'s is, and the client mounts nothing."""
+    return httpx.Client(
+        base_url=base_url,
+        timeout=timeout,
+        follow_redirects=follow_redirects,
+        transport=httpx.HTTPTransport(limits=limits),
+        trust_env=False,
+        event_hooks=_OFFLINE_EVENT_HOOKS,
+    )
+
+
 def _checked_transport(limits: httpx.Limits, backend: _AddressCheckingBackend) -> httpx.HTTPTransport:
     transport = httpx.HTTPTransport(limits=limits)
     # httpx exposes no backend parameter; its connection pool takes one. Pinned by
@@ -907,15 +941,24 @@ def _policy_backend(policy: AddressPolicy) -> _AddressCheckingBackend | None:
 _SDK_CONNECTION_LIMITS = httpx.Limits(max_connections=1000, max_keepalive_connections=100)
 
 
-def address_checked_client(policy: AddressPolicy, *, timeout: float, base_url: str | None) -> httpx.Client | None:
+def address_checked_client(
+    policy: AddressPolicy, *, timeout: float, base_url: str | None, strict: bool = False
+) -> httpx.Client | None:
     """An ``httpx.Client`` enforcing ``policy`` on every address it dials directly, for a third-party SDK
-    that owns its transport (the OpenAI backend, #921); None for "any". It matches the SDK's defaults
-    (redirects followed -- every hop is a checked connection -- and its connection limits), and a
-    configured proxy carries the URLs it covers (``_proxy_mounts``). The caller closes it."""
+    that owns its transport (the OpenAI backend, #921); None for "any" unless ``strict``. It matches the SDK's
+    defaults (redirects followed -- every hop is a checked connection -- and its connection limits), and a
+    configured proxy carries the URLs it covers (``_proxy_mounts``), NO_PROXY honoured. ``strict``
+    (``HTTPEndpoint.strict_address_check``'s meaning, #1782) mounts no proxy at all, and for "any" returns a
+    client that reads no env proxy, since the SDK's own client would (``_proxyless_client``). The caller closes
+    it."""
     backend = _policy_backend(policy)
     if backend is None:
-        return None
-    return _checked_client(backend, limits=_SDK_CONNECTION_LIMITS, timeout=timeout, base_url="", follow_redirects=True)
+        if not strict:
+            return None
+        return _proxyless_client(limits=_SDK_CONNECTION_LIMITS, timeout=timeout, follow_redirects=True)
+    return _checked_client(
+        backend, limits=_SDK_CONNECTION_LIMITS, timeout=timeout, base_url="", follow_redirects=True, strict=strict
+    )
 
 
 # ─────────────────────────── External endpoint bootstrap ────────────────
@@ -937,7 +980,22 @@ _EXTERNAL_POLICY_ENDPOINTS: dict[str, str] = {
 """``fetch_url(address_policy=...)`` for OPERATOR-configured URLs (a peer's probe, #921): the policy is
 checked on the address dialled; an env proxy that applies to the URL wins, with one warning."""
 
-_DEADLINE_ENDPOINTS = frozenset({_EXTERNAL_ENDPOINT, _EXTERNAL_PUBLIC_ENDPOINT, *_EXTERNAL_POLICY_ENDPOINTS.values()})
+_EXTERNAL_STRICT_ENDPOINTS: dict[str, str] = {
+    "any": "_external_strict",
+    "public": "_external_policy_public_strict",
+    "private": "_external_policy_private_strict",
+}
+"""``fetch_url(strict=True)`` (#1782): the same policies, never through an env proxy. For a backend whose provider entry
+sets ``strict_address_check``, so its own probes refuse the proxy its calls refuse."""
+
+_DEADLINE_ENDPOINTS = frozenset(
+    {
+        _EXTERNAL_ENDPOINT,
+        _EXTERNAL_PUBLIC_ENDPOINT,
+        *_EXTERNAL_POLICY_ENDPOINTS.values(),
+        *_EXTERNAL_STRICT_ENDPOINTS.values(),
+    }
+)
 """The endpoints ``fetch_url`` uses: their clients take the deadline backend on every transport (#1715)."""
 
 _external_registered = False
@@ -954,6 +1012,9 @@ def _ensure_external_endpoint() -> None:
             (_EXTERNAL_PUBLIC_ENDPOINT, "public", True),
             (_EXTERNAL_POLICY_ENDPOINTS["public"], "public", False),
             (_EXTERNAL_POLICY_ENDPOINTS["private"], "private", False),
+            (_EXTERNAL_STRICT_ENDPOINTS["any"], "any", True),
+            (_EXTERNAL_STRICT_ENDPOINTS["public"], "public", True),
+            (_EXTERNAL_STRICT_ENDPOINTS["private"], "private", True),
         ]
         for name, policy, strict in specs:
             register_endpoint(
@@ -1441,6 +1502,7 @@ def fetch_url(
     public_only: bool = False,
     address_policy: AddressPolicy = "any",
     deadline_s: float | None = None,
+    strict: bool = False,
 ) -> Response:
     """One-off fetch of a full URL via the shared ``_external`` endpoint.
 
@@ -1460,6 +1522,9 @@ def fetch_url(
     ``address_policy`` (#921): for an OPERATOR-configured URL (a peer probe) -- "public" / "private"
     checked on the address dialled; an env proxy that applies to the URL wins, with one warning.
 
+    ``strict`` (#1782): never through an env or system proxy, for a backend whose provider entry sets
+    ``strict_address_check`` (its probes refuse the proxy its calls refuse). The env CA is still honoured.
+
     ``deadline_s`` (#1715): a bound on the WHOLE request, which no ``TimeoutPolicy`` field gives. Every socket read,
     write, TLS handshake and connect, and the pool wait, is cut to what remains of it, so a server that drips its
     body or headers is refused (``HTTPTimeout``) at about ``deadline_s``. The DNS lookup is not timed, and an
@@ -1474,6 +1539,10 @@ def fetch_url(
     _ensure_external_endpoint()
     if public_only:
         endpoint_name = _EXTERNAL_PUBLIC_ENDPOINT
+    elif strict:
+        if address_policy not in _EXTERNAL_STRICT_ENDPOINTS:
+            raise ValueError(f"unknown address_policy {address_policy!r}")
+        endpoint_name = _EXTERNAL_STRICT_ENDPOINTS[address_policy]
     elif address_policy == "any":
         endpoint_name = _EXTERNAL_ENDPOINT
     elif address_policy not in _EXTERNAL_POLICY_ENDPOINTS:
