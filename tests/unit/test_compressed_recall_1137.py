@@ -151,7 +151,7 @@ def test_an_episode_with_no_active_goal_keeps_none_through_compression() -> None
 
 def test_compression_keeps_what_the_render_shows_bounded_after_normalization() -> None:
     from maxim.integration.bio_enrichment import BioEnrichmentPipeline
-    from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, bounded_words
+    from maxim.utils.prompt_text import RECALLED_WORDS_MAX_CHARS, bounded_words
     from maxim.memory.types import CompressedMemory
 
     long_words = "ﷺ" * 40 + " the colour is green"  # NFKC expands each ~18x: bounded AFTER normalization
@@ -201,7 +201,7 @@ def test_bounding_is_idempotent_whatever_the_cut_lands_on() -> None:
     bound. A cut now ends in "...", NFKC's fixed point."""
     import random
 
-    from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, bounded_words
+    from maxim.utils.prompt_text import RECALLED_WORDS_MAX_CHARS, bounded_words
 
     rng = random.Random(1137)
     samples = ["a" * 238 + " " + "b" * 20, "ﷺ" * 40 + " green"] + [
