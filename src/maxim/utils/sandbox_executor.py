@@ -771,7 +771,14 @@ class SandboxExecutor:
     def _contained_script_path(self, name: object, ext: str) -> str:
         """``<sandbox>/scripts/<name><ext>`` for a plain ``name``, resolved and refused like a file tool's write (#1806
         PR 0, adversarial R3-6): the name is a model-chosen string, so it must not carry a path, and the resolved path
-        (a symlink planted under ``scripts/`` included) must stay in the sandbox and pass both write refusals."""
+        (a symlink planted under ``scripts/`` included) must stay in the sandbox and pass both write refusals.
+
+        It imports ``tools.base``'s two refusals lazily, inside the call: the one ``utils`` -> ``tools`` edge in
+        ``src/maxim/utils/``, against ARCHITECTURE.md's "utils is the bottom" convention. Tolerated because
+        ``SandboxExecutor``'s only caller is ``tools/sandbox.py`` (so ``tools`` is already loaded whenever this runs),
+        and lazy so importing ``utils`` never pulls in ``tools``. ``utils`` has no ``LAYER_RULES`` row, so the
+        architecture audit cannot see this edge: if a non-tool writer ever needs the refusals, move both predicates
+        into a ``utils/`` module with a ``tools/base.py`` re-export instead of adding a second edge (#1806 PR 0, A3)."""
         if not isinstance(name, str) or not _SCRIPT_NAME.fullmatch(name):
             raise ValueError(f"Invalid script name {name!r}: letters, digits, '_', '-' and '.', not starting with '.'")
         from maxim.tools.base import control_plane_write_refusal, git_dir_write_refusal

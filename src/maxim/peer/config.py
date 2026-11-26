@@ -22,16 +22,12 @@ import platform
 from dataclasses import dataclass
 from pathlib import Path
 
+from maxim.utils.paths import maxim_config_dir
+
 
 def peer_config_path() -> Path:
-    """Return the platform-appropriate peer config path."""
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return base / "maxim" / "peer.yml"
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "maxim" / "peer.yml"
+    """Return the platform-appropriate peer config path (in :func:`maxim.utils.paths.maxim_config_dir`)."""
+    return maxim_config_dir() / "peer.yml"
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,9 @@
 - **Agent file tools can no longer rewrite Maxim's own control-plane files** (#1806 PR 0, #1811): `write_file`,
   `edit_file` and the sandbox write tools now refuse, in every mode, any path under the resolved config directory
   (`~/.config/maxim/` or `$XDG_CONFIG_HOME/maxim/`: `mesh.yml`, `api_key`, `console_token`, `config.json`) and
-  `robots.yaml`, `robots.yaml.bak` and `util/device_state.json` in the data home and the default `~/.maxim`.
+  `robots.yaml`, `robots.yaml.bak`, `util/device_state.json`, `util/internet_access.json` and
+  `util/internet_policy.json` and `util/hive_release_sequence.json` (the Oasis signer's anti-rollback counter) in the data home and the default `~/.maxim`, so an agent cannot grant itself internet
+  access by editing a file.
   Before this, an agent started from your home directory could repoint or delete them. Code-execution tools
   (`bash`, `execute_file`, opted-in `run_tests`) are not covered; passive mode refuses those.
 - **`create_sandbox_script` refuses a script name that is not a plain file name** (#1806 PR 0): a name with a path

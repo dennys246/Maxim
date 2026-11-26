@@ -14,7 +14,9 @@ Every module that previously did ``Path("data/util/foo.json")`` should
 use one of these helpers instead so that ``pip install pymaxim`` works
 outside a repo checkout.
 
-It also owns the one system path Maxim reads outside its own data:
+It also owns Maxim's declarative config directory, :func:`maxim_config_dir`
+(``peer.yml``, ``mesh.yml``, ``profiles.yml``, ``config.json``, the key files), and
+the one system path Maxim reads outside its own data:
 :func:`cloudflared_system_dir` (the user-side ``~/.cloudflared/config.yml``
 is ``tunnel/config.py::CONFIG_PATH``).
 
@@ -29,6 +31,7 @@ from __future__ import annotations
 import errno
 import logging
 import os
+import platform
 import stat
 import sys
 from pathlib import Path
@@ -67,6 +70,24 @@ def _unreadable_config_message(path: Path, err: OSError) -> str:
         return msg
     blocker = next((d for d in reversed(path.parents) if not os.access(d, os.X_OK)), path.parent)
     return f"{msg}; {blocker} is not accessible: chmod 700 {blocker}"
+
+
+def maxim_config_dir() -> Path:
+    """Maxim's declarative config directory: ``%APPDATA%\\maxim`` on Windows (``~/AppData/Roaming/maxim`` when
+    ``APPDATA`` is unset or empty), else ``$XDG_CONFIG_HOME/maxim`` (``~/.config/maxim`` when unset or empty).
+
+    The ONE resolver of that directory (#1806 PR 0, A1): ``peer.yml``, ``mesh.yml``, ``profiles.yml``, ``config.json``
+    and the key files (``api_key``, ``console_token``) all resolve through it, and so does the file tools'
+    control-plane write deny (``tools/base.py::_control_plane_roots``), which is only as good as this agreement.
+    Read on each call, never cached, never created. Guard: ``tests/unit/test_1806_pr0_config_dir_agreement.py``.
+    """
+    if platform.system() == "Windows":
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+        return base / "maxim"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "maxim"
 
 
 _DEFAULT_CLOUDFLARED_SYSTEM_DIR = Path("/etc/cloudflared")
@@ -201,6 +222,15 @@ def data_home() -> Path:
         )
     _data_home_cache = base
     return base
+
+
+def data_home_if_resolved() -> Path | None:
+    """The data home :func:`data_home` has already resolved in this process, or None when it has not run yet.
+
+    Never resolves, never creates a directory, never exits: for a reader (the file tools' control-plane deny) that
+    must not have :func:`data_home`'s side effects.
+    """
+    return _data_home_cache
 
 
 def _reset_caches() -> None:

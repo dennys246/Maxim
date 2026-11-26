@@ -1,8 +1,9 @@
 """#1806 PR 0 (owner decision D14): an agent's file tools never write Maxim's own control-plane files, in any mode.
 
 The denied set is the resolved config directory (``$XDG_CONFIG_HOME/maxim`` or ``~/.config/maxim``: mesh.yml, the API
-keys, the console token, config.json) and ``robots.yaml``, ``robots.yaml.bak`` and ``util/device_state.json`` under
-both the process's data home and the default ``~/.maxim``. Each root is the union of the current env's resolver
+keys, the console token, config.json) and ``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``,
+``util/internet_access.json`` (#1345) and ``util/internet_policy.json`` (#832) under both the process's data home and
+the default ``~/.maxim``. Each root is the union of the current env's resolver
 output, the ``Path.home()`` default and the passwd home's default; three independent tests match a path (#957's
 every-ancestor stat-identity walk, a realpath + NFC + case-fold string compare, and an env-independent name rule).
 
@@ -102,6 +103,26 @@ def test_the_registry_backup_is_refused(env, tool: str) -> None:
 def test_a_new_device_state_file_is_refused(env, tool: str) -> None:
     """Planting a file that does not exist yet, under a ``util/`` that does not exist either."""
     _assert_refused(env, tool, env.home / ".maxim" / "util" / "device_state.json", seed=False)
+
+
+@TOOLS
+@pytest.mark.parametrize("name", ["internet_access.json", "internet_policy.json", "hive_release_sequence.json"])
+def test_the_operators_internet_files_are_refused(env, tool: str, name: str) -> None:
+    """Review A2 (owner decision): an agent cannot grant itself internet access by editing a file."""
+    _assert_refused(env, tool, env.home / ".maxim" / "util" / name)
+
+
+@TOOLS
+@pytest.mark.parametrize("name", ["internet_access.json", "internet_policy.json", "hive_release_sequence.json"])
+def test_a_child_data_homes_internet_files_are_refused(env, tool: str, name: str, monkeypatch) -> None:
+    """Under a harness child's ``MAXIM_DATA_HOME`` (no ``.maxim`` in its path, so the roots match, not the name rule)."""
+    from maxim.utils import paths
+
+    child = env.root / "child-data"
+    child.mkdir()
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(child))
+    paths._reset_caches()
+    _assert_refused(env, tool, child / "util" / name)
 
 
 @TOOLS
@@ -229,6 +250,7 @@ def test_the_sandbox_tools_refuse_control_plane_files(env, tmp_path: Path, monke
         "home/.config/maximal/x",
         "home/.maxim/sim_reports/x.json",
         "home/.maxim/util/other_state.json",
+        "ws/util/internet_access.json",
         "home/maxim/robots.yaml",
     ],
 )
@@ -333,6 +355,24 @@ def test_the_roots_are_the_union_of_env_home_and_passwd_home(env, monkeypatch) -
         assert str(data / "robots.yaml") in files
         assert str(data / "robots.yaml.bak") in files
         assert str(data / "util" / "device_state.json") in files
+        assert str(data / "util" / "internet_access.json") in files
+        assert str(data / "util" / "internet_policy.json") in files
+        assert str(data / "util" / "hive_release_sequence.json") in files
+
+
+def test_the_roots_include_the_data_home_this_process_resolved(env, monkeypatch) -> None:
+    """Review A4: the data home ``data_home()`` cached stays a denied root after the env var moves on."""
+    from maxim.tools.base import _control_plane_roots
+    from maxim.utils import paths
+
+    resolved = env.root / "resolved-data"
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(resolved))
+    paths._reset_caches()
+    assert paths.data_home() == resolved
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(env.root / "later-data"))
+    _config_dirs, files = _control_plane_roots()
+    assert str(resolved / "robots.yaml") in files
+    paths._reset_caches()
 
 
 def test_the_string_compare_folds_nfd_and_case(env) -> None:

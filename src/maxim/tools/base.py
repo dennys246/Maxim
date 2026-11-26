@@ -919,6 +919,10 @@ _CONTROL_PLANE_DATA_FILES: tuple[tuple[str, ...], ...] = (
     ("robots.yaml",),
     ("robots.yaml.bak",),
     ("util", "device_state.json"),
+    ("util", "internet_access.json"),  # the operator's internet on/off (#1345): an agent must not grant itself access
+    ("util", "internet_policy.json"),  # the operator's frozen network rules (#832)
+    # the Oasis signer's anti-rollback counter: resetting it would let the signer reissue an old release sequence
+    ("util", "hive_release_sequence.json"),
 )
 # The env-independent name rule: realpath components (folded) that END with one of these, or CONTAIN the pair.
 _CONTROL_PLANE_NAME_SUFFIXES: tuple[tuple[str, ...], ...] = tuple((".maxim", *f) for f in _CONTROL_PLANE_DATA_FILES)
@@ -946,14 +950,16 @@ def _account_homes() -> list[str]:
 def _control_plane_roots() -> tuple[list[str], list[str]]:
     """The denied config directories (whole subtree) and the denied data-home files (exact), each root a UNION of the
     resolver's output for the current environment, the ``Path.home()`` default and the passwd home's default."""
-    from maxim.peer.config import peer_config_path  # the resolver config_loader and peer_config_path share
     from maxim.utils import paths
 
     homes = _account_homes()
-    config_dirs = [str(peer_config_path().parent)] + [os.path.join(h, ".config", "maxim") for h in homes]
+    # maxim_config_dir() is the ONE resolver every config-dir file (peer.yml, mesh.yml, profiles.yml, config.json,
+    # the key files) goes through; tests/unit/test_1806_pr0_config_dir_agreement.py pins that agreement.
+    config_dirs = [str(paths.maxim_config_dir())] + [os.path.join(h, ".config", "maxim") for h in homes]
     data_homes = [os.environ.get("MAXIM_DATA_HOME", "") or os.path.join(homes[0], ".maxim")]
-    if paths._data_home_cache is not None:  # the process's data_home(), when resolved (calling it would mkdir)
-        data_homes.append(str(paths._data_home_cache))
+    resolved = paths.data_home_if_resolved()  # the process's data_home(), when resolved (calling it would mkdir)
+    if resolved is not None:
+        data_homes.append(str(resolved))
     data_homes += [os.path.join(h, ".maxim") for h in homes]
     files = [os.path.join(d, *f) for d in dict.fromkeys(data_homes) for f in _CONTROL_PLANE_DATA_FILES]
     return list(dict.fromkeys(config_dirs)), files
@@ -1031,14 +1037,16 @@ def control_plane_write_refusal(path: str) -> str | None:
 
     - anything under the resolved config directory (``$XDG_CONFIG_HOME/maxim`` or ``~/.config/maxim``: ``mesh.yml``,
       ``peer.yml``, ``config.json``, the API keys and console token);
-    - ``robots.yaml``, ``robots.yaml.bak`` and ``util/device_state.json`` under the process's data home AND the default
-      ``~/.maxim`` (a harness child runs with ``MAXIM_DATA_HOME=<tmp>``; the operator's real files stay protected).
+    - ``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``, ``util/internet_access.json`` (#1345) and
+      ``util/internet_policy.json`` (#832) under the process's data home AND the default ``~/.maxim`` (a harness child
+      runs with ``MAXIM_DATA_HOME=<tmp>``; the operator's real files stay protected). The two internet files mean an
+      agent cannot grant itself internet access by editing a file.
 
     Each root is the union of the resolver's output for the current environment, the ``Path.home()`` default and the
     passwd home's default. Three independent tests, any one refuses: #957's every-ancestor stat-identity walk (a denied
     root that does not exist yet is anchored at its deepest existing ancestor plus its tail); a realpath + NFC +
     case-fold string compare; and an environment-independent name rule over the folded realpath components (ends with
-    ``.maxim/robots.yaml``, ``.maxim/robots.yaml.bak`` or ``.maxim/util/device_state.json``, or contains the pair
+    ``.maxim/`` plus one of those five data-home files, or contains the pair
     ``.config``/``maxim``; component-wise, so ``~/.config/maximal/x`` and ``ws/robots.yaml`` stay writable).
 
     Residuals (``docs/user/safety.md``): the code-execution tools can still write these files; an operator's own
