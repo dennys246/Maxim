@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.utils.net import redact_urls
+
 if TYPE_CHECKING:
     from maxim.agents.bus import Percept
 
@@ -303,7 +305,7 @@ class ContextPool:
         if result_summary:
             parts.append(f": {result_summary[:100]}")
         elif error:
-            parts.append(f": {error[:100]}")
+            parts.append(f": {redact_urls(error)[:100]}")  # reduce, then cut: this text reaches the prompt (#1801)
         content = "".join(parts)
         if "TOOL_OUTPUT" in content:  # a cut through a recalled frame never shows its body bare (Session R, rule 2)
             from maxim.utils.content_safety import drop_unbalanced_frames

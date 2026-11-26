@@ -1499,6 +1499,14 @@ jobs:
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
 
+      - name: Cuts of exception text before URL reduction (#1801)
+        # A ratchet, not the boundary: an AST taint lint over src/maxim that fails on a slice, precision, shorten or
+        # split/partition result of exception text (an except name, an e/exc/err/error parameter, .stderr/.stdout,
+        # traceback.format_exc()) that is not redact_urls/url_scrubbed first. Reviewed cuts sit in its allowlist,
+        # keyed file::innermost_function + the cut's text, with an exact count. Prints the count EVERY run.
+        # Positive control: tests/unit/test_lint_cut_before_redact.py.
+        run: python3 scripts/lint_cut_before_redact.py
+
       - name: HTTP surface (HTTP clients only in utils/http.py; raw dials + egress SDKs pinned)
         # CLAUDE.md's HTTP invariant. The urlopen grep in "CI grep invariants" stays (CLAUDE.md cites it);
         # this AST lint also sees urllib3/requests/httpx/httpcore/aiohttp/http.client in any spelling,

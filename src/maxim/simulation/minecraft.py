@@ -70,6 +70,8 @@ import time
 from collections import deque
 from typing import Any, Callable
 
+from maxim.utils.net import redact_urls
+
 logger = logging.getLogger(__name__)
 
 # Bounded event queue: a chatty server must not grow memory without bound;
@@ -235,7 +237,7 @@ class MinecraftClient:
         except OSError as exc:
             with self._pending_cv:
                 self._waiting.discard(action_id)
-            return {"ok": False, "unknown": False, "detail": f"bridge send failed: {exc}"}
+            return {"ok": False, "unknown": False, "detail": redact_urls(f"bridge send failed: {exc}")}  # #1801 M5
         deadline = time.monotonic() + self._action_timeout_s
         with self._pending_cv:
             try:

@@ -34,6 +34,8 @@ from typing import Literal
 
 from maxim.exceptions import LeaderRefusal
 from maxim.utils.child_env import child_env
+from maxim.utils.logging import ensure_redacting_record_factory
+from maxim.utils.net import redact_urls, url_scrubbed
 
 # ── Input validation ─────────────────────────────────────────────────────────
 
@@ -721,7 +723,9 @@ class _LogBuffer(logging.Handler):
                 "ts": record.created,
                 "level": record.levelname,
                 "logger": record.name,
-                "message": self.format(record),
+                # Belt-and-braces on the highest-reach sink (#1801 R4): network-served, and it covers a handler
+                # that re-renders ``exc_info`` itself.
+                "message": redact_urls(self.format(record)),
             }
             with self._lock:
                 self._buffer.append(entry)
@@ -747,6 +751,20 @@ class _LogBuffer(logging.Handler):
 _log_buffer: _LogBuffer | None = None
 
 
+def _reduced_error_body(body: bytes, content_type: str) -> bytes:
+    """An error body with its URLs reduced (#1801 H5, J6, K6, L4). A JSON body is parsed, its string leaves scrubbed
+    and re-encoded: ``redact_urls`` over the raw bytes could span compact-JSON field boundaries. Anything else is
+    decoded and re-encoded as ``utf-8`` with ``surrogateescape`` (a strict re-encode raises on a ``\x80`` byte)."""
+    if "json" in (content_type or "").lower():
+        try:
+            return json.dumps(url_scrubbed(json.loads(body))).encode()
+        # Not JSON after all (``JSONDecodeError`` and ``UnicodeDecodeError`` are ValueErrors), or nested past the
+        # parser's recursion limit: fail CLOSED to reducing the decoded text below (code review NIT).
+        except (ValueError, RecursionError):
+            pass
+    return redact_urls(body.decode("utf-8", "surrogateescape")).encode("utf-8", "surrogateescape")
+
+
 def _ensure_log_buffer() -> _LogBuffer:
     """Install the log buffer handler on the maxim logger (idempotent)."""
     global _log_buffer
@@ -762,6 +780,7 @@ def _ensure_log_buffer() -> _LogBuffer:
     # Local DEBUG diagnostics belong in MAXIM_LOG_FILE, not on the wire.
     _log_buffer.setLevel(logging.INFO)
     logging.getLogger("maxim").addHandler(_log_buffer)
+    ensure_redacting_record_factory()  # the behavioural chain check on each buffer install (#1801 R4)
     return _log_buffer
 
 
@@ -1931,7 +1950,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "pip install failed"})
             return None
 
-        pip_output = pip_result.stdout[-500:] if pip_result.stdout else ""
+        pip_output = redact_urls(pip_result.stdout)[-500:] if pip_result.stdout else ""  # reduce, then cut (#1801)
         if pip_result.returncode == 0:
             return pip_output
 
@@ -2144,7 +2163,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             shutil.rmtree(rollback_dir, ignore_errors=True)
             return None
 
-        pip_output = result.stdout[-500:] if result.stdout else ""
+        pip_output = redact_urls(result.stdout)[-500:] if result.stdout else ""  # reduce, then cut (#1801)
         if result.returncode == 0:
             shutil.rmtree(rollback_dir, ignore_errors=True)
             return pip_output
@@ -2179,7 +2198,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             500,
             {
                 "error": f"pip upgrade failed, rollback {rollback_status}",
-                "stderr": (result.stderr or "")[-500:],
+                "stderr": redact_urls(result.stderr or "")[-500:],
             },
         )
         return None
@@ -2271,14 +2290,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                         cwd=repo_root,
                         env=child_env(),
                     )
-                    _install_status["pip_output"] += (r.stdout or "")[-500:]
+                    # Served in a 2xx body at /v1/debug/install-status, which _send_json's error reduction misses:
+                    # reduced here, before the cut (#1801 F3).
+                    _install_status["pip_output"] += redact_urls(r.stdout or "")[-500:]
                     if r.returncode != 0:
                         _install_status["status"] = "error"
-                        _install_status["error"] = r.stderr[-500:] if r.stderr else "pip failed"
+                        _install_status["error"] = redact_urls(r.stderr)[-500:] if r.stderr else "pip failed"
                         return
                 except Exception as exc:
                     _install_status["status"] = "error"
-                    _install_status["error"] = str(exc)
+                    _install_status["error"] = redact_urls(str(exc))
                     return
             _install_status["status"] = "ok"
 
@@ -2436,7 +2457,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         except ValueError as e:
             self._send_json(400, {"error": str(e)})
         except FileNotFoundError as e:
-            msg = str(e)
+            msg = redact_urls(str(e))  # reduce, then split (#1801)
             parts = msg.split("|", 1)
             # Sanitize — don't leak file paths in error responses
             safe_error = re.sub(r"/[\w./-]{5,}", "<path>", parts[0])
@@ -2518,6 +2539,11 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     # ─── helpers ──────────────────────────────────────────────────────
 
     def _send_json(self, code: int, body: dict) -> None:
+        if code >= 400:
+            # #1801 (S2, G2, H5): every string leaf of an error body is URL-reduced (the 500 reply's ``"stderr"`` too,
+            # not only ``"error"``), keeping a dict-shaped OpenAI error's structure and its int ``code``, which
+            # ``maxim_peer_backend._context_overflow_counts`` parses; before ``json.dumps``, which sizes the body.
+            body = url_scrubbed(body)
         data = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -2540,7 +2566,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_bytes(self, code: int, body: bytes, content_type: str) -> None:
-        """Send a raw byte body (bundle download) with the same security headers as _send_json."""
+        """Send a raw byte body (bundle download) with the same security headers as _send_json. An error body
+        (``code >= 400``) is URL-reduced first (#1801), before ``Content-Length`` is computed."""
+        if code >= 400:
+            body = _reduced_error_body(body, content_type)
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))

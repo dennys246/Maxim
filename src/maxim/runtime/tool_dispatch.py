@@ -27,6 +27,7 @@ from maxim.runtime.loop_types import ActionFollowup
 from maxim.tools.base import GATE_REFUSAL_KINDS, ToolErrorKind
 from maxim.utils.input_source import InputSource
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import redact_urls
 from maxim.utils.cloud_redaction import loggable_tool_text, text_shape, tool_text_is_loggable
 from maxim.utils.structured_logging import log_agentic
 
@@ -299,12 +300,8 @@ def record_outcome(
     the fail-soft NAc block — a degenerate key must be loud, not a
     silently-swallowed no-op.
     """
-    if not isinstance(agent_id, str) or not agent_id:
-        raise ValueError(
-            f"agent_id must be a non-empty string, got {agent_id!r}. "
-            "Tool outcome recording is per-agent — empty / missing values "
-            "would silently merge attribution across agents."
-        )
+    _require_agent_id(agent_id)
+    error = redact_urls(error) if error is not None else None  # one choke point for every sink below (#1801 S1)
     nac = _learning_nac(nac, refused)
     ts = time.time()
     entry = {"tool": tool_name, "success": success, "result": result_summary, "error": error, "timestamp": ts}
@@ -408,7 +405,7 @@ def record_outcome(
     # NAc causal learning: record tool → outcome so predictions improve
     if nac is not None:
         try:
-            outcome_summary = (result_summary or error or "")[:50]
+            outcome_summary = _nac_outcome_summary(result_summary, error)
             valence = learn_valence
             sig = build_tool_signature(tool_name, tool_params)
             # Tag every NAc observation with agent_id so cross-agent
@@ -612,6 +609,23 @@ def record_outcome(
     # Energy → NAc: learn which tools are expensive (metabolic budget)
     if nac is not None and elapsed_s > 0:
         _observe_energy_cost(nac, tool_name, elapsed_s, agent_id)
+
+
+def _nac_outcome_summary(result_summary: str | None, error: str | None) -> str:
+    """NAc's outcome text, its link key (moved out of ``record_outcome``, rule T, #1801). Only the error part is
+    reduced, before the cut (D5): a success summary is outside D5's error scope, so success-path keys are unchanged
+    (code review Wire SF1)."""
+    return result_summary[:50] if result_summary else redact_urls(error or "")[:50]
+
+
+def _require_agent_id(agent_id: object) -> None:
+    """``record_outcome``'s ``agent_id`` guard (moved out of it, rule T, #1801)."""
+    if not isinstance(agent_id, str) or not agent_id:
+        raise ValueError(
+            f"agent_id must be a non-empty string, got {agent_id!r}. "
+            "Tool outcome recording is per-agent — empty / missing values "
+            "would silently merge attribution across agents."
+        )
 
 
 def _learning_nac(nac: Any | None, refused: ToolErrorKind | None) -> Any | None:
@@ -871,7 +885,7 @@ def execute_parallel_actions(
                 {
                     "tool": tool_name,
                     "success": False,
-                    "error": str(e),
+                    "error": redact_urls(str(e)),  # combined_results, the LLM context, is built from these (#1801 F3)
                     "result": None,
                     "_failure_booked": getattr(result, "nac_failure_booked", None),
                 }

@@ -9,6 +9,7 @@ from typing import Any
 
 from maxim import _offline
 from maxim.utils.logging import info, log_swallowed_exception, warn
+from maxim.utils.net import redact_urls
 from maxim.utils.optional_deps import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
@@ -764,7 +765,7 @@ class LLMRouter:
         if state is None:
             return
         state.consecutive_errors += 1
-        state.last_error = error[:200]
+        state.last_error = redact_urls(error)[:200]  # reduce, then cut (#1801): report.json's provider failures read it
         backoff = min(60.0, 1.0 * (2 ** max(state.consecutive_errors - 1, 0)))
         state.backoff_until = time.time() + backoff
 
@@ -2020,7 +2021,9 @@ class LLMRouter:
             except Exception as e:  # a raising warmup is a failed one, never "ready" (it used to kill the thread)
                 self._warmup_failed = True
                 warn("LLM warmup failed: %s", e)
-                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+                log_agentic(
+                    "llm_router", "error", {"context": "warmup", "error": redact_urls(str(e))[:50]}, level="WARNING"
+                )
             finally:
                 with self._backend_lock:
                     self._warmups_running -= 1
@@ -2074,7 +2077,9 @@ class LLMRouter:
                 success = True
             except Exception as e:
                 warn("LLM warmup failed: %s", e)
-                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+                log_agentic(
+                    "llm_router", "error", {"context": "warmup", "error": redact_urls(str(e))[:50]}, level="WARNING"
+                )
         self._warmup_failed = not success
         return backend
 
