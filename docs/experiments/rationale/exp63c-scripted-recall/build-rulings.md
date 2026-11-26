@@ -78,3 +78,18 @@ markers.
 rationale asks for `input_tokens + max_tokens < n_ctx`, but `max_tokens` is not logged on `peer_backend_call`. So the
 smoke checks `input_tokens < n_ctx` and the PR says so. Tightening it needs the call's budget in the log, which is a
 `src/` change outside this build.
+
+
+## 2026-11-21: the shipped frame rule changed after the run (#1519); the verdict keeps the executed rule
+
+#1519 changed the shipped frame-pairing rule after this experiment ran. All frame consumers now pair through
+`content_safety.frame_spans`, which also refuses a pair whose span crosses a section header. One edge case changes
+how stored text is keyed: text holding repeated same-id openers. `memory/text.py::text_values('a <<X…>> b <<X…>> c
+<</X>> d')` gave `['a  d']` at e841abca, 9176025a and 043eab8f, and gives `['a ']` after #1519.
+
+Owner decision 2026-11-21: the verdict port follows the EXECUTED rule. `scripts/o19_verdict.py`'s frozen port
+(`_P_FRAMED_REGION`, `_p_unbalanced_markers`) is unchanged. Its pins
+(`test_exp63b_the_port_is_the_executed_keying`, `test_exp63c_the_port_reads_records_as_the_shipped_store`) now
+compare it with the shipped code AT THE EXECUTED COMMITS. The executed frame rule is vendored, byte-checked against
+e841abca and 9176025a, at `tests/fixtures/exp63b/executed_content_safety.py` (the `executed_frames` fixture).
+Ranking is unchanged; nothing is re-run.

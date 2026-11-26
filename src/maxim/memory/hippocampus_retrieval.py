@@ -7,6 +7,7 @@ from collections import defaultdict
 from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
+from maxim.memory.text import Provenance
 from maxim.memory.types import CompressedMemory, EpisodicMemory, outcome_label, record_active_goal
 from maxim.utils.logging import log_swallowed_exception
 
@@ -232,6 +233,7 @@ class RetrievalMixin:
                     kind=WorkingMemoryKind.RECALL,
                     ref=mem.id,
                     content=summary,
+                    provenance=Provenance.EXTERNAL,  # a recalled record's words are stored outside text (#1519)
                 )
 
         # Simulation verbosity

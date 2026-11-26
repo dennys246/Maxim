@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from maxim.exceptions import LeaderRefusal
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.mesh.bus import LocalMessageBus
 
 if TYPE_CHECKING:
@@ -101,9 +101,9 @@ def _build_research_llm(language_model: str | None = None) -> Any:
     """The LLM router for the Writer + Reviewer, or None (they fall back to heuristics), on ``language_model`` when
     the caller has its own (#1586; None: the session's ``MAXIM_LLM_PROFILE``).
 
-    A :class:`~maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
-    llama-cpp-server) propagates: a security refusal is not an availability
-    fallback. So does ``LocalModelUnavailable``: a named ``language_model`` that is
+    A :data:`~maxim.exceptions.SECURITY_REFUSALS` refusal (a leader with no key, an exposed
+    llama-cpp-server, a lane the offline latch refused) propagates: a security refusal is not an
+    availability fallback. So does ``LocalModelUnavailable``: a named ``language_model`` that is
     missing and not downloaded refuses the run (owner decision OD2, #1396 bullet 2).
     """
     from maxim.models.language.types import LocalModelUnavailable
@@ -116,7 +116,9 @@ def _build_research_llm(language_model: str | None = None) -> Any:
         if research_llm is not None:
             research_llm.warmup()
             research_llm.wait_ready(timeout=120.0)
-    except (LeaderRefusal, LocalModelUnavailable):
+    except SECURITY_REFUSALS:
+        raise
+    except LocalModelUnavailable:
         raise
     except Exception as e:
         logger.warning("Research LLM init failed: %s — Writer/Reviewer will use heuristics", e)

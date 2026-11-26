@@ -155,6 +155,18 @@ class LeaderRefusal(MaximError, RuntimeError):
     """
 
 
+def _security_refusals() -> tuple[type[BaseException], ...]:
+    from maxim._offline import OfflineRefusal  # a stdlib-only leaf: no cycle
+
+    return (LeaderRefusal, OfflineRefusal)
+
+
+SECURITY_REFUSALS: tuple[type[BaseException], ...] = _security_refusals()
+"""What a broad ``except Exception`` around starting or building the LLM must re-raise before it degrades:
+:class:`LeaderRefusal`, and ``maxim._offline.OfflineRefusal`` (the offline latch refused a lane, #1315 item 10a).
+Neither is an outage, so neither may fall back to "run without the LLM" or to another router."""
+
+
 class AdvisorError(MaximError):
     """Base of the observer's errors (``maxim.advisor``, #1315 items 1 and 5), so an embedder catches them in one."""
 
@@ -637,6 +649,20 @@ class InvalidAgentIdError(InvalidConfigError, ValueError):
     pass
 
 
+class AgentConfigContradiction(InvalidConfigError, ValueError):
+    """An ``AgentConfig`` asks for two things the factory cannot both honour (#1225).
+
+    ``with_bio_stack=True`` builds a Hippocampus and a NAc whatever ``remembers`` / ``learns`` say, so
+    ``remembers=False`` or ``learns=False`` beside it used to be undone in silence. The config is refused where it
+    is built (``AgentConfig.__post_init__``). ``fields`` names the flags that contradict ``with_bio_stack``.
+    """
+
+    def __init__(self, message: str = "", *, fields: tuple[str, ...] = ()) -> None:
+        # Defaults keep it picklable/copyable, like the other keyword-only Maxim errors.
+        super().__init__(message, context={"fields": list(fields)})
+        self.fields = fields
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Hardware Errors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -807,6 +833,7 @@ __all__ = [
     "MissingConfigError",
     "InvalidConfigError",
     "InvalidAgentIdError",
+    "AgentConfigContradiction",
     # Hardware
     "HardwareError",
     "MotorError",

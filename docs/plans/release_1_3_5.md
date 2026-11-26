@@ -51,8 +51,9 @@ goes to the lines below.
   cut. **Risk:** B2's entry condition is the `start_simulation_mode` decomposition (baseline_floors.md §B2), and B4
   is the longest chain to 1.4.0 (roadmap_1_3_x.md §Risks 4). If line 4 stalls, 1.4.0 slips. D9's owner for line 4
   is the mitigation.
-- **D2. 10b's breaking change ships in a patch.** `MaximAgent(llm_router=)` becomes required (V29). It ships with a
-  `changelog.d/<slug>.breaking.md` fragment in 10b's PR that carries the migration.
+- **D2. The `MaximAgent` breaking change ships in a patch.** `MaximAgent(shared_router=)` is required. #1228 landed it
+  with its `changelog.d/1228-maxim-agent-router.breaking.md` fragment, which carries the migration; 10b's own V29
+  version (`llm_router=`) was dropped in favour of it when 10b merged main (2026-11-25).
 - **D3. 1.3.5 takes its own T1-2 clause.** It is called `release-1.3.5-T1-2`, in
   `docs/experiments/evidence_exceptions.json`, under the 2026-10-18 per-patch amendment (which covers 1.3.3 to
   1.3.6). It lands on `main` before the bump PR. At the clause's commit, someone re-checks by hand that T1-2 is the
@@ -161,7 +162,7 @@ which needs #1305 too, so #1305 rides here.
 | ARCHITECTURE.md says DM NPCs are built through AgentFactory | OD-I4 | #1686 | S | none |
 | pymaxim caps `rich<14` for every embedder | OD-I6 | **to file** (`pyproject.toml` `[project] dependencies`) | S | none |
 | Seeded runs are not reproducible (the global `random`/`np.random`) | cand. A2's first half | #1305 (a 1.4.0 gate item) | M | to be checked by the world-clock plan |
-| The perceived-time port, A-pre half: prompt and observation time through the port, live-path stamps, the hippocampus's 30 s wall window, reaction gates on the injected clock | OD-A2 to OD-A6, cand. A3 A-pre | **plan owed**: Overdrive's `docs/maxim_upstream/world_clock_release_DRAFT.md` becomes a Maxim plan with a three-lens plan review, then one PR per site family | M–L | none (A-pre by definition) |
+| The perceived-time port, A-pre half: prompt and observation time and the SCN-derived renders through the port (host or no-calendar), the hippocampus's 30 s window on the injected clock; the refractories in 1.3.6; live-path stamps in A-post as whole reader sets | OD-A2 to OD-A6, cand. A3 A-pre | [world_clock_a_pre.md](world_clock_a_pre.md) (PROPOSED 2026-11-24; owner decisions D-WC1 to D-WC7), from Overdrive's roadmap rows, the draft as background; then one PR per site family | M–L | none (A-pre by definition) |
 | One `AgentHome` per agent | OD-A12, cand. A1 | with #984 | M | to be checked |
 
 **Already done:** **OD-I7** (`apply_damage` returned 1.0 on a part with no sub-sensors) shipped in 1.3.4 as #1719

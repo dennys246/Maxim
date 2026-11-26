@@ -98,6 +98,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 MAX_SUITES = 2
 DRAIN_AFTER_S = 600.0
 SUITE, CHECK = "suite", "check"
@@ -527,7 +530,7 @@ def cmd_wait(state: Path, kind: str, critical: bool, cmd: list[str], poll_s: flo
                 procs = scoped(read_ps(), only)
                 now = running(procs, _load_claims(state, procs, prune=True), own_pid=os.getpid())
                 if may_start(me, _load_queue(state, procs, prune=True), now):
-                    child = subprocess.Popen(cmd)
+                    child = subprocess.Popen(cmd, env=child_env())  # no .pth-rewritten PYTHONPATH (#1593)
                     when = ""
                     for _ in range(50):  # ps lists the new pid within milliseconds; bounded, never a hang
                         when = _started(read_ps()).get(child.pid, "")

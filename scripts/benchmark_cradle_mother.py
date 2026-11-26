@@ -40,6 +40,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _provenance  # noqa: E402  (scripts/_provenance.py, loaded from THIS tree)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 # Row schema. 2: rows carry record_kind/status, the harness provenance NESTED under `provenance` (it was
 # flattened into the row), `sims` (the echoed evidence of the sim report the run wrote, found by harness run
 # id) and `depends_on`; a failed run is a row with status "failed" instead of being dropped (M1b, #1003).
@@ -197,7 +200,7 @@ def _narrator_preflight(model: str) -> str | None:
         "    sys.stderr.write(f'ERROR: llama_cpp import failed: {e}\\n')\n"
         "    sys.exit(3)\n"
     )
-    env = os.environ.copy()
+    env = child_env()
     env["MAXIM_LLM_PROFILE"] = model
     env["MAXIM_ROLE"] = "solo"
     try:
@@ -350,7 +353,7 @@ def _run_one(
             pass
 
     log_path = data_home / "mother_log.jsonl"
-    env = os.environ.copy()
+    env = child_env()
     env["MAXIM_DATA_HOME"] = str(data_home)
     env["MAXIM_LLM_PROFILE"] = model
     env["MAXIM_AUTO_SPAWN_LLM_SERVER"] = "0"

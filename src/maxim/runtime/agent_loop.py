@@ -9,6 +9,9 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
+from maxim.memory.text import Provenance
+from maxim.utils.cloud_redaction import text_shape
+from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
 from maxim.utils.structured_logging import log_agentic
@@ -401,6 +404,21 @@ def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     return held
 
 
+def _log_goal_proposed(*, tool: Any, confidence: Any, reasoning: str | None) -> None:
+    """§4's ``goal_proposed`` event (moved out of ``_run_agentic_loop_body``, rule T for #1775). The model's reasoning
+    is logged by its shape only: the stream reaches stdout and can quote a PRIVATE tool's output."""
+    log_agentic(
+        "agent_loop",
+        "goal_proposed",
+        {
+            "tool": tool,
+            "confidence": confidence,
+            "reasoning": text_shape(reasoning) if reasoning else None,
+            "source": "llm_worker",
+        },
+    )
+
+
 def _log_autonomy_check(action: dict[str, Any], can_execute: bool, reason: Any, confidence: Any) -> None:
     """§4's autonomy-check log line and event (moved verbatim out of ``_run_agentic_loop_body``, rule T for #1185)."""
     logger.info("Autonomy check: can_execute=%s, reason=%s", can_execute, reason)
@@ -418,11 +436,17 @@ def _log_autonomy_check(action: dict[str, Any], can_execute: bool, reason: Any, 
     )
 
 
-def _triggering_input(new_cli_input: Any, followup_original_query: str, pending_modification: Any) -> str:
-    """The input a §6 submit answers: the new input, else the follow-up's original query, else a pending plan
-    modification's text (moved out of ``_run_agentic_loop_body``, rule T for #1451)."""
+def _triggering(new_cli_input: Any, followup_original_query: str, pending_modification: Any, state: Any) -> dict:
+    """The input a §6 submit answers (the new input, else the follow-up's original query, else a pending plan
+    modification's text; moved out of ``_run_agentic_loop_body``, rule T for #1451), and where it came from: the source
+    ``store_user_input`` recorded for that same text (``pending_user_input_source``: "CLI" or "voice"), "" when the
+    text is not the stored input (#1519: the prompt labels a voice request as heard on the room mic)."""
     modification = pending_modification.get("user_modification", "") if pending_modification else ""
-    return new_cli_input or followup_original_query or modification
+    text = new_cli_input or followup_original_query or modification
+    data = state.data
+    stored = new_cli_input and str(data.get("pending_user_input", "")).strip() == str(new_cli_input).strip()
+    source = str(data.get("pending_user_input_source", "")) if stored else ""
+    return {"triggering_input": text, "triggering_input_source": source}
 
 
 def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any) -> bool:
@@ -495,6 +519,25 @@ def _compute_thought_salience(
     recall_score = min(n_memories / 4.0, 1.0)
     novelty_score = 1.0 - jaccard_with_previous
     return 0.3 * section_score + 0.3 * recall_score + 0.4 * novelty_score
+
+
+def _add_deliberation_thought(
+    working_memory: Any, *, cycle: int, enrichment: str, salience: float, goal: str | None
+) -> None:
+    """One deliberation cycle's enrichment as a THOUGHT in working memory: the agent's own composed text
+    (``Provenance.INTERNAL``), whose outside words are already framed inside it (#1519)."""
+    import uuid
+
+    from maxim.agents.working_memory import WorkingMemoryKind
+
+    working_memory.add(
+        WorkingMemoryKind.THOUGHT,
+        ref=f"thought:{uuid.uuid4().hex[:8]}",
+        content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": enrichment[:500]},
+        salience=salience,
+        goal_tag=goal,
+        provenance=Provenance.INTERNAL,
+    )
 
 
 def _run_deliberation_cycles(
@@ -631,16 +674,8 @@ def _run_deliberation_cycles(
 
         # 2. Add THOUGHT to working memory with computed salience
         if working_memory is not None and formatted:
-            import uuid
-
-            from maxim.agents.working_memory import WorkingMemoryKind
-
-            working_memory.add(
-                WorkingMemoryKind.THOUGHT,
-                ref=f"thought:{uuid.uuid4().hex[:8]}",
-                content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
-                salience=salience,
-                goal_tag=active_goal,
+            _add_deliberation_thought(
+                working_memory, cycle=cycle, enrichment=formatted, salience=salience, goal=active_goal
             )
 
         # 3. Build transcript entry (reasoning + bio-system response)
@@ -662,10 +697,7 @@ def _run_deliberation_cycles(
             from maxim.agents.working_memory import WorkingMemoryKind
 
             thought_entries = working_memory.by_kind({WorkingMemoryKind.THOUGHT}, limit=6)
-            context.working_memory_thoughts = [
-                str(e.content.get("enrichment", ""))[:200] if isinstance(e.content, dict) else str(e.content)[:200]
-                for e in thought_entries
-            ]
+            context.working_memory_thoughts = [e.prompt_text(limit=200) for e in thought_entries]  # #1519
 
         # 5. Re-submit to LLM and wait
         if not submit_fn(context):
@@ -982,11 +1014,11 @@ def _followup_synthetic_input(followup: Any) -> str:
     external, and so is a tool that declares ``untrusted_output`` (recalled or stored text). The query
     is quoted so it cannot shift the parser's ``']: `` split.
     """
-    from maxim.modes.definitions import NETWORK_TOOLS
+    from maxim.modes.definitions import output_is_external
     from maxim.utils.content_safety import frame_tool_output
 
     tool = followup.tool
-    external = tool in NETWORK_TOOLS or tool == "batched_exploration" or followup.untrusted_output
+    external = output_is_external(tool, untrusted_output=followup.untrusted_output)
     result = frame_tool_output(tool, followup.result or "", external=external)
     query = str(followup.original_query or "").replace("'", "\u2019")
     return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
@@ -1532,21 +1564,9 @@ def _run_agentic_loop_body(
                         )
                         # Add THOUGHT to working memory with computed salience
                         if _wms is not None and _percept_enrichment_text:
-                            import uuid
-
-                            from maxim.agents.working_memory import WorkingMemoryKind
-
                             _c1_goal = state.data.get("active_goal") if hasattr(state, "data") else None
-                            _wms.add(
-                                WorkingMemoryKind.THOUGHT,
-                                ref=f"thought:{uuid.uuid4().hex[:8]}",
-                                content={
-                                    "source": "pfc_deliberation",
-                                    "cycle": 1,
-                                    "enrichment": _percept_enrichment_text[:500],
-                                },
-                                salience=_salience_c1,
-                                goal_tag=_c1_goal,
+                            _add_deliberation_thought(
+                                _wms, cycle=1, enrichment=_percept_enrichment_text, salience=_salience_c1, goal=_c1_goal
                             )
                     else:
                         from maxim.simulation.sim_logger import sim_pre_deliberation
@@ -1985,10 +2005,10 @@ def _run_agentic_loop_body(
                     _advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
                 )
                 _cap_msg = (
-                    f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
+                    f"SYSTEM: '{safe_tool_name(_this_tool)}' was called {_consecutive_same_tool_count} times "
                     f"with identical parameters — blocked to prevent a loop. "
                     f"Try a DIFFERENT tool or different parameters. "
-                    f"Available tools: {', '.join(_other_tools[:8]) if _other_tools else 'none'}"
+                    f"Available tools: {', '.join([t for t in _other_tools if safe_tool_name(t) == t][:8]) if _other_tools else 'none'}"
                 )
                 note_system_outcome(recent_outcomes, max_recent_outcomes, _this_tool, _cap_msg, "consecutive_tool_cap")
 
@@ -2051,16 +2071,8 @@ def _run_agentic_loop_body(
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)
 
-            # Log LLM proposal received
-            log_agentic(
-                "agent_loop",
-                "goal_proposed",
-                {
-                    "tool": action.get("tool_name"),
-                    "confidence": confidence,
-                    "reasoning": ctrl.pending_proposal.reasoning[:100] if ctrl.pending_proposal.reasoning else None,
-                    "source": "llm_worker",
-                },
+            _log_goal_proposed(
+                tool=action.get("tool_name"), confidence=confidence, reasoning=ctrl.pending_proposal.reasoning
             )
 
             _verdict = autonomy_controller.action_verdict(action, confidence=confidence)  # typed (#1185)
@@ -2772,9 +2784,7 @@ def _run_agentic_loop_body(
                             shared=_shared_submit,
                             autonomy_level=autonomy_controller.current_level,
                             _failed_tools=_failed_tools,
-                            triggering_input=_triggering_input(
-                                new_cli_input, followup_original_query, pending_modification
-                            ),
+                            **_triggering(new_cli_input, followup_original_query, pending_modification, state),
                             pending_modification=pending_modification,
                             prefetch_context_text=prefetch_context_text,
                             skip_exploration=skip_exploration,

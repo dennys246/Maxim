@@ -30,6 +30,13 @@ from maxim.agents.bus import (
     SubGoal,
 )
 from maxim.default_network.messages import FilteredPercept
+from maxim.agents.exec_agent_router import (
+    BUILD_OWN,
+    _BuildOwn,
+    override_in,
+    warn_if_profile_override_bypassed,
+    warn_no_router_start_once,
+)
 from maxim.agents.exec_prompts import (
     SYSTEM_PROMPT,
     CRITIQUE_SYSTEM,
@@ -41,16 +48,42 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.models.download import LLM_DISABLED, consent_interactive, consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.decisions.significance import CycleContext, SignificanceConfig, SignificanceWeightLearner
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import warn
 
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
+from maxim.memory.text import Provenance, frame_external, stored_percept_text
+
+
+def _issue_count(critique: Any) -> int:
+    """How many issues a critique names. Its words are the model's own, so only their count is logged (#1775)."""
+    issues = critique.get("issues") if isinstance(critique, dict) else None
+    return len(issues) if isinstance(issues, list) else 0
+
+
+def _voice_command_text(percept: Any) -> str:
+    """The Dormant prompt's "Voice command" line, consistent with the live loop (#1519, owner decision 2026-11-21):
+    a room-mic voice command is LABELLED (heard on the room mic, unverified speaker) and defanged, not framed, so
+    voice still commands; a comms percept's transcript (a phone caller) is framed external like any comms text."""
+    from maxim.utils.content_safety import defang_frame_markers
+
+    text = str(percept.raw_transcript_text or "").strip()
+    if not text:
+        return "(none)"
+    source = percept.source if isinstance(percept.source, str) else ""
+    if source.startswith("comms:"):
+        return stored_percept_text(source, text, limit=2000, keep_lines=True)
+    return (
+        f"[heard on the room microphone: unverified speaker, not typed by the operator] {defang_frame_markers(text)[0]}"
+    )
 
 
 class ExecAgent(Agent):
@@ -82,7 +115,7 @@ class ExecAgent(Agent):
         quantization: str = "Q4_K_M",
         system_prompt: str | None = None,
         rate_limit_hz: float = 2.0,
-        shared_router: LLMRouter | None = None,
+        shared_router: LLMRouter | _BuildOwn | None,
         shared_llm_worker: LLMWorker | None = None,
         agent_id: str | None = None,
     ) -> None:
@@ -120,12 +153,16 @@ class ExecAgent(Agent):
         self._llm: ChatLLMAgent | None = None
         self._llm_profile = llm_profile
         self._quantization = quantization
-        self._router: LLMRouter | None = shared_router
+        # A handed-in router is the one this agent runs on; None: no LLM, none built; BUILD_OWN: built lazily (#1228).
+        self._builds_own = shared_router is BUILD_OWN
+        self._router: LLMRouter | None = None if isinstance(shared_router, _BuildOwn) else shared_router
         # The profile whose model the last router build was refused (missing, not downloaded), or None (#1396):
         # a lazy "never" build does not rebuild and warn again on every goal; an "ask" build still asks.
         self._refused_profile: str | None = None
         self._refused_cause: str | None = None  # why (one of LocalModelUnavailable.CAUSES), for the CLI's typed refusal
         self._llm_worker: LLMWorker | None = shared_llm_worker
+        if self._router is not None:
+            warn_if_profile_override_bypassed(self._router)
         self._owns_llm_worker = shared_llm_worker is None  # Only stop if we created it
 
         # Rate limiting
@@ -170,7 +207,9 @@ class ExecAgent(Agent):
         self._bus.subscribe(GoalCompleted, self._on_goal_completed)
 
     def _ensure_llm(self) -> ChatLLMAgent | None:
-        """Lazy initialization of LLM."""
+        """Lazy initialization of LLM, only for an agent handed ``BUILD_OWN`` (#1228)."""
+        if not self._builds_own:
+            return None
         if self._llm is None:
             try:
                 config = LLMAgentConfig(
@@ -186,15 +225,22 @@ class ExecAgent(Agent):
                 return None
         return self._llm
 
+    def adopt_router(self, router: LLMRouter | None, worker: LLMWorker | None = None) -> None:
+        """Run on ``router`` (and ``worker``) that this agent's runtime built after the agent: the robot runtime builds
+        its LLM after its ``MaximAgent`` (#1228; it used to set ``_router`` from outside). A router or worker this
+        agent already holds is kept; an adopted worker is not this agent's to stop."""
+        if router is not None and self._router is None:  # adopting None leaves it as it was: never a lazy build
+            self._router = router
+            warn_if_profile_override_bypassed(router)
+        if worker is not None and self._llm_worker is None:
+            self._llm_worker = worker
+            self._owns_llm_worker = False
+
     def _resolve_profile_override(self, cfg: Any) -> str | None:
-        profiles = getattr(cfg, "agent_profiles", {})
-        if not isinstance(profiles, dict):
-            return None
-        for key in ("exec_agent", "executive"):
-            value = profiles.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return None
+        """The ``agent_profiles.exec_agent`` (or ``executive``) override in ``cfg``, or None. It applies only to a
+        router this agent builds itself (:meth:`_ensure_router`); a router handed in (``shared_router=``,
+        :meth:`adopt_router`) is used as it is (#1228)."""
+        return override_in(cfg)
 
     def _ensure_router(self, *, consent: Literal["ask", "never"] = "never") -> LLMRouter | None:
         """ExecAgent's router, built once, its local model usable (``models/download.py::consented_router``).
@@ -206,6 +252,8 @@ class ExecAgent(Agent):
         "never" refusal (#1343, #1396 bullet 2)."""
         if self._router is not None:
             return self._router
+        if not self._builds_own:  # handed None (no LLM) or a router it already returned: it builds none (#1228)
+            return None
         if consent == "never" and self._refused_profile is not None:
             return None
         try:
@@ -592,7 +640,7 @@ class ExecAgent(Agent):
             {
                 "mode": "standard",
                 "critique_confidence": confidence,
-                "issues": critique.get("issues", []),
+                "issue_count": _issue_count(critique),  # #1775: the critic's words never reach a log
             },
         )
 
@@ -650,7 +698,7 @@ class ExecAgent(Agent):
             {
                 "mode": "fast",
                 "critique_confidence": confidence,
-                "issues": response.get("issues", []),
+                "issue_count": _issue_count(response),  # #1775
             },
         )
 
@@ -1094,7 +1142,9 @@ class ExecAgent(Agent):
             self._urgent_work_available.set()
 
     def _build_llm_context(self, ctx: StructuredContext, budget_context: str | None = None) -> str:
-        """Build prompt from structured context."""
+        """Build prompt from structured context. Dormant with ExecAgent's own LLM path (``_invoke_llm_for_goal``).
+        A percept's or message's text from outside the agent is framed by its provenance, and no sender is shown
+        (#1519; #1481's code review E2: a phone number never reaches a prompt)."""
         # Current percept summary
         percept_str = "(none)"
         if ctx.current_percept:
@@ -1103,8 +1153,8 @@ class ExecAgent(Agent):
 - Source: {p.source}
 - Salience: {p.salience:.2f}
 - Novelty: {p.novelty:.2f}
-- Voice command: {p.raw_transcript_text or "(none)"}
-- Message: {p.content or "(none)"}
+- Voice command: {_voice_command_text(p)}
+- Message: {stored_percept_text(p.source, p.content or "", limit=2000, keep_lines=True) or "(none)"}
 - Has "maxim" keyword: {p.has_maxim_keyword}
 - Hard override: {p.hard_override or "(none)"}"""
 
@@ -1127,7 +1177,12 @@ class ExecAgent(Agent):
         for out in ctx.recent_outcomes[-3:]:
             if not isinstance(out, dict):
                 continue
-            status = "OK" if out.get("success") else f"FAILED: {out.get('error')}"
+            error = out.get("error")
+            status = (
+                "OK"
+                if out.get("success")
+                else (f"FAILED: {frame_external('tool_error', str(error))}" if error else "FAILED")
+            )
             outcome_lines.append(f"  - {out.get('tool_name', out.get('goal_id', '?'))}: {status}")
         outcome_str = "\n".join(outcome_lines) if outcome_lines else "  (none)"
 
@@ -1148,10 +1203,12 @@ class ExecAgent(Agent):
         # Comms messages (inbound SMS/voice)
         comms_lines = []
         for msg in ctx.comms_messages[-5:]:
-            prefix = "User" if msg.get("direction") == "inbound" else "Maxim"
+            prefix = "Inbound" if msg.get("direction") == "inbound" else "Maxim"  # a sender is not the operator
             channel = msg.get("channel", "sms")
-            sender = msg.get("sender", "unknown")
-            comms_lines.append(f"  [{prefix} via {channel} {sender}] {msg.get('content', '')}")
+            body = str(msg.get("content", ""))  # the agent's own outbound words are shown as they are
+            if msg.get("direction") == "inbound":
+                body = stored_percept_text(f"comms:{channel}", body, limit=2000, keep_lines=True)
+            comms_lines.append(f"  [{prefix} via {channel}] {body}")
         comms_str = "\n".join(comms_lines) if comms_lines else "(none)"
 
         # DN escalation context (if percept was escalated by Default Network)
@@ -1226,10 +1283,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for pred in ctx.causal_context[:5]:
                 valence = pred.get("valence", "neutral")
                 conf = pred.get("confidence", 0)
-                causal_lines.append(
-                    f"  - {pred.get('event', '?')} → {pred.get('outcome', '?')} "
-                    f"(valence={valence}, confidence={conf:.2f})"
-                )
+                what = frame_external("recalled_cause", f"{pred.get('event', '?')} → {pred.get('outcome', '?')}")
+                causal_lines.append(f"  - {what} (valence={valence}, confidence={conf:.2f})")
             causal_str = "\n".join(causal_lines)
 
         valence_str = ""
@@ -1238,7 +1293,8 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
             for entry in ctx.valence_context[:5]:
                 v = entry.get("valence", 0.0)
                 sentiment = "negative" if v < -0.1 else ("positive" if v > 0.1 else "neutral")
-                valence_parts.append(f"{entry.get('concept', '?')}: {sentiment} ({v:+.2f})")
+                concept = frame_external("recalled_association", str(entry.get("concept", "?")))
+                valence_parts.append(f"{concept}: {sentiment} ({v:+.2f})")
             valence_str = "\n\nLEARNED ASSOCIATIONS: " + "; ".join(valence_parts)
 
         # Pre-deliberation enrichment (Layer 1): bio-system associations
@@ -1330,7 +1386,9 @@ Based on this context, what goal should be proposed?"""
                 "goal_proposed",
                 {
                     "goal_id": goal.id,
-                    "description": goal.description,
+                    "description": text_shape(
+                        str(goal.description)
+                    ),  # #1775: by shape only (str: the field is unchecked JSON)
                     "priority": goal.priority.name,
                     "contemplated": contemplated,
                     "pre_deliberated": bool(pre_deliberation_enrichment),
@@ -1338,6 +1396,8 @@ Based on this context, what goal should be proposed?"""
             )
             return goal
 
+        except SECURITY_REFUSALS:
+            raise  # a refusal is not a "language model error" (#1315 item 10b); the worker loop ends on it
         except Exception as e:
             warn("Language model error during plan generation: %s", e)
             return None
@@ -1468,6 +1528,7 @@ Based on this context, what goal should be proposed?"""
                         kind=self._WorkingMemoryKind.THOUGHT,
                         content={"source": "pre_deliberation", "enrichment": formatted},
                         salience=result.valence,
+                        provenance=Provenance.INTERNAL,
                     )
                     return formatted
         except Exception as e:
@@ -1752,7 +1813,14 @@ Based on this context, what goal should be proposed?"""
 
             # Build context and propose
             ctx = self._memory.build_context()
-            proposal = self._propose_goal(ctx)
+            try:
+                proposal = self._propose_goal(ctx)
+            except SECURITY_REFUSALS as refusal:
+                # The run's router was refused (#1315 item 10b): said once, by name, and the worker ends, rather than
+                # a dead thread or a "language model error" every turn. No caller starts this worker today
+                # (MaximAgent.on_start is never called); this keeps the refusal typed for when one does.
+                warn("ExecAgent stops proposing: %s", refusal)
+                return
 
             if proposal:
                 with self._proposal_lock:
@@ -1843,7 +1911,11 @@ Based on this context, what goal should be proposed?"""
         return None
 
     def on_start(self, **kwargs: Any) -> None:
-        """Start the background worker."""
+        """Start the background worker (the only production starter of goal proposals). An agent handed
+        ``shared_router=None`` proposes no goals; that is said once per process, naming ``BUILD_OWN``, because None
+        meant the lazy build before #1228."""
+        if self._router is None and not self._builds_own:
+            warn_no_router_start_once()
         if self._worker is None or not self._worker.is_alive():
             self._stop_event.clear()
             self._worker = threading.Thread(target=self._worker_loop, daemon=True)

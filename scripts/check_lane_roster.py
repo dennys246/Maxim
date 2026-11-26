@@ -45,6 +45,9 @@ from xml.etree import ElementTree
 
 from _pytest.junitxml import mangle_test_address
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 REPO = Path(__file__).resolve().parent.parent
 ROSTERS = REPO / "scripts" / "lane_rosters"
 # lane -> the pytest marker that selects it. `extras-<extra>`: the R2 extras matrix (scripts/extras_matrix.py); one roster
@@ -184,6 +187,7 @@ def collect(lane: str, repo: Path = REPO) -> tuple[list[str], list[str]]:
         capture_output=True,
         text=True,
         check=False,
+        env=child_env(),
     )
     lines = r.stdout.splitlines()
     nodeids = [ln.strip() for ln in lines if "::" in ln and not ln.startswith(("=", " ", "SKIPPED", "ERROR"))]
