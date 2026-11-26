@@ -660,19 +660,25 @@ def llm_config_file() -> str | None:
 _ignored_cwd_warning_emitted = False
 
 
-def _warn_ignored_cwd_llm_json(winner: str | None) -> None:
+def _warn_ignored_cwd_llm_json(winner: str | None, candidates: list[str]) -> None:
     """One WARNING (per process) for a launch-directory ``llm.json`` Maxim no longer reads (#1806 PR 0 round 4 S2).
 
     Before #1806 such a file was the config when the data home had none, and the docs said to put one there, so a
-    user's stricter ``routing`` caps there would otherwise drop to the defaults without a word.
+    user's stricter ``routing`` caps there would otherwise drop to the defaults without a word. A file that is itself
+    a discovery candidate (a source checkout run from its root) is not "ignored", only shadowed, which
+    :func:`_log_shadowed_llm_configs` reports (round 5 S1).
     """
     global _ignored_cwd_warning_emitted
     if _ignored_cwd_warning_emitted:
         return
-    cwd = os.getcwd()
-    winner_real = os.path.realpath(winner) if winner else None
+    try:
+        cwd = os.getcwd()
+    except OSError as exc:  # a deleted launch directory: nothing there to warn about, and loading must not fail (S2)
+        logger.debug("llm.json launch-directory check skipped: %s", exc)
+        return
+    known = {os.path.realpath(path) for path in candidates if path}
     for path in (os.path.join(cwd, "data", "util", "llm.json"), os.path.join(cwd, "llm.json")):
-        if os.path.isfile(path) and os.path.realpath(path) != winner_real:
+        if os.path.isfile(path) and os.path.realpath(path) not in known:
             _ignored_cwd_warning_emitted = True
             from maxim.utils.paths import data_home
 
@@ -909,14 +915,16 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
 
     raw: dict[str, Any] = {}
     candidates = _llm_config_candidates()
+    winner: str | None = None
     for i, path in enumerate(candidates):
         if path and os.path.isfile(path):
+            winner = path
             loaded = _read_json(path)
             if isinstance(loaded, dict):
                 raw = loaded
             _log_shadowed_llm_configs(path, candidates[i + 1 :])
             break
-    _warn_ignored_cwd_llm_json(llm_config_file())
+    _warn_ignored_cwd_llm_json(winner, candidates)
 
     profile_raw = profile_override or os.getenv("MAXIM_LLM_PROFILE")
     if profile_raw is None:

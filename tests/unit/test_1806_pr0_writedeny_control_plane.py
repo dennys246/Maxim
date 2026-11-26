@@ -464,6 +464,51 @@ def test_an_llm_json_planted_in_the_launch_directory_is_not_read(tmp_path: Path,
     paths._reset_caches()
 
 
+def test_a_checkout_run_from_its_root_does_not_warn(tmp_path: Path, monkeypatch, caplog) -> None:
+    """Round 5 S1: in a source checkout run from its root, ``./data/util/llm.json`` IS a repo-root candidate (shadowed
+    by the user's file, as before #1806), not an ignored launch-directory file, so it gets no "NOT read" WARNING."""
+    import json
+    import logging
+
+    from maxim.models.language import config as C
+    from maxim.utils import paths
+
+    home = tmp_path / "data-home"
+    (home / "config").mkdir(parents=True)
+    (home / "config" / "llm.json").write_text(json.dumps({"cloud_enabled": False}))
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(home))
+    monkeypatch.delenv("MAXIM_LLM_CONFIG", raising=False)
+    paths._reset_caches()
+    repo = tmp_path / "repo"
+    (repo / "data" / "util").mkdir(parents=True)
+    (repo / "data" / "util" / "llm.json").write_text(json.dumps({"cloud_enabled": True}))
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(C, "_source_checkout_root", lambda package_file=None: str(repo))
+    monkeypatch.setattr(C, "_ignored_cwd_warning_emitted", False)
+    with caplog.at_level(logging.WARNING, logger=C.__name__):
+        assert C.load_llm_config().cloud_enabled is False
+    assert not [r for r in caplog.records if "is NOT read" in r.getMessage()]
+    paths._reset_caches()
+
+
+def test_a_deleted_launch_directory_does_not_break_loading(tmp_path: Path, monkeypatch) -> None:
+    """Round 5 S2: the launch-directory check must not turn ``os.getcwd()``'s FileNotFoundError into a load failure."""
+    from maxim.models.language import config as C
+    from maxim.utils import paths
+
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data-home"))
+    monkeypatch.delenv("MAXIM_LLM_CONFIG", raising=False)
+    paths._reset_caches()
+    monkeypatch.setattr(C, "_ignored_cwd_warning_emitted", False)
+
+    def gone() -> str:
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(C.os, "getcwd", gone)
+    assert C.load_llm_config() is not None
+    paths._reset_caches()
+
+
 def test_repo_root_candidates_only_in_a_source_checkout(tmp_path: Path) -> None:
     """Round 4 S1: on a wheel install the repo-root arithmetic lands in ``<venv>/lib/python3.X/`` (an in-project
     ``.venv`` an agent can write), so those candidates exist only for a real checkout."""
