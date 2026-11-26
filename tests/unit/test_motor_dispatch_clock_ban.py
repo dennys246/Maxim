@@ -2,11 +2,15 @@
 
 Motor and IO rate limits stay on the wall clock on purpose: a robot's servos move in real seconds, so a motor path
 that read an embedder's world clock could command motion faster or slower than the hardware allows. This AST test
-refuses, in the motor-dispatch modules, any import of ``maxim.time.agent_time`` and any ``MachineryClock`` /
-``PerceivedTime`` annotation, or parameter named for either collaborator. Each form is proven by planting it.
+refuses, in the motor-dispatch modules, any reference to ``maxim.time.agent_time`` (an absolute or relative import,
+the dotted attribute chain after ``import maxim.time``, or the module named in a string, as ``importlib`` takes it) and
+any ``MachineryClock`` / ``PerceivedTime`` annotation, or parameter named for either collaborator. Each form is proven
+by planting it.
 
-Stated blind spot: an untyped object passed in (a parameter named something else, holding a clock). Nothing static
-can see that without types; the rule is that motor code takes no clock collaborator at all.
+Stated blind spots: an untyped object passed in under another name (a parameter named something else holding a
+clock); an unannotated ``port=`` parameter (the gates' keyword, but serial and network ports are real motor-side
+parameters, so the name alone is not refused). Nothing static can see these without types; the rule is that motor
+code takes no clock collaborator at all.
 """
 
 from __future__ import annotations
@@ -47,18 +51,42 @@ def _names_in(node: ast.AST | None) -> set[str]:
     return found
 
 
-def injected_clock_reads(source: str) -> list[str]:
-    """Each way *source* takes an injected clock, as ``line: what``."""
+def _resolve_relative(module: str | None, level: int, package: str) -> str:
+    """The absolute module a ``from <dots><module> import`` names, inside *package* (``""`` when it escapes)."""
+    parts = package.split(".") if package else []
+    if level > len(parts):
+        return ""
+    base = parts[: len(parts) - level + 1]
+    return ".".join([*base, module] if module else base)
+
+
+def _package_of(path: Path) -> str:
+    """The dotted package a module under ``src/`` belongs to (``maxim.hardware.reachy`` for its ``controller.py``)."""
+    rel = path.resolve().relative_to(SRC.parent).with_suffix("")
+    return ".".join(rel.parts[:-1])
+
+
+def injected_clock_reads(source: str, package: str = "maxim.motion") -> list[str]:
+    """Each way *source* (a module in *package*) takes an injected clock, as ``line: what``."""
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute):
+            dotted = ast.unparse(node)
+            if dotted == _MODULE or dotted.startswith(_MODULE + "."):
+                found.append(f"{node.lineno}: attribute {dotted}")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value == _MODULE or node.value.startswith(_MODULE + "."):
+                found.append(f"{node.lineno}: the module named in a string ({node.value!r})")
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == _MODULE or alias.name.startswith(_MODULE + "."):
                     found.append(f"{node.lineno}: import {alias.name}")
         elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if module == _MODULE or (module == "maxim.time" and any(a.name == "agent_time" for a in node.names)):
+            module = _resolve_relative(node.module, node.level, package) if node.level else (node.module or "")
+            if module == _MODULE or module.startswith(_MODULE + "."):
                 found.append(f"{node.lineno}: from {module} import ...")
+            elif module == "maxim.time" and any(a.name == "agent_time" for a in node.names):
+                found.append(f"{node.lineno}: from {module} import agent_time")
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             args = node.args
             every = [*args.posonlyargs, *args.args, *args.kwonlyargs]
@@ -84,7 +112,7 @@ def test_the_scanned_modules_exist() -> None:
 
 @pytest.mark.parametrize("path", MOTOR_DISPATCH, ids=lambda p: str(p.relative_to(SRC)))
 def test_motor_dispatch_reads_no_injected_clock(path: Path) -> None:
-    assert injected_clock_reads(path.read_text(encoding="utf-8")) == [], (
+    assert injected_clock_reads(path.read_text(encoding="utf-8"), _package_of(path)) == [], (
         f"{path.relative_to(SRC)} takes an injected clock: motor and IO rate limits stay on the wall (I3)"
     )
 
@@ -102,6 +130,13 @@ def test_motor_dispatch_reads_no_injected_clock(path: Path) -> None:
         ("def move(machinery_clock=None) -> None: ...\n", "parameter machinery_clock"),
         ("def clock() -> MachineryClock: ...\n", "returns a clock collaborator"),
         ("class C:\n    clock: MachineryClock\n", "annotated with a clock collaborator"),
+        ("from ..time.agent_time import NO_CALENDAR\n", "from maxim.time.agent_time import"),
+        ("from ..time import agent_time\n", "from maxim.time import agent_time"),
+        (
+            "import maxim.time\n\nclock = maxim.time.agent_time.HOST_MACHINERY_CLOCK\n",
+            "attribute maxim.time.agent_time",
+        ),
+        ("import importlib\n\nm = importlib.import_module('maxim.time.agent_time')\n", "named in a string"),
     ],
 )
 def test_each_injected_clock_form_is_caught(planted: str, expect: str) -> None:
@@ -117,3 +152,10 @@ def test_a_plain_wall_read_is_not_an_injected_clock() -> None:
         )
         == []
     )
+
+
+def test_a_relative_import_resolves_against_the_scanned_module_s_package() -> None:
+    """``from ..time.agent_time`` in ``hardware/reachy/controller.py`` names ``maxim.hardware.time``: not the clock."""
+    assert _package_of(SRC / "hardware" / "reachy" / "controller.py") == "maxim.hardware.reachy"
+    assert injected_clock_reads("from ..time.agent_time import X\n", "maxim.hardware.reachy") == []
+    assert injected_clock_reads("from ...time.agent_time import X\n", "maxim.hardware.reachy") != []

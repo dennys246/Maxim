@@ -241,7 +241,7 @@ Sizes: **S** is under about 150 changed lines, **M** about 150–600.
 | `exec_agent.py`'s SCN phase dict and anomaly score | A-post (hot file, D-WC7) | it emits under the host default until then. Under `NO_CALENDAR` it is the last SCN-derived render, listed as `pending:A-post`. |
 | The flip to a required collaborator on every constructor | A-post (D-WC7) | fence |
 | `CostTracker.get_totals(now=)` and `get_per_provider_totals(now=)` | PR 1, with D-WC5: deprecated and ignored like `record(timestamp=)`, so no caller clock reaches window pruning | the same root cause as #1769 |
-| `router.py` stops passing `timestamp=` to `CostTracker.record` | A-post (hot file) | until then every call warns, hidden by pytest's `ignore::DeprecationWarning`; the deprecated keyword has this one production caller |
+| `router.py` stops passing `timestamp=` to `CostTracker.record` and `now` to `get_totals` (`_budget_status`) | **PR 1a** (owner 2026-11-25: a 2-line edit to the hot file) | both were its only production callers of the deprecated keywords, on every cloud call. Under warnings-as-errors (an embedder's pytest) routing raised, and the router's own `except` around `record` left the spend unbooked: the failure #1769 exists to prevent |
 | **One world-time source** for the embedded machinery clock and the driver's injection point (candidates §A3's "the host's injection point into `ExperienceClockDriver`") | **OD-A10's entry point** / A-post | it constructs both from one host source, so they cannot disagree |
 | **OD-I8**: `Embodiment.evaluate_failures` takes drive drift from `time.time()` | **#1361 S4**, already decided (Q4: drift only through `Embodiment.advance(dt)`) | S4 deletes the read, and G4 is its gate |
 | `FailureMode.last_fired`; the `PainSignal` stamps in `Embodiment._publish_drive_pain` / `_publish_pain`; `body.py`'s `TemporalSignature.now()` | A-post (OD-A8), with #1361 S4 | `body.py` is S4's file |
@@ -287,12 +287,12 @@ it. Tests that write state use a scratch `HOME` and a tmp `state_path`.
 
 | Gate | Lands → flips | Test |
 |---|---|---|
-| **G-render** (OD-A2's planted-render test) | 1 → 2 | **Under `NO_CALENDAR`:** a sentinel with unusual seconds is planted **in the machinery clock and in the patched wall clock**, with `TZ` pinned. It must not appear in any built prompt or tool result, in raw, clock (`%H:%M:%S`, `%I:%M %p`, `[HH:MM:SS]`) or date form. End to end: origin offset only, on a `ContextPool(port=NO_CALENDAR)` and an `LLMWorker(port=NO_CALENDAR)` built **directly**, not through `runtime/loop_setup.py::build_loop_run`, which keeps the default in A-pre (D-WC7). At render level, on a frozen store: offset and scale. The patch target is named per PR (today `maxim.agents.prompt_builder.datetime`; from PR 2, the port). |
+| **G-render** (OD-A2's planted-render test) | 1 → 2 (prompt and context-pool half); **2 → 2** (tool results, frozen store) | **Under `NO_CALENDAR`:** a sentinel with unusual seconds is planted **in the machinery clock and in the patched wall clock**, with `TZ` pinned. It must not appear in any built prompt or tool result, in raw, clock (`%H:%M:%S`, `%I:%M %p`, `[HH:MM:SS]`) or date form. End to end: origin offset only, on a `ContextPool(port=NO_CALENDAR)` and an `LLMWorker(port=NO_CALENDAR)` built **directly**, not through `runtime/loop_setup.py::build_loop_run`, which keeps the default in A-pre (D-WC7). At render level, on a frozen store: offset and scale. The patch target is named per PR (today `maxim.agents.prompt_builder.datetime`; from PR 2, the port). **Split 2026-11-25 (owner):** the prompt and context-pool half lands in PR 1a; the tool-result renders and the render-level frozen-store case land red in PR 2, with the surface they need. |
 | **G-tz** (OD-WC6) | 1 → 2 | the same `NO_CALENDAR` prompt built in two subprocesses (each with a scratch `HOME`) with `TZ` 13 h apart, using `time.tzset()`, so POSIX only. It skips **loudly** elsewhere and runs in CI on Linux. The prompts must be byte-identical. |
 | **G-scn** | 1 → 3 | under `NO_CALENDAR`: no `[TEMPORAL]` tag, no `temporal_patterns` bins, no `current_phase`, no relative-date resolution. NAc anchor similarity and the SCN bins must be byte-identical to the host-default run (D-WC2 revised). |
 | **G-window** | 1 → 4 | under an **advancing** fake clock, two identical observations **0 machinery seconds and 31 wall seconds apart de-duplicate**. **31 machinery seconds and 0 wall seconds apart do not.** |
 | **G-pace** (OD-WC2, A-pre scope) | 1 → 4 | a scripted session over A-pre's families, at 1× and 20× fake wall pace with jitter. The state digest must be identical. Ids are excluded (D-WC1), and the test says so. |
-| **G-long** (BD-14.2) | 1 → 4 (A-pre half) / A-post (full loop) | a long-horizon scripted run through observe, consolidate, sleep and decay. **`time.time` only** is patched, to jump a huge and varying amount per read, and two jump schedules are compared. `monotonic` jumps would trip `Deadline` / `wait_session_ended`. Built without ATL, so `_restore_on_open` cannot revive the ConceptExtractor, and with `integration/memory_hub.py::build_memory_hub(start_background_workers=False)`. The digest scope is named: A-pre's families only (the window). NAc, ATL, SCN and stamps are excluded until their PRs. |
+| **G-long** (BD-14.2) | 1 → 4 (A-pre half) / **A-post → A-post** (full loop, split 2026-11-25: it lands red in A-post's first PR, with the loop surface it needs) | a long-horizon scripted run through observe, consolidate, sleep and decay. **`time.time` only** is patched, to jump a huge and varying amount per read, and two jump schedules are compared. `monotonic` jumps would trip `Deadline` / `wait_session_ended`. Built without ATL, so `_restore_on_open` cannot revive the ConceptExtractor, and with `integration/memory_hub.py::build_memory_hub(start_background_workers=False)`. The digest scope is named: A-pre's families only (the window). NAc, ATL, SCN and stamps are excluded until their PRs. |
 | **G-refractory** | 5 → 5 | two distinct pain events with **the same `(entity, failure_mode)`**, 0.6 machinery seconds apart, are both dispatched at 20× wall pace, on each bus and for a `PainDetector` tool-pain type; the first event under a clock whose origin is at 0 is not dropped, on each bus and in `record_tool_error`; and a motor-dispatch read of the injected clock fails I3 |
 | **G-tool-duration** | A-post → A-post (#1788) | see §Placements. Moved out of PR 0: today it could only pass vacuously |
 | **G-cost-month** (#1769) | 0 → 1 | a tracker on the wall clock, recording with a caller `timestamp` of 0.0, keeps its month, hourly and daily totals and its EMAs; a `get_totals(now=0.0)` read reports the same totals as a read with no `now` |
@@ -325,9 +325,22 @@ PR 0's precondition tests found two premises of this plan false on main:
 - **No new category.** Log-only tracer timestamps and worker-shutdown deadlines are `process`. `saved_at` stamps
   written into persisted files are `pending:A-post` with the stamp half, since a loader can read them back
   (decay-on-load, dormant).
-- **The window gates' bodies are proven in 1a**, against a scratch copy of PR 4's change (the window reading an
-  injected `machinery_clock`): they XPASS under it and stay red when the keyword is accepted but the window still reads
-  the wall. G-render, G-tz and G-scn can only run once PR 2 and PR 3 give them a surface, so those PRs prove them.
+- **The gates' bodies are proven in 1a, and again by deletion in the PR that flips each.** The window gates run
+  against a scratch copy of PR 4's change (the window reading an injected `machinery_clock`): they XPASS under it and
+  stay red when the keyword is accepted but the window still reads the wall. G-render, G-tz and G-scn run against a
+  faked surface (each constructor accepting and dropping `port=`): each fails on its own assertion, never by an error.
+
+**Decided at PR 1a's review (owner, 2026-11-25):**
+- **`router.py`'s two calls are fixed in 1a**, a 2-line edit to the hot file (§Placements). They were the only production
+  callers of the deprecated keywords, so a warnings-as-errors embedder turned every routing decision into an error, and
+  the router's own `except` around `record` left the spend unbooked.
+- **Gate scope, mixed.** G-long's A-pre half runs at the plan's scope in 1a (a memory hub with no ATL and no background
+  workers, observe, consolidate, sleep and decay, the wall jumping on every read). G-scn includes NAc's anchor credit and
+  the Statistician's second `[TEMPORAL]` source. The halves whose surface is not designed yet land red in the PR that
+  designs it: G-render's tool-result and frozen-store halves in PR 2, and G-long's full-loop half in A-post's first PR.
+- **Every gate has a green positive control** beside it: the same render or decision under the host default does show
+  the time, so a gate that could not fail is caught in 1a, not when it flips. Each gate is then proven again by deletion
+  in the PR that flips it.
 
 **Exit tests chosen from OD-WC1 to OD-WC7:**
 - **WC5, robots unchanged, is mandatory.** It lands green in PR 0 as characterization:

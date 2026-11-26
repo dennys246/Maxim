@@ -313,10 +313,11 @@ INSTANT_B = _dt.datetime(2026, 8, 19, 9, 41, 27)
 DATE_A, TIME_A = "Friday, March 07, 2025", "03:04 PM"
 
 
-def _prompts(monkeypatch: pytest.MonkeyPatch, instant: _dt.datetime, builder: Any = None) -> dict[str, str]:
+def _prompts(monkeypatch: Any, instant: _dt.datetime | None, builder: Any = None) -> dict[str, str]:
     """The three prompt kinds that render the date and time, built with ``prompt_builder.datetime`` patched.
 
     ``builder`` is a ready ``PromptBuilder`` (G-render passes an ``LLMWorker``'s own); by default one is built here.
+    ``instant=None`` leaves ``datetime`` unpatched (G-tz, whose children must read the real, timezone-dependent clock).
     """
     from maxim.agents import prompt_builder
     from maxim.agents.autonomy import AutonomyLevel
@@ -331,7 +332,8 @@ def _prompts(monkeypatch: pytest.MonkeyPatch, instant: _dt.datetime, builder: An
             return instant
 
     # PR 2 moves the patch target to the perceived-time port (world_clock_a_pre.md WC5).
-    monkeypatch.setattr(prompt_builder, "datetime", _At)
+    if instant is not None:
+        monkeypatch.setattr(prompt_builder, "datetime", _At)
     builder = builder or prompt_builder.PromptBuilder(
         llm=None,
         reasoning_carryover=ReasoningCarryover(),
@@ -479,13 +481,21 @@ def test_a_caller_clock_given_to_the_cost_tracker_warns(tmp_path: Path, wall: _A
 # ── Red gates whose surface is born in PR 1a (world_clock_a_pre.md §Gates) ──
 #
 # Each opens with its PRE-SURFACE assertion: the collaborator keyword it needs does not exist until the PR that
-# flips it, so until then it fails by AssertionError (never TypeError). The body after that assertion first runs in
-# the flipping PR, which proves it by deletion there. Under a host default every moved read returns today's value
-# (WC5), so the gates are all under a non-default collaborator.
+# flips it, so until then it fails by AssertionError (never TypeError). Each gate's host-side positive control (the
+# same render or decision under today's host default DOES show the time) is a separate green test, so a gate whose
+# body could not fail is caught now, not when it flips. The window gates' bodies are also proven in 1a against a
+# scratch copy of PR 4's change; every gate is proven again by deletion in the PR that flips it.
 
 
 def _takes(fn: Any, keyword: str) -> bool:
     return keyword in inspect.signature(fn).parameters
+
+
+def _with_port(port: Any) -> dict[str, Any]:
+    """The ``port=`` keyword for a consumer, or nothing for the host default (a consumer built without one IS host)."""
+    from maxim.time.agent_time import HOST_PERCEIVED_TIME
+
+    return {} if port is HOST_PERCEIVED_TIME else {"port": port}
 
 
 class _StepMachinery:
@@ -507,9 +517,8 @@ SENTINEL = _dt.datetime(2031, 10, 13, 13, 37, 42, 250000)
 
 def _sentinel_forms(instant: _dt.datetime) -> list[str]:
     """Every form the sentinel would take if any clock reached the text: raw, clock and date."""
-    epoch = instant.timestamp()
     return [
-        f"{int(epoch)}",
+        f"{int(instant.timestamp())}",
         instant.strftime("%H:%M:%S"),
         f"[{instant.strftime('%H:%M:%S')}]",
         instant.strftime("%I:%M %p"),
@@ -520,50 +529,99 @@ def _sentinel_forms(instant: _dt.datetime) -> list[str]:
     ]
 
 
-def _no_calendar_prompts(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Prompts and context-pool text built under ``NO_CALENDAR``, on an ``LLMWorker`` and ``ContextPool`` built directly
-    (not through ``build_loop_run``, which keeps the host default in A-pre, D-WC7)."""
+def _calendar_prompts(monkeypatch: Any, port: Any, *, plant: bool = True) -> list[str]:
+    """Prompts and context-pool text under *port*, on an ``LLMWorker`` and ``ContextPool`` built directly (not
+    through ``build_loop_run``, which keeps the host default in A-pre, D-WC7). The sentinel is planted in the wall
+    clock, which is the machinery clock's host default and every ``ContextPool`` stamp, and in the patched
+    ``prompt_builder.datetime``. ``plant=False`` plants nothing: every clock is the real one (G-tz)."""
     from maxim.agents.context_pool import ContextPool
     from maxim.agents.llm_worker import LLMWorker
-    from maxim.time.agent_time import NO_CALENDAR
 
-    worker = LLMWorker(MagicMock(), n_ctx=32000, port=NO_CALENDAR)  # type: ignore[call-arg]
-    prompts = _prompts(monkeypatch, SENTINEL, builder=worker._prompt_builder)
-    pool = ContextPool(port=NO_CALENDAR)  # type: ignore[call-arg]
+    if plant:
+        monkeypatch.setattr(time, "time", _AdvancingWall(SENTINEL.timestamp(), step=0.0))
+    # spec=[]: a backend with no cost tracker or cloud policy, so the budget section renders nothing (a bare MagicMock
+    # answers every probe and breaks build_budget_context).
+    worker = LLMWorker(MagicMock(spec=[]), n_ctx=32000, **_with_port(port))
+    prompts = _prompts(monkeypatch, SENTINEL if plant else None, builder=worker._prompt_builder)
+    pool = ContextPool(**_with_port(port))
     pool.add_raw("observation", "the red mug moved to the shelf")
-    pool.add_outcome(tool_name="look", success=True, summary="saw the mug")
+    pool.add_outcome(tool_name="look", success=True, result_summary="saw the mug")
     return [*prompts.values(), pool.get_context_text()]
+
+
+def test_g_render_setup_the_host_port_renders_the_planted_time(
+    monkeypatch: pytest.MonkeyPatch, pinned_tz: None
+) -> None:
+    """G-render's positive control: under today's host default the planted date and time DO reach the text."""
+    from maxim.time.agent_time import HOST_PERCEIVED_TIME
+
+    text = "\n".join(_calendar_prompts(monkeypatch, HOST_PERCEIVED_TIME))
+    assert SENTINEL.strftime("%A, %B %d, %Y") in text and SENTINEL.strftime("%I:%M %p") in text
 
 
 @pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="G-render (OD-A2): the port is born in PR 1a, threaded in PR 2"
 )
 def test_g_render_no_calendar_renders_no_planted_time(monkeypatch: pytest.MonkeyPatch, pinned_tz: None) -> None:
+    """Prompt and context-pool half. The tool-result renders and the frozen-store offset/scale case land red in PR 2,
+    with the surface they need (§Gates, amended 2026-11-25)."""
     from maxim.agents.context_pool import ContextPool
     from maxim.agents.llm_worker import LLMWorker
     from maxim.agents.prompt_builder import PromptBuilder
+    from maxim.time.agent_time import NO_CALENDAR
 
     for fn in (LLMWorker.__init__, PromptBuilder.__init__, ContextPool.__init__):
         assert _takes(fn, "port"), f"{fn.__qualname__} takes no port yet (PR 2)"
-    # The sentinel is planted in the wall clock (every stamp a ContextPool entry takes) and in the patched datetime
-    # (the prompt's date and time): under NO_CALENDAR neither may reach the text, in any form.
-    epoch = SENTINEL.timestamp()
-    monkeypatch.setattr(time, "time", _AdvancingWall(epoch, step=0.0))
-    for text in _no_calendar_prompts(monkeypatch):
+    for text in _calendar_prompts(monkeypatch, NO_CALENDAR):
         leaked = [form for form in _sentinel_forms(SENTINEL) if form in text]
         assert not leaked, f"a planted time reached a NO_CALENDAR render: {leaked}"
 
 
 _TZ_CHILD = """
 import json, sys
-from unittest.mock import MagicMock
 sys.path.insert(0, sys.argv[1])
-from tests.unit.test_world_clock_a_pre import _no_calendar_prompts
+from maxim.time.agent_time import HOST_PERCEIVED_TIME, NO_CALENDAR
+from tests.unit.test_world_clock_a_pre import _calendar_prompts
 class _MP:
     def setattr(self, target, name, value):
         setattr(target, name, value)
-print(json.dumps(_no_calendar_prompts(_MP())))
+port = {"host": HOST_PERCEIVED_TIME, "none": NO_CALENDAR}[sys.argv[2]]
+print(json.dumps(_calendar_prompts(_MP(), port, plant=False)))
 """
+
+
+def _prompts_in_two_timezones(tmp_path: Path, port_name: str) -> list[str]:
+    """The same prompts built in two child processes whose ``TZ`` is 13 hours apart, on the REAL clock (nothing
+    patched: a patched ``datetime`` would hide the very timezone dependence G-tz looks for)."""
+    if not hasattr(time, "tzset"):
+        pytest.skip("G-tz needs POSIX time.tzset; it runs in CI on Linux (a skip is never a pass)")
+    from tests._child_env import isolation_env
+
+    repo = Path(__file__).resolve().parents[2]
+    outputs = []
+    for tz in ("UTC", "Etc/GMT-13"):  # each child starts under its TZ (tzset at interpreter start)
+        home = tmp_path / f"home-{port_name}-{tz.replace('/', '_')}"
+        home.mkdir()
+        env = {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(repo / "src"), "HOME": str(home), "TZ": tz}
+        env.update(isolation_env())
+        proc = subprocess.run(
+            [sys.executable, "-c", textwrap.dedent(_TZ_CHILD), str(repo), port_name],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # A child that crashes is a broken gate, not the expected red: fail it with the child's own error.
+        if proc.returncode != 0:
+            pytest.fail(f"child under TZ={tz} failed:\n{proc.stderr}")
+        outputs.append(proc.stdout)
+    return outputs
+
+
+def test_g_tz_setup_the_host_prompt_depends_on_the_timezone(tmp_path: Path) -> None:
+    """G-tz's positive control: under today's host default the two timezones' prompts differ (13 hours apart)."""
+    first, second = _prompts_in_two_timezones(tmp_path, "host")
+    assert first != second, "the host prompt renders no local time: G-tz could not fail"
 
 
 @pytest.mark.xfail(
@@ -575,37 +633,79 @@ def test_g_tz_a_no_calendar_prompt_is_the_same_in_every_timezone(tmp_path: Path)
 
     for fn in (LLMWorker.__init__, ContextPool.__init__):
         assert _takes(fn, "port"), f"{fn.__qualname__} takes no port yet (PR 2)"
-    if not hasattr(time, "tzset"):
-        pytest.skip("G-tz needs POSIX time.tzset; it runs in CI on Linux (a skip is never a pass)")
-    from tests._child_env import isolation_env
+    first, second = _prompts_in_two_timezones(tmp_path, "none")
+    assert first == second, "a NO_CALENDAR prompt depends on the timezone"
 
-    repo = Path(__file__).resolve().parents[2]
-    outputs = []
-    for tz in ("UTC", "Etc/GMT-13"):  # 13 hours apart
-        home = tmp_path / f"home-{tz.replace('/', '_')}"
-        home.mkdir()
-        env = {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(repo / "src"), "HOME": str(home), "TZ": tz}
-        env.update(isolation_env())
-        proc = subprocess.run(
-            [sys.executable, "-c", textwrap.dedent(_TZ_CHILD), str(repo)],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        assert proc.returncode == 0, f"child under TZ={tz} failed:\n{proc.stderr}"
-        outputs.append(proc.stdout)
-    assert outputs[0] == outputs[1], "a NO_CALENDAR prompt depends on the timezone"
+
+def _scn_derived(port: Any, tmp_path: Path, name: str, monkeypatch: Any) -> tuple[bytes, dict[str, Any]]:
+    """One SCN, registered identically, and every SCN-derived consumer's output under *port*.
+
+    The wall and the ``datetime`` the relative-date parser reads are pinned at T0, so "yesterday" means the day the
+    memories were registered. The Statistician gets a confirmed pattern with a high temporal anomaly (the render
+    half) and one assessment against the oscillator (the decision half).
+    """
+    from maxim.agents.statistician_agent import PatternDetector, PatternState, StatisticianAgent
+    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.retrieval import temporal_signal
+    from maxim.simulation.introspection import Observer
+    from maxim.time.scn import SCN
+    from maxim.time.temporal_signature import TemporalSignature
+    from maxim.tools.introspection import TemporalPatternsTool
+
+    class _AtT0(_dt.datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> Any:  # noqa: ARG003
+            return _dt.datetime.fromtimestamp(T0)
+
+    monkeypatch.setattr(time, "time", _AdvancingWall(T0, step=0.0))
+    monkeypatch.setattr(temporal_signal, "datetime", _AtT0)
+    scn = SCN()
+    scn.enable_oscillator()
+    for i in range(1, 7):  # the same hour on six consecutive days, the last one yesterday
+        scn.register(f"m{i}", TemporalSignature.from_timestamp(T0 - 86_400.0 * i))
+    stat = StatisticianAgent(MagicMock(), MagicMock(), scn=scn, **_with_port(port))
+    confirmed = PatternDetector(metric_name="tool_latency", state=PatternState.CONFIRMED_PATTERN, temporal_anomaly=0.9)
+    stat._detectors["tool_latency"] = confirmed
+    assessed = PatternDetector(metric_name="assessed")
+    stat._assess_with_temporal_context(assessed)
+    # NAc anchor similarity (the temporal credit fallback) reads the host calendar in both runs: never the port.
+    nac = NAc(NACConfig())
+    nac.update_eligibility("a", "node", 1.0, temporal_sig=TemporalSignature.from_timestamp(T0 - 86_400.0))
+    nac._eligibility[("a", "node")] = 0.0  # the fast trace has expired, so only the anchor can credit
+    seen = {
+        "patterns": TemporalPatternsTool(scn, **_with_port(port)).execute(discover_rhythms=True).output,
+        "phase": Observer(memory_hub=MagicMock(scn=scn), **_with_port(port)).temporal_patterns(),
+        "relative": temporal_signal.TemporalReferenceSignal(scn, **_with_port(port)).extract("what did I do yesterday"),
+        "summary": stat.summarize_for_context(),
+        "assessed_anomaly": assessed.temporal_anomaly,
+        "nac_anchor_credit": nac.distribute_reward("a", 1.0),
+    }
+    path = tmp_path / f"scn-{name}.json"
+    scn.save(str(path), overwrite=True)
+    return path.read_bytes(), seen
+
+
+def test_g_scn_setup_the_host_port_renders_every_scn_derived_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-scn's positive control: under today's host default each SCN-derived consumer DOES emit or resolve time."""
+    from maxim.time.agent_time import HOST_PERCEIVED_TIME
+
+    _, seen = _scn_derived(HOST_PERCEIVED_TIME, tmp_path, "host", monkeypatch)
+    assert (seen["patterns"] or {}).get("rhythmic_patterns"), seen["patterns"]
+    assert seen["phase"].get("current_phase"), seen["phase"]
+    assert seen["relative"], "the host resolves no relative date: G-scn's relative-date check could not fail"
+    assert "[TEMPORAL]" in seen["summary"], seen["summary"]
+    assert seen["assessed_anomaly"] != 0.0, "the host assessment set no temporal anomaly"
+    assert seen["nac_anchor_credit"], "no anchor credit: G-scn's NAc check compares nothing"
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="G-scn (D-WC2 revised): SCN-derived renders, PR 3")
-def test_g_scn_no_calendar_emits_no_scn_derived_time(tmp_path: Path) -> None:
+def test_g_scn_no_calendar_emits_no_scn_derived_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from maxim.agents.statistician_agent import StatisticianAgent
     from maxim.retrieval.temporal_signal import TemporalReferenceSignal
     from maxim.simulation.introspection import Observer
     from maxim.time.agent_time import HOST_PERCEIVED_TIME, NO_CALENDAR
-    from maxim.time.scn import SCN
-    from maxim.time.temporal_signature import TemporalSignature
     from maxim.tools.introspection import TemporalPatternsTool
 
     for fn in (
@@ -615,43 +715,29 @@ def test_g_scn_no_calendar_emits_no_scn_derived_time(tmp_path: Path) -> None:
         TemporalPatternsTool.__init__,
     ):
         assert _takes(fn, "port"), f"{fn.__qualname__} takes no port yet (PR 3)"
-
-    def scn_after(port: Any, name: str) -> tuple[bytes, dict[str, Any]]:
-        """One SCN, registered identically, read by every SCN-derived consumer under *port*."""
-        scn = SCN()
-        for i in range(6):
-            scn.register(f"m{i}", TemporalSignature.from_timestamp(T0 + 3_600.0 * 24 * i))
-        hub = MagicMock(scn=scn)
-        stat = StatisticianAgent(MagicMock(), MagicMock(), scn=scn, port=port)  # type: ignore[call-arg]
-        seen = {
-            "patterns": TemporalPatternsTool(scn, port=port).execute(discover_rhythms=True).output,  # type: ignore[call-arg]
-            "phase": Observer(memory_hub=hub, port=port).temporal_patterns(),  # type: ignore[call-arg]
-            "relative": TemporalReferenceSignal(scn, port=port).extract("what did I do yesterday"),  # type: ignore[call-arg]
-            "summary": stat.summarize_for_context(),
-        }
-        path = tmp_path / f"scn-{name}.json"
-        scn.save(str(path), overwrite=True)
-        return path.read_bytes(), seen
-
-    host_bins, _ = scn_after(HOST_PERCEIVED_TIME, "host")
-    none_bins, seen = scn_after(NO_CALENDAR, "none")
+    host_bins, host = _scn_derived(HOST_PERCEIVED_TIME, tmp_path, "host", monkeypatch)
+    none_bins, seen = _scn_derived(NO_CALENDAR, tmp_path, "none", monkeypatch)
     assert not (seen["patterns"] or {}).get("rhythmic_patterns"), f"temporal_patterns binned: {seen['patterns']}"
-    assert seen["phase"].get("current_phase") is None, f"current_phase rendered: {seen['phase']}"
+    assert not seen["phase"].get("current_phase"), f"current_phase rendered: {seen['phase']}"
     assert seen["relative"] == [], f"a relative date resolved: {seen['relative']}"
     assert "[TEMPORAL]" not in seen["summary"], seen["summary"]
-    # Registration is untouched (D-WC2 revised): the SCN's bins are the host run's, byte for byte.
+    assert seen["assessed_anomaly"] == 0.0, "the assessment read the calendar under NO_CALENDAR"
+    # Registration and NAc are untouched (D-WC2 revised): the SCN's bins and NAc's anchor credit are the host run's.
     assert none_bins == host_bins
+    assert seen["nac_anchor_credit"] == host["nac_anchor_credit"]
 
 
 def _window_hippocampus(clock: _StepMachinery) -> Any:
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 
     config = HippocampusConfig(persistence_path=None, enable_sleep_consolidation=False, auto_save_after_sleep=False)
-    return Hippocampus(config, machinery_clock=clock)  # type: ignore[call-arg]
+    return Hippocampus(config, machinery_clock=clock)
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="G-window: Hippocampus takes the machinery clock in PR 4")
-def test_g_window_the_dedup_window_counts_machinery_seconds(wall: _AdvancingWall) -> None:
+def test_g_window_the_dedup_window_counts_machinery_seconds(
+    wall: _AdvancingWall, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from maxim.memory.hippocampus import Hippocampus
 
     assert _takes(Hippocampus.__init__, "machinery_clock"), "Hippocampus takes no machinery_clock yet (PR 4)"
@@ -663,17 +749,29 @@ def test_g_window_the_dedup_window_counts_machinery_seconds(wall: _AdvancingWall
     wall.jump(31.0)
     assert hippocampus.store_observation(obs) == "", "a wall jump opened the window"
     # 31 machinery seconds and 0 wall seconds apart: past the 30 s window, so it is stored again.
-    clock, frozen = _StepMachinery(), _AdvancingWall(wall.now, step=0.0)
+    monkeypatch.setattr(time, "time", _AdvancingWall(wall.now, step=0.0))
+    clock = _StepMachinery()
     hippocampus = _window_hippocampus(clock)
-    time.time = frozen  # type: ignore[assignment]  # restored by the ``wall`` fixture's monkeypatch
     assert hippocampus.store_observation(obs)
     clock.t += 31.0
     assert hippocampus.store_observation(obs), "the window did not count machinery seconds"
 
 
-# The scripted session for G-pace and G-long: (machinery seconds since the last step, observation). Cumulative
-# machinery times 0, 5, 10, 41, 43, 53, 78, 118, 119, 120, 150, 153: "a" repeats 5 s and 1 s after it was stored
-# (de-duplicated, steps 1 and 9); every other repeat is more than the 30 s window apart (stored).
+def _expected_window(script: list[tuple[float, str]], window_s: float = 30.0) -> list[bool]:
+    """A reference model of the de-duplication window on the machinery clock: which steps are stored."""
+    t, last_seen, stored = 0.0, {}, []
+    for dt, obs in script:
+        t += dt
+        keep = obs not in last_seen or (t - last_seen[obs]) >= window_s
+        if keep:
+            last_seen[obs] = t
+        stored.append(keep)
+    return stored
+
+
+# G-pace's scripted session: (machinery seconds since the last step, observation). Cumulative machinery times 0, 5,
+# 10, 41, 43, 53, 78, 118, 119, 120, 150, 153: "a" repeats 5 s and 1 s after it was stored (de-duplicated, steps 1
+# and 9); every other repeat is more than the 30 s window apart (stored).
 _SCRIPT = list(zip([0.0, 5.0, 5.0, 31.0, 2.0, 10.0, 25.0, 40.0, 1.0, 1.0, 30.0, 3.0], "aababcacaabc"))
 _SCRIPT_STORED = [True, False, True, True, True, True, True, True, True, False, True, True]
 
@@ -691,6 +789,12 @@ def _window_digest(wall_step: Any) -> list[bool]:
     return stored
 
 
+def test_g_pace_setup_the_script_de_duplicates() -> None:
+    """The window gates' script exercises both outcomes, and the reference model agrees with the hand count."""
+    assert _expected_window(_SCRIPT) == _SCRIPT_STORED
+    assert False in _SCRIPT_STORED and True in _SCRIPT_STORED
+
+
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="G-pace (OD-WC2, A-pre scope): the window, PR 4")
 def test_g_pace_the_window_is_the_same_at_any_wall_pace(wall: _AdvancingWall) -> None:
     from maxim.memory.hippocampus import Hippocampus
@@ -703,14 +807,72 @@ def test_g_pace_the_window_is_the_same_at_any_wall_pace(wall: _AdvancingWall) ->
     assert at_1x == at_20x, "the window's decisions depend on the wall's pace"
 
 
+class _JumpingWall:
+    """A ``time.time`` that jumps a huge, varying amount on EVERY read, from a fixed schedule."""
+
+    def __init__(self, start: float, schedule: list[float]) -> None:
+        self.now, self._schedule, self._reads = start, schedule, 0
+
+    def __call__(self) -> float:
+        self.now += self._schedule[self._reads % len(self._schedule)]
+        self._reads += 1
+        return self.now
+
+
+# G-long's long-horizon script: 120 observations over 3 labels, 0 to 22 machinery seconds apart, so a label recurs
+# about every 33 s and its repeats straddle the 30 s window (90 stored, 30 de-duplicated by the reference model).
+_LONG_SCRIPT = [(float((i * 7) % 23), "abc"[(i * 2) % 3]) for i in range(120)]
+
+
+def test_g_long_setup_the_long_script_de_duplicates() -> None:
+    expected = _expected_window(_LONG_SCRIPT)
+    assert expected.count(False) >= 20 and expected.count(True) >= 20, "the long script must exercise both outcomes"
+
+
+def _long_run(monkeypatch: Any, schedule: list[float]) -> list[bool]:
+    """Observe, consolidate, sleep and decay through a memory hub (no ATL, no background workers), with the wall
+    jumping per read. The digest is A-pre's families only: the window's decisions (§Gates: NAc, ATL, SCN and the stamps
+    are excluded until their PRs)."""
+    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.integration.memory_hub import build_memory_hub
+    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+    from maxim.similarity.ec import ECConfig, EntorhinalCortex
+    from maxim.time.scn import SCN
+
+    monkeypatch.setattr(time, "time", _JumpingWall(T0, schedule))
+    clock = _StepMachinery()
+    config = HippocampusConfig(persistence_path=None, enable_sleep_consolidation=False, auto_save_after_sleep=False)
+    hippocampus = Hippocampus(config, machinery_clock=clock)
+    hub = build_memory_hub(
+        agent_id="g_long",
+        hippocampus=hippocampus,
+        scn=SCN(),
+        nac=NAc(NACConfig()),
+        ec=EntorhinalCortex(ECConfig()),
+        atl=None,
+        load_persisted=False,
+        start_background_workers=False,
+    )
+    stored = []
+    for i, (dt, obs) in enumerate(_LONG_SCRIPT):
+        clock.t += dt
+        stored.append(bool(hippocampus.store_observation(obs)))
+        if i % 20 == 19:
+            hippocampus.consolidate()
+            hippocampus.sleep(auto_save=False)
+            hub.nac.decay_all()
+    return stored
+
+
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="G-long (BD-14.2), A-pre half: the window, PR 4")
-def test_g_long_huge_wall_jumps_change_nothing_in_a_pre_s_families(wall: _AdvancingWall) -> None:
-    """Scope, stated: A-pre's families only (the Hippocampus window). NAc, ATL, SCN and the stamps are excluded until
-    their PRs; the full-loop half is A-post's. Only ``time.time`` jumps: ``monotonic`` jumps would trip ``Deadline``."""
+def test_g_long_huge_wall_jumps_change_nothing_in_a_pre_s_families(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only ``time.time`` jumps: ``monotonic`` jumps would trip ``Deadline`` and ``wait_session_ended``. The full-loop
+    half lands red in A-post's first PR, with the loop surface it needs (§Gates, amended 2026-11-25)."""
     from maxim.memory.hippocampus import Hippocampus
 
     assert _takes(Hippocampus.__init__, "machinery_clock"), "Hippocampus takes no machinery_clock yet (PR 4)"
-    first = _window_digest(lambda i, dt: wall.jump(10_000_000.0 * (i + 1) + 0.25))
-    second = _window_digest(lambda i, dt: wall.jump(3_000_000.0 * ((i * 7) % 5 + 1) + 0.75))
-    assert first == _SCRIPT_STORED, f"the window's decisions are not the machinery clock's: {first}"
+    expected = _expected_window(_LONG_SCRIPT)
+    first = _long_run(monkeypatch, [10_000_000.25, 3_000_000.5, 77_777_777.75])
+    second = _long_run(monkeypatch, [123_456.125, 9_999_999.0, 55_555_555.5, 1_000.75])
+    assert first == expected, "the window's decisions are not the machinery clock's"
     assert first == second, "a wall jump reached A-pre's families"
