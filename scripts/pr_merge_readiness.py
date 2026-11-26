@@ -29,6 +29,13 @@ both, so they are stated as rules rather than intentions:
 Usage:
     python scripts/pr_merge_readiness.py 654
     python scripts/pr_merge_readiness.py 654 --repo owner/name
+    python scripts/pr_merge_readiness.py 654 --wait [--timeout 60] [--interval 90]
+
+``--wait`` re-reads every surface until nothing is in flight, then prints the final verdict
+once. It waits through a DRAFT state (under M64 a PR is a draft while CI runs, and DRAFT
+alone would end a wait on the exit code at once), returns early on a settled failure (a fix
+is owed now, whatever else still runs), retries a transient read error up to three times in a
+row, and on timeout exits 2 (unsettled), never 0.
 
 **The suite of record (M64, owner decisions 2026-10-16 and 2026-11-25).** CI's latest
 `unit-tests` run on the PR's head SHA is the final full test suite; no local full suite is
@@ -50,6 +57,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -230,7 +238,7 @@ def _suite_of_record_findings(
         return [
             Finding(
                 "UNSETTLED",
-                "surface-unverified",
+                "suite-of-record-unpinned",
                 "cannot pin which app posts the suite of record: scripts/repo_settings_expected.json is "
                 "unreadable or has no unit-tests entry — the final full suite was NOT checked",
             )
@@ -341,6 +349,9 @@ def evaluate(
         findings.append(Finding("BLOCKING", "merge-conflict", "mergeable=CONFLICTING — resolve conflicts and push"))
     if state in _BAD_MERGE_STATES and not (state == "BLOCKED"):
         findings.append(Finding("BLOCKING", f"merge-state-{state.lower()}", _BAD_MERGE_STATES[state]))
+    # GitHub does not reliably report a draft as DRAFT (#1812 read CLEAN, #1815 BEHIND; 2026-11-25), so the flag is read on its own.
+    if pr.get("isDraft") is True and state != "DRAFT":
+        findings.append(Finding("BLOCKING", "merge-state-draft", _BAD_MERGE_STATES["DRAFT"]))
     if "UNKNOWN" in (state, mergeable):
         # GitHub is still computing it, so BEHIND (strict protection) cannot be ruled out yet.
         findings.append(
@@ -528,7 +539,14 @@ def _fetch(pr_number: int, repo: str | None) -> dict[str, Any]:
     """Every gating surface, returned as `evaluate`'s keyword arguments."""
     repo_args = ["--repo", repo] if repo else []
     pr = _gh_json(
-        ["pr", "view", str(pr_number), *repo_args, "--json", "mergeable,mergeStateStatus,headRefOid,baseRefName,state"]
+        [
+            "pr",
+            "view",
+            str(pr_number),
+            *repo_args,
+            "--json",
+            "mergeable,mergeStateStatus,headRefOid,baseRefName,state,isDraft",
+        ]
     )
     slug = repo or _gh_json(["repo", "view", "--json", "nameWithOwner"])["nameWithOwner"]
     errors: list[str] = []
@@ -622,19 +640,118 @@ def _branch_rules(slug: str, base: str) -> tuple[list[str], list[str], str | Non
         return rules, contexts, f"could not read branch rules or rulesets ({exc})"
 
 
+_FETCH_ERRORS = (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError)
+# A settled failure ends a --wait early: the verdict cannot turn READY without a new push.
+_FAIL_FAST = frozenset({"check-failed", "suite-of-record-not-green", "merge-conflict"})
+# Unsettled findings that never clear by waiting: the pin is a config fact, not a run in flight.
+_NEVER_CLEARS = frozenset({"suite-of-record-unpinned"})
+# Absences are BLOCKING once nothing is in flight, but right after a push the workflow may not
+# have created its check runs yet (review round): under --wait they count as in flight until the
+# same head has shown them absent for the grace window.
+_ABSENCES = frozenset({"suite-of-record-absent", "required-check-absent"})
+_WAIT_MAX_CONSECUTIVE_ERRORS = 3
+
+
+def still_waiting(result: Readiness, *, absence_is_final: bool = True) -> bool:
+    """True while a --wait should keep polling: something is in flight and nothing has failed."""
+    codes = {f.code for f in result.findings}
+    if codes & _FAIL_FAST:
+        return False
+    # Unpinned is final only when the settings file was READ and lacks the pin; a failed read of
+    # it (surface-unverified) is transient, so keep polling (delta review, 2026-11-25).
+    if codes & _NEVER_CLEARS and "surface-unverified" not in codes:
+        return False
+    if not absence_is_final and codes & _ABSENCES:
+        return True
+    return any(f.severity == "UNSETTLED" for f in result.findings)
+
+
+def _wait_for_verdict(
+    pr_number: int,
+    repo: str | None,
+    *,
+    timeout_s: float,
+    interval_s: float,
+    absent_grace_s: float = 300.0,
+    clock: Any = None,
+    sleep: Any = None,
+) -> tuple[dict[str, Any], Readiness] | int:
+    """Poll `_fetch` + `evaluate` until `still_waiting` is False or the timeout passes.
+
+    Returns the last surfaces and verdict, or TOOL_ERROR after three read errors in a row (or a
+    timeout with no successful read). ``clock``/``sleep`` are injectable so tests do not wait.
+    """
+    clock = clock or time.monotonic
+    sleep = sleep or time.sleep
+    deadline = clock() + timeout_s
+    errors_in_a_row = 0
+    last: tuple[dict[str, Any], Readiness] | None = None
+    absent_since: tuple[str, float] | None = None  # (head, first time it showed an absence)
+    while True:
+        try:
+            surfaces = _fetch(pr_number, repo)
+        except _FETCH_ERRORS as exc:
+            errors_in_a_row += 1
+            print(f"wait: could not read PR state ({exc}); retry {errors_in_a_row}", file=sys.stderr)
+            if errors_in_a_row >= _WAIT_MAX_CONSECUTIVE_ERRORS:
+                print(f"error: could not read PR state {errors_in_a_row} times in a row", file=sys.stderr)
+                return TOOL_ERROR
+        else:
+            errors_in_a_row = 0
+            result = evaluate(**surfaces)
+            last = (surfaces, result)
+            head = str(surfaces.get("head_sha") or "")
+            if {f.code for f in result.findings} & _ABSENCES:
+                if absent_since is None or absent_since[0] != head:
+                    absent_since = (head, clock())
+            else:
+                absent_since = None
+            absence_is_final = absent_since is not None and clock() - absent_since[1] >= absent_grace_s
+            if not still_waiting(result, absence_is_final=absence_is_final):
+                return last
+            pending = sorted(f.code for f in result.findings if f.severity == "UNSETTLED" or f.code in _ABSENCES)
+            print(f"wait: still in flight ({', '.join(pending)})", file=sys.stderr)
+        if clock() >= deadline:
+            if last is None:
+                print("error: timed out without one successful read of the PR", file=sys.stderr)
+                return TOOL_ERROR
+            surfaces, result = last
+            blocking = sorted({f.code for f in result.findings if f.severity == "BLOCKING"})
+            note = f"; it already shows BLOCKING {', '.join(blocking)}" if blocking else ""
+            print(f"wait: timed out; reporting the last snapshot as unsettled{note}", file=sys.stderr)
+            # A timeout is never a verdict: report it as unsettled even if the last read was BLOCKED.
+            return surfaces, Readiness(UNSETTLED, result.findings)
+        sleep(interval_s)
+
+
+def _non_negative(text: str) -> float:
+    value = float(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {text}")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Report every surface gating a PR's merge.")
     parser.add_argument("pr", type=int, help="PR number")
     parser.add_argument("--repo", default=None, help="owner/name (defaults to the current repo)")
+    parser.add_argument("--wait", action="store_true", help="poll until nothing is in flight, then report")
+    parser.add_argument("--timeout", type=_non_negative, default=60.0, help="--wait: give up after this many minutes")
+    parser.add_argument("--interval", type=_non_negative, default=90.0, help="--wait: seconds between reads")
     args = parser.parse_args(argv)
 
-    try:
-        surfaces = _fetch(args.pr, args.repo)
-    except (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError) as exc:
-        print(f"error: could not read PR state: {exc}", file=sys.stderr)
-        return TOOL_ERROR
-
-    result = evaluate(**surfaces)
+    if args.wait:
+        waited = _wait_for_verdict(args.pr, args.repo, timeout_s=args.timeout * 60, interval_s=args.interval)
+        if isinstance(waited, int):
+            return waited
+        surfaces, result = waited
+    else:
+        try:
+            surfaces = _fetch(args.pr, args.repo)
+        except _FETCH_ERRORS as exc:
+            print(f"error: could not read PR state: {exc}", file=sys.stderr)
+            return TOOL_ERROR
+        result = evaluate(**surfaces)
     pr = surfaces["pr"]
     print(
         f"PR #{args.pr}: {pr.get('state')} / mergeable={pr.get('mergeable')} / {pr.get('mergeStateStatus')}"
