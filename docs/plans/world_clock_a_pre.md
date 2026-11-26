@@ -1,6 +1,6 @@
 # World clock, A-pre: a split clock and a perceived-time port, outside the fence
 
-> **PROPOSED 2026-11-24, plan only.** 1.3.5 line 2 ([release_1_3_5.md](release_1_3_5.md), owner decision D9). No
+> **ACCEPTED 2026-11-24 (#1787); PR 0 corrected two of its premises (§PR 0's corrections).** 1.3.5 line 2 ([release_1_3_5.md](release_1_3_5.md), owner decision D9). No
 > `src/` change in this PR. Every mechanism enters as `[engineering]`. The owner decisions it rests on are in
 > §Decisions, and nothing in it is decided by wording.
 > **Review:** a three-lens plan review (Executor, Architecture, Wire integrity) ran on `1e1eed8d`. Its findings are
@@ -222,8 +222,8 @@ Sizes: **S** is under about 150 changed lines, **M** about 150–600.
 
 | PR | Family | What | Size |
 |---|---|---|---|
-| **0** | census + today's gates | `scripts/world_clock_census.py` (AST only; imports nothing from `maxim`). It prints every time, calendar, stamp, id and randomness site in `src/maxim/`, the stamp–reader pairs, each `TemporalSignature` and SCN caller with its input clock and output use, and each site's placement. Plus the gates writable against today's surface (G-cost-month, G-tool-duration) and WC5's characterization guards, landed green. No `src/` change. | S |
-| **1** | the clock | `time/agent_time.py`: both collaborators, `NO_CALENDAR` and the host defaults. Also: I2's call-time test; I3's motor-dispatch ban; **M72 built** (two scopes, its own alias resolver, a ratchet migrating to the absolute form; see the guard note); #1769 (D-WC5). G-render, G-tz, G-scn and G-window land red here, because their surface is born here. | M |
+| **0** | census + today's gates | `scripts/world_clock_census.py` (AST only; imports nothing from `maxim`). It prints every time, calendar, stamp, id and randomness site in `src/maxim/`, the stamp–reader pairs, each `TemporalSignature` and SCN caller with its input clock and output use, and each site's placement. Plus the gate writable against today's surface (G-cost-month) and WC5's characterization guards, landed green. G-tool-duration moved out: see §PR 0's corrections. No `src/` change. | S |
+| **1** | the clock | `time/agent_time.py`: both collaborators, `NO_CALENDAR` and the host defaults. Also: I2's call-time test; I3's motor-dispatch ban; **M72 built** (two scopes and the alias resolver from `scripts/_clock_refs.py`, shared with the census; a ratchet migrating to the absolute form; see the guard note); #1769 (D-WC5). Before M72 goes live, every in-scope site the census prints `UNPLACED` (88 sites at PR 0; stamp readers and SCN callers can print `UNPLACED` too) gets an allowlist entry, a `pending:` pin or a move. G-render, G-tz, G-scn and G-window land red here, because their surface is born here. | M |
 | **2** | prompt and observation time (OD-A3) | `PromptBuilder.build_prompt` and `PromptBuilder._build_engage_prompt` render from the port, threaded through `LLMWorker`; `build_identity_section`'s unused `date_str`/`time_str` parameters go; `ContextPool._entries_to_text` and `ContextPool.get_context_text` render stamps through `perceive`, and omit them under `NO_CALENDAR`. Two tool results that hand the model a raw epoch are omitted under `NO_CALENDAR` too: `tools/introspection.py::_format_episodic_memory`'s `timestamp` (used by `memory_recall`) and `SceneSummaryTool.execute`'s `timestamp`. The render changes; the stamp does not (D-WC6). Flips G-render and G-tz. | M |
 | **3** | SCN-derived renders (OD-A5, D-WC2 revised) | both `[TEMPORAL]` sources (`StatisticianAgent._assess_with_temporal_context` and `StatisticianAgent.summarize_for_context`), `TemporalPatternsTool`, `simulation/introspection.py`'s `current_phase`, and `retrieval/temporal_signal.py`'s relative-date resolution each emit or resolve nothing under `NO_CALENDAR`. Registration and NAc are unchanged. Flips G-scn. | S |
 | **4** | the Hippocampus window (OD-A5's window half) | `Hippocampus.__init__(…, machinery_clock=HOST)`; `store_observation`'s window reads `now_s()`, the same `time.time()` it reads today. Flips G-window and G-long's A-pre half. | S |
@@ -233,10 +233,10 @@ Sizes: **S** is under about 150 changed lines, **M** about 150–600.
 
 | Item | Where | Why there |
 |---|---|---|
-| **OD-A4's root fix**: a tool's duration from the host in world time, replacing `execute_and_learn`'s `exec_start`/`exec_elapsed` wall reads, which `_observe_energy_cost` turns into NEGATIVE NAc valence above 2.0 s | **A-post**: the first PR after the fence lifts on `runtime/tool_dispatch.py`, with B2 (#1150). The duration becomes a field of the settle receipt. B2's parity guard needs it (candidates §A3). | fenced file. **G-tool-duration** lands in PR 0: patch `time.time` either side of 2.0 s around `execute_and_learn` at an equal host world duration, and the valence must be equal. It fails by assertion today. |
+| **OD-A4's root fix**: a tool's duration from the host in world time. `execute_and_learn`'s `exec_start`/`exec_elapsed` wall reads reach only its logs today: no caller passes `elapsed_s` to `record_outcome`, so `_observe_energy_cost` (NEGATIVE NAc valence above 2.0 s) has never run (#1788) | **A-post**: the first PR after the fence lifts on `runtime/tool_dispatch.py`, with B2 (#1150). The duration becomes a field of the settle receipt and is wired into `record_outcome` there. B2's parity guard needs it (candidates §A3). | fenced file. PR 0 pins today's no-booking green (WC5). **G-tool-duration** lands red in the wiring PR: two runs doing the same work, the wall jumping either side of 2.0 s at an equal host world duration, book the same valence. |
 | OD-A4's stamp half: Hippocampus capture/access stamps (`Hippocampus._build_capture_record`, `get`, `_touch_internal`, `consolidated_at`), `SpecSensor.read`'s `SensorReading` stamp, the `field(default_factory=time.time)` stamps on the embedded path | **with AgentHome (OD-A12) / A-post**, each as a whole reader set, with a **clock-domain marker** written into the home only when non-default, so host-default files stay byte-identical. A non-default home also **bumps the envelope `schema_version`** (persistence-config.md §3), so a build from before the marker refuses it (`memory/snapshot.py` refuses a newer `schema_version`; `check_format_version` only warns), and a loader refuses a mismatched domain | D-WC6. Without the marker, a home written under injection and loaded under the host default makes sleep and eviction (`ConsolidationMixin.sleep`, `_evict_one`) read every trace as ~54 years old. Moving the forgetting readers is also memory-strength's call (#1361 Q5), asked there. |
 | `SituationSignature.from_memory`'s own calendar binning (a second copy of `TemporalSignature`'s), persisted as the EC `temporal_hash` | with the stamp half | it bins capture stamps, so it moves with them, and the duplication is collapsed then |
-| SCN registration of machinery stamps (`integration/memory_hub.py`'s `_register_in_scn`, `memory/concept_extractor.py`, `time/scn.py`) | with the stamp half | today they bin wall stamps, consistently. They would only mix clocks once the stamps move. |
+| SCN registration of machinery stamps (`integration/memory_hub.py`'s `MemoryHub._on_memory_captured_scn`, `memory/concept_extractor.py`, `time/scn.py`) | with the stamp half | today they bin wall stamps, consistently. They would only mix clocks once the stamps move. |
 | Salience and gaze (`SalienceMap`, `salience/salience_network.py`, `attention/gaze_history.py`) | **A-post with OD-A9** (`DefaultNetwork.step(now)`) | their only feeder, `default_network/network.py::_process_tick`, passes a wall `now`, and DefaultNetwork has its own wall readers |
 | `exec_agent.py`'s SCN phase dict and anomaly score | A-post (hot file, D-WC7) | it emits under the host default until then. Under `NO_CALENDAR` it is the last SCN-derived render, listed as `pending:A-post`. |
 | The flip to a required collaborator on every constructor | A-post (D-WC7) | fence |
@@ -252,10 +252,19 @@ Sizes: **S** is under about 150 changed lines, **M** about 150–600.
 | The oscillator's elapsed-time step and entrainment; the world's day length | tier B (`time_sense_DRAFT.md`) | it changes SCN dynamics under the host clock |
 | `llm_fallback`'s canned time/date answers | **gone**: removed with the short-question shortcut (#1689) | — |
 
+**Open for the stamp half's design** (asked by Overdrive's upstream lane after the merge, #1787; not decided here):
+1. **Can the clock-domain marker and the `schema_version` bump land without OD-A12's store routing,** on the one home
+   an agent already has? Nothing technical ties them together, but each subset still moves its whole reader set
+   (D-WC6). Which lands first is the owner's placement call.
+2. **Which calendar does `SituationSignature.from_memory`'s `temporal_hash` bin on once the stamps move?** OD-A20's
+   decline covers SCN registration and NAc anchor similarity, not this. Binning world-time stamps with host-local
+   `datetime.fromtimestamp` mixes clocks, and `NO_CALENDAR` leaves nothing to bin on. The hash is persisted (EC), so a
+   re-bin needs a migration or a `hash_scheme`-style stamp.
+
 **#1305, checked as line 2 asks.** #1305 (`1305.owned-rng`, a 1.4.0 gate item, milestone 1.3.5) keeps the seeded-run
 half: the process-global `random` / `np.random` draws. **OD-I13** belongs on #1305's side too: seeded runs need a seed
 and a sampler on the backends (`backend_protocol.py::complete_with_usage` takes neither) as much as they need owned RNG.
-This plan neither widens #1305 nor takes OD-A7. The OD-I13 note goes to #1305 as a comment when this plan's PR opens.
+This plan neither widens #1305 nor takes OD-A7. The OD-I13 note is on #1305 (with Overdrive's correction narrowing it).
 
 ## What Overdrive still does not get from A-pre
 
@@ -285,14 +294,32 @@ it. Tests that write state use a scratch `HOME` and a tmp `state_path`.
 | **G-pace** (OD-WC2, A-pre scope) | 1 → 4 | a scripted session over A-pre's families, at 1× and 20× fake wall pace with jitter. The state digest must be identical. Ids are excluded (D-WC1), and the test says so. |
 | **G-long** (BD-14.2) | 1 → 4 (A-pre half) / A-post (full loop) | a long-horizon scripted run through observe, consolidate, sleep and decay. **`time.time` only** is patched, to jump a huge and varying amount per read, and two jump schedules are compared. `monotonic` jumps would trip `Deadline` / `wait_session_ended`. Built without ATL, so `_restore_on_open` cannot revive the ConceptExtractor, and with `integration/memory_hub.py::build_memory_hub(start_background_workers=False)`. The digest scope is named: A-pre's families only (the window). NAc, ATL, SCN and stamps are excluded until their PRs. |
 | **G-refractory** | 5 → 5 | two distinct pain events with **the same `(entity, failure_mode)`**, 0.6 machinery seconds apart, are both dispatched at 20× wall pace, on each bus and for a `PainDetector` tool-pain type; the first event under a clock whose origin is at 0 is not dropped, on each bus and in `record_tool_error`; and a motor-dispatch read of the injected clock fails I3 |
-| **G-tool-duration** | 0 → A-post | see §Placements |
+| **G-tool-duration** | A-post → A-post (#1788) | see §Placements. Moved out of PR 0: today it could only pass vacuously |
 | **G-cost-month** (#1769) | 0 → 1 | a tracker on the wall clock, recording with a caller `timestamp` of 0.0, keeps its month, hourly and daily totals and its EMAs; a `get_totals(now=0.0)` read reports the same totals as a read with no `now` |
+
+### PR 0's corrections (owner decisions 2026-11-24)
+
+PR 0's precondition tests found two premises of this plan false on main:
+- **The tool-duration wall read reaches no learning.** OD-A4 assumed `execute_and_learn`'s duration feeds
+  `_observe_energy_cost`. No caller passes `record_outcome`'s `elapsed_s`, so robots book no energy cost, and every
+  `tool_result` link learns a 0.0 s delay (persisted `temporal_delta`, read by `NAc.predict_delay`): `elapsed_s`
+  has both sinks. G-tool-duration would pass vacuously. PR 0 pins both green. The wiring, which also changes NAc's
+  delay predictions, and G-tool-duration move to A-post with B2 (#1788). #1788 is `silent-wrong`. Its owner exception, needed past
+  2026-12-01 because the fix lands later, is committed in [silent_wrong_exceptions.json](silent_wrong_exceptions.json).
+- **A saved store is not byte-stable across processes.** The Hippocampus `context_index`, NAc's `outcome_index` and
+  the EC's inverted indices (`similarity/indices.py`) are written from a `set`, so their order follows
+  `PYTHONHASHSEED`. A separate small `src/` PR (#1789) makes every such writer sort its output, with a two-process
+  guard; WC5's re-saved file is then the old store with that one index sorted, compared byte for byte.
 
 **Exit tests chosen from OD-WC1 to OD-WC7:**
 - **WC5, robots unchanged, is mandatory.** It lands green in PR 0 as characterization:
   - the existing suite on host defaults;
   - the loop characterization golden still under `tests/unit/_loop_harness.py::_StepClock`;
-  - a Hippocampus home and NAc pair saved before A-pre, loaded and saved byte-identically;
+  - a Hippocampus home and NAc pair saved before A-pre (`tests/fixtures/world_clock_wc5/`), loaded and saved back
+    unchanged. Each writer serialises one id index from a `set` (the Hippocampus `context_index`, NAc's
+    `outcome_index`), whose order follows `PYTHONHASHSEED` in a store saved before #1789. Re-saving sorts that one index
+    (#1789), so the re-saved file must equal the original with that index sorted, exact for every byte;
+  - the shipped dispatch seam handing NAc no tool duration: no energy cost, a 0.0 s `tool_result` delay (#1788);
   - a prompt built under a pinned `TZ` with `maxim.agents.prompt_builder.datetime` patched, byte-identical to
     today's. From PR 2 it is patched at the port, with the patch target named per PR.
 - **WC6** is G-tz. **WC2** is G-pace. **WC4**, in its static form, is M72 at zero outside the allowlist on A-pre's

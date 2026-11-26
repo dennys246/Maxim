@@ -1,0 +1,14 @@
+[
+  {
+    "id": "silent-wrong-1788",
+    "kind": "silent-wrong",
+    "issue": 1788,
+    "owner": "Denny Schaedig (owner decisions 2026-11-24)",
+    "reason": "The tool duration never reaches NAc: execute_and_learn measures exec_elapsed but no caller passes record_outcome's elapsed_s, so no energy cost is booked and every tool_result link learns a 0.0 s delay. The fix is the duration as a host world-time field of B2's settle receipt (#1150), wired in runtime/tool_dispatch.py, which is fenced for the loop phase 2 / B2 lane until A-post. Robots keep today's behaviour until then, pinned by tests/unit/test_world_clock_a_pre.py::test_wc5_execute_and_learn_books_no_energy_cost_today; the wiring PR replaces that pin with G-tool-duration, landed red (docs/plans/world_clock_a_pre.md, PR 0's corrections).",
+    "fixed_by": "A-post, with B2 (#1150)",
+    "ref": "https://github.com/dennys246/Maxim/issues/1788",
+    "filed": "2026-11-24",
+    "exception_from": "2026-12-01",
+    "date": "2026-11-24"
+  }
+]

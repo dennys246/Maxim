@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.optional_deps import OptionalDependencyError, require_optional_dependency
 
 # Audio utilities deferred to call site to avoid eager numpy/scipy loading
@@ -314,7 +315,7 @@ class ResponseOutput:
             audio = self.tts.synthesize(speech_text)
 
             if len(audio) == 0:
-                self.logger.debug("TTS returned empty audio for text: %s", speech_text[:50])
+                self.logger.debug("TTS returned empty audio for text: %s", text_shape(speech_text))  # #1775: shape only
                 return False
 
             # The sink resamples to its device's rate, so hand it the TTS's own rate. (A

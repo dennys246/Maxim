@@ -53,12 +53,19 @@ from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.decisions.significance import CycleContext, SignificanceConfig, SignificanceWeightLearner
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import warn
 
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
 from maxim.memory.text import Provenance, frame_external, stored_percept_text
+
+
+def _issue_count(critique: Any) -> int:
+    """How many issues a critique names. Its words are the model's own, so only their count is logged (#1775)."""
+    issues = critique.get("issues") if isinstance(critique, dict) else None
+    return len(issues) if isinstance(issues, list) else 0
 
 
 def _voice_command_text(percept: Any) -> str:
@@ -632,7 +639,7 @@ class ExecAgent(Agent):
             {
                 "mode": "standard",
                 "critique_confidence": confidence,
-                "issues": critique.get("issues", []),
+                "issue_count": _issue_count(critique),  # #1775: the critic's words never reach a log
             },
         )
 
@@ -690,7 +697,7 @@ class ExecAgent(Agent):
             {
                 "mode": "fast",
                 "critique_confidence": confidence,
-                "issues": response.get("issues", []),
+                "issue_count": _issue_count(response),  # #1775
             },
         )
 
@@ -1378,7 +1385,9 @@ Based on this context, what goal should be proposed?"""
                 "goal_proposed",
                 {
                     "goal_id": goal.id,
-                    "description": goal.description,
+                    "description": text_shape(
+                        str(goal.description)
+                    ),  # #1775: by shape only (str: the field is unchecked JSON)
                     "priority": goal.priority.name,
                     "contemplated": contemplated,
                     "pre_deliberated": bool(pre_deliberation_enrichment),
