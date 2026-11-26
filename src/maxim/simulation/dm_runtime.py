@@ -22,6 +22,7 @@ from typing import Any
 
 from maxim.exceptions import ToolEffectRefused
 from maxim.simulation.dm_schema import CampaignDef, EncounterDef, roll_dice
+from maxim.utils.net import redact_urls
 
 log = logging.getLogger(__name__)
 
@@ -521,7 +522,7 @@ class DMRuntime:
             return result if isinstance(result, dict) else {"raw": str(result)}
         except Exception as e:
             log.warning("DM: Bridge delivery failed: %s", e)
-            return {"error": str(e)}
+            return {"error": redact_urls(str(e))}  # a success-shaped payload (#1801 G6)
 
     def _classify_choice(self, response: dict[str, Any], encounter: EncounterDef) -> str:
         """Map AUT response to one of the encounter's declared choices.

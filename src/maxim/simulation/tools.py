@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput, current_policy
 from maxim.tools.registry import EffectAdmission
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import redact_urls
 
 if TYPE_CHECKING:
     from maxim.simulation.introspection import Observer
@@ -1483,7 +1484,7 @@ class SpawnSubSimulationTool(Tool):
         except Exception as e:
             sub_report = {
                 "goal": goal,
-                "error": str(e),
+                "error": redact_urls(str(e)),  # returned inside a SUCCESSFUL ToolOutput, so outside D5 (#1801 F3)
                 "turns": 0,
                 "total_actions": 0,
                 "blocked_actions": 0,
