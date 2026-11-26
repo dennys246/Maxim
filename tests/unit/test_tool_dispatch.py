@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from maxim.decisions.causal_link import Valence
-from maxim.runtime.tool_dispatch import safe_agent_name, record_outcome
+from maxim.runtime.loop_state import safe_agent_name
+from maxim.runtime.tool_dispatch import record_outcome
 
 
 class TestSafeAgentName:
@@ -53,6 +54,21 @@ class TestSafeAgentName:
         result = safe_agent_name(agent)
         # Falls through to type(agent).__name__ which is MagicMock
         assert result  # Not empty
+
+    def test_a_name_attribute_that_raises_falls_back_to_the_class_name(self):
+        """A ``TypeError`` from reading a name attribute (``getattr``'s default only covers ``AttributeError``) is
+        reported and swallowed: the name falls back to the agent's class name (characterization before the move to a
+        bio-free leaf, B2 prerequisite 1)."""
+
+        class Broken:
+            @property
+            def state_name(self):
+                raise TypeError("unreadable name")
+
+        with patch("maxim.runtime.loop_state.log_swallowed_exception") as report:
+            assert safe_agent_name(Broken()) == "Broken"
+        [call] = report.call_args_list  # the swallow is reported, once, under its operation name
+        assert isinstance(call.args[0], TypeError) and call.kwargs == {"operation": "get_agent_name"}
 
     def test_none_attrs_uses_class(self):
         agent = MagicMock()

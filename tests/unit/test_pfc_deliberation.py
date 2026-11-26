@@ -678,7 +678,7 @@ class TestTopBySalience:
 
     def test_sorted_by_salience_descending(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
-        from maxim.memory.text import Provenance
+        from maxim.utils.prompt_text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
         wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.2, provenance=Provenance.INTERNAL)
@@ -693,7 +693,7 @@ class TestTopBySalience:
 
     def test_limit(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
-        from maxim.memory.text import Provenance
+        from maxim.utils.prompt_text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
         for i in range(10):
@@ -705,7 +705,7 @@ class TestTopBySalience:
 
     def test_min_salience_filter(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
-        from maxim.memory.text import Provenance
+        from maxim.utils.prompt_text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
         wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.1, provenance=Provenance.INTERNAL)
@@ -717,7 +717,7 @@ class TestTopBySalience:
 
     def test_kind_filtering(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
-        from maxim.memory.text import Provenance
+        from maxim.utils.prompt_text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
         wms.add(WorkingMemoryKind.THOUGHT, content="thought", salience=0.5, provenance=Provenance.INTERNAL)
@@ -730,7 +730,7 @@ class TestTopBySalience:
 
     def test_recency_tiebreaker(self):
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
-        from maxim.memory.text import Provenance
+        from maxim.utils.prompt_text import Provenance
 
         wms = WorkingMemorySet(agent_id="test")
         wms.add(WorkingMemoryKind.THOUGHT, content="older", salience=0.5, provenance=Provenance.INTERNAL)
