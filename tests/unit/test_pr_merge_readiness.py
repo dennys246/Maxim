@@ -581,7 +581,7 @@ class TestSuiteOfRecord:
         assert mod.pinned_suite_app_id(tmp_path / "s.json") is None
         result = _eval(app_id=None)
         assert result.exit_code == UNSETTLED
-        assert "surface-unverified" in _codes(result)
+        assert "suite-of-record-unpinned" in _codes(result)
 
     def test_a_same_named_suite_from_another_app_does_not_count(self):
         """Exact contexts match on name only; the suite of record also pins the app."""
@@ -858,3 +858,208 @@ class TestHeadMovedDuringRead:
         monkeypatch.setattr(mod, "_gh_json", fake)
         errors = mod._fetch(1, None)["fetch_errors"]
         assert any("could not re-read the PR head" in e for e in errors)
+
+
+class TestWait:
+    """`--wait` polls until nothing is in flight, waits through DRAFT, fails fast, never times out READY."""
+
+    def _snapshots(self, monkeypatch, snapshots):
+        import pr_merge_readiness as mod
+
+        it = iter(snapshots)
+
+        def fake_fetch(pr_number, repo):
+            item = next(it)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+        monkeypatch.setattr(mod, "_fetch", fake_fetch)
+        return mod
+
+    @staticmethod
+    def _surfaces(*, checks=None, state="CLEAN"):
+        return {
+            "pr": {"state": "OPEN", "mergeStateStatus": state, "mergeable": "MERGEABLE", "headRefOid": "aaa"},
+            "checks": checks if checks is not None else list(_REQUIRED),
+            "alerts": [],
+            "ruleset_rules": [],
+            "required_contexts": None,
+            "fetch_errors": (),
+            "suite_app_id": _ACTIONS,
+            "head_sha": "aaa",
+            "suite_reuse": "",
+        }
+
+    def _running(self, state="DRAFT"):
+        checks = [_run("unit-tests", None, started_at="t", run_id=5, status="in_progress"), *_REQUIRED[1:]]
+        return self._surfaces(checks=checks, state=state)
+
+    def _wait(self, mod, *, timeout_s=1000.0, grace_s=25.0):
+        now = [0.0]
+        sleeps = []
+
+        def sleep(s):
+            sleeps.append(s)
+            now[0] += s
+
+        waited = mod._wait_for_verdict(
+            1, None, timeout_s=timeout_s, interval_s=10, absent_grace_s=grace_s, clock=lambda: now[0], sleep=sleep
+        )
+        return waited, sleeps
+
+    def test_waits_through_draft_until_ci_settles(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._running(), self._running(), self._surfaces()])
+        (surfaces, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 2
+
+    def test_a_draft_with_ci_green_ends_the_wait_blocked_on_draft(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._surfaces(state="DRAFT")])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == BLOCKED and "merge-state-draft" in _codes(result) and not sleeps
+
+    def test_a_settled_failure_ends_the_wait_while_others_still_run(self, monkeypatch):
+        checks = [
+            _run("unit-tests", "failure", started_at="t", run_id=5),
+            {"name": "lint", "status": "in_progress", "conclusion": None},
+            *_REQUIRED[2:],
+        ]
+        mod = self._snapshots(monkeypatch, [self._surfaces(checks=checks, state="DRAFT")])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == BLOCKED and not sleeps
+
+    def test_a_timeout_is_unsettled_never_a_verdict(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._running()] * 5)
+        (_, result), _ = self._wait(mod, timeout_s=25)
+        assert result.exit_code == UNSETTLED
+
+    def test_transient_read_errors_are_retried(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [RuntimeError("502"), self._surfaces()])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 1
+
+    def test_three_read_errors_in_a_row_are_a_tool_error(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [RuntimeError("502")] * 3)
+        waited, _ = self._wait(mod)
+        assert waited == mod.TOOL_ERROR
+
+    def test_main_wait_prints_the_final_verdict_once(self, monkeypatch, capsys):
+        import pr_merge_readiness as mod
+
+        monkeypatch.setattr(mod, "_gh_json", _fake_gh(heads=["aaa", "aaa"]))
+        assert mod.main(["7", "--wait", "--interval", "0"]) == READY
+        out = capsys.readouterr().out
+        assert out.count("PR #7:") == 1 and "suite-of-record" in out
+
+    def test_a_wait_right_after_a_push_waits_for_the_check_runs_to_appear(self, monkeypatch):
+        """Review SHOULD-FIX 1: no check runs yet is not 'absent' until the grace window passes."""
+        none_yet = self._surfaces(checks=[], state="DRAFT")
+        mod = self._snapshots(monkeypatch, [none_yet, self._running(), self._surfaces()])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 2
+
+    def test_checks_still_absent_after_the_grace_window_block(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [self._surfaces(checks=[])] * 10)
+        (_, result), sleeps = self._wait(mod, grace_s=25)
+        assert result.exit_code == BLOCKED and "suite-of-record-absent" in _codes(result)
+        assert sum(sleeps) >= 25
+
+    def test_a_new_head_restarts_the_grace_window(self, monkeypatch):
+        first = self._surfaces(checks=[])
+        moved = {**self._surfaces(checks=[]), "head_sha": "bbb"}
+        mod = self._snapshots(monkeypatch, [first, first, moved, moved, moved, moved])
+        (surfaces, _), sleeps = self._wait(mod, grace_s=15)
+        assert surfaces["head_sha"] == "bbb" and len(sleeps) == 4
+
+    def test_a_merge_conflict_ends_the_wait(self, monkeypatch):
+        conflicted = self._running(state="DIRTY")
+        conflicted["pr"]["mergeable"] = "CONFLICTING"
+        mod = self._snapshots(monkeypatch, [conflicted])
+        (_, result), sleeps = self._wait(mod)
+        assert "merge-conflict" in _codes(result) and not sleeps
+
+    def test_a_failed_non_suite_check_ends_the_wait(self, monkeypatch):
+        checks = [
+            _run("unit-tests", None, started_at="t", run_id=5, status="in_progress"),
+            _run("lint", "failure", started_at="t", run_id=6),
+            *_REQUIRED[2:],
+        ]
+        mod = self._snapshots(monkeypatch, [self._surfaces(checks=checks, state="DRAFT")])
+        (_, result), sleeps = self._wait(mod)
+        assert "check-failed" in _codes(result) and not sleeps
+
+    def test_an_unpinned_suite_ends_the_wait_at_once(self, monkeypatch):
+        unpinned = {**self._running(), "suite_app_id": None}
+        mod = self._snapshots(monkeypatch, [unpinned])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code != READY and "suite-of-record-unpinned" in _codes(result) and not sleeps
+
+    def test_the_error_counter_resets_after_a_good_read(self, monkeypatch):
+        boom = RuntimeError("502")
+        mod = self._snapshots(monkeypatch, [boom, self._running(), boom, boom, self._surfaces()])
+        (_, result), _ = self._wait(mod)
+        assert result.exit_code == READY
+
+    def test_a_timeout_with_no_successful_read_is_a_tool_error(self, monkeypatch):
+        mod = self._snapshots(monkeypatch, [RuntimeError("502")])
+        waited, _ = self._wait(mod, timeout_s=0)
+        assert waited == mod.TOOL_ERROR
+
+    @pytest.mark.parametrize("flag", ["--interval", "--timeout"])
+    def test_negative_durations_are_refused(self, flag):
+        import pr_merge_readiness as mod
+
+        with pytest.raises(SystemExit) as exc:
+            mod.main(["7", "--wait", flag, "-1"])
+        assert exc.value.code == 2
+
+    def test_a_transient_pin_read_error_keeps_waiting(self, monkeypatch):
+        """Delta review: one failed read of the base pin is not 'unpinned for good'."""
+        pin_error = {
+            **self._running(),
+            "suite_app_id": None,
+            "fetch_errors": ("could not read scripts/repo_settings_expected.json on main (502)",),
+        }
+        mod = self._snapshots(monkeypatch, [pin_error, self._running(), self._surfaces()])
+        (_, result), sleeps = self._wait(mod)
+        assert result.exit_code == READY and len(sleeps) == 2
+
+    def test_an_absence_that_clears_and_returns_gets_a_fresh_grace_window(self, monkeypatch):
+        absent = self._surfaces(checks=[])
+        snapshots = [absent, absent, self._running(), absent, absent, absent, absent, absent]
+        mod = self._snapshots(monkeypatch, snapshots)
+        (_, result), sleeps = self._wait(mod, grace_s=25)
+        # Without the reset the second absence would inherit t=0 and end at the 4th read.
+        assert result.exit_code == BLOCKED and len(sleeps) >= 6
+
+
+class TestDraftFlag:
+    """GitHub reported draft #1812 as mergeStateStatus=CLEAN; the isDraft flag is read on its own."""
+
+    def test_a_draft_reported_clean_is_blocked(self):
+        result = _eval(pr={"state": "OPEN", "mergeStateStatus": "CLEAN", "mergeable": "MERGEABLE", "isDraft": True})
+        assert result.exit_code == BLOCKED and "merge-state-draft" in _codes(result)
+        assert not result.render().startswith("READY")
+
+    def test_a_draft_state_and_flag_report_it_once(self):
+        result = _eval(pr={"state": "OPEN", "mergeStateStatus": "DRAFT", "mergeable": "MERGEABLE", "isDraft": True})
+        assert [f.code for f in result.findings].count("merge-state-draft") == 1
+
+    def test_a_ready_pr_is_unaffected(self):
+        pr = {"state": "OPEN", "mergeStateStatus": "CLEAN", "mergeable": "MERGEABLE", "isDraft": False}
+        assert _eval(pr=pr).exit_code == READY
+
+    def test_the_flag_is_fetched(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        asked = []
+        fake = _fake_gh(heads=["aaa", "aaa"])
+
+        def spy(args, **k):
+            if args[:2] == ["pr", "view"]:
+                asked.append(args[args.index("--json") + 1])
+            return fake(args, **k)
+
+        monkeypatch.setattr(mod, "_gh_json", spy)
+        mod._fetch(7, None)
+        assert "isDraft" in asked[0].split(",")
