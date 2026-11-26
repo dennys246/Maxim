@@ -1191,6 +1191,11 @@ included. One classifier, `utils/net.py::is_public_address`, serves both the val
 - CGNAT (100.64.0.0/10) moved from "public" to "non-public" in `validate_base_url` when the classifiers
   were unified. An `https://` backend on Tailscale now needs `allow_local_endpoints`.
 
+**Amended 2026-11-22 (D16 in `docs/plans/release_1_3_5.md`; #1782).** `NO_PROXY` is honoured on the backend call path,
+where an embedder makes the call, and the proxy still wins for Maxim's own operator commands. Both are pinned by
+tests. A provider entry's `strict_address_check` refuses every env proxy for that backend's calls and probes, the env
+CA still honoured, so "what a proxy carries is not address-checked" now has a per-backend opt-out.
+
 ## 2026-09-28 — Host coding tools: the working root, and git_commit is opt-in (#949)
 
 ### Decision

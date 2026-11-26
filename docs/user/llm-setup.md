@@ -396,6 +396,16 @@ conservative; raise them only as needed:
 Self-hosted servers (localhost / private-IP endpoints) are **not** counted as
 cloud, so they bypass `MAXIM_MAX_CLOUD_LANES`. The session-cost ceiling (`MAXIM_CLOUD_SESSION_BUDGET`, default $5.00) provides a second layer.
 
+### Proxies
+
+If `HTTP_PROXY` / `HTTPS_PROXY` (or a system proxy) is set, model calls to a remote server go through it unless the
+server's host is listed in `NO_PROXY`. Maxim's own operator commands (`maxim peer update`, `maxim peer logs`, ...)
+always use a configured proxy. To keep one backend off every proxy regardless of `NO_PROXY`, set
+`"strict_address_check": true` on its provider entry (`llm.providers.<name>`, or a provider dict passed to an
+`LLMConfig`). Its calls and its probes then connect directly. A custom CA in `SSL_CERT_FILE` / `SSL_CERT_DIR` still
+applies. Only `maxim_peer` and `openai` provider entries read the key, and lanes configured with `maxim peer connect`
+or `maxim config set lanes.*` cannot set it.
+
 ### Auto-spawn (Phase 6) — zero-terminal setup
 
 If you have a GPU and the `[llm-server]` extra installed, Maxim will **automatically launch a llama-cpp-server subprocess** at startup, wire the large lane to it, and shut it down when Maxim exits. No second terminal needed.
