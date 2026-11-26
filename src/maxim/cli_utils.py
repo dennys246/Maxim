@@ -505,6 +505,9 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
         logger.info("Using llama.cpp backend with native Metal GPU support")
         return
 
+    os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+    if "MAXIM_LLM_PROFILE" in os.environ:  # the operator's profile stands; nothing to announce
+        return
     logger.warning(
         "No GPU detected; falling back to smaller model (smollm-1.7b-instruct) "
         "with CPU inference. Performance may be reduced."
@@ -515,8 +518,10 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
         "  or install GPU support: pip install 'pymaxim[llm-torch]'",
         file=sys.stderr,
     )
-    os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
-    os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+    # The served model on a GPU-less box comes from load_llm_config, whose only input for this default is the env, so
+    # it reads as the operator's pin: offline a missing default refuses by name (owner decision V31, fail closed).
+    # A GPU-less router built from the lane system, where it could fall back, is #1737.
+    os.environ["MAXIM_LLM_PROFILE"] = "smollm-1.7b-instruct"
 
 
 def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:

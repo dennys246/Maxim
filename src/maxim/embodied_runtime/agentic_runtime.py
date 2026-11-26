@@ -1167,8 +1167,13 @@ class AgenticRuntimeMixin:
         else:
             self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
 
-        os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
         os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+        if "MAXIM_LLM_PROFILE" in os.environ:  # the operator's profile stands; nothing to announce
+            return
+        # The served model here comes from build_run_router's load_llm_config fallback (a GPU-less box has no large
+        # lane), whose only input for this default is the env, so it reads as a pin: offline a missing default
+        # refuses by name (owner decision V31, fail closed; a GPU-less router from the lane system is #1737).
+        os.environ["MAXIM_LLM_PROFILE"] = "smollm-1.7b-instruct"
         self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
 
     def _stop_agentic_runtime(self, *, timeout: float = 10.0) -> None:

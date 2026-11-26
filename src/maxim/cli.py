@@ -993,19 +993,19 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     A typed backend error, a leader refusal or a spoken-response refusal (``--tts`` that cannot play, #1437)
     is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
     supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
-    (``exceptions.LeaderRefusal``). Anything else is logged as before and is a crash: 1. The loop's
-    ``finally`` (``_end_robot_run``) runs either way.
+    (``exceptions.SECURITY_REFUSALS``: a leader or an offline refusal). Anything else is logged as before and is a
+    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way.
 
     A robot configuration the operator must fix (#1806 PR 0) is rendered here, message and ``fix_hint``, and exits 2
     as ``UserProfilesInvalid`` does in ``_main_guarded``: a broken ``robots.yaml`` (``RobotsConfigError``) or a bad
     configuration value such as ``MAXIM_ROBOT_TIMEOUT`` (``InvalidConfigError``), both raised out of the runtime's
     ``Maxim(...)``. It is handled here, not in ``_main_guarded``, so only a run's ``InvalidConfigError`` changes
     meaning (exit 2, not a crash), not one raised anywhere else in the CLI."""
-    from maxim.exceptions import InvalidConfigError, LeaderRefusal, RobotsConfigError
+    from maxim.exceptions import SECURITY_REFUSALS, InvalidConfigError, RobotsConfigError
     from maxim.models.language.types import BackendError
     from maxim.utils.response_output import SpeechOutputUnavailable
 
-    if isinstance(error, (BackendError, LeaderRefusal, SpeechOutputUnavailable)):
+    if isinstance(error, (BackendError, *SECURITY_REFUSALS, SpeechOutputUnavailable)):
         raise error
     # Exactly these two, not InvalidConfigError subclasses (InvalidAgentIdError, AgentConfigContradiction): those
     # keep their pre-#1806 exit 1 and logged traceback (review E3).
@@ -1486,7 +1486,7 @@ def _early_leader_boot() -> int | None:
     that answers without auth) returns 2 with the reason, the role's source and
     the fix (2026-10-14: it used to warn and serve without auth).
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS, LeaderRefusal
 
     detected_role = None
     try:
@@ -1511,6 +1511,8 @@ def _early_leader_boot() -> int | None:
         )
         logging.getLogger(__name__).error("leader boot refused: %s", _e)
         return 2
+    except SECURITY_REFUSALS:
+        raise  # an offline refusal (a refused bind or probe): cli.main says why and exits 2, not "port conflict" (#1315)
     except Exception as _e:
         # Only surface to operators when role resolved to leader. Solo users
         # should never see leader-boot noise.
@@ -1745,6 +1747,8 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
     (#1657), so the curation model is not still resident while the sim loads its own. It waits for the warmed router
     like foundry does; one that is not ready in time is not handed to the runners (template fallback)."""
 
+    from maxim.exceptions import SECURITY_REFUSALS
+
     def build() -> Any | None:
         router = None
         try:
@@ -1756,6 +1760,8 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
             if not router.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
                 print("  WARNING: LLM failed to load — curation will use template fallback.")
                 return None
+        except SECURITY_REFUSALS:
+            raise  # an offline refusal is not a template fallback (#1315 item 10b)
         except Exception as _llm_err:
             logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
         return router
@@ -1767,6 +1773,8 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
     """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
     ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup, and builds
     it only once ``auto_curate`` finds a gap (:func:`_curate_router_factory`)."""
+    from maxim.exceptions import SECURITY_REFUSALS
+
     _auto_curate = bool(getattr(args, "auto_curate", False))
     _no_curate = bool(getattr(args, "no_curate", False))
     if _auto_curate and not _no_curate and _sim_entity_ref:
@@ -1816,6 +1824,8 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
                 print("  Coverage OK — no curation needed")
             else:
                 print(f"  Generated {_curate_report.total_generated} candidates, none promoted (below score threshold)")
+        except SECURITY_REFUSALS:
+            raise  # the run refuses, exit 2 (cli.main), not "Auto-curation failed" (#1315 item 10b)
         except Exception as _cur_err:
             logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
             print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
@@ -1833,6 +1843,8 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     # Build a lightweight LLM router for generation when --llm is set.
     # The foundry dispatches before the full agent stack, so it creates
     # its own router from the profile name (same pattern as ExecAgent).
+    from maxim.exceptions import SECURITY_REFUSALS
+
     _foundry_llm = None
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
     if _foundry_profile:
@@ -1847,6 +1859,8 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
                     _foundry_llm = None
                 else:
                     print(f"  LLM ready: {_foundry_profile}")
+        except SECURITY_REFUSALS:
+            raise  # the foundry refuses, exit 2 (cli.main), never a template run that reports success (#1315 item 10b)
         except Exception as e:
             print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
 
@@ -2231,8 +2245,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         if getattr(args, "write_paper", False):
             _write_benchmark_paper(runner, report, report_dir)
 
-        all_passed = all(mr.passed for mr in report.results.values())
-        sys.exit(0 if all_passed else 1)
+        sys.exit(report.exit_code())  # 2 refused (V26), 0 all passed, 1 otherwise
 
     _validate_sim_only_flags(args)
     sim_path = getattr(args, "sim", None)
@@ -2497,8 +2510,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 _write_benchmark_paper(runner, report, report_dir)
 
             # Exit with 0 if all models passed, 1 if any failed
-            all_passed = all(mr.passed for mr in report.results.values())
-            sys.exit(0 if all_passed else 1)
+            sys.exit(report.exit_code())
 
         # Check for research mode (legacy alias — deprecated, use --research flag)
         _sim_research = _is_legacy_research
