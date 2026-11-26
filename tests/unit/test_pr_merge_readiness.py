@@ -1031,3 +1031,35 @@ class TestWait:
         (_, result), sleeps = self._wait(mod, grace_s=25)
         # Without the reset the second absence would inherit t=0 and end at the 4th read.
         assert result.exit_code == BLOCKED and len(sleeps) >= 6
+
+
+class TestDraftFlag:
+    """GitHub reported draft #1812 as mergeStateStatus=CLEAN; the isDraft flag is read on its own."""
+
+    def test_a_draft_reported_clean_is_blocked(self):
+        result = _eval(pr={"state": "OPEN", "mergeStateStatus": "CLEAN", "mergeable": "MERGEABLE", "isDraft": True})
+        assert result.exit_code == BLOCKED and "merge-state-draft" in _codes(result)
+        assert not result.render().startswith("READY")
+
+    def test_a_draft_state_and_flag_report_it_once(self):
+        result = _eval(pr={"state": "OPEN", "mergeStateStatus": "DRAFT", "mergeable": "MERGEABLE", "isDraft": True})
+        assert [f.code for f in result.findings].count("merge-state-draft") == 1
+
+    def test_a_ready_pr_is_unaffected(self):
+        pr = {"state": "OPEN", "mergeStateStatus": "CLEAN", "mergeable": "MERGEABLE", "isDraft": False}
+        assert _eval(pr=pr).exit_code == READY
+
+    def test_the_flag_is_fetched(self, monkeypatch):
+        import pr_merge_readiness as mod
+
+        asked = []
+        fake = _fake_gh(heads=["aaa", "aaa"])
+
+        def spy(args, **k):
+            if args[:2] == ["pr", "view"]:
+                asked.append(args[args.index("--json") + 1])
+            return fake(args, **k)
+
+        monkeypatch.setattr(mod, "_gh_json", spy)
+        mod._fetch(7, None)
+        assert "isDraft" in asked[0].split(",")

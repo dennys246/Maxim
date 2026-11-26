@@ -349,6 +349,9 @@ def evaluate(
         findings.append(Finding("BLOCKING", "merge-conflict", "mergeable=CONFLICTING — resolve conflicts and push"))
     if state in _BAD_MERGE_STATES and not (state == "BLOCKED"):
         findings.append(Finding("BLOCKING", f"merge-state-{state.lower()}", _BAD_MERGE_STATES[state]))
+    # GitHub can report a draft as CLEAN (seen on #1812, 2026-11-25), so the draft flag is read on its own.
+    if pr.get("isDraft") is True and state != "DRAFT":
+        findings.append(Finding("BLOCKING", "merge-state-draft", _BAD_MERGE_STATES["DRAFT"]))
     if "UNKNOWN" in (state, mergeable):
         # GitHub is still computing it, so BEHIND (strict protection) cannot be ruled out yet.
         findings.append(
@@ -536,7 +539,14 @@ def _fetch(pr_number: int, repo: str | None) -> dict[str, Any]:
     """Every gating surface, returned as `evaluate`'s keyword arguments."""
     repo_args = ["--repo", repo] if repo else []
     pr = _gh_json(
-        ["pr", "view", str(pr_number), *repo_args, "--json", "mergeable,mergeStateStatus,headRefOid,baseRefName,state"]
+        [
+            "pr",
+            "view",
+            str(pr_number),
+            *repo_args,
+            "--json",
+            "mergeable,mergeStateStatus,headRefOid,baseRefName,state,isDraft",
+        ]
     )
     slug = repo or _gh_json(["repo", "view", "--json", "nameWithOwner"])["nameWithOwner"]
     errors: list[str] = []
