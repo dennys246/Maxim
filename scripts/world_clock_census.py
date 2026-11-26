@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _child_env import child_env  # noqa: E402
 from _clock_refs import SRC, Bindings, kind_of, module_bindings, rel_to_src, resolve, scope_of, under  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -503,7 +504,9 @@ class CensusError(Exception):
 def tracked_files(root: Path) -> list[str]:
     try:
         # A git pathspec ``*`` matches across ``/``, so this lists nested files too.
-        proc = subprocess.run(["git", "ls-files", "-z", "--", f"{SRC}/*.py"], cwd=root, capture_output=True, check=True)
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "--", f"{SRC}/*.py"], cwd=root, capture_output=True, check=True, env=child_env()
+        )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise CensusError(f"git ls-files failed under {root}: {exc}") from exc
     files = sorted({p for p in proc.stdout.decode().split("\0") if p})

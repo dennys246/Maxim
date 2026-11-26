@@ -58,6 +58,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _child_env import child_env  # noqa: E402
 from _clock_refs import SRC, Bindings, kind_of, module_bindings, rel_to_src, resolve, scope_of  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -151,6 +152,7 @@ def tracked_in_scope(root: Path) -> list[str]:
             text=True,
             timeout=60,
             check=False,
+            env=child_env(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise LintError(f"git ls-files failed: {exc}") from exc
