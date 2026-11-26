@@ -245,10 +245,9 @@ def test_the_energy_booking_itself_works_when_given_a_duration() -> None:
 def _sorted_index(raw: bytes, index: str) -> bytes:
     """The file with one id index's lists sorted, everything else as written.
 
-    Both writers serialise a ``set`` as a list (``hippocampus_persistence``'s ``context_index``, NAc's
-    ``outcome_index``), so that order follows PYTHONHASHSEED and two saves of one store differ only there. The writer
-    fix (sorted output, #1789) is its own PR (owner decision 2026-11-24); until it lands, WC5 compares with that
-    one index sorted and every other byte exact.
+    Both writers keep that index as a ``set`` (``hippocampus_persistence``'s ``context_index``, NAc's
+    ``outcome_index``). A store saved before #1789 holds it in PYTHONHASHSEED order, as the fixtures do; since #1789
+    the writers sort it, so re-saving an old store sorts that one index and leaves every other byte as it was.
     """
     data = json.loads(raw)
     data[index] = {k: sorted(v) for k, v in data.get(index, {}).items()}
@@ -257,12 +256,10 @@ def _sorted_index(raw: bytes, index: str) -> bytes:
 
 def _resaved_equals_original(raw: bytes, resaved: bytes, index: str) -> None:
     # The writer's format is plain ``json.dumps(indent=2)``, so re-serialising the original reproduces it byte for
-    # byte; the canonical compare below is then exact for every byte outside the one index.
-    for name, data in (("original", raw), ("re-saved", resaved)):
-        assert json.dumps(json.loads(data), indent=2).encode() == data.rstrip(b"\n"), (
-            f"{name}: the canonical form is lossy"
-        )
-    assert _sorted_index(resaved, index) == _sorted_index(raw, index)
+    # byte; ``_sorted_index(raw)`` is then the original with only that index changed.
+    assert json.dumps(json.loads(raw), indent=2).encode() == raw.rstrip(b"\n"), "original: the canonical form is lossy"
+    # Since #1789 the re-saved file is already sorted: compared as written, with nothing re-sorted on its side.
+    assert resaved.rstrip(b"\n") == _sorted_index(raw, index)
 
 
 def test_wc5_a_hippocampus_home_saved_before_a_pre_loads_and_saves_back_unchanged(
