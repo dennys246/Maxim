@@ -31,8 +31,8 @@ Run before every release, in order:
 
 ```bash
 # 1. Lint + format clean
-ruff check src/ tests/
-ruff format src/ tests/
+ruff check src/ tests/ scripts/
+ruff format src/ tests/ scripts/
 
 # 2. Fast test suite green
 python -m pytest tests/ -x -q -m "not slow" \
