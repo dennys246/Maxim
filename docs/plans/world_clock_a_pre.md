@@ -224,7 +224,7 @@ Sizes: **S** is under about 150 changed lines, **M** about 150–600.
 | PR | Family | What | Size |
 |---|---|---|---|
 | **0** | census + today's gates | `scripts/world_clock_census.py` (AST only; imports nothing from `maxim`). It prints every time, calendar, stamp, id and randomness site in `src/maxim/`, the stamp–reader pairs, each `TemporalSignature` and SCN caller with its input clock and output use, and each site's placement. Plus the gate writable against today's surface (G-cost-month) and WC5's characterization guards, landed green. G-tool-duration moved out: see §PR 0's corrections. No `src/` change. | S |
-| **1** (1a + 1b, see §PR 1's decisions) | the clock | `time/agent_time.py`: both collaborators, `NO_CALENDAR` and the host defaults. Also: I2's call-time test; I3's motor-dispatch ban; **M72 built** (two scopes and the alias resolver from `scripts/_clock_refs.py`, shared with the census; a ratchet migrating to the absolute form; see the guard note); #1769 (D-WC5). Before M72 goes live, every in-scope site the census prints `UNPLACED` (88 sites at PR 0; stamp readers and SCN callers can print `UNPLACED` too) gets an allowlist entry, a `pending:` pin or a move. G-render, G-tz, G-scn and G-window land red here, because their surface is born here. | M |
+| **1** (1a + 1b, see §PR 1's decisions) | the clock | `time/agent_time.py`: both collaborators, `NO_CALENDAR` and the host defaults. Also: I2's call-time test; I3's motor-dispatch ban; **M72 built** (two scopes and the alias resolver from `scripts/_clock_refs.py`, shared with the census; absolute from birth, each allowlist entry pinning its function's read count; see the guard note's 2026-11-26 amendment); #1769 (D-WC5). Before M72 goes live, every in-scope site the census prints `UNPLACED` (88 sites at PR 0; stamp readers and SCN callers can print `UNPLACED` too) gets an allowlist entry, a `pending:` pin or a move: done in 1b, where the census prints none. G-render, G-tz, G-scn and G-window land red here, because their surface is born here. | M |
 | **2** | prompt and observation time (OD-A3) | `PromptBuilder.build_prompt` and `PromptBuilder._build_engage_prompt` render from the port, threaded through `LLMWorker`; `build_identity_section`'s unused `date_str`/`time_str` parameters go; `ContextPool._entries_to_text` and `ContextPool.get_context_text` render stamps through `perceive`, and omit them under `NO_CALENDAR`. Two tool results that hand the model a raw epoch are omitted under `NO_CALENDAR` too: `tools/introspection.py::_format_episodic_memory`'s `timestamp` (used by `memory_recall`) and `SceneSummaryTool.execute`'s `timestamp`. The render changes; the stamp does not (D-WC6). Flips G-render and G-tz. | M |
 | **3** | SCN-derived renders (OD-A5, D-WC2 revised) | both `[TEMPORAL]` sources (`StatisticianAgent._assess_with_temporal_context` and `StatisticianAgent.summarize_for_context`), `TemporalPatternsTool`, `simulation/introspection.py`'s `current_phase`, and `retrieval/temporal_signal.py`'s relative-date resolution each emit or resolve nothing under `NO_CALENDAR`. Registration and NAc are unchanged. Flips G-scn. | S |
 | **4** | the Hippocampus window (OD-A5's window half) | `Hippocampus.__init__(…, machinery_clock=HOST)`; `store_observation`'s window reads `now_s()`, the same `time.time()` it reads today. Flips G-window and G-long's A-pre half. | S |
@@ -318,7 +318,8 @@ PR 0's precondition tests found two premises of this plan false on main:
   `UNPLACED`, across 79 functions, beside the clock and the lint.
   - **1a, the clock:** `time/agent_time.py`, I2's call-time test, I3's motor-dispatch ban, #1769 (D-WC5; G-cost-month
     flips), and the red gates whose surface is born here (G-render, G-tz, G-scn, G-window, G-pace, G-long).
-  - **1b, M72:** the lint, its ratchet and the allowlist that places every `UNPLACED` site.
+  - **1b, M72:** the lint and the allowlist that places every `UNPLACED` site (the ratchet was dropped at 1b's start:
+    see below).
   - Each gets its own three-lens review, and 1a can merge while 1b is reviewed.
 - **The allowlist is a JSON file the lint reads** (`scripts/wall_clock_allowlist.json`, the pattern of
   `swallow_moves.json`). experience_clock_decay.md §(g) keeps the category definitions and links to it: one source of
@@ -348,8 +349,18 @@ PR 0's precondition tests found two premises of this plan false on main:
   rules already placed, and focus_learner's 7), so no file starts above zero and the ratchet is not built.
 - **Each allowlist entry pins its function's read count.** A key alone would let a leak hide beside an allowlisted
   read in the same function.
-- **`proprioception/focus_learner.py` joins the machinery scope, whole.** Its `_apply_decay` and
-  `MemoryAgent._apply_decay` are `pending:#1361`; its movement-settle reads are `motor-io`.
+- **`proprioception/focus_learner.py` joins the machinery scope, whole.**
+
+**Folded at PR 1b's review (2026-11-26; no owner decision taken):**
+- An entry's `reads` maps category to count, so a function whose reads serve two jobs says so, and `pending:` must
+  open with a stage this plan has (PR 2 to PR 5, A-post, OD-A7).
+- `time.clock_gettime(_ns)`, `time.asctime` and `TemporalSignature.now` (maxim's host-calendar helper, called from
+  in-scope learning and prompt paths) are counted; seven `TemporalSignature.now` callers joined the allowlist.
+- The two `_apply_decay`s are `pending:A-post`: #1361 has no slice that converts them. A read that gates a cadence and
+  writes a stamp (`MemoryAgent._check_promotions`'s `consolidated_at`) is `pending:` with the stamp half, and
+  FocusLearner's sample stamp, read by its settle wait and by NAc, moves with NAc's stamps.
+- The census places every counted in-scope site by the allowlist, so the JSON is the one source for them; its rules
+  place the rest, and the stamp readers and SCN callers it used to print `UNPLACED` are placed.
 
 **Exit tests chosen from OD-WC1 to OD-WC7:**
 - **WC5, robots unchanged, is mandatory.** It lands green in PR 0 as characterization:

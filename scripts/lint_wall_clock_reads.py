@@ -12,34 +12,37 @@ migration ratchet would have run with every file already at zero; there is none.
 
 **What counts.** References, not only calls (``field(default_factory=time.time)`` binds at class definition), resolved
 through local import aliases by the shared resolver (``scripts/_clock_refs.py``, also the census's), so the two read a
-reference the same way. The lint never reads the census's verdicts. Counted kinds: ``wall`` (``time.time``,
-``time_ns``), ``monotonic`` (``monotonic``, ``perf_counter`` and their ``_ns``) and ``calendar`` (``localtime``,
-``gmtime``, ``strftime``, ``ctime``, ``datetime.now``/``utcnow``/``today``/``fromtimestamp``, ``date.today``). ``uuid1``
-and ``uuid4`` are printed as warnings, never failures (D-WC1 defers ids). Draws from a global random generator are
-OD-A7's and are not this lint's.
+reference the same way. The lint never reads the census's verdicts. Counted kinds are ``_clock_refs``'s ``wall``,
+``monotonic`` and ``calendar`` sets; the calendar set includes ``TemporalSignature.now``, maxim's own host-calendar
+helper, so its callers are counted by name rather than left as a transitive blind spot. ``uuid1`` and ``uuid4`` are
+printed as warnings, never failures (D-WC1 defers ids). Draws from a global random generator are OD-A7's, not this
+lint's; so are CPU-time reads (``process_time``, ``thread_time``), which measure the process, not the world.
 
 **The allowlist.** One entry per ``file::function`` (the census's qualified name: ``Class.method``, a class name for a
-class-body field default, ``<module>`` at module level), with:
-- ``category``: ``process``, ``scheduling``, ``motor-io``, ``real-world-io``, ``cost`` or ``pending:<where>`` (a site
-  the plan moves; ``<where>`` names the PR or line that moves it, and the entry leaves in that PR). The definitions
-  live in ``docs/plans/experience_clock_decay.md`` §(g);
-- ``reads``: the exact number of counted references in that function. More fails (a read was added and nobody
-  placed it, the blind spot a key alone leaves open); fewer fails too, so an entry never outlives its reads (a
-  function with none left is a stale entry);
-- ``reason``: why the read stays on the wall, or where it goes.
+class-body field default, ``<module>`` at module level; a decorator's or default argument's read is named for the
+function it decorates), with:
+- ``reads``: a map from category to the exact number of counted references in that function with that category.
+  Categories are ``process``, ``scheduling``, ``motor-io``, ``real-world-io``, ``cost`` or ``pending:<where>``, defined
+  in ``docs/plans/experience_clock_decay.md`` §(g). ``<where>`` must open with a stage the plan has (``PENDING_STAGES``),
+  and the read leaves the entry in that stage's PR. The total must match the function's count: more fails (a read was
+  added and nobody placed it, the blind spot a key alone leaves open), fewer fails too, so an entry never outlives its
+  reads (a function with none left is a stale entry). A function whose reads serve two categories says so, so moving
+  one half leaves the other honestly labelled;
+- ``reason``: why each read stays on the wall, or where it goes.
 
 Fails closed on: a name bound to two clock targets in one module, or a star import from a clock module (the
 resolver's ``conflicts``); an entry for a file outside the scopes or not tracked; a duplicate entry; an unknown
-category; a missing reason.
+category or stage; a missing reason; an allowlist whose ``_format_version`` is not ``1.0``.
 
 Stated blind spots (each also in the guard note): dynamic access (``getattr(time, "time")``, ``importlib``); a
-callable passed in; a transitive read through a helper outside the scopes; a local variable shadowing an imported
-name; a module outside both scope lists (M99 derives the prompt scope). G-long, G-render, G-tz and G-scn cover what
-their reach allows.
+callable passed in; a transitive read through a helper other than ``TemporalSignature.now``; a local variable
+shadowing an imported name; a module outside both scope lists (M99 derives the prompt scope); and, inside one
+function, an allowlisted read replaced by a leak of the same category (the count cannot see a swap). G-long,
+G-render, G-tz and G-scn cover what their reach allows.
 
 Usage: ``python scripts/lint_wall_clock_reads.py [--root DIR]``. Scans files tracked by git under
-``<root>/src/maxim``. Exits 0 clean, 1 violations, 2 a file failed to parse, git could not list the tree, or the
-allowlist is unreadable (never a silent pass).
+``<root>/src/maxim``. Exits 0 clean, 1 violations, 2 the lint could not judge the tree: a file failed to read or parse,
+git could not list it, or the allowlist is unreadable (never a silent pass).
 """
 
 from __future__ import annotations
@@ -51,7 +54,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -59,11 +62,13 @@ from _clock_refs import SRC, Bindings, kind_of, module_bindings, rel_to_src, res
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ALLOWLIST_REL = "scripts/wall_clock_allowlist.json"
+FORMAT_VERSION = "1.0"
 COUNTED = frozenset({"wall", "monotonic", "calendar"})
 CATEGORIES = frozenset({"process", "scheduling", "motor-io", "real-world-io", "cost"})
-_PENDING = re.compile(r"^pending:\S.*$")
-#: The collaborators' own module reads the wall by design (the host defaults).
-EXEMPT = frozenset({"time/agent_time.py"})
+#: The stages a ``pending:`` read may name (world_clock_a_pre.md §Site families and §Placements): A-pre's PRs 2 to 5,
+#: A-post, and OD-A7 (ids, after the 1.4.0 cut). A new stage is added here, in the plan's own words, or not at all.
+PENDING_STAGES = ("PR 2", "PR 3", "PR 4", "PR 5", "A-post", "OD-A7")
+_PENDING = re.compile(r"^pending:(?:" + "|".join(re.escape(s) for s in PENDING_STAGES) + r")(?![0-9A-Za-z-])")
 
 
 class LintError(Exception):
@@ -154,7 +159,7 @@ def tracked_in_scope(root: Path) -> list[str]:
     paths = [p for p in r.stdout.split("\0") if p.endswith(".py")]
     if not paths:
         raise LintError(f"git lists no tracked .py file under {root / SRC}: refusing to pass an empty scan")
-    return sorted(rel_to_src(p) for p in paths if scope_of(p) != "-" and rel_to_src(p) not in EXEMPT)
+    return sorted(rel_to_src(p) for p in paths if scope_of(p) != "-")
 
 
 @dataclass(frozen=True)
@@ -162,41 +167,64 @@ class Entry:
     """One allowlist row. Read from the committed JSON only; never written by code."""
 
     site: str
-    category: str
-    reads: int
+    reads: dict[str, int] = field(hash=False)
     reason: str
+
+    @property
+    def total(self) -> int:
+        return sum(self.reads.values())
+
+
+def _category_ok(category: object) -> bool:
+    return isinstance(category, str) and (category in CATEGORIES or _PENDING.match(category) is not None)
+
+
+def _entry_problems(site: str, reads: object, reason: object) -> list[str]:
+    problems: list[str] = []
+    if not isinstance(reads, dict) or not reads:
+        return [f"{site}: reads must be a non-empty map of category to count, got {reads!r}"]
+    for category, count in reads.items():
+        if not _category_ok(category):
+            stages = ", ".join(PENDING_STAGES)
+            problems.append(
+                f"{site}: unknown category {category!r} (§(g): {', '.join(sorted(CATEGORIES))}, or pending:<stage> "
+                f"with a stage from {stages})"
+            )
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            problems.append(f"{site}: the count for {category!r} must be a positive integer, got {count!r}")
+    if not isinstance(reason, str) or not reason.strip():
+        problems.append(f"{site}: no reason")
+    return problems
 
 
 def load_allowlist(path: Path) -> tuple[dict[str, Entry], list[str]]:
-    """(entries by site, shape violations). Raises :class:`LintError` when the file is missing or not JSON."""
+    """(entries by site, shape violations). Raises :class:`LintError` when the file is missing, not JSON, or of
+    another format version."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise LintError(f"{path}: unreadable allowlist ({exc})") from exc
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         raise LintError(f"{path}: expected an object with an 'entries' list")
+    if data.get("_format_version") != FORMAT_VERSION:
+        raise LintError(f"{path}: _format_version {data.get('_format_version')!r}, expected {FORMAT_VERSION!r}")
     entries: dict[str, Entry] = {}
     problems: list[str] = []
     for i, raw in enumerate(data["entries"]):
-        if not isinstance(raw, dict) or set(raw) != {"site", "category", "reads", "reason"}:
-            problems.append(f"entry {i}: needs exactly the keys site, category, reads, reason ({raw!r})")
+        if not isinstance(raw, dict) or set(raw) != {"site", "reads", "reason"}:
+            problems.append(f"entry {i}: needs exactly the keys site, reads, reason ({raw!r})")
             continue
-        site, category, reads, reason = raw["site"], raw["category"], raw["reads"], raw["reason"]
+        site, reads, reason = raw["site"], raw["reads"], raw["reason"]
         if not isinstance(site, str) or "::" not in site:
             problems.append(f"entry {i}: site must be 'file::function', got {site!r}")
             continue
         if site in entries:
             problems.append(f"{site}: listed twice")
             continue
-        if not isinstance(category, str) or not (category in CATEGORIES or _PENDING.match(category)):
-            problems.append(
-                f"{site}: unknown category {category!r} (§(g): {', '.join(sorted(CATEGORIES))}, pending:<where>)"
-            )
-        if not isinstance(reads, int) or isinstance(reads, bool) or reads < 1:
-            problems.append(f"{site}: reads must be a positive integer, got {reads!r}")
-        if not isinstance(reason, str) or not reason.strip():
-            problems.append(f"{site}: no reason")
-        entries[site] = Entry(site, str(category), reads if isinstance(reads, int) else 0, str(reason))
+        found = _entry_problems(site, reads, reason)
+        problems.extend(found)
+        clean = {str(k): v for k, v in reads.items() if isinstance(v, int)} if isinstance(reads, dict) else {}
+        entries[site] = Entry(site, clean, str(reason))
     return entries, problems
 
 
@@ -210,14 +238,20 @@ class Result:
     entries: dict[str, Entry]
 
 
+def _read(path: Path, rel: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LintError(f"{rel}: cannot read a tracked file ({exc})") from exc
+
+
 def check(root: Path, allowlist: Path | None = None) -> Result:
     files = tracked_in_scope(root)
     entries, violations = load_allowlist(allowlist or root / ALLOWLIST_REL)
     counted: list[Ref] = []
     warnings: list[str] = []
     for rel in files:
-        path = root / SRC / rel
-        refs, conflicts = scan_text(path.read_text(encoding="utf-8"), rel)
+        refs, conflicts = scan_text(_read(root / SRC / rel, rel), rel)
         violations.extend(f"{c}: resolve it to one target (the lint fails closed, not guessing)" for c in conflicts)
         for ref in refs:
             if ref.kind in COUNTED:
@@ -236,10 +270,10 @@ def check(root: Path, allowlist: Path | None = None) -> Result:
                 f"{site}: {len(refs)} wall-clock read(s) with no allowlist entry ({lines}). Read the collaborator "
                 f"instead, or add an entry to {ALLOWLIST_REL} with its §(g) category"
             )
-        elif entry.reads != len(refs):
-            verb = "rose" if len(refs) > entry.reads else "fell"
+        elif entry.total != len(refs):
+            verb = "rose" if len(refs) > entry.total else "fell"
             violations.append(
-                f"{site}: reads {verb} {entry.reads} → {len(refs)} ({lines}); place the new read or update the "
+                f"{site}: reads {verb} {entry.total} → {len(refs)} ({lines}); place the new read or update the "
                 f"entry's 'reads'"
             )
     for site in sorted(set(entries) - set(by_site)):
@@ -255,7 +289,8 @@ def render(result: Result) -> str:
         out.append(f"WARNING: {w}")
     placed: Counter[str] = Counter()
     for e in result.entries.values():
-        placed["pending" if e.category.startswith("pending:") else e.category] += e.reads
+        for category, count in e.reads.items():
+            placed["pending" if category.startswith("pending:") else category] += count
     summary = ", ".join(f"{k} {v}" for k, v in sorted(placed.items()))
     out.append(f"wall-clock reads in M72's scopes: {len(result.refs)} (allowlisted by category: {summary or 'none'})")
     for v in result.violations:

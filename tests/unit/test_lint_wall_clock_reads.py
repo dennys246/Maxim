@@ -36,7 +36,7 @@ def _tree(tmp_path: Path, files: dict[str, str], entries: list[dict] | None = No
 
 
 def _entry(site: str, reads: int = 1, category: str = "process", reason: str = "planted") -> dict:
-    return {"site": site, "category": category, "reads": reads, "reason": reason}
+    return {"site": site, "reads": {category: reads}, "reason": reason}
 
 
 def _violations(tmp_path: Path, files: dict[str, str], entries: list[dict] | None = None) -> list[str]:
@@ -178,9 +178,17 @@ def test_an_ambiguous_binding_fails_closed(tmp_path: Path, src: str) -> None:
     [
         (_entry(f"{IN_SCOPE}::f", category="convenience"), "unknown category"),
         (_entry(f"{IN_SCOPE}::f", category="pending:"), "unknown category"),
+        # A pending read names a stage the plan has, not "later".
+        (_entry(f"{IN_SCOPE}::f", category="pending:later"), "unknown category"),
+        (_entry(f"{IN_SCOPE}::f", category="pending:PR 9"), "unknown category"),
+        (_entry(f"{IN_SCOPE}::f", category="pending:A-postponed"), "unknown category"),
         (_entry(f"{IN_SCOPE}::f", reason="  "), "no reason"),
         (_entry(f"{IN_SCOPE}::f", reads=0), "positive integer"),
-        ({"site": f"{IN_SCOPE}::f", "category": "process", "reads": 1}, "exactly the keys"),
+        (_entry(f"{IN_SCOPE}::f", reads=True), "positive integer"),  # type: ignore[arg-type]
+        ({"site": f"{IN_SCOPE}::f", "reads": {}, "reason": "planted"}, "non-empty map"),
+        ({"site": f"{IN_SCOPE}::f", "reads": 1, "reason": "planted"}, "non-empty map"),
+        ({"site": f"{IN_SCOPE}::f", "reads": {"process": 1}}, "exactly the keys"),
+        ({**_entry(f"{IN_SCOPE}::f"), "category": "process"}, "exactly the keys"),
         (_entry(f"{IN_SCOPE}.f"), "file::function"),
     ],
 )
@@ -192,6 +200,56 @@ def test_a_malformed_entry_fails(tmp_path: Path, entry: dict, expect: str) -> No
 def test_a_pending_entry_names_where_it_goes(tmp_path: Path) -> None:
     entry = _entry(f"{IN_SCOPE}::f", category="pending:PR 4 (OD-A5)")
     assert _violations(tmp_path, {IN_SCOPE: "import time\n\ndef f():\n    return time.time()\n"}, [entry]) == []
+
+
+@pytest.mark.parametrize("stage", ["PR 2", "PR 3", "PR 4", "PR 5, 1.3.6", "A-post, hot file", "OD-A7, after the cut"])
+def test_every_plan_stage_is_a_pending_category(tmp_path: Path, stage: str) -> None:
+    entry = _entry(f"{IN_SCOPE}::f", category=f"pending:{stage}")
+    assert _violations(tmp_path, {IN_SCOPE: "import time\n\ndef f():\n    return time.time()\n"}, [entry]) == []
+
+
+def test_a_function_whose_reads_serve_two_categories_says_so(tmp_path: Path) -> None:
+    """The map form: a cooldown and an id in one function, each labelled; the total is what the count pins."""
+    src = "import time\n\ndef f():\n    a = time.monotonic()\n    return a, time.monotonic_ns()\n"
+    entry = {"site": f"{IN_SCOPE}::f", "reads": {"scheduling": 1, "pending:OD-A7": 1}, "reason": "planted"}
+    assert _violations(tmp_path, {IN_SCOPE: src}, [entry]) == []
+    entry["reads"] = {"scheduling": 1}
+    found = _violations(tmp_path / "again", {IN_SCOPE: src}, [entry])
+    assert len(found) == 1 and "reads rose 1 → 2" in found[0], found
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "import time\n\ndef f():\n    return time.asctime()\n",
+        "import time\n\ndef f():\n    return time.clock_gettime(time.CLOCK_REALTIME)\n",
+        "def f():\n    from maxim.time.temporal_signature import TemporalSignature\n\n    return TemporalSignature.now()\n",
+        "import time\n\nasync def f():\n    return time.time()\n",
+    ],
+    ids=["asctime", "clock_gettime", "TemporalSignature.now", "async-def"],
+)
+def test_the_widened_vocabulary_is_counted(tmp_path: Path, src: str) -> None:
+    found = _violations(tmp_path, {IN_SCOPE: src})
+    assert len(found) == 1 and found[0].startswith(f"{IN_SCOPE}::f:"), found
+
+
+def test_cpu_time_is_not_a_clock_read(tmp_path: Path) -> None:
+    """``process_time`` measures the process, not the world: stated as out of scope in the lint's docstring."""
+    assert _violations(tmp_path, {IN_SCOPE: "import time\n\ndef f():\n    return time.process_time()\n"}) == []
+
+
+def test_another_format_version_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = _tree(tmp_path, {IN_SCOPE: "def f():\n    return 1\n"})
+    (root / lint.ALLOWLIST_REL).write_text(json.dumps({"_format_version": "2.0", "entries": []}), encoding="utf-8")
+    assert lint.main(["--root", str(root)]) == 2
+    assert "_format_version" in capsys.readouterr().err
+
+
+def test_an_unreadable_tracked_file_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = _tree(tmp_path, {IN_SCOPE: "def f():\n    return 1\n"})
+    (root / "src" / "maxim" / IN_SCOPE).write_bytes(b"x = '\xff'\n")
+    assert lint.main(["--root", str(root)]) == 2
+    assert "cannot read a tracked file" in capsys.readouterr().err
 
 
 def test_a_duplicate_entry_fails(tmp_path: Path) -> None:

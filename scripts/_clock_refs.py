@@ -17,7 +17,8 @@ from dataclasses import dataclass, field
 
 SRC = "src/maxim"
 
-WALL = frozenset({"time.time", "time.time_ns"})
+# clock_gettime reads whichever clock its argument names; it counts as wall, the conservative reading.
+WALL = frozenset({"time.time", "time.time_ns", "time.clock_gettime", "time.clock_gettime_ns"})
 MONOTONIC = frozenset({"time.monotonic", "time.monotonic_ns", "time.perf_counter", "time.perf_counter_ns"})
 CALENDAR = frozenset(
     {
@@ -25,6 +26,7 @@ CALENDAR = frozenset(
         "time.gmtime",
         "time.strftime",
         "time.ctime",
+        "time.asctime",
         "datetime.datetime.now",
         "datetime.datetime.utcnow",
         "datetime.datetime.today",
@@ -32,6 +34,8 @@ CALENDAR = frozenset(
         "datetime.datetime.utcfromtimestamp",
         "datetime.date.today",
         "datetime.date.fromtimestamp",
+        # The host calendar through maxim's own helper (SCN bins; a transitive read, counted by name, PR 1b).
+        "maxim.time.temporal_signature.TemporalSignature.now",
     }
 )
 IDS = frozenset({"uuid.uuid1", "uuid.uuid4"})
@@ -47,7 +51,7 @@ RANDOM_NON_DRAWS = frozenset(
         "numpy.random.SeedSequence",
     }
 )
-CLOCK_MODULES = frozenset({"time", "datetime", "uuid", "random", "numpy.random"})
+CLOCK_MODULES = frozenset({"time", "datetime", "uuid", "random", "numpy.random", "maxim.time.temporal_signature"})
 
 # M72's two scopes. A path ending in "/" is a directory prefix; paths are relative to src/maxim.
 MACHINERY_SCOPE = (

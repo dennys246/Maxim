@@ -292,12 +292,14 @@ regime (S0); decided time-based (Q3). `decay_imagined_links(0.5)` stays at sessi
 `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` are
 out of scope here. They are in scope of the enforcement lint below, which either converts them or
 allowlists them with a reason. **Built 2026-11-26** (world clock A-pre PR 1b): both are allowlisted as
-`pending:#1361`, since each decays by elapsed wall time and converts with this plan's taus.
+`pending:A-post`, since each decays by elapsed wall time. No slice of this plan converts them yet, so world clock
+A-post owns them until one does.
 
 **The allowlist itself** (amended 2026-11-26, [world_clock_a_pre.md](world_clock_a_pre.md) D-WC4 and PR 1's
 decisions): M72's lint, `scripts/lint_wall_clock_reads.py`, reads its entries from
 [`scripts/wall_clock_allowlist.json`](../../scripts/wall_clock_allowlist.json), one per `file::function`. Each entry
-pins the exact number of wall-clock reads in its function and carries a reason. The table above says why each family
+maps each category to the exact number of wall-clock reads in its function with that category (a function whose reads
+serve two categories says so) and carries a reason. The table above says why each family
 stays on the wall; the JSON is where each site is placed, and this section defines its categories:
 
 | Category | Means |
@@ -307,7 +309,7 @@ stays on the wall; the JSON is where each site is placed, and this section defin
 | `motor-io` | motor and IO rate limits and settle times, in real servo seconds (D-WC3, I3) |
 | `real-world-io` | a stamp of the real world the agent touched: a web fetch's `accessed_at`, the workspace's mtimes, robots.txt TTLs |
 | `cost` | `CostTracker`, which runs on the wall in every window (D-WC5) |
-| `pending:<where>` | a read the plan moves; `<where>` names the PR or line that moves it, and the entry leaves in that PR. A `saved_at` stamp a loader can read back is `pending:` with the stamp half |
+| `pending:<stage>` | a read the plan moves. `<stage>` opens with one of the stages the lint accepts (`PR 2` to `PR 5`, `A-post`, `OD-A7`; `lint_wall_clock_reads.py::PENDING_STAGES`) and says what moves it; the read leaves the entry in that stage's PR. A `saved_at` stamp a loader can read back is `pending:` with the stamp half, and a read that both gates a cadence and writes a stamp is `pending:` with the stamp |
 
 ## Tau conversion and recalibration
 
