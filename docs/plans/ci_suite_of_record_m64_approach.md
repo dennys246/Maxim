@@ -60,7 +60,7 @@ early; it stays on the private advisory fork and keeps the local full suite as i
 |---|---|---|
 | check runs for `headRefOid` | a push lands between `gh pr view` and the merge | head re-read after the checks (7) |
 | check name | another app posts `unit-tests` | app id pinned from the expected-settings file (1) |
-| expected-settings file | missing, or no `unit-tests` entry | UNSETTLED `surface-unverified`: the app cannot be pinned, so no verdict |
+| expected-settings file | missing, or no `unit-tests` entry | UNSETTLED `suite-of-record-unpinned` (a failed READ of it also adds `surface-unverified`): the app cannot be pinned, so no verdict |
 | expected-settings vs live protection | drift | the nightly `scripts/check_repo_settings.py` fails on drift (reading live protection needs admin scope) |
 | several runs on one commit | an old success hides a new cancel | newest by id (1); cancelled is BLOCKING |
 | `neutral` / `skipped` conclusion | looks non-failing | only `success` counts (4) |
