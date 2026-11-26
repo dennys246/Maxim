@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v26 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v27 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -98,10 +98,15 @@
 >       class: fail-closed over-match, accepted
 >       pinned_by: "tests for `see https://a.com and user:x@y`, `https://h:8080 failed, mail bob@ex.com`, `https://u:p@h/x, contact a@b` and a cross-line case"
 >     - id: E1801-3
->       accepts: "in the lone-`/` Path form only, a scheme outside http(s)/ws(s)/ftp(s) and the stated list (postgres, postgresql, mysql, redis, rediss, mongodb, mongodb+srv, amqp, amqps, ssh, sftp, git+ssh, s3) is not recognised, so its userinfo can pass raw"
+>       accepts: "an unlisted scheme (outside http(s)/ws(s)/ftp(s) and the stated list: postgres, postgresql, mysql, redis, rediss, mongodb, mongodb+srv, amqp, amqps, ssh, sftp, git+ssh, s3) is not recognised in the lone-`/` Path form or the bare-backslash Windows form (`zzz:\\u…`), so its userinfo can pass raw; any scheme IS recognised with a JSON-escaped slash (`zzz:\\/\\/…`) (owner, AG2)"
 >       why: "taking any scheme there would erase ordinary log text such as `path:/Users/me`; backslash-holding separator forms take any scheme of 2+ characters; main recognises none of these forms today"
 >       class: fail-open residual, accepted (no worse than main)
 >       pinned_by: "a test that Path('/a/redis://:SECRET@h') reduces (a listed scheme) and Path('/a/zzz://:SECRET@h') leaks (asserted, so a change is noticed)"
+>     - id: E1801-4
+>       accepts: "a URL start (`scheme://`, or a separator form) inside a whitespace-holding userinfo, between the whitespace and its `@`, ends the outer match there, so the outer userinfo leaks: `https://tok SECRET https://x@h` gives `https://tok SECRET https://h` (owner 2026-11-25, AG1)"
+>       why: "tempering (AF1) is what stops one URL's match from swallowing a later URL's userinfo and leaking ITS secret (round 25, 12/12 combinations); the residual it leaves is rarer (a URL-shaped string inside a password with whitespace); main leaks both"
+>       class: fail-open residual, accepted
+>       pinned_by: "a test asserting the leak for `https://tok SECRET https://x@h` (so a change is noticed) and that each URL in round 25's two-URL set reduces"
 >   ```
 >   - A delta round 18 is owed on Y1–Y6 only. E1801-1 and E1801-2 count as covered, not as fail-open.
 > - **Round 18 (delta, a different reader; 104/104 on 3.10.19 and 3.12):** 0 DO-NOT-BUILD, 3 SHOULD-FIX (2 FAIL-OPEN in
@@ -177,6 +182,21 @@
 >       `Path` form takes http(s)/ws(s)/ftp(s) plus the stated list. Other schemes in the `Path` form are E1801-3.
 >     - **E1801-2** is widened to the real rule, with measured rates.
 >   - A round 26 is owed on the folds AF1–AF8 only.
+> - **Round 26 (delta, a different reader):** it designed and verified the TEMPERED regex: 104/104 on 3.10.19 and
+>   3.12.12, 0 leaks in every case set and in round 25's 12 two-URL cases, and linear (the 1.04 s family now takes
+>   about 0.11 s). Two NEW classes came from the owner's choices, plus a stale regex block (AG1–AG4).
+>   - **Owner, 2026-11-25:**
+>     - AG1: keep tempering and accept its trade-off as E1801-4.
+>     - AG2: narrow AF3, so that ANY scheme counts only with a JSON-escaped slash (`\/`) in its separator, and the
+>       bare-backslash Windows forms count for the listed schemes only. That stops `nearby:\n\n` and `ab:\d` from
+>       being erased (59 hits in 1.24M real sim-report fields). Unlisted Windows-form schemes join E1801-3.
+>   - The author applied AG2 and re-verified:
+>     - 104/104;
+>     - 0 leaks in every case set;
+>     - `nearby:\n\n`, `line1:\nline2`, `ab:\d+`, `run:\n`, `C:\Users\me` and `path:/Users/me` left alone;
+>     - 3.10 compiles it;
+>     - linear: ratio 3.6–5.3 for 4× the input, at most 171 ms at 256k.
+>   - A round 27 is owed on AG1–AG4 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -379,24 +399,40 @@ written later.
   (`scratchpad/regex1801/regex_candidate.patch`):
 
   ```python
+  _URL_PATH_SCHEMES = r"(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?|sftp|postgres(?:ql)?|mysql|rediss?|mongodb(?:\+srv)?|amqps?|ssh|s3))"
+  # The start of a URL, exactly as the branches below recognise one; every unbounded or bounded body is TEMPERED by
+  # it, so one URL's match never crosses the start of another (AF1).
+  _URL_START = (
+      r"(?<![A-Za-z0-9+.-])(?:[A-Za-z0-9+.-]+://|[A-Za-z0-9+.-]{2,}:[\\/]*\\/|" + _URL_PATH_SCHEMES + r":[\\/]*\\|" + _URL_PATH_SCHEMES + r":/(?![/\\]))"
+  )
+  _T = r"(?!" + _URL_START + r")"
   _URL_IN_TEXT = re.compile(
       r"(?<![A-Za-z0-9+.-])"
-      r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?=[\\/]*\\)[\\/]+|/(?![/\\])))(?P=sep)"  # separator forms
-      r"(?:(?P<swsui>\S{0,640}\s[\s\S]{0,640}@)\S*|\S+)"  # whitespace then an @ (the catch-all), else the whole token
+      r"(?:(?:[A-Za-z0-9+.-]{2,}:(?=(?P<sep>(?=[\\/]*\\/)[\\/]+))(?P=sep)"  # any scheme: a JSON-escaped slash in the separator
+        r"|" + _URL_PATH_SCHEMES + r":(?=(?P<wsep>(?=[\\/]*\\)[\\/]+))(?P=wsep)"  # listed schemes: any backslash separator (Windows)
+      r"|" + _URL_PATH_SCHEMES + r":(?P<psep>/)(?![/\\]))"  # the lone-``/`` Path form, listed schemes only
+      r"(?:(?P<swsui>(?:" + _T + r"\S){0,640}\s(?:" + _T + r"[\s\S]){0,640}@)(?:" + _T + r"\S)*|(?:" + _T + r"\S)+)"
       r"|[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's)
-      r"(?:(?P<wsui>\S{0,640}\s[\s\S]{0,640}@)\S*"  # the catch-all: whitespace, then an @ within the bound
-      r"|(?:[^\s/@]*@)?[^\s'\"<>]+))"  # today's plain userinfo and host
+      r"(?:(?P<wsui>(?:" + _T + r"\S){0,640}\s(?:" + _T + r"[\s\S]){0,640}@)(?:" + _T + r"\S)*"
+      r"|(?:[^\s/@]*@)?(?:" + _T + r"[^\s'\"<>])+))"
   )
   ```
 
+  - **Tempering (AF1):** every body, bounded or not, is tempered by `_URL_START`, the regex's own start, so one
+    URL's match never crosses the start of another. The residual is E1801-4.
   - **The catch-all (both branches):** if a whitespace lies within 640 non-space characters after the separator, and
     an `@` within 640 characters after that whitespace, the span through the LAST such `@` and the rest of that
     token become `<url>`. It closes every whitespace-userinfo variant inside the bounds at once, whatever the
     characters around it: `/`, `\`, `@`, quotes, `\r\n` or tabs, an email user, a trailing `@`. That covers every
     in-bounds leak of rounds 15–24. `\S` and `\s` are disjoint, so the first part cannot backtrack ambiguously,
     and the second is bounded, so the scan is linear.
-  - **The separator branch** (http(s)/ws(s)/ftp(s), case-insensitive): `:` then ANY slash/backslash run holding a
-    backslash (JSON `\/\/` and `\/`, JSON-in-JSON, Windows `\`/`\\`, mixes), or a lone `/` (the `Path` form). If
+  - **The separator branch** (AF3, AG2), case-insensitive:
+    - ANY scheme of 2+ characters when its separator holds a JSON-escaped slash (`\/\/`, `\/`, JSON-in-JSON);
+    - the LISTED schemes (`_URL_PATH_SCHEMES`: http(s), ws(s), ftp(s), sftp, postgres(ql), mysql, redis(s),
+      mongodb(+srv), amqp(s), ssh, s3, and any scheme ending in one of them, such as `git+ssh`) with any
+      backslash-holding separator (Windows `\`/`\\`, mixes), or a lone `/` (the `Path` form).
+
+    Everything else is E1801-3. If
     the catch-all does not apply, the whole non-space token is taken. It always reduces to `<url>`, because
     `url_origin` cannot parse these forms. The separator is atomic by a lookahead plus a backreference, which keeps
     Python 3.10 (the floor) able to compile it.
@@ -520,34 +556,27 @@ whose every assignment is one.
 - J1: a `stack_info=True` record carrying a credential comes out clean through `makePickle`, `vars()`, `pickle` and
   `QueueHandler.prepare`.
 - AE1: the six colon-less `@`-user cases reduce to `<url>`; `https://bob@ex.com@h/p` and `https://u:p@h/x` still
-  give `https://h`. AE2: the lint fails on each of the eight attribute forms of a class-body label.
+  give `https://h`. AE2: superseded by the ratchet (AF4).
 - AD1: `https:\/u:p SECRET@h`, `https:\\/u:p SECRET@h`, `https:\\\/\\\/u:p SECRET@h` and a double
   `json.dumps` reduce to `<url>`; `http:/ prose` is untouched. AD2: `https://bob@ex.com:p SECRET@h/p` and its JSON form
-  reduce to `<url>`; `https://bob@ex.com@h/p` still gives `https://h`. AD3: the lint fails on `cls._f`,
-  `type(self)._f` and `K._f`.
+  reduce to `<url>`; `https://bob@ex.com@h/p` still gives `https://h`. AD3: superseded by the ratchet (AF4).
 - AC1: `https:\/\/u:p SECRET@h\/p` (bare and inside a JSON string), `Path("/a/https://u:p SECRET@h/p")`,
   `https:\/\/us SECRET:p@h`, `https:\/\/tok SECRET@h`, `https:\u:p SECRET@h`, `ws:\\u:p SECRET@h` and a tab form
-  reduce to `<url>`. AC2: the lint fails on `list(map(getattr(str, n), [str(e)], ["@"]))` and on a class-body label
-  read as `self._f`.
+  reduce to `<url>`. AC2: superseded by the ratchet (AF4).
 - AB1: `https:\/\/u:p\"SECRET@h\/p`, `https:\u:p\"SECRET@h` and `https:\/\/u:p\<SECRET@h` reduce to `<url>`;
-  `http:/ prose` is untouched; `'https:\\"'*n` and `('https:\/\/u:p\"')*n` stay linear. AB2: the lint fails on
-  `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and a `getattr` default. AB4: a transient
+  `http:/ prose` is untouched; `'https:\\"'*n` and `('https:\/\/u:p\"')*n` stay linear. AB2: superseded by the ratchet (AF4). AB4: a transient
   `_initializing` build does not spend the one-shot log.
 - AA1: the four quote/backslash cases reduce to `https://h`, and `'https:\\"'*n` stays linear. AA2: the three
-  backslash-in-user cases reduce. AA3: the lint fails on a `getattr`-bound name and on `.__call__`. AA5: a failing
+  backslash-in-user cases reduce. AA3: superseded by the ratchet (AF4). AA5: a failing
   numpy build logs once, and a stream of records makes no nested build (a `RecursionError` sentinel).
 - Z1: `https://u:p\r\nw@h/p`, `https://u\ns:p w@h/p`, `https://u:a b\nc@h/p`, `https://us er:p@ss"x@h/p`,
   `https://tok en@h/p` and `https://D\u:p w@h/x` reduce to `<url>`. Z2: `'https:\\"'*n` stays linear (a timing bound
-  in the test). Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` fails the lint. Z5: a `TypeError` in the numpy
+  in the test). Z3: superseded by the ratchet (AF4). Z5: a `TypeError` in the numpy
   build neither loses the record nor caches.
 - Y1–Y3: `https://u:a b@c d@h/p`, a 70-character password tail on either side of the space, and `https://us
   er:pw@h/p` reduce to `<url>`. E1801-1: superseded; the catch-all's 640/641 pins replace every per-form pin (AF5). Y5: a part-way-imported numpy (fake package, `_initializing`)
-  neither loses the record nor caches the empty set. Y6: the three over-match pins. Y4: `getattr(str, "partition")(str(e),
-  "@")[0]` fails the lint.
-- X1/X2: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` reduce to `<url>`. X3: the lint
-  fails on `sp = str.partition; sp(str(e), "@")[0]`, `getattr(str(e), "partition")("@")[0]`,
-  `operator.methodcaller("split", "@")(str(e))[0]`, `functools.partial(str.split, sep="@")`, `import re as R` and
-  `from re import split` over tainted text. X4: the host:port over-match is pinned. X5: the factory never imports
+  neither loses the record nor caches the empty set. Y6: the four over-match pins (E1801-2's `pinned_by`). Y4: superseded by the ratchet (AF4).
+- X1/X2: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` reduce to `<url>`. X3: superseded by the ratchet (AF4). X4: the host:port over-match is pinned. X5: the factory never imports
   numpy (a test asserts `getMessage` leaves `sys.modules` unchanged).
 - W1: `postgres://u:PW@db`, `redis://:PW@h`, `git+ssh://u:PW@h`, `unix:///s.sock` and `123://u:p@h` reduce;
   `https://u:p w@h/p` gives `<url>`; the case table matches identically on 3.10 and 3.12. W2: the lint fails on
