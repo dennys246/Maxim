@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v25 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v26 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -93,10 +93,15 @@
 >       pinned_by: "the catch-all's two bounds, 640/641 each, on each branch (reduced at the bound; past it the leak is asserted). Superseded per-form pins: one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6); the same pins on the separator branch (AC1). Each pin plants a distinct marker in EVERY part and compares case-insensitively, since past a bound only part
         of a secret leaks and `url_origin` lowercases a host (AA4)"
 >     - id: E1801-2
->       accepts: "prose after a URL that contains `user:…@` (or `host:port … @`) is erased to `<url>`"
+>       accepts: "a URL followed within the catch-all's bounds by whitespace and ANY `@` is erased to `<url>`, the span through that `@` and the rest of its token (fail-closed; widened by the owner 2026-11-25; measured: 4.8% of 20-line src/ windows holding a URL, mostly `@property` near URL f-strings in tracebacks; 1.1% of doc paragraphs; 0 of 14 URL lines in real sim reports)"
 >       why: "fail-closed: no leak and no wrong host; Maxim's own log formats never put a URL next to an `@` (0 grep hits)"
 >       class: fail-closed over-match, accepted
->       pinned_by: "tests for `see https://a.com and user:x@y` and `https://h:8080 failed, mail bob@ex.com`"
+>       pinned_by: "tests for `see https://a.com and user:x@y`, `https://h:8080 failed, mail bob@ex.com`, `https://u:p@h/x, contact a@b` and a cross-line case"
+>     - id: E1801-3
+>       accepts: "in the lone-`/` Path form only, a scheme outside http(s)/ws(s)/ftp(s) and the stated list (postgres, postgresql, mysql, redis, rediss, mongodb, mongodb+srv, amqp, amqps, ssh, sftp, git+ssh, s3) is not recognised, so its userinfo can pass raw"
+>       why: "taking any scheme there would erase ordinary log text such as `path:/Users/me`; backslash-holding separator forms take any scheme of 2+ characters; main recognises none of these forms today"
+>       class: fail-open residual, accepted (no worse than main)
+>       pinned_by: "a test that Path('/a/redis://:SECRET@h') reduces (a listed scheme) and Path('/a/zzz://:SECRET@h') leaks (asserted, so a change is noticed)"
 >   ```
 >   - A delta round 18 is owed on Y1–Y6 only. E1801-1 and E1801-2 count as covered, not as fail-open.
 > - **Round 18 (delta, a different reader; 104/104 on 3.10.19 and 3.12):** 0 DO-NOT-BUILD, 3 SHOULD-FIX (2 FAIL-OPEN in
@@ -161,6 +166,17 @@
 >     - linear in nine adversarial families (at most 222 ms at 256k characters, ratio about 3 for 4× the input).
 >   - The superseded per-form text is in git history (3cf7f8db) and in the round entries above.
 >   - The next round judges the simplified design whole, not a delta.
+> - **Round 25 (whole design, a different reader; 104/104 on 3.10.19 and 3.12; linear across 12 of the reader's
+>   own families; no unmapped sink after #1775):** 4 SHOULD-FIX and NITs, tagged AF1–AF8.
+>   - Folded here: AF2 (one prefilter), AF4 (the guards made to match the ratchet) and the NITs AF5–AF8.
+>   - **Owner decisions, 2026-11-25, asked together:**
+>     - **AF1:** the catch-all body is TEMPERED, so it never crosses the start of another URL. The code round must
+>       prove it linear with a timing test: the reader's version took 1.08 s at 256k characters on
+>       `"/a/https:/b "*n`.
+>     - **AF3:** a backslash-holding separator takes ANY scheme of 2+ characters, which spares `C:\`. The lone-`/`
+>       `Path` form takes http(s)/ws(s)/ftp(s) plus the stated list. Other schemes in the `Path` form are E1801-3.
+>     - **E1801-2** is widened to the real rule, with measured rates.
+>   - A round 26 is owed on the folds AF1–AF8 only.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -202,7 +218,8 @@ written later.
      So plain-message text never lands there, but the `extra={"data": ...}` payloads of `log_structured` and the 11+
      `extra=` sites do, raw (R1).
 2. **`sim_logger.sim_log`**, which bypasses `logging`. It writes to its sinks (the console `/ws` stream),
-   `_log_records` (the report and telemetry), its own JSONL file and the terminal.
+   `_log_records` (the report and telemetry), its own JSONL file, `_bridge_to_log_file` (into `MAXIM_LOG_FILE`,
+   since #1775) and the terminal (AF6).
 3. **`structured_logging.log_agentic`**, which bypasses `logging`. It writes to the `AbstractionBuffer`, whose
    `get_recent` feeds the memory agent's LLM context, to its callbacks, and to stdout under `MAXIM_AGENTIC_CONSOLE`.
 4. **Wire and record payloads, which are not logs (R2):**
@@ -307,7 +324,9 @@ written later.
   reduced twice: by `sim_log`'s own pass, and by `StructuredFormatter`'s `data` pass (R1). Deletion probes cover all six
   destinations: sinks, trail, sim JSONL, bridge, terminal and `StructuredFormatter` (AB3). It
   recurses and stringifies leaves such as an exception object in `data` (R8).
-  - The `"://"`/`r":\/\/"` prefilter (a raw string: the non-raw form raises a SyntaxWarning on 3.12+, Nc) lives
+  - The prefilter is ONE test, stated identically everywhere: `":/" in s or ":\\" in s` (AF2: the earlier
+    `"://"`/`r":\/\/"` forms let the `Path` lone-`/` form and `https:\u…` through). Every case set runs through
+    the prefiltered `redact_urls`, not the bare regex. It lives
     inside `redact_urls` itself, so `url_scrubbed` gets it on every string:
     5.1 ms drops to 0.43 ms on large data with no URLs (S6).
   - Shape changes that now reach live `sim_log` sinks: a tuple becomes a list, a set or bytes become a str, and a
@@ -390,7 +409,7 @@ written later.
     Maxim's own log formats never put a URL next to an `@` (0 grep hits), so only exception or LLM text triggers
     it. Tests pin each.
   - **The residual past the bounds:** E1801-1, either branch, with the 640/641 pins.
-  - **The prefilter:** `"://"`/`r":\/"` plus a backslash-separator check, inside `redact_urls` (S6, Nc).
+  - **The prefilter:** `":/" in s or ":\\" in s`, inside `redact_urls` (S6, Nc, AF2).
   - `redact_urls` stays idempotent and never raises.
 - **The per-site wraps stay** (#997, #1743). They are belt-and-braces, and they cut AFTER reducing, which the
   boundary cannot do for them.
@@ -433,7 +452,8 @@ whose every assignment is one.
 
 - **Its scope is the forms in `src/` today, which it catches** (the listed sites in §Sites, all fixed in this PR,
   plus the allowlist with reasons, keyed `file::innermost_function` plus the `ast.unparse` text, with an exact
-  `count`). A new cut in those forms fails CI.
+  `count`; it includes `peer/install_core.py`'s `e.response.text[:500]`, which only reaches `print`, AF8). A new cut in
+  those forms fails CI.
 - **Its blind spots are stated, not chased.** These include:
   - indirect callees (`getattr`, `methodcaller`, `partial`, aliases, class-body or `setattr` or `globals()` labels,
     other modules);
@@ -454,10 +474,10 @@ whose every assignment is one.
 | whitespace or JSON escaping | `u:p w@`, `\n`, `\t`; `https:\/\/` | fixed in `redact_urls` (R7), with a test per form |
 | `extra=` / `data` | attached after the factory runs (R1) | reduced in `StructuredFormatter`, `log_structured`, `log_agentic` and `sim_log` |
 | `args` | a non-str value, or a `__str__` that raises | rendered lazily by the stdlib `getMessage`; if it raises, logging's `handleError` prints the raw `Arguments:` to stderr: a terminal-only gap, stated |
-| `exc_info` / `stack_info` | the message is the traceback's last line | `exc_text` precomputed and reduced; the proxy buffer is also reduced after formatting |
+| `exc_info` / `stack_info` | the message is the traceback's last line | `exc_text`/`stack_info` data descriptors on `_RedactingLogRecord` that reduce on set, with a write-back after the class swap (H2, J1); the proxy buffer is also reduced after formatting |
 | install order | records before `configure_logging`; Python's last-resort stderr handler; a later factory that does not chain | before setup there are no Maxim sinks except stderr (a gap, stated). The behavioural chain check catches a later factory at each install point; one set after the last check point is caught only at the next `configure_logging`, and nothing in the venv calls `setLogRecordFactory` (a gap, stated; N2). `logging.makeLogRecord` and `deepcopy` keep the reduced text (probed) |
 | raw `__dict__` (K1) | `msg` as an exception object, `args`, `exc_info` and `extra=` keys stay raw in `__dict__`, so `vars()`, `pickle` and `copy` carry them; `extra=` keys survive even `makePickle` and `QueueHandler.prepare` | a gap, stated: the boundary reduces what a handler RENDERS, not a record's raw attributes. Latent, since there is no pickling or `__dict__` receiver in `src/` (no `SocketHandler`/`QueueListener`/`makeLogRecord`). The `StructuredFormatter` path reduces `data` on render (R1) |
-| serialization (S3) | a closure `getMessage` cannot be pickled, so `SocketHandler` and a multiprocessing queue drop the record | a module-level `LogRecord` subclass, or a `MethodType` bound to a module-level function |
+| serialization (S3) | a closure `getMessage` cannot be pickled, so `SocketHandler` and a multiprocessing queue drop the record | a module-level `LogRecord` subclass set by `__class__` swap on a stock record (F1); a real subclass is rendered eagerly. Bound methods are NOT used (F1) |
 | embedding | a global factory rewrites the host app's records | installed only by `configure_logging` (D1) |
 | children (R5) | the LLM server runs `python -m llama_cpp.server`, and `maxim-diagnostics` never calls `configure_logging` | both write only to the terminal or to DEVNULL (stated). Every `cli.py::main` child is covered |
 | tests (R6) | 14 test files call `configure_logging` or `cli.main` and never restore the factory | an autouse `tests/conftest.py` fixture saves and restores `logging.getLogRecordFactory()` |
@@ -465,10 +485,17 @@ whose every assignment is one.
 
 ## Guards (each proven by deleting the mechanism)
 
+> **AF4 (owner's simplify decision):** every lint bullet below that plants an INDIRECT form or a callable outside the
+> ratchet's stated cut list is SUPERSEDED: `getattr`/`attrgetter`/`methodcaller`/`partial`/aliases (X3, Y4, Z3, AA3,
+> AB2, AC2, AD3, AE2), `textwrap.wrap`/`fill`, `itertools.*`, `deque(maxlen=)`, `reprlib.*`, `__mod__`/`operator.mod`,
+> `format_map`/`vformat`, dunder calls (Q3, T2, U3). The lint's planted-form tests are EXACTLY its stated sources and
+> cuts (§Guard, the ratchet). Its blind spots are tested only as documented non-detections. Every per-form regex pin is
+> superseded by the catch-all's 640/641 pins (AF5).
+
 - A credential URL in `msg`, `args`, `exc_info` and `extra=data`, through every handler `configure_logging`
   installs, plus `_LogBuffer` and the display handler, after a `basicConfig(force=True)` rebuild: only the origin
   survives. `test_followup_parse_log_1751`'s `record.args` assertion still means what it says.
-- `sim_log` with a URL in `message` and in `data`, including an exception leaf: all four destinations are reduced.
+- `sim_log` with a URL in `message` and in `data`, including an exception leaf: all SIX destinations are reduced: sinks, trail, sim JSONL, `_bridge_to_log_file`, terminal and `StructuredFormatter` (AF6).
 - `log_agentic` and `log_structured`: `get_recent` and the JSONL record are reduced.
 - Family 4: a `ToolOutput(error=<credential URL>)` is reduced; the console run-failure event, each `HTTPException` detail, the proxy's pip reply and report.json's
   `llm_summary`.
@@ -514,7 +541,7 @@ whose every assignment is one.
   in the test). Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` fails the lint. Z5: a `TypeError` in the numpy
   build neither loses the record nor caches.
 - Y1–Y3: `https://u:a b@c d@h/p`, a 70-character password tail on either side of the space, and `https://us
-  er:pw@h/p` reduce to `<url>`. E1801-1: the 256/257 boundary test. Y5: a part-way-imported numpy (fake package, `_initializing`)
+  er:pw@h/p` reduce to `<url>`. E1801-1: superseded; the catch-all's 640/641 pins replace every per-form pin (AF5). Y5: a part-way-imported numpy (fake package, `_initializing`)
   neither loses the record nor caches the empty set. Y6: the three over-match pins. Y4: `getattr(str, "partition")(str(e),
   "@")[0]` fails the lint.
 - X1/X2: `redis://:PW D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` reduce to `<url>`. X3: the lint
