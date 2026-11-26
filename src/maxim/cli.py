@@ -665,6 +665,7 @@ def _run_menu_sim(action: str) -> None:
     from pathlib import Path
 
     from maxim import cli_signals
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.utils.cancellation import interruptible
 
     cli_signals.entered_sim_mode()  # a stop from here on exits 4 (#1344)
@@ -724,6 +725,8 @@ def _run_menu_sim(action: str) -> None:
                 max_turns=100,
             )
         except KeyboardInterrupt:
+            raise
+        except SECURITY_REFUSALS:  # a leader/offline refusal reaches _main_guarded's refusal, not "failed to load"
             raise
         except Exception as e:
             print(f"  Failed to load campaign: {e}")
@@ -943,13 +946,13 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     A typed backend error, a leader refusal or a spoken-response refusal (``--tts`` that cannot play, #1437)
     is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
     supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
-    (``exceptions.LeaderRefusal``). Anything else is logged as before and is a crash: 1. The loop's
-    ``finally`` (``_end_robot_run``) runs either way."""
-    from maxim.exceptions import LeaderRefusal
+    (``exceptions.SECURITY_REFUSALS``: a leader or an offline refusal). Anything else is logged as before and is a
+    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.language.types import BackendError
     from maxim.utils.response_output import SpeechOutputUnavailable
 
-    if isinstance(error, (BackendError, LeaderRefusal, SpeechOutputUnavailable)):
+    if isinstance(error, (BackendError, *SECURITY_REFUSALS, SpeechOutputUnavailable)):
         raise error
     log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
     return 1
@@ -1417,7 +1420,7 @@ def _early_leader_boot() -> int | None:
     that answers without auth) returns 2 with the reason, the role's source and
     the fix (2026-10-14: it used to warn and serve without auth).
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS, LeaderRefusal
 
     detected_role = None
     try:
@@ -1442,6 +1445,8 @@ def _early_leader_boot() -> int | None:
         )
         logging.getLogger(__name__).error("leader boot refused: %s", _e)
         return 2
+    except SECURITY_REFUSALS:
+        raise  # an offline refusal (a refused bind or probe): cli.main says why and exits 2, not "port conflict" (#1315)
     except Exception as _e:
         # Only surface to operators when role resolved to leader. Solo users
         # should never see leader-boot noise.
@@ -1468,7 +1473,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
 
     A ``LeaderRefusal`` propagates: a security refusal is not "run without the LLM".
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     try:
         from maxim.runtime.lane_backends import build_primary_router
@@ -1479,7 +1484,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
         _srv_router.warmup()
         if not _srv_router.wait_ready(timeout=180.0):
             return "the LLM did not become ready within 180s"
-    except LeaderRefusal:
+    except SECURITY_REFUSALS:
         raise
     except Exception as _srv_err:
         logger.error("LLM server init failed: %s", _srv_err)
@@ -1509,13 +1514,13 @@ def _report_server_not_ready(logger: logging.Logger, reason: str) -> int | None:
 def _run_server_mode(logger: logging.Logger) -> int:
     """``--mode server``: the LLM server + proxy, no agent loop, until Ctrl+C. An LLM that never becomes ready is
     reported NOT READY: the process stays up behind a LeaderProxy, and exits 1 without one (#1338)."""
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
     print("Maxim — server mode")
     try:
         try:
             _not_ready = _start_server_llm(logger)
-        except LeaderRefusal as _refusal:
+        except SECURITY_REFUSALS as _refusal:
             # A server mode that kept going would leave the proxy forwarding to what it refused.
             print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
             logger.error("server mode refused: %s", _refusal)
@@ -1676,6 +1681,8 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
     (#1657), so the curation model is not still resident while the sim loads its own. It waits for the warmed router
     like foundry does; one that is not ready in time is not handed to the runners (template fallback)."""
 
+    from maxim.exceptions import SECURITY_REFUSALS
+
     def build() -> Any | None:
         router = None
         try:
@@ -1687,6 +1694,8 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
             if not router.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
                 print("  WARNING: LLM failed to load — curation will use template fallback.")
                 return None
+        except SECURITY_REFUSALS:
+            raise  # an offline refusal is not a template fallback (#1315 item 10b)
         except Exception as _llm_err:
             logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
         return router
@@ -1698,6 +1707,8 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
     """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
     ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup, and builds
     it only once ``auto_curate`` finds a gap (:func:`_curate_router_factory`)."""
+    from maxim.exceptions import SECURITY_REFUSALS
+
     _auto_curate = bool(getattr(args, "auto_curate", False))
     _no_curate = bool(getattr(args, "no_curate", False))
     if _auto_curate and not _no_curate and _sim_entity_ref:
@@ -1747,6 +1758,8 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
                 print("  Coverage OK — no curation needed")
             else:
                 print(f"  Generated {_curate_report.total_generated} candidates, none promoted (below score threshold)")
+        except SECURITY_REFUSALS:
+            raise  # the run refuses, exit 2 (cli.main), not "Auto-curation failed" (#1315 item 10b)
         except Exception as _cur_err:
             logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
             print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
@@ -1764,6 +1777,8 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     # Build a lightweight LLM router for generation when --llm is set.
     # The foundry dispatches before the full agent stack, so it creates
     # its own router from the profile name (same pattern as ExecAgent).
+    from maxim.exceptions import SECURITY_REFUSALS
+
     _foundry_llm = None
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
     if _foundry_profile:
@@ -1778,6 +1793,8 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
                     _foundry_llm = None
                 else:
                     print(f"  LLM ready: {_foundry_profile}")
+        except SECURITY_REFUSALS:
+            raise  # the foundry refuses, exit 2 (cli.main), never a template run that reports success (#1315 item 10b)
         except Exception as e:
             print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
 
@@ -2162,8 +2179,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         if getattr(args, "write_paper", False):
             _write_benchmark_paper(runner, report, report_dir)
 
-        all_passed = all(mr.passed for mr in report.results.values())
-        sys.exit(0 if all_passed else 1)
+        sys.exit(report.exit_code())  # 2 refused (V26), 0 all passed, 1 otherwise
 
     _validate_sim_only_flags(args)
     sim_path = getattr(args, "sim", None)
@@ -2428,8 +2444,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 _write_benchmark_paper(runner, report, report_dir)
 
             # Exit with 0 if all models passed, 1 if any failed
-            all_passed = all(mr.passed for mr in report.results.values())
-            sys.exit(0 if all_passed else 1)
+            sys.exit(report.exit_code())
 
         # Check for research mode (legacy alias — deprecated, use --research flag)
         _sim_research = _is_legacy_research
@@ -3022,6 +3037,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     stop, whatever the body returned, raised as a ``sys.exit`` or refused with ``StopStillPending`` (it refused to start
     under this process's own stop); a non-sim mode keeps a real failure and otherwise exits 0.
     """
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first: before any subprocess or socket (#1315 item 10, §6 "Startup order")
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}\n  Fix or remove the file, then retry.", file=sys.stderr)
+        return 2
     from maxim import cli_signals
     from maxim.exceptions import StopStillPending
     from maxim.utils.cancellation import stop_noted
@@ -3059,7 +3082,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
     (Ctrl-C convention) so the live display can flush.  Any other
     exception re-raises — we don't want to swallow bugs.
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
     from maxim.models.download import download_decline_scope
 
     try:
@@ -3067,8 +3090,8 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
-    except LeaderRefusal as refusal:
-        # A security refusal is the operator's to act on: say why and exit 2, as server mode and the early leader
+    except SECURITY_REFUSALS as refusal:
+        # A security refusal (or an offline one, #1315 item 10a) is the operator's to act on: say why and exit 2, as server mode and the early leader
         # boot do (#1468 review, owner decision 2026-10-26).
         _fix = getattr(refusal, "fix_hint", None)
         print(f"\n  ✗ Refusing to run: {refusal}\n" + (f"    → {_fix}\n" if _fix else ""), file=sys.stderr)

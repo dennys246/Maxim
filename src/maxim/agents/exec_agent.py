@@ -48,17 +48,25 @@ from maxim.agents.exec_prompts import (
 )
 from maxim.agents.llm_agent import ChatLLMAgent, LLMAgentConfig
 from maxim.agents.llm_worker import LLMWorker
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.models.download import LLM_DISABLED, consent_interactive, consented_router
 from maxim.models.language.router import LLMRouter, load_llm_config
 from maxim.prompts.prompt_profiles import ExecutivePrompt, load_prompt_profile
 from maxim.agents.memory_agent import MemoryAgent
 from maxim.decisions.significance import CycleContext, SignificanceConfig, SignificanceWeightLearner
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import warn
 
 logger = logging.getLogger(__name__)
 from maxim.utils.prompts import get_agent_prompt
 from maxim.utils.structured_logging import log_structured
 from maxim.memory.text import Provenance, frame_external, stored_percept_text
+
+
+def _issue_count(critique: Any) -> int:
+    """How many issues a critique names. Its words are the model's own, so only their count is logged (#1775)."""
+    issues = critique.get("issues") if isinstance(critique, dict) else None
+    return len(issues) if isinstance(issues, list) else 0
 
 
 def _voice_command_text(percept: Any) -> str:
@@ -632,7 +640,7 @@ class ExecAgent(Agent):
             {
                 "mode": "standard",
                 "critique_confidence": confidence,
-                "issues": critique.get("issues", []),
+                "issue_count": _issue_count(critique),  # #1775: the critic's words never reach a log
             },
         )
 
@@ -690,7 +698,7 @@ class ExecAgent(Agent):
             {
                 "mode": "fast",
                 "critique_confidence": confidence,
-                "issues": response.get("issues", []),
+                "issue_count": _issue_count(response),  # #1775
             },
         )
 
@@ -1378,7 +1386,9 @@ Based on this context, what goal should be proposed?"""
                 "goal_proposed",
                 {
                     "goal_id": goal.id,
-                    "description": goal.description,
+                    "description": text_shape(
+                        str(goal.description)
+                    ),  # #1775: by shape only (str: the field is unchecked JSON)
                     "priority": goal.priority.name,
                     "contemplated": contemplated,
                     "pre_deliberated": bool(pre_deliberation_enrichment),
@@ -1386,6 +1396,8 @@ Based on this context, what goal should be proposed?"""
             )
             return goal
 
+        except SECURITY_REFUSALS:
+            raise  # a refusal is not a "language model error" (#1315 item 10b); the worker loop ends on it
         except Exception as e:
             warn("Language model error during plan generation: %s", e)
             return None
@@ -1801,7 +1813,14 @@ Based on this context, what goal should be proposed?"""
 
             # Build context and propose
             ctx = self._memory.build_context()
-            proposal = self._propose_goal(ctx)
+            try:
+                proposal = self._propose_goal(ctx)
+            except SECURITY_REFUSALS as refusal:
+                # The run's router was refused (#1315 item 10b): said once, by name, and the worker ends, rather than
+                # a dead thread or a "language model error" every turn. No caller starts this worker today
+                # (MaximAgent.on_start is never called); this keeps the refusal typed for when one does.
+                warn("ExecAgent stops proposing: %s", refusal)
+                return
 
             if proposal:
                 with self._proposal_lock:

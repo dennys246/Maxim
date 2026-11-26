@@ -155,8 +155,8 @@ class TestBenchmarkVerb:
         # Mock BenchmarkRunner to avoid real LLM calls
         mock_report = MagicMock()
         mock_report.results = {
-            "mistral-7b": MagicMock(score=0.8, metrics={"recall": 0.75}),
-            "qwen2.5-14b": MagicMock(score=0.9, metrics={"recall": 0.85}),
+            "mistral-7b": MagicMock(score=0.8, metrics={"recall": 0.75}, refused=None),
+            "qwen2.5-14b": MagicMock(score=0.9, metrics={"recall": 0.85}, refused=None),
         }
         mock_report.summary_table.return_value = "Summary table"
 
