@@ -13,6 +13,7 @@ import os
 import threading
 from typing import TYPE_CHECKING, Any
 
+from maxim import _offline
 from maxim.utils.optional_deps import require_optional_dependency
 
 if TYPE_CHECKING:
@@ -38,6 +39,15 @@ class _PyTorchTransformersBackend:
         self._local_files_only = self._get_bool_config("hf_local_files_only", False)
         self._allowlist = self._get_list_config("hf_allowlist", [])
         self._fear_agent: Any = None  # Lazy-loaded
+
+    def _offline_local_files_only(self) -> bool:
+        """``hf_local_files_only``, forced on while the offline latch is up (#1315 item 10b, §6 layer 2): read at
+        load time, since a backend built before ``engage()`` loads lazily."""
+        return self._local_files_only or _offline.is_offline()
+
+    def _offline_trust_remote_code(self) -> bool:
+        """``hf_trust_remote_code``, forced off while the offline latch is up (§6: no remote code offline)."""
+        return self._trust_remote_code and not _offline.is_offline()
 
     def _get_bool_config(self, key: str, default: bool) -> bool:
         """Get boolean config from cfg or environment."""
@@ -129,7 +139,7 @@ class _PyTorchTransformersBackend:
             local_dir = snapshot_download(
                 model_id,
                 revision=self._revision,
-                local_files_only=self._local_files_only,
+                local_files_only=self._offline_local_files_only(),
                 allow_patterns=["*.py", "*.json"],
             )
 
@@ -258,7 +268,7 @@ class _PyTorchTransformersBackend:
                 logger.info(f"Loading model: {model_id}")
 
                 # FearAgent review for trust_remote_code
-                if self._trust_remote_code and self._require_review:
+                if self._offline_trust_remote_code() and self._require_review:
                     if not self._review_remote_code(model_id):
                         logger.error(f"FearAgent blocked loading {model_id}")
                         return False
@@ -266,18 +276,18 @@ class _PyTorchTransformersBackend:
                 # Load tokenizer
                 self._tokenizer = AutoTokenizer.from_pretrained(
                     model_id,
-                    trust_remote_code=self._trust_remote_code,
+                    trust_remote_code=self._offline_trust_remote_code(),
                     revision=self._revision,
-                    local_files_only=self._local_files_only,
+                    local_files_only=self._offline_local_files_only(),
                 )
 
                 # Load model with appropriate dtype/quantization
                 load_kwargs = self._get_load_kwargs()
                 self._model = AutoModelForCausalLM.from_pretrained(
                     model_id,
-                    trust_remote_code=self._trust_remote_code,
+                    trust_remote_code=self._offline_trust_remote_code(),
                     revision=self._revision,
-                    local_files_only=self._local_files_only,
+                    local_files_only=self._offline_local_files_only(),
                     use_safetensors=True,
                     **load_kwargs,
                 )

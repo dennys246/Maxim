@@ -73,6 +73,7 @@ import time
 import unicodedata
 from pathlib import Path
 
+
 __all__ = [
     "GATED_DATA_DIR",
     "HARNESS_RUN_ID_ENV",
@@ -129,6 +130,19 @@ def _load_code_tree():
 
 _code_tree = _load_code_tree()
 
+
+def _load_child_env():
+    """``src/maxim/utils/child_env.py`` from THIS tree, by path (#1593), like :func:`_load_code_tree`: no
+    ``sys.path`` change at import, so this module stays free of import side effects."""
+    path = Path(__file__).resolve().parents[1] / "src" / "maxim" / "utils" / "child_env.py"
+    spec = importlib.util.spec_from_file_location("_maxim_child_env", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+child_env = _load_child_env().child_env
+
 # Anything written here is a GATED record: it backs a ledger row, a result
 # doc, or a release gate. The refuse path below applies to this tree only.
 GATED_DATA_DIR = Path("docs/experiments/data")
@@ -175,7 +189,7 @@ def resolved_maxim_file(binary: str, *, timeout: float = 60.0) -> str | None:
     try:
         probe = subprocess.run(
             [interp, "-c", "import maxim,sys; sys.stdout.write(maxim.__file__)"],
-            env=os.environ.copy(),  # same env the sub-sims inherit
+            env=child_env(),  # the env the sub-sims get: every harness spawns them with child_env (#1593)
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -409,7 +423,7 @@ def in_process_code_provenance(
         "working_tree_dirty_src_scripts": gate["working_tree_dirty_src_scripts"],
         "code_tree_sha256": code_tree_sha256(root),
         "python": sys.executable,
-        "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "pythonpath": child_env().get("PYTHONPATH", ""),  # what the sub-sims get, not a .pth hook's rewrite (#1593)
     }
     if gate["allow_dirty"]:
         prov["allow_dirty"] = True
@@ -447,7 +461,7 @@ def executed_code_provenance(
         # The digest describes the tree the dirty flag (and any allowance) was judged on, and only when that
         # is the tree the sub-sims import: an allowance for one tree must never bind to another's code.
         "code_tree_sha256": code_tree_sha256(root) if executed_root == root else "unknown",
-        "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "pythonpath": child_env().get("PYTHONPATH", ""),  # what the sub-sims get, not a .pth hook's rewrite (#1593)
         **_run_id_stamp(),
         "harness_family": "spawning",
     }

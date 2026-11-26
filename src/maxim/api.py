@@ -152,6 +152,14 @@ _API_AGENT_ID = "api_agent"
 _LEGACY_API_AGENT_DIR = "sessions"
 
 
+def _engage_offline() -> None:
+    """Engage the offline latch when config.json sets ``llm.offline`` (#1315 item 10, §6 "Startup order"): the first
+    statement of every verb that builds a run, so no subprocess or socket comes before it."""
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    engage_offline_if_configured()
+
+
 def _api_home(home_dir: str | None) -> str:
     """The root the API verbs read and write: ``home_dir``, else the data home (#932).
 
@@ -523,6 +531,7 @@ def download_model(name: str) -> bool:
 
         maxim.download_model("qwen2.5-14b-instruct")
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     from maxim.models.language.config import normalize_llm_profile
 
     canonical = normalize_llm_profile(name) or name
@@ -672,6 +681,28 @@ def _build_run_executor(
     return _api_instance.executor, _api_instance
 
 
+def _run_preflight(goal: str | None, robot: str | None, *, headless: bool) -> tuple[str | None, str | None]:
+    """:func:`run`'s first step: engage the offline latch (before any subprocess or socket, #1315 item 10), then
+    normalise and check ``goal`` and ``robot``."""
+    _engage_offline()
+    if goal is not None:
+        goal = goal.strip()
+        if not goal:
+            from maxim.exceptions import ConfigurationError
+
+            raise ConfigurationError("goal must be a non-empty string when provided")
+
+    if robot is not None:
+        from maxim.exceptions import ConfigurationError
+
+        robot = robot.strip()
+        if not robot:
+            raise ConfigurationError("robot must be a non-empty registered robot type")
+        if headless:
+            raise ConfigurationError("robot requires headless=False; headless mode cannot connect hardware")
+    return goal, robot
+
+
 def _auto_curate_before_run(curate_genre: str) -> None:
     """Pre-startup auto-curation for ``run(auto_curate=True)``; a failure warns and the run goes on."""
     try:
@@ -683,15 +714,32 @@ def _auto_curate_before_run(curate_genre: str) -> None:
         print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
 
 
-def _build_run_agent(model: str, effective_home: str) -> Any:
+def _start_run_worker(router: Any) -> Any:
+    """``run()``'s started LLM worker on ``router`` (moved verbatim out of ``run``, #1228 rule T)."""
+    from maxim.agents.llm_worker import LLMWorker
+
+    # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
+    # LLMWorker construction site that resolved no n_ctx at all — the
+    # constructor default (4096) applied, and only the old cloud max()
+    # raise compensated by lifting it to the declared provider window.
+    # With the clamp now lower-only, omitting n_ctx here would pin every
+    # headless cloud run to a 4096-token prompt budget. Same pattern as
+    # console/handle.py.
+    llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
+    llm_worker.start()
+    return llm_worker
+
+
+def _build_run_agent(model: str, effective_home: str, router: Any) -> Any:
     """``run()``'s agent, its user event subscriptions bridged to its bus (moved verbatim out of ``run``, #1264
-    rule T)."""
+    rule T). Its ExecAgent is handed ``run()``'s own router (#1228): it used to build a second, private one."""
     from maxim.agents.maxim_agent import MaximAgent
 
     agent = MaximAgent(
         llm_profile=model,
         memory_persistence_path=os.path.join(effective_home, "memory"),
         data_folder=os.path.join(effective_home, "data"),
+        shared_router=router,
     )
     # Bridge user event subscriptions to the agent's bus
     if hasattr(agent, "_bus"):
@@ -759,22 +807,7 @@ def run(
             or disconnect; the live registry connection is retained for
             operator recovery.
     """
-    if goal is not None:
-        goal = goal.strip()
-        if not goal:
-            from maxim.exceptions import ConfigurationError
-
-            raise ConfigurationError("goal must be a non-empty string when provided")
-
-    if robot is not None:
-        from maxim.exceptions import ConfigurationError
-
-        robot = robot.strip()
-        if not robot:
-            raise ConfigurationError("robot must be a non-empty registered robot type")
-        if headless:
-            raise ConfigurationError("robot requires headless=False; headless mode cannot connect hardware")
-
+    goal, robot = _run_preflight(goal, robot, headless=headless)
     _saved_env: dict[str, str | None] | None = None
     llm_worker: Any | None = None
     _api_instance: Any | None = None
@@ -795,7 +828,6 @@ def run(
         _validate_model(model)
 
         from maxim.agents.autonomy import AutonomyController, AutonomyLevel, SupervisionPolicy
-        from maxim.agents.llm_worker import LLMWorker
         from maxim.runtime.agent_loop import run_agentic_loop
         from maxim.runtime.bootstrap import (
             build_decision_engine,
@@ -817,18 +849,10 @@ def run(
         # ── LLM router ───────────────────────────────────────────────────
         _saved_env = _enable_llm_for_run()
         router = _build_run_router(model)
-        # n_ctx=router.n_ctx (review fold, 1.1 item 3): this was the ONE
-        # LLMWorker construction site that resolved no n_ctx at all — the
-        # constructor default (4096) applied, and only the old cloud max()
-        # raise compensated by lifting it to the declared provider window.
-        # With the clamp now lower-only, omitting n_ctx here would pin every
-        # headless cloud run to a 4096-token prompt budget. Same pattern as
-        # console/handle.py.
-        llm_worker = LLMWorker(llm=router, n_ctx=router.n_ctx, token_counter=router.get_token_counter())
-        llm_worker.start()
+        llm_worker = _start_run_worker(router)
 
         # ── Agent pipeline ───────────────────────────────────────────────────
-        agent = _build_run_agent(model, effective_home)
+        agent = _build_run_agent(model, effective_home, router)
 
         env = build_environment(root=effective_home)
         state = build_state()
@@ -953,6 +977,7 @@ def imagine(
         Session wrapping the SimulationResult with session identity,
         ``observe()``, and ``research()`` methods.
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     from maxim.session import Session
 
     if persona is not None:
@@ -1055,6 +1080,7 @@ def connect(
         maxim.exceptions.MaximConnectionError: If the connection fails
             or times out.
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     from maxim.hardware.registry import RobotRegistry
 
     registry = RobotRegistry()
@@ -1184,6 +1210,7 @@ def diagnose(
     Returns:
         DiagnosticReport with structured check results.
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     from maxim.doctor.platform_detect import detect_platform
     from maxim.doctor.checks import run_all_checks
 
@@ -1507,6 +1534,7 @@ def campaign(
         for choice in result.choices_made:
             print(f"  {choice['encounter']}: {choice['choice']}")
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     # N1: a documented argument that changes nothing is worse than no argument.
     # npc_model has no consumer in the runtime, so it REJECTS rather than lies (D40; prompt_handler is threaded).
     if npc_model is not None:
@@ -1666,6 +1694,7 @@ def benchmark(
         for model, scores in result.scores.items():
             print(f"{model}: {scores}")
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     configure(verbosity=verbosity)
 
     # Resolve suite name to path if not already a path
@@ -1709,6 +1738,8 @@ def benchmark(
     # Build per-model scores dict from report
     scores: dict[str, dict[str, float]] = {}
     for model_name, model_result in report.results.items():
+        if model_result.refused:  # a refused model is reported, never scored (owner decision V26)
+            continue
         scores[model_name] = {
             "overall": model_result.score,
             **model_result.metrics,
@@ -1791,6 +1822,7 @@ def research(
         print(result.paper_draft[:200])
         print(f"Review verdict: {result.review}")
     """
+    _engage_offline()  # first, before any subprocess or socket (#1315 item 10)
     model = _resolve_model(model)
     configure(verbosity=verbosity)
 

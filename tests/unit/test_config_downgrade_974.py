@@ -414,11 +414,6 @@ class _ScenarioBroken(Exception):
     """A precondition of the red gate below failed: not the defect, so it must FAIL the run, not xfail."""
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="#1315 item 10 §1A.6: flips when config downgrade warns that dropping llm.offline: true goes online",
-)
 def test_downgrade_warns_when_it_drops_llm_offline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

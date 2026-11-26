@@ -53,6 +53,9 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 import _provenance  # noqa: E402  (scripts/_provenance.py, loaded from THIS tree)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 # ─── Constants (frozen at v1) ────────────────────────────────────────────
 
 # 1.1 (M1b, #1003): every record carries record_kind/status, the harness `provenance` block, `sims` (the echoed
@@ -465,7 +468,7 @@ def _real_sim(
     run_id: str,
 ) -> SimResult:
     """Subprocess maxim --sim, parse the report.json + actions.jsonl it wrote (found by run id)."""
-    env = os.environ.copy()
+    env = child_env()
     env["MAXIM_DATA_HOME"] = str(data_home)
     env.update(extra_env)
     env["MAXIM_HARNESS_RUN_ID"] = run_id

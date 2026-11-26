@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from maxim.doctor.platform_detect import PlatformInfo, detect_wsl_ip
@@ -313,6 +314,32 @@ def check_llm_model_active() -> CheckResult:
 # ─── environment variable config ───────────────────────────────────────────
 
 
+def _role_row(cfg: Any, env_name: str) -> CheckResult:
+    """``check_resolved_config``'s ``role`` row (moved out for rule T, #1315 item 10a).
+
+    The role's real source, not the CLI's own startup export of it (which read as source=env in `maxim doctor` and
+    as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1)."""
+    import os as _os
+
+    from maxim.runtime.role import resolved_role
+
+    role_value, role_source = resolved_role()
+    cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
+    if cfg_role is not None and cfg_role != role_value:
+        # An exported role overriding config.json warns, like every other env-shadowed row.
+        return CheckResult(
+            name="role",
+            status="warn",
+            message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
+            fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
+        )
+    return CheckResult(
+        name="role",
+        status="info" if role_source == "default" else "ok",  # as every row: a default is info
+        message=f"{role_value}  [source={role_source}]",
+    )
+
+
 def check_resolved_config() -> list["CheckResult"]:
     """C5 of config_unification.md: "Resolved Config" doctor section.
 
@@ -341,6 +368,7 @@ def check_resolved_config() -> list["CheckResult"]:
     """
     from maxim.runtime.config_loader import (
         _FIELD_TO_ENV,
+        SETTABLE_FIELDS,
         _env_is_set,
         config_path,
         load_config,
@@ -384,34 +412,11 @@ def check_resolved_config() -> list["CheckResult"]:
     # Walk every absorbed field
     import os as _os
 
-    for field_path in sorted(_FIELD_TO_ENV.keys()):
-        env_name = _FIELD_TO_ENV[field_path]
-        env_present = _env_is_set(env_name)
+    for field_path in sorted(SETTABLE_FIELDS):
+        env_name = _FIELD_TO_ENV.get(field_path, "")  # "" for a config-only field (llm.offline): no env layer
+        env_present = bool(env_name) and _env_is_set(env_name)
         if field_path == "role":
-            # The role's real source, not the CLI's own startup export of it (which read as source=env in
-            # `maxim doctor` and as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1).
-            from maxim.runtime.role import resolved_role
-
-            role_value, role_source = resolved_role()
-            cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
-            if cfg_role is not None and cfg_role != role_value:
-                # An exported role overriding config.json warns, like every other env-shadowed row.
-                results.append(
-                    CheckResult(
-                        name="role",
-                        status="warn",
-                        message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
-                        fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
-                    )
-                )
-            else:
-                results.append(
-                    CheckResult(
-                        name="role",
-                        status="info" if role_source == "default" else "ok",  # as every row: a default is info
-                        message=f"{role_value}  [source={role_source}]",
-                    )
-                )
+            results.append(_role_row(cfg, env_name))
             continue
 
         try:
@@ -2394,6 +2399,109 @@ def check_disk_space() -> CheckResult:
     )
 
 
+def _claimed_by_a_distribution(pkg_dir: Path) -> bool:
+    """True when an installed distribution's RECORD lists ``<pkg_dir>/__init__.py`` (a real, non-editable install)."""
+    from importlib import metadata
+
+    target = (pkg_dir / "__init__.py").resolve()
+    for dist in metadata.distributions():
+        for file in dist.files or ():
+            if file.name == "__init__.py" and file.parent.name == pkg_dir.name:
+                try:
+                    if Path(str(dist.locate_file(file))).resolve() == target:
+                        return True
+                except (OSError, RuntimeError, NotImplementedError):
+                    continue  # a distribution whose files cannot be located claims nothing
+    return False
+
+
+def _child_maxim_dir(timeout: float = 60.0) -> Path | str:
+    """Where a child started like Maxim's own spawns (``child_env()``) resolves ``maxim``; the error text on failure."""
+    import subprocess
+    import sys
+
+    from maxim._offline import OfflineRefusal
+    from maxim.utils.child_env import child_env
+
+    try:
+        out = subprocess.run(
+            [sys.executable, "-c", "import maxim, sys; sys.stdout.write(maxim.__file__)"],
+            env=child_env(),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired, OfflineRefusal) as e:
+        return f"{type(e).__name__}: {e}"
+    if out.returncode != 0 or not out.stdout.strip():
+        lines = (out.stderr or "").strip().splitlines()
+        return lines[-1][:200] if lines else f"exit {out.returncode}, no output"
+    return Path(out.stdout.strip()).resolve().parent
+
+
+def check_maxim_install(site_dirs: tuple[str, ...] | None = None) -> CheckResult:
+    """Fail when the ``maxim`` this process or its children import is not the one meant to run (#1593).
+
+    Two ways it goes wrong:
+    - **A stray copy in site-packages.** No distribution's RECORD claims it (a ``pip install`` once left one on
+      the rig), or it shadows an editable install. A path-style editable install appends its ``src`` AFTER
+      site-packages, so the stray copy wins even in the top-level process. That is how pymaxim 1.3.2 ran on the
+      rig from 2026-10-16 to 2026-11-03.
+    - **A checkout whose children import something else.** ``maxim`` runs from a checkout (a ``PYTHONPATH``), and
+      a child started the way Maxim's spawns start it (``child_env()``) resolves another copy.
+
+    A normal ``pip install``, which some distribution's RECORD claims, is fine.
+    """
+    from pathlib import Path
+
+    import maxim
+    from maxim.utils.child_env import own_site_dirs
+
+    name = "maxim install"
+    imported = Path(maxim.__file__).resolve().parent
+    roots = [Path(d) for d in (own_site_dirs() if site_dirs is None else site_dirs)]
+    if any(imported.is_relative_to(root) for root in roots):
+        if _claimed_by_a_distribution(imported):
+            return CheckResult(name=name, status="ok", message=f"installed package at {imported}")
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=(
+                f"maxim is imported from {imported}, which no installed package claims; a stray copy there "
+                "shadows any editable install or checkout"
+            ),
+            fix=f"Move it aside (`mv {imported} {imported}.stray`), then reinstall: `pip install -e .` in the checkout",
+        )
+    strays = [root / "maxim" for root in roots if (root / "maxim" / "__init__.py").is_file()]
+    if strays:
+        stray = strays[0]
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=(
+                f"maxim runs from {imported}, but another copy sits at {stray}; a child process or a restart "
+                "that inherits a .pth-rewritten PYTHONPATH would import that copy instead"
+            ),
+            fix=(
+                f"If `pip show pymaxim` lists a non-editable install, `pip uninstall pymaxim` and reinstall with "
+                f"`pip install -e .`; if no package claims {stray}, move it aside: `mv {stray} {stray}.stray`"
+            ),
+        )
+    child = _child_maxim_dir()
+    if isinstance(child, str):
+        return CheckResult(
+            name=name, status="warn", message=f"checkout at {imported}; a child could not import maxim: {child}"
+        )
+    if child != imported:
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=f"maxim runs from {imported}, but a child process imports {child}",
+            fix="Make the checkout the venv's install (`pip install -e .` there), or export PYTHONPATH=<checkout>/src (absolute)",
+        )
+    return CheckResult(name=name, status="ok", message=f"checkout at {imported}; children import the same tree")
+
+
 def check_ram_headroom() -> CheckResult:
     """Report available system RAM."""
     try:
@@ -3477,7 +3585,11 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
     """
     import socket
 
+    from maxim import _offline
+
     name = f"robot:{robot.robot_id}"
+    if _offline.is_offline():  # every probe below dials or resolves: say so per robot, before any of them
+        return CheckResult(name, "info", "refused (offline): the robot probe needs the network", retry_id="robot")
 
     # 1. Resolve — config host: verbatim; else IPv4-only gethostbyname of
     # <robot_name>.local (sidesteps the getaddrinfo/IPv6-first flake).
@@ -3671,6 +3783,7 @@ def run_all_checks(
         check_tier_effectiveness(),
         check_disk_space(),
         check_ram_headroom(),
+        check_maxim_install(),
         check_storage_footprint(),
         check_user_profiles(),
     ]
@@ -3803,6 +3916,7 @@ __all__ = [
     "check_loopback_lane_auth",
     "check_disk_space",
     "check_ram_headroom",
+    "check_maxim_install",
     "check_inference_coherence",
     "check_peer_url_reachable",
     "check_peer_key_set",
@@ -3818,3 +3932,66 @@ __all__ = [
     "check_mesh_nodes",
     "run_all_checks",
 ]
+
+
+# ─── offline (#1315 item 10a, owner decision V21) ──────────────────────────
+# Under the offline latch a check that reaches for a socket or a subprocess raises ``OfflineRefusal``. Every check
+# here is wrapped once, so that refusal becomes that check's own "refused (offline)" row and the rest of doctor
+# runs: the operator sees what offline blocks, instead of a traceback at the first network check.
+
+
+def _refused_offline_row(fn: Any) -> Any:
+    import dataclasses
+    import functools
+    import threading
+
+    from maxim import _offline
+
+    returns_list = str(getattr(fn, "__annotations__", {}).get("return", "")).startswith("list")
+    name = fn.__name__.removeprefix("check_").replace("_", " ")
+
+    def refused(detail: object) -> Any:
+        row = CheckResult(name=name, status="info", message=f"refused (offline): {detail}")
+        return [row] if returns_list else row
+
+    def mark(row: CheckResult, detail: str) -> CheckResult:
+        if row.status == "ok":
+            return row
+        return dataclasses.replace(row, status="info", message=f"refused (offline): {detail} — {row.message}")
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        booked = len(_offline.ledger())
+        try:
+            result = fn(*args, **kwargs)
+        except _offline.OfflineRefusal as e:
+            return refused(e)
+        # A check that caught the refusal itself reports it as its own verdict ("nothing responding", "probe
+        # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered. A
+        # single-row check's row keeps its name and message, marked as refused rather than failed. A list check
+        # cannot say which of its rows the latch answered (one robot's probe, another's real failure), so its rows
+        # stand and one "refused (offline)" row is added; a per-item probe that knows (``_check_one_robot``) says
+        # so itself, by name.
+        mine = [r for r in _offline.ledger()[booked:] if r.thread == threading.get_ident()]
+        if not mine:
+            return result
+        detail = f"{mine[-1].event}: {mine[-1].detail}"
+        if isinstance(result, list):
+            return [*result, CheckResult(name=name, status="info", message=f"refused (offline): {detail}")]
+        return mark(result, detail) if isinstance(result, CheckResult) else result
+
+    return wrapper
+
+
+def _wrap_checks_for_offline() -> None:
+    import inspect
+
+    module = globals()
+    for attr, value in list(module.items()):
+        if not (inspect.isfunction(value) and value.__module__ == __name__):
+            continue
+        if attr.startswith("check_"):
+            module[attr] = _refused_offline_row(value)
+
+
+_wrap_checks_for_offline()
