@@ -128,7 +128,8 @@ class AgentOutputManager:
             shared_outputs_dir = str(resolve_user_state("shared/outputs"))
         self.shared_outputs_dir = os.path.abspath(shared_outputs_dir)
         self._policy = policy
-        self._abstraction = abstraction_buffer or get_abstraction_buffer()
+        # `is None`, not `or`: an empty buffer is falsy (`len()` 0) and must not be swapped for the global one.
+        self._abstraction = abstraction_buffer if abstraction_buffer is not None else get_abstraction_buffer()
 
         # Computed paths
         self.instance_data_dir = os.path.join(self.base_data_dir, instance_id)
@@ -137,7 +138,8 @@ class AgentOutputManager:
         # Output streams per agent (for buffered writes)
         self._streams: dict[str, list[AgentOutput]] = {}
         self._stream_files: dict[str, str] = {}  # agent -> current file path
-        self._lock = threading.Lock()
+        # Reentrant: write_to_stream auto-opens a stream through open_stream while holding it.
+        self._lock = threading.RLock()
 
         # Ensure directories exist
         self._ensure_directories()
