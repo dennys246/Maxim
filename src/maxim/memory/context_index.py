@@ -133,7 +133,8 @@ class SimilarityIndex:
             "num_hashes": self.num_hashes,
             "num_bands": self.num_bands,
             "signatures": self.signatures,
-            "bands": [{json.dumps(list(k)): list(v) for k, v in band.items()} for band in self.bands],
+            # Each bucket is a set of ids: written sorted, or the saved bytes follow PYTHONHASHSEED (#1789).
+            "bands": [{json.dumps(list(k)): sorted(v) for k, v in band.items()} for band in self.bands],
         }
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
