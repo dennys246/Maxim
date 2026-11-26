@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from maxim import _offline
 from maxim.comms.channels.base import Channel
 
 if TYPE_CHECKING:
@@ -40,7 +41,8 @@ class TwilioChannel(Channel):
     # ── Outbound ──────────────────────────────────────────────────────────
 
     def send(self, recipient: str, body: str) -> bool:
-        """Send an SMS via Twilio."""
+        """Send an SMS via Twilio. Refused offline before anything is recorded as sent (#1315 item 10b)."""
+        _offline.refuse_if_offline("comms.twilio.send", "sms")
         try:
             conv = self.conv_manager.get_or_create("twilio:sms", recipient)
             self.conv_manager.record_outbound(conv, body)
@@ -54,6 +56,7 @@ class TwilioChannel(Channel):
         """Initiate an outbound voice call with TTS."""
         if not self.voice_enabled:
             return False
+        _offline.refuse_if_offline("comms.twilio.call", "voice")
         try:
             from xml.sax.saxutils import escape
 

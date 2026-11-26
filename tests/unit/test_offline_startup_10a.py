@@ -463,66 +463,13 @@ def test_an_offline_refusal_from_either_build_releases_the_serving_registration(
     assert released == [start]
 
 
-def test_an_offline_refusal_stops_the_benchmark_instead_of_failing_one_run(
+def test_a_model_refused_part_way_is_refused_not_scored_and_the_next_model_still_runs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``BenchmarkRunner.run``'s per-run ``except Exception`` must re-raise a ``SECURITY_REFUSALS`` refusal: recorded as
-    one failed run, the benchmark would go on refusing every run and report scores (#1315 item 10a)."""
-    import maxim.simulation.orchestrator as orchestrator
-    from maxim.simulation.benchmark import BenchmarkRunner
-
-    def refuse(**_k: object) -> None:
-        _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
-
-    monkeypatch.setattr(orchestrator, "start_simulation_mode", refuse)
-    _offline.engage("test")
-    suite = "scenarios/benchmarks/quick_check.yaml"  # as test_benchmark_expectations_1310 runs it
-    with pytest.raises(_offline.OfflineRefusal):
-        BenchmarkRunner(models=["m"], suite_path=suite, output_dir=str(tmp_path)).run()
-
-
-def test_an_offline_refusal_mid_benchmark_saves_the_finished_models_then_re_raises(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Models that finished before the refusal are not lost: the report is saved with them, the refused model is marked
-    ``refused``, the models after it are absent, and then the refusal escapes (#1315 item 10a, owner option 1)."""
-    import json
-
-    import maxim.simulation.orchestrator as orchestrator
-    from maxim.simulation.benchmark import BenchmarkRunner
-    from tests.unit.test_benchmark_expectations_1310 import _a_run_that_did_the_work
-
-    calls: list[int] = []
-
-    def first_runs_then_refuses(**kwargs: object) -> object:
-        calls.append(1)
-        if len(calls) > 1:
-            _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
-        return _a_run_that_did_the_work(**kwargs)
-
-    monkeypatch.setattr(orchestrator, "start_simulation_mode", first_runs_then_refuses)
-    suite = "scenarios/benchmarks/quick_check.yaml"
-    runner = BenchmarkRunner(models=["local", "cloud", "later"], suite_path=suite, output_dir=str(tmp_path))
-    _offline.engage("test")
-    with pytest.raises(_offline.OfflineRefusal):
-        runner.run()
-
-    (report_dir,) = list(tmp_path.iterdir())
-    results = json.loads((report_dir / "benchmark_report.json").read_text())["results"]
-    assert set(results) == {"local", "cloud"}
-    assert results["local"]["refused"] is None
-    assert results["local"]["expectations_passed"] == 3
-    assert "lane-large" in results["cloud"]["refused"]
-    assert results["cloud"]["passed"] is False
-    assert "cloud: REFUSED" in (report_dir / "summary.md").read_text()
-
-
-def test_a_model_refused_part_way_is_kept_partial_and_never_ranked(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Refused on its second run, a model has one scored run: it is saved as ``refused`` but left out of the ranking,
-    the per-metric rankings and the baseline deltas, and an unsaveable report still lets the refusal escape."""
-    import json
+    """Owner decision V26 (#1315 item 10b): a model refused on its SECOND run (its first already scored) is refused,
+    not scored or ranked, the model after it still runs, and (having no metrics) it gets no baseline delta in either
+    direction. The all-runs-refused case is test_offline_call_sites_10b's."""
+    import dataclasses
 
     import maxim.simulation.orchestrator as orchestrator
     from maxim.simulation.benchmark import BenchmarkRunner
@@ -532,7 +479,7 @@ def test_a_model_refused_part_way_is_kept_partial_and_never_ranked(
 
     def refuses_the_fourth_run(**kwargs: object) -> object:
         calls.append(1)
-        if len(calls) == 4:  # runs=2: model a's two runs, then b's first, then b's second refuses
+        if len(calls) == 4:  # runs=2: model a's two runs, b's first, then b's second refuses
             _offline.refuse("router[build]", "lanes that are not in-process: lane-large")
         return _a_run_that_did_the_work(**kwargs)
 
@@ -540,32 +487,40 @@ def test_a_model_refused_part_way_is_kept_partial_and_never_ranked(
     suite = "scenarios/benchmarks/quick_check.yaml"
     runner = BenchmarkRunner(models=["a", "b", "c"], suite_path=suite, runs=2, output_dir=str(tmp_path))
     _offline.engage("test")
-    with pytest.raises(_offline.OfflineRefusal):
-        runner.run()
+    report = runner.run()
 
-    (report_dir,) = list(tmp_path.iterdir())
-    data = json.loads((report_dir / "benchmark_report.json").read_text())
-    assert set(data["results"]) == {"a", "b"} and data["results"]["b"]["refused"]
-    assert data["results"]["b"]["score"] > 0  # one scored run: partial, which is why it must not be ranked
-    assert data["overall_ranking"] == ["a"]
-    assert all(ranked == ["a"] for ranked in data["rankings"].values())
-    assert "REFUSED (partial results, not ranked): b" in (report_dir / "summary.md").read_text()
+    assert len(calls) == 6  # c's two runs still ran
+    assert report.results["b"].refused and "lane-large" in report.results["b"].refused
+    assert report.results["b"].score == 0.0 and not report.results["b"].metrics
+    assert report.results["a"].refused is None and report.results["c"].refused is None
+    assert "b" not in report.overall_ranking and set(report.overall_ranking) == {"a", "c"}
+    assert all("b" not in ranked for ranked in report.rankings.values())
+    assert report.exit_code() == 2
 
-    report = runner._load_baseline(str(report_dir / "benchmark_report.json"))
-    assert report is not None
+    loaded = runner._load_baseline(str(runner.save_report(report) / "benchmark_report.json"))
+    assert loaded is not None and loaded.results["b"].refused == report.results["b"].refused
     finished = dataclasses.replace(
-        report, results={m: dataclasses.replace(mr, refused=None) for m, mr in report.results.items()}
+        loaded, results={m: dataclasses.replace(mr, refused=None) for m, mr in loaded.results.items()}
     )
-    assert set(runner._compare_to_baseline(report, finished)) == {"a"}  # refused now: no delta against a full baseline
-    assert set(runner._compare_to_baseline(finished, report)) == {"a"}  # refused in the baseline: no delta either
+    assert set(runner._compare_to_baseline(loaded, finished)) == {"a", "c"}  # refused now
+    assert set(runner._compare_to_baseline(finished, loaded)) == {"a", "c"}  # refused in the baseline
 
-    def disk_full(_report: object) -> None:
-        raise OSError("no space left on device")
+    # A report saved by 10a's build kept a refused model's partial metrics: still no delta, either direction.
+    key = next(iter(report.results["a"].metrics))
+    partial = dataclasses.replace(
+        loaded,
+        results={**loaded.results, "b": dataclasses.replace(loaded.results["b"], metrics={key: 0.1})},
+    )
+    measured = dataclasses.replace(
+        finished,
+        results={**finished.results, "b": dataclasses.replace(finished.results["b"], metrics={key: 0.9})},
+    )
+    assert set(runner._compare_to_baseline(measured, partial)) == {"a", "c"}  # refused in the baseline
+    assert set(runner._compare_to_baseline(partial, measured)) == {"a", "c"}  # refused now
 
-    calls.clear()
-    monkeypatch.setattr(runner, "save_report", disk_full)
-    with pytest.raises(_offline.OfflineRefusal):
-        runner.run()
+    rows = [line.split() for line in report.summary_table().splitlines() if line.split()[:1] == [key]]
+    assert rows and all(row[2] == "refused" for row in rows)  # columns a, b, c: b's cell, never a 0.00
+    assert "REFUSED — refused:" not in report.summary_table()  # one prefix
 
 
 def test_an_offline_refusal_from_a_menu_campaign_is_not_reported_as_a_failed_load(

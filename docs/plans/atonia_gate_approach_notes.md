@@ -1263,7 +1263,64 @@ swallow fsync errors, so the new one must not borrow theirs. *(As built: the str
 > strict red gate `tests/unit/test_offline_startup_10a.py::test_the_aut_router_build_does_not_fall_back_on_an_offline_refusal`
 > holds it open.
 >
-> Review: three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
+> **10b BUILT 2026-11-03** (branch `feat/1315-item10b-offline-call-sites`, stacked on 10a): the census red gate
+> flipped. Owner decision **V24** (2026-11-03): the two census lints (the site census and the swallow census, below)
+> are **10c**, on their own clock; 10a+10b merge together once every call site refuses (the gate enforces, the
+> lints explain). As built: `_offline.local_files_only_kwargs()` (every HF load), `_offline.mark_degraded()` /
+> `degraded()` (one WARNING per site), the ledger records each refusal's thread; refusals at docker
+> (`container_runner._run_docker`), ddgs, ultralytics (`_ensure_weight_file`, `_yolo_weight_path`), twilio, model and
+> TTS downloads (before consent), rtm, faster-whisper (typed when the model is not cached); transformers forces
+> `local_files_only` and no remote code offline. The CI grep is NOT widened: `scripts/lint_http_surface.py` (rule A:
+> no HTTP client library outside `utils/http.py`; rule B: raw dials pinned per file) already enforces it, and 10c's
+> site census extends its registers rather than a third list. 10c also owns `cli.py::_early_leader_boot`'s warning
+> and the remaining swallows around refused sites (the swallow census: the internet-search tool's catch-all,
+> `YOLO8.ensure_pose_model`, `segment_vision`'s pose call, rtm `_load_pose`, `VoiceProvisioner`, the whisper workers).
+> Review round 1 (three lenses, [reports](reviews/item10b/)) folded with owner decisions, 2026-11-03, all as
+> recommended: **V25** offline, a pinned profile (`--llm`/`llm.profile`) refuses by name and an auto-detected tier
+> re-walks to a model on disk, recorded as degraded; **V26** a benchmark records a refused model as refused (not
+> scored or ranked) and continues; **V27** `report.json` (an `offline` block) and `decision_log` (`offline`,
+> `offline_degraded`) record refusals and degraded fallbacks. Also folded: whisper refuses only on a hub local miss;
+> the doctor marks a single-row check and adds a refused row to a list check (and wraps `_check_one_robot`);
+> `--sandbox auto` falls back to tmpdir and `docker` refuses; `_setup_sim_sandbox` re-raises (#1596 is the online
+> case); a missing pose weight only turns pose off; `_fetch_missing_model` remembers its refusal.
+> Delta round 1 (NOT STOP) folded with **V28** (2026-11-03, as recommended): "pinned" is `--llm` / `llm.profile`
+> AND a lane's own `model_profile` in llm.json `tiers`; the GPU-less CPU-fallback default
+> (`cli_utils.configure_cpu_fallback_model`) is marked as Maxim's own and falls back like an auto tier (a child process
+> that inherits it reads it as pinned: fail-closed). Also: the warmup thread always sets its ready event on a refusal;
+> benchmark exits 2 when a model was refused and `api.benchmark` leaves refused models out of `scores`; a robot row
+> says "refused (offline)" by name before any probe; an online decision record keeps its old shape. For 10c (NITs):
+> `_probe_mesh_node_to_check` under `--retry`, a model with mixed refused/errored runs, `write_paper` reading refused
+> models, unbounded `degraded()`/ledger growth, transformers' silent remote-code flip, the download CLI's exit 1.
+> Delta round 2: **STOP** ([report](reviews/item10b/delta2.md)). Follow-ups: **#1601** llm.json `tiers`/`functions`
+> have never applied (`LLMConfig` has no `_raw`), so V28's tier-pin half is inert until it is fixed (an owner
+> decision: turning tiers on changes routing); **#1602** `agentic_runtime._apply_llm_backend_fallback` duplicates
+> the CPU-fallback default without V28's marker (fails closed). Also for 10c: `write_paper` reads refused models.
+> Re-sync with main (2026-11-20/21, [10a's merge review](reviews/item10a/merge-main-2026-11-20.md), delta round 4
+> [here](reviews/item10b/delta4.md)): main's #1538 hands a named model to the build as `profile=`, not through the env,
+> so a build's own profile now counts as pinned (V25 refuses it by name offline, not `LocalModelUnavailable`); main's
+> consented-router call sites re-raise `SECURITY_REFUSALS` (`cli.py::_curate_router_factory` and
+> `_auto_curate_before_sim`, `_handle_foundry`); `_early_leader_boot` re-raises an offline refusal (moved here from
+> 10c); the benchmark paper writer names a refused router and records it as degraded; the warmup thread's refusal
+> clause sits on main's `_warm_default_backend` (#1657). Delta round 4's wire lens found `ExecAgent._propose_goal`'s
+> catch-all swallowing a refusal from the agent's own lazy router build; on a closer read that path has no caller in
+> `src/` or `scripts/` today (`MaximAgent.on_start` is never called, `deliberate()` has none), and the owner chose to fix
+> the root cause anyway: **V29** (2026-11-21) every `MaximAgent` takes the run's router (`llm_router=`, required,
+> keyword-only; `share_run_llm` for the robot runtime, which builds its LLM after the agent), and an ExecAgent never
+> builds a router, worker router or `ChatLLMAgent` of its own; `_propose_goal` re-raises `SECURITY_REFUSALS` and the
+> proposal worker ends on one, said once. Separately, `write_paper` always fails today on `ExperimentLog(nickname=)`
+> (#1680, online too).
+> **V28's GPU-less half is withdrawn (V31, 2026-11-21).** #1602 was folded under "Filing is not fixing", and two
+> delta rounds then found a new failure mode each:
+> - Round 7 ([report](reviews/item10b/delta7.md)): the marked default still rode `MAXIM_LLM_PROFILE`, which `detect_tiers` and `_build_local_backend` read as the pin. Offline the re-walk served the missing model again, and the record said "lane small runs smollm".
+> - V30 then made it a tier preference. Round 8 ([executor](reviews/item10b/delta8-executor.md), [wire](reviews/item10b/delta8-wire.md)) found that a GPU-less box has no large lane, so the served model comes from `build_run_router`'s `load_llm_config` fallback, whose only input for the default is that env value. The robot would have built mistral-7b, or offline nothing. The loop change V30 needed also let the re-walk swap a pinned lane without refusing it.
+>
+> That made two divergent rounds, and the audit's answer is that the default can reach the served model only through the env until the GPU-less router is built from the lane system. The owner chose fail closed (**V31**):
+> - The marker (`_MAXIMS_OWN_PROFILES`) is removed. Both CPU fallbacks set the default as a pin, so offline a missing one refuses by name, and each announces the default only when it sets it.
+> - The re-walk record is truthful: a lane left on the missing profile, on another that is not on disk, or on none, "has no model on disk".
+> - The tests record their env restores (round 7, S3).
+> - The redesign is **#1737** (Deferred because: design-pass), and #1602 is superseded.
+>
+> Review (10a): three lenses, two delta rounds, the second STOP ([reports](reviews/item10a/)). **10b's checklist** (it merges
 > with 10a, V22, and its own round covers both): the AUT re-raise above; delta-2 NITs 1–6: `cli.py::_run_stopped_on`
 > and `agent_pool._generate_llm_response` re-raise `SECURITY_REFUSALS`; the doctor wrapper keeps a self-caught check's
 > own name, message and rows (marking only what the latch refused) and filters the ledger by thread; benchmark scores a

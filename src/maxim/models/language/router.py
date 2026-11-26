@@ -2007,8 +2007,15 @@ class LLMRouter:
         import threading
 
         def _warmup_thread():
+            from maxim.exceptions import SECURITY_REFUSALS
+
             try:
                 self._warm_default_backend()
+            except SECURITY_REFUSALS as refusal:
+                # A remembered offline refusal (a model it may not fetch, #1315 item 10b): booked once, said here;
+                # the next dispatch re-raises it typed. The finally still sets the ready event.
+                self._warmup_failed = True
+                warn("LLM warmup refused: %s", refusal)
             except Exception as e:  # a raising warmup is a failed one, never "ready" (it used to kill the thread)
                 self._warmup_failed = True
                 warn("LLM warmup failed: %s", e)
