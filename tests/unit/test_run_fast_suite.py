@@ -301,6 +301,12 @@ def test_check_map_reads_the_diff_and_fails_a_dropped_entry(tmp_path):
     (root / "tests" / "test_old.py").write_text("def test_it():\n    assert True\n" * 20)
     (root / "scripts" / "run_fast_suite.py").write_text(RUNNER.read_text(encoding="utf-8"))
     (root / "scripts" / "_lint_git.py").write_text((ROOT / "scripts" / "_lint_git.py").read_text(encoding="utf-8"))
+    # The runner builds its shards' environment with child_env (#1593): scripts/_child_env.py loads it by path.
+    (root / "scripts" / "_child_env.py").write_text((ROOT / "scripts" / "_child_env.py").read_text(encoding="utf-8"))
+    (root / "src" / "maxim" / "utils").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "maxim" / "utils" / "child_env.py").write_text(
+        (ROOT / "src" / "maxim" / "utils" / "child_env.py").read_text(encoding="utf-8")
+    )
     for cmd in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-qm", "base"], ["checkout", "-qb", "f"],
                 ["mv", "tests/test_old.py", "tests/test_new.py"], ["commit", "-qam", "rename"]):  # fmt: skip
         subprocess.run([*git, *cmd], cwd=root, check=True, capture_output=True)

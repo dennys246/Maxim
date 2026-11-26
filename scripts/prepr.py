@@ -142,6 +142,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 # The docstring's exit-code block, reused as --help's epilog (test_prepr pins that they agree).
 EXIT_CODES = (__doc__ or "")[(__doc__ or "").index("exit codes:") :]
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -725,7 +728,7 @@ def gh_pr_view(root: Path = REPO_ROOT) -> dict | None:
 def step_env(step: Step, pr_text: dict[str, str], base: dict[str, str] | None = None) -> dict[str, str]:
     env = {
         k: v
-        for k, v in (os.environ if base is None else base).items()
+        for k, v in child_env(os.environ if base is None else base).items()
         if not k.startswith((*SCRUB_PREFIXES, SCRUB_MAXIM_PREFIX)) and k not in SCRUB_VARS
     }
     env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"

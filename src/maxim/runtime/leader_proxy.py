@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from maxim.exceptions import LeaderRefusal
+from maxim.utils.child_env import child_env
 
 # ── Input validation ─────────────────────────────────────────────────────────
 
@@ -272,6 +273,7 @@ def _get_latest_pypi_version() -> str | None:
             capture_output=True,
             text=True,
             timeout=15,
+            env=child_env(),
         )
         if result.returncode == 0 and result.stdout:
             # Output: "pymaxim (0.3.1)\n  ..."  — version in first parens.
@@ -1922,6 +1924,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 text=True,
                 timeout=120,
                 cwd=repo_root,
+                env=child_env(),
             )
         except Exception as e:
             logger.exception("pip install failed: %s", e)
@@ -1945,6 +1948,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             capture_output=True,
             timeout=120,
             cwd=repo_root,
+            env=child_env(),
         )
         reinstall_ok = reinstall.returncode == 0
         if not rollback_ok or not reinstall_ok:
@@ -2098,6 +2102,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 ],
                 capture_output=True,
                 timeout=120,
+                env=child_env(),
             )
         except Exception:
             logger.debug("admin/update(pip): rollback pre-cache failed (non-fatal)")
@@ -2121,7 +2126,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=child_env())
         except subprocess.TimeoutExpired:
             logger.error("admin/update(pip): pip upgrade timed out (600s)")
             self._send_json(
@@ -2160,6 +2165,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 ],
                 capture_output=True,
                 timeout=120,
+                env=child_env(),
             )
             rollback_ok = rollback.returncode == 0
         except Exception:
@@ -2263,6 +2269,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                         text=True,
                         timeout=600,
                         cwd=repo_root,
+                        env=child_env(),
                     )
                     _install_status["pip_output"] += (r.stdout or "")[-500:]
                     if r.returncode != 0:
@@ -2377,14 +2384,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         )
 
         # Schedule the restart on a background thread so the response
-        # is fully flushed before os.execv replaces the process image.
+        # is fully flushed before os.execve replaces the process image.
         def _do_restart() -> None:
             time.sleep(delay_s)
-            # os.execv() does NOT fire atexit handlers: this process's own LLM servers are stopped first (#1344 PR 3a).
+            # os.execve() does NOT fire atexit handlers: this process's own LLM servers are stopped first (#1344 PR 3a).
             _stop_own_servers_for_restart()
-            logger.info("admin/restart: executing os.execv — goodbye")
+            logger.info("admin/restart: executing os.execve — goodbye")
             # Re-exec with the original command line
-            os.execv(sys.executable, [sys.executable] + sys.argv)
+            # execve with child_env: an execv would hand the re-exec'd leader a .pth-rewritten PYTHONPATH with
+            # site-packages first, so it could come back importing a stray site-packages maxim (#1593).
+            os.execve(sys.executable, [sys.executable] + sys.argv, child_env())
 
         t = threading.Thread(target=_do_restart, name="admin.restart", daemon=True)
         t.start()

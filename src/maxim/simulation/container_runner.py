@@ -42,6 +42,8 @@ import weakref
 from dataclasses import dataclass, field
 from typing import Iterable, Protocol, runtime_checkable
 
+from maxim import _offline
+
 logger = logging.getLogger(__name__)
 
 
@@ -553,7 +555,9 @@ class LocalDockerRunner:
         stdin: str | None = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
-        """Centralized docker CLI invocation (mockable in tests)."""
+        """Centralized docker CLI invocation (mockable in tests). Refused offline, before the spawn (#1315 item 10b):
+        every docker call (inspect, pull, run) is a subprocess, and a pull is egress."""
+        _offline.refuse_if_offline("simulation.container_runner", " ".join(list(argv)[:3]))
         try:
             result = subprocess.run(
                 list(argv),
@@ -634,6 +638,8 @@ def check_docker_available(refresh: bool = False) -> bool:
     Result is cached on first call. Pass ``refresh=True`` to re-probe.
     """
     global _DOCKER_AVAILABLE_CACHE
+    if _offline.is_offline():  # docker is a spawn, refused offline: unavailable, without the probe (not cached)
+        return False
     if _DOCKER_AVAILABLE_CACHE is not None and not refresh:
         return _DOCKER_AVAILABLE_CACHE
     try:

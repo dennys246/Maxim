@@ -29,6 +29,22 @@ both, so they are stated as rules rather than intentions:
 Usage:
     python scripts/pr_merge_readiness.py 654
     python scripts/pr_merge_readiness.py 654 --repo owner/name
+    python scripts/pr_merge_readiness.py 654 --wait [--timeout 60] [--interval 90]
+
+``--wait`` re-reads every surface until nothing is in flight, then prints the final verdict
+once. It waits through a DRAFT state (under M64 a PR is a draft while CI runs, and DRAFT
+alone would end a wait on the exit code at once), returns early on a settled failure (a fix
+is owed now, whatever else still runs), retries a transient read error up to three times in a
+row, and on timeout exits 2 (unsettled), never 0.
+
+**The suite of record (M64, owner decisions 2026-10-16 and 2026-11-25).** CI's latest
+`unit-tests` run on the PR's head SHA is the final full test suite; no local full suite is
+owed before a merge. So READY also asserts: a `unit-tests` check run posted by the app
+pinned in `scripts/repo_settings_expected.json` exists on the head, its newest run (by
+check-run id, which GitHub assigns in creation order) settled as exactly `success`, and the
+head did not move while the checks were read. A floors-only push that re-used an earlier
+measurement (#1640) is named as such. Approach note and its design review:
+docs/plans/ci_suite_of_record_m64_approach.md.
 
 Exit codes: 0 ready · 1 blocked (reasons printed) · 2 unsettled/unverified (no verdict —
 re-run when it settles) · 3 tool error.
@@ -38,14 +54,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
+import time
+import urllib.parse
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 # Fallback only — the effective ruleset contexts are preferred when readable.
 # CodeQL is included per bugs ledger D63, whose durable fix names it explicitly.
 REQUIRED_CHECK_PATTERNS: tuple[str, ...] = ("unit-tests", "lint", "release build", "codeql")
+
+# M64: the check whose green run on the head SHA is the final full suite, the settings file
+# that pins which app may post it, and the step a floors-only re-use (#1640) skips.
+SUITE_OF_RECORD = "unit-tests"
+_EXPECTED_SETTINGS = Path(__file__).resolve().parent / "repo_settings_expected.json"
+_EXPECTED_SETTINGS_REPO_PATH = "scripts/repo_settings_expected.json"
+_FAST_SUITE_STEP = "Run required fast suite"
 
 _UNSETTLED = frozenset({"queued", "in_progress", "pending", "waiting", "requested"})
 _BAD_CONCLUSIONS = frozenset({"failure", "timed_out", "cancelled", "action_required", "stale", "startup_failure"})
@@ -78,13 +105,17 @@ class Readiness:
     findings: list[Finding] = field(default_factory=list)
 
     def render(self) -> str:
+        ready = "READY: no gating surface reports a problem."
         if not self.findings:
-            return "READY: no gating surface reports a problem."
+            return ready
         order = {"BLOCKING": 0, "UNSETTLED": 1, "INFO": 2}
-        return "\n".join(
+        lines = [
             f"[{f.severity}] {f.code}: {f.detail}"
             for f in sorted(self.findings, key=lambda f: (order.get(f.severity, 9), f.code))
-        )
+        ]
+        # A READY verdict always carries the suite-of-record INFO row (M64), so say READY first.
+        closed = any(f.code == "already-closed" for f in self.findings)
+        return "\n".join([ready, *lines] if self.exit_code == READY and not closed else lines)
 
 
 def _latest_run_per_check(checks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
@@ -132,6 +163,139 @@ def _required_missing(
     return [p for p in required_patterns if p.lower() not in joined]
 
 
+def suite_app_id_from_settings(data: Any) -> int | None:
+    """The app id an expected-settings payload pins for the `unit-tests` context, or None.
+
+    The expected-settings file, not live protection: reading protection needs admin scope, and
+    the nightly `scripts/check_repo_settings.py` fails when the two drift. Any other shape is
+    None (unpinned, so the verdict is withheld), never a crash.
+    """
+    if not isinstance(data, dict):
+        return None
+    protection = data.get("protection")
+    status = protection.get("required_status_checks") if isinstance(protection, dict) else None
+    checks = status.get("checks") if isinstance(status, dict) else None
+    for chk in checks if isinstance(checks, list) else []:
+        if isinstance(chk, dict) and chk.get("context") == SUITE_OF_RECORD and isinstance(chk.get("app_id"), int):
+            return int(chk["app_id"])
+    return None
+
+
+def pinned_suite_app_id(path: Path = _EXPECTED_SETTINGS) -> int | None:
+    """The pin in a local copy of the expected settings (tests, offline use); None if unreadable."""
+    try:
+        return suite_app_id_from_settings(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _base_suite_app_id(slug: str, base: str) -> tuple[int | None, str | None]:
+    """The pin as the PR's BASE branch has it, read through the API (review round, 2026-11-25).
+
+    Never the running checkout's copy: run from the PR's own worktree, a PR that edits the file
+    would supply its own pin, and a stale checkout reads a stale one.
+    """
+    if not base:
+        return None, "the PR names no base branch, so the suite-of-record app pin was not read"
+    try:
+        data = _gh_json(
+            [
+                "api",
+                "-H",
+                "Accept: application/vnd.github.raw+json",
+                f"repos/{slug}/contents/{_EXPECTED_SETTINGS_REPO_PATH}?ref={urllib.parse.quote(base, safe='/')}",
+            ]
+        )
+    except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        return None, f"could not read {_EXPECTED_SETTINGS_REPO_PATH} on {base} ({exc})"
+    return suite_app_id_from_settings(data), None
+
+
+def suite_of_record_run(checks: list[dict[str, Any]], app_id: int | None) -> dict[str, Any] | None:
+    """The newest `unit-tests` run from the pinned app, by check-run id.
+
+    Ids, not `started_at`: a run cancelled before it began has no start time but is still the
+    newest run GitHub's gate judges (design review finding 6), and a re-run gets a new id.
+    """
+    if app_id is None:
+        return None
+    runs = [c for c in checks if c.get("name") == SUITE_OF_RECORD and c.get("app_id") == app_id]
+    if not runs:
+        return None
+    return max(runs, key=lambda c: c.get("id") if isinstance(c.get("id"), int) else 0)
+
+
+def _suite_of_record_findings(
+    raw_checks: list[dict[str, Any]],
+    *,
+    app_id: int | None,
+    head_sha: str,
+    reuse: str,
+    anything_unsettled: bool,
+) -> list[Finding]:
+    """M64: CI's `unit-tests` run on the head is the final full suite, so READY must prove it ran green."""
+    if app_id is None:
+        return [
+            Finding(
+                "UNSETTLED",
+                "suite-of-record-unpinned",
+                "cannot pin which app posts the suite of record: scripts/repo_settings_expected.json is "
+                "unreadable or has no unit-tests entry — the final full suite was NOT checked",
+            )
+        ]
+    run = suite_of_record_run(raw_checks, app_id)
+    if run is None:
+        if anything_unsettled:
+            return [
+                Finding(
+                    "UNSETTLED",
+                    "suite-of-record-not-yet-present",
+                    f"no {SUITE_OF_RECORD} run from app {app_id} on this head yet, and checks are still in flight",
+                )
+            ]
+        return [
+            Finding(
+                "BLOCKING",
+                "suite-of-record-absent",
+                f"no {SUITE_OF_RECORD} run from app {app_id} ran on this head — the final full suite never ran "
+                "(a same-named check from another app does not count)",
+            )
+        ]
+    status = str(run.get("status", "")).lower()
+    if status in _UNSETTLED:
+        return [Finding("UNSETTLED", "suite-of-record-running", f"{SUITE_OF_RECORD} run {run.get('id')} is {status}")]
+    conclusion = str(run.get("conclusion") or "").lower()
+    if conclusion != "success":
+        return [
+            Finding(
+                "BLOCKING",
+                "suite-of-record-not-green",
+                f"the newest {SUITE_OF_RECORD} run ({run.get('id')}) ended {conclusion or 'without a conclusion'}; "
+                "only `success` counts as the final full suite",
+            )
+        ]
+    findings = [
+        Finding(
+            "INFO",
+            "suite-of-record",
+            f"{SUITE_OF_RECORD} run {run.get('id')} passed on head {head_sha[:12] or '(unknown)'} — "
+            "this is the final full suite (M64)",
+        )
+    ]
+    if reuse == "reused":
+        findings.append(
+            Finding(
+                "INFO",
+                "suite-of-record-reused",
+                "this run re-used an earlier run's measurement (a floors-only push, #1640): its tests ran on a "
+                "commit that differs from this head only in scripts/coverage_floors.json",
+            )
+        )
+    elif reuse.startswith("unknown"):
+        findings.append(Finding("INFO", "suite-of-record-reuse-unknown", f"could not tell whether it re-used: {reuse}"))
+    return findings
+
+
 def evaluate(
     *,
     pr: dict[str, Any],
@@ -141,9 +305,17 @@ def evaluate(
     required_patterns: tuple[str, ...] = REQUIRED_CHECK_PATTERNS,
     required_contexts: tuple[str, ...] | None = None,
     fetch_errors: tuple[str, ...] = (),
+    suite_app_id: int | None,
+    head_sha: str = "",
+    suite_reuse: str = "",
 ) -> Readiness:
-    """Pure verdict over already-fetched data (so this is testable without network)."""
+    """Pure verdict over already-fetched data (so this is testable without network).
+
+    ``suite_app_id`` is required (keyword-only, no default): a caller that forgets it must
+    get a TypeError, not a verdict with the suite-of-record step silently skipped.
+    """
     findings: list[Finding] = []
+    raw_checks = checks
     checks, superseded = _latest_run_per_check(checks)
     if superseded:
         findings.append(
@@ -177,6 +349,19 @@ def evaluate(
         findings.append(Finding("BLOCKING", "merge-conflict", "mergeable=CONFLICTING — resolve conflicts and push"))
     if state in _BAD_MERGE_STATES and not (state == "BLOCKED"):
         findings.append(Finding("BLOCKING", f"merge-state-{state.lower()}", _BAD_MERGE_STATES[state]))
+    # GitHub does not reliably report a draft as DRAFT (#1812 read CLEAN, #1815 BEHIND; 2026-11-25), so the flag is read on its own.
+    if pr.get("isDraft") is True and state != "DRAFT":
+        findings.append(Finding("BLOCKING", "merge-state-draft", _BAD_MERGE_STATES["DRAFT"]))
+    if "UNKNOWN" in (state, mergeable):
+        # GitHub is still computing it, so BEHIND (strict protection) cannot be ruled out yet.
+        findings.append(
+            Finding(
+                "UNSETTLED",
+                "merge-state-unknown",
+                f"mergeStateStatus={state or '?'} mergeable={mergeable or '?'}: GitHub has not finished "
+                "computing whether this PR can merge (a BEHIND branch would read this way) — re-run shortly",
+            )
+        )
 
     # ── 4. Required checks PRESENT — a negative claim, so gate it on settledness.
     missing = _required_missing(checks, required_contexts, required_patterns)
@@ -233,6 +418,17 @@ def evaluate(
                     "'nothing to report', NOT a failure — do not act on it while anything is in flight)",
                 )
             )
+
+    # ── 5b. The suite of record (M64): CI's unit-tests run IS the final full suite.
+    findings.extend(
+        _suite_of_record_findings(
+            raw_checks,
+            app_id=suite_app_id,
+            head_sha=head_sha,
+            reuse=suite_reuse,
+            anything_unsettled=bool(unsettled),
+        )
+    )
 
     # ── 6. Code-scanning alerts gate via a ruleset and render as no check row. ─
     for a in alerts:
@@ -306,22 +502,66 @@ def _slurped_check_runs(slug: str, sha: str) -> list[dict[str, Any]]:
             "status": c.get("status"),
             "conclusion": c.get("conclusion"),
             "output_title": (c.get("output") or {}).get("title"),
+            "details_url": c.get("details_url"),
         }
         for c in runs
     ]
 
 
-def _fetch(
-    pr_number: int, repo: str | None
-) -> tuple[dict, list[dict], list[dict], list[str], tuple[str, ...], list[str]]:
+def _suite_reuse(slug: str, run: dict[str, Any] | None) -> str:
+    """'measured', 'reused', '' (nothing to look up) or 'unknown: <why>' for the suite-of-record run.
+
+    Read from the run's own job (exact per attempt), not the run's artifact list, which keeps
+    an attempt-1 `coverage-reused-from-1` listed after an attempt-2 re-run that measured.
+    A failed read is reported, never a blocker: re-use is a fact worth stating, not a gate.
+    """
+    if run is None or str(run.get("conclusion") or "").lower() != "success":
+        return ""
+    match = re.search(r"/job/(\d+)", str(run.get("details_url") or ""))
+    if not match:
+        return "unknown: the unit-tests check run names no job"
+    try:
+        job = _gh_json(["api", f"repos/{slug}/actions/jobs/{match.group(1)}"]) or {}
+    except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        return f"unknown: could not read job {match.group(1)} ({exc})"
+    for step in job.get("steps") or []:
+        if step.get("name") == _FAST_SUITE_STEP:
+            conclusion = str(step.get("conclusion") or "").lower()
+            if conclusion == "skipped":
+                return "reused"
+            if conclusion == "success":
+                return "measured"
+            return f"unknown: the {_FAST_SUITE_STEP!r} step ended {conclusion or 'without a conclusion'}"
+    return f"unknown: job {match.group(1)} has no {_FAST_SUITE_STEP!r} step"
+
+
+def _fetch(pr_number: int, repo: str | None) -> dict[str, Any]:
+    """Every gating surface, returned as `evaluate`'s keyword arguments."""
     repo_args = ["--repo", repo] if repo else []
     pr = _gh_json(
-        ["pr", "view", str(pr_number), *repo_args, "--json", "mergeable,mergeStateStatus,headRefOid,baseRefName,state"]
+        [
+            "pr",
+            "view",
+            str(pr_number),
+            *repo_args,
+            "--json",
+            "mergeable,mergeStateStatus,headRefOid,baseRefName,state,isDraft",
+        ]
     )
     slug = repo or _gh_json(["repo", "view", "--json", "nameWithOwner"])["nameWithOwner"]
     errors: list[str] = []
 
     checks = _slurped_check_runs(slug, pr["headRefOid"])
+    suite_app_id, pin_err = _base_suite_app_id(slug, pr.get("baseRefName") or "")
+    if pin_err:
+        errors.append(pin_err)
+    suite_reuse = _suite_reuse(slug, suite_of_record_run(checks, suite_app_id))
+    # A push between the two reads would make READY name checks of a stale head (design review finding 1).
+    head_now = (_gh_json(["pr", "view", str(pr_number), *repo_args, "--json", "headRefOid"]) or {}).get("headRefOid")
+    if not head_now:
+        errors.append("could not re-read the PR head after reading its checks, so they may be of a stale head")
+    elif head_now != pr["headRefOid"]:
+        errors.append(f"the PR head moved from {pr['headRefOid']} to {head_now} while its checks were read")
 
     alerts: list[dict[str, Any]] = []
     try:
@@ -345,7 +585,17 @@ def _fetch(
     if rule_err:
         errors.append(rule_err)
 
-    return pr, checks, alerts, rules, tuple(contexts), errors
+    return {
+        "pr": pr,
+        "checks": checks,
+        "alerts": alerts,
+        "ruleset_rules": rules,
+        "required_contexts": tuple(contexts) or None,
+        "fetch_errors": tuple(errors),
+        "suite_app_id": suite_app_id,
+        "head_sha": pr["headRefOid"],
+        "suite_reuse": suite_reuse,
+    }
 
 
 def _branch_rules(slug: str, base: str) -> tuple[list[str], list[str], str | None]:
@@ -390,28 +640,126 @@ def _branch_rules(slug: str, base: str) -> tuple[list[str], list[str], str | Non
         return rules, contexts, f"could not read branch rules or rulesets ({exc})"
 
 
+_FETCH_ERRORS = (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError)
+# A settled failure ends a --wait early: the verdict cannot turn READY without a new push.
+_FAIL_FAST = frozenset({"check-failed", "suite-of-record-not-green", "merge-conflict"})
+# Unsettled findings that never clear by waiting: the pin is a config fact, not a run in flight.
+_NEVER_CLEARS = frozenset({"suite-of-record-unpinned"})
+# Absences are BLOCKING once nothing is in flight, but right after a push the workflow may not
+# have created its check runs yet (review round): under --wait they count as in flight until the
+# same head has shown them absent for the grace window.
+_ABSENCES = frozenset({"suite-of-record-absent", "required-check-absent"})
+_WAIT_MAX_CONSECUTIVE_ERRORS = 3
+
+
+def still_waiting(result: Readiness, *, absence_is_final: bool = True) -> bool:
+    """True while a --wait should keep polling: something is in flight and nothing has failed."""
+    codes = {f.code for f in result.findings}
+    if codes & _FAIL_FAST:
+        return False
+    # Unpinned is final only when the settings file was READ and lacks the pin; a failed read of
+    # it (surface-unverified) is transient, so keep polling (delta review, 2026-11-25).
+    if codes & _NEVER_CLEARS and "surface-unverified" not in codes:
+        return False
+    if not absence_is_final and codes & _ABSENCES:
+        return True
+    return any(f.severity == "UNSETTLED" for f in result.findings)
+
+
+def _wait_for_verdict(
+    pr_number: int,
+    repo: str | None,
+    *,
+    timeout_s: float,
+    interval_s: float,
+    absent_grace_s: float = 300.0,
+    clock: Any = None,
+    sleep: Any = None,
+) -> tuple[dict[str, Any], Readiness] | int:
+    """Poll `_fetch` + `evaluate` until `still_waiting` is False or the timeout passes.
+
+    Returns the last surfaces and verdict, or TOOL_ERROR after three read errors in a row (or a
+    timeout with no successful read). ``clock``/``sleep`` are injectable so tests do not wait.
+    """
+    clock = clock or time.monotonic
+    sleep = sleep or time.sleep
+    deadline = clock() + timeout_s
+    errors_in_a_row = 0
+    last: tuple[dict[str, Any], Readiness] | None = None
+    absent_since: tuple[str, float] | None = None  # (head, first time it showed an absence)
+    while True:
+        try:
+            surfaces = _fetch(pr_number, repo)
+        except _FETCH_ERRORS as exc:
+            errors_in_a_row += 1
+            print(f"wait: could not read PR state ({exc}); retry {errors_in_a_row}", file=sys.stderr)
+            if errors_in_a_row >= _WAIT_MAX_CONSECUTIVE_ERRORS:
+                print(f"error: could not read PR state {errors_in_a_row} times in a row", file=sys.stderr)
+                return TOOL_ERROR
+        else:
+            errors_in_a_row = 0
+            result = evaluate(**surfaces)
+            last = (surfaces, result)
+            head = str(surfaces.get("head_sha") or "")
+            if {f.code for f in result.findings} & _ABSENCES:
+                if absent_since is None or absent_since[0] != head:
+                    absent_since = (head, clock())
+            else:
+                absent_since = None
+            absence_is_final = absent_since is not None and clock() - absent_since[1] >= absent_grace_s
+            if not still_waiting(result, absence_is_final=absence_is_final):
+                return last
+            pending = sorted(f.code for f in result.findings if f.severity == "UNSETTLED" or f.code in _ABSENCES)
+            print(f"wait: still in flight ({', '.join(pending)})", file=sys.stderr)
+        if clock() >= deadline:
+            if last is None:
+                print("error: timed out without one successful read of the PR", file=sys.stderr)
+                return TOOL_ERROR
+            surfaces, result = last
+            blocking = sorted({f.code for f in result.findings if f.severity == "BLOCKING"})
+            note = f"; it already shows BLOCKING {', '.join(blocking)}" if blocking else ""
+            print(f"wait: timed out; reporting the last snapshot as unsettled{note}", file=sys.stderr)
+            # A timeout is never a verdict: report it as unsettled even if the last read was BLOCKED.
+            return surfaces, Readiness(UNSETTLED, result.findings)
+        sleep(interval_s)
+
+
+def _non_negative(text: str) -> float:
+    value = float(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {text}")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Report every surface gating a PR's merge.")
     parser.add_argument("pr", type=int, help="PR number")
     parser.add_argument("--repo", default=None, help="owner/name (defaults to the current repo)")
+    parser.add_argument("--wait", action="store_true", help="poll until nothing is in flight, then report")
+    parser.add_argument("--timeout", type=_non_negative, default=60.0, help="--wait: give up after this many minutes")
+    parser.add_argument("--interval", type=_non_negative, default=90.0, help="--wait: seconds between reads")
     args = parser.parse_args(argv)
 
-    try:
-        pr, checks, alerts, rules, contexts, errors = _fetch(args.pr, args.repo)
-    except (RuntimeError, KeyError, TypeError, ValueError, subprocess.TimeoutExpired, OSError) as exc:
-        print(f"error: could not read PR state: {exc}", file=sys.stderr)
-        return TOOL_ERROR
-
-    result = evaluate(
-        pr=pr,
-        checks=checks,
-        alerts=alerts,
-        ruleset_rules=rules,
-        required_contexts=contexts or None,
-        fetch_errors=tuple(errors),
+    if args.wait:
+        waited = _wait_for_verdict(args.pr, args.repo, timeout_s=args.timeout * 60, interval_s=args.interval)
+        if isinstance(waited, int):
+            return waited
+        surfaces, result = waited
+    else:
+        try:
+            surfaces = _fetch(args.pr, args.repo)
+        except _FETCH_ERRORS as exc:
+            print(f"error: could not read PR state: {exc}", file=sys.stderr)
+            return TOOL_ERROR
+        result = evaluate(**surfaces)
+    pr = surfaces["pr"]
+    print(
+        f"PR #{args.pr}: {pr.get('state')} / mergeable={pr.get('mergeable')} / {pr.get('mergeStateStatus')}"
+        f" / head {pr.get('headRefOid')}"
     )
-    print(f"PR #{args.pr}: {pr.get('state')} / mergeable={pr.get('mergeable')} / {pr.get('mergeStateStatus')}")
     print(result.render())
+    if result.exit_code == READY and str(pr.get("state", "")).upper() == "OPEN":
+        print(f"\nThis verdict is for head {pr.get('headRefOid')}; a later push needs a fresh run.")
     if result.exit_code == UNSETTLED:
         print("\nNo verdict: something is still in flight or unverified. Re-run when it settles.")
     return result.exit_code

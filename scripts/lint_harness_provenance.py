@@ -216,6 +216,71 @@ def _stamp_failures(rel: Path, tree: ast.AST) -> list[str]:
     return out
 
 
+def _is_environ(node: ast.AST) -> bool:
+    """``os.environ`` (or ``os.environ.items()`` / ``.keys()`` reaching it) as an expression."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("items", "keys"):
+        node = node.func.value
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "environ"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "os"
+    )
+
+
+def _environ_copies(tree: ast.AST) -> list[ast.AST]:
+    """Every place an environment mapping is built from ``os.environ``: ``os.environ.copy()``, ``dict(os.environ)``,
+    ``{**os.environ}``, a dict comprehension over it, or ``env=os.environ`` itself. Reading keys or values
+    (``sorted(k for k in os.environ)``, ``os.environ.get``) builds no environment and is not counted."""
+    found: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            f = node.func
+            if isinstance(f, ast.Attribute) and f.attr == "copy" and _is_environ(f.value):
+                found.append(node)
+            elif isinstance(f, ast.Name) and f.id == "dict" and node.args and _is_environ(node.args[0]):
+                found.append(node)
+            found.extend(kw.value for kw in node.keywords if kw.arg == "env" and _is_environ(kw.value))
+        elif isinstance(node, ast.Dict) and any(k is None and _is_environ(v) for k, v in zip(node.keys, node.values)):
+            found.append(node)
+        elif isinstance(node, ast.DictComp) and any(_is_environ(gen.iter) for gen in node.generators):
+            found.append(node)
+    return found
+
+
+def _env_failures(rel: Path, tree: ast.AST) -> list[str]:
+    """A harness's sub-sim environment must come from ``child_env`` (#1593).
+
+    ``_provenance.resolved_maxim_file`` probes under ``child_env()``: the environment the harnesses give their
+    sub-sims. A harness that builds one from ``os.environ`` directly would hand its sub-sims a ``.pth``-rewritten,
+    site-packages-first ``PYTHONPATH`` that the probe never saw, so ``assert_repo_interpreter`` would pass on a run
+    importing a stray copy. Every environment built from ``os.environ`` in such a file is therefore wrapped in a
+    ``child_env(...)`` call.
+    """
+    parent: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+
+    def wrapped(node: ast.AST) -> bool:
+        while node in parent:
+            node = parent[node]
+            if isinstance(node, ast.Call):
+                f = node.func
+                if (isinstance(f, ast.Name) and f.id == "child_env") or (
+                    isinstance(f, ast.Attribute) and f.attr == "child_env"
+                ):
+                    return True
+        return False
+
+    return [
+        f"{rel}:{node.lineno}: builds an environment from os.environ outside child_env() — its sub-sims would get a "
+        "PYTHONPATH the provenance probe never saw; use `from _child_env import child_env` (#1593)"
+        for node in _environ_copies(tree)
+        if not wrapped(node)
+    ]
+
+
 def lint(repo_root: Path = REPO_ROOT) -> list[str]:
     """Return the violation messages for the scripts tree under ``repo_root``."""
     failures: list[str] = []
@@ -254,6 +319,10 @@ def lint(repo_root: Path = REPO_ROOT) -> list[str]:
         stamp_failures = _stamp_failures(rel, tree)
         if stamp_failures:
             failures.extend(stamp_failures)
+            flagged.add(path)
+        env_failures = _env_failures(rel, tree)
+        if env_failures:
+            failures.extend(env_failures)
             flagged.add(path)
 
     # M1b PR 5a — the harness family is _provenance's to stamp, never a writer's.
