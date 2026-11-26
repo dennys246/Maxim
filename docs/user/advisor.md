@@ -151,10 +151,11 @@ yet reach, **your sandbox is the only guard**.
 
 ## Conformance with AvServ plan 50 §18 (1.3.5, #1783)
 
-**Status: DRAFT.** Checked against `origin/main` f145e27b and AvServ `origin/main` a59a0fe. It is finalised after
-#1603 (item 10a) and #1735 (item 10b) merge. Those branches touch the offline latch (`_offline.py`: a thread id on
-each ledger entry, a `degraded()` record, `refuse_if_offline`) but nothing under `maxim/advisor/`. Every claim below
-is re-checked on the merged code before 1.3.5 is cut.
+**Status: final for 1.3.5.** Checked against AvServ `origin/main` a59a0fe and first drafted on Maxim `origin/main`
+f145e27b. It was re-checked on Maxim `origin/main` 77880606, after #1603 (item 10a, merged as 0f50fdc9) and #1735
+(item 10b, merged as 77880606). Neither PR changed anything under `maxim/advisor/` or in
+`models/language/closed_local.py`, and no §18 verdict below changed. What they added to the offline latch is listed
+under its boundary.
 
 AvServ's read-only observer (plan 50, steps S4a–S5b) builds on this package, and its safety case depends on the points
 below. Each point names the code that implements it and the test that fails if it stops holding. "Holds" means the
@@ -183,6 +184,20 @@ audit events. While the latch is up, it refuses:
 - `subprocess.Popen`, `os.system`, `os.exec*`, `os.posix_spawn*`, `os.spawn*`, `os.fork` and `os.forkpty`.
 
 Inbound `bind`, `listen` and `accept` pass.
+
+**What 10a and 10b added to the latch (1.3.5).** The set of refused events above is unchanged. New:
+- each refusal-ledger entry (`_offline.Refusal`, a NamedTuple) gains a fourth field, `thread`, the ident of the
+  refusing thread (default 0). A reader that unpacks entries **by position** into three names breaks; read the fields
+  by name;
+- a `Degraded` record, written by `mark_degraded(site, reason)` when the latch forces a fallback, with one WARNING per
+  site, and read by `degraded()`;
+- `local_files_only_kwargs()`, so the Hugging Face load sites pass `local_files_only=True` while the latch is up;
+- `refuse_if_offline(site)`, the typed early refusal the agent's call sites put before a side effect;
+- `maxim.exceptions.SECURITY_REFUSALS = (LeaderRefusal, OfflineRefusal)`, the errors a broad handler around building
+  the LLM must re-raise.
+
+The observer reads none of them (no module under `maxim/advisor/` and not `closed_local.py`), so none reaches a report
+or the log.
 
 **It does not see:**
 - **native code.** Networking or process creation done in C, C++ or Rust raises no audit event. That includes
@@ -229,4 +244,6 @@ subprocess" to hold below Python, that is a job for the container (for example a
   `engage()` writes five variables into its own process environment: `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`,
   `HF_HUB_DISABLE_TELEMETRY`, `YOLO_OFFLINE` and `MAXIM_OFFLINE`. Neither changes anything for B2.
 - `degraded` is still never produced, as §18.4 expects. That stays true with item 10b: the offline latch's new
-  `degraded()` record is not read by the observer and never reaches a report.
+  `degraded()` record is not read by the observer and never reaches a report. An embedder that also loads Maxim's
+  agent stack in the same process can see `maxim.offline` "degraded" WARNINGs in its own log; those are not observer
+  output.

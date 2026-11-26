@@ -141,7 +141,7 @@ These are the agent's safety gates: plan approval, the framing of untrusted text
 | Autonomy refusals | #1550, #1549 | not started; ride on #1185 | agent_loop |
 | The advisory follow-ups | #1751 (logs tool output at WARNING) first, then #1749, #1750, #1752 | filed 2026-11-22 | none |
 | One prompt-line grammar | #1753 | after #1519 | none |
-| The offline latch, `llm.offline` (**AvServ hardline**, with #1783) | #1315 item 10a (#1603), then 10b (#1735) | draft PRs; synced heads not pushed | router, cli, exec_agent, orchestrator |
+| The offline latch, `llm.offline` (**AvServ hardline**, with #1783) | #1315 item 10a (#1603), then 10b (#1735) | merged 2026-11-25 (0f50fdc9, 77880606); #1783 final | router, cli, exec_agent, orchestrator |
 | Goal calls closed on the fallback path | #1414 (PR #1747) | draft; synced head not pushed | agent_loop, exec_agent |
 | llm.json tiers apply | #1601 | decided (above) | router; after 10a and 10b |
 
