@@ -103,3 +103,50 @@ def test_data_home_if_resolved_has_no_side_effects(tmp_path: Path, monkeypatch) 
     assert paths.data_home() == target
     assert paths.data_home_if_resolved() == target
     paths._reset_caches()
+
+
+def test_no_other_module_reads_the_config_dir_env_vars() -> None:
+    """Review D5: no new hand-copied config-dir resolver can appear. Only ``maxim_config_dir`` (and the git-config
+    locator, which resolves GIT's config, not Maxim's) reads ``XDG_CONFIG_HOME`` / ``APPDATA`` in ``src/maxim``."""
+    import ast
+    from pathlib import Path
+
+    names = {"XDG_CONFIG_HOME", "APPDATA"}
+    allowed = {("utils/paths.py", "maxim_config_dir"), ("tools/base.py", "_global_git_config_paths")}
+
+    class _Reads(ast.NodeVisitor):
+        def __init__(self, rel: str) -> None:
+            self.rel, self.stack, self.hits = rel, ["<module>"], set()
+
+        def _scoped(self, node: ast.AST) -> None:
+            self.stack.append(getattr(node, "name", "?"))
+            self.generic_visit(node)
+            self.stack.pop()
+
+        visit_FunctionDef = visit_AsyncFunctionDef = _scoped
+
+        def visit_Call(self, node: ast.Call) -> None:
+            func = node.func
+            attr = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if attr in {"get", "getenv"} and node.args and isinstance(node.args[0], ast.Constant):
+                if node.args[0].value in names:
+                    self.hits.add((self.rel, self.stack[-1]))
+            self.generic_visit(node)
+
+        def visit_Subscript(self, node: ast.Subscript) -> None:
+            if (
+                isinstance(node.slice, ast.Constant)
+                and node.slice.value in names
+                and "environ" in ast.unparse(node.value)
+            ):
+                self.hits.add((self.rel, self.stack[-1]))
+            self.generic_visit(node)
+
+    root = Path(__file__).resolve().parents[2] / "src" / "maxim"
+    hits: set[tuple[str, str]] = set()
+    for path in root.rglob("*.py"):
+        visitor = _Reads(path.relative_to(root).as_posix())
+        visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
+        hits |= visitor.hits
+    assert hits <= allowed, sorted(hits - allowed)
+    assert ("utils/paths.py", "maxim_config_dir") in hits  # the scan sees the real resolver (not vacuous)

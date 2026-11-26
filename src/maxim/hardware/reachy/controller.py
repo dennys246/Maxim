@@ -387,8 +387,8 @@ class ReachyMiniController(RobotController):
         else:
             target = self._robot_name.replace("_", "-") + ".local"
         stage_s = min(timeout, 5.0)
-        outcome = reachy_probe.probe_daemon(target, deadline_s=stage_s)
-        if outcome.failure == "unsupported" and not mdns:
+        outcome = reachy_probe.probe_daemon(target, deadline_s=stage_s, explicit_host=self._host is not None)
+        if reachy_probe.connects_as_given(outcome):
             # An explicit IPv6 host: the pre-check cannot probe it, so keep main's behaviour and let the SDK dial
             # it as given (review E1); the IPv4-only rule for pinned entries is #1806 PR 1's.
             logger.warning("%s: %s — pre-check skipped, connecting as given", target, outcome.error)

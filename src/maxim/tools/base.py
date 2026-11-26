@@ -923,6 +923,8 @@ _CONTROL_PLANE_DATA_FILES: tuple[tuple[str, ...], ...] = (
     ("util", "internet_policy.json"),  # the operator's frozen network rules (#832)
     # the Oasis signer's anti-rollback counter: resetting it would let the signer reissue an old release sequence
     ("util", "hive_release_sequence.json"),
+    # the cloud spend the budget cap is enforced from on restart: zeroing it would reset the operator's cap
+    ("util", "cost_state.json"),
 )
 # The env-independent name rule: realpath components (folded) that END with one of these, or CONTAIN the pair.
 _CONTROL_PLANE_NAME_SUFFIXES: tuple[tuple[str, ...], ...] = tuple((".maxim", *f) for f in _CONTROL_PLANE_DATA_FILES)
@@ -1037,16 +1039,17 @@ def control_plane_write_refusal(path: str) -> str | None:
 
     - anything under the resolved config directory (``$XDG_CONFIG_HOME/maxim`` or ``~/.config/maxim``: ``mesh.yml``,
       ``peer.yml``, ``config.json``, the API keys and console token);
-    - ``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``, ``util/internet_access.json`` (#1345) and
-      ``util/internet_policy.json`` (#832) under the process's data home AND the default ``~/.maxim`` (a harness child
-      runs with ``MAXIM_DATA_HOME=<tmp>``; the operator's real files stay protected). The two internet files mean an
-      agent cannot grant itself internet access by editing a file.
+    - each file in ``_CONTROL_PLANE_DATA_FILES`` (``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``,
+      ``util/internet_access.json`` (#1345), ``util/internet_policy.json`` (#832), ``util/hive_release_sequence.json``,
+      ``util/cost_state.json``) under the process's data home AND the default ``~/.maxim`` (a harness child runs with
+      ``MAXIM_DATA_HOME=<tmp>``; the operator's real files stay protected). So an agent cannot grant itself internet
+      access, roll back the Oasis signer's release sequence, or reset the cloud budget cap by editing a file.
 
     Each root is the union of the resolver's output for the current environment, the ``Path.home()`` default and the
     passwd home's default. Three independent tests, any one refuses: #957's every-ancestor stat-identity walk (a denied
     root that does not exist yet is anchored at its deepest existing ancestor plus its tail); a realpath + NFC +
     case-fold string compare; and an environment-independent name rule over the folded realpath components (ends with
-    ``.maxim/`` plus one of those five data-home files, or contains the pair
+    ``.maxim/`` plus one of those data-home files, or contains the pair
     ``.config``/``maxim``; component-wise, so ``~/.config/maximal/x`` and ``ws/robots.yaml`` stay writable).
 
     Residuals (``docs/user/safety.md``): the code-execution tools can still write these files; an operator's own

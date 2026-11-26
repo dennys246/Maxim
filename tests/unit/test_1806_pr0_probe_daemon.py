@@ -264,7 +264,9 @@ def test_an_ipv6_host_is_unsupported_not_unresolvable(monkeypatch) -> None:
 
     monkeypatch.setattr(probe, "resolve_ipv4", _no_v4)
     monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET6, 1, 6, "", ("::1", 0))])
-    assert probe.probe_daemon("v6only.local", deadline_s=1.0).failure == "unsupported"
+    assert probe.probe_daemon("v6only.local", deadline_s=1.0, explicit_host=True).failure == "unsupported"
+    # review D1/D4: an mDNS name gets no second (IPv6) lookup; it stays "resolve", as before #1806
+    assert probe.probe_daemon("v6only.local", deadline_s=1.0).failure == "resolve"
     monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: (_ for _ in ()).throw(socket.gaierror(8, "x")))
     assert probe.probe_daemon("nothing.local", deadline_s=1.0).failure == "resolve"
 
@@ -304,3 +306,47 @@ def test_the_controller_connects_an_explicit_ipv6_host_as_given(monkeypatch) -> 
 
     ctl = ReachyMiniController(host="fd00::5")
     assert ctl._precheck_daemon("network", 5.0) == ("fd00::5", None)
+
+
+def test_doctor_and_the_controller_agree_on_an_ipv6_only_target(monkeypatch) -> None:
+    """Review D1: doctor says "connects as given" exactly when the controller connects as given."""
+    import socket
+
+    from maxim.doctor import checks
+    from maxim.hardware.config import RobotConfig
+    from maxim.hardware.reachy import probe
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    def _no_v4(name, *, timeout):
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    monkeypatch.setattr(probe, "resolve_ipv4", _no_v4)
+    monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET6, 1, 6, "", ("fd00::5", 0))])
+    monkeypatch.setattr("maxim._offline.is_offline", lambda: False)
+
+    class _Info:
+        os = "linux"
+
+    # A typed host: that is IPv6-only: the run connects as given, doctor says info.
+    ctl = ReachyMiniController(host="v6only.example")
+    assert ctl._precheck_daemon("network", 5.0) == ("v6only.example", None)
+    row = checks._check_one_robot(_Info(), RobotConfig.from_dict("r", {"config": {"host": "v6only.example"}}))
+    assert row.status == "info"
+
+    # No host: <name>.local that is IPv6-only: the run skips the connection, doctor must fail, not reassure.
+    ctl = ReachyMiniController(robot_name="v6only")
+    assert ctl._precheck_daemon("network", 5.0) == (None, None)
+    row = checks._check_one_robot(_Info(), RobotConfig.from_dict("r", {"config": {"robot_name": "v6only"}}))
+    assert row.status == "fail"
+
+
+def test_maxim_diagnostics_says_ipv6_is_not_probed_not_daemon_down(monkeypatch, capsys) -> None:
+    """Review D4: an IPv6 host is reported as unprobed, never as 'ensure the daemon is running'."""
+    from maxim.utils import reachy_diagnostics as diag
+
+    monkeypatch.setattr(diag, "test_ping", lambda host, timeout=3: (True, "ok"))
+    monkeypatch.setattr(diag, "test_port", lambda host, port, timeout=5: (False, "closed"))
+    diag.diagnose_reachy("fd00::5")
+    out = capsys.readouterr().out
+    assert "IPv4 only" in out
+    assert "Ensure the Reachy daemon is running" not in out

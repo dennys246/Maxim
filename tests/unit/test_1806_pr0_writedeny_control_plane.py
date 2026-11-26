@@ -2,8 +2,8 @@
 
 The denied set is the resolved config directory (``$XDG_CONFIG_HOME/maxim`` or ``~/.config/maxim``: mesh.yml, the API
 keys, the console token, config.json) and ``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``,
-``util/internet_access.json`` (#1345) and ``util/internet_policy.json`` (#832) under both the process's data home and
-the default ``~/.maxim``. Each root is the union of the current env's resolver
+``util/internet_access.json`` (#1345), ``util/internet_policy.json`` (#832), ``util/hive_release_sequence.json`` and
+``util/cost_state.json`` under both the process's data home and the default ``~/.maxim``. Each root is the union of the current env's resolver
 output, the ``Path.home()`` default and the passwd home's default; three independent tests match a path (#957's
 every-ancestor stat-identity walk, a realpath + NFC + case-fold string compare, and an env-independent name rule).
 
@@ -106,14 +106,18 @@ def test_a_new_device_state_file_is_refused(env, tool: str) -> None:
 
 
 @TOOLS
-@pytest.mark.parametrize("name", ["internet_access.json", "internet_policy.json", "hive_release_sequence.json"])
+@pytest.mark.parametrize(
+    "name", ["internet_access.json", "internet_policy.json", "hive_release_sequence.json", "cost_state.json"]
+)
 def test_the_operators_internet_files_are_refused(env, tool: str, name: str) -> None:
     """Review A2 (owner decision): an agent cannot grant itself internet access by editing a file."""
     _assert_refused(env, tool, env.home / ".maxim" / "util" / name)
 
 
 @TOOLS
-@pytest.mark.parametrize("name", ["internet_access.json", "internet_policy.json", "hive_release_sequence.json"])
+@pytest.mark.parametrize(
+    "name", ["internet_access.json", "internet_policy.json", "hive_release_sequence.json", "cost_state.json"]
+)
 def test_a_child_data_homes_internet_files_are_refused(env, tool: str, name: str, monkeypatch) -> None:
     """Under a harness child's ``MAXIM_DATA_HOME`` (no ``.maxim`` in its path, so the roots match, not the name rule)."""
     from maxim.utils import paths
@@ -358,6 +362,7 @@ def test_the_roots_are_the_union_of_env_home_and_passwd_home(env, monkeypatch) -
         assert str(data / "util" / "internet_access.json") in files
         assert str(data / "util" / "internet_policy.json") in files
         assert str(data / "util" / "hive_release_sequence.json") in files
+        assert str(data / "util" / "cost_state.json") in files
 
 
 def test_the_roots_include_the_data_home_this_process_resolved(env, monkeypatch) -> None:

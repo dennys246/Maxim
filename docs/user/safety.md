@@ -150,14 +150,15 @@ singularity included, and no approval lifts it (#1806):
 - anything in Maxim's config directory, `$XDG_CONFIG_HOME/maxim/` or `~/.config/maxim/` (`mesh.yml`, `peer.yml`,
   `config.json`, the API keys and the console token);
 - `robots.yaml`, `robots.yaml.bak`, `util/device_state.json`, `util/internet_access.json`,
-  `util/internet_policy.json` and `util/hive_release_sequence.json` in the data home (`$MAXIM_DATA_HOME`, default `~/.maxim/`). The two internet files
+  `util/internet_policy.json`, `util/hive_release_sequence.json` and `util/cost_state.json` in the data home (`$MAXIM_DATA_HOME`, default `~/.maxim/`). The two internet files
   hold your internet on/off and your network rules ([Internet Access](#internet-access)), so an agent cannot grant
   itself internet access by editing a file. `util/hive_release_sequence.json` is the Oasis signer's anti-rollback
-  counter, so an agent cannot reset it to make you reissue an old release sequence. The default `~/.maxim/` copies stay protected when a run sets
+  counter, so an agent cannot reset it to make you reissue an old release sequence, and `util/cost_state.json` holds
+  the cloud spend your budget cap is enforced from, so an agent cannot zero it to reset the cap across a restart. The default `~/.maxim/` copies stay protected when a run sets
   `MAXIM_DATA_HOME` elsewhere.
 
 The check resolves symlinks, compares filesystem identity (so other spellings, another case, an NFD name or an
-existing hardlink are caught too), and also refuses any path that ends in `.maxim/` followed by one of those five
+existing hardlink are caught too), and also refuses any path that ends in `.maxim/` followed by one of those
 data-home files (`.maxim/robots.yaml`, `.maxim/util/internet_access.json` and so on), or runs through a
 `.config/maxim/` directory, whatever
 `HOME` and the other variables say. It matches whole path components, so `~/.config/maximal/` and a project's own
@@ -239,7 +240,8 @@ The safety stack, from outermost to innermost:
 1. **Autonomy level** -- Controls whether the agent can act at all without asking.
 2. **FearAgent** -- Reviews every tool call for danger patterns.
 3. **FearGatedExecutor** -- Optional executor wrapper that gates every tool call via FearAgent; active when `with_fear_gate=True`.
-4. **Filesystem policy** -- Restricts which paths can be read, written, or executed. The file tools never write Maxim's own config directory, `robots.yaml`, `device_state.json` or the internet access and policy files, in any mode.
+4. **Filesystem policy** -- Restricts which paths can be read, written, or executed. The file tools never write Maxim's own config directory, `robots.yaml`, `device_state.json`, the internet access and policy files, the Oasis signer's release sequence or the
+   cloud cost state, in any mode.
 5. **Internet policy** -- Internet access is on by default; disable with `--no-internet`. A persisted toggle and domain policy apply within that (see Internet Access above).
 6. **Predictive harm detection** -- Blocks unsafe movements before they reach hardware.
 7. **Pain detection** -- Monitors the robot during movement and intervenes in real time.

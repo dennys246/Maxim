@@ -135,8 +135,13 @@ def diagnose_reachy(host: str) -> int:
     print_header("Test 2: Daemon Port (SDK Control Channel)")
     from maxim.hardware.reachy import probe as reachy_probe
 
-    outcome = reachy_probe.probe_daemon(host, deadline_s=8.0)
-    if outcome.reachable:
+    # 3 s per stage (lookup, TCP, status; #1806 review E2/D4); a typed --host gets the IPv6 check (review D1)
+    outcome = reachy_probe.probe_daemon(host, deadline_s=3.0, explicit_host=True)
+    if reachy_probe.connects_as_given(outcome):
+        print_warning(f"{host}: {outcome.error}")
+        print_info("This tool probes IPv4 only; use the robot's IPv4 address to diagnose it.")
+        all_passed = False
+    elif outcome.reachable:
         print_success("Port 8000 (FastAPI + /ws/sdk): Port is open and accepting connections")
         print_info("SDK control communication is available")
         if outcome.status_read:

@@ -130,6 +130,16 @@ def installed_sdk_version() -> tuple[int, int] | None:
 _IPV6_NOT_PROBED = "IPv6 host: not probed (the daemon probe is IPv4 only)"
 
 
+def connects_as_given(outcome: "ProbeOutcome") -> bool:
+    """Whether a robot run skips the pre-check and dials this target as typed: an unprobed (IPv6) ``host:``.
+
+    The ONE rule doctor and ``ReachyMiniController._precheck_daemon`` share, so doctor never reports "connects as
+    given" for a target the run will skip (review D1). ``"unsupported"`` only arises for an IPv6 literal or, with
+    ``explicit_host``, an IPv6-only ``host:`` name.
+    """
+    return outcome.failure == "unsupported"
+
+
 def _is_ipv6_literal(name: str) -> bool:
     try:
         ipaddress.IPv6Address(name.strip("[]"))
@@ -224,15 +234,22 @@ def _era(sdk: tuple[int, int] | None, daemon: tuple[int, int] | None) -> EraVerd
     return "match"
 
 
-def probe_daemon(host_or_ip: str, *, port: int = DAEMON_PORT, deadline_s: float) -> ProbeOutcome:
+def probe_daemon(
+    host_or_ip: str, *, port: int = DAEMON_PORT, deadline_s: float, explicit_host: bool = False
+) -> ProbeOutcome:
     """Probe the Reachy daemon at ``host_or_ip``: resolve -> TCP ``port`` -> status -> era -> state.
 
     ``deadline_s`` bounds EACH network stage on its own (the lookup, the TCP connect, the status read), as the
     three copies this replaced did: one shared budget let a slow lookup starve the later stages, so a slow
     resolver read as "daemon port unreachable" (review E2). A name lookup itself is not interruptible, the same
-    residual ``fetch_url`` states for DNS. The probe is IPv4 only: an IPv6 literal, or a name with only an IPv6
-    address, is ``failure="unsupported"`` (never reported as "does not resolve"; review E1). Never raises for a
-    network outcome: every failure is recorded as ``ProbeOutcome.failure`` + ``error``.
+    residual ``fetch_url`` states for DNS; ``resolve_ipv4`` also sets the process-global socket default timeout
+    around the lookup (carried over from the copies it replaced; not thread-safe, a stated residual).
+
+    The probe is IPv4 only. An IPv6 literal is ``failure="unsupported"``; so is a name with only an IPv6 address,
+    but that second lookup runs ONLY for an operator-typed ``explicit_host`` (``host:``), the one case a robot run
+    connects to as given (:func:`connects_as_given`). An unresolvable ``<name>.local`` stays ``"resolve"``, exactly
+    as before #1806, and never pays a second mDNS wait (reviews E1, D1, D4). Never raises for a network outcome:
+    every failure is recorded as ``ProbeOutcome.failure`` + ``error``.
     """
     if not (isinstance(deadline_s, (int, float)) and deadline_s > 0):
         raise ValueError(f"deadline_s must be a positive number of seconds, got {deadline_s!r}")
@@ -243,7 +260,7 @@ def probe_daemon(host_or_ip: str, *, port: int = DAEMON_PORT, deadline_s: float)
     try:
         address = resolve_ipv4(target, timeout=deadline_s)
     except OSError as e:
-        if _has_ipv6_address(target):
+        if explicit_host and _has_ipv6_address(target):
             return ProbeOutcome(target=target, port=port, failure="unsupported", error=_IPV6_NOT_PROBED)
         return ProbeOutcome(
             target=target, port=port, failure="resolve", error=_bounded(f"{target} does not resolve: {e}")

@@ -30,7 +30,8 @@
   returns an empty one.
 - **`create_sandbox_script` returns the script's resolved path** (on macOS `/private/var/...` rather than
   `/var/...`) and refuses names with spaces or non-ASCII characters.
-- **`edit_file` now invalidates the tool-result cache like `write_file`** (#1806 PR 0): a read after a successful
-  edit could return the pre-edit content.
+- **`edit_file` now asks the tool-result cache to invalidate the edited path, as `write_file` does** (#1806 PR 0).
+  Reads stay fresh either way because the cache checks file modification times; this makes the two write tools
+  consistent.
 - **A non-number `MAXIM_ROBOT_TIMEOUT` raises a `ConfigurationError`** naming the variable instead of a bare
   `ValueError`.
