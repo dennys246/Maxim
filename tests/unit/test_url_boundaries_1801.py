@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-URL = "https://user:SECRET@host.example/private/path?key=SECRET"
+URL = "https://user:SECRET@host.test/private/path?key=SECRET"
 # A token-as-username URL whose ``@`` lies past a head cut: cutting first leaves ``https://tok_SECRET...`` with no
 # ``@``, a "host" that keeps the token (``url_origin`` lowercases it, so ``_clean`` compares lowercased).
 LONG_TOKEN_URL = "https://tok_SECRETSECRETSECRETSECRETSECRETSECRET@github.com/o/r"
@@ -32,7 +32,7 @@ def _clean(text: object) -> bool:
 def _tail_url(total: int) -> str:
     """A text whose ``[-total:]`` tail starts right after ``https://``: cutting first drops the scheme, so no URL is
     seen and the userinfo survives."""
-    rest = "tok:SECRET@host.example/" + "p" * (total - len("tok:SECRET@host.example/"))
+    rest = "tok:SECRET@host.test/" + "p" * (total - len("tok:SECRET@host.test/"))
     return "https://" + rest
 
 
@@ -70,7 +70,7 @@ def test_sim_log_reduces_every_destination(tmp_path: Path, monkeypatch: pytest.M
     assert any(r["subsystem"] == "HIPPOCAMPUS" for r in trail) and _clean(json.dumps(trail))  # trail
     assert "HIPPOCAMPUS" in sim_jsonl.read_text() and _clean(sim_jsonl.read_text())  # sim JSONL
     assert "sim_hippocampus" in jsonl.read_text() and _clean(jsonl.read_text())  # bridge + StructuredFormatter
-    assert "recall via https://host.example" in terminal and _clean(terminal)  # terminal
+    assert "recall via https://host.test" in terminal and _clean(terminal)  # terminal
 
 
 DOCS_LINK = "https://docs.python.org/3/library/re.html"
@@ -163,7 +163,7 @@ def test_structured_formatter_reduces_data() -> None:
     rec.event = "e"
     rec.data = {"u": URL, "err": RuntimeError(URL), "t": (URL,)}
     out = StructuredFormatter().format(rec)
-    assert _clean(out) and "https://host.example" in out
+    assert _clean(out) and "https://host.test" in out
 
 
 def test_structured_formatter_keeps_non_dict_data() -> None:
@@ -171,7 +171,7 @@ def test_structured_formatter_keeps_non_dict_data() -> None:
 
     rec = logging.LogRecord("maxim.x", logging.INFO, __file__, 1, "m", (), None)
     rec.data = [URL]
-    assert json.loads(StructuredFormatter().format(rec))["value"] == ["https://host.example"]
+    assert json.loads(StructuredFormatter().format(rec))["value"] == ["https://host.test"]
 
 
 # ─── family 3: log_agentic and log_structured ────────────────────────────
@@ -218,7 +218,7 @@ def test_abstraction_buffer_append_reduces_every_producer(tmp_path: Path, monkey
     raw = {"u": URL}
     buf.append(LogRecord(timestamp=0.0, level="INFO", source="s", event="e", data=raw))
     recent = buf.get_recent(10, verbose=True)
-    assert len(recent) == 3 and _clean(json.dumps(recent, default=str)) and "https://host.example" in json.dumps(recent)
+    assert len(recent) == 3 and _clean(json.dumps(recent, default=str)) and "https://host.test" in json.dumps(recent)
     assert seen and _clean([r.data for r in seen])  # callbacks get the reduced record
     assert raw == {"u": URL}  # the producer's dict is not mutated
     buf.clear()
@@ -231,11 +231,11 @@ def test_tool_output_error_reduced_at_construction() -> None:
     from maxim.tools.base import ToolOutput
 
     out = ToolOutput(success=False, error=f"fetch failed: {URL}")
-    assert out.error == "fetch failed: https://host.example"
+    assert out.error == "fetch failed: https://host.test"
     assert _clean(dataclasses.replace(out, success=False).error)
     assert _clean(pickle.loads(pickle.dumps(out)).error)
     assert _clean(copy.copy(out).error) and _clean(copy.deepcopy(out).error)
-    assert ToolOutput(success=False, error=RuntimeError(URL)).error == "https://host.example"  # type: ignore[arg-type]
+    assert ToolOutput(success=False, error=RuntimeError(URL)).error == "https://host.test"  # type: ignore[arg-type]
     assert ToolOutput(success=True, output={"page": URL}).output == {"page": URL}  # output keeps its URLs
     assert ToolOutput(success=True).error is None
 
@@ -300,7 +300,7 @@ def test_console_error_details_reduce(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(HTTPException) as hx:
         server._post_run_talk(SimpleNamespace(input="hi"))
     assert hx.value.status_code == 500 and _clean(hx.value.detail)
-    assert server._error_detail(ConnectionError(URL)) == "ConnectionError: https://host.example"
+    assert server._error_detail(ConnectionError(URL)) == "ConnectionError: https://host.test"
 
 
 def test_console_rest_detail_reduces(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -364,7 +364,7 @@ def test_reduced_error_body_deeply_nested_json_fails_closed() -> None:
     depth = 200_000
     body = ("[" * depth + json.dumps(URL) + "]" * depth).encode()
     out = _reduced_error_body(body, "application/json")
-    assert _clean(out.decode()) and b"https://host.example" in out
+    assert _clean(out.decode()) and b"https://host.test" in out
 
 
 def test_send_bytes_reduces_json_and_text_error_bodies() -> None:
@@ -591,7 +591,7 @@ def test_mark_failure_reduces() -> None:
 
     st = RuntimeState.__new__(RuntimeState)
     st.mark_failure(f"failed {URL}")
-    assert st.last_error == "failed https://host.example"
+    assert st.last_error == "failed https://host.test"
     st.mark_failure(None)
     assert st.last_error is None
 
@@ -677,7 +677,7 @@ def test_roy_persist_result_reduces(tmp_path: Path) -> None:
     roy_runner._persist_result(result, tmp_path, atomic_write_json, atomic_write_text, with_format_version)
     assert _clean((tmp_path / "result.json").read_text())
     assert _clean((tmp_path / "summary.md").read_text())
-    assert "https://host.example" in (tmp_path / "result.json").read_text()
+    assert "https://host.test" in (tmp_path / "result.json").read_text()
 
 
 def test_report_llm_summary_reduced() -> None:
@@ -763,7 +763,7 @@ def test_recovery_bench_classify_error_unhandled_branch() -> None:
     from maxim.bench.recovery_time import _classify_error
 
     tag, hint = _classify_error(ConnectionError(f"GET {URL}"))
-    assert tag == "unhandled_ConnectionError" and hint == "GET https://host.example"
+    assert tag == "unhandled_ConnectionError" and hint == "GET https://host.test"
 
 
 def test_context_pool_outcome_reduced_before_the_cut() -> None:

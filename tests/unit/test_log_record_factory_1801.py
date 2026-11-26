@@ -26,7 +26,7 @@ import pytest
 from maxim.utils import logging as mlog
 from maxim.utils.logging import _RedactingLogRecord, configure_logging, ensure_redacting_record_factory
 
-URL = "https://user:SECRET@host.example/private/path?key=SECRET"
+URL = "https://user:SECRET@host.test/private/path?key=SECRET"
 # A token-as-username URL: a cut before reduction leaves ``https://tok_SECRE`` as a "host" (lowercased by
 # ``url_origin``), so the checks below look for ``tok_s`` case-insensitively.
 TOKEN_URL = "https://tok_SECRETTOKENABCDEFGHIJKLMNOPQRSTUVWXYZ@github.com/o/r?key=SECRET"
@@ -97,7 +97,7 @@ def test_configure_logging_installs_the_factory(monkeypatch: pytest.MonkeyPatch,
                 h.close()
     out = buf.getvalue() + plain.read_text() + jsonl.read_text()
     assert "SECRET" not in out
-    assert "https://host.example" in buf.getvalue()
+    assert "https://host.test" in buf.getvalue()
     assert any(json.loads(line).get("e") == "e1801" for line in jsonl.read_text().splitlines()), jsonl.read_text()
 
 
@@ -394,7 +394,7 @@ def test_records_serialize_clean(installed, behind_third_party: bool, with_exc: 
 
 
 def _log_with_stack(lg: logging.Logger) -> None:
-    lg.warning("stack", stack_info=True)  # https://user:SECRET@host.example/in-source-line
+    lg.warning("stack", stack_info=True)  # https://user:SECRET@host.test/in-source-line
 
 
 def test_stack_info_is_reduced_everywhere(installed) -> None:
@@ -414,7 +414,7 @@ def test_stack_info_is_reduced_everywhere(installed) -> None:
     finally:
         lg.removeHandler(h)
     rec = captured[0]
-    assert "https://host.example" in rec.stack_info and "SECRET" not in rec.stack_info  # the source line, reduced
+    assert "https://host.test" in rec.stack_info and "SECRET" not in rec.stack_info  # the source line, reduced
     assert "SECRET" not in str(vars(rec).get("stack_info"))
     assert b"SECRET" not in pickle.dumps(rec)
     assert b"SECRET" not in logging.handlers.SocketHandler("localhost", 0).makePickle(rec)
@@ -426,7 +426,7 @@ def test_make_log_record_exc_text_formats_reduced(installed) -> None:
     """G3: ``makeLogRecord``'s dict update bypasses ``__set__``; the read is reduced."""
     rec = logging.makeLogRecord({"msg": "m %s", "args": (URL,), "exc_text": f"Traceback\nError: {URL}"})
     out = logging.Formatter("%(message)s").format(rec)
-    assert "SECRET" not in out and "Error: https://host.example" in out
+    assert "SECRET" not in out and "Error: https://host.test" in out
 
 
 # ─── subclass records (H3, G4, L3, K5) ───────────────────────────────────
@@ -582,7 +582,7 @@ def test_cli_child_logs_reduced(tmp_path: Path) -> None:
     env = {**os.environ, "HOME": str(tmp_path), "MAXIM_OFFLINE": "1", "MAXIM_LOG_FILE": str(jsonl)}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120, env=env)
     assert out.returncode == 0, out.stderr[-2000:]
-    assert "child https://host.example" in out.stderr
+    assert "child https://host.test" in out.stderr
     assert "SECRET" not in out.stderr + out.stdout
     assert "SECRET" not in jsonl.read_text()
 
