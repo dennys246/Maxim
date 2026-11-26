@@ -367,7 +367,15 @@ def test_maxim_diagnostics_treats_its_host_as_typed(monkeypatch, capsys) -> None
     monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET6, 1, 6, "", ("fd00::5", 0))])
     monkeypatch.setattr(diag, "test_ping", lambda host, timeout=3: (True, "ok"))
     monkeypatch.setattr(diag, "test_port", lambda host, port, timeout=5: (False, "closed"))
+    dialled: list[str] = []
+
+    def _no_fetch(url, **kwargs):  # Test 3's /docs read: never dial out (round 3 N3)
+        dialled.append(url)
+        raise ConnectionRefusedError("stubbed")
+
+    monkeypatch.setattr("maxim.utils.http.fetch_url", _no_fetch)
     diag.diagnose_reachy("v6only.example")
+    assert dialled == ["http://v6only.example:8000/docs"]
     out = capsys.readouterr().out
     assert "IPv4 only" in out
     assert "does not resolve" not in out.lower()

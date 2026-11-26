@@ -150,11 +150,13 @@ singularity included, and no approval lifts it (#1806):
 - anything in Maxim's config directory, `$XDG_CONFIG_HOME/maxim/` or `~/.config/maxim/` (`mesh.yml`, `peer.yml`,
   `config.json`, the API keys and the console token);
 - `robots.yaml`, `robots.yaml.bak`, `util/device_state.json`, `util/internet_access.json`,
-  `util/internet_policy.json`, `util/hive_release_sequence.json` and `util/cost_state.json` in the data home (`$MAXIM_DATA_HOME`, default `~/.maxim/`). The two internet files
+  `util/internet_policy.json`, `util/hive_release_sequence.json`, `util/cost_state.json` and `config/llm.json` in the data home (`$MAXIM_DATA_HOME`, default `~/.maxim/`). The two internet files
   hold your internet on/off and your network rules ([Internet Access](#internet-access)), so an agent cannot grant
   itself internet access by editing a file. `util/hive_release_sequence.json` is the Oasis signer's anti-rollback
   counter, so an agent cannot reset it to make you reissue an old release sequence, and `util/cost_state.json` holds
-  the cloud spend your budget cap is enforced from, so an agent cannot zero it to reset the cap across a restart. The default `~/.maxim/` copies stay protected when a run sets
+  the cloud spend your budget cap is enforced from, so an agent cannot zero it to reset the cap across a restart. `config/llm.json` holds the budget caps themselves
+  (`routing`), whether cloud calls are allowed (`cloud_enabled`) and each provider's URL, so an agent cannot raise
+  the cap, turn on cloud calls or re-point a provider by editing it. The default `~/.maxim/` copies stay protected when a run sets
   `MAXIM_DATA_HOME` elsewhere.
 
 The check resolves symlinks, compares filesystem identity (so other spellings, another case, an NFD name or an
@@ -172,10 +174,14 @@ What this does **not** cover:
 - **A non-default location you set yourself.** If you point `MAXIM_DATA_HOME` or `XDG_CONFIG_HOME` somewhere other
   than the default, and a child process is launched with that variable re-pointed again, your copy is protected only
   when it sits at a default-looking path. That is launcher configuration; the agent cannot change it.
-- **A moved spend file.** If you set `routing.cost_state_path` in `config.json` to move the cloud spend file, the
-  file at that location is not protected: an agent's file tools could zero it and reset the budget cap after a
-  restart. Leave the setting unset to keep the protection. (`config.json` itself is protected, so the agent cannot
-  set it.)
+- **A moved spend file.** If you set `routing.cost_state_path` in `llm.json` to move the cloud spend file, the file
+  at that location is not protected: an agent's file tools could zero it and reset the budget cap after a restart.
+  Leave the setting unset to keep the protection. (`<data home>/config/llm.json` itself is protected, so the agent
+  cannot set it there.)
+- **An `llm.json` outside the data home.** Only `<data home>/config/llm.json` is protected. One named by
+  `MAXIM_LLM_CONFIG` is not, and when the data home has no `llm.json`, Maxim also reads `./data/util/llm.json` or
+  `./llm.json` in the directory it was started from (and the same two in a source checkout), which an agent working
+  there could create. Keep your settings in `~/.maxim/config/llm.json` to stay protected.
 - **HFS+ ignorable characters.** On an HFS+ volume, a name containing Unicode characters that HFS+ ignores can reach
   a file not created yet under another spelling. The `.git` check (#957) shares this gap. APFS is not affected.
 - **New hardlinks into the config directory.** Making one needs code execution (the first bullet).

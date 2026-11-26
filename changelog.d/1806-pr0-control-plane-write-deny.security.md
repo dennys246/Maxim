@@ -4,9 +4,10 @@
   `robots.yaml`, `robots.yaml.bak`, `util/device_state.json`, `util/internet_access.json`,
   `util/internet_policy.json`, `util/hive_release_sequence.json` (the Oasis signer's anti-rollback counter) and
   `util/cost_state.json` (the cloud spend your budget cap is enforced from, at its default location: a
-  `routing.cost_state_path` you set is not covered) in the data home and the default
-  `~/.maxim`. So an agent cannot grant itself internet access, roll back the signer, or reset the budget cap by
-  editing a file.
+  `routing.cost_state_path` you set is not covered) and `config/llm.json` (the budget caps, `cloud_enabled` and
+  the provider URLs) in the data home and the default `~/.maxim`. So an agent cannot grant itself internet access,
+  roll back the signer, or raise or reset the budget cap by editing that file. An `llm.json` named by
+  `MAXIM_LLM_CONFIG`, or read from the CWD fallback when the data home has none, is not covered.
   Before this, an agent started from your home directory could repoint or delete them. Code-execution tools
   (`bash`, `execute_file`, opted-in `run_tests`) are not covered; passive mode refuses those.
 - **`create_sandbox_script` refuses a script name that is not a plain file name** (#1806 PR 0): a name with a path

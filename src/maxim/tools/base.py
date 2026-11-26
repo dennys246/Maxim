@@ -925,6 +925,9 @@ _CONTROL_PLANE_DATA_FILES: tuple[tuple[str, ...], ...] = (
     ("util", "hive_release_sequence.json"),
     # the cloud spend the budget cap is enforced from on restart: zeroing it would reset the operator's cap
     ("util", "cost_state.json"),
+    # the LLM config: its ``routing`` holds the spend caps and ``cost_state_path``, plus ``cloud_enabled`` and each
+    # provider's ``base_url`` (#1806 PR 0 round 3 D1); the env override and CWD fallbacks are a stated residual
+    ("config", "llm.json"),
 )
 # The env-independent name rule: realpath components (folded) that END with one of these, or CONTAIN the pair.
 _CONTROL_PLANE_NAME_SUFFIXES: tuple[tuple[str, ...], ...] = tuple((".maxim", *f) for f in _CONTROL_PLANE_DATA_FILES)
@@ -1041,9 +1044,9 @@ def control_plane_write_refusal(path: str) -> str | None:
       ``peer.yml``, ``config.json``, the API keys and console token);
     - each file in ``_CONTROL_PLANE_DATA_FILES`` (``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``,
       ``util/internet_access.json`` (#1345), ``util/internet_policy.json`` (#832), ``util/hive_release_sequence.json``,
-      ``util/cost_state.json``) under the process's data home AND the default ``~/.maxim`` (a harness child runs with
+      ``util/cost_state.json``, ``config/llm.json``) under the process's data home AND the default ``~/.maxim`` (a harness child runs with
       ``MAXIM_DATA_HOME=<tmp>``; the operator's real files stay protected). So an agent cannot grant itself internet
-      access, roll back the Oasis signer's release sequence, or reset the cloud budget cap by editing a file.
+      access, roll back the Oasis signer's release sequence, or raise or reset the cloud budget cap by editing a file.
 
     Each root is the union of the resolver's output for the current environment, the ``Path.home()`` default and the
     passwd home's default. Three independent tests, any one refuses: #957's every-ancestor stat-identity walk (a denied
@@ -1055,7 +1058,9 @@ def control_plane_write_refusal(path: str) -> str | None:
     Residuals (``docs/user/safety.md``): the code-execution tools can still write these files; an operator's own
     non-default ``MAXIM_DATA_HOME``/``XDG_CONFIG_HOME`` that a child re-points; HFS+'s ignorable-character spellings
     (shared with #957); creating a NEW hardlink into the config dir needs code execution; a spend file the operator
-    moved with ``routing.cost_state_path`` is outside the deny (#1806 PR 0 round 2 A1).
+    moved with ``routing.cost_state_path``, an ``llm.json`` named by ``MAXIM_LLM_CONFIG``, and the CWD/repo-root
+    ``llm.json`` fallbacks ``load_llm_config`` reads when the data home has none are outside the deny (#1806 PR 0
+    rounds 2 A1, 3 D1).
     """
     real = os.path.realpath(path)
     config_dirs, files = _control_plane_roots()

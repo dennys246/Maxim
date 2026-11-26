@@ -111,10 +111,12 @@ _CONFIG_SCAN_ALLOWED = frozenset(
     {
         # the one resolver
         ("utils/paths.py", "maxim_config_dir"),
-        # git's config (not Maxim's), the deny matcher's own pair and roots, and the host-tool env passthrough set
+        # git's config (not Maxim's), the deny matcher's own pair and roots, and the host-tool env passthrough set;
+        # module-level hits are keyed by the assignment they sit in, so a new top-level read is not allowed (round 3 N2)
         ("tools/base.py", "_global_git_config_paths"),
         ("tools/base.py", "_control_plane_roots"),
-        ("tools/base.py", "<module>"),
+        ("tools/base.py", "<module>:_CONTROL_PLANE_CONFIG_PAIR"),
+        ("tools/base.py", "<module>:HOST_TOOL_ENV_ALLOW"),
     }
 )
 
@@ -123,6 +125,9 @@ def _flagged(value: object) -> bool:
     if not isinstance(value, str):
         return False
     if value == ".config" or value in _CONFIG_ENV_NAMES:
+        return True
+    # a one-constant path piece (round 3 N1); whitespace means prose (a fix hint naming the path), not a path
+    if (".config/maxim" in value or ".config\\maxim" in value) and not any(c.isspace() for c in value):
         return True
     return any(value.startswith(f"{p}{n}") for p in ("$", "${", "%") for n in _CONFIG_ENV_NAMES)
 
@@ -137,7 +142,7 @@ class _ConfigDirReads(ast.NodeVisitor):
     """Collects ``(file, Class.function)`` scopes holding a flagged string constant (docstrings skipped)."""
 
     def __init__(self, rel: str) -> None:
-        self.rel, self.stack, self.hits = rel, [], set()
+        self.rel, self.stack, self.hits, self.assign = rel, [], set(), ""
 
     def _scoped(self, node) -> None:
         for child in node.decorator_list:
@@ -154,9 +159,19 @@ class _ConfigDirReads(ast.NodeVisitor):
 
     visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _scoped
 
+    def _assigned(self, node) -> None:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        names = [t.id for t in targets if isinstance(t, ast.Name)]
+        outer, self.assign = self.assign, ",".join(names) or "?"
+        self.generic_visit(node)
+        self.assign = outer
+
+    visit_Assign = visit_AnnAssign = _assigned
+
     def visit_Constant(self, node: ast.Constant) -> None:
         if _flagged(node.value):
-            self.hits.add((self.rel, ".".join(self.stack) or "<module>"))
+            scope = ".".join(self.stack) or f"<module>:{self.assign or '?'}"
+            self.hits.add((self.rel, scope))
 
 
 def _config_dir_scan(root: Path) -> set[tuple[str, str]]:
@@ -179,12 +194,15 @@ def test_no_other_module_reads_the_config_dir_env_vars() -> None:
     ``setdefault``, ``expandvars``, and a hand-built ``Path.home() / ".config" / "maxim"`` all carry one. Scopes
     are the fully qualified ``Class.function`` chain, so a same-named method elsewhere is not allowed by its name.
 
-    Stated limit: a name assembled at runtime (``"XDG_" + "CONFIG_HOME"``) carries no constant. Docstrings are
-    skipped: they describe the directory, they do not resolve it.
+    A constant holding the whole path piece (``"~/.config/maxim"``, ``f"{h}/.config/maxim"``) is flagged too.
+
+    Stated limit: a name assembled at runtime (``"XDG_" + "CONFIG_HOME"``, ``"." + "config"``) carries no
+    constant. Docstrings are skipped: they describe the directory, they do not resolve it.
     """
     hits = _config_dir_scan(Path(__file__).resolve().parents[2] / "src" / "maxim")
     assert hits <= _CONFIG_SCAN_ALLOWED, sorted(hits - _CONFIG_SCAN_ALLOWED)
-    assert ("utils/paths.py", "maxim_config_dir") in hits  # the scan sees the real resolver (not vacuous)
+    # every allowance is still needed (not vacuous, and none outlives the code it excused)
+    assert hits == _CONFIG_SCAN_ALLOWED, sorted(_CONFIG_SCAN_ALLOWED - hits)
 
 
 @pytest.mark.parametrize(
@@ -197,6 +215,10 @@ def test_no_other_module_reads_the_config_dir_env_vars() -> None:
         'import os\ndef f():\n    return os.environ.setdefault("APPDATA", "x")\n',
         'from pathlib import Path\ndef f():\n    return Path.home() / ".config" / "maxim"\n',
         'import os\ndef f():\n    return os.path.expandvars("$XDG_CONFIG_HOME/maxim")\n',
+        'import os\ndef f():\n    return os.path.expanduser("~/.config/maxim")\n',
+        'def f(h):\n    return f"{h}/.config/maxim"\n',
+        # a new module-level read is not covered by an allowed assignment name
+        'import os\nX = os.environ.get("XDG_CONFIG_HOME")\n',
         # a same-named method inside the allowed FILE is still not the allowed function
         'import os\nclass C:\n    def maxim_config_dir(self):\n        return os.environ.get("APPDATA")\n',
     ],

@@ -3,9 +3,10 @@
 The denied set is the resolved config directory (``$XDG_CONFIG_HOME/maxim`` or ``~/.config/maxim``: mesh.yml, the API
 keys, the console token, config.json) and ``robots.yaml``, ``robots.yaml.bak``, ``util/device_state.json``,
 ``util/internet_access.json`` (#1345), ``util/internet_policy.json`` (#832), ``util/hive_release_sequence.json`` and
-``util/cost_state.json`` under both the process's data home and the default ``~/.maxim``. Each root is the union of the current env's resolver
-output, the ``Path.home()`` default and the passwd home's default; three independent tests match a path (#957's
-every-ancestor stat-identity walk, a realpath + NFC + case-fold string compare, and an env-independent name rule).
+``util/cost_state.json``, ``config/llm.json`` under both the process's data home and the default ``~/.maxim``.
+Each root is the union of the current env's resolver output, the ``Path.home()`` default and the passwd home's
+default; three independent tests match a path (#957's every-ancestor stat-identity walk, a realpath + NFC +
+case-fold string compare, and an env-independent name rule).
 
 Everything here runs in ``tmp_path`` with ``HOME``, ``XDG_CONFIG_HOME``, ``MAXIM_DATA_HOME`` and the passwd home
 patched: no test touches the operator's real ``~/.maxim`` or ``~/.config/maxim``.
@@ -363,6 +364,7 @@ def test_the_roots_are_the_union_of_env_home_and_passwd_home(env, monkeypatch) -
         assert str(data / "util" / "internet_policy.json") in files
         assert str(data / "util" / "hive_release_sequence.json") in files
         assert str(data / "util" / "cost_state.json") in files
+        assert str(data / "config" / "llm.json") in files
 
 
 def test_the_roots_include_the_data_home_this_process_resolved(env, monkeypatch) -> None:
@@ -399,3 +401,17 @@ def test_the_identity_walk_anchors_a_root_that_does_not_exist_yet(env) -> None:
     denied = str(env.home / ".maxim" / "util" / "device_state.json")
     assert _matches_by_identity(denied, [], [denied]) is True
     assert _matches_by_identity(denied + ".tmp", [], [denied]) is False
+
+
+@TOOLS
+def test_the_llm_config_is_refused(env, tool: str, monkeypatch) -> None:
+    """Round 3 D1: llm.json holds the spend caps, ``cost_state_path``, ``cloud_enabled`` and provider base URLs.
+    Refused at the default data home (an existing file) and, as a new file, under a child's ``MAXIM_DATA_HOME``."""
+    from maxim.utils import paths
+
+    _assert_refused(env, tool, env.home / ".maxim" / "config" / "llm.json")
+    child = env.root / "child-data-llm"
+    child.mkdir()
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(child))
+    paths._reset_caches()
+    _assert_refused(env, tool, child / "config" / "llm.json", seed=False)  # a new one, under a new config/
