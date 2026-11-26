@@ -826,8 +826,8 @@ jobs:
           pip install "ruff==0.14.14"
           pip install "pyyaml>=6.0,<7.0"  # scripts/lint_body_rest_neutral.py reads body YAML
           pip install "mypy==1.20.0"  # scripts/lint_mypy_ratchet.py; same pin as unit-tests' mypy step
-          ruff check src/ tests/
-          ruff format --check src/ tests/
+          ruff check src/ tests/ scripts/
+          ruff format --check src/ tests/ scripts/
 
       - name: Version sync (pyproject == __init__ == CHANGELOG header == the three version lines)
         # CLAUDE.md "Versioning" (policy decided 2026-08-29, roadmap 1.1.x item
