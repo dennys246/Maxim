@@ -19,10 +19,11 @@ Consumers:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.text import RECALLED_WORDS_MAX_CHARS
+from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, frame_external
 from maxim.memory.types import record_success
 from maxim.utils.logging import log_swallowed_exception
 
@@ -359,8 +360,9 @@ class BioEnrichmentPipeline:
                 lines.append(f"  - {pred.event} → {pred.outcome} ({conf_word} confidence, {pred.valence})")
 
         if result.concepts:
-            concept_names = [c.concept for c in result.concepts[:5]]
-            lines.append(f"Related concepts: {', '.join(concept_names)}")
+            # ATL names are stored text (formed from what the agent heard and did), so framed (#1516 F15).
+            concept_names = ", ".join(c.concept for c in result.concepts[:5])
+            lines.append(f"Related concepts: {frame_external('recalled_concepts', concept_names)}")
 
         if result.affordances:
             lines.append(f"Available actions (use via use tool): {', '.join(result.affordances[:5])}")
@@ -415,7 +417,7 @@ class BioEnrichmentPipeline:
             from maxim.utils.content_safety import drop_unbalanced_frames, outside_tool_output
 
             summaries = [
-                f"{' '.join(drop_unbalanced_frames(outside_tool_output(m.summary))[0].split())[:60]} [{m.memory_id[:8]}]"
+                f"{_frame_free(drop_unbalanced_frames(outside_tool_output(m.summary))[0])[:60]} [{m.memory_id[:8]}]"
                 for m in memories[:3]
             ]
             sim_enrichment("hippocampus", f"{len(memories)} episode(s): {'; '.join(summaries)}")
@@ -425,8 +427,9 @@ class BioEnrichmentPipeline:
             sim_enrichment("nac", f"{len(predictions)} prediction(s): {', '.join(pred_strs)}")
 
         if concepts:
-            concept_names = [c.concept for c in concepts[:5]]
-            sim_enrichment("atl", f"{len(concepts)} concept(s): {', '.join(concept_names)}")
+            # ATL names are stored text, framed in the prompt and never logged (#1516 F15): the count and ids only.
+            ids = ", ".join(c.concept_id[:8] for c in concepts[:5] if c.concept_id) or "no ids"
+            sim_enrichment("atl", f"{len(concepts)} concept(s): [{ids}]")
 
         if affordances:
             sim_enrichment("component_index", f"{len(affordances)} affordance(s): {', '.join(affordances[:5])}")
@@ -561,35 +564,15 @@ class BioEnrichmentPipeline:
         try:
             from maxim.agents.working_memory import WorkingMemoryKind
 
-            # Pull recent outcomes and conversations (last 5)
+            # Pull recent outcomes and conversations (last 5). Each entry renders by the provenance it was stored
+            # with (``WMEntry.prompt_text``, #1519): a stored percept's outside text is never shown raw.
             relevant_kinds = {
                 WorkingMemoryKind.OUTCOME,
                 WorkingMemoryKind.CONVERSATION,
                 WorkingMemoryKind.PERCEPT,
             }
             entries = working_memory.by_kind(relevant_kinds, limit=5)
-            summaries: list[str] = []
-            for entry in entries:
-                content = entry.content
-                if isinstance(content, dict):
-                    # Outcome entries have tool_name + success
-                    tool = content.get("tool_name") or content.get("action", "")
-                    if tool:
-                        success = content.get("success", True)
-                        error = content.get("error", "")
-                        status = "succeeded" if success else f"failed: {error}"
-                        goal = content.get("goal", "")
-                        summary = f"{tool} {status}"
-                        if goal:
-                            summary += f" (goal: {goal})"
-                        summaries.append(summary)
-                    else:
-                        # Generic dict — take a short repr
-                        text_val = content.get("text") or content.get("content") or ""
-                        if text_val:
-                            summaries.append(str(text_val)[:100])
-                elif isinstance(content, str) and content.strip():
-                    summaries.append(content[:100])
+            summaries = [shown for shown in (entry.prompt_text() for entry in entries) if shown]
             return summaries
         except Exception:
             return []
@@ -1062,20 +1045,20 @@ class BioEnrichmentPipeline:
             success = record_success(mem)
             status = "succeeded" if success else "failed" if success is False else ""
             parts.append(f"{tool} {status}".strip())
-        # Goal context
-        # Intent goal, else active goal: ``goal`` answers exactly that on both record kinds (#995);
-        # a compressed record used to show none.
-        goal = mem.goal or ""
-        if goal:
-            parts.append(f"(goal: {goal[:40]})")
         heard = _bounded_text(_input_text(mem), RECALLED_WORDS_MAX_CHARS)
         if heard:
-            parts.append(f"earlier input: {_frame_recalled('recalled_input', heard)}")
+            parts.append(f"earlier input: {frame_external('recalled_input', heard)}")
+        # Goal context, after what was heard (a cut drops the later frame first). Intent goal, else active goal:
+        # ``goal`` answers exactly that on both record kinds (#995). Stored text, often the user's: framed (#1516 F15,
+        # N11).
+        goal = _bounded_text(str(mem.goal or ""), _RECALLED_GOAL_MAX_CHARS)
+        if goal:
+            parts.append(f"(goal: {frame_external('recalled_goal', goal)})")
         # Outcome
         if hasattr(mem, "outcome") and hasattr(mem.outcome, "result"):
             said = _bounded_text(_result_text(mem.outcome.result), _RECALLED_RESULT_MAX_CHARS)
             if said:
-                parts.append(f"→ {_frame_recalled('recalled_outcome', said)}")
+                parts.append(f"→ {frame_external('recalled_outcome', said)}")
 
         if parts:
             return " ".join(parts)
@@ -1093,6 +1076,7 @@ class BioEnrichmentPipeline:
 # ``memory/text.py::bounded_words``, whose ``RECALLED_WORDS_MAX_CHARS`` compression keeps too (#1137); 80 holds an
 # outcome's gist.
 _RECALLED_RESULT_MAX_CHARS = 80
+_RECALLED_GOAL_MAX_CHARS = 40
 
 
 def _input_text(mem: Any) -> str:
@@ -1120,7 +1104,9 @@ def _result_text(result: Any) -> str:
     return ""
 
 
-def _frame_recalled(label: str, text: str) -> str:
-    from maxim.utils.content_safety import frame_tool_output
-
-    return frame_tool_output(label, text, external=True)
+def _frame_free(text: str) -> str:
+    """A summary with its frames removed, as a log line shows it: whitespace collapsed and the labels a removed frame
+    left empty (``(goal: )``, ``earlier input:``, a bare ``→``) dropped."""
+    text = " ".join(text.split())
+    text = re.sub(r"\(goal: \)|earlier input:(?= |$)|→(?= |$)", "", text)
+    return " ".join(text.split())

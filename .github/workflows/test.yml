@@ -1481,6 +1481,14 @@ jobs:
         run: |
           python3 scripts/lint_fix_touches_tests.py
 
+      - name: Process spawns build their environment with child_env (#1593)
+        # A .pth hook (the GStreamer wheels') rewrites PYTHONPATH with site-packages first; a spawn that inherits
+        # os.environ hands that to its child, which then imports a stray site-packages maxim or another venv's
+        # packages. Prints the per-file count of spawns not built on maxim.utils.child_env EVERY run and fails if
+        # any file's count rose vs origin/main (grandfathered per-file; new files start at zero).
+        run: |
+          python3 scripts/lint_child_env.py
+
       - name: Hand-rolled atomic renames outside utils/atomic_io.py (persistence invariant)
         # Roadmap 1.1.x item 16.3.
         run: |

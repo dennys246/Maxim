@@ -51,9 +51,9 @@ this one and the four-lens design review.
   proves: it is not evidence of which diff was REVIEWED.
 - **One full suite per fold batch, not per round.** Narrow tests plus deletion probes vet a fold. The last
   full suite runs on the exact commit being pushed.
-  *Note 2026-10-16:* the owner adopted an alternative: CI's green, non-cancelled `unit-tests` run on the PR's
-  head SHA counts as that final full-suite run. It takes effect only when mechanization backlog M64
-  (`scripts/pr_merge_readiness.py` asserts that run) lands; until then the rule above stands as written.
+  *Superseded 2026-11-25 (M64 in force):* CI's green, non-cancelled `unit-tests` run on the PR's head SHA
+  is that final full-suite run, asserted by `scripts/pr_merge_readiness.py`; open the PR as a draft after
+  prepr and push fixes as they come ([CI brief](../agents/ci-testing.md) §1).
 - Narrow test runs alongside a snapshot suite share `~/.maxim`, ports and other global state; keep them
   small. (The §3 xdist trial found no such collisions, but it was reverted for coverage order noise.)
 - Never edit `src/` in a tree whose suite is running. (This cost two full runs in one session.)

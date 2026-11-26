@@ -164,6 +164,9 @@ class LLMRequest:
 
     # The user input that triggered this request (for conversation history)
     triggering_input: str = field(default="", compare=False)
+    # Where that input came from, as the loop stored it (``pending_user_input_source``: "CLI" or "voice"), "" when
+    # unknown. A "voice" request is labelled in the prompt as heard on the room mic (#1519, owner decision 2026-11-21).
+    triggering_input_source: str = field(default="", compare=False)
 
     # Lane hint for WorkerPool routing
     lane: str = field(default="", compare=False)

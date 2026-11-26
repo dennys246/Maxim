@@ -75,6 +75,11 @@ class LaneDecisionRecord:
     # The profile the build was handed (``build_primary_router(profile=)``, #1538), which wins over the env's
     # MAXIM_LLM_PROFILE above; None when the build served the session's.
     build_profile: str | None = None
+    # The offline latch (#1315 item 10b, owner decision V27): whether it was up for this build, and the degraded
+    # fallbacks so far ("site: reason", once each). Written only when offline (record_to_json_line), so an online
+    # record keeps its old shape; an older reader returns None on an offline one, as on any newer record.
+    offline: bool = False
+    offline_degraded: list[str] = field(default_factory=list)
 
 
 def _decision_log_path() -> Path:
@@ -209,12 +214,27 @@ def build_record(
         probe_results=dict(probe_results or {}),
         auto_download_triggered=list(auto_download_triggered or []),
         build_profile=build_profile,
+        **_offline_fields(),
     )
+
+
+def _offline_fields() -> dict[str, Any]:
+    from maxim import _offline
+
+    if not _offline.is_offline():
+        return {}
+    return {
+        "offline": True,
+        "offline_degraded": list(dict.fromkeys(f"{d.site}: {d.reason}" for d in _offline.degraded())),
+    }
 
 
 def record_to_json_line(record: LaneDecisionRecord) -> str:
     """Serialize a record to a single-line JSON string (newline included)."""
     payload = dataclasses.asdict(record)
+    if not record.offline:  # online records keep the old shape, so an older reader still reads them (#1315 10b)
+        payload.pop("offline", None)
+        payload.pop("offline_degraded", None)
     return json.dumps(payload, separators=(",", ":"), default=str) + "\n"
 
 
@@ -329,6 +349,10 @@ def format_record_human(record: LaneDecisionRecord) -> str:
             lines.append(f"    {host}: {outcome}")
     if record.auto_download_triggered:
         lines.append(f"  Auto-downloaded: {', '.join(record.auto_download_triggered)}")
+    if record.offline:
+        lines.append("  Offline: the latch was up (in-process lanes only)")
+        for entry in record.offline_degraded:
+            lines.append(f"    degraded: {entry}")
     return "\n".join(lines)
 
 

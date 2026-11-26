@@ -299,6 +299,14 @@ FILESYSTEM_TOOLS = {"read_file", "write_file", "list_directory", "glob"}
 # Network tools
 NETWORK_TOOLS = {"web_search", "http_fetch", "internet_search"}
 
+
+def output_is_external(tool: str, *, untrusted_output: bool) -> bool:
+    """THE test of whether a tool's output is framed as external, shared by a follow-up and a recent outcome
+    (#1519): a network tool, ``batched_exploration`` (it may hold fetched pages), or a tool that declares
+    ``untrusted_output`` (it replays recalled or stored text: memory_recall, concept_query, think, examine)."""
+    return tool in NETWORK_TOOLS or tool == "batched_exploration" or bool(untrusted_output)
+
+
 # Robot control tools
 ROBOT_TOOLS = {"track_target", "focus_interests", "novelty_track", "maxim_command"}
 
