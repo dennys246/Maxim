@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import pickle
+import re
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,6 +28,12 @@ LONG_TOKEN_URL = "https://tok_SECRETSECRETSECRETSECRETSECRETSECRET@github.com/o/
 
 def _clean(text: object) -> bool:
     return "secret" not in str(text).lower()
+
+
+def _has_origin(text: str) -> bool:
+    """The reduced origin appears WHOLE: no more host characters follow it, so a lookalike such as
+    ``https://host.test.evil`` does not count (an exact check, not a substring one)."""
+    return re.search(re.escape("https://host.test") + r"(?![A-Za-z0-9.-])", text) is not None
 
 
 def _tail_url(total: int) -> str:
@@ -163,7 +170,7 @@ def test_structured_formatter_reduces_data() -> None:
     rec.event = "e"
     rec.data = {"u": URL, "err": RuntimeError(URL), "t": (URL,)}
     out = StructuredFormatter().format(rec)
-    assert _clean(out) and "https://host.test" in out
+    assert _clean(out) and _has_origin(out)
 
 
 def test_structured_formatter_keeps_non_dict_data() -> None:
@@ -218,7 +225,7 @@ def test_abstraction_buffer_append_reduces_every_producer(tmp_path: Path, monkey
     raw = {"u": URL}
     buf.append(LogRecord(timestamp=0.0, level="INFO", source="s", event="e", data=raw))
     recent = buf.get_recent(10, verbose=True)
-    assert len(recent) == 3 and _clean(json.dumps(recent, default=str)) and "https://host.test" in json.dumps(recent)
+    assert len(recent) == 3 and _clean(json.dumps(recent, default=str)) and _has_origin(json.dumps(recent))
     assert seen and _clean([r.data for r in seen])  # callbacks get the reduced record
     assert raw == {"u": URL}  # the producer's dict is not mutated
     buf.clear()
@@ -364,7 +371,7 @@ def test_reduced_error_body_deeply_nested_json_fails_closed() -> None:
     depth = 200_000
     body = ("[" * depth + json.dumps(URL) + "]" * depth).encode()
     out = _reduced_error_body(body, "application/json")
-    assert _clean(out.decode()) and b"https://host.test" in out
+    assert _clean(out.decode()) and _has_origin(out.decode())
 
 
 def test_send_bytes_reduces_json_and_text_error_bodies() -> None:
@@ -677,7 +684,7 @@ def test_roy_persist_result_reduces(tmp_path: Path) -> None:
     roy_runner._persist_result(result, tmp_path, atomic_write_json, atomic_write_text, with_format_version)
     assert _clean((tmp_path / "result.json").read_text())
     assert _clean((tmp_path / "summary.md").read_text())
-    assert "https://host.test" in (tmp_path / "result.json").read_text()
+    assert _has_origin((tmp_path / "result.json").read_text())
 
 
 def test_report_llm_summary_reduced() -> None:

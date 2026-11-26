@@ -14,6 +14,7 @@ import logging
 import logging.handlers
 import os
 import pickle
+import re
 import subprocess
 import sys
 import types
@@ -34,6 +35,12 @@ TOKEN_URL = "https://tok_SECRETTOKENABCDEFGHIJKLMNOPQRSTUVWXYZ@github.com/o/r?ke
 
 def _token_clean(text: str) -> bool:
     return "tok_s" not in text.lower() and "secret" not in text.lower()
+
+
+def _has_origin(text: str) -> bool:
+    """The reduced origin appears WHOLE: no more host characters follow it, so a lookalike such as
+    ``https://host.test.evil`` does not count (an exact check, not a substring one)."""
+    return re.search(re.escape("https://host.test") + r"(?![A-Za-z0-9.-])", text) is not None
 
 
 @pytest.fixture
@@ -97,7 +104,7 @@ def test_configure_logging_installs_the_factory(monkeypatch: pytest.MonkeyPatch,
                 h.close()
     out = buf.getvalue() + plain.read_text() + jsonl.read_text()
     assert "SECRET" not in out
-    assert "https://host.test" in buf.getvalue()
+    assert _has_origin(buf.getvalue())
     assert any(json.loads(line).get("e") == "e1801" for line in jsonl.read_text().splitlines()), jsonl.read_text()
 
 
@@ -414,7 +421,7 @@ def test_stack_info_is_reduced_everywhere(installed) -> None:
     finally:
         lg.removeHandler(h)
     rec = captured[0]
-    assert "https://host.test" in rec.stack_info and "SECRET" not in rec.stack_info  # the source line, reduced
+    assert _has_origin(rec.stack_info) and "SECRET" not in rec.stack_info  # the source line, reduced
     assert "SECRET" not in str(vars(rec).get("stack_info"))
     assert b"SECRET" not in pickle.dumps(rec)
     assert b"SECRET" not in logging.handlers.SocketHandler("localhost", 0).makePickle(rec)
