@@ -308,8 +308,8 @@ PR 0's precondition tests found two premises of this plan false on main:
   2026-12-01 because the fix lands later, is committed in [silent_wrong_exceptions.json](silent_wrong_exceptions.json).
 - **A saved store is not byte-stable across processes.** The Hippocampus `context_index`, NAc's `outcome_index` and
   the EC's inverted indices (`similarity/indices.py`) are written from a `set`, so their order follows
-  `PYTHONHASHSEED`. WC5 compares with that one index sorted, and a separate small `src/` PR makes every such writer
-  sort its output, with a two-process guard (#1789).
+  `PYTHONHASHSEED`. A separate small `src/` PR (#1789) makes every such writer sort its output, with a two-process
+  guard; WC5's re-saved file is then the old store with that one index sorted, compared byte for byte.
 
 **Exit tests chosen from OD-WC1 to OD-WC7:**
 - **WC5, robots unchanged, is mandatory.** It lands green in PR 0 as characterization:
@@ -317,8 +317,8 @@ PR 0's precondition tests found two premises of this plan false on main:
   - the loop characterization golden still under `tests/unit/_loop_harness.py::_StepClock`;
   - a Hippocampus home and NAc pair saved before A-pre (`tests/fixtures/world_clock_wc5/`), loaded and saved back
     unchanged. Each writer serialises one id index from a `set` (the Hippocampus `context_index`, NAc's
-    `outcome_index`), whose order follows `PYTHONHASHSEED`, so the compare sorts that one index and is exact for
-    every other byte until the writer fix sorts its output (#1789);
+    `outcome_index`), whose order follows `PYTHONHASHSEED` in a store saved before #1789. Re-saving sorts that one index
+    (#1789), so the re-saved file must equal the original with that index sorted, exact for every byte;
   - the shipped dispatch seam handing NAc no tool duration: no energy cost, a 0.0 s `tool_result` delay (#1788);
   - a prompt built under a pinned `TZ` with `maxim.agents.prompt_builder.datetime` patched, byte-identical to
     today's. From PR 2 it is patched at the port, with the patch target named per PR.

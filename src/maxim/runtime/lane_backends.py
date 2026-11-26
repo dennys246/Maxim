@@ -1897,6 +1897,11 @@ def _ensure_lane_profiles_available(
     caller passes ``interactive=False`` (#1658: it asked on any thread, so a console talk request sat on the server's
     stdin).
 
+    Offline (#1315 item 10b, owner decision V25): a pinned profile, the build's own ``profile`` or one the operator
+    pinned (:func:`_profile_is_pinned`), is refused by name (``ensure_available`` raises ``OfflineRefusal`` before any
+    consent prompt); an auto-detected one is never downloaded and re-walks straight away, recorded as degraded with the
+    model the lane runs instead.
+
     No-op for cloud lanes, remote lanes, and lanes with no profile.
     """
     from maxim.models.download import consent_interactive
@@ -1942,7 +1947,12 @@ def _ensure_lane_profiles_available(
                 lane_name,
                 lane_profile,
             )
-        ok = ensure_available(lane_profile, interactive=asks, logger=logger)
+        # Offline (owner decision V25): a pinned profile (the build's own, #1538, or the operator's) refuses by name
+        # inside ensure_available; an auto-detected one skips a download that cannot happen and re-walks to a model
+        # on disk, said as degraded.
+        pinned = lane_profile == profile or _profile_is_pinned(lane_profile, lane_name)
+        auto_offline = _offline.is_offline() and not pinned
+        ok = False if auto_offline else ensure_available(lane_profile, interactive=asks, logger=logger)
         if ok:
             continue
         if declined_out is not None:
@@ -1962,6 +1972,10 @@ def _ensure_lane_profiles_available(
             # just clear the broken profile so downstream lane assembly
             # falls back to its own defaults.
             out[lane_name] = dataclasses.replace(cfg, model_profile=None)
+            if auto_offline:
+                _offline.mark_degraded(
+                    "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} has no model on disk"
+                )
             continue
         try:
             new_tiers = detect_tiers(
@@ -1973,6 +1987,10 @@ def _ensure_lane_profiles_available(
             if logger is not None:
                 logger.warning("Tier re-walk after failed download failed: %s", e)
             out[lane_name] = dataclasses.replace(cfg, model_profile=None)
+            if auto_offline:
+                _offline.mark_degraded(
+                    "lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} has no model on disk"
+                )
             continue
         re_walked = True
         # Replace lanes with their re-walked counterparts. We deliberately
@@ -1992,8 +2010,41 @@ def _ensure_lane_profiles_available(
                 kv_quant_mode=new_cfg.kv_quant_mode,
                 requires_gpu=new_cfg.requires_gpu,
             )
+        if auto_offline:
+            substitute = getattr(out.get(lane_name), "model_profile", None)
+            # The report's offline block is a claim (V27): a re-walk that hands back the missing profile, one that is
+            # not on disk either, or none, gave the lane no model, and the record says so (delta rounds 7 and 8).
+            runs = substitute and substitute != lane_profile and _profile_has_local_file(substitute)
+            ran = f"runs {substitute}" if runs else "has no model on disk"
+            _offline.mark_degraded("lanes.model_profile", f"{lane_profile} is not on disk; lane {lane_name} {ran}")
 
     return out
+
+
+def _profile_is_pinned(profile: str, lane_name: str) -> bool:
+    """Whether the operator chose ``profile`` for ``lane_name``, not tier detection: offline a pinned profile is never
+    swapped (owner decisions V25, V28). Pinned: ``--llm`` / ``MAXIM_LLM_PROFILE`` or ``llm.profile`` in config.json
+    (``resolve_setting`` reads both), or the lane's own ``model_profile`` in llm.json ``tiers``. Maxim's GPU-less
+    default, which the CPU fallbacks export as MAXIM_LLM_PROFILE, reads as pinned too: on a GPU-less box the served
+    model comes from ``load_llm_config``, whose only input for it is that env value, so offline a missing default
+    refuses by name rather than swapping (owner decision V31, fail closed; the redesign is #1737)."""
+    from maxim.models.language.config import load_llm_config
+    from maxim.runtime.config_loader import resolve_setting
+
+    try:
+        tiers = getattr(load_llm_config(), "_raw", {}).get("tiers", {}) or {}
+    except Exception as e:  # an unreadable llm.json pins nothing; the router build reports it on its own path
+        logger.debug("llm.json tiers unresolved while checking a pin: %s", e)
+        tiers = {}
+    override = tiers.get(lane_name) if isinstance(tiers, dict) else None
+    if isinstance(override, dict) and override.get("model_profile") == profile:
+        return True
+    try:
+        value, source = resolve_setting("llm.profile")
+    except Exception as e:  # an unreadable config pins nothing here; the router build reports it on its own path
+        logger.debug("llm.profile unresolved while checking a pin: %s", e)
+        return False
+    return source != "default" and value == profile
 
 
 def _apply_local_llm_override(

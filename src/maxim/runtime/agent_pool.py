@@ -32,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.deadline import Deadline
 from maxim.utils.logging import log_swallowed_exception
 
@@ -381,7 +382,7 @@ class AgentPool:
 
     def _generate_llm_response(self, agent_id: str, personality: str, percept: str) -> str:
         """One in-character LLM line via ``LLMRouter.generate``, or a typed ``ModelError`` (#1338: never a stub)."""
-        from maxim.exceptions import LeaderRefusal, ModelError, ModelInferenceError
+        from maxim.exceptions import SECURITY_REFUSALS, ModelError, ModelInferenceError
 
         system = "You are an NPC in a narrative scenario.\n"
         if personality:
@@ -392,7 +393,9 @@ class AgentPool:
             raise ModelInferenceError(f"NPC '{agent_id}' has no LLM router", context={"agent_id": agent_id})
         try:
             text = router.generate(percept, system=system, max_tokens=100, request_context={"agent_id": agent_id})
-        except (ModelError, LeaderRefusal):
+        except ModelError:
+            raise
+        except SECURITY_REFUSALS:  # a leader or offline refusal stays itself (#1315 item 10b)
             raise
         except Exception as e:  # a router that is not an LLMRouter: still a typed failure, never a stub
             raise ModelInferenceError(
@@ -406,5 +409,5 @@ class AgentPool:
         # Strip quotes if the LLM wrapped its response
         if response.startswith('"') and response.endswith('"'):
             response = response[1:-1]
-        log.debug("NPC '%s' LLM response: %s", agent_id, response[:80])
+        log.debug("NPC '%s' LLM response: %s", agent_id, text_shape(response))  # #1775: the shape, never the text
         return response

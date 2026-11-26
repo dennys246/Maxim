@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 from maxim.simulation.arcs import NarrativeArc
+from maxim.utils.cloud_redaction import text_shape
 
 log = logging.getLogger(__name__)
 
@@ -297,7 +298,7 @@ class Narrator:
                         "event": "narrator_generation",
                         "data": {
                             "phase": phase,
-                            "text_preview": text.strip()[:120],
+                            "text_shape": text_shape(text.strip()),  # #1775: the reply's shape only
                             "has_phase_instruction": bool(phase_instruction),
                             "fallback": False,
                         },
@@ -317,7 +318,7 @@ class Narrator:
                 "event": "narrator_generation",
                 "data": {
                     "phase": phase,
-                    "text_preview": fallback[:120],
+                    "text_shape": text_shape(fallback),
                     "has_phase_instruction": bool(phase_instruction),
                     "fallback": True,
                 },

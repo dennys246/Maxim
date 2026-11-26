@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from maxim.exceptions import SECURITY_REFUSALS
 from maxim.simulation.sim_types import is_simulation_run_failure
 
 # The one list of metrics where lower is better: the composite inverts them, rankings sort them ascending,
@@ -69,6 +70,9 @@ class RunResult:
     duration_s: float = 0.0
     turns: int = 0
     error: str | None = None
+    #: The run was refused (``SECURITY_REFUSALS``: the offline latch, a leader refusal), not failed: ``error`` says
+    #: why, and the run is never scored (#1315 item 10b, owner decision V26).
+    refused: bool = False
 
 
 @dataclass
@@ -91,7 +95,8 @@ class ModelResult:
     #: Whether the applied thresholds held, on their own. ``passed`` is the verdict: thresholds held, at least one
     #: applied, every expectation met, no run errored (owner decision 2026-10-17). None = a report saved before it.
     thresholds_passed: bool | None = None
-    #: Why a leader/offline refusal stopped the benchmark on this model (``passed`` is then False); None = not refused.
+    #: Why a run of this model was refused (offline, a leader refusal), or None: a refused model is reported, not
+    #: scored or ranked (#1315 item 10b, owner decision V26).
     refused: str | None = None
 
 
@@ -109,6 +114,13 @@ class BenchmarkReport:
     duration_s: float = 0.0
     baseline_comparison: dict[str, dict[str, dict[str, float]]] | None = None
 
+    def exit_code(self) -> int:
+        """The benchmark's process exit code: 2 when any model was refused (the operator must act: offline, a leader
+        refusal; owner decision V26), else 0 when every model passed, else 1."""
+        if any(mr.refused for mr in self.results.values()):
+            return 2
+        return 0 if all(mr.passed for mr in self.results.values()) else 1
+
     def summary_table(self) -> str:
         """Generate a human-readable summary table with tiered metrics."""
         w = max(60, 20 + 16 * len(self.models))
@@ -120,9 +132,6 @@ class BenchmarkReport:
             "=" * w,
             "",
         ]
-        refused = [m for m, mr in self.results.items() if mr.refused is not None]
-        if refused:  # #1315 item 10a: their metrics below are partial, and they are not ranked
-            lines += [f"  REFUSED (partial results, not ranked): {', '.join(refused)}", ""]
 
         if not self.results:
             lines.append("  No results.")
@@ -143,6 +152,8 @@ class BenchmarkReport:
             mr = self.results.get(model)
             if not mr:
                 return "—"
+            if mr.refused:  # not scored (owner decision V26): never a 0.00
+                return "refused"
             val = mr.metrics.get(key, 0)
             sd = mr.metrics_stddev.get(key, 0)
             if sd > 0.001:
@@ -204,11 +215,11 @@ class BenchmarkReport:
         for m in self.models:
             if m in self.results:
                 mr = self.results[m]
-                if mr.refused is not None:  # a leader/offline refusal stopped the benchmark here (#1315 10a)
-                    lines.append(f"    {m}: REFUSED — {mr.refused}")
-                    continue
                 errored = bool(mr.runs) and all(r.error is not None for r in mr.runs)
                 legacy = mr.thresholds_passed is None and not errored
+                if mr.refused:
+                    lines.append(f"    {m}: REFUSED — {mr.refused} (not scored)")
+                    continue
                 if errored:
                     status = "n/a (every run errored)"
                 elif mr.thresholds_checked == 0:
@@ -397,14 +408,9 @@ class BenchmarkRunner:
                     run_campaign() → compute metrics → validate expectations
             Aggregate across runs (mean, stddev)
         Score against thresholds, rank models.
-
-        A leader or offline refusal (``SECURITY_REFUSALS``) is not one failed run: it stops the benchmark, saves the
-        report so far (the refused model's ``refused`` set, the models after it absent), then re-raises (#1315 10a).
         """
-        from maxim.exceptions import SECURITY_REFUSALS
         from maxim.simulation.experiment import run_campaign
         from maxim.simulation.scenario_source import load_scenario
-        from maxim.simulation.sim_logger import display_status, display_summary
         from maxim.simulation.validation import validate_finished_run
         from maxim.simulation.sinks import RecordingSink
 
@@ -412,9 +418,10 @@ class BenchmarkRunner:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         all_model_results: dict[str, ModelResult] = {}
         total_models = len(self.models)
-        refusal: BaseException | None = None
 
         for model_idx, model in enumerate(self.models):
+            from maxim.simulation.sim_logger import display_status, display_summary
+
             display_status(f"Model: {model} ({model_idx + 1}/{total_models})")
             model_runs: list[RunResult] = []
 
@@ -484,9 +491,19 @@ class BenchmarkRunner:
                         total = run_result.expectations_total
                         display_status(f"  OK {duration:.1f}s — {turns} turns — {passed}/{total} expectations")
 
-                    except SECURITY_REFUSALS as e:  # a leader/offline refusal stops the benchmark, never one failed run
-                        refusal = e
-                        break
+                    except SECURITY_REFUSALS as refusal:
+                        # A refused model is not a failed scenario: recorded as refused, never scored, and the other
+                        # models still run (#1315 item 10b, owner decision V26).
+                        model_runs.append(
+                            RunResult(
+                                scenario=scenario_name,
+                                model=model,
+                                run_index=run_idx,
+                                error=f"refused: {refusal}",
+                                refused=True,
+                            )
+                        )
+                        display_status(f"  REFUSED: {refusal}")
                     except Exception as e:
                         logger.warning("Scenario %s failed on %s: %s", scenario_name, model, e)
                         error_msg = str(e)
@@ -499,45 +516,21 @@ class BenchmarkRunner:
                             )
                         )
                         display_status(f"  FAIL: {error_msg}")
-                if refusal is not None:
-                    break
 
             # Aggregate across runs
             model_result = self._aggregate_runs(model, model_runs)
             all_model_results[model] = model_result
-            if refusal is not None:
-                model_result.refused = str(refusal) or type(refusal).__name__
-                model_result.passed = False
-                break
-            display_summary([f"Score: {model_result.score:.3f}"])
+            display_summary(
+                [
+                    f"REFUSED (not scored): {model_result.refused}"
+                    if model_result.refused
+                    else f"Score: {model_result.score:.3f}"
+                ]
+            )
 
         total_duration = time.time() - start
-        if refusal is None:
-            display_summary([f"Benchmark complete: {total_duration:.1f}s across {total_models} model(s)"])
-        else:
-            display_summary([f"Benchmark stopped by a refusal on {model} after {total_duration:.1f}s"])
-        report = self._build_report(timestamp, all_model_results, total_duration)
-        if refusal is not None:
-            # The finished models' results are kept: saved, marked refused, then the refusal ends the run (#1315 10a).
-            # A failed save is logged, never raised: the refusal, not a disk error, is what must reach the caller.
-            try:
-                report_dir = self.save_report(report)
-            except OSError:
-                logger.warning("Benchmark refused on %s; the partial report could not be saved", model, exc_info=True)
-            else:
-                logger.warning("Benchmark refused on %s; partial report saved: %s", model, report_dir)
-                display_status(f"  REFUSED: {model}: partial report saved to {report_dir}")
-            raise refusal
-        return report
+        display_summary([f"Benchmark complete: {total_duration:.1f}s across {total_models} model(s)"])
 
-    def _build_report(
-        self, timestamp: str, all_model_results: dict[str, ModelResult], total_duration: float
-    ) -> BenchmarkReport:
-        """Build, rank and baseline-compare the report from the per-model results ``run`` gathered.
-
-        Only measured models are ranked: a refused model's results are partial and the models after it never ran, so
-        neither enters ``overall_ranking``, ``rankings`` or the baseline deltas (#1315 item 10a).
-        """
         # Build report
         report = BenchmarkReport(
             timestamp=timestamp,
@@ -549,9 +542,14 @@ class BenchmarkRunner:
         )
 
         # Rank models
-        measured = {m: mr for m, mr in all_model_results.items() if mr.refused is None}
-        report.overall_ranking = sorted(measured, key=lambda m: measured[m].score, reverse=True)
-        report.rankings = self._compute_rankings(measured)
+        # A refused model is reported, not ranked (owner decision V26).
+        scored = {m: r for m, r in all_model_results.items() if not r.refused}
+        report.overall_ranking = sorted(
+            (m for m in self.models if m not in all_model_results or not all_model_results[m].refused),
+            key=lambda m: all_model_results.get(m, ModelResult(model=m)).score,
+            reverse=True,
+        )
+        report.rankings = self._compute_rankings(scored)
 
         # Baseline comparison (if a baseline path was provided)
         if self.baseline_path:
@@ -651,6 +649,11 @@ class BenchmarkRunner:
 
     def _aggregate_runs(self, model: str, runs: list[RunResult]) -> ModelResult:
         """Aggregate metrics across multiple runs of the same model."""
+        # A model with any refused run is refused, not scored: refused part-way, its scored runs are partial (V26).
+        refused_runs = [r for r in runs if r.refused]
+        if refused_runs:
+            reason = (refused_runs[0].error or "").removeprefix("refused: ") or "refused"
+            return ModelResult(model=model, runs=runs, passed=False, refused=reason)
         successful = [r for r in runs if r.error is None]
         if not successful:
             return ModelResult(model=model, runs=runs, passed=False)
@@ -899,14 +902,13 @@ class BenchmarkRunner:
         comparison: dict[str, dict[str, dict[str, float]]] = {}
 
         for model, current_mr in report.results.items():
-            if current_mr.refused is not None:  # partial results: never a baseline delta (#1315 item 10a)
-                continue
             baseline_mr = baseline.results.get(model)
+            if current_mr.refused or (baseline_mr is not None and baseline_mr.refused):
+                # A refused model is not scored (V26); a report saved by 10a's build kept its partial metrics.
+                logger.info("Model %s was refused in this run or the baseline — no baseline comparison for it", model)
+                continue
             if baseline_mr is None:
                 logger.info("Model %s not in baseline — skipping baseline comparison for it", model)
-                continue
-            if baseline_mr.refused is not None:
-                logger.info("Model %s was refused in the baseline — skipping baseline comparison for it", model)
                 continue
 
             model_deltas: dict[str, dict[str, float]] = {}
@@ -956,8 +958,8 @@ class BenchmarkRunner:
                     "expectations_total": mr.expectations_total,
                     "thresholds_checked": mr.thresholds_checked,
                     "thresholds_passed": mr.thresholds_passed,
-                    "refused": mr.refused,
                     "per_scenario": mr.per_scenario,
+                    "refused": mr.refused,
                 }
                 for model, mr in report.results.items()
             },
@@ -997,7 +999,10 @@ class BenchmarkRunner:
         ``cause`` is ``consented_router``'s (``LLM_DISABLED`` or one of ``LocalModelUnavailable.CAUSES``), or
         :data:`PAPER_NO_TEXT` (the router returned no text for any section). Any other failure raises: a broad
         except here once turned a constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so
-        the paper step never worked and nothing said why (#1680).
+        the paper step never worked and nothing said why (#1680). A refusal (``SECURITY_REFUSALS``: the offline
+        latch, a leader refusal) raises too, at the router build or at a section call, so the run exits 2 like any
+        other refusal (V26; owner decision 2026-11-23); the build-time one is logged first and, offline, marked
+        degraded, which logs a WARNING (the benchmark report is already saved and has no offline block).
         """
         from maxim.mesh.bus import LocalMessageBus
         from maxim.models.download import LLM_DISABLED, consented_router
@@ -1008,7 +1013,15 @@ class BenchmarkRunner:
         # One plain router, none of a run's services, and a missing model downloaded only with a standing grant
         # (#1396 bullet 2): no paper rather than a router that refuses every call. Built first, so a run with no
         # usable LLM leaves no experiment log behind.
-        router, cause = consented_router(load_llm_config(), logger=logger)
+        try:
+            router, cause = consented_router(load_llm_config(), logger=logger)
+        except SECURITY_REFUSALS as refusal:  # said as what it is, then raised: a refusal exits 2 (V26, 2026-11-23)
+            from maxim import _offline
+
+            if isinstance(refusal, _offline.OfflineRefusal):
+                _offline.mark_degraded("benchmark.paper", f"no paper: {refusal}")
+            logger.warning("No paper: the paper writer's router was refused (%s)", refusal)
+            raise
         if router is None:
             if cause == LLM_DISABLED:
                 logger.warning("No LLM available for paper generation: the LLM is disabled in llm.json")
@@ -1017,7 +1030,11 @@ class BenchmarkRunner:
             return None, cause
 
         exp_log = ExperimentLog(session_dir=output_dir, agent_nickname="benchmark")
+        scored = [m for m in report.models if not (m in report.results and report.results[m].refused)]
+        refused = {m: mr.refused for m, mr in report.results.items() if mr.refused}
         for model, mr in report.results.items():
+            if mr.refused:  # not scored (owner decision V26): the paper names it as refused, never ranks it
+                continue
             metrics_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(mr.metrics.items())[:10])
             exp_log.record(
                 hypothesis=f"Model {model} performs well on {report.suite}",
@@ -1036,10 +1053,15 @@ class BenchmarkRunner:
         )
 
         goal = (
-            f"Write a comparative analysis of {len(report.models)} LLM models "
+            f"Write a comparative analysis of {len(scored)} LLM models "
             f"benchmarked on the {report.suite} suite. "
-            f"Models tested: {', '.join(report.models)}. "
-            f"Include methodology, per-model results, and ranking analysis."
+            f"Models tested: {', '.join(scored)}. "
+            + (
+                f"Refused and not scored (do not rank them): {', '.join(f'{m} ({why})' for m, why in refused.items())}. "
+                if refused
+                else ""
+            )
+            + "Include methodology, per-model results, and ranking analysis."
         )
 
         draft = writer.run(goal)  # saves output_dir / "paper.md" when any section came back
