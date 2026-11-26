@@ -1054,7 +1054,8 @@ def control_plane_write_refusal(path: str) -> str | None:
 
     Residuals (``docs/user/safety.md``): the code-execution tools can still write these files; an operator's own
     non-default ``MAXIM_DATA_HOME``/``XDG_CONFIG_HOME`` that a child re-points; HFS+'s ignorable-character spellings
-    (shared with #957); creating a NEW hardlink into the config dir needs code execution.
+    (shared with #957); creating a NEW hardlink into the config dir needs code execution; a spend file the operator
+    moved with ``routing.cost_state_path`` is outside the deny (#1806 PR 0 round 2 A1).
     """
     real = os.path.realpath(path)
     config_dirs, files = _control_plane_roots()

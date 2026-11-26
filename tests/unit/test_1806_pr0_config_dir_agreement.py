@@ -9,6 +9,7 @@ semantics (so the agreement cannot be met by all six drifting together).
 
 from __future__ import annotations
 
+import ast
 import platform
 from pathlib import Path
 
@@ -105,48 +106,109 @@ def test_data_home_if_resolved_has_no_side_effects(tmp_path: Path, monkeypatch) 
     paths._reset_caches()
 
 
-def test_no_other_module_reads_the_config_dir_env_vars() -> None:
-    """Review D5: no new hand-copied config-dir resolver can appear. Only ``maxim_config_dir`` (and the git-config
-    locator, which resolves GIT's config, not Maxim's) reads ``XDG_CONFIG_HOME`` / ``APPDATA`` in ``src/maxim``."""
-    import ast
-    from pathlib import Path
+_CONFIG_ENV_NAMES = frozenset({"XDG_CONFIG_HOME", "APPDATA"})
+_CONFIG_SCAN_ALLOWED = frozenset(
+    {
+        # the one resolver
+        ("utils/paths.py", "maxim_config_dir"),
+        # git's config (not Maxim's), the deny matcher's own pair and roots, and the host-tool env passthrough set
+        ("tools/base.py", "_global_git_config_paths"),
+        ("tools/base.py", "_control_plane_roots"),
+        ("tools/base.py", "<module>"),
+    }
+)
 
-    names = {"XDG_CONFIG_HOME", "APPDATA"}
-    allowed = {("utils/paths.py", "maxim_config_dir"), ("tools/base.py", "_global_git_config_paths")}
 
-    class _Reads(ast.NodeVisitor):
-        def __init__(self, rel: str) -> None:
-            self.rel, self.stack, self.hits = rel, ["<module>"], set()
+def _flagged(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    if value == ".config" or value in _CONFIG_ENV_NAMES:
+        return True
+    return any(value.startswith(f"{p}{n}") for p in ("$", "${", "%") for n in _CONFIG_ENV_NAMES)
 
-        def _scoped(self, node: ast.AST) -> None:
-            self.stack.append(getattr(node, "name", "?"))
-            self.generic_visit(node)
-            self.stack.pop()
 
-        visit_FunctionDef = visit_AsyncFunctionDef = _scoped
+def _strip_docstring(body: list) -> list:
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        return body[1:]
+    return body
 
-        def visit_Call(self, node: ast.Call) -> None:
-            func = node.func
-            attr = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-            if attr in {"get", "getenv"} and node.args and isinstance(node.args[0], ast.Constant):
-                if node.args[0].value in names:
-                    self.hits.add((self.rel, self.stack[-1]))
-            self.generic_visit(node)
 
-        def visit_Subscript(self, node: ast.Subscript) -> None:
-            if (
-                isinstance(node.slice, ast.Constant)
-                and node.slice.value in names
-                and "environ" in ast.unparse(node.value)
-            ):
-                self.hits.add((self.rel, self.stack[-1]))
-            self.generic_visit(node)
+class _ConfigDirReads(ast.NodeVisitor):
+    """Collects ``(file, Class.function)`` scopes holding a flagged string constant (docstrings skipped)."""
 
-    root = Path(__file__).resolve().parents[2] / "src" / "maxim"
+    def __init__(self, rel: str) -> None:
+        self.rel, self.stack, self.hits = rel, [], set()
+
+    def _scoped(self, node) -> None:
+        for child in node.decorator_list:
+            self.visit(child)
+        for field_name in ("args", "returns", "bases", "keywords"):
+            value = getattr(node, field_name, None)
+            for child in value if isinstance(value, list) else [value]:
+                if isinstance(child, ast.AST):
+                    self.visit(child)
+        self.stack.append(node.name)
+        for child in _strip_docstring(node.body):
+            self.visit(child)
+        self.stack.pop()
+
+    visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _scoped
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if _flagged(node.value):
+            self.hits.add((self.rel, ".".join(self.stack) or "<module>"))
+
+
+def _config_dir_scan(root: Path) -> set[tuple[str, str]]:
     hits: set[tuple[str, str]] = set()
     for path in root.rglob("*.py"):
-        visitor = _Reads(path.relative_to(root).as_posix())
-        visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree.body = _strip_docstring(tree.body)
+        visitor = _ConfigDirReads(path.relative_to(root).as_posix())
+        visitor.visit(tree)
         hits |= visitor.hits
-    assert hits <= allowed, sorted(hits - allowed)
+    return hits
+
+
+def test_no_other_module_reads_the_config_dir_env_vars() -> None:
+    """Review D5 (tightened in PR 0 delta round 2, N1/A4): no new hand-copied config-dir resolver can appear.
+
+    The scan flags EVERY string constant in ``src/maxim`` that names a config-dir env var (``XDG_CONFIG_HOME``,
+    ``APPDATA``, or a ``$``/``%`` expansion of one) or is the ``".config"`` path piece, however it is read: a
+    literal ``os.environ.get``, an aliased ``environ``, a module constant, ``in os.environ``, ``getenv(key=)``,
+    ``setdefault``, ``expandvars``, and a hand-built ``Path.home() / ".config" / "maxim"`` all carry one. Scopes
+    are the fully qualified ``Class.function`` chain, so a same-named method elsewhere is not allowed by its name.
+
+    Stated limit: a name assembled at runtime (``"XDG_" + "CONFIG_HOME"``) carries no constant. Docstrings are
+    skipped: they describe the directory, they do not resolve it.
+    """
+    hits = _config_dir_scan(Path(__file__).resolve().parents[2] / "src" / "maxim")
+    assert hits <= _CONFIG_SCAN_ALLOWED, sorted(hits - _CONFIG_SCAN_ALLOWED)
     assert ("utils/paths.py", "maxim_config_dir") in hits  # the scan sees the real resolver (not vacuous)
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        'import os\nK = "XDG_CONFIG_HOME"\ndef f():\n    return os.environ.get(K)\n',
+        'from os import environ as env\ndef f():\n    return env["APPDATA"]\n',
+        'import os\ndef f():\n    return "XDG_CONFIG_HOME" in os.environ\n',
+        'import os\ndef f():\n    return os.getenv(key="APPDATA")\n',
+        'import os\ndef f():\n    return os.environ.setdefault("APPDATA", "x")\n',
+        'from pathlib import Path\ndef f():\n    return Path.home() / ".config" / "maxim"\n',
+        'import os\ndef f():\n    return os.path.expandvars("$XDG_CONFIG_HOME/maxim")\n',
+        # a same-named method inside the allowed FILE is still not the allowed function
+        'import os\nclass C:\n    def maxim_config_dir(self):\n        return os.environ.get("APPDATA")\n',
+    ],
+)
+def test_config_dir_scan_catches_the_planted_forms(planted: str, tmp_path: Path) -> None:
+    """The round-2 reviewers' planted forms: each is flagged outside the allowed scopes."""
+    (tmp_path / "utils").mkdir()
+    (tmp_path / "utils" / "paths.py").write_text(planted, encoding="utf-8")
+    hits = _config_dir_scan(tmp_path)
+    assert hits and not hits <= _CONFIG_SCAN_ALLOWED, hits
+
+
+def test_config_dir_scan_skips_docstrings(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text('"""Lives in $XDG_CONFIG_HOME."""\ndef f():\n    """APPDATA"""\n', "utf-8")
+    assert _config_dir_scan(tmp_path) == set()

@@ -172,6 +172,10 @@ What this does **not** cover:
 - **A non-default location you set yourself.** If you point `MAXIM_DATA_HOME` or `XDG_CONFIG_HOME` somewhere other
   than the default, and a child process is launched with that variable re-pointed again, your copy is protected only
   when it sits at a default-looking path. That is launcher configuration; the agent cannot change it.
+- **A moved spend file.** If you set `routing.cost_state_path` in `config.json` to move the cloud spend file, the
+  file at that location is not protected: an agent's file tools could zero it and reset the budget cap after a
+  restart. Leave the setting unset to keep the protection. (`config.json` itself is protected, so the agent cannot
+  set it.)
 - **HFS+ ignorable characters.** On an HFS+ volume, a name containing Unicode characters that HFS+ ignores can reach
   a file not created yet under another spelling. The `.git` check (#957) shares this gap. APFS is not affected.
 - **New hardlinks into the config directory.** Making one needs code execution (the first bullet).

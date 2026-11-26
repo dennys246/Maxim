@@ -350,3 +350,50 @@ def test_maxim_diagnostics_says_ipv6_is_not_probed_not_daemon_down(monkeypatch, 
     out = capsys.readouterr().out
     assert "IPv4 only" in out
     assert "Ensure the Reachy daemon is running" not in out
+
+
+def test_maxim_diagnostics_treats_its_host_as_typed(monkeypatch, capsys) -> None:
+    """Round 2 N2: a `--host` NAME with only an IPv6 address is reported as unprobed (it passes explicit_host=True);
+    an IPv6 literal alone cannot guard that flag, since a literal is unsupported whatever the flag says."""
+    import socket
+
+    from maxim.hardware.reachy import probe
+    from maxim.utils import reachy_diagnostics as diag
+
+    def _no_v4(name, *, timeout):
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    monkeypatch.setattr(probe, "resolve_ipv4", _no_v4)
+    monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET6, 1, 6, "", ("fd00::5", 0))])
+    monkeypatch.setattr(diag, "test_ping", lambda host, timeout=3: (True, "ok"))
+    monkeypatch.setattr(diag, "test_port", lambda host, port, timeout=5: (False, "closed"))
+    diag.diagnose_reachy("v6only.example")
+    out = capsys.readouterr().out
+    assert "IPv4 only" in out
+    assert "does not resolve" not in out.lower()
+
+
+def test_doctor_and_the_controller_agree_that_an_empty_host_is_unset(monkeypatch) -> None:
+    """Round 2 N2 (wire/executor): `host: ""` is unset for both, so both probe `<name>.local`, not `""`."""
+    from maxim.doctor import checks
+    from maxim.hardware.config import RobotConfig
+    from maxim.hardware.reachy import probe
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    probed: list[str] = []
+
+    def _probe(target, **kwargs):
+        probed.append(target)
+        return probe.ProbeOutcome(target=target, failure="resolve", error="does not resolve")
+
+    monkeypatch.setattr(probe, "probe_daemon", _probe)
+    monkeypatch.setattr("maxim._offline.is_offline", lambda: False)
+
+    class _Info:
+        os = "linux"
+
+    ctl = ReachyMiniController(robot_name="reachy_mini", host="")
+    assert ctl._host is None
+    ctl._precheck_daemon("network", 5.0)
+    checks._check_one_robot(_Info(), RobotConfig.from_dict("r", {"config": {"robot_name": "reachy_mini", "host": ""}}))
+    assert probed == ["reachy-mini.local", "reachy-mini.local"]

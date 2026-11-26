@@ -3,7 +3,8 @@
   (`~/.config/maxim/` or `$XDG_CONFIG_HOME/maxim/`: `mesh.yml`, `api_key`, `console_token`, `config.json`) and
   `robots.yaml`, `robots.yaml.bak`, `util/device_state.json`, `util/internet_access.json`,
   `util/internet_policy.json`, `util/hive_release_sequence.json` (the Oasis signer's anti-rollback counter) and
-  `util/cost_state.json` (the cloud spend your budget cap is enforced from) in the data home and the default
+  `util/cost_state.json` (the cloud spend your budget cap is enforced from, at its default location: a
+  `routing.cost_state_path` you set is not covered) in the data home and the default
   `~/.maxim`. So an agent cannot grant itself internet access, roll back the signer, or reset the budget cap by
   editing a file.
   Before this, an agent started from your home directory could repoint or delete them. Code-execution tools

@@ -292,7 +292,8 @@ class ReachyMiniController(RobotController):
         self._robot_name = robot_name
         self._media_backend = media_backend
         self._connection_mode = connection_mode
-        self._host = host
+        # "" is unset, as doctor (`bool(host)`) and the tunnel check (`not self._host`) already read it (#1806 PR 0 N2)
+        self._host = host or None
         self._tunnel = tunnel
         self._ssh_user = ssh_user
         self._ssh_port = ssh_port
@@ -393,7 +394,7 @@ class ReachyMiniController(RobotController):
             # it as given (review E1); the IPv4-only rule for pinned entries is #1806 PR 1's.
             logger.warning("%s: %s — pre-check skipped, connecting as given", target, outcome.error)
             return target, None
-        if outcome.failure in ("resolve", "unsupported"):
+        if outcome.failure == "resolve":
             if mdns:
                 logger.warning(
                     "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection "

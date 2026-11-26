@@ -248,8 +248,9 @@ def probe_daemon(
     The probe is IPv4 only. An IPv6 literal is ``failure="unsupported"``; so is a name with only an IPv6 address,
     but that second lookup runs ONLY for an operator-typed ``explicit_host`` (``host:``), the one case a robot run
     connects to as given (:func:`connects_as_given`). An unresolvable ``<name>.local`` stays ``"resolve"``, exactly
-    as before #1806, and never pays a second mDNS wait (reviews E1, D1, D4). Never raises for a network outcome:
-    every failure is recorded as ``ProbeOutcome.failure`` + ``error``.
+    as before #1806, and an untyped name never pays a second mDNS wait; a typed `host: x.local` that fails the IPv4
+    lookup does pay one more (unbounded) lookup before its refusal (reviews E1, D1, D4; round 2 N4). Never raises
+    for a network outcome: every failure is recorded as ``ProbeOutcome.failure`` + ``error``.
     """
     if not (isinstance(deadline_s, (int, float)) and deadline_s > 0):
         raise ValueError(f"deadline_s must be a positive number of seconds, got {deadline_s!r}")
