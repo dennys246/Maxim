@@ -179,9 +179,10 @@ What this does **not** cover:
   Leave the setting unset to keep the protection. (`<data home>/config/llm.json` itself is protected, so the agent
   cannot set it there.)
 - **An `llm.json` outside the data home.** Only `<data home>/config/llm.json` is protected. One named by
-  `MAXIM_LLM_CONFIG` is not, and when the data home has no `llm.json`, Maxim also reads `./data/util/llm.json` or
-  `./llm.json` in the directory it was started from (and the same two in a source checkout), which an agent working
-  there could create. Keep your settings in `~/.maxim/config/llm.json` to stay protected.
+  `MAXIM_LLM_CONFIG` is not, and when the data home has no `llm.json`, a run from a source checkout reads the
+  checkout's own `data/util/llm.json` (or `llm.json`), which an agent working in that checkout could edit. Keep your
+  settings in `~/.maxim/config/llm.json` to stay protected. Maxim no longer reads an `llm.json` from the directory
+  it was started from (#1806).
 - **HFS+ ignorable characters.** On an HFS+ volume, a name containing Unicode characters that HFS+ ignores can reach
   a file not created yet under another spelling. The `.git` check (#957) shares this gap. APFS is not affected.
 - **New hardlinks into the config directory.** Making one needs code execution (the first bullet).

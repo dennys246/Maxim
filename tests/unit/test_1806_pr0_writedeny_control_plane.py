@@ -415,3 +415,48 @@ def test_the_llm_config_is_refused(env, tool: str, monkeypatch) -> None:
     monkeypatch.setenv("MAXIM_DATA_HOME", str(child))
     paths._reset_caches()
     _assert_refused(env, tool, child / "config" / "llm.json", seed=False)  # a new one, under a new config/
+
+
+def test_an_llm_json_planted_in_the_launch_directory_is_not_read(tmp_path: Path, monkeypatch) -> None:
+    """Round 3 (owner decision): with no data-home llm.json, a ``./llm.json`` or ``./data/util/llm.json`` an agent
+    planted in the launch directory is NOT the config: neither the loader nor either CPU fallback reads it."""
+    import json
+
+    from maxim.models.language import config as C
+    from maxim.utils import paths
+
+    home = tmp_path / "data-home"
+    home.mkdir()
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(home))
+    monkeypatch.delenv("MAXIM_LLM_CONFIG", raising=False)
+    paths._reset_caches()
+    work = tmp_path / "work"
+    (work / "data" / "util").mkdir(parents=True)
+    planted = {"cloud_enabled": True, "profile": "p", "profiles": {"p": {"backend": "llama_cpp"}}}
+    for rel in ("llm.json", "data/util/llm.json"):
+        (work / rel).write_text(json.dumps(planted))
+    monkeypatch.chdir(work)
+    # the repo-root candidates are a source checkout's own files, a stated residual: keep them out of this test
+    monkeypatch.setattr(C.os.path, "isfile", lambda p, _f=os.path.isfile: _f(p) and str(work) in p)
+    assert C.llm_config_file() is None
+    assert C.configured_profile_uses_llama_cpp() is False
+    assert C.load_llm_config().cloud_enabled is False
+    paths._reset_caches()
+
+
+def test_the_cpu_fallbacks_read_the_loaders_llm_json(tmp_path: Path, monkeypatch) -> None:
+    """Round 3: both CPU fallbacks ask ``configured_profile_uses_llama_cpp``, which reads the loader's own file."""
+    import json
+
+    from maxim.models.language import config as C
+
+    cfg = tmp_path / "llm.json"
+    monkeypatch.setenv("MAXIM_LLM_CONFIG", str(cfg))
+    assert C.configured_profile_uses_llama_cpp() is False or C.llm_config_file() != str(cfg)
+    cfg.write_text(json.dumps({"profile": "p", "profiles": {"p": {"backend": "llama_cpp"}}}))
+    assert C.llm_config_file() == str(cfg)
+    assert C.configured_profile_uses_llama_cpp() is True
+    cfg.write_text(json.dumps({"profile": "p", "profiles": {"p": {"backend": "transformers"}}}))
+    assert C.configured_profile_uses_llama_cpp() is False
+    cfg.write_text("{not json")
+    assert C.configured_profile_uses_llama_cpp() is False

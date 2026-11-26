@@ -7,7 +7,12 @@
   `routing.cost_state_path` you set is not covered) and `config/llm.json` (the budget caps, `cloud_enabled` and
   the provider URLs) in the data home and the default `~/.maxim`. So an agent cannot grant itself internet access,
   roll back the signer, or raise or reset the budget cap by editing that file. An `llm.json` named by
-  `MAXIM_LLM_CONFIG`, or read from the CWD fallback when the data home has none, is not covered.
+  `MAXIM_LLM_CONFIG`, or a source checkout's own `data/util/llm.json`, is not covered.
+- **Maxim no longer reads an `llm.json` from the directory it was started from** (#1806 PR 0): with no
+  `~/.maxim/config/llm.json`, `./llm.json` and `./data/util/llm.json` were the LLM config, so an agent working in the
+  launch directory could plant one to raise its budget or turn on cloud calls. Move such a file to
+  `~/.maxim/config/llm.json`. The CPU fallback's llama.cpp check now reads the same file as the loader, instead of
+  its own `<home_dir>/util/llm.json`.
   Before this, an agent started from your home directory could repoint or delete them. Code-execution tools
   (`bash`, `execute_file`, opted-in `run_tests`) are not covered; passive mode refuses those.
 - **`create_sandbox_script` refuses a script name that is not a plain file name** (#1806 PR 0): a name with a path

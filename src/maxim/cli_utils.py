@@ -486,22 +486,10 @@ def _registered_cloud_flag(profile: str) -> bool | None:
 
 def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data") -> None:
     """Configure a smaller LLM model for CPU-only inference when no GPU is available."""
-    import json
+    from maxim.models.language.config import configured_profile_uses_llama_cpp
 
-    llm_config_path = os.path.join(home_dir, "util", "llm.json")
-    using_llama_cpp = False
-    try:
-        if os.path.exists(llm_config_path):
-            with open(llm_config_path) as f:
-                llm_cfg = json.load(f)
-            profile_name = llm_cfg.get("profile", "")
-            profiles = llm_cfg.get("profiles", {})
-            if profile_name in profiles:
-                using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
-    except Exception:
-        pass
-
-    if using_llama_cpp:
+    del home_dir  # kept for callers; the llm.json read is the loader's own (#1806 PR 0 round 3)
+    if configured_profile_uses_llama_cpp():
         logger.info("Using llama.cpp backend with native Metal GPU support")
         return
 

@@ -611,8 +611,13 @@ def _llm_config_candidates() -> list[str]:
     Was duplicated between ``list_llm_profiles`` and ``load_llm_config``,
     and neither copy consulted the DOCUMENTED user location
     (``~/.maxim/config/llm.json`` — cli_parser, the downloader, and the
-    docs all point there): env override → user config → CWD/repo-root
+    docs all point there): env override → user config → repo-root
     ``data/util`` legacy developer-checkout fallbacks.
+
+    No CWD candidate (#1806 PR 0 round 3, owner decision): ``./llm.json`` and ``./data/util/llm.json`` were read
+    when the data home had none, and an agent working in the launch directory could create either, outside the
+    control-plane write deny, to raise its own budget or enable cloud calls. The repo-root pair stays (a source
+    checkout's tracked developer file), a stated residual in ``docs/user/safety.md``.
     """
     candidates: list[str] = []
     env_path = str(os.getenv("MAXIM_LLM_CONFIG", "")).strip()
@@ -624,12 +629,37 @@ def _llm_config_candidates() -> list[str]:
         candidates.append(str(user_config() / "llm.json"))
     except (ImportError, OSError):
         pass
-    candidates.append(os.path.join(os.getcwd(), "data", "util", "llm.json"))
-    candidates.append(os.path.join(os.getcwd(), "llm.json"))
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
     candidates.append(os.path.join(repo_root, "llm.json"))
     return candidates
+
+
+def llm_config_file() -> str | None:
+    """The ``llm.json`` :func:`load_llm_config` reads: the first existing :func:`_llm_config_candidates` entry."""
+    return next((path for path in _llm_config_candidates() if path and os.path.isfile(path)), None)
+
+
+def configured_profile_uses_llama_cpp() -> bool:
+    """Whether the ``llm.json`` :func:`load_llm_config` reads declares a llama.cpp profile (Metal-friendly).
+
+    The one reader for both CPU fallbacks (``cli_utils.configure_cpu_fallback_model`` and the robot runtime's
+    ``_apply_llm_backend_fallback``), which each read a ``<home_dir>/util/llm.json`` of their own, a file the
+    loader never reads (#1806 PR 0 round 3). Only an explicit file entry counts, as before: a missing or
+    unreadable file is False (logged), so the CPU fallback applies.
+    """
+    path = llm_config_file()
+    if path is None:
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as e:
+        logger.debug("Could not inspect %s for the CPU backend fallback: %s", path, e)
+        return False
+    profiles = raw.get("profiles") if isinstance(raw, dict) else None
+    entry = profiles.get(raw.get("profile", "")) if isinstance(profiles, dict) else None
+    return isinstance(entry, dict) and entry.get("backend") == "llama_cpp"
 
 
 def get_profile(name: str) -> dict[str, Any] | None:

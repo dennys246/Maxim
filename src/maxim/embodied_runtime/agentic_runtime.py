@@ -7,7 +7,6 @@ DefaultNetwork, CaptureManager, and all related subsystems.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -1143,21 +1142,10 @@ class AgenticRuntimeMixin:
         if is_gpu_available():
             return
 
-        # Check whether the configured profile uses llama.cpp (Metal-friendly)
-        llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
-        using_llama_cpp = False
-        try:
-            if os.path.exists(llm_config_path):
-                with open(llm_config_path) as f:
-                    llm_cfg = json.load(f)
-                profile_name = llm_cfg.get("profile", "")
-                profiles = llm_cfg.get("profiles", {})
-                if profile_name in profiles:
-                    using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
-        except Exception as e:
-            self.log.debug("Could not inspect LLM config for backend fallback: %s", e)
+        # Whether the llm.json the loader reads declares a llama.cpp profile (Metal-friendly; #1806 PR 0 round 3)
+        from maxim.models.language.config import configured_profile_uses_llama_cpp
 
-        if using_llama_cpp:
+        if configured_profile_uses_llama_cpp():
             self.log.info("Using llama.cpp backend with native Metal GPU support")
             return
 

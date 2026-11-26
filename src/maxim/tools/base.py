@@ -926,7 +926,7 @@ _CONTROL_PLANE_DATA_FILES: tuple[tuple[str, ...], ...] = (
     # the cloud spend the budget cap is enforced from on restart: zeroing it would reset the operator's cap
     ("util", "cost_state.json"),
     # the LLM config: its ``routing`` holds the spend caps and ``cost_state_path``, plus ``cloud_enabled`` and each
-    # provider's ``base_url`` (#1806 PR 0 round 3 D1); the env override and CWD fallbacks are a stated residual
+    # provider's ``base_url`` (#1806 PR 0 round 3 D1); the env override and repo-root fallbacks are a stated residual
     ("config", "llm.json"),
 )
 # The env-independent name rule: realpath components (folded) that END with one of these, or CONTAIN the pair.
@@ -1058,7 +1058,7 @@ def control_plane_write_refusal(path: str) -> str | None:
     Residuals (``docs/user/safety.md``): the code-execution tools can still write these files; an operator's own
     non-default ``MAXIM_DATA_HOME``/``XDG_CONFIG_HOME`` that a child re-points; HFS+'s ignorable-character spellings
     (shared with #957); creating a NEW hardlink into the config dir needs code execution; a spend file the operator
-    moved with ``routing.cost_state_path``, an ``llm.json`` named by ``MAXIM_LLM_CONFIG``, and the CWD/repo-root
+    moved with ``routing.cost_state_path``, an ``llm.json`` named by ``MAXIM_LLM_CONFIG``, and the repo-root
     ``llm.json`` fallbacks ``load_llm_config`` reads when the data home has none are outside the deny (#1806 PR 0
     rounds 2 A1, 3 D1).
     """
