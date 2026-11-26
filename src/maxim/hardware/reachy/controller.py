@@ -966,7 +966,7 @@ class ReachyMiniController(RobotController):
                 f"http://{host}:8000/api/state/full?{_STATE_FULL_QUERY}",
                 timeout=maxim_http.TimeoutPolicy(connect_s=deadline, read_s=deadline, pool_s=deadline),
                 address_policy="private",
-                proxy="never",  # #1806 PR 0: the reference every move starts from never travels through a proxy
+                strict=True,  # #1806 PR 0: the reference every move starts from never travels through a proxy
             )
         except Exception as e:  # noqa: BLE001 - any transport failure is a missing reference
             raise MotionRefused("reference", f"fresh readback failed: {e}") from e

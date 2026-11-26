@@ -1,7 +1,7 @@
 """#1806 PR 0: every read of the Reachy daemon is dialled directly at a private address.
 
 The probe (``hardware/reachy/probe.py``) and the controller's fresh readback carry
-``address_policy="private", proxy="never"``. The REST DoA reader is the third daemon read
+``address_policy="private", strict=True``. The REST DoA reader is the third daemon read
 and had neither: an environment proxy could carry the azimuth the orient loop acts on.
 """
 
@@ -30,7 +30,7 @@ def test_the_rest_doa_reader_dials_the_daemon_directly(monkeypatch) -> None:
     assert reader() == (0.5, True)
     assert seen["url"].startswith("http://10.0.0.5:")
     assert seen.get("address_policy") == "private"
-    assert seen.get("proxy") == "never"
+    assert seen.get("strict") is True
 
 
 def test_maxim_diagnostics_docs_read_is_direct(monkeypatch) -> None:
@@ -41,7 +41,7 @@ def test_maxim_diagnostics_docs_read_is_direct(monkeypatch) -> None:
 
     src = inspect.getsource(diag)
     docs_call = src[src.index('8000/docs"') - 80 : src.index('8000/docs"') + 120]
-    assert 'address_policy="private"' in docs_call and 'proxy="never"' in docs_call
+    assert 'address_policy="private"' in docs_call and "strict=True" in docs_call
 
 
 def test_edit_file_invalidates_the_result_cache_like_write_file() -> None:

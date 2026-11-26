@@ -1,4 +1,4 @@
-"""#1806 PR 0: ``fetch_url(address_policy="private", proxy="never")`` dials a private endpoint DIRECTLY.
+"""#1806 PR 0: ``fetch_url(address_policy="private", strict=True)`` dials a private endpoint DIRECTLY.
 
 Under #921 an env proxy that applies to an operator URL wins (the proxy dials, so no address check can apply). The
 Reachy daemon probe must never be answered by a proxy for a robot it never reached, so the strict private mode has no
@@ -76,14 +76,14 @@ def test_a_configured_proxy_is_bypassed_and_the_daemon_is_dialled_directly(monke
     port, hits = server
     _set_dead_proxy(monkeypatch)
     resp = _http.fetch_url(
-        f"http://127.0.0.1:{port}/api/daemon/status", address_policy="private", proxy="never", deadline_s=3.0
+        f"http://127.0.0.1:{port}/api/daemon/status", address_policy="private", strict=True, deadline_s=3.0
     )
     assert resp.json() == {"state": "running"} and hits == ["/api/daemon/status"]
     assert resp.endpoint == "_external_policy_private_strict"
 
 
 def test_control_the_default_mode_lets_the_same_proxy_carry_it(monkeypatch, server) -> None:
-    """Without ``proxy="never"`` the dead proxy carries the URL (#921) and the daemon is never reached: this is what
+    """Without ``strict=True`` the dead proxy carries the URL (#921) and the daemon is never reached: this is what
     makes the test above non-vacuous."""
     from maxim import _offline
 
@@ -98,7 +98,7 @@ def test_control_the_default_mode_lets_the_same_proxy_carry_it(monkeypatch, serv
 
 def test_the_strict_client_has_no_proxy_mounts_and_does_not_trust_env(monkeypatch) -> None:
     _set_dead_proxy(monkeypatch)
-    client = _http._registry.get_client(_http._EXTERNAL_STRICT_POLICY_ENDPOINTS["private"])
+    client = _http._registry.get_client(_http._EXTERNAL_STRICT_ENDPOINTS["private"])
     assert not any(t is not None for t in client._mounts.values())
     assert client._trust_env is False
 
@@ -118,7 +118,7 @@ def test_a_public_address_is_still_refused_with_a_proxy_set(monkeypatch, server)
     monkeypatch.setattr(socket, "getaddrinfo", fake)
     monkeypatch.setattr(_http, "_is_public_address", lambda a: a == "127.0.0.1")  # loopback plays a public host
     with pytest.raises(_http.HTTPConnectionError, match="public address"):
-        _http.fetch_url(f"http://robot.test:{port}/api/daemon/status", address_policy="private", proxy="never")
+        _http.fetch_url(f"http://robot.test:{port}/api/daemon/status", address_policy="private", strict=True)
     assert hits == []
 
 
@@ -149,7 +149,7 @@ def test_the_deadline_bounds_the_whole_strict_request() -> None:
             _http.fetch_url(
                 f"http://127.0.0.1:{srv.getsockname()[1]}/api/daemon/status",
                 address_policy="private",
-                proxy="never",
+                strict=True,
                 timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=2.0, pool_s=2.0),
                 deadline_s=0.6,
             )
@@ -161,20 +161,9 @@ def test_the_deadline_bounds_the_whole_strict_request() -> None:
 
 def test_every_fetch_url_endpoint_carries_the_deadline_backend() -> None:
     """Iterates ``_DEADLINE_ENDPOINTS`` itself, so the strict endpoint (and any later one) is covered."""
-    assert _http._EXTERNAL_STRICT_POLICY_ENDPOINTS["private"] in _http._DEADLINE_ENDPOINTS
+    assert _http._EXTERNAL_STRICT_ENDPOINTS["private"] in _http._DEADLINE_ENDPOINTS
     for name in _http._DEADLINE_ENDPOINTS:
         client = _http._registry.get_client(name)
         transports = [client._transport, *(t for t in client._mounts.values() if t is not None)]
         for t in transports:
             assert isinstance(t._pool._network_backend, _http._DeadlineBackend), name
-
-
-@pytest.mark.parametrize("policy", ["any", "public"])
-def test_proxy_never_without_the_private_policy_is_refused_not_downgraded(policy) -> None:
-    with pytest.raises(ValueError, match="proxy='never'"):
-        _http.fetch_url("http://127.0.0.1:9/x", address_policy=policy, proxy="never")
-
-
-def test_an_unknown_proxy_mode_is_refused() -> None:
-    with pytest.raises(ValueError, match="unknown proxy mode"):
-        _http.fetch_url("http://127.0.0.1:9/x", address_policy="private", proxy="nevr")  # type: ignore[arg-type]

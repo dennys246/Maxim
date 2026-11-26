@@ -184,7 +184,7 @@ def make_reachy_rest_doa_reader(
             try:
                 # The robot daemon is a LAN peer: dial it directly at a private address, never through an
                 # environment proxy (#1806 PR 0; the same rule as the controller's fresh readback and probe).
-                resp = maxim_http.fetch_url(url, timeout=t, address_policy="private", proxy="never")
+                resp = maxim_http.fetch_url(url, timeout=t, address_policy="private", strict=True)
                 data = resp.json() if hasattr(resp, "json") else None
             except Exception:
                 logger.debug("REST DoA fetch failed", exc_info=True)

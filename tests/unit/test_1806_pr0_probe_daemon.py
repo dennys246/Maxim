@@ -69,7 +69,7 @@ def test_the_status_read_dials_the_resolved_literal_directly_with_a_deadline():
     assert dial.call_args.args[0] == "192.168.1.40"
     assert fetch.call_args.args[0] == "http://192.168.1.40:8000/api/daemon/status"
     kw = fetch.call_args.kwargs
-    assert kw["address_policy"] == "private" and kw["proxy"] == "never" and 0 < kw["deadline_s"] <= 4.0
+    assert kw["address_policy"] == "private" and kw["strict"] is True and 0 < kw["deadline_s"] <= 4.0
     assert outcome.target == "reachy-mini.local" and outcome.address == "192.168.1.40"
 
 

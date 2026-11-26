@@ -2213,7 +2213,7 @@ class TestCheckRobotReachable:
         fetch.assert_not_called()
 
     def test_the_status_read_is_direct_private_and_bounded(self):
-        """The probe reads the status with fetch_url(address_policy="private", proxy="never", deadline_s=...)."""
+        """The probe reads the status with fetch_url(address_policy="private", strict=True, deadline_s=...)."""
         with (
             patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
             patch("socket.create_connection"),
@@ -2224,7 +2224,7 @@ class TestCheckRobotReachable:
         assert r.status == "ok"
         assert fetch.call_args.args[0] == "http://10.6.0.63:8000/api/daemon/status"
         kw = fetch.call_args.kwargs
-        assert kw["address_policy"] == "private" and kw["proxy"] == "never"
+        assert kw["address_policy"] == "private" and kw["strict"] is True
         assert 0 < kw["deadline_s"] <= 4.0
 
     def test_ok_needs_the_strict_refusal_to_agree(self):

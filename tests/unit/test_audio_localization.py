@@ -227,7 +227,7 @@ class TestRestDoAReader:
             reader = make_reachy_rest_doa_reader("10.0.0.5")
             assert reader() == (math.pi, True)
             assert calls["url"] == "http://10.0.0.5:8000/api/state/doa"
-            assert calls["kw"] == {"address_policy": "private", "proxy": "never"}  # #1806 PR 0
+            assert calls["kw"] == {"address_policy": "private", "strict": True}  # #1806 PR 0
         finally:
             maxim_http.fetch_url = orig
 
@@ -246,7 +246,7 @@ class TestRestDoAReader:
         try:
             assert make_reachy_rest_doa_reader("h")() is None
             # #1806 PR 0: the error path really ran (not a TypeError from a stale fake signature)
-            assert ran == [{"address_policy": "private", "proxy": "never"}]
+            assert ran == [{"address_policy": "private", "strict": True}]
         finally:
             maxim_http.fetch_url = orig
 

@@ -11,7 +11,7 @@ The sequence mirrors the hardware-validated one (``docs/embodiment/reachy_mini/t
 1. **name resolution** -- an IPv4 literal is used as is; a name is resolved ONCE to IPv4 (``gethostbyname``, which
    sidesteps the getaddrinfo IPv6-first flake), and every later stage dials that literal;
 2. **TCP :8000** -- the daemon's single WS-era control port (FastAPI + ``/ws/sdk``);
-3. **``GET /api/daemon/status``** -- through ``utils/http.py::fetch_url(address_policy="private", proxy="never")``,
+3. **``GET /api/daemon/status``** -- through ``utils/http.py::fetch_url(address_policy="private", strict=True)``,
    so the robot is dialled directly (never through a proxy that could answer for a robot it never reached) and a
    public address is refused on the address actually dialled (#824/#921); ``deadline_s`` bounds the whole request
    (#1715);
@@ -197,7 +197,7 @@ def read_daemon_status(address: str, port: int, *, deadline_s: float) -> dict[st
     url = f"http://{address}:{port}{STATUS_PATH}"
     try:
         body = maxim_http.fetch_url(
-            url, timeout=deadline_s, deadline_s=deadline_s, address_policy="private", proxy="never"
+            url, timeout=deadline_s, deadline_s=deadline_s, address_policy="private", strict=True
         ).json()
     except (maxim_http.HTTPError, ValueError) as e:
         raise DaemonStatusUnreadable(_bounded(f"{type(e).__name__}: {e}") or type(e).__name__) from e
