@@ -7,13 +7,15 @@ the RobotRegistry with configured robots.
 from __future__ import annotations
 
 import logging
+import math
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from maxim.exceptions import RobotsConfigError
+from maxim.exceptions import InvalidConfigError, RobotsConfigError
 from maxim.hardware.registry import RobotRegistry
 
 logger = logging.getLogger(__name__)
@@ -316,6 +318,67 @@ def load_robots_config(
 
     logger.debug("No robot config file found, using defaults")
     return RobotsConfig()
+
+
+def robot_connect_timeout(default: float) -> float:
+    """The robot connect timeout: ``MAXIM_ROBOT_TIMEOUT`` when set (faster headless startup), else ``default``.
+
+    A value that is not a finite positive number raises :class:`~maxim.exceptions.InvalidConfigError` naming the
+    variable (#1806 PR 0); pre-fix the bare ``float()`` raised an unexplained ``ValueError`` out of ``Maxim.__init__``.
+    """
+    raw = os.environ.get("MAXIM_ROBOT_TIMEOUT")
+    if raw is None or not raw.strip():
+        return float(default)
+    refusal = f"MAXIM_ROBOT_TIMEOUT={raw!r} is not a positive number of seconds; unset it or fix it"
+    try:
+        value = float(raw)
+    except ValueError as e:
+        raise InvalidConfigError(refusal) from e
+    if not math.isfinite(value) or value <= 0:
+        raise InvalidConfigError(refusal)
+    return value
+
+
+def resolve_robot_connection(
+    robot_id: str, robot_name: str, media_backend: str, *, log: logging.Logger
+) -> tuple[str, dict[str, Any], RobotConfig | None]:
+    """A live (non-simulated) run's ``(robot_type, connect_config, entry)`` from robots.yaml, read ONCE (#1806 PR 0).
+
+    ``entry`` is the matched robots.yaml entry or ``None``; ``selfy.Maxim._resolve_robot_connection`` hands it to the
+    agentic runtime, so the connect and the body wiring read the same robot. A broken robots.yaml raises
+    :class:`~maxim.exceptions.RobotsConfigError`: a robot run with a broken file fails, it does not connect with
+    defaults or run headless.
+    """
+    robot_type = "reachy_mini"
+    log.info("Connecting to Reachy Mini '%s'...", robot_id)
+    # Operator-declared connection config (host, connection_mode, tunnel, ...) comes from <data_home>/robots.yaml.
+    # Pre-fix (2026-07-31) this path built the config inline and silently ignored the file, so the connect error's
+    # own advice ("set host: <ip> in robots.yaml") did nothing: the controller fell back to mDNS and failed on hosts
+    # where .local resolution is blocked. Declared keys win over the inline defaults; wiring-layer keys (body,
+    # audio_localization) are filtered to the constructor's signature by connect_robot.
+    robots_cfg = load_robots_config()
+    connect_config = resolve_connection_config(
+        robots_cfg, robot_id, defaults={"robot_name": robot_name, "media_backend": media_backend}
+    )
+    entry = resolve_robot_entry(robots_cfg, robot_id)
+    if entry is None and robots_cfg.robots:
+        # F1: several robots, none matching and none marked primary. Never adopt a foreign robot's config or body.
+        log.warning(
+            "robots.yaml has %d robots, none matching id=%r and none marked primary; "
+            "not guessing one. Connecting with defaults and running bodiless.",
+            len(robots_cfg.robots),
+            robot_id,
+        )
+    # Honor the operator's declared `type:` (Exp 49 seam, 2026-08-04): `type: simulated` runs the FULL live stack
+    # against SimulatedController, declaratively. Same entry as the connection config, so type and config always
+    # come from the same robot.
+    if entry is not None and entry.robot_type:
+        if entry.robot_type != robot_type:
+            log.info(
+                "robots.yaml declares type=%s for %r — overriding default %s", entry.robot_type, robot_id, robot_type
+            )
+        robot_type = entry.robot_type
+    return robot_type, connect_config, entry
 
 
 def connect_configured_robots(

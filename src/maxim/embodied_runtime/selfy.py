@@ -38,7 +38,7 @@ from maxim.models.vision.registry import build_segmentation_model
 
 # Hardware abstraction layer for multi-robot support
 from maxim.hardware import RobotRegistry
-from maxim.hardware.config import resolve_daemon_name
+from maxim.hardware.config import resolve_daemon_name, resolve_robot_connection, robot_connect_timeout
 from maxim.hardware.reachy import ReachyMiniController
 from maxim.hardware.simulation import SimulatedController
 
@@ -80,30 +80,6 @@ def _setup_hardware_env() -> None:
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
     _hardware_env_ready = True
-
-
-def _robot_connect_timeout(default: float) -> float:
-    """The robot connect timeout: ``MAXIM_ROBOT_TIMEOUT`` when set (faster headless startup), else ``default``.
-
-    A value that is not a finite positive number raises
-    :class:`~maxim.exceptions.InvalidConfigError` naming the variable (#1806 PR 0); pre-fix the bare ``float()``
-    raised an unexplained ``ValueError`` out of ``Maxim.__init__``.
-    """
-    import math
-
-    from maxim.exceptions import InvalidConfigError
-
-    raw = os.environ.get("MAXIM_ROBOT_TIMEOUT")
-    if raw is None or not raw.strip():
-        return float(default)
-    refusal = f"MAXIM_ROBOT_TIMEOUT={raw!r} is not a positive number of seconds; unset it or fix it"
-    try:
-        value = float(raw)
-    except ValueError as e:
-        raise InvalidConfigError(refusal) from e
-    if not math.isfinite(value) or value <= 0:
-        raise InvalidConfigError(refusal)
-    return value
 
 
 # Mixin classes (compartmentalized from this file)
@@ -260,7 +236,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self._capabilities.ram_gb = _ram_gb
 
         effective_robot_id, robot_type, _connect_config = self._resolve_robot_connection(media_backend)
-        effective_timeout = _robot_connect_timeout(timeout)
+        effective_timeout = robot_connect_timeout(timeout)
 
         # Use the global registry to connect
         self._robot = _robot_registry.connect_robot(
@@ -372,67 +348,21 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
     def _resolve_robot_connection(self, media_backend: str) -> "tuple[str, str, dict[str, Any]]":
         """Resolve this run's robot id, controller type and connect config, ONCE (#1806 PR 0).
 
-        Returns ``(robot_id, robot_type, connect_config)`` and stores the matched robots.yaml entry (or
-        ``None``) as ``self._resolved_robot_config``: the one entry the connect uses AND the agentic
-        runtime's readers (body wiring, the DoA gate, motor binding, aut_mode) see, so the two can never
-        disagree on which robot the operator meant. A broken robots.yaml raises
-        :class:`~maxim.exceptions.RobotsConfigError` out of here: a robot run with a broken file fails,
-        it does not connect with defaults or run headless. Residual (wire W2-6): ``simulation=True`` (no
-        ``src/`` caller passes it) resolves no entry.
+        Returns ``(robot_id, robot_type, connect_config)`` and stores the matched robots.yaml entry (or ``None``) as
+        ``self._resolved_robot_config``: the one entry the connect uses AND the agentic runtime's readers (body
+        wiring, the DoA gate, motor binding, aut_mode) see, so the two can never disagree on which robot the operator
+        meant. The resolution itself is :func:`maxim.hardware.config.resolve_robot_connection` (measured there; this
+        file is excluded from coverage). A broken robots.yaml raises :class:`~maxim.exceptions.RobotsConfigError` out
+        of here. Residual (wire W2-6): ``simulation=True`` (no ``src/`` caller passes it) resolves no entry.
         """
-        from maxim.hardware.config import load_robots_config, resolve_connection_config, resolve_robot_entry
-
-        # Connect to robot using hardware abstraction layer.
-        # Supports both real Reachy Mini hardware and simulation mode.
-        robot_type = "simulated" if self._simulation else "reachy_mini"
-        effective_robot_id = self._robot_id or self.name
+        robot_id = self._robot_id or self.name
         self._resolved_robot_config = None
-
-        self.log.info("Connecting to Reachy Mini '%s'...", effective_robot_id)
-
         if self._simulation:
-            return effective_robot_id, robot_type, {"video_resolution": (640, 480), "simulate_delays": False}
-
-        # Operator-declared connection config (host, connection_mode,
-        # tunnel, ...) comes from <data_home>/robots.yaml. Pre-fix
-        # (2026-07-31) this path built the config inline and silently
-        # ignored the file, so the connect error's own advice ("set host:
-        # <ip> in robots.yaml") did nothing: the controller fell back to mDNS
-        # and failed on hosts where .local resolution is blocked. Declared
-        # keys win over the inline defaults; wiring-layer keys (body,
-        # audio_localization) are filtered to the constructor's signature by
-        # connect_robot.
-        robots_cfg = load_robots_config()
-        connect_config = resolve_connection_config(
-            robots_cfg,
-            effective_robot_id,
-            defaults={"robot_name": self.name, "media_backend": media_backend},
-        )
-        entry = resolve_robot_entry(robots_cfg, effective_robot_id)
+            self.log.info("Connecting to Reachy Mini '%s'...", robot_id)
+            return robot_id, "simulated", {"video_resolution": (640, 480), "simulate_delays": False}
+        robot_type, connect_config, entry = resolve_robot_connection(robot_id, self.name, media_backend, log=self.log)
         self._resolved_robot_config = entry
-        if entry is None and robots_cfg.robots:
-            # F1: several robots, none matching and none marked primary.
-            # Never adopt a foreign robot's config or body: defaults + bodiless.
-            self.log.warning(
-                "robots.yaml has %d robots, none matching id=%r and none marked primary; "
-                "not guessing one. Connecting with defaults and running bodiless.",
-                len(robots_cfg.robots),
-                effective_robot_id,
-            )
-        # Honor the operator's declared `type:` (Exp 49 seam, 2026-08-04):
-        # `type: simulated` runs the FULL live stack against
-        # SimulatedController, declaratively. Same entry as the connection
-        # config, so type and config always come from the same robot.
-        if entry is not None and entry.robot_type:
-            if entry.robot_type != robot_type:
-                self.log.info(
-                    "robots.yaml declares type=%s for %r — overriding default %s",
-                    entry.robot_type,
-                    effective_robot_id,
-                    robot_type,
-                )
-            robot_type = entry.robot_type
-        return effective_robot_id, robot_type, connect_config
+        return robot_id, robot_type, connect_config
 
     # ─────────────────────────────────────────────────────────────────────────
     # Protocol dispatch (called by phrase_responses)

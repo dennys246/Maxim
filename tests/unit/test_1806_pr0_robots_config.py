@@ -248,16 +248,16 @@ def test_an_ambiguous_file_adopts_no_foreign_robot(data_home, caplog):
 
 @pytest.mark.parametrize("raw", ["abc", "nan", "inf", "0", "-5"])
 def test_a_garbage_robot_timeout_is_a_typed_error_naming_the_variable(monkeypatch, raw):
-    from maxim.embodied_runtime.selfy import _robot_connect_timeout
+    from maxim.hardware.config import robot_connect_timeout
 
     monkeypatch.setenv("MAXIM_ROBOT_TIMEOUT", raw)
     with pytest.raises(InvalidConfigError, match="MAXIM_ROBOT_TIMEOUT"):
-        _robot_connect_timeout(30.0)
+        robot_connect_timeout(30.0)
 
 
 def test_the_robot_timeout_reads_the_env_or_the_default(monkeypatch):
-    from maxim.embodied_runtime.selfy import _robot_connect_timeout
+    from maxim.hardware.config import robot_connect_timeout
 
-    assert _robot_connect_timeout(30.0) == 30.0
+    assert robot_connect_timeout(30.0) == 30.0
     monkeypatch.setenv("MAXIM_ROBOT_TIMEOUT", " 4.5 ")
-    assert _robot_connect_timeout(30.0) == 4.5
+    assert robot_connect_timeout(30.0) == 4.5
