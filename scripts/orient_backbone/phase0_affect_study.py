@@ -142,7 +142,6 @@ def eval_dir(nac, lo, hi, seed):
 
 def main():
     seeds = list(range(16))
-    n_win = 6
     modes = ["none", "reward_cluster", "pain_cluster", "pain_causal", "both", "potential_diff"]
     print("\nPhase 0 — orient-to-center backbone + affect study")
     print("centering=outcome (saturates ~0.5 from drift); near/far-dir=learned policy quality\n")
