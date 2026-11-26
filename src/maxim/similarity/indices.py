@@ -150,13 +150,14 @@ class InvertedIndices:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to dictionary."""
+        """Serialize to dictionary. Each index is a set of ids, written sorted so the bytes do not follow
+        PYTHONHASHSEED (#1789)."""
         return {
-            "by_tool": {k: list(v) for k, v in self._by_tool.items()},
-            "by_outcome": {k: list(v) for k, v in self._by_outcome.items()},
-            "by_mode": {k: list(v) for k, v in self._by_mode.items()},
-            "by_hour": {str(k): list(v) for k, v in self._by_hour.items()},
-            "by_day": {str(k): list(v) for k, v in self._by_day.items()},
+            "by_tool": {k: sorted(v) for k, v in self._by_tool.items()},
+            "by_outcome": {k: sorted(v) for k, v in self._by_outcome.items()},
+            "by_mode": {k: sorted(v) for k, v in self._by_mode.items()},
+            "by_hour": {str(k): sorted(v) for k, v in self._by_hour.items()},
+            "by_day": {str(k): sorted(v) for k, v in self._by_day.items()},
         }
 
     @classmethod
