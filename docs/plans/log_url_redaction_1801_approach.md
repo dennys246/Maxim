@@ -1,6 +1,6 @@
 # #1801: URLs reduced at the boundaries, not per call site (approach note)
 
-> **Status:** v24 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
+> **Status:** v25 2026-11-25 (Session A), on origin/main after #1775 (b53f804e). This is a security boundary, so the adversarial design pass comes before any
 > code (CLAUDE.md "Faster without lowering the bar" (1)).
 > - **Round 1 (red-team, a different reader):** 2 DO-NOT-BUILD and 6 SHOULD-FIX, all folded below and tagged R1–R8.
 >   - FAIL-OPEN: R1 (the factory cannot see `extra=`), R2 (the sink map was missing family 4), R4 (a later factory
@@ -87,10 +87,10 @@
 >   ```yaml
 >   owner_exceptions:
 >     - id: E1801-1
->       accepts: "on EITHER branch (double-slash or separator; owner 2026-11-25, AC1), userinfo containing whitespace leaks its tail when a part exceeds its bound: form 1 user > 64, password before the whitespace > 256, or after it > 256; form 2 user before or after the whitespace > 64, or password > 256; form 3 either side > 64 characters"
+>       accepts: "on EITHER branch, userinfo containing whitespace leaks its tail when the whitespace lies more than 640 non-space characters after the scheme separator, or the `@` lies more than 640 characters after that whitespace (the catch-all's two bounds; the earlier per-form bounds are superseded by the owner's simplify decision, 2026-11-25)"
 >       why: "a bounded regex is linear; an unbounded one is quadratic on adversarial lines inside the logging path; httpx percent-encodes userinfo, so real transport errors never carry such text"
 >       class: fail-open residual, accepted
->       pinned_by: "one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6); the same pins on the separator branch (AC1). Each pin plants a distinct marker in EVERY part and compares case-insensitively, since past a bound only part
+>       pinned_by: "the catch-all's two bounds, 640/641 each, on each branch (reduced at the bound; past it the leak is asserted). Superseded per-form pins: one test per bound, at the bound and one past it (reduced at the bound; past it the leak is asserted, so a change is noticed): form 1 user 64/65, password-before 256/257, password-after 256/257; form 2 user-before 64/65, user-after 64/65, password 256/257; form 3 before 64/65, after 64/65 (Z6); the same pins on the separator branch (AC1). Each pin plants a distinct marker in EVERY part and compares case-insensitively, since past a bound only part
         of a secret leaks and `url_origin` lowercases a host (AA4)"
 >     - id: E1801-2
 >       accepts: "prose after a URL that contains `user:…@` (or `host:port … @`) is erased to `<url>`"
@@ -144,6 +144,23 @@
 >   - AE1: form 3 lets the user hold an `@`. The author verified it: 104/104, 0 leaks across every case set.
 >   - AE2: the lint fails on ANY attribute read of a class-body-labelled name, whatever its base.
 >   - A delta round 24 is owed on AE1–AE2 only.
+> - **Round 24 (delta, a different reader; 104/104 on 3.10 and 3.12):** 3 SHOULD-FIX (FAIL-OPEN) and 1 NIT.
+>   - Regex: a `/` after the whitespace, and an `@` with nothing after it.
+>   - Lint: labels reached through `setattr`, `globals()` and other modules, which would need a repo-wide analysis.
+> - **Owner, 2026-11-25 (after round 24): SIMPLIFY BOTH MECHANISMS.**
+>   - Rounds 15–24 kept finding "one more character a bounded userinfo form excludes", or one more route around a
+>     static taint lint, and two regressions came from the author's own folds.
+>   - **Regex:** the per-character userinfo forms are REPLACED by one catch-all per branch (§Shape, `redact_urls`).
+>     It closes every in-bounds whitespace-userinfo variant at once, at the cost of more fail-closed over-match.
+>   - **Lint:** a stated RATCHET over the forms in `src/` today. It is not a boundary: the factory and the choke
+>     points are the gate.
+>   - The author verified the catch-all on the scratch patch:
+>     - 104/104;
+>     - 0 leaks across every case set from rounds 15–24 (including round 24's eight);
+>     - 3.10 compiles it;
+>     - linear in nine adversarial families (at most 222 ms at 256k characters, ratio about 3 for 4× the input).
+>   - The superseded per-form text is in git history (3cf7f8db) and in the round entries above.
+>   - The next round judges the simplified design whole, not a delta.
 > - **Owner decisions:**
 >   - 2026-11-25: a separate PR that lands right after #1743, not widened into it.
 >   - D1–D4 (2026-11-25, asked together; all took the recommended option):
@@ -339,102 +356,42 @@ written later.
     slotted dataclass) and turns a non-str error into a str. `dataclasses.replace`, pickle and copy all keep the
     reduced value (probed). A third-party tool's error is covered too. `http_fetch` failures also carry the raw URL in
     `metadata={"url": url}`; the code round checks whether that reaches a prompt (N1).
-- **`redact_urls` (D3, R7):**
-  - Whitespace in a password: `https://u:p w@h/p`, `\n` and `\t` all leak a tail today. The fix must not
-    over-match prose (S4). Matching any whitespace up to an `@` turned `"see https://a.com and user:x@y"` into
-    `https://y` and `"GET https://h failed\nmail bob@ex.com"` into `https://ex.com`, which is silent-wrong.
-    So the userinfo is `user:`, with no whitespace before the colon, then a password of at most 64 characters, and a
-    userinfo that held whitespace emits `<url>`, not the origin after its `@`. Both prose strings are pinned in tests.
-    The scan stays linear (8,000 starts take 1.8 ms, against 1.1 ms today).
-    - The userinfo has two alternatives: the existing quote-tolerant `[^\s/@]*@`, so `https://to"k@h` gives the origin
-      and not `https://to`, and `user:` plus a password of up to 64 characters that may contain whitespace, which
-      gives `<url>` (Na). The code round pins the exact regex in this note before merging.
-    - **`Path` and other single-slash forms (T4):** `pathlib.Path` collapses `://` to `:/`, so `Path("/a/" + URL)`
-    renders `https:/u:PW@host/…` and the regex never saw a URL. For the `http`/`https` schemes the regex accepts `:/`
-    as well as `://` (and `:\/` for the JSON-escaped form), matched CASE-INSENSITIVELY and anchored on the scheme
-    run. **The exact regex, pinned and verified (W1):**
+- **`redact_urls` (D3, R7; simplified by the owner, 2026-11-25).** The exact regex, verified on the scratch patch
+  (`scratchpad/regex1801/regex_candidate.patch`):
 
-    ```python
-    _URL_IN_TEXT = re.compile(
-        r"(?<![A-Za-z0-9+.-])"
-        r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?=[\\/]*\\)[\\/]+|/(?![/\\])))(?P=sep)"
-        r"(?:[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@|[^/:]{0,64}\s[^/:]{0,64}@)?"
-        r"\S+"  # separator forms: any whitespace userinfo (bounded, as below), then the whole token
-        r"|[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's)
-        r"(?:(?P<wsui>[^/:]{0,64}:\S{0,256}\s[\s\S]{0,256}@"  # form 1: whitespace in the password
-        r"|[^\s/:]{0,64}\s[^/:]{0,64}:\S{0,256}@"  # form 2: whitespace in the user
-        r"|[^/:]{0,64}\s[^/:]{0,64}@)"  # form 3: colon-less userinfo with whitespace
-        r"|[^\s/@]*@)?"  # plain userinfo (today's)
-        r"[^\s'\"<>]+)"
-    )
-    ```
+  ```python
+  _URL_IN_TEXT = re.compile(
+      r"(?<![A-Za-z0-9+.-])"
+      r"(?:(?i:[A-Za-z0-9+.-]*(?:https?|wss?|ftps?)):(?=(?P<sep>(?=[\\/]*\\)[\\/]+|/(?![/\\])))(?P=sep)"  # separator forms
+      r"(?:(?P<swsui>\S{0,640}\s[\s\S]{0,640}@)\S*|\S+)"  # whitespace then an @ (the catch-all), else the whole token
+      r"|[A-Za-z0-9+.-]+://"  # any scheme, the double-slash form (today's)
+      r"(?:(?P<wsui>\S{0,640}\s[\s\S]{0,640}@)\S*"  # the catch-all: whitespace, then an @ within the bound
+      r"|(?:[^\s/@]*@)?[^\s'\"<>]+))"  # today's plain userinfo and host
+  )
+  ```
 
-    - **The separator branch (first, AB1):** for http(s)/ws(s)/ftp(s), case-insensitively, after `:` comes one of
-      separators:
-      - ANY run of slashes and backslashes that holds at least one backslash (the JSON-escaped `\/\/` and `\/`,
-        JSON-in-JSON `\\\/\\\/`, the Windows `\` or `\\`, and mixes such as `\\/`) (AD1);
-      - a single `/` followed by neither `/` nor `\` (the `Path` form).
-
-      It then takes the same three bounded whitespace-userinfo forms as the double-slash branch, optionally, then the
-      WHOLE non-space token (`\S+`), and `_reduce` emits `<url>` for it (AC1: a bare `\S+` stopped at the first space
-      and leaked whitespace userinfo). No plain userinfo or host is parsed, so an escaped quote cannot end the match
-      early (AB1). Linear, re-measured with AD1/AD2: at most about 163 ms at 256k characters on 3.12 (`a://:` runs), and 411 ms on
-      3.10 by the reader (AD2). Past the forms' bounds a tail leaks: E1801-1, either
-      branch. Fail-closed over-match: the rest of that token is erased, so `{"u":"https:\/\/…"}` keeps
-      `{"u":"<url>`. The separator is atomic by a lookahead plus a backreference, which keeps Python 3.10, the floor
-      (`requires-python = ">=3.10"`, CI's matrix runs 3.10), able to compile it, where `(?>…)` would not.
-    - **The double-slash branch** is today's pattern, which keeps every scheme (`postgres`, `redis`, `git+ssh`, `unix`,
-      `123://`), with the three whitespace-userinfo forms below and today's plain userinfo `[^\s/@]*@`. The plain
-      userinfo needs no backslash rule now that separator forms never reach it (AA1's conditional is gone).
-    - The userinfo has two alternatives. `wsui` is a userinfo that holds whitespace, matched GREEDILY to the LAST `@`
-      within its bounds (Y1: lazy quantifiers stopped at the first `@`, so `https://u:a b@c d@h/p` leaked `d@h/p`).
-      It has two forms:
-      - whitespace in the password: a user (possibly empty, the normal Redis form `redis://:PW D@…`; up to 64
-        characters, which may itself hold whitespace or an unencoded `@`, an email: AD2), `:`, up to 256 non-space characters, a whitespace, then up to
-        256 characters to an `@` (X1, X2, Y1, Y2);
-      - whitespace in the user: `https://us er:pw@h/p` passed raw before (Y3). Its user may also hold an `@` (AD2).
-      - (form 3) a colon-less userinfo with whitespace, whose user may also hold an `@` (AE1): `https://bob@ex.com
-        SECRET@h/p`, `https://a@b@c SECRET@h` and the tab, newline, JSON and separator forms leaked. Fail-closed
-        over-match it adds: `https://u@h see bob@x` becomes `<url>`, pinned per branch (it loses text and leaks
-        nothing, so it is not an exception).
-      - (Z1) form 1 now spans any whitespace after the password's first space (`[\s\S]{0,256}`), so `\r\n` and a
-        newline inside the password are caught, and its user part may hold `\` (`https://D\u:p w@h/x`);
-      - (Z1) form 2's password runs to the last `@` within 256 (`https://us er:p@ss"x@h/p`), and its user part is
-        bounded on both sides of the whitespace (it was unbounded before it);
-      - (Z1) form 3, NEW: a colon-less userinfo with whitespace (`https://tok en@h/p`, which passed raw);
-      - (Z2, AA1; superseded by AB1, kept for the record) the plain userinfo excluded `\` only after a JSON or Windows separator: the conditional
-        `(?(sep)[^\s/@\\]|[^\s/@])`. Spanning a backslash there made `'https:\\"'*n` quadratic (3.6 s at 64k);
-        excluding it everywhere leaked `https://u:p\"SECRET@h/p`, `https://D\u:p"SECRET@h/p`,
-        `https://a\b:p'SECRET@h` and `https://u:p\<SECRET@h`, which today's main reduces to `https://h` (AA1).
-        With the conditional, all four reduce to `https://h` and the quadratic family takes 179 ms at 256k;
-      - (AA2) forms 2 and 3 allow `\` in their user parts: `https://D\u s:SECRET@h`, `https://u s\x:SECRET@h` and
-        `https://D\u SECRET@h` leaked within bounds. The earlier "FIXED by forms 1 and 3" claim was false for them.
-      Past each form's bounds a tail leaks: accepted as owner exception E1801-1, one test per bound (Z6). `_reduce` emits `<url>` when it matched (Na). The other alternative is today's
-      quote-tolerant `[^\s/@]*@`.
-    - Verified on the scratch patch (`scratchpad/regex1801/regex_candidate.patch`): every Y1–Y3 case, `redis://:PW
-      D@cache:6379/0`, `https://:p w@h/x` and `https://u:p@ss w@h/p` give `<url>`, and 104/104 tests pass. Linear in
-      every family probed, the reviewer's two worst included: `("a://:"+" ")*n` takes 261 ms at 300k characters and
-      1,044 ms at 1.2M (Y4). Because greedy-to-the-last-`@` now spans URLs, `https://a:b c@h1 https://d@h2` gives one
-      `<url>` (fail-closed).
-    - Accepted over-match (fail-closed, X4, E1801-2): `https://h:8080 failed, mail bob@ex.com` and `see https://a.com
-      and user:x@y` become `<url>`. `\s` matches a newline between the password and the `@`, so the over-match can
-      span line breaks: `http://h:8100/x\nbob@ex.com` and `GET https://h failed\nmail bob@ex.com` become `<url>`. At
-      most 579 characters (64 + 1 + 256 + 1 + 256 + 1), plus the following token, are lost (Z4, AA4; the earlier "about 130" was wrong:
-      495 characters were erased in a probe).
-      Tests pin all three.
-    - A form branch 2 matches but `url_origin` cannot parse reduces to `<url>` (fail-closed): `x https:/u:PW@h/p`
-      gives `x <url>`, and the JSON-escaped form gives `"<url>"`.
-    - Prose is untouched: `see https://a.com and user:x@y` and `C:\Users\me` stay as they are.
-    - A test runs this regex on CI's 3.10 cell, with a case per scheme above (W1).
-    - Caught by branch 2: `Path("/a/HTTPS://…")`, a glued `/a/1https:/…` (U2) and `PureWindowsPath`'s
-      `https:\u:PW@h\p` (U5). The scan is linear (at most 1.8 ms on 50k characters, about 7 ms on adversarial runs,
-      W1). The over-match risk in prose (`http:/` written by hand)
-    is fail-closed: it can only reduce text. A test pins `Path("/a/https://u:PW@h/p")`.
-  - The user part excludes `\`, so the JSON-escaped form cannot reach into the userinfo (G5).
-    - The gaps stated in earlier versions (a colon-less userinfo with whitespace, a backslash in the user part) are
-      FIXED by forms 1 and 3 (Z1). What remains past the bounds is owner exception E1801-1; over-match is E1801-2.
-  - Add the JSON-escaped form `https:\/\/`, both to the regex and to the prefilter.
-  - The regex stays linear (checked).
+  - **The catch-all (both branches):** if a whitespace lies within 640 non-space characters after the separator, and
+    an `@` within 640 characters after that whitespace, the span through the LAST such `@` and the rest of that
+    token become `<url>`. It closes every whitespace-userinfo variant inside the bounds at once, whatever the
+    characters around it: `/`, `\`, `@`, quotes, `\r\n` or tabs, an email user, a trailing `@`. That covers every
+    in-bounds leak of rounds 15–24. `\S` and `\s` are disjoint, so the first part cannot backtrack ambiguously,
+    and the second is bounded, so the scan is linear.
+  - **The separator branch** (http(s)/ws(s)/ftp(s), case-insensitive): `:` then ANY slash/backslash run holding a
+    backslash (JSON `\/\/` and `\/`, JSON-in-JSON, Windows `\`/`\\`, mixes), or a lone `/` (the `Path` form). If
+    the catch-all does not apply, the whole non-space token is taken. It always reduces to `<url>`, because
+    `url_origin` cannot parse these forms. The separator is atomic by a lookahead plus a backreference, which keeps
+    Python 3.10 (the floor) able to compile it.
+  - **The double-slash branch:** every scheme (today's), and if the catch-all does not apply, today's plain userinfo
+    `[^\s/@]*@` and host, reduced by `url_origin` (`https://u:p@h/x` gives `https://h`, `https://to"k@h/p` gives
+    `https://h`).
+  - **Fail-closed over-match, accepted under E1801-2:** a URL followed within the bounds by whitespace and any `@` is
+    erased: `https://u:p@h/x, contact a@b`, `see https://a.com and user:x@y`, `https://h:8080 failed, mail
+    bob@ex.com`, and across line breaks. At most 640 + 1 + 640 characters plus the following token are lost.
+    Maxim's own log formats never put a URL next to an `@` (0 grep hits), so only exception or LLM text triggers
+    it. Tests pin each.
+  - **The residual past the bounds:** E1801-1, either branch, with the 640/641 pins.
+  - **The prefilter:** `"://"`/`r":\/"` plus a backslash-separator check, inside `redact_urls` (S6, Nc).
+  - `redact_urls` stays idempotent and never raises.
 - **The per-site wraps stay** (#997, #1743). They are belt-and-braces, and they cut AFTER reducing, which the
   boundary cannot do for them.
 
@@ -461,98 +418,33 @@ Round 4 (G1) found more sites than the grep had:
   branch is covered: `_hint` covers only some, and the `return "unhandled_" + type(exc).__name__, str(exc)` branch,
   the likeliest to carry a raw httpx URL, skips it (K2, L1). A test pins the `unhandled_*` branch.
 
-**Guard:** an AST lint, `scripts/lint_cut_before_redact.py`, run over `src/maxim`. A line grep was not enough: it
-passed `redact_urls(str(e)[:50])` (cut first, then reduced: the very bug) and missed `{e!r}`, single-quoted
-f-strings, `{error}`, `.stdout[...]`, and a cut made after the text was bound to a variable (G1). The lint:
-- flags a `Subscript` with a `Slice` whose value is **tainted**, and passes it only when the sliced value is itself
-  a `redact_urls(...)` / `url_scrubbed(...)` call;
-- taint sources: an `except … as` name; a parameter annotated as an exception type (`*Exception`, `BaseException`)
-  or named `exc`/`err`/`e`; `.stderr`/`.stdout`; `traceback.format_exc()` (H1);
-- taint propagates through `str()`, `repr()`, f-strings (any conversion), `.attr`, `x.method()`, `x[...]`, `BinOp`
-  (`%`, `+`), `AugAssign` (`s += str(ex)`), list/tuple displays (`[str(ex)][0]`), `for` and comprehension targets
-  over a tainted iterable, tuple-unpack targets (`a, b = str(e), 1`), `NamedExpr` (walrus), and any call with a
-  tainted positional OR keyword argument (`" ".join(str(e).split())`, `json.dumps({..: str(e)})`,
-  `dict(m=str(e))["m"]`), `BoolOp`/`IfExp` (`(result.stderr or "")[-500:]`), dict displays (`{"k": str(e)}`), plus
-  assignments within the function (H1, J3, K3, L2, M1). Non-text callables (`len`, `hash`,
-  `isinstance`, `bool`) propagate too: excluding them changes 0 results on src/maxim, so no exclusion is made (L6);
-- besides a `Subscript` slice, a **precision cut** over tainted text is flagged (L2, M1):
-  - a `FormattedValue` whose spec has a precision with no type, or with type `s`/`r`/`a` (`f"{e!s:.50}"`). A
-    precision on a number type (`{duration:.1f}`) is not a cut (M3);
-  - `%`-formatting with a precision (`"%.50s" % e`, `"%.*s" % (50, e)`);
-  - `"{:.50}".format(e)` and `format(e, ".50")`;
-  - `textwrap.shorten(<tainted>, …)`;
-  - the format CALLEES given tainted text, whatever their spec: `str.__mod__`, `operator.mod`, `str.format_map` and
-    `string.Formatter().format`/`vformat` (Q3);
-  - **any subscript of tainted text whose index is not a literal int** (`str(e)[sl]`, `str(e)[slice(0, 50)]`), any
-    DUNDER method call on tainted text (`.__getitem__(…)`, `.__format__(…)`), `operator.getitem`, and any
-    `reprlib.*` call over tainted text (T2);
-  - any `textwrap.*`, `itertools.*` or `collections.deque` call over tainted text (U3);
-  - callee indirection (X3): the lint fails on any reference to a split-family attribute (`str.partition`,
-    `x.split`) that is not called on the spot (`sp = str.partition`); on `getattr`, `operator.attrgetter` and
-    `operator.methodcaller` with a split-family literal name WHATEVER their object (`getattr(str, "partition")(str(e),
-    "@")[0]` evaded a tainted-object test; 0 such uses in src/maxim, so no flood, Y4), on `getattr` with a non-literal
-    name over tainted text, and on ANY call whose callee is itself a call or a subscript (`getattr(...)(…)`,
-    `d[k](…)`), a NAME assigned in the function from a call, subscript or `getattr` (`f = getattr(str, …); f(str(e),
-    "@")`), or a `.__call__` attribute, when it takes tainted text. "Dynamic callable" is a SECOND taint label (AB2): its
-    sources are the results of `getattr`, `attrgetter`, `methodcaller`, a call and a subscript, and it propagates
-    through the existing rules (unpack, attribute targets such as `self._f`, walrus and parameter defaults). A call of
-    anything carrying the label with tainted text fails, and so does any call that takes a labelled ARGUMENT together
-    with tainted text (`map(getattr(str, n), [str(e)], …)`). The label is read from module, class-body and outer-def
-    scopes, as taint is (P3), so a name labelled in a class body is labelled when read as an attribute of ANY base, without resolving the
-    base (AE2): `cls._f`, `type(self)._f`, `K._f`, `self._f`, `self.__class__._f`, `super()._f`, `Sub._f` and
-    `K()._f` all count. Resolving the base exactly (inheritance, `super()`, instances) is a static-analysis problem
-    the lint does not attempt; the conservative rule cannot be evaded by the base (AC2, AD3, AE2). So `(f,) = (getattr(str, n),)`, `self._f = getattr(str, n)` and
-    `def g(e, f=getattr(str, n))` are caught (AA3, AB2; 39 call/subscript callees in src/maxim, 0 with
-    tainted text) (Z3: `getattr(str, "parti"+"tion")(str(e), "@")[0]` evaded; flagging every
-    non-literal `getattr` would hit 78 sites), and `functools.partial` over one, when the text is
-    tainted; and on `re` reached through an import alias or `from re import …`. It resolves import aliases for
-    `textwrap`, `itertools`, `collections`, `reprlib`, `operator` and `string` the same way;
-  - **every** `split`/`rsplit`/`partition`/`rpartition`/`splitlines` call where ANY argument or the receiver is
-    tainted (`re.split("@", str(e))`, `str.partition(e, "@")`), and every `re.*` call over tainted text, unless
-    the tainted value is a `redact_urls(...)` call (V2, W2). Flagging only a subscript on the call itself missed `head, _, _ =
-    str(e).partition("@")`, `.split("@").pop(0)` and `parts = …; parts[0]` (V2). This adds lines on src/maxim (17 by a direct-receiver grep, more with
-    W2's form; the code round measures it), each rewritten to split the reduced text or allowlisted with a reason (V2).
-  - the logger form (`log.warning("failed: %.50s", e)`) is NOT a lint rule. The factory's argument proxies make it
-    cut reduced text, whatever the logger is called (P1);
-  - `%`-formatting matches `\.(\d+|\*)[sra]` (`%.50r` and `%.50a` cut too, P1); a non-literal format string or spec
-    applied to tainted text fails the lint (P1).
-  - `.ljust`/`.rjust`/`.center` only pad, so they are not cuts.
+**Guard (simplified by the owner, 2026-11-25): a RATCHET lint, not a boundary.**
+`scripts/lint_cut_before_redact.py` is an AST lint over `src/maxim`. It flags a cut of exception text that is not
+reduced first. Its taint sources are:
+- an `except … as` name;
+- a parameter named `e`/`exc`/`err`/`error` or annotated as an exception;
+- `.stderr`/`.stdout`;
+- `traceback.format_exc()`.
 
-  There are 0 such sites in src/maxim, so this is a ratchet;
-- **a name is tainted if ANY assignment to it in the function is tainted** (a monotonic union, not last-writer-wins)
-  (J3, K4). With last-writer-wins, `if a: s = str(e)` / `else: s = redact_urls(str(e))` / `s[:50]` would pass. An
-  assignment from `redact_urls(...)`/`url_scrubbed(...)` is an untainted assignment, so `s = redact_urls(str(e));
-  s[:50]` passes and the branched form fails. Rebinding a tainted name, a parameter or a local, does not clear it
-  (`s = str(e); s = redact_urls(s); s[:50]` fails), so the code binds a new name: `safe = redact_urls(str(e))`
-  (K4, L5); The hit set is RE-MEASURED by the code round with the final rule, and every hit is
-  listed or allowlisted. It was 23 lines before U3/V2; U3 adds `platform_detect::detect_lan_ip`,
-  `leader_proxy::_query_nvidia_smi`, `system_metrics::collect_gpu`, `system_metrics::_wifi_linux` (2) and
-  `optional_deps::import_refused` (V3), and V2 adds about 30 split sites (M4, V3), every one a listed site or an allowlist entry (L5) (prototype: `scratchpad/rt1801f/lint_h1.py`, the rule as written here; `rt1801e/lint_proto.py`, which gave 12, had no
-  parameter or `.attr` sources) (J3). The narrower rule round 4 proposed missed
-  `_abort_drain`'s and `_sanitize_error_message`'s parameters;
-- **attributes each hit to its innermost enclosing function only** (a hit in a nested function is not also reported
-  under the outer one), and keys each allowlist entry as `file::innermost_function` plus the `ast.unparse` text of
-  the sliced expression. Any hit that matches no entry fails. With a function-only key, a future `str(e)[:200]` in
-  an allowlisted function would pass silently (M2). Each entry also carries a `count`; more hits than that under one
-  key fail, so two identical `str(e)[:50]` in one function cannot share one entry (P2). The match is EXACT: fewer
-  hits than `count` (zero included) also fail, as a stale entry, so a removed hit cannot leave a spare slot that
-  later admits a new cut silently (Q2);
-- **scope (P3):** the lint scans module level and class bodies too (keyed `<module>` and `Class.<body>`), and keys a
-  lambda to its enclosing def, where a lambda's `e`/`exc`/`err` parameters are sources. It detects with the
-  enclosing scope's taint (a closure over an outer `e` is tainted) and attributes the hit to the innermost def;
-- keys survive `ruff format` (the AST is unchanged, probed). A `ruff check --fix` UP031/UP032 rewrite or a Python
-  version change alters the unparse, so the hit goes unmatched and FAILS (fail-closed). The lint runs on CI's pinned
-  Python (P4);
-- allowlists sites that are terminal-only or carry no exception text, each with a reason:
-  - `install_core.py`'s `e.response.text[:500]` and `doctor/checks.py::_child_maxim_dir`;
-  - `prefetch.py::discover_files_with_find`, `system_metrics.py::_memory_macos` and `container_runner.py::launch`.
-    These three are method-call propagation off a command's `.stdout`, holding file paths, `vm_stat` numbers or a
-    container id (J4). "Named `e`" adds 0 false positives (J4);
-  - the three `router._try_provider` tags (built from numbers; they come from `getattr(e, …)` propagation) and
-    `llm_spawn_record::established_connections`'s lsof line (from the comprehension-target rule) (K3, L5).
-  - With K3 the rule catches `sanitized_error[:200]` directly, so that site leaves the blind spot (K3).
-- states its blind spot: a cut made in a helper function the taint does not follow. `sanitized_error[:200]` (a
-  helper's return value) is in it, so a test pins that site instead (H1).
+Taint propagates through `str()`, `repr()`, f-strings, `%`/`+`, `.attr`, method calls, subscripts and plain
+assignments in the function. A cut is a slice, a format precision, `textwrap.shorten`, or a `split`/`partition`
+result. A cut passes only when the sliced value is itself a `redact_urls(...)`/`url_scrubbed(...)` call, or a name
+whose every assignment is one.
+
+- **Its scope is the forms in `src/` today, which it catches** (the listed sites in §Sites, all fixed in this PR,
+  plus the allowlist with reasons, keyed `file::innermost_function` plus the `ast.unparse` text, with an exact
+  `count`). A new cut in those forms fails CI.
+- **Its blind spots are stated, not chased.** These include:
+  - indirect callees (`getattr`, `methodcaller`, `partial`, aliases, class-body or `setattr` or `globals()` labels,
+    other modules);
+  - cuts inside helpers;
+  - exotic cutting callables.
+
+  Rounds 7–24 showed that a static taint lint can always be evaded once more.
+- **The boundary is the gate, not this lint:** the record factory (which reduces BEFORE `msg % args` cuts, P1),
+  `StructuredFormatter`, `sim_log`, `log_agentic`, the wire choke points and `ToolOutput.error`. A cut made before any
+  of those can only leak through text that never reaches a sink this PR guards. The deletion probes prove each
+  sink, not the lint.
 
 ## Inputs, and how each could make the boundary lie
 
