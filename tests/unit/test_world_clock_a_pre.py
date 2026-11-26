@@ -2,8 +2,8 @@
 
 PR 0 lands what today's surface can express:
 
-- **G-cost-month** (#1769, lands 0, flips in PR 1): a ``CostTracker`` on the wall keeps its month, windows and EMAs
-  whatever ``timestamp`` a caller passes.
+- **G-cost-month** (#1769, landed in PR 0, flipped in PR 1a): a ``CostTracker`` on the wall keeps its month, windows
+  and EMAs whatever ``timestamp`` a caller passes.
 - **WC5, robots unchanged** (green): today's persisted Hippocampus and NAc files load and save back unchanged; the
   prompt's date and time enter only through ``maxim.agents.prompt_builder.datetime``; and the shipped dispatch seam
   books no energy cost. That last pin replaces the planned G-tool-duration gate, which today's code could only pass
@@ -82,11 +82,7 @@ def test_cost_month_gate_setup_prices_both_records(tmp_path: Path, wall: _Advanc
     assert _record_wall_then_epoch(_tracker(tmp_path / "wall")) == (3.0, 3.0)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="G-cost-month (#1769): a caller timestamp of 0.0 resets the month and falls out of the windows; PR 1",
-)
+# Flipped in PR 1a (#1769, D-WC5): the whole tracker runs on the wall, and a caller clock is ignored.
 def test_g_cost_month_a_caller_timestamp_cannot_move_the_tracker_off_the_wall(
     tmp_path: Path, wall: _AdvancingWall
 ) -> None:
@@ -397,3 +393,77 @@ def test_wc5_no_wall_derived_time_text_reaches_a_prompt_beside_the_patched_datet
     for kind in first:
         assert "<DATE>" in first[kind] and "<TIME>" in first[kind], f"{kind} renders no date or time"
         assert first[kind] == second[kind], f"{kind} reads time from somewhere other than prompt_builder.datetime"
+
+
+# ── The two collaborators (PR 1a: time/agent_time.py) ────────────────────────
+
+
+def test_step_clock_reaches_machinery_default() -> None:
+    """I2: the machinery clock's host default reads ``time.*`` at call time, so a clock patched there reaches it.
+
+    ``_StepClock`` patches the ``time`` module's attributes for a run. A default that bound ``time.time`` at import (a
+    ``default_factory=time.time`` or ``from time import time``) would keep reading the real clock under it.
+    """
+    from maxim.time.agent_time import HOST_MACHINERY_CLOCK
+    from tests.unit._loop_harness import EPOCH, _StepClock
+
+    clock = _StepClock()
+    clock.install()
+    try:
+        before_s, before_mono = HOST_MACHINERY_CLOCK.now_s(), HOST_MACHINERY_CLOCK.monotonic_s()
+        time.sleep(2.5)  # the owner thread: advances the step clock by exactly this much
+        after_s, after_mono = HOST_MACHINERY_CLOCK.now_s(), HOST_MACHINERY_CLOCK.monotonic_s()
+    finally:
+        clock.uninstall()
+    assert before_s == EPOCH and after_s == EPOCH + 2.5, (before_s, after_s)
+    assert after_mono - before_mono == 2.5, (before_mono, after_mono)
+
+
+def test_the_host_port_is_todays_local_calendar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The port's host default is ``datetime.now()`` / ``datetime.fromtimestamp()`` exactly, patched by name (I2)."""
+    from maxim.time import agent_time
+
+    pinned = _dt.datetime(2025, 3, 7, 15, 4, 5)
+
+    class _PinnedDatetime(_dt.datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> _dt.datetime:  # type: ignore[override]
+            return pinned
+
+    monkeypatch.setattr(agent_time, "datetime", _PinnedDatetime)
+    assert agent_time.HOST_PERCEIVED_TIME.now() == pinned
+    stamp = 1_741_359_845.75
+    assert agent_time.HOST_PERCEIVED_TIME.perceive(stamp) == _dt.datetime.fromtimestamp(stamp)
+
+
+def test_no_calendar_declares_no_time() -> None:
+    from maxim.time.agent_time import NO_CALENDAR
+
+    assert NO_CALENDAR.now() is None
+    assert NO_CALENDAR.perceive(T0) is None
+    assert NO_CALENDAR.perceive(0.0) is None  # 0.0 is a time (#1684), and still renders nothing
+
+
+def test_the_collaborators_satisfy_their_protocols() -> None:
+    from maxim.time.agent_time import (
+        HOST_MACHINERY_CLOCK,
+        HOST_PERCEIVED_TIME,
+        NO_CALENDAR,
+        MachineryClock,
+        PerceivedTime,
+    )
+
+    assert isinstance(HOST_MACHINERY_CLOCK, MachineryClock)
+    assert isinstance(HOST_PERCEIVED_TIME, PerceivedTime) and isinstance(NO_CALENDAR, PerceivedTime)
+    assert not isinstance(NO_CALENDAR, MachineryClock), "a calendar port is not a machinery clock"
+
+
+def test_a_caller_clock_given_to_the_cost_tracker_warns(tmp_path: Path, wall: _AdvancingWall) -> None:
+    """D-WC5: the ignored keywords say so, every time, so a caller on another clock learns it is not honoured."""
+    tracker = _tracker(tmp_path / "warn")
+    with pytest.warns(DeprecationWarning, match=r"record\(timestamp=\.\.\.\) is deprecated and ignored"):
+        tracker.record(provider="cloud", model=_PRICED, input_tokens=1, output_tokens=0, timestamp=1.0)
+    with pytest.warns(DeprecationWarning, match=r"get_totals\(now=\.\.\.\)"):
+        tracker.get_totals(now=1.0)
+    with pytest.warns(DeprecationWarning, match=r"get_per_provider_totals\(now=\.\.\.\)"):
+        tracker.get_per_provider_totals("cloud", now=1.0)
