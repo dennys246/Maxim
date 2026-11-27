@@ -2028,15 +2028,12 @@ def _profile_is_pinned(profile: str, lane_name: str) -> bool:
     default, which the CPU fallbacks export as MAXIM_LLM_PROFILE, reads as pinned too: on a GPU-less box the served
     model comes from ``load_llm_config``, whose only input for it is that env value, so offline a missing default
     refuses by name rather than swapping (owner decision V31, fail closed; the redesign is #1737)."""
-    from maxim.models.language.config import load_llm_config
+    from maxim.models.language.config import llm_json_routing_sections
     from maxim.runtime.config_loader import resolve_setting
 
-    try:
-        tiers = getattr(load_llm_config(), "_raw", {}).get("tiers", {}) or {}
-    except Exception as e:  # an unreadable llm.json pins nothing; the router build reports it on its own path
-        logger.debug("llm.json tiers unresolved while checking a pin: %s", e)
-        tiers = {}
-    override = tiers.get(lane_name) if isinstance(tiers, dict) else None
+    # A malformed tiers section raises (#1601): the router build has already refused it on its own path.
+    tiers, _functions = llm_json_routing_sections()
+    override = tiers.get(lane_name)
     if isinstance(override, dict) and override.get("model_profile") == profile:
         return True
     try:
@@ -2429,18 +2426,10 @@ def build_primary_router(
 
     _add_remote_large_placeholder(lane_configs)
 
-    # Apply tier/function config from llm.json if present
-    _llm_json_tier_config: dict = {}
-    _llm_json_func_config: dict = {}
-    try:
-        from maxim.models.language.config import load_llm_config as _load_cfg
+    # Apply tier/function config from llm.json if present; a malformed entry raises InvalidConfigError (#1601)
+    from maxim.models.language.config import llm_json_routing_sections
 
-        _raw_cfg = _load_cfg()
-        _raw = getattr(_raw_cfg, "_raw", {}) or {}
-        _llm_json_tier_config = _raw.get("tiers", {})
-        _llm_json_func_config = _raw.get("functions", {})
-    except Exception:
-        pass
+    _llm_json_tier_config, _llm_json_func_config = llm_json_routing_sections()
     if _llm_json_tier_config:
         lane_configs = apply_tier_config_overrides(lane_configs, _llm_json_tier_config)
 

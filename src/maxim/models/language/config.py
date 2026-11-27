@@ -939,6 +939,33 @@ def _read_discovered_llm_config() -> dict[str, Any]:
     return raw
 
 
+def llm_json_routing_sections() -> tuple[dict[str, Any], dict[str, Any]]:
+    """llm.json's ``tiers`` and ``functions`` sections (``{}`` when absent), read from the file :func:`load_llm_config`
+    discovers (#1601).
+
+    ``LLMConfig`` carries neither: they are lane routing, and :func:`load_llm_config` drops them. The only two readers,
+    ``lane_backends.build_primary_router`` and ``lane_backends._profile_is_pinned``, used to look for them on the
+    config's ``_raw`` attribute, which the frozen, slotted ``LLMConfig`` never had, so both sections silently applied
+    nothing. Each entry is validated where it is applied (``lane_models.apply_tier_config_overrides`` and
+    ``load_function_overrides``). A section that is present but not a JSON object raises
+    :class:`~maxim.exceptions.InvalidConfigError`, and so does any malformed entry, instead of being skipped.
+    """
+    from maxim.exceptions import InvalidConfigError
+
+    raw = _read_discovered_llm_config()
+    sections: list[dict[str, Any]] = []
+    for key in ("tiers", "functions"):
+        section = raw.get(key)
+        if section is None:
+            section = {}
+        if not isinstance(section, dict):
+            raise InvalidConfigError(
+                f"llm.json {key!r} must be an object, not {type(section).__name__}", context={"section": key}
+            )
+        sections.append(section)
+    return sections[0], sections[1]
+
+
 def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     default = LLMConfig()
 

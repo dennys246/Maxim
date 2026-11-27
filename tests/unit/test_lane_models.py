@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
 from maxim.runtime.capabilities import RuntimeCapabilities
 from maxim.runtime.lane_models import (
     apply_lane_env_overrides,
@@ -416,6 +420,32 @@ class TestApplyTierConfigOverrides:
         result = apply_tier_config_overrides(base, {})
         assert result["large"].model_profile == "llama-2-13b-chat"
 
+    # #1601: a malformed entry raises InvalidConfigError naming it; it used to be skipped (or crash on int()).
+    @pytest.mark.parametrize(
+        "config, names",
+        [
+            ({"large": "qwen"}, "tiers.large"),
+            ({"infer": {"model_profile": "x"}}, "'infer' is not a tier"),
+            ({"large": {"model": "x"}}, "unknown field"),
+            ({"large": {"model_profile": ""}}, "tiers.large.model_profile"),
+            ({"large": {"device": "tpu"}}, "tiers.large.device"),
+            ({"small": {"max_workers": 0}}, "tiers.small.max_workers"),
+            ({"small": {"max_workers": True}}, "tiers.small.max_workers"),
+            ({"small": {"max_workers": "3"}}, "tiers.small.max_workers"),
+            ({"large": {"n_gpu_layers": -2}}, "tiers.large.n_gpu_layers"),
+        ],
+    )
+    def test_malformed_entry_raises(self, config, names):
+        from maxim.exceptions import InvalidConfigError
+
+        with pytest.raises(InvalidConfigError, match=re.escape(names)):
+            apply_tier_config_overrides(self._base_tiers(), config)
+
+    def test_all_gpu_layers_is_accepted(self):
+        assert (
+            apply_tier_config_overrides(self._base_tiers(), {"large": {"n_gpu_layers": -1}})["large"].n_gpu_layers == -1
+        )
+
 
 # ─── load_function_overrides ──────────────────────────────────────────────
 
@@ -441,18 +471,21 @@ class TestLoadFunctionOverrides:
         )
         assert overrides["custom_func"].fallback == ()
 
-    def test_skips_entries_without_tier(self):
-        overrides = load_function_overrides(
-            {
-                "bad_entry": {"description": "no tier set"},
-            }
-        )
-        assert "bad_entry" not in overrides
+    # #1601: a malformed entry raises InvalidConfigError naming it; it used to be skipped in silence.
+    @pytest.mark.parametrize(
+        "config, names",
+        [
+            ({"bad_entry": {"description": "no tier set"}}, "functions.bad_entry"),
+            ({"bad": "not a dict"}, "functions.bad"),
+            ({"f": {"tier": "infer"}}, "functions.f.tier"),
+            ({"f": {"tier": "small", "fallback": "large"}}, "functions.f.fallback"),
+            ({"f": {"tier": "small", "fallback": ["huge"]}}, "functions.f.fallback"),
+            ({"f": {"tier": "small", "priority": 3}}, "unknown field"),
+            ({"f": {"tier": "small", "description": 7}}, "functions.f.description"),
+        ],
+    )
+    def test_malformed_entry_raises(self, config, names):
+        from maxim.exceptions import InvalidConfigError
 
-    def test_skips_non_dict_entries(self):
-        overrides = load_function_overrides(
-            {
-                "bad": "not a dict",
-            }
-        )
-        assert "bad" not in overrides
+        with pytest.raises(InvalidConfigError, match=re.escape(names)):
+            load_function_overrides(config)

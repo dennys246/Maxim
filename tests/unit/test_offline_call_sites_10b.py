@@ -503,16 +503,17 @@ def test_an_offline_report_says_what_it_could_not_do() -> None:
     assert "degraded: similarity.encoder" in decision_log.format_record_human(record)
 
 
-def test_an_llm_json_tier_profile_is_pinned(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Owner decision V28: a per-tier profile the operator wrote in llm.json counts as pinned. Inert today: a real
-    ``LLMConfig`` has no ``_raw`` (frozen, slots), so llm.json ``tiers`` never reach build_primary_router either; this
-    stands in a config that carries them, pinning the rule for when the tiers read is fixed (follow-up issue)."""
-    from maxim.models.language import config as llm_config
+def test_an_llm_json_tier_profile_is_pinned(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Owner decision V28: a per-tier profile the operator wrote in llm.json counts as pinned. Live since #1601: a real
+    llm.json file (not a stand-in config) is what the check reads."""
+    import json
+
     from maxim.runtime import lane_backends
 
     monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
-    raw = {"tiers": {"medium": {"model_profile": "phi-2"}}}
-    monkeypatch.setattr(llm_config, "load_llm_config", lambda *a, **k: types.SimpleNamespace(_raw=raw))
+    llm_json = tmp_path / "llm.json"
+    llm_json.write_text(json.dumps({"tiers": {"medium": {"model_profile": "phi-2"}}}), encoding="utf-8")
+    monkeypatch.setenv("MAXIM_LLM_CONFIG", str(llm_json))
     assert lane_backends._profile_is_pinned("phi-2", "medium")
     assert not lane_backends._profile_is_pinned("phi-2", "large")  # another tier's override pins nothing here
 

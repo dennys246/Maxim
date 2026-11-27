@@ -15,6 +15,10 @@ import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from maxim.runtime.function_router import FunctionSpec
 
 logger = logging.getLogger(__name__)
 
@@ -571,6 +575,56 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
     return out
 
 
+_TIER_NAMES: tuple[str, ...] = ("large", "medium", "small")
+_TIER_FIELDS: frozenset[str] = frozenset({"model_profile", "device", "max_workers", "n_gpu_layers"})
+_DEVICES: frozenset[str] = frozenset({"gpu", "cpu", "auto"})
+_FUNCTION_FIELDS: frozenset[str] = frozenset({"tier", "fallback", "description"})
+
+
+def _invalid(where: str, problem: str) -> Exception:
+    from maxim.exceptions import InvalidConfigError
+
+    return InvalidConfigError(f"llm.json {where}: {problem}", context={"where": where})
+
+
+def _tier_name(where: str, name: object) -> str:
+    if not isinstance(name, str) or name not in _TIER_NAMES:
+        raise _invalid(where, f"{name!r} is not a tier (valid: {', '.join(_TIER_NAMES)})")
+    return name
+
+
+def _int_field(where: str, value: object, *, minimum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise _invalid(where, f"must be an integer of at least {minimum}, not {value!r}")
+    return value
+
+
+def _tier_replacements(name: str, overrides: object) -> dict:
+    """One ``tiers`` entry, validated, as ``dataclasses.replace`` keywords (#1601: nothing malformed is skipped)."""
+    where = f"tiers.{name}"
+    if not isinstance(overrides, dict):
+        raise _invalid(where, f"must be an object, not {type(overrides).__name__}")
+    unknown = sorted(set(overrides) - _TIER_FIELDS)
+    if unknown:
+        raise _invalid(where, f"unknown field(s) {unknown} (valid: {sorted(_TIER_FIELDS)})")
+    replacements: dict = {}
+    if "model_profile" in overrides:
+        profile = overrides["model_profile"]
+        if not isinstance(profile, str) or not profile.strip():
+            raise _invalid(f"{where}.model_profile", f"must be a non-empty string, not {profile!r}")
+        replacements["model_profile"] = profile
+    if "device" in overrides:
+        device = overrides["device"]
+        if device not in _DEVICES:
+            raise _invalid(f"{where}.device", f"must be one of {sorted(_DEVICES)}, not {device!r}")
+        replacements["device"] = device
+    if "max_workers" in overrides:
+        replacements["max_workers"] = _int_field(f"{where}.max_workers", overrides["max_workers"], minimum=1)
+    if "n_gpu_layers" in overrides:
+        replacements["n_gpu_layers"] = _int_field(f"{where}.n_gpu_layers", overrides["n_gpu_layers"], minimum=-1)
+    return replacements
+
+
 def apply_tier_config_overrides(
     tiers: dict[str, LaneConfig],
     tier_config: dict[str, dict],
@@ -586,22 +640,16 @@ def apply_tier_config_overrides(
     doesn't exist yet (e.g., adding a ``medium`` tier via config on a
     two-tier deployment).
 
+    A malformed entry (an unknown tier name or field, a non-object entry, a value of the wrong type) raises
+    :class:`~maxim.exceptions.InvalidConfigError` naming it; until #1601 such an entry was skipped, and the whole
+    section never reached this function at all.
+
     Returns a new dict — does not mutate the input.
     """
     out = dict(tiers)
     for name, overrides in tier_config.items():
-        if not isinstance(overrides, dict):
-            continue
+        replacements = _tier_replacements(_tier_name(f"tiers.{name}", name), overrides)
         base = out.get(name) or LaneConfig(name=name, max_workers=1)
-        replacements = {}
-        if "model_profile" in overrides:
-            replacements["model_profile"] = overrides["model_profile"]
-        if "device" in overrides:
-            replacements["device"] = overrides["device"]
-        if "max_workers" in overrides:
-            replacements["max_workers"] = int(overrides["max_workers"])
-        if "n_gpu_layers" in overrides:
-            replacements["n_gpu_layers"] = int(overrides["n_gpu_layers"])
         if replacements:
             out[name] = dataclasses.replace(base, **replacements)
         elif name not in out:
@@ -609,33 +657,41 @@ def apply_tier_config_overrides(
     return out
 
 
+def _function_spec(name: object, cfg: object) -> FunctionSpec:
+    """One ``functions`` entry, validated, as a ``FunctionSpec`` (#1601: nothing malformed is skipped)."""
+    from maxim.runtime.function_router import FunctionSpec
+
+    where = f"functions.{name}"
+    if not isinstance(name, str) or not name.strip():
+        raise _invalid(where, "a function name must be a non-empty string")
+    if not isinstance(cfg, dict):
+        raise _invalid(where, f"must be an object, not {type(cfg).__name__}")
+    unknown = sorted(set(cfg) - _FUNCTION_FIELDS)
+    if unknown:
+        raise _invalid(where, f"unknown field(s) {unknown} (valid: {sorted(_FUNCTION_FIELDS)})")
+    if "tier" not in cfg:
+        raise _invalid(where, "needs a 'tier'")
+    tier = _tier_name(f"{where}.tier", cfg["tier"])
+    fallback_raw = cfg.get("fallback", [])
+    if not isinstance(fallback_raw, (list, tuple)):
+        raise _invalid(f"{where}.fallback", f"must be a list of tiers, not {type(fallback_raw).__name__}")
+    fallback = tuple(_tier_name(f"{where}.fallback", t) for t in fallback_raw)
+    description = cfg.get("description", "")
+    if not isinstance(description, str):
+        raise _invalid(f"{where}.description", f"must be a string, not {type(description).__name__}")
+    return FunctionSpec(name=name, tier=tier, fallback=fallback, description=description)
+
+
 def load_function_overrides(
     function_config: dict[str, dict],
-) -> dict:
+) -> dict[str, FunctionSpec]:
     """Load function routing overrides from llm.json ``"functions"`` section.
 
     Returns a dict of function name → FunctionSpec. Merged with
-    DEFAULT_FUNCTIONS by the caller (overrides take precedence).
+    DEFAULT_FUNCTIONS by the caller (overrides take precedence). A malformed entry (no ``tier``, an unknown tier or
+    field, a non-object entry) raises :class:`~maxim.exceptions.InvalidConfigError` naming it (#1601).
     """
-    from maxim.runtime.function_router import FunctionSpec
-
-    overrides: dict[str, FunctionSpec] = {}
-    for name, cfg in function_config.items():
-        if not isinstance(cfg, dict):
-            continue
-        tier = cfg.get("tier")
-        if not tier:
-            continue
-        fallback_raw = cfg.get("fallback", ())
-        if isinstance(fallback_raw, list):
-            fallback_raw = tuple(fallback_raw)
-        overrides[name] = FunctionSpec(
-            name=name,
-            tier=tier,
-            fallback=fallback_raw if isinstance(fallback_raw, tuple) else (),
-            description=cfg.get("description", ""),
-        )
-    return overrides
+    return {name: _function_spec(name, cfg) for name, cfg in function_config.items()}
 
 
 __all__ = [
