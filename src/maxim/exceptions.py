@@ -569,13 +569,26 @@ class RobotsConfigError(ConfigurationError):
     """The operator's ``robots.yaml`` cannot be read as a robot registry, so no robot run can know which robot it
     means (#1806 PR 0).
 
-    Raised by ``hardware/config.py``: a YAML parse error, a top level or entry that is not a mapping, ``config:
-    null``, a data home that cannot be resolved, or a relative ``MAXIM_DATA_HOME``. A missing file is not an error
-    (it means no entries). It propagates out of the robot runtime's connect, so a robot run with a broken file
+    Raised by ``hardware/config.py``: a YAML parse error or a duplicate key, a top level or entry that is not a
+    mapping, ``config: null``, a data home that cannot be resolved, or a relative ``MAXIM_DATA_HOME`` (PR 0); an
+    unknown root or entry key, a mistyped value, more than one primary, a malformed or newer ``_format_version``, or
+    a LOCAL media backend on a networked Reachy entry (PR 1a). A missing file is not an error (it means no entries). It propagates out of the robot runtime's connect, so a robot run with a broken file
     fails instead of running headless or connecting with defaults. ``maxim doctor`` reports it as a warning.
     """
 
     fix_hint = "Fix robots.yaml (or move it aside), then run `maxim doctor` to check it."
+
+
+class RobotPinUnverifiable(RobotsConfigError):
+    """A robots.yaml entry pins ``hardware_id:``, and this build cannot yet verify a pin on connect (#1806 PR 1a).
+
+    Interim, fail-closed: PR 1a parses the pin and PR 1b verifies it, so until then a pinned entry is refused rather
+    than connected unverified. The file itself is valid, which is why ``fix_hint`` differs from the parent's. A
+    subclass of :class:`RobotsConfigError`, so the CLI's exit-2 path and doctor's row handle it unchanged. PR 1b
+    deletes this class.
+    """
+
+    fix_hint = "Set 'hardware_id: unpinned' (or remove the line) to connect without the check, or upgrade Maxim."
 
 
 class CampaignUnloadable(MaximError, ValueError):
@@ -842,6 +855,7 @@ __all__ = [
     "ConfigDirUnreadable",
     "UserProfilesInvalid",
     "RobotsConfigError",
+    "RobotPinUnverifiable",
     "CliOptionsRefused",
     "ComponentNotFoundError",
     "MissingConfigError",

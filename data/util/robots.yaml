@@ -3,8 +3,12 @@
 #
 # Each robot needs:
 #   - type: Controller type ("reachy_mini" or "simulated")
-#   - primary: Whether this is the primary robot (only one should be true)
+#   - primary: Whether this is the primary robot (at most one may be true)
 #   - config: Type-specific configuration
+#
+# Only these entry keys are allowed: type, primary, config, kind, hardware_id,
+# hostname, launch. Anything else is an error. For a networked Reachy use
+# media_backend: default or no_media (local reads THIS machine's camera).
 #
 # Optional embodiment (opt-in):
 #   - config.body: a SEM body component ref (e.g. "bodies/reachy_mini"). When

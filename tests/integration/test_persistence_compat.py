@@ -437,6 +437,31 @@ class TestProbeCacheCompat:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+class TestRobotsYamlCompat:
+    """robots.yaml (#1806 PR 1a): a YAML file, so the root key is checked by its loader, not a JSON writer."""
+
+    def test_a_hand_written_legacy_file_loads_without_the_resave_warning(self, tmp_path, caplog) -> None:
+        from maxim.hardware.config import RobotsConfig
+
+        path = tmp_path / "robots.yaml"
+        path.write_text("robots:\n  bot: {type: reachy_mini, primary: true}\n")
+        with caplog.at_level(logging.WARNING):
+            (bot,) = RobotsConfig.from_yaml(path).robots
+        assert not bot.hardware_id.is_pinned
+        assert "_format_version" not in caplog.text
+
+    def test_a_current_file_loads_and_a_newer_one_is_refused(self, tmp_path) -> None:
+        from maxim.exceptions import RobotsConfigError
+        from maxim.hardware.config import ROBOTS_FORMAT_VERSION, RobotsConfig
+
+        path = tmp_path / "robots.yaml"
+        path.write_text(f"_format_version: '{ROBOTS_FORMAT_VERSION}'\nrobots:\n  bot: {{hardware_id: unpinned}}\n")
+        assert [r.robot_id for r in RobotsConfig.from_yaml(path).robots] == ["bot"]
+        path.write_text("_format_version: '9.0'\nrobots:\n  bot: {hardware_id: unpinned}\n")
+        with pytest.raises(RobotsConfigError, match="newer Maxim"):
+            RobotsConfig.from_yaml(path)
+
+
 class TestLearnedIndexCompat:
     def test_learned_index_handles_legacy_root_keys(self, tmp_path) -> None:
         # Build a hand-crafted pre-1.0 legacy file whose root contains

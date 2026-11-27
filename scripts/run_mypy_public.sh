@@ -21,6 +21,7 @@ FILES=(
     src/maxim/create.py
     src/maxim/load.py
     src/maxim/hivemind/
+    src/maxim/hardware/devices_types.py
     src/maxim/runtime/executor.py
     src/maxim/runtime/agent_loop.py
     src/maxim/runtime/loop_setup.py
