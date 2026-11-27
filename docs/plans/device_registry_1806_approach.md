@@ -476,7 +476,13 @@ The impact is **safety**, not only security. The strict choice is the default ev
   - `fetch_url(proxy="never")`;
   - `control_plane_write_refusal` at the #957 write sites (D14), and the `edit_file` approval fix;
   - env scrubs and the harness env pops.
-- **PR 1, the pin (≈400):**
+- **PR 1, the pin: four PRs** (owner, 2026-11-27; the scope below came to about 1,000+ `src/` lines, too large for one review round). In merge order:
+  - **1a, schema and types.** The typed entry fields, strict keys, typed scalars, the `connection_mode`/`tunnel`/`media_backend` load checks, `_format_version` refuse-newer, and `hardware/devices_types.py` (`DevicePin` and the typed errors). **Until 1b, a pinned entry refuses to connect**, with a typed error naming the build. That is fail-closed, so no build trusts a pin it has not verified. Nothing writes `hardware_id:` before PR 2.
+  - **1b, the identity check.** The registry's `expected_identity=`, `verified_identity()` and the reuse refusal; the controller's §4.3 sequence; the §4.5 reconnect handling. It lifts 1a's interim refusal.
+  - **1c, selection.** `--device`, `MAXIM_DEVICE`, its re-exec rule, `--unpinned`, the conflict refusal and the pinned-registry refusal, all in one PR (the v5 ordering rule holds). It also carries the resolver returning `(target, explicit_host)`, the doctor non-legacy walk, and the PR 0 checklist below.
+  - **1d, the library.** `maxim.devices` read verbs and `open_controller`, the `LAYER_RULES` and audit entries, `device_state.json`, the sanitiser, and `maxim device list|show|check`.
+
+  The full PR 1 scope:
   - typed `hardware_id:`/`hostname:`/`launch:` fields with strict unknown-key refusal;
   - `expected_identity=` and the post-connect `verified_identity()` check in the registry, and the reuse refusal;
   - **`--device`, its re-exec rule, `--unpinned`, the conflict refusal and the pinned-registry refusal** (v5: one PR, so no build has `--device` without its re-exec, or a refusal without its escape);
