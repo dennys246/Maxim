@@ -1,6 +1,6 @@
 # Approach note: the split rule charges main's MEASURED `missing`, not a stale pin
 
-Status: DRAFT v3, 2026-11-25, gates lane (maxim-c9). Owner decision 2026-11-24: "split rule uses measured". The other
+Status: v3, approved (#1794); built 2026-11-25, gates lane (maxim-c9). Owner decision 2026-11-24: "split rule uses measured". The other
 options were gating `missing` on every run, a one-off re-pin, or #1786's data first. This is a gate change, so it
 gets an adversarial design pass before any code ([CLAUDE.md](../../CLAUDE.md), "Faster without lowering the bar"
 (1)). v1's pass returned DO-NOT-BUILD and v2 folded every finding; round 2 found no DO-NOT-BUILD, its stop rule applied (every
@@ -21,7 +21,9 @@ pays for drift it did not cause: #1777 covered an extra statement for it, 6cfb90
 ## The change
 
 In the two SUM rules only (SF-2 for files, the namespace pass's `_sum_rule` for packages), the source's allowance
-becomes `max(base_pin, base_measured)`. `base_measured` is the source scope's `missing` in main's own measurement at
+becomes `max(base_pin, base_measured)`. **Build note (code review, 2026-11-25):** the namespace pass's sum also carries FILE floors
+through a rename, through the same budget, so the build gives it the same allowance: a rename must not refuse what a
+split of the same file accepts. Tested as `test_a_renamed_file_is_charged_mains_measured_missing_under_its_base_path`. `base_measured` is the source scope's `missing` in main's own measurement at
 the base commit (the merge-base on a pull request, `_lint_git.push_base` on a push), keyed on the source's BASE path
 (`f_key` at base, so a renamed source is looked up under its old name). Successors keep their base pins.
 
