@@ -966,7 +966,7 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
 
     Deliberately unframed: ``result_summary`` feeds ``record_outcome``, whose NAc outcome signature
     is its first 50 characters -- a frame header there would collapse every outcome of a tool into
-    one causal link (#823 review). Framing happens in ``_followup_synthetic_input``.
+    one causal link (#823 review). Framing happens in ``loop_submit._followup_synthetic_input``.
     """
     if output is not None:
         if tool_name == "internet_search" and isinstance(output, list):

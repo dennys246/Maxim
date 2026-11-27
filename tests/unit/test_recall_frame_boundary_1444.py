@@ -212,7 +212,7 @@ def test_every_router_call_neutralizes_a_stray_marker_at_its_seam() -> None:
 
 @pytest.mark.parametrize(("declared", "label"), [(True, "source=external, untrusted"), (False, "source=tool")])
 def test_a_follow_up_from_a_tool_that_declares_untrusted_output_is_framed_external(declared: bool, label: str) -> None:
-    from maxim.runtime.agent_loop import _followup_synthetic_input
+    from maxim.runtime.loop_submit import _followup_synthetic_input
     from maxim.runtime.loop_types import ActionFollowup
 
     followup = ActionFollowup(
@@ -271,7 +271,7 @@ def _builder() -> object:
 def test_a_pasted_marker_never_reaches_the_prompt_from_any_of_the_users_raw_channels() -> None:
     """A person's own words never open or close a frame (N3): the request, the deferred inputs, the follow-up's
     original query."""
-    from maxim.runtime.agent_loop import _followup_synthetic_input
+    from maxim.runtime.loop_submit import _followup_synthetic_input
     from maxim.runtime.loop_types import ActionFollowup
 
     def _raw(prompt: str) -> bool:
