@@ -486,22 +486,10 @@ def _registered_cloud_flag(profile: str) -> bool | None:
 
 def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data") -> None:
     """Configure a smaller LLM model for CPU-only inference when no GPU is available."""
-    import json
+    from maxim.models.language.config import configured_profile_uses_llama_cpp
 
-    llm_config_path = os.path.join(home_dir, "util", "llm.json")
-    using_llama_cpp = False
-    try:
-        if os.path.exists(llm_config_path):
-            with open(llm_config_path) as f:
-                llm_cfg = json.load(f)
-            profile_name = llm_cfg.get("profile", "")
-            profiles = llm_cfg.get("profiles", {})
-            if profile_name in profiles:
-                using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
-    except Exception:
-        pass
-
-    if using_llama_cpp:
+    del home_dir  # kept for callers; the llm.json read is the loader's own (#1806 PR 0 round 3)
+    if configured_profile_uses_llama_cpp():
         logger.info("Using llama.cpp backend with native Metal GPU support")
         return
 
@@ -551,8 +539,6 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         sys.executable,
         "-m",
         "maxim.cli",
-        "--robot-name",
-        str(getattr(args, "robot_name", "reachy_mini")),
         "--home-dir",
         str(getattr(args, "home_dir", "data")),
         "--timeout",
@@ -570,6 +556,12 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
         "--interactive",
         "true" if bool(getattr(args, "interactive", True)) else "false",
     ]
+    # Only a TYPED name is replayed (#1806 PR 0): ``robot_name`` is None unless the operator typed
+    # ``--robot-name``/``--robot``, and an env-only parent's child resolves ``$MAXIM_ROBOT_NAME`` itself from the
+    # same ``child_env()``. Never ``--robot-name None``, and never an environment value turned into a typed flag.
+    robot_name = getattr(args, "robot_name", None)
+    if robot_name is not None:
+        argv.extend(["--robot-name", str(robot_name)])
     language_model = str(getattr(args, "language_model", "") or "").strip()
     if language_model:
         argv.extend(["--language-model", language_model])

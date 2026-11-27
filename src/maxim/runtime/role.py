@@ -56,10 +56,10 @@ from __future__ import annotations
 
 import logging
 import os
-import platform
 from pathlib import Path
 from typing import Literal
 
+from maxim.utils.paths import maxim_config_dir
 from maxim.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -93,13 +93,7 @@ _SUBCOMMAND_NAMES = frozenset({"doctor", "peer", "tunnel"})
 def _mesh_yml_path() -> str:
     """Path to the future mesh.yml config (Plan 4). Accepted here for
     forward-compat so Plan 4's rollout doesn't require touching R2a."""
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return str(base / "maxim" / "mesh.yml")
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return str(base / "maxim" / "mesh.yml")
+    return str(maxim_config_dir() / "mesh.yml")
 
 
 def _peer_yml_exists() -> bool:

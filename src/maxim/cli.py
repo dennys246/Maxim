@@ -844,6 +844,53 @@ def _explicit_mode_flag(raw_argv: Sequence[str] | None) -> bool:
     return _explicit_flag(raw_argv, "--mode")
 
 
+def _requested_run_action(args: Any, raw_argv: Sequence[str] | None, *, sim_path: object) -> bool:
+    """The quick-start gate (#1806 PR 0): whether the operator TYPED a run, so a bare ``maxim`` shows the menu.
+
+    It reads only explicit flags: ``--sim``, an explicit ``--mode`` (its parsed value has a default, so the
+    typed form is read from ``raw_argv``), a typed ``--robot-name``/``--robot`` (parsed default ``None``) and
+    ``--llm``/``--language-model``. It never reads an environment variable or a default, so ``MAXIM_ROBOT_NAME``
+    alone does not start the robot runtime, while ``--robot-name reachy_mini`` (the default name, typed) does.
+    The leader / ``MAXIM_LLM_ENABLED`` server path is a separate decision (``_quick_start_route``).
+    """
+    # --llm / --language-model on the command line is a meaningful action
+    # by itself ("start maxim with this model loaded"). Previously this
+    # flag set args.language_model but the quick-start gate only checked
+    # the MAXIM_LLM_ENABLED env var, so `maxim --llm qwen2.5-14b` silently
+    # exited with the quick-start banner instead of entering the main loop.
+    has_llm_cli = bool(str(getattr(args, "language_model", "") or "").strip())
+    has_robot = getattr(args, "robot_name", None) is not None
+    return sim_path is not None or _explicit_mode_flag(raw_argv) or has_robot or has_llm_cli
+
+
+def _quick_start_route(args: Any, raw_argv: Sequence[str] | None, *, sim_path: object) -> str:
+    """Where a parsed invocation goes: ``"run"`` (a typed action), ``"server"`` or ``"menu"`` (#1806 PR 0).
+
+    A typed action (``_requested_run_action``) always runs. Without one, a leader (``MAXIM_ROLE=leader``) or
+    ``MAXIM_LLM_ENABLED=1`` goes to server mode: start the LLM server for peer inference, then block idle.
+    The LeaderProxy (started earlier) handles peer commands. This avoids entering the agentic/exploration
+    loop, which would burn GPU on agent inference cycles with no user interaction. Otherwise the menu.
+    Those two environment variables pick the server, never the robot runtime.
+    """
+    if _requested_run_action(args, raw_argv, sim_path=sim_path):
+        return "run"
+    is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
+    has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
+    return "server" if (is_leader or has_llm) else "menu"
+
+
+def _robot_name_for_log(args: Any) -> str:
+    """The daemon name a robot run will use, for the startup log: never ``None`` (#1806 PR 0).
+
+    It calls ``hardware/config.py::resolve_daemon_name``, the same chain ``embodied_runtime.selfy.Maxim`` dials,
+    and names the source so the log says which.
+    """
+    from maxim.hardware.config import resolve_daemon_name
+
+    name, source = resolve_daemon_name(getattr(args, "robot_name", None))
+    return f"{name} ({source})"
+
+
 def _validate_operational_grant(args: Any, raw_argv: Sequence[str] | None) -> int | None:
     """Refuse ``--operational-mode`` where it would be silently ignored, and announce singularity (#829).
 
@@ -947,13 +994,32 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
     supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
     (``exceptions.SECURITY_REFUSALS``: a leader or an offline refusal). Anything else is logged as before and is a
-    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way."""
-    from maxim.exceptions import SECURITY_REFUSALS
+    crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way.
+
+    A robot configuration the operator must fix (#1806 PR 0) is rendered here, message and ``fix_hint``, and exits 2
+    as ``UserProfilesInvalid`` does in ``_main_guarded``: a broken ``robots.yaml`` (``RobotsConfigError``) or a bad
+    configuration value such as ``MAXIM_ROBOT_TIMEOUT`` (``InvalidConfigError``), both raised out of the runtime's
+    ``Maxim(...)``. It is handled here, not in ``_main_guarded``, so only a run's ``InvalidConfigError`` changes
+    meaning (exit 2, not a crash), not one raised anywhere else in the CLI."""
+    from maxim.exceptions import SECURITY_REFUSALS, InvalidConfigError, RobotsConfigError
     from maxim.models.language.types import BackendError
     from maxim.utils.response_output import SpeechOutputUnavailable
 
     if isinstance(error, (BackendError, *SECURITY_REFUSALS, SpeechOutputUnavailable)):
         raise error
+    # Exactly these two, not InvalidConfigError subclasses (InvalidAgentIdError, AgentConfigContradiction): those
+    # keep their pre-#1806 exit 1 and logged traceback (review E3).
+    if isinstance(error, RobotsConfigError) or type(error) is InvalidConfigError:
+        from maxim.utils.logging import user_warn
+
+        logger.debug("robot run configuration refused", exc_info=error)
+        fix = getattr(error, "fix_hint", "")
+        user_warn(
+            f"{type(error).__name__}: {error}" + (f"\n    → {fix}" if fix else ""),
+            source="config",
+            event="run_config_invalid",
+        )
+        return 2
     log_exception(logger, error, verbosity=verbosity, message="❌ Maxim stopped")
     return 1
 
@@ -2609,28 +2675,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         sys.exit(0 if diff.ok else 1)
 
     # If no meaningful action was specified, show quick-start guidance
-    _has_sim = sim_path is not None
-    _has_mode_override = _explicit_mode_flag(raw_argv)
-    _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in (raw_argv or [])
-    _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
-    _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
-    # --llm / --language-model on the command line is a meaningful action
-    # by itself ("start maxim with this model loaded"). Previously this
-    # flag set args.language_model but the quick-start gate only checked
-    # the MAXIM_LLM_ENABLED env var, so `maxim --llm qwen2.5-14b` silently
-    # exited with the quick-start banner instead of entering the main loop.
-    _has_llm_cli = bool(str(getattr(args, "language_model", "") or "").strip())
-    _has_action = _has_sim or _has_mode_override or _has_robot or _has_llm_cli
-
-    if not (_has_action or _is_leader or _has_llm):
+    _route = _quick_start_route(args, raw_argv, sim_path=sim_path)
+    if _route == "menu":
         return _bare_maxim_menu()
-
-    # Leader/LLM-enabled without explicit action → server mode.
-    # Start the LLM server for peer inference, then block idle.
-    # The LeaderProxy (started earlier) handles peer commands.
-    # This avoids entering the agentic/exploration loop, which would
-    # burn GPU on agent inference cycles with no user interaction.
-    if not _has_action and (_is_leader or _has_llm):
+    if _route == "server":
         args.mode = "server"
 
     build_home(args.home_dir)
@@ -2649,7 +2697,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             epochs_label = "unlimited" if epochs_value <= 0 else str(epochs_value)
             logger.info(
                 "Starting Maxim (robot_name=%s, home_dir=%s, timeout=%.1fs, epochs=%s, mode=%s, log=%s)",
-                args.robot_name,
+                _robot_name_for_log(args),
                 args.home_dir,
                 float(args.timeout),
                 epochs_label,

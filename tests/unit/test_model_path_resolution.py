@@ -32,7 +32,7 @@ import pytest
 
 @pytest.fixture()
 def fake_maxim_home(tmp_path, monkeypatch):
-    """Isolated MAXIM_DATA_HOME with one downloaded GGUF, and a CWD llm.json
+    """Isolated MAXIM_DATA_HOME with one downloaded GGUF, and a user llm.json
     declaring it via the LEGACY relative path — the exact broken install.sh
     layout."""
     from maxim.utils import paths as paths_mod
@@ -48,8 +48,10 @@ def fake_maxim_home(tmp_path, monkeypatch):
     paths_mod._reset_caches()
 
     workdir = tmp_path / "checkout"
-    (workdir / "data" / "util").mkdir(parents=True)
-    (workdir / "data" / "util" / "llm.json").write_text(
+    workdir.mkdir()
+    # #1806 PR 0 round 3: the CWD llm.json fallbacks are gone, so the legacy config sits at the user location
+    (home / "config").mkdir()
+    (home / "config" / "llm.json").write_text(
         json.dumps(
             {
                 "enabled": True,
@@ -166,9 +168,12 @@ class TestConfigDiscovery:
         user_cfg_dir = tmp_path / "user_config"
         monkeypatch.setattr("maxim.utils.paths.user_config", lambda: user_cfg_dir, raising=True)
         candidates = config_mod._llm_config_candidates()
-        cwd_entry = os.path.join(os.getcwd(), "data", "util", "llm.json")
         user_entry = str(user_cfg_dir / "llm.json")
         assert user_entry in candidates
-        assert candidates.index(user_entry) < candidates.index(cwd_entry), (
+        # #1806 PR 0 round 3: no candidate under the launch directory (an agent there could plant one)
+        cwd = os.getcwd()
+        assert not [c for c in candidates if os.path.dirname(c) in (cwd, os.path.join(cwd, "data", "util"))]
+        repo_entry = next(c for c in candidates if c.endswith(os.path.join("data", "util", "llm.json")))
+        assert candidates.index(user_entry) < candidates.index(repo_entry), (
             "documented user config must outrank the legacy checkout path"
         )

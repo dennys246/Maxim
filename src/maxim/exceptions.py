@@ -565,6 +565,19 @@ class UserProfilesInvalid(ConfigurationError):
     fix_hint = "Fix the file, or move it aside, then run `maxim doctor` to check it."
 
 
+class RobotsConfigError(ConfigurationError):
+    """The operator's ``robots.yaml`` cannot be read as a robot registry, so no robot run can know which robot it
+    means (#1806 PR 0).
+
+    Raised by ``hardware/config.py``: a YAML parse error, a top level or entry that is not a mapping, ``config:
+    null``, a data home that cannot be resolved, or a relative ``MAXIM_DATA_HOME``. A missing file is not an error
+    (it means no entries). It propagates out of the robot runtime's connect, so a robot run with a broken file
+    fails instead of running headless or connecting with defaults. ``maxim doctor`` reports it as a warning.
+    """
+
+    fix_hint = "Fix robots.yaml (or move it aside), then run `maxim doctor` to check it."
+
+
 class CampaignUnloadable(MaximError, ValueError):
     """Research mode's explicit campaign cannot be run as scripted turns: it is missing, malformed, or holds a
     percept that is not a ``cli_input`` line (#1621). Raised by ``research_orchestrator._load_campaign_turns`` before
@@ -828,6 +841,7 @@ __all__ = [
     "ConfigurationError",
     "ConfigDirUnreadable",
     "UserProfilesInvalid",
+    "RobotsConfigError",
     "CliOptionsRefused",
     "ComponentNotFoundError",
     "MissingConfigError",
