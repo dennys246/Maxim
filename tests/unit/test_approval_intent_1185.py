@@ -643,8 +643,10 @@ def test_one_follow_up_predicate() -> None:
     """Fold 5: one test for a tool's ``[ACTION_FOLLOWUP`` line, at every site this branch touches."""
     import inspect
 
-    from maxim.runtime import agent_loop, loop_controller, loop_perception
+    from maxim.runtime import loop_controller, loop_perception
     from maxim.runtime.loop_perception import is_tool_followup
+
+    from tests.unit._loop_source import loop_source
 
     assert (
         is_tool_followup("[ACTION_FOLLOWUP type=x]: y") and not is_tool_followup("yes") and not is_tool_followup(None)
@@ -652,7 +654,9 @@ def test_one_follow_up_predicate() -> None:
     for module in (loop_controller, loop_perception):
         body = inspect.getsource(module).replace('return str(text or "").startswith("[ACTION_FOLLOWUP")', "")
         assert 'startswith("[ACTION_FOLLOWUP")' not in body, module.__name__
-    assert 'startswith("[ACTION_FOLLOWUP")' not in inspect.getsource(agent_loop)
+    # The whole loop (agent_loop.py + runtime/loop_*.py), so a site a slice moves out of agent_loop stays guarded.
+    loop = loop_source().replace('return str(text or "").startswith("[ACTION_FOLLOWUP")', "")
+    assert 'startswith("[ACTION_FOLLOWUP")' not in loop
 
 
 # ── Delta 4 decision A: the sim's policy answers, passed explicitly ──────────────────────────────────
