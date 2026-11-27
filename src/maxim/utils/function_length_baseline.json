@@ -126,7 +126,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1453
+      "lines": 1078
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -420,6 +420,8 @@
     "#1315 item 10b merged with main (2026-11-25): 10b's V29 `MaximAgent(llm_router=)` was dropped for main's #1228 `shared_router=` (the same rule), so the re-measured pins are main's: AgenticRuntimeMixin._start_agentic_runtime 774 and start_simulation_mode 1816; _main_impl stays 1116.",
     "#1775 (2026-11-24, rule T; Session A's grant): _run_agentic_loop_body 1781 -> 1773, section 4's goal_proposed event moved to agent_loop._log_goal_proposed, paying for its reasoning now logged by text_shape.",
     "slice 7a re-merged onto #1775 (2026-11-25): _run_agentic_loop_body 1773 -> 1453. That is slice 7a's pin on the earlier main (1461) less the 8 lines #1775 moved out of section 4.",
+    "_run_agentic_loop_body tightened 1461 -> 1086 on 2026-11-24 (1.3.6 loop phase 2, slice 7b, merged onto slice 7a's re-merge with main) when the rest of section 6's submit (submit_tick and its SubmitCarry, the mode info, the tool surface and its descriptions, the request, the PFC deliberation) moved verbatim to runtime/loop_request.py in pieces of 200 lines or fewer, and _advertisable_tools to loop_state; by rule (a) _triggering (main's #1519 form of _triggering_input), _describe_tools_for_prompt, _thaw and _WIRE3_PHRASE_RE moved with it. On the branch before the re-merge it measured 1603 -> 1226 (377 lines); on main the moved text is 2 lines shorter (#1519's one-line **_triggering(..., state) splat), so 375 lines move. Characterized first by tests/unit/test_loop_submit_request_characterization.py.",
+    "slice 7b re-merged onto slice 7a's #1775 re-merge (2026-11-25): _run_agentic_loop_body 1453 -> 1078, the same 375 lines slice 7b moved out on 7a's earlier pin (1461 -> 1086).",
     "#1801 (2026-11-25, rule T, no exemption): record_outcome 385 -> 381: its agent_id guard moved to tool_dispatch._require_agent_id, paying for the URL reduction of error at its top and before the NAc summary cut."
   ],
   "touch_exemptions": [

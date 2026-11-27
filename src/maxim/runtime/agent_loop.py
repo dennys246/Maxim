@@ -3,7 +3,6 @@ from __future__ import annotations
 import itertools
 import logging
 import os
-import re
 import time
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
@@ -31,21 +30,21 @@ from maxim.runtime.bio_integration import (
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
-from maxim.runtime.loop_submit import prepare_submission
+
+# Module reference: §4 reaches the roster filter through its home, the one binding a patch must hit.
+from maxim.runtime import loop_state as _lstate
+from maxim.runtime.loop_request import submit_tick
 from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
     inbound_comms_subscription,
-    planning_submit_shared_kwargs,
-    submit_tick_context,
 )
 from maxim.runtime.loop_controller import (
     note_system_outcome,
     set_aside_run_end,
-    take_replan_inputs,
 )
 from maxim.runtime.loop_substrate import substrate_tick
-from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
+from maxim.runtime.loop_planning import drain_approved
 from maxim.runtime.loop_perception import (
     is_tool_followup,
     perceive,
@@ -78,18 +77,6 @@ except ImportError:
     MemoryHub = None  # type: ignore
 
 logger = logging.getLogger(__name__)
-
-
-# Wire 3 (release_0_9_1.md Stage 1): regex matching the felt-sensation
-# annotations Embodiment.integrity_to_felt_phrase produces. The agent_loop
-# hook uses this to strip a stale annotation before re-applying the
-# current-tick one — guards against multi-tick integrity drift accumulating
-# multiple suffixes (e.g., integrity 0.55 → ``(feels strained)``, then 0.40
-# → ``(feels weakened, prone to failing)``; without the strip, both would
-# coexist in the description). The phrases are pinned in tests so a future
-# additional band must update both this regex AND
-# ``Embodiment.integrity_to_felt_phrase`` together.
-_WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to failing)\)$")
 
 
 from maxim.runtime.loop_state import (
@@ -433,19 +420,6 @@ def _log_autonomy_check(action: dict[str, Any], can_execute: bool, reason: Any, 
             "confidence": confidence,
         },
     )
-
-
-def _triggering(new_cli_input: Any, followup_original_query: str, pending_modification: Any, state: Any) -> dict:
-    """The input a §6 submit answers (the new input, else the follow-up's original query, else a pending plan
-    modification's text; moved out of ``_run_agentic_loop_body``, rule T for #1451), and where it came from: the source
-    ``store_user_input`` recorded for that same text (``pending_user_input_source``: "CLI" or "voice"), "" when the
-    text is not the stored input (#1519: the prompt labels a voice request as heard on the room mic)."""
-    modification = pending_modification.get("user_modification", "") if pending_modification else ""
-    text = new_cli_input or followup_original_query or modification
-    data = state.data
-    stored = new_cli_input and str(data.get("pending_user_input", "")).strip() == str(new_cli_input).strip()
-    source = str(data.get("pending_user_input_source", "")) if stored else ""
-    return {"triggering_input": text, "triggering_input_source": source}
 
 
 def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any) -> bool:
@@ -836,82 +810,6 @@ def _loop_bio_tick_maintenance(nac: Any) -> None:
             log_swallowed_exception(site=f"agent_loop.py:_loop_bio_tick_maintenance:{name}")
 
 
-def _thaw(value: Any) -> Any:
-    """A read-only mapping (and any nested in it) as plain ``dict``s (#1260's overlay)."""
-    if isinstance(value, Mapping):
-        return {k: _thaw(v) for k, v in value.items()}
-    return value
-
-
-def _advertisable_tools(tools: Any, executor: Any | None, autonomy_controller: Any | None) -> list[str]:
-    """The tools the model may be shown: only what will be let through.
-
-    A hard allow/deny list (``tools.allow``/``tools.deny``) used to gate at dispatch only, so the model kept
-    seeing, and choosing, tools that could only ever answer with a denial (bugs ledger D82): ``executor.permits``.
-    An autonomy hard forbid is the same class (#1412, Console Talk offered ``bash`` and then refused it):
-    ``AutonomyController.forbids_tool``, the static ``SafetyConstraints.forbidden_tools``, never the moment's pause.
-    """
-    return [
-        t
-        for t in tools
-        if (executor is None or executor.permits(t))
-        and (autonomy_controller is None or not autonomy_controller.forbids_tool(t))
-    ]
-
-
-def _describe_tools_for_prompt(
-    available_tools: Any,
-    executor: Any,
-    *,
-    overlay: Mapping[str, Mapping[str, Any]],
-) -> dict[str, Any]:
-    """Full tool info for the prompt (description, params, example).
-
-    Builtin tools come from ``TOOL_DESCRIPTIONS`` with the agent's own entries (``overlay``, the run's
-    ``LoopRun.tool_overlay``: the narrator's, from its registry, #1260) layered over them; dynamic tools (skills,
-    protocols, SEM affordances) are described from the ``Tool`` instance
-    via ``Tool.to_json_schema()`` so tools authored in either input_schema
-    format render correctly. Pre-CC9 this iterated ``input_schema.items()``
-    directly and silently produced empty params for JSONSchema-authored
-    tools (the ``@maxim.tool`` decorator path) via the swallow-everything
-    except below. Extracted from ``run_agentic_loop`` 2026-09-04 (P21).
-    """
-    # The overlay is read-only (``NARRATOR_TOOL_DESCRIPTIONS``): thawed into fresh dicts, which every downstream
-    # reader expects (the prompt builder renders only ``dict`` entries; Wire 1/3 copy-on-write over them).
-    from maxim.modes.definitions import TOOL_DESCRIPTIONS
-
-    described = {**TOOL_DESCRIPTIONS, **{name: _thaw(entry) for name, entry in overlay.items()}}
-    tool_descriptions: dict[str, Any] = {}
-    for name in available_tools:
-        if name in described:
-            tool_descriptions[name] = described[name]
-            continue
-        try:
-            tool = executor.registry.get(name)
-            json_schema = (
-                tool.to_json_schema() if hasattr(tool, "to_json_schema") else {"properties": {}, "required": []}
-            )
-            properties = json_schema.get("properties", {}) or {}
-            required = set(json_schema.get("required", []) or [])
-            params: dict[str, str] = {}
-            for param_name, prop in properties.items():
-                prop_type = prop.get("type", "string") if isinstance(prop, dict) else "string"
-                if param_name in required:
-                    params[param_name] = str(prop_type)
-                else:
-                    default = prop.get("default") if isinstance(prop, dict) else None
-                    params[param_name] = f"({prop_type}, default={default!r})"
-            tool_descriptions[name] = {
-                "description": tool.description,
-                "params": params,
-                "example": None,
-                "followup_type": None,
-            }
-        except (KeyError, Exception):
-            pass
-    return tool_descriptions
-
-
 _MISSING_CLOSE_HOOK_WARNED: set[tuple[type, str]] = set()
 
 
@@ -1227,8 +1125,6 @@ def _run_agentic_loop_body(
         AutonomyLevel,
         check_hard_stop,
     )
-    from maxim.agents.llm_worker import ModeInfo
-    from maxim.modes.definitions import get_mode
     from maxim.runtime.loop_types import ActionFollowup
 
     # The setup block (1.3.2 decomposition, slice 1): built once, unpacked into the local names the
@@ -1490,7 +1386,7 @@ def _run_agentic_loop_body(
                             )
                             if _f
                         )
-                        from maxim.simulation.sim_logger import sim_log, sim_pre_deliberation, sim_deliberation_update
+                        from maxim.simulation.sim_logger import sim_log, sim_pre_deliberation
 
                         # Real numbers here too — a PASS logged as 0.00/0.00 is
                         # just as uninformative as a rejection was.
@@ -1968,7 +1864,7 @@ def _run_agentic_loop_body(
                 # using it for system feedback risks silent overwrite of
                 # real input (cross-confirmed by both review lenses).
                 _other_tools = sorted(
-                    _advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
+                    _lstate._advertisable_tools(_get_all_tools() - {_this_tool}, executor, autonomy_controller)
                 )
                 _cap_msg = (
                     f"SYSTEM: '{safe_tool_name(_this_tool)}' was called {_consecutive_same_tool_count} times "
@@ -2141,424 +2037,51 @@ def _run_agentic_loop_body(
                 # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)
                 _all_tools = _get_all_tools()
 
-                # Build context for LLM
-                try:
-                    _submit = prepare_submission(  # §6's first half, runtime/loop_submit.py (slice 7a)
-                        memory=memory,
-                        ctrl=ctrl,
-                        executor=executor,
-                        state=state,
-                        sim=sim,
-                        cli_input=cli_input,
-                        processed_cli_inputs=processed_cli_inputs,
-                        _audio_escalate_this_tick=_audio_escalate_this_tick,
-                        _percept_enrichment_text=_percept_enrichment_text,
-                        _auto_sense_text=_auto_sense_text,
-                        _loop_nac=_loop_nac,
-                        _loop_agent_id=_loop_agent_id,
-                        _planning_liveness_on=_planning_liveness_on,
-                    )
-                    context, new_cli_input, is_sleeping = _submit.context, _submit.new_cli_input, _submit.is_sleeping
-                    followup_original_query, _deferred_inputs = _submit.followup_original_query, _submit.deferred_inputs
-
-                    if context:
-                        # Get mode info -- the operator's grant wins, as at dispatch (#829; one reader, #963)
-                        mode_name = operational_mode(executor, state)
-
-                        # Get mode definition for tool access (unknown = passive, as dispatch enforces, #829)
-                        mode_def = get_mode(mode_name) or get_mode("passive")
-                        available_tools_for_mode = set()
-                        if mode_def and _all_tools:
-                            available_tools_for_mode = mode_def.get_available_tools(_all_tools)
-
-                        # Both the budgeter's response reserve and the request's max_tokens
-                        # read this one field; unset = ModeInfo's own default.
-                        _mode_info_overrides: dict[str, Any] = (
-                            {"max_response_tokens": _max_response_tokens_override}
-                            if _max_response_tokens_override is not None
-                            else {}
-                        )
-                        mode_info = ModeInfo(
-                            name=mode_name,
-                            goal=mode_def.goal if mode_def else "Respond to user requests",
-                            context_prompt=mode_def.context_prompt if mode_def else "",
-                            allowed_tools=available_tools_for_mode,
-                            forbidden_tools=mode_def.forbidden_tools if mode_def else set(),
-                            can_access_filesystem=mode_def.can_access_filesystem if mode_def else True,
-                            can_access_network=mode_def.can_access_network if mode_def else True,
-                            uses_tool_relevance_filter=(mode_def.uses_tool_relevance_filter if mode_def else False),
-                            **_mode_info_overrides,
-                        )
-
-                        # Get internet access status
-                        internet_access = state.data.get("internet_access", False)
-                        internet_policy_summary = state.data.get("internet_policy_summary", "")
-
-                        # Filter CLI inputs to only include new ones (not already processed)
-                        # This prevents the LLM from seeing the same input multiple times
-                        if context.cli_inputs:
-                            new_inputs = [
-                                inp
-                                for inp in context.cli_inputs
-                                if inp not in processed_cli_inputs or inp == new_cli_input
-                            ]
-                            # Only keep the most recent new input
-                            if new_cli_input:
-                                context.cli_inputs = [new_cli_input]
-                            else:
-                                context.cli_inputs = new_inputs[-1:] if new_inputs else []
-
-                        # Get available tools for this mode (a set; the filters below rebind it to a list)
-                        available_tools: set[str] | list[str]
-                        available_tools = mode_info.get_available_tools(_all_tools)
-
-                        # Body ownership is not a mode privilege
-                        # (sem_motor_binding.md Phase 1): SEM affordance
-                        # tools generated from a wired body join the
-                        # described tool list past the mode filter —
-                        # otherwise a live mode's non-empty allowed_tools
-                        # hides reachy_mini_turn_* and they surface only
-                        # as bare tokens via the relevance filter (the
-                        # 'move' bare-token lesson).
-                        if executor is not None and getattr(executor, "embodiment", None) is not None:
-                            try:
-                                from maxim.embodiment.tool_bridge import always_active_sem_tools
-
-                                _exec_registry = executor.registry
-                                for _sem_tool in always_active_sem_tools(_exec_registry):
-                                    if _exec_registry.is_tool_active(_sem_tool.name):
-                                        available_tools.add(_sem_tool.name)
-                            except Exception:
-                                # Silent loss here re-creates the bare-token
-                                # bug this union exists to fix — log it.
-                                logger.debug("SEM prompt union failed", exc_info=True)
-
-                        # Wire 3 (release_0_9_1.md Stage 1): filter tools
-                        # routed through critically-damaged components and
-                        # collect degraded-affordance annotations. Pulls
-                        # from Embodiment.get_disabled_affordances() /
-                        # .get_degraded_affordances() which read each
-                        # modulator's compute_integrity(). Default
-                        # thresholds: integrity < 0.3 → disabled
-                        # (filtered out); 0.3 <= integrity < 0.6 →
-                        # annotated with a felt-sensation phrase
-                        # ("feels strained" / "feels weakened, prone to
-                        # failing") so the LLM proposer reads the
-                        # affordance's cost in proprioceptive voice
-                        # rather than as a system advisor (bio-fidelity
-                        # fold). Fail-open at the narrowed exception
-                        # surface (no embodiment, missing methods, broken
-                        # modulator shape) — the filter is a no-op but
-                        # the WARNING surfaces operator-visible signal.
-                        #
-                        # NOTE on `last_surfaced_tools`: post-filter is
-                        # intentional. The learned tool-relevance index
-                        # at line ~1700 calls `record_surfaced_but_unused`
-                        # — disabled tools weren't surfaced, so they
-                        # don't decay. Future: if a disabled tool
-                        # recovers, the relevance index resumes decay
-                        # the next tick the tool surfaces again.
-                        _wire3_embodiment = getattr(executor, "embodiment", None)
-                        _wire3_degraded: dict[str, float] = {}
-                        _wire3_disabled: set[str] = set()
-                        if _wire3_embodiment is not None:
-                            try:
-                                _wire3_disabled = _wire3_embodiment.get_disabled_affordances()
-                                if _wire3_disabled:
-                                    available_tools = [t for t in available_tools if t not in _wire3_disabled]
-                                _wire3_degraded = _wire3_embodiment.get_degraded_affordances()
-                            except (AttributeError, TypeError) as e:
-                                # Narrowed from broad Exception per
-                                # arch-lens A4: the inner body.py guard
-                                # already swallows compute_integrity
-                                # raises with a WARNING. Outer surface
-                                # failures here are method-shape
-                                # mismatches (non-Embodiment object
-                                # plugged into executor.embodiment) —
-                                # WARN so operator review catches it.
-                                logger.warning(
-                                    "Wire 3: get_disabled/degraded_affordances shape mismatch — filter no-op: %s",
-                                    e,
-                                )
-                                _wire3_degraded = {}
-                                _wire3_disabled = set()
-                            # Emit Roy-3 disambiguator (bio-fidelity B2):
-                            # without this, "Wire 3 hid the tool" and
-                            # "substrate learned avoidance" are
-                            # indistinguishable post-hoc. The event
-                            # lists which affordances were filtered /
-                            # annotated each LLM submission so Roy-3
-                            # can quantify Wire 3's effect surface.
-                            if _wire3_disabled or _wire3_degraded:
-                                try:
-                                    from maxim.simulation import sim_logger as _sl_w3
-
-                                    _w3_tick = int(time.time() - _sl_w3._sim_start) if _sl_w3._sim_start > 0.0 else 0
-                                    _sl_w3.sim_log(
-                                        "WIRE_3_FILTER",
-                                        f"wire_3: disabled={len(_wire3_disabled)} degraded={len(_wire3_degraded)}",
-                                        {
-                                            "tick": _w3_tick,
-                                            "disabled_tools": sorted(_wire3_disabled),
-                                            # Pass integrity floats only here — the LLM
-                                            # sees the felt phrases above.
-                                            "degraded_integrities": {
-                                                name: round(integrity, 4) for name, integrity in _wire3_degraded.items()
-                                            },
-                                        },
-                                    )
-                                except ImportError:
-                                    # Non-sim runtime — observability
-                                    # is optional, never load-bearing.
-                                    pass
-                        available_tools = _advertisable_tools(available_tools, executor, autonomy_controller)
-                        last_surfaced_tools = list(available_tools)
-
-                        tool_descriptions = _describe_tools_for_prompt(available_tools, executor, overlay=_tool_overlay)
-
-                        # Wire 3: annotate degraded tools' descriptions in
-                        # place with a felt-sensation phrase (bio-fidelity
-                        # fold). The annotation lives at the end of the
-                        # description string so the LLM reads the body's
-                        # state in proprioceptive voice without losing
-                        # the tool's normal capability blurb. Uses the
-                        # per-tool entry's structure (dict for dynamic
-                        # tools, TOOL_DESCRIPTIONS dict for builtin);
-                        # skips any tool whose description shape we don't
-                        # recognise, fail-open.
-                        #
-                        # Idempotency under integrity drift (arch A1):
-                        # if integrity ticks 0.5 → 0.4 → 0.5 across a
-                        # session, the felt phrase changes per band.
-                        # The regex strip removes any existing
-                        # ``(feels …)`` Wire 3 annotation before
-                        # appending the current one so phrases don't
-                        # accumulate. Healthy / disabled affordances
-                        # never enter this loop, so the only way to
-                        # have an annotation present is via a prior
-                        # Wire 3 pass.
-                        if _wire3_degraded and _wire3_embodiment is not None:  # only filled when embodied
-                            for name, integrity in _wire3_degraded.items():
-                                entry = tool_descriptions.get(name)
-                                if not isinstance(entry, dict):
-                                    continue
-                                base_desc = entry.get("description", "")
-                                if not isinstance(base_desc, str):
-                                    continue
-                                phrase = _wire3_embodiment.integrity_to_felt_phrase(integrity)
-                                if not phrase:
-                                    continue
-                                annotation = f" ({phrase})"
-                                # Strip any prior felt annotation pinned
-                                # by Embodiment.integrity_to_felt_phrase
-                                # — the two bands give two distinct
-                                # suffixes which could otherwise stack.
-                                stripped = _WIRE3_PHRASE_RE.sub("", base_desc)
-                                # Copy-on-write — TOOL_DESCRIPTIONS is
-                                # a shared module-level dict; mutating
-                                # it would poison the description for
-                                # future calls (and other agents).
-                                tool_descriptions[name] = {**entry, "description": stripped + annotation}
-
-                        annotate_tool_variance(  # Wire 1, moved verbatim to loop_planning (#1481 Rule T, A's grant)
-                            tool_descriptions=tool_descriptions,
-                            available_tools=available_tools,
-                            _loop_nac=_loop_nac,
-                            _loop_agent_id=_loop_agent_id,
-                            logger=logger,
-                        )
-
-                        # Get context pool text
-                        context_pool_text = context_pool.get_context_text(
-                            max_tokens=mode_info.context_window_tokens // 2
-                        )
-
-                        # Get conversation history for context
-                        conversation_history_text = context_pool.get_conversation_text(max_turns=5)
-
-                        # Check for pending modification request
-                        pending_modification = state.data.pop("pending_modification", None)
-
-                        # Format prefetch context if available
-                        prefetch_context_text = ""
-                        skip_exploration = False
-                        if pending_prefetch is not None:
-                            prefetch_context_text = prefetcher.format_prefetch_context(pending_prefetch)
-                            skip_exploration = pending_prefetch.skip_exploration
-                            # Clear after use
-                            pending_prefetch = None
-
-                        # Get protocol context (re-injected fresh each submission)
-                        _protocol_context = ""
-                        if protocol_registry is not None:
-                            _protocol_context = protocol_registry.get_context_for_llm()
-
-                        if callable(on_event):
-                            try:
-                                on_event(StreamEvent("inference_start", {}))
-                            except Exception as e:
-                                log_swallowed_exception(e, operation="on_event:inference_start")
-
-                        # EXPERIMENTAL — hallucination-hint feature.
-                        # MAXIM_TOOL_FAILURE_HINTS=1 enables (default off).
-                        # Disable for grounded-language acquisition Phase 0/1.
-                        # See docs/plans/grounded_language_acquisition.md.
-                        _failed_tools: list[str] = []
-                        if os.environ.get("MAXIM_TOOL_FAILURE_HINTS", "0") != "0":
-                            # __getattr__ on wrappers (InstrumentedExecutor,
-                            # PainInterceptorExecutor, FearGatedExecutor) walks
-                            # down to the base Executor where the list lives.
-                            _failed_tools = list(getattr(executor, "_tools_hallucinated", []))
-
-                        _shared_submit = planning_submit_shared_kwargs(
-                            mode_info=mode_info,
-                            internet_access=internet_access,
-                            internet_policy_summary=internet_policy_summary,
-                            available_tools=available_tools,
-                            tool_descriptions=tool_descriptions,
-                            context_pool_text=context_pool_text,
-                            agent_states=agent_states,
-                            recent_outcomes=recent_outcomes,
-                            use_tool_prompting=use_tool_prompting and bool(available_tools),
-                            conversation_history_text=conversation_history_text,
-                            is_sleeping=is_sleeping,
-                            protocol_context=_protocol_context,
-                        )
-                        submitted = submit_tick_context(
-                            llm_worker,
-                            context=context,
-                            shared=_shared_submit,
-                            autonomy_level=autonomy_controller.current_level,
-                            _failed_tools=_failed_tools,
-                            **_triggering(new_cli_input, followup_original_query, pending_modification, state),
-                            pending_modification=pending_modification,
-                            prefetch_context_text=prefetch_context_text,
-                            skip_exploration=skip_exploration,
-                            deliberation_available=bio_enrichment_pipeline is not None,
-                            processed_cli_inputs=processed_cli_inputs,
-                            _deferred_inputs=_deferred_inputs
-                            or take_replan_inputs(ctrl, memory, _planning_liveness_on),
-                            inbound_feed=inbound_inbox,
-                        )
-                        ctrl.last_llm_submit_time = now
-                        # Log submission for both user input and followups
-                        if submitted:
-                            # Check if this is a followup submission
-                            is_followup = context.cli_inputs and any(
-                                is_tool_followup(inp) for inp in context.cli_inputs
-                            )
-                            if is_followup:
-                                logger.info("Submitted followup to LLM for processing")
-                            elif new_cli_input:
-                                logger.info(
-                                    "Submitted to LLM: %s",
-                                    new_cli_input[:50] if len(new_cli_input) > 50 else new_cli_input,
-                                )
-                            log_agentic(
-                                "agent_loop",
-                                "llm_submit",
-                                {
-                                    "input": new_cli_input[:50]
-                                    if new_cli_input
-                                    else "followup"
-                                    if is_followup
-                                    else None,
-                                    "mode": mode_info.name,
-                                    "autonomy": autonomy_controller.current_level.value,
-                                    "tools_available": len(available_tools),
-                                },
-                            )
-                            sim.log("EXEC", f"LLM submit: {new_cli_input if new_cli_input else 'followup'}")
-
-                        # ── PFC multi-cycle deliberation ──────────────────
-                        # When the gate passed in section 1.2 and the first
-                        # proposal says ready_to_act=False, run cycles 2+
-                        # right here where all submission params are in scope.
-                        if submitted and _pfc_gate_passed and bio_enrichment_pipeline is not None:
-                            _first = _wait_for_proposal(llm_worker, stop_event, ctrl=ctrl)
-                            if _first is not None:
-                                _max_cyc = (
-                                    _max_cycles_override
-                                    if _max_cycles_override is not None
-                                    else (3 if percept_source is not None else 2)
-                                )
-                                if not _first.ready_to_act:
-                                    # Build a submit closure that captures all params
-                                    _submit_kwargs = dict(
-                                        **_shared_submit,
-                                        autonomy_level=autonomy_controller.current_level,
-                                        triggering_input="",
-                                        pending_modification=None,
-                                        prefetch_context="",
-                                        skip_exploration=False,
-                                        deliberation_available=True,
-                                        deferred_inputs=[],
-                                        inbound_feed=inbound_inbox.continuation()
-                                        if inbound_inbox is not None
-                                        else None,
-                                    )
-
-                                    def _submit_fn(_ctx: Any, _kw: dict = _submit_kwargs) -> bool:
-                                        return llm_worker.submit_context(context=_ctx, **_kw)
-
-                                    _active_goal = state.data.get("active_goal") if hasattr(state, "data") else None
-                                    _delib = _run_deliberation_cycles(
-                                        first_proposal=_first,
-                                        bio_enrichment=bio_enrichment_pipeline,
-                                        working_memory=_wms,
-                                        context=context,
-                                        submit_fn=_submit_fn,
-                                        llm_worker=llm_worker,
-                                        stop_event=stop_event,
-                                        thought_gate=thought_gate,
-                                        active_goal=_active_goal,
-                                        step_num=step_num,
-                                        max_cycles=_max_cyc,
-                                        ctrl=ctrl,
-                                    )
-                                    if _delib is not None:
-                                        ctrl.pending_proposal = _delib
-                                        sim.log(
-                                            "DELIBERATION",
-                                            f"multi-cycle deliberation yielded proposal: "
-                                            f"tool={_delib.action.get('tool_name') if isinstance(_delib.action, dict) else None}",
-                                        )
-                                    else:
-                                        sim.log("DELIBERATION", "multi-cycle deliberation returned None (IDLE)")
-                                else:
-                                    # ready_to_act == True on cycle 1 — use directly
-                                    ctrl.pending_proposal = _first
-                                    from maxim.simulation.sim_logger import (
-                                        sim_contemplation,
-                                        sim_deliberation_end,
-                                        sim_deliberation_update,
-                                    )
-
-                                    # Update thinking panel with the AUT's actual reasoning
-                                    # Only if the thought is novel enough vs recent thoughts
-                                    _first_reasoning = _first.reasoning or ""
-                                    if _first_reasoning and _is_novel_thought(_first_reasoning):
-                                        sim_deliberation_update(
-                                            _first_reasoning,
-                                            cycle=1,
-                                            max_cycles=_max_cyc,
-                                            salience=locals().get("_salience_c1"),
-                                        )
-                                    # NOTE: score=0.0 is a placeholder here —
-                                    # the gate decision is not in this scope
-                                    # (different function). Left explicit
-                                    # rather than silently fabricated; wire a
-                                    # real value if this log is ever relied on.
-                                    sim_contemplation(gate_passed=True, refined=False, score=0.0)
-                                    sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
-                                    if thought_gate is not None:
-                                        thought_gate.reset_refractory(step_num)
-
-                except Exception as e:
-                    import traceback
-
-                    logger.warning(f"Failed to submit context to LLM: {type(e).__name__}: {e}")
-                    logger.debug(f"Full traceback:\n{traceback.format_exc()}")
+                # Build context for LLM, submit it, deliberate (§6, runtime/loop_request.py; its gate: loop_submit, 7a)
+                _carry = submit_tick(
+                    memory=memory,
+                    ctrl=ctrl,
+                    executor=executor,
+                    state=state,
+                    sim=sim,
+                    cli_input=cli_input,
+                    processed_cli_inputs=processed_cli_inputs,
+                    _audio_escalate_this_tick=_audio_escalate_this_tick,
+                    _percept_enrichment_text=_percept_enrichment_text,
+                    _auto_sense_text=_auto_sense_text,
+                    _loop_nac=_loop_nac,
+                    _loop_agent_id=_loop_agent_id,
+                    _planning_liveness_on=_planning_liveness_on,
+                    _all_tools=_all_tools,
+                    _max_response_tokens_override=_max_response_tokens_override,
+                    autonomy_controller=autonomy_controller,
+                    _tool_overlay=_tool_overlay,
+                    context_pool=context_pool,
+                    prefetcher=prefetcher,
+                    llm_worker=llm_worker,
+                    agent_states=agent_states,
+                    recent_outcomes=recent_outcomes,
+                    use_tool_prompting=use_tool_prompting,
+                    protocol_registry=protocol_registry,
+                    on_event=on_event,
+                    bio_enrichment_pipeline=bio_enrichment_pipeline,
+                    inbound_inbox=inbound_inbox,
+                    now=now,
+                    _pfc_gate_passed=_pfc_gate_passed,
+                    stop_event=stop_event,
+                    _max_cycles_override=_max_cycles_override,
+                    percept_source=percept_source,
+                    _wms=_wms,
+                    thought_gate=thought_gate,
+                    step_num=step_num,
+                    _is_novel_thought=_is_novel_thought,
+                    _salience_c1=locals().get("_salience_c1"),
+                    _run_deliberation_cycles=_run_deliberation_cycles,
+                    _wait_for_proposal=_wait_for_proposal,
+                    last_surfaced_tools=last_surfaced_tools,
+                    pending_prefetch=pending_prefetch,
+                )
+                last_surfaced_tools, pending_prefetch = _carry.last_surfaced_tools, _carry.pending_prefetch
 
         # ─────────────────────────────────────────────────────────────────
         # 7. CALL STEP CALLBACK
