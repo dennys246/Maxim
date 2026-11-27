@@ -21,6 +21,7 @@ from maxim.models.language.types import LLMResponse, resolved_entry_key
 # anyone importing _validate_base_url from openai_backend. Moved to the
 # imports block so the E402 noqa suppression is no longer needed.
 from maxim.utils.net import validate_base_url as _validate_base_url
+from maxim.utils.net import redact_urls
 
 # Stall-detector integration: warn-once shim around the registry import.
 # Architecture review I5: silent-swallow re-introduces the bug class
@@ -70,7 +71,7 @@ def _sanitize_error_message(err: BaseException | None, *, max_len: int = 500) ->
         return ""
     import re
 
-    msg = str(err)
+    msg = redact_urls(str(err))  # reduce, then cut (#1801 G1): the cut below must not split a URL
     # Check the first 200 chars so HTML bodies wrapped by an exception
     # chain (e.g. "RuntimeError: <!DOCTYPE ...") are still caught.
     head = msg[:200]
@@ -278,14 +279,22 @@ class _OpenAIBackend:
                 "base_url": base_url,
                 "timeout": self._get_timeout(),
             }
-            if base_url:
-                from maxim.utils import http as _http
+            from maxim.utils import http as _http
+
+            provider_cfg = self._provider_cfg()
+            # #1782: a provider entry may refuse every env proxy (NO_PROXY is honoured without it, D16), with or
+            # without a base_url (none: the SDK's default host, which would read HTTPS_PROXY itself)
+            strict = _http.provider_strict_address_check(provider_cfg)
+            if base_url or strict:
                 from maxim.utils.net import base_url_address_policy
 
                 # #921: validate_base_url's rules, enforced on the address the SDK actually dials
-                allow_local = bool(self._provider_cfg().get("allow_local_endpoints", False))
+                allow_local = bool(provider_cfg.get("allow_local_endpoints", False))
                 checked = _http.address_checked_client(
-                    base_url_address_policy(base_url, allow_local), timeout=self._get_timeout(), base_url=base_url
+                    base_url_address_policy(base_url, allow_local) if base_url else "any",
+                    timeout=self._get_timeout(),
+                    base_url=base_url,
+                    strict=strict,
                 )
                 if checked is not None:
                     client_kwargs["http_client"] = checked
@@ -498,7 +507,7 @@ class _OpenAIBackend:
                 status="error",
                 http_status=_http_status_of(last_err),
                 latency_ms=(time.time() - start) * 1000,
-                error=sanitized_error[:200] if sanitized_error else None,
+                error=redact_urls(sanitized_error)[:200] if sanitized_error else None,
             )
         )
         warn("OpenAI call failed [req=%s]: %s", request_id[:8], sanitized_error)

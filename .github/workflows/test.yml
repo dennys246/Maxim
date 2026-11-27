@@ -826,8 +826,8 @@ jobs:
           pip install "ruff==0.14.14"
           pip install "pyyaml>=6.0,<7.0"  # scripts/lint_body_rest_neutral.py reads body YAML
           pip install "mypy==1.20.0"  # scripts/lint_mypy_ratchet.py; same pin as unit-tests' mypy step
-          ruff check src/ tests/
-          ruff format --check src/ tests/
+          ruff check src/ tests/ scripts/
+          ruff format --check src/ tests/ scripts/
 
       - name: Version sync (pyproject == __init__ == CHANGELOG header == the three version lines)
         # CLAUDE.md "Versioning" (policy decided 2026-08-29, roadmap 1.1.x item
@@ -1498,6 +1498,14 @@ jobs:
           # fails if any file's count rose vs origin/main (grandfathered
           # per-file; new files start at zero; burn-down is free).
           python3 scripts/lint_atomic_io_ratchet.py
+
+      - name: Cuts of exception text before URL reduction (#1801)
+        # A ratchet, not the boundary: an AST taint lint over src/maxim that fails on a slice, precision, shorten or
+        # split/partition result of exception text (an except name, an e/exc/err/error parameter, .stderr/.stdout,
+        # traceback.format_exc()) that is not redact_urls/url_scrubbed first. Reviewed cuts sit in its allowlist,
+        # keyed file::innermost_function + the cut's text, with an exact count. Prints the count EVERY run.
+        # Positive control: tests/unit/test_lint_cut_before_redact.py.
+        run: python3 scripts/lint_cut_before_redact.py
 
       - name: HTTP surface (HTTP clients only in utils/http.py; raw dials + egress SDKs pinned)
         # CLAUDE.md's HTTP invariant. The urlopen grep in "CI grep invariants" stays (CLAUDE.md cites it);

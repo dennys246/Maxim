@@ -15,7 +15,7 @@ This file tracks decisions that affect public behavior, repo structure, and long
   `--clear-memory` clears it in the data home, and in a home named with `--home-dir`
   (`cli_utils._GLOBAL_PATHS["runtime_state"]`).
 - **One builder.** `runtime/loop_state.py::loop_state_path` names every run's file,
-  `state_<run id segment>_<token>.json`: the run's own identity (the directory is `tool_dispatch.safe_agent_name`)
+  `state_<run id segment>_<token>.json`: the run's own identity (the directory is `loop_state.safe_agent_name`, in `tool_dispatch` until B2 prerequisite 1 moved it)
   plus a 48-bit random token, so two loops never share a file by sharing a class name and a wall-clock second (a
   sim's AUT and narrator are both `MaximAgent`).
 - **Sanitised, never refused.** Only the filename segment of the run id is sanitised, as `safe_agent_name` does:
@@ -1190,6 +1190,11 @@ included. One classifier, `utils/net.py::is_public_address`, serves both the val
 - A URL whose own first dial is private is trusted as the operator's choice.
 - CGNAT (100.64.0.0/10) moved from "public" to "non-public" in `validate_base_url` when the classifiers
   were unified. An `https://` backend on Tailscale now needs `allow_local_endpoints`.
+
+**Amended 2026-11-22 (D16 in `docs/plans/release_1_3_5.md`; #1782).** `NO_PROXY` is honoured on the backend call path,
+where an embedder makes the call, and the proxy still wins for Maxim's own operator commands. Both are pinned by
+tests. A provider entry's `strict_address_check` refuses every env proxy for that backend's calls and probes, the env
+CA still honoured, so "what a proxy carries is not address-checked" now has a per-backend opt-out.
 
 ## 2026-09-28 — Host coding tools: the working root, and git_commit is opt-in (#949)
 

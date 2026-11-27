@@ -28,6 +28,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Generator, ParamSpec, TypeVar
 from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import url_scrubbed
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,12 @@ def _ensure_sim_bridge_handlers() -> None:
 # can quote a PRIVATE tool's output and the log file is not a display surface. A silent RESPONSE turn (``text`` None)
 # keeps its message: a tool-name summary, not a reply. Value: whether the message is the text.
 _REPLY_SUBSYSTEMS: dict[str, bool] = {"RESPONSE": True, "SCENE": True, "PERCEPT": True, "DELIBERATION": False}
+
+# #1801 (owner, 2026-11-25): the conversation, RESPONSE (the agent's reply) and USER (the person's input), reaches the
+# SINKS (the console's /ws chat) with its URLs whole, so the person sees the full link. Every persisted or logged
+# destination (the trail, the sim JSONL, ``_bridge_to_log_file``, the terminal) still gets the reduced record, and the
+# console's ``_EventHub._fanout`` does not re-reduce these subsystems.
+CONVERSATION_SUBSYSTEMS: frozenset[str] = frozenset({"RESPONSE", "USER"})
 
 
 def _bridge_to_log_file(
@@ -670,6 +677,13 @@ def unregister_sim_sink(sink: "Callable[[dict[str, Any]], None]") -> None:
                 break
 
 
+def _sink_record(record: dict[str, Any], raw_message: str, raw_data: dict[str, Any] | None) -> dict[str, Any]:
+    """The record the sinks get: the conversation whole (owner, 2026-11-25, #1801), everything else as reduced."""
+    if record["subsystem"] not in CONVERSATION_SUBSYSTEMS:
+        return record
+    return {**record, "message": raw_message, "data": raw_data or {}}
+
+
 def _dispatch_to_sinks(record: dict[str, Any]) -> None:
     with _sim_sinks_lock:
         sinks = list(_sim_sinks)
@@ -1025,6 +1039,14 @@ def sim_log(
     if not _sim_active and not _sim_sinks:
         return
 
+    # #1801 (AB3): REBIND the locals to their URL-reduced values first, so every reader below gets them: the in-memory
+    # trail, the sim JSONL, ``_bridge_to_log_file`` (whose ``text_shape`` must not be computed over raw text, an oracle
+    # for it), the terminal render and the sinks, except the conversation (CONVERSATION_SUBSYSTEMS), which the sinks
+    # get whole (owner, 2026-11-25). ``url_scrubbed`` recurses and stringifies leaves such as an exception object (R8).
+    raw_message, raw_data = message, data
+    message = url_scrubbed(message)
+    data = url_scrubbed(data) if data else data
+
     # Resolve agent_id: explicit parameter > contextvar > None
     if agent_id is None:
         agent_id = _current_agent_id.get(None)
@@ -1058,7 +1080,7 @@ def sim_log(
         record["agent"] = nickname
 
     # Sinks FIRST and unconditionally — see the gate note above.
-    _dispatch_to_sinks(record)
+    _dispatch_to_sinks(_sink_record(record, raw_message, raw_data))
 
     # Everything below is the sim-session trail + terminal rendering, which
     # only exist while a sim owns the logger.

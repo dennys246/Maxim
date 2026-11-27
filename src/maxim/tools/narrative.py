@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.memory.layer import activate_after_use
 from maxim.tools.base import Effect, Tool, ToolResult
-from maxim.utils.content_safety import frame_tool_output
+from maxim.utils.prompt_text import frame_external
 from maxim.utils.logging import log_swallowed_exception
 
 # ExamineTool recall: search this many matches, show at most this many past ones (#845).
@@ -363,7 +363,7 @@ class ExamineTool(Tool):
                 if not text or text.lower() in shown_now:
                     continue
                 # The recalled sentence is stored text from outside the agent: framed where it is produced (#1444).
-                line = f"You recall: {frame_tool_output('recalled_input', text, external=True)}"
+                line = f"You recall: {frame_external('recalled_input', text)}"
                 shown_now.add(text.lower())  # one line per sentence, whatever its case
                 observations.append(line)
                 recalled[line] = m.id

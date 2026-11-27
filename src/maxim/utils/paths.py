@@ -284,7 +284,7 @@ RUNTIME_STATE_DIR = "runtime_state"
 def loop_state_dir(agent_name: str, *, root: str | os.PathLike[str] | None = None) -> Path:
     """A loop's runtime-state directory — ``<root or data_home()>/runtime_state/<agent_name>/`` (#1264).
 
-    ``agent_name`` is ``runtime/tool_dispatch.safe_agent_name(agent)`` (already one safe path segment). ``root`` is a
+    ``agent_name`` is ``runtime/loop_state.safe_agent_name(agent)`` (already one safe path segment). ``root`` is a
     data-home-shaped root a caller puts the state under instead of the data home (a sim's sandbox, a harness AUT's
     own home). Creates nothing: ``runtime/loop_state.claim_state_path`` makes the directory and the file, so a
     failure to create them is reported there, by the loop.

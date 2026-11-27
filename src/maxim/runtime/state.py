@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from maxim.utils.atomic_io import atomic_write_json
+from maxim.utils.net import redact_urls
 
 
 @dataclass
@@ -74,7 +75,7 @@ class RuntimeState:
         )
 
     def mark_failure(self, error: str | None) -> None:
-        self.last_error = str(error) if error is not None else None
+        self.last_error = redact_urls(str(error)) if error is not None else None  # belt-and-braces (#1801 F3)
 
     def is_done(self) -> bool:
         return self.done
