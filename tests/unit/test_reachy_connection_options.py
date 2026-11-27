@@ -11,22 +11,28 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+from maxim.hardware.reachy import probe as reachy_probe
 from maxim.hardware.reachy.controller import ReachyMiniController
 
 
 import pytest
 
 
+def _status_unreadable(*_a, **_k):
+    raise reachy_probe.DaemonStatusUnreadable("unit test: no daemon")
+
+
 @pytest.fixture(autouse=True)
 def _no_daemon_status_io(monkeypatch):
-    """connect() now calls _daemon_status (urllib GET) — never let unit tests
-    do real network I/O (3s blackhole timeouts per test; on a dev box with
-    anything on :8000 the test would consume a real HTTP response)."""
-    monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: None))
+    """connect()'s pre-check runs the one daemon probe (hardware/reachy/probe.py, #1806), whose status read is an
+    HTTP GET — never let unit tests do real network I/O (3s blackhole timeouts per test; on a dev box with
+    anything on :8000 the test would consume a real HTTP response). The TCP stage is patched per test
+    (``reachy_probe.tcp_connect_error``)."""
+    monkeypatch.setattr(reachy_probe, "read_daemon_status", _status_unreadable)
     # Era gate reads the REAL installed reachy-mini metadata — pin it to the
     # WS era so tests don't depend on what happens to be installed. (The
     # era-gate tests override this per-test.)
-    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    monkeypatch.setattr(reachy_probe, "installed_sdk_version", lambda: (1, 8))
     monkeypatch.setattr(ReachyMiniController, "_get_state_full", _state_from_the_mock)
 
 
@@ -99,11 +105,11 @@ def test_host_bypasses_mdns_gate():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_resolve_mdns") as mdns,
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch("socket.gethostbyname") as mdns,
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
     ):
         assert c.connect(timeout=2.0) is True
-    mdns.assert_not_called()  # explicit host => mDNS gate skipped
+    mdns.assert_not_called()  # explicit IP host => no name lookup at all
     assert mod.ReachyMini.call_args.kwargs["connection_mode"] == "network"
 
 
@@ -113,7 +119,7 @@ def test_tunnel_forces_localhost_only():
     with (
         ctx,
         patch.object(ReachyMiniController, "_start_ssh_tunnel", return_value=True) as tun,
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
     ):
         assert c.connect(timeout=2.0) is True
     tun.assert_called_once()
@@ -125,8 +131,8 @@ def test_localhost_only_probes_localhost_not_mdns():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_resolve_mdns") as mdns,
-        patch.object(ReachyMiniController, "_port_open", return_value=True) as probe,
+        patch("socket.gethostbyname") as mdns,
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None) as probe,
     ):
         assert c.connect(timeout=2.0) is True
     mdns.assert_not_called()
@@ -141,8 +147,8 @@ def test_mdns_path_probe_failure_skips_sdk_connect():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_resolve_mdns", return_value="10.0.0.9"),
-        patch.object(ReachyMiniController, "_port_open", return_value=False),
+        patch("socket.gethostbyname", return_value="10.0.0.9"),
+        patch.object(reachy_probe, "tcp_connect_error", return_value="connection refused"),
     ):
         assert c.connect(timeout=2.0) is False
     mod.ReachyMini.assert_not_called()
@@ -153,10 +159,11 @@ def test_mdns_path_probes_the_resolved_ip():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_resolve_mdns", return_value="10.0.0.9"),
-        patch.object(ReachyMiniController, "_port_open", return_value=True) as probe,
+        patch("socket.gethostbyname", return_value="10.0.0.9") as mdns,
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None) as probe,
     ):
         assert c.connect(timeout=2.0) is True
+    mdns.assert_called_once_with("reachy-mini.local")  # the default daemon name, underscores dashed
     assert probe.call_args.args[0] == "10.0.0.9"  # probed the resolved IP, not the name
     assert mod.ReachyMini.call_args.kwargs["connection_mode"] == "network"
 
@@ -185,11 +192,11 @@ def test_probe_targets_daemon_port_8000_not_7447():
     with (
         ctx,
         patch.object(
-            ReachyMiniController,
-            "_port_open",
-            side_effect=lambda host, port, timeout=3.0: probed.append((host, port)) or True,
+            reachy_probe,
+            "tcp_connect_error",
+            side_effect=lambda host, port, timeout=3.0: probed.append((host, port)) or None,
         ),
-        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+        patch.object(reachy_probe, "read_daemon_status", side_effect=reachy_probe.DaemonStatusUnreadable("test")),
     ):
         c.connect(timeout=2.0)
     assert ("10.6.0.63", 8000) in probed
@@ -201,8 +208,8 @@ def test_explicit_host_threaded_into_sdk_constructor():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
-        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
+        patch.object(reachy_probe, "read_daemon_status", side_effect=reachy_probe.DaemonStatusUnreadable("test")),
     ):
         assert c.connect(timeout=2.0) is True
     kwargs = mod.ReachyMini.call_args.kwargs
@@ -217,9 +224,9 @@ def test_mdns_resolved_ip_passed_to_sdk_not_dot_local():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_resolve_mdns", return_value="10.6.0.63"),
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
-        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+        patch("socket.gethostbyname", return_value="10.6.0.63"),
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
+        patch.object(reachy_probe, "read_daemon_status", side_effect=reachy_probe.DaemonStatusUnreadable("test")),
     ):
         assert c.connect(timeout=2.0) is True
     assert mod.ReachyMini.call_args.kwargs["host"] == "10.6.0.63"
@@ -247,8 +254,8 @@ def test_localhost_only_connects_via_loopback_host():
     ctx, mod = _mock_sdk()
     with (
         ctx,
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
-        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
+        patch.object(reachy_probe, "read_daemon_status", side_effect=reachy_probe.DaemonStatusUnreadable("test")),
     ):
         assert c.connect(timeout=2.0) is True
     assert mod.ReachyMini.call_args.kwargs["host"] == "127.0.0.1"
@@ -261,7 +268,7 @@ def test_pre_pivot_sdk_fails_loud_with_fix_hint(monkeypatch):
     guard that makes the next stale-SDK situation diagnosable.)"""
     c = ReachyMiniController(host="10.6.0.63", connection_mode="network")
     ctx, mod = _mock_sdk()
-    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 2)))
+    monkeypatch.setattr(reachy_probe, "installed_sdk_version", lambda: (1, 2))
     with ctx:
         assert c.connect(timeout=2.0) is False
     mod.ReachyMini.assert_not_called()
@@ -271,10 +278,10 @@ def test_pre_pivot_sdk_fails_loud_with_fix_hint(monkeypatch):
 def test_ws_era_sdk_passes_era_gate(monkeypatch):
     c = ReachyMiniController(host="10.6.0.63", connection_mode="network")
     ctx, mod = _mock_sdk()
-    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    monkeypatch.setattr(reachy_probe, "installed_sdk_version", lambda: (1, 8))
     with (
         ctx,
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
     ):
         assert c.connect(timeout=2.0) is True
 
@@ -290,7 +297,7 @@ class TestAutomaticBodyYaw:
     def test_default_disables_daemon_body_follow_at_construction(self):
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+        with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
             assert c.connect()
         assert mod.ReachyMini.call_args.kwargs["automatic_body_yaw"] is False
 
@@ -307,7 +314,7 @@ class TestAutomaticBodyYaw:
     def test_wake_reasserts_the_setting(self):
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+        with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
             assert c.connect()
             mini = mod.ReachyMini.return_value
             assert c.wake_up()
@@ -317,7 +324,7 @@ class TestAutomaticBodyYaw:
         """Torque failure cannot be reported as an operational robot."""
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+        with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
             assert c.connect()
             mini = mod.ReachyMini.return_value
             mini.enable_motors.side_effect = RuntimeError("torque unavailable")
@@ -334,7 +341,7 @@ class TestAutomaticBodyYaw:
         body behind us, so the controller refuses motion until an assertion succeeds. It used to warn and wake."""
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network")
         ctx, mod = _mock_sdk()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+        with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
             assert c.connect()
             mini = mod.ReachyMini.return_value
             mini.set_automatic_body_yaw.side_effect = AttributeError("old SDK")
@@ -355,7 +362,7 @@ class TestStopLatchAcrossReconnect:
 
     def test_a_sleep_latch_survives_a_reconnect(self):
         c, ctx, MotionTarget = self._connected()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+        with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
             assert c.connect()
             assert c.goto_sleep()
             c.disconnect()
@@ -367,7 +374,7 @@ class TestStopLatchAcrossReconnect:
 
     def test_a_disconnect_latch_ends_with_the_new_connection(self):
         c, ctx, MotionTarget = self._connected()
-        with ctx, patch.object(ReachyMiniController, "_port_open", return_value=True):
+        with ctx, patch.object(reachy_probe, "tcp_connect_error", return_value=None):
             assert c.connect()
             c.disconnect()
             assert c.connect()

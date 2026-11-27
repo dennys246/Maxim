@@ -82,6 +82,37 @@ def test_a_backend_error_inside_a_run_exits_2_with_its_fix_hint_1468(
 
 
 @pytest.mark.timeout(120)
+def test_a_broken_robots_yaml_exits_2_with_its_fix_hint_1806(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#1806 PR 0: ``Maxim(...)`` raises ``RobotsConfigError`` for a robots.yaml it cannot read. The operator must act,
+    so the run exits 2 with the message and ``fix_hint``, not 1 ("crashed") with a bare traceback."""
+    from maxim.exceptions import RobotsConfigError
+    from maxim.utils import logging as maxim_logging
+
+    warned: list[dict] = []
+    monkeypatch.setattr(maxim_logging, "user_warn", lambda message, **kw: warned.append({"message": message, **kw}))
+    assert _run_robot_session(monkeypatch, tmp_path, RobotsConfigError("robots.yaml: line 3: not a mapping")) == 2
+    assert len(warned) == 1
+    assert "robots.yaml: line 3: not a mapping" in warned[0]["message"]
+    assert RobotsConfigError.fix_hint in warned[0]["message"]
+    assert warned[0]["event"] == "run_config_invalid"
+
+
+@pytest.mark.timeout(120)
+def test_a_bad_robot_config_value_exits_2_1806(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#1806 PR 0: a bad ``MAXIM_ROBOT_TIMEOUT`` reaches the run as ``InvalidConfigError``: exit 2 with its message."""
+    from maxim.exceptions import InvalidConfigError
+    from maxim.utils import logging as maxim_logging
+
+    warned: list[dict] = []
+    monkeypatch.setattr(maxim_logging, "user_warn", lambda message, **kw: warned.append({"message": message, **kw}))
+    assert (
+        _run_robot_session(monkeypatch, tmp_path, InvalidConfigError("MAXIM_ROBOT_TIMEOUT='soon' is not a number")) == 2
+    )
+    assert [w["event"] for w in warned] == ["run_config_invalid"]
+    assert "MAXIM_ROBOT_TIMEOUT='soon'" in warned[0]["message"]
+
+
+@pytest.mark.timeout(120)
 def test_a_leader_refusal_inside_a_run_exits_2_and_says_why_1468(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -118,3 +149,17 @@ def test_a_run_that_fails_in_live_exits_nonzero_and_still_shuts_down_1468(
     rc = cli.main(["--mode", "live", "--home-dir", str(tmp_path / "robot"), "--interactive", "false"])
     assert rc == 1
     assert shutdowns == ["shutdown"]
+
+
+def test_invalid_config_subclasses_keep_their_exit_1():
+    """Review E3: only RobotsConfigError and a plain InvalidConfigError become a config exit 2."""
+    import logging
+
+    from maxim import cli
+    from maxim.exceptions import AgentConfigContradiction, InvalidAgentIdError, InvalidConfigError, RobotsConfigError
+
+    log = logging.getLogger("t")
+    assert cli._run_stopped_on(RobotsConfigError("bad yaml"), log, verbosity=0) == 2
+    assert cli._run_stopped_on(InvalidConfigError("MAXIM_ROBOT_TIMEOUT"), log, verbosity=0) == 2
+    for sub in (InvalidAgentIdError("x"), AgentConfigContradiction("y")):
+        assert cli._run_stopped_on(sub, log, verbosity=0) == 1, type(sub).__name__

@@ -1420,6 +1420,24 @@ def log_tool_failure(tool_name: str | None, error: Any) -> None:
     log_agentic("agent_loop", "goal_failed", {"tool": tool_name, "error": shown}, level="WARNING")
 
 
+_CACHE_INVALIDATING_TOOLS = frozenset({"write_file", "edit_file"})
+
+
+def _invalidate_cache_after_write(result_cache: Any, action: dict, success: bool) -> None:
+    """Drop cached reads of a path a successful file write just changed, so the next read is fresh.
+
+    ``edit_file`` changes a file exactly as ``write_file`` does; before #1806 PR 0 only ``write_file`` invalidated, so
+    a read after a successful edit could return the pre-edit content from the cache.
+    """
+    if not success or action.get("tool_name", "") not in _CACHE_INVALIDATING_TOOLS:
+        return
+    written_path = action.get("params", {}).get("path")
+    if written_path:
+        invalidated = result_cache.invalidate(path=written_path)
+        if invalidated > 0:
+            _loop_logger.debug("Invalidated %d cache entries for: %s", invalidated, written_path)
+
+
 def execute_and_learn(
     *,
     agent: Any,
@@ -1542,14 +1560,7 @@ def execute_and_learn(
         if action.get("_timeout_retry") and success:
             _stash_timeout_retry(action, sim, state)
 
-        # Invalidate cache for write operations to ensure fresh reads
-        tool_name = action.get("tool_name", "")
-        if tool_name == "write_file" and success:
-            written_path = action.get("params", {}).get("path")
-            if written_path:
-                invalidated = result_cache.invalidate(path=written_path)
-                if invalidated > 0:
-                    _loop_logger.debug("Invalidated %d cache entries for: %s", invalidated, written_path)
+        _invalidate_cache_after_write(result_cache, action, success)
 
         # Log tool execution
         log_agentic(

@@ -127,58 +127,71 @@ class TestResolveBodyWiring:
     """`agentic_runtime._resolve_body_wiring` — the runtime-side resolver that
     turns a robots.yaml declaration into the (entity_ref, component_registry)
     pair threaded into build_executor. Covers the fail-safe gating the leaf
-    helpers don't (review F3 test-gap fold) and the F1 wrong-robot fix."""
+    helpers don't (review F3 test-gap fold) and the F1 wrong-robot fix.
 
-    def _stub(self, robot_id=None, name="reachy_mini"):
+    #1806 PR 0: the entry is resolved ONCE, by the connect path
+    (``selfy.Maxim._resolve_robot_connection``), and handed over as
+    ``_resolved_robot_config``; ``_resolve_body_wiring`` no longer reloads
+    robots.yaml. So each test drives the REAL handoff: the stub runs selfy's
+    resolver against the patched loader, then wires the body from what it
+    stored. ``_resolve_body_wiring`` itself is barred from loading."""
+
+    def _stub(self, monkeypatch, robots_cfg, robot_id=None, name="reachy_mini"):
         import logging
 
-        from maxim.embodied_runtime.agentic_runtime import AgenticRuntimeMixin
-
-        class _StubRuntime(AgenticRuntimeMixin):
-            def __init__(self):
-                self._robot_id = robot_id
-                self.name = name
-                self.log = logging.getLogger("test.resolve_body_wiring")
-
-        return _StubRuntime()
-
-    def _patch_robots(self, monkeypatch, robots_cfg):
         import maxim.hardware.config as cfg_mod
+        from maxim.embodied_runtime.selfy import Maxim
 
+        stub = Maxim.__new__(Maxim)
+        stub._simulation = False
+        stub._robot_id = robot_id
+        stub.name = name
+        stub.log = logging.getLogger("test.resolve_body_wiring")
         monkeypatch.setattr(cfg_mod, "load_robots_config", lambda *a, **k: robots_cfg)
+        stub._resolve_robot_connection("default")
+
+        def _no_reload(*a, **k):
+            raise AssertionError("_resolve_body_wiring must not reload robots.yaml (#1806 PR 0)")
+
+        monkeypatch.setattr(cfg_mod, "load_robots_config", _no_reload)
+        return stub
 
     _DECLARED = {"type": "reachy_mini", "primary": True, "config": {"body": "bodies/reachy_mini"}}
 
     def test_declared_single_robot_wires_body(self, monkeypatch):
-        self._patch_robots(monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}}))
-        ref, registry = self._stub()._resolve_body_wiring(object(), object())
+        ref, registry = self._stub(
+            monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}})
+        )._resolve_body_wiring(object(), object())
         assert ref == "bodies/reachy_mini"
         assert registry is not None and registry.has(ref)
 
     def test_name_key_mismatch_still_wires_via_primary_fallback(self, monkeypatch):
         """Default case: runtime name 'reachy_mini' != yaml key 'primary'.
         The single-robot / explicit-primary fallback must still find the body."""
-        self._patch_robots(monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}}))
-        ref, _ = self._stub(name="reachy_mini")._resolve_body_wiring(object(), object())
+        ref, _ = self._stub(
+            monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}}), name="reachy_mini"
+        )._resolve_body_wiring(object(), object())
         assert ref == "bodies/reachy_mini"
 
     def test_no_declaration_is_bodiless(self, monkeypatch):
         cfg = RobotsConfig.from_dict({"robots": {"primary": {"type": "reachy_mini", "primary": True, "config": {}}}})
-        self._patch_robots(monkeypatch, cfg)
-        assert self._stub()._resolve_body_wiring(object(), object()) == (None, None)
+        assert self._stub(monkeypatch, cfg)._resolve_body_wiring(object(), object()) == (None, None)
 
     def test_missing_pain_bus_is_bodiless(self, monkeypatch):
-        self._patch_robots(monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}}))
-        assert self._stub()._resolve_body_wiring(None, object()) == (None, None)
+        assert self._stub(
+            monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}})
+        )._resolve_body_wiring(None, object()) == (None, None)
 
     def test_missing_nac_is_bodiless(self, monkeypatch):
-        self._patch_robots(monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}}))
-        assert self._stub()._resolve_body_wiring(object(), None) == (None, None)
+        assert self._stub(
+            monkeypatch, RobotsConfig.from_dict({"robots": {"primary": self._DECLARED}})
+        )._resolve_body_wiring(object(), None) == (None, None)
 
     def test_unresolvable_ref_is_bodiless(self, monkeypatch):
         bad = {"type": "reachy_mini", "primary": True, "config": {"body": "bodies/nope_not_real"}}
-        self._patch_robots(monkeypatch, RobotsConfig.from_dict({"robots": {"primary": bad}}))
-        assert self._stub()._resolve_body_wiring(object(), object()) == (None, None)
+        assert self._stub(monkeypatch, RobotsConfig.from_dict({"robots": {"primary": bad}}))._resolve_body_wiring(
+            object(), object()
+        ) == (None, None)
 
     def test_multi_robot_no_primary_id_miss_is_bodiless(self, monkeypatch):
         """F1: a concrete id that matches no entry, with several robots and no
@@ -191,8 +204,9 @@ class TestResolveBodyWiring:
                 }
             }
         )
-        self._patch_robots(monkeypatch, cfg)
-        ref, _ = self._stub(robot_id="gamma")._resolve_body_wiring(object(), object())
+        stub = self._stub(monkeypatch, cfg, robot_id="gamma")
+        assert stub._resolved_robot_config is None  # the connect adopted no foreign entry either
+        ref, _ = stub._resolve_body_wiring(object(), object())
         assert ref is None
 
     def test_multi_robot_explicit_primary_id_miss_uses_primary(self, monkeypatch):
@@ -206,8 +220,7 @@ class TestResolveBodyWiring:
                 }
             }
         )
-        self._patch_robots(monkeypatch, cfg)
-        ref, _ = self._stub(robot_id="gamma")._resolve_body_wiring(object(), object())
+        ref, _ = self._stub(monkeypatch, cfg, robot_id="gamma")._resolve_body_wiring(object(), object())
         assert ref == "bodies/reachy_mini"
 
     def test_exact_id_match_wins(self, monkeypatch):
@@ -219,8 +232,7 @@ class TestResolveBodyWiring:
                 }
             }
         )
-        self._patch_robots(monkeypatch, cfg)
-        ref, _ = self._stub(robot_id="reachy_mini")._resolve_body_wiring(object(), object())
+        ref, _ = self._stub(monkeypatch, cfg, robot_id="reachy_mini")._resolve_body_wiring(object(), object())
         assert ref == "bodies/reachy_mini"
 
 

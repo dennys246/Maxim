@@ -8,23 +8,31 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+from maxim.hardware.reachy import probe as reachy_probe
+
+
+def _status_unreadable(*_a, **_k):
+    raise reachy_probe.DaemonStatusUnreadable("unit test: no daemon")
+
+
 @pytest.fixture(autouse=True)
 def _no_daemon_status_io(monkeypatch):
-    """connect() calls _daemon_status (urllib GET) since the WS-era rewrite —
-    never let unit tests do real network I/O (3s blackhole timeout per call;
-    on a dev box with anything on :8000 the test would consume a real HTTP
-    response)."""
-    from maxim.hardware.reachy.controller import ReachyMiniController
-
-    monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: None))
+    """connect()'s pre-check runs the one daemon probe (hardware/reachy/probe.py, #1806), whose status read is an
+    HTTP GET — never let unit tests do real network I/O (3s blackhole timeout per call; on a dev box with anything
+    on :8000 the test would consume a real HTTP response)."""
+    monkeypatch.setattr(reachy_probe, "read_daemon_status", _status_unreadable)
     # Era gate reads the REAL installed reachy-mini metadata — pin it to the
     # WS era so tests don't depend on what happens to be installed. (The
     # era-gate tests override this per-test.)
-    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    monkeypatch.setattr(reachy_probe, "installed_sdk_version", lambda: (1, 8))
+
+
+def _port_open():
+    return patch.object(reachy_probe, "tcp_connect_error", return_value=None)
 
 
 class TestMdnsResolution:
-    """Test _resolve_mdns method on ReachyMiniController."""
+    """The no-host name: ``<robot_name>.local`` (underscores dashed), resolved once by ``probe.resolve_ipv4``."""
 
     def _make_controller(self, robot_name: str = "reachy_mini") -> object:
         """Create a ReachyMiniController without connecting."""
@@ -33,21 +41,20 @@ class TestMdnsResolution:
         return ReachyMiniController(robot_name=robot_name)
 
     def test_resolve_success(self):
-        """Successful mDNS resolution returns IP."""
+        """Successful mDNS resolution returns the IP the controller dials."""
         ctrl = self._make_controller("reachy_mini")
 
-        with patch("socket.gethostbyname", return_value="192.168.50.150"):
-            ip = ctrl._resolve_mdns(timeout=2.0)
+        with patch("socket.gethostbyname", return_value="192.168.50.150"), _port_open():
+            host, _ = ctrl._precheck_daemon("network", 2.0)
 
-        assert ip == "192.168.50.150"
+        assert host == "192.168.50.150"
 
     def test_resolve_converts_underscores_to_hyphens(self):
         """Robot name underscores are converted to hyphens for mDNS."""
         ctrl = self._make_controller("reachy_mini")
 
-        with patch("socket.gethostbyname") as mock_resolve:
-            mock_resolve.return_value = "10.0.0.1"
-            ctrl._resolve_mdns()
+        with patch("socket.gethostbyname", return_value="10.0.0.1") as mock_resolve, _port_open():
+            ctrl._precheck_daemon("network", 2.0)
 
         mock_resolve.assert_called_once_with("reachy-mini.local")
 
@@ -55,38 +62,39 @@ class TestMdnsResolution:
         """mDNS name gets .local suffix."""
         ctrl = self._make_controller("my-robot")
 
-        with patch("socket.gethostbyname") as mock_resolve:
-            mock_resolve.return_value = "10.0.0.2"
-            ctrl._resolve_mdns()
+        with patch("socket.gethostbyname", return_value="10.0.0.2") as mock_resolve, _port_open():
+            ctrl._precheck_daemon("network", 2.0)
 
         mock_resolve.assert_called_once_with("my-robot.local")
 
     def test_resolve_failure_returns_none(self):
-        """Failed resolution returns None."""
+        """Failed resolution: no host to dial, and the TCP stage never runs."""
         ctrl = self._make_controller("reachy_mini")
 
-        with patch("socket.gethostbyname", side_effect=socket.gaierror("not found")):
-            ip = ctrl._resolve_mdns(timeout=1.0)
+        with (
+            patch("socket.gethostbyname", side_effect=socket.gaierror("not found")),
+            patch.object(reachy_probe, "tcp_connect_error") as tcp,
+        ):
+            host, media_released = ctrl._precheck_daemon("network", 1.0)
 
-        assert ip is None
+        assert host is None and media_released is None
+        tcp.assert_not_called()
 
     def test_resolve_restores_default_timeout(self):
         """Socket default timeout is restored after resolution."""
-        ctrl = self._make_controller("reachy_mini")
         original_timeout = socket.getdefaulttimeout()
 
         with patch("socket.gethostbyname", return_value="10.0.0.1"):
-            ctrl._resolve_mdns(timeout=3.0)
+            assert reachy_probe.resolve_ipv4("reachy-mini.local", timeout=3.0) == "10.0.0.1"
 
         assert socket.getdefaulttimeout() == original_timeout
 
     def test_resolve_restores_timeout_on_failure(self):
         """Socket default timeout is restored even on failure."""
-        ctrl = self._make_controller("reachy_mini")
         original_timeout = socket.getdefaulttimeout()
 
-        with patch("socket.gethostbyname", side_effect=socket.gaierror("fail")):
-            ctrl._resolve_mdns(timeout=3.0)
+        with patch("socket.gethostbyname", side_effect=socket.gaierror("fail")), pytest.raises(OSError):
+            reachy_probe.resolve_ipv4("reachy-mini.local", timeout=3.0)
 
         assert socket.getdefaulttimeout() == original_timeout
 
@@ -94,11 +102,15 @@ class TestMdnsResolution:
         """Robot name without underscores works correctly."""
         ctrl = self._make_controller("reachymini")
 
-        with patch("socket.gethostbyname") as mock_resolve:
-            mock_resolve.return_value = "10.0.0.3"
-            ctrl._resolve_mdns()
+        with patch("socket.gethostbyname", return_value="10.0.0.3") as mock_resolve, _port_open():
+            ctrl._precheck_daemon("network", 2.0)
 
         mock_resolve.assert_called_once_with("reachymini.local")
+
+    def test_an_ipv4_literal_is_never_looked_up(self):
+        with patch("socket.gethostbyname") as mock_resolve:
+            assert reachy_probe.resolve_ipv4("10.6.0.63", timeout=1.0) == "10.6.0.63"
+        mock_resolve.assert_not_called()
 
 
 class TestControllerConnect:
@@ -109,101 +121,44 @@ class TestControllerConnect:
 
         return ReachyMiniController(robot_name=robot_name)
 
-    @patch("maxim.hardware.reachy.controller.ReachyMiniController._resolve_mdns")
-    def test_connect_calls_mdns_resolve(self, mock_mdns):
+    def _connect(self, timeout: float, **resolve) -> tuple[object, MagicMock, MagicMock, MagicMock]:
+        import sys
+
+        ctrl = self._make_controller()
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch("socket.gethostbyname", **resolve) as mock_mdns,
+            patch.object(reachy_probe, "probe_daemon", wraps=reachy_probe.probe_daemon) as probe,
+            _port_open(),
+        ):
+            mock_sdk_module = sys.modules["reachy_mini"]
+            mock_sdk_module.ReachyMini.return_value = MagicMock()
+            result = ctrl.connect(timeout=timeout)
+        return result, mock_mdns, probe, mock_sdk_module
+
+    def test_connect_calls_mdns_resolve(self):
         """connect() pre-resolves mDNS before SDK init."""
-        mock_mdns.return_value = "192.168.50.150"
-        ctrl = self._make_controller()
+        result, mock_mdns, _, sdk = self._connect(5.0, return_value="192.168.50.150")
+        mock_mdns.assert_called_once_with("reachy-mini.local")
+        assert sdk.ReachyMini.call_args.kwargs["host"] == "192.168.50.150"
 
-        with (
-            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
-            patch(
-                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
-                return_value=True,
-            ),
-        ):
-            import sys
+    def test_connect_caps_mdns_timeout_at_5s(self):
+        """Each probe stage (lookup, TCP, status) is capped at 5 s even with a larger connect timeout (review E2)."""
+        _, _, probe, _ = self._connect(30.0, return_value="192.168.50.150")
+        assert probe.call_args.kwargs["deadline_s"] == 5.0
 
-            mock_sdk_module = sys.modules["reachy_mini"]
-            mock_mini = MagicMock()
-            mock_sdk_module.ReachyMini.return_value = mock_mini
-
-            ctrl.connect(timeout=5.0)
-
-        mock_mdns.assert_called_once_with(timeout=5.0)
-
-    @patch("maxim.hardware.reachy.controller.ReachyMiniController._resolve_mdns")
-    def test_connect_caps_mdns_timeout_at_5s(self, mock_mdns):
-        """mDNS timeout is capped at 5 seconds even with larger connect timeout."""
-        mock_mdns.return_value = "192.168.50.150"
-        ctrl = self._make_controller()
-
-        with (
-            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
-            patch(
-                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
-                return_value=True,
-            ),
-        ):
-            import sys
-
-            mock_sdk_module = sys.modules["reachy_mini"]
-            mock_mini = MagicMock()
-            mock_sdk_module.ReachyMini.return_value = mock_mini
-
-            ctrl.connect(timeout=30.0)
-
-        mock_mdns.assert_called_once_with(timeout=5.0)
-
-    @patch("maxim.hardware.reachy.controller.ReachyMiniController._resolve_mdns")
-    def test_connect_uses_network_mode(self, mock_mdns):
+    def test_connect_uses_network_mode(self):
         """connect() passes connection_mode='network' to SDK."""
-        mock_mdns.return_value = "192.168.50.150"
-        ctrl = self._make_controller()
+        _, _, _, sdk = self._connect(5.0, return_value="192.168.50.150")
+        sdk.ReachyMini.assert_called_once()
+        assert sdk.ReachyMini.call_args[1]["connection_mode"] == "network"
 
-        with (
-            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
-            patch(
-                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
-                return_value=True,
-            ),
-        ):
-            import sys
-
-            mock_sdk_module = sys.modules["reachy_mini"]
-            mock_mini = MagicMock()
-            mock_sdk_module.ReachyMini.return_value = mock_mini
-
-            ctrl.connect(timeout=5.0)
-
-            mock_sdk_module.ReachyMini.assert_called_once()
-            call_kwargs = mock_sdk_module.ReachyMini.call_args[1]
-            assert call_kwargs["connection_mode"] == "network"
-
-    @patch("maxim.hardware.reachy.controller.ReachyMiniController._resolve_mdns")
-    def test_connect_skips_sdk_when_mdns_fails(self, mock_mdns):
+    def test_connect_skips_sdk_when_mdns_fails(self):
         """connect() returns False immediately when mDNS fails (no SDK attempt)."""
-        mock_mdns.return_value = None
-        ctrl = self._make_controller()
-
-        with (
-            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
-            patch(
-                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
-                return_value=True,
-            ),
-        ):
-            import sys
-
-            mock_sdk_module = sys.modules["reachy_mini"]
-            mock_mini = MagicMock()
-            mock_sdk_module.ReachyMini.return_value = mock_mini
-
-            result = ctrl.connect(timeout=5.0)
-
+        result, _, _, sdk = self._connect(5.0, side_effect=socket.gaierror("not found"))
         assert result is False
         # SDK should NOT have been called since mDNS failed
-        mock_sdk_module.ReachyMini.assert_not_called()
+        sdk.ReachyMini.assert_not_called()
 
     def test_connect_returns_false_on_import_error(self):
         """connect() returns False when reachy-mini SDK is not installed."""

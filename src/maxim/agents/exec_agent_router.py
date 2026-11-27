@@ -56,16 +56,16 @@ def _llm_json_identity() -> tuple[str, int, int] | None:
     """(path, st_mtime_ns, st_size) of the llm.json ``load_llm_config`` would read (the first existing discovery
     candidate), or None when there is none. ``agent_profiles`` lives there, not in config.json, and no llm.json writer
     (the downloader, a hand edit) moves ``config_generation()``, so the file itself is the key."""
-    from maxim.models.language.config import _llm_config_candidates
+    from maxim.models.language.config import llm_config_file
 
-    for path in _llm_config_candidates():
-        if path and os.path.isfile(path):
-            try:
-                st = os.stat(path)
-            except OSError:
-                return None
-            return (path, st.st_mtime_ns, st.st_size)
-    return None
+    path = llm_config_file()  # the loader's own resolver (#1806 PR 0 round 5 N1)
+    if path is None:
+        return None
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (path, st.st_mtime_ns, st.st_size)
 
 
 def configured_override() -> str | None:

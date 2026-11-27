@@ -197,6 +197,9 @@ def _trial_env(arm: str, home: Path, jsonl: Path, *, min_confidence: float | Non
     env["MAXIM_DISABLE_IMAGINATION"] = "1"
     env["MAXIM_MOTOR_CREDIT_TRACE"] = "1"
     env["MAXIM_ROBOT_TIMEOUT"] = "10"
+    # A trial child is never a named robot run (#1806 PR 0): an operator's $MAXIM_ROBOT_NAME would pick the
+    # daemon the child dials, so it is dropped rather than inherited.
+    env.pop("MAXIM_ROBOT_NAME", None)
     if arm == "C":
         env["MAXIM_SUBSTRATE_PATH"] = "1"
         env["MAXIM_LLM_ENABLED"] = "0"

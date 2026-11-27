@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from maxim.exceptions import KeyFileUnusable, LeaderRefusal
+from maxim.utils.paths import maxim_config_dir
 
 
 KEY_BYTES = 32  # 256-bit random key → 43 char base64url-ish string
@@ -42,15 +43,8 @@ CONSOLE_TOKEN_PREFIX = "mxc_"
 
 
 def key_file_path(name: str = MESH_KEY_NAME) -> Path:
-    """Return the platform-appropriate path for the named key file."""
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return base / "maxim" / name
-    # POSIX (Linux, macOS, WSL)
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "maxim" / name
+    """Return the platform-appropriate path for the named key file (in :func:`maxim.utils.paths.maxim_config_dir`)."""
+    return maxim_config_dir() / name
 
 
 def generate_key(prefix: str = "") -> str:

@@ -6,7 +6,7 @@ import) and merges its
 and ``LLM_MODELS`` so that any GGUF on HuggingFace (or any local path)
 becomes a first-class Maxim profile.
 
-Path convention mirrors ``peer/config.py::peer_config_path`` — XDG on
+The directory comes from ``utils/paths.py::maxim_config_dir`` — XDG on
 POSIX, ``%APPDATA%\\maxim\\`` on Windows. Same dir as ``peer.yml`` and
 ``mesh.yml`` per CLAUDE.md's "declarative config layer" invariant.
 
@@ -65,14 +65,13 @@ every user profile from merging so operators can't end up in a
 from __future__ import annotations
 
 import logging
-import os
-import platform
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from maxim.exceptions import ConfigurationError
+from maxim.utils.paths import maxim_config_dir
 
 logger = logging.getLogger(__name__)
 
@@ -121,17 +120,11 @@ _DEFAULT_STOPS: dict[str, list[str]] = {
 def profiles_config_path() -> Path:
     """Return the platform-appropriate ``profiles.yml`` path.
 
-    Mirrors :func:`maxim.peer.config.peer_config_path` so all three
-    declarative config files (peer.yml, mesh.yml, profiles.yml) live in
-    the same directory.
+    Resolved through :func:`maxim.utils.paths.maxim_config_dir`, the one
+    resolver, so all the declarative config files (peer.yml, mesh.yml,
+    profiles.yml, config.json) live in the same directory.
     """
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return base / "maxim" / "profiles.yml"
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "maxim" / "profiles.yml"
+    return maxim_config_dir() / "profiles.yml"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

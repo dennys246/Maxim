@@ -22,7 +22,6 @@
 #     config:
 #       robot_name: reachy_mini
 #       media_backend: default
-#       timeout: 30.0
 #       body: bodies/reachy_mini   # opt-in: wire the SEM body
 #
 #   reachy_secondary:
@@ -31,7 +30,6 @@
 #     config:
 #       robot_name: reachy_mini_2
 #       media_backend: default
-#       timeout: 30.0
 #
 # For testing without hardware:
 #
@@ -51,4 +49,3 @@ robots:
     config:
       robot_name: reachy_mini
       media_backend: default
-      timeout: 30.0

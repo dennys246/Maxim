@@ -5,6 +5,11 @@ Reachy Mini Connection Diagnostics
 Tests connectivity to a Reachy Mini robot and diagnoses common connection issues.
 This is a standalone script that doesn't require the maxim package to be installed.
 
+Deprecated for installed setups (#1806): with Maxim installed, use ``maxim-diagnostics`` (``--host``,
+``MAXIM_REACHY_HOST``) or ``maxim doctor``. Both run the one daemon probe,
+``maxim.hardware.reachy.probe.probe_daemon``, which also checks the SDK/daemon era and the daemon state. This copy
+stays only for a machine with no Maxim install, and it is not kept in step with that probe.
+
 Usage:
     python scripts/check_reachy_connection.py [--host REACHY_IP]
     python scripts/check_reachy_connection.py --host 10.42.0.1
@@ -234,7 +239,10 @@ def diagnose_reachy(host: str) -> int:
 def main() -> int:
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="Diagnose Reachy Mini connection issues",
+        description=(
+            "Diagnose Reachy Mini connection issues (no-install copy; with Maxim installed, "
+            "use `maxim-diagnostics` or `maxim doctor` instead)"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
