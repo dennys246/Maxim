@@ -2723,12 +2723,12 @@ def test_pins_are_the_ci_hint_and_falls_nulls_are_left_alone(repo):
     _cov(repo, missing={A: set(), B: set(range(2, 11))})  # alpha 100% (a rise), beta 10% (a fall beyond k)
     cov = L.load_coverage(repo)
     overall, pkgs = L.measure_scopes(cov)
-    pins, notes = L.pins_from_measurement(fl, overall, pkgs, L.file_scopes(cov))
+    pins, notes, _ = L.pins_from_measurement(fl, overall, pkgs, L.file_scopes(cov), base_fl=None)
     # round_down(measured), missing min(measured, pin): alpha 100%/0; overall (55%) is within its band, left alone
     assert pins == {"maxim/alpha": L.Floor(100.0, 0)}
     assert "maxim/beta" not in pins and any("maxim/beta" in n and "a pin cannot fix a fall" in n for n in notes)
     fl_null = L.parse_floors(_floors(alpha=None))
-    _, notes = L.pins_from_measurement(fl_null, overall, pkgs, {})
+    _, notes, _ = L.pins_from_measurement(fl_null, overall, pkgs, {}, base_fl=None)
     assert any("maxim/alpha: null floor" in n for n in notes)
 
 
@@ -2738,7 +2738,7 @@ def test_a_pinned_missing_from_the_run_never_rises(repo):
     _cov(repo, missing={A: {9, 10}, B: {6, 7, 8, 9, 10}})  # alpha 80%, missing 2 > pinned 1
     cov = L.load_coverage(repo)
     overall, pkgs = L.measure_scopes(cov)
-    pins, _ = L.pins_from_measurement(fl, overall, pkgs, {})
+    pins, _, _ = L.pins_from_measurement(fl, overall, pkgs, {}, base_fl=None)
     assert pins["maxim/alpha"] == L.Floor(80.0, 1)
 
 
@@ -2772,6 +2772,172 @@ def test_pins_from_run_main_writes_the_file_and_ci_accepts_it(repo, tmp_path, mo
     _cov(repo, missing={A: set(), B: {6, 7, 8, 9, 10}})
     rc_ci, _, err = _run(capsys)
     assert "maxim/alpha" not in err, err  # the pinned scope now passes CI's own rules
+
+
+def _stack_on_a_changed_floor(repo: Path, base: tuple, branch: tuple) -> None:
+    """main pins alpha at ``base``; this branch carries ``branch`` (a parent PR's changed pin it inherited)."""
+    _write(repo, L.FLOORS_REL, _floors(alpha=base))
+    _commit(repo)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", "feature")
+    _git(repo, "checkout", "-q", "feature")
+    _write(repo, L.FLOORS_REL, _floors(alpha=branch))
+    _commit(repo)
+
+
+def test_pins_from_run_pins_an_inherited_changed_floor_ci_refuses(repo, tmp_path, monkeypatch, capsys):
+    """A stacked branch inherits its parent's changed alpha pin 79.5%/9. The run measures alpha 80%/2: within the band,
+    so the band rule pins nothing, but CI's changed-floor rule refuses 9 > min(2 + K_MIN, base 20). The tool pins
+    what that rule accepts (80.0%/2), and CI's own rules then pass. Deleting the changed-floor branch of
+    pins_from_measurement leaves "nothing to pin" and fails this test."""
+    _stack_on_a_changed_floor(repo, base=(70.0, 20), branch=(79.5, 9))
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci")
+    monkeypatch.setattr(L.run_measurement, "__kwdefaults__", {"api": _api(head), "download": lambda *a: art})
+    _cov(repo)
+    rc_before, _, err_before = _run(capsys)
+    assert rc_before == 1 and "maxim/alpha: floor pins missing 9 above" in err_before  # the refusal being fixed
+    rc = L.main(["--pins-from-run", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "pin maxim/alpha: 79.5%/9 -> 80.0%/2" in out, out
+    _commit(repo)
+    _cov(repo)
+    rc_ci, _, err = _run(capsys)
+    assert "maxim/alpha" not in err, err
+
+
+def test_an_unchanged_floor_far_above_the_run_is_not_reported_as_refused(repo):
+    """With the base known, a pin this branch did not change is not CI's changed-floor business: no "CI refuses it"
+    note (the false alarm a stacked branch saw on every scope). Without a base the old note stays."""
+    fl = L.parse_floors(_floors(alpha=(79.5, 9)))
+    _cov(repo)
+    cov = L.load_coverage(repo)
+    overall, pkgs = L.measure_scopes(cov)
+    pins, notes, _ = L.pins_from_measurement(fl, overall, pkgs, {}, base_fl=fl)
+    assert pins == {} and not any("maxim/alpha" in n for n in notes), notes
+    _, notes, _ = L.pins_from_measurement(fl, overall, pkgs, {}, base_fl=None)
+    assert any("maxim/alpha" in n and "if this branch changed that pin" in n for n in notes), notes
+
+
+def test_a_new_floor_ci_refuses_is_noted_never_pinned_from_one_run(repo):
+    """A floor absent at the base is NEW: CI verifies it exactly, and a new floor comes from two runs (--merge-floors),
+    so the tool notes the refusal and writes nothing."""
+    base = L.parse_floors(_floors(alpha="drop"))
+    fl = L.parse_floors(_floors(alpha=(79.5, 9)))
+    _cov(repo)
+    cov = L.load_coverage(repo)
+    overall, pkgs = L.measure_scopes(cov)
+    pins, notes, refused = L.pins_from_measurement(fl, overall, pkgs, {}, base_fl=base)
+    assert "maxim/alpha" not in pins and refused == []  # CI's NEW/carry rules judge it, not the tool
+    assert any("maxim/alpha" in n and "a NEW floor" in n for n in notes), notes
+
+
+def _pins_on(base: tuple, branch: tuple, statements: int, covered: int):
+    """pins_from_measurement for alpha alone: the base floors pin ``base``, the branch ``branch``, the run measured
+    ``covered`` of ``statements``. overall and beta sit on their unchanged floors (no pin, no note)."""
+    base_fl = L.parse_floors(_floors(alpha=base))
+    fl = L.parse_floors(_floors(alpha=branch))
+    pkgs = {"maxim/alpha": L.ScopeCov(statements=statements, covered=covered), "maxim/beta": L.ScopeCov(10, 5)}
+    return L.pins_from_measurement(fl, L.ScopeCov(20, 13), pkgs, {}, base_fl=base_fl)
+
+
+def test_a_band_pin_on_a_changed_floor_that_ci_refuses_is_noted_not_written():
+    """Executor round 1: base 85.0/100, the branch lowered to 80.0/100, the run measures 501/611 (82.0%, missing 110).
+    The band alone would pin 81.9/100, which CI refuses (a lowering while measured missing 110 > base 100)."""
+    pins, notes, refused = _pins_on((85.0, 100), (80.0, 100), 611, 501)
+    assert "maxim/alpha" not in pins and refused == ["maxim/alpha"]
+    assert any("maxim/alpha" in n and "measured missing 110 > the base's pinned missing 100" in n for n in notes)
+
+
+def test_a_changed_floor_may_be_lowered_toward_the_base_where_ci_allows_it():
+    """The carve-out: base 70/300, an inherited 90/100, the run 340/400 (85%, missing 60 <= base 300). CI's lowering
+    rule accepts round_down(measured), so the tool writes it."""
+    pins, _, _ = _pins_on((70.0, 300), (90.0, 100), 400, 340)
+    assert pins == {"maxim/alpha": L.Floor(85.0, 60)}
+    assert not L.changed_floor_problems("maxim/alpha", L.Floor(70.0, 300), pins["maxim/alpha"], L.ScopeCov(400, 340))
+
+
+def test_a_band_pin_on_a_changed_floor_is_capped_by_the_base_missing():
+    """The scope grew: base 60/40, the branch 65/45 (its missing already rose past the base's), the run 150/200 (75%,
+    missing 50). Only the base's 40 binds the pin (a pinned missing never rises above its base); capped by the run
+    and the branch alone it would be 45, which CI refuses."""
+    pins, _, _ = _pins_on((60.0, 40), (65.0, 45), 200, 150)
+    assert pins == {"maxim/alpha": L.Floor(75.0, 40)}
+
+
+def test_a_changed_floor_the_rule_accepts_still_gets_the_fall_note():
+    """Delta round: base 90/100, the branch lowered to 85/80, the run 320/400 (80%, missing 80). CI's changed rule
+    accepts the floor (it never refuses one above the measurement), but the scope fell: the fall note stays, as it
+    does without a base."""
+    pins, notes, refused = _pins_on((90.0, 100), (85.0, 80), 400, 320)
+    assert "maxim/alpha" not in pins and refused == []  # CI's changed rule passes it; the fall is the head rule's
+    assert any("maxim/alpha" in n and "a pin cannot fix a fall" in n for n in notes), notes
+
+
+def test_pins_from_run_behind_main_falls_back_to_band_only_pins(repo, tmp_path, monkeypatch, capsys):
+    """CI's base for a PR run is main's tip; a branch that lacks it would judge floors against an older main, so the
+    tool says so and pins by the band only (the inherited-pin case is then left for after the merge)."""
+    _stack_on_a_changed_floor(repo, base=(70.0, 20), branch=(79.5, 9))
+    _git(repo, "checkout", "-q", "main")
+    _write(repo, "README.md", "main moved\n")
+    _commit(repo)
+    _git(repo, "checkout", "-q", "feature")
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci")
+    monkeypatch.setattr(L.run_measurement, "__kwdefaults__", {"api": _api(head), "download": lambda *a: art})
+    rc = L.main(["--pins-from-run", "123"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "HEAD lacks 1 commit(s) of main" in out and "nothing to pin" in out, out
+
+
+def test_pin_base_without_a_main_ref_falls_back_instead_of_failing(repo, monkeypatch):
+    def no_base(root):
+        raise L.GitUnavailable("no origin/main or main to diff against")
+
+    monkeypatch.setattr(L, "base_ref", no_base)
+    base_fl, why = L.pin_base(repo)
+    assert base_fl is None and why is not None and "band-only pins" in why
+
+
+def test_pin_base_reports_why_when_no_ref_answers_the_behind_check(repo, monkeypatch):
+    """Delta round: a rev-list that fails on every ref is a reason printed, not a silent pass to the next ref."""
+    monkeypatch.setattr(L, "base_ref", lambda root: "HEAD")
+
+    def git(root, *args, **kw):
+        raise L.GitUnavailable(f"git {args[0]} failed")
+
+    monkeypatch.setattr(L, "git", git)
+    base_fl, why = L.pin_base(repo)
+    assert base_fl is None and why is not None and "could not tell" in why and "origin/main" in why
+
+
+def test_pins_from_run_exits_1_when_ci_refuses_a_floor_no_pin_fixes(repo, tmp_path, monkeypatch, capsys):
+    """Delta round 2: the branch lowered alpha 90.0/1 -> 70.0/1 against base 90.0/1, and the run measures alpha
+    80%/2 (missing 2 > the base's 1), so no pin passes CI's lowering rule. The tool must not say "nothing to pin": it
+    names the floor and exits 1."""
+    _stack_on_a_changed_floor(repo, base=(90.0, 1), branch=(70.0, 1))
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    art = _ci_artifact(repo, tmp_path / "ci")
+    monkeypatch.setattr(L.run_measurement, "__kwdefaults__", {"api": _api(head), "download": lambda *a: art})
+    rc = L.main(["--pins-from-run", "123"])
+    out = capsys.readouterr().out
+    assert rc == 1 and "CI refuses 1 floor(s)" in out and "maxim/alpha" in out, out
+    assert "nothing to pin" not in out
+
+
+def test_a_rename_target_ci_accepts_is_not_counted_as_refused():
+    """Delta round 3: base maxim/old 80.0/21; the branch renames it to maxim/new 80.0/21; the run measures 81/100
+    (missing 19). CI checks the target against the floor it carries and accepts it; the tool must not exit 1 on it."""
+    base = L.parse_floors(_floors(**{"maxim/old": (80.0, 21)}))
+    fl = L.parse_floors(_floors(**{"maxim/new": (80.0, 21)}))
+    pkgs = {
+        "maxim/alpha": L.ScopeCov(10, 8),
+        "maxim/beta": L.ScopeCov(10, 5),
+        "maxim/new": L.ScopeCov(statements=100, covered=81),
+    }
+    pins, notes, refused = L.pins_from_measurement(fl, L.ScopeCov(20, 13), pkgs, {}, base_fl=base)
+    assert refused == [] and "maxim/new" not in pins
+    assert any("maxim/new" in n and "rename target" in n for n in notes), notes
 
 
 def test_pins_from_run_main_refuses_a_non_numeric_id(capsys):
