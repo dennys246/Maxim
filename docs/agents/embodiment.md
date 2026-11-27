@@ -104,6 +104,9 @@ Also see [docs/agents/bio-memory.md](bio-memory.md) for the NAc consumer side (d
 
 ## 6. Env vars owned
 
+- `MAXIM_ROBOT_NAME` = the robot's daemon name (its `<name>.local`) when `--robot`/`--robot-name` is not typed, read at resolution time (#1806 PR 0: no longer the argparse default, so a bare `maxim` with it set does not enter the robot runtime); default `reachy_mini`; scrubbed in conftest = `embodied_runtime/selfy.py::Maxim.__init__`
+- `MAXIM_REACHY_HOST` = `maxim-diagnostics`' default host (never an address source for the robot registry); scrubbed in conftest = `utils/reachy_diagnostics.py`
+- `MAXIM_ROBOT_TIMEOUT` = override the robot connect timeout in seconds (anything but a finite positive number raises a typed `InvalidConfigError` naming it, #1806 PR 0); scrubbed in conftest = `hardware/config.py::robot_connect_timeout` (called from `embodied_runtime/selfy.py::Maxim.__init__`)
 - `MAXIM_DEEP_EMBODIMENT` = enable level-3 deep embodiment (sub-sensors exposed, damage_affinities active; same as `--deep-embodiment`) = `embodiment/resolution.py`
 - `MAXIM_PAIN_CHAIN_TRACE` = one structured pain-chain trace event per PainBus dispatch (publisher → subscriber → NAc; off by default) = `proprioception/pain_bus.py`
 - `MAXIM_MOTOR_CREDIT_TRACE` = one `motor_credit.measured` JSONL event per measured-relief credit decision (Exp 49 H3 channel; logging-only) = `embodiment/tool_bridge.py`

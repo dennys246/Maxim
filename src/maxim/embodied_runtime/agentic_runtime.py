@@ -7,7 +7,6 @@ DefaultNetwork, CaptureManager, and all related subsystems.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -62,6 +61,9 @@ class AgenticRuntimeMixin:
     # assignment that typed it); the readers that remain are #1467's to remove.
     _protocol_registry: Any
     log: logging.Logger  # set by the host (Selfy.__init__)
+    # The robots.yaml entry the connect used (or None), set once by the host
+    # (selfy.Maxim._resolve_robot_connection, #1806 PR 0); read via getattr.
+    _resolved_robot_config: Any
 
     def _resolve_body_wiring(self, pain_bus: Any, nac: Any) -> "tuple[str | None, Any]":
         """Resolve an optional SEM body to wire into ``build_executor``.
@@ -75,39 +77,17 @@ class AgenticRuntimeMixin:
         ``hardware.config.resolve_body_ref``. A *declared but unresolvable*
         body is operator error — logged loudly — but does NOT crash the live
         robot: we fall back to bodiless so the runtime stays up.
-        """
-        try:
-            from maxim.hardware.config import load_robots_config, resolve_body_ref
 
-            robots_cfg = load_robots_config()
-            robot_id = getattr(self, "_robot_id", None) or getattr(self, "name", None)
-            robot_config = robots_cfg.get(robot_id)
-            if robot_config is None:
-                # No exact id match. Fall back to the primary ONLY when it is
-                # unambiguous — a single robot, or one explicitly marked
-                # primary. The runtime name (e.g. "reachy_mini") routinely
-                # differs from the yaml key (e.g. "primary"), so this fallback
-                # is load-bearing for the default single-robot config. But do
-                # NOT adopt the FIRST of several unmarked robots: in a genuine
-                # multi-robot file that would wire a *foreign* robot's body
-                # onto this runtime. Ambiguous → bodiless + warn.
-                has_explicit_primary = any(r.primary for r in robots_cfg.robots)
-                if len(robots_cfg.robots) == 1 or has_explicit_primary:
-                    robot_config = robots_cfg.get_primary()
-                elif robots_cfg.robots:
-                    self.log.warning(
-                        "robots.yaml has %d robots, none matching id=%r and none "
-                        "marked primary; not guessing a body. Running bodiless.",
-                        len(robots_cfg.robots),
-                        robot_id,
-                    )
-            # Stash for sibling gates that need the same free-form config
-            # dict (the DoA feed's audio_localization opt-out, Stage 2).
-            self._resolved_robot_config = robot_config
-            body_ref = resolve_body_ref(robot_config)
-        except Exception as e:  # config load is best-effort; never block startup
-            self.log.debug("body-ref resolution skipped: %s", e)
-            return None, None
+        The entry is the one the connect used: ``selfy.Maxim`` resolves it
+        once (``_resolve_robot_connection``) and hands it over as
+        ``self._resolved_robot_config``, which this and its sibling readers
+        (the DoA gate, motor binding, ``aut_mode``) read. Nothing here
+        reloads robots.yaml or re-applies the match rule (#1806 PR 0), so a
+        broken file has already raised ``RobotsConfigError`` at connect.
+        """
+        from maxim.hardware.config import resolve_body_ref
+
+        body_ref = resolve_body_ref(getattr(self, "_resolved_robot_config", None))
 
         if body_ref is None:
             return None, None
@@ -1162,21 +1142,10 @@ class AgenticRuntimeMixin:
         if is_gpu_available():
             return
 
-        # Check whether the configured profile uses llama.cpp (Metal-friendly)
-        llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
-        using_llama_cpp = False
-        try:
-            if os.path.exists(llm_config_path):
-                with open(llm_config_path) as f:
-                    llm_cfg = json.load(f)
-                profile_name = llm_cfg.get("profile", "")
-                profiles = llm_cfg.get("profiles", {})
-                if profile_name in profiles:
-                    using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
-        except Exception as e:
-            self.log.debug("Could not inspect LLM config for backend fallback: %s", e)
+        # Whether the llm.json the loader reads declares a llama.cpp profile (Metal-friendly; #1806 PR 0 round 3)
+        from maxim.models.language.config import configured_profile_uses_llama_cpp
 
-        if using_llama_cpp:
+        if configured_profile_uses_llama_cpp():
             self.log.info("Using llama.cpp backend with native Metal GPU support")
             return
 

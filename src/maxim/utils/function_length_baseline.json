@@ -6,12 +6,12 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1116
+      "lines": 1098
     },
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 593
+      "lines": 559
     },
     {
       "file": "src/maxim/console/server.py",
@@ -56,7 +56,7 @@
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
       "qualname": "Maxim.__init__",
-      "lines": 312
+      "lines": 243
     },
     {
       "file": "src/maxim/embodiment/body.py",
@@ -101,7 +101,7 @@
     {
       "file": "src/maxim/models/language/config.py",
       "qualname": "load_llm_config",
-      "lines": 269
+      "lines": 261
     },
     {
       "file": "src/maxim/models/language/router.py",
@@ -161,7 +161,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 311
+      "lines": 304
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
