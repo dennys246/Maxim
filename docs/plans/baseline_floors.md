@@ -36,7 +36,7 @@ and `RANDOM` ([e1_conflict_prereg.md](../experiments/e1_conflict_prereg.md)); B4
 ([b4_exp37_floors_prereg.md](../experiments/b4_exp37_floors_prereg.md)), both through the four-lens review (#1382;
 [lessons](../lessons/e1-b4-design-review.md)). *Then, after 1.3.2:*
 E1's prereg draft and four-lens review carry the twin and a floor-can-lose check from the start; B2 (bare LLM)
-still waits on the `start_simulation_mode` decomposition, and B0b on #1227/#1228.
+still waits on the `start_simulation_mode` decomposition, and B0b on #1227 (#1228 fixed by #1777).
 
 Until B1, no ledger row, EARNED or STALE, had been compared with an agent that lacks the bio layers. "Earned"
 today means beating one of Maxim's own ablations: Exp 60's control is FEAR vs ABLATED (fear subscriber
@@ -67,7 +67,7 @@ bare by construction, not the full stack with switches turned off. Subtraction c
 | Step 1: a new shared run record extracted from `_provenance.py` and `simulation/report.py`, plus a ledger-lint extension | M1 shipped much of it, in two producers: `report.py::run_provenance` (sim reports) and `scripts/_provenance.py::in_process_code_provenance` (harness-process rows), projected into rows by `_provenance.py::sim_evidence` via `_EVIDENCE_PROVENANCE`. The evidence gate (`scripts/_evidence_records.py`) checks commit, tree digest, dirty flag, profile, n_ctx and typed abort. `report.json` also carries endpoint, tokens and cost as `SimulationReport` fields, unchecked by the gate. | Add only the missing fields, to both producers and the projection (Stage B0). No new schema. |
 | Slots into 1.4 Phase 0 item 2 | Item 2's acceptance checks forbid a public name the three harnesses lack and require net-negative `scripts/` LOC, and §What is NOT in 1.4 excludes "a benchmark framework". | A parallel line, BF1. |
 | Ladder: all-off → +memory → +valence → full | `runtime/bio_stack.py::build_bio_stack` has no switches; NAc is wired into the pain bus, the credit distributor and the salience scorer. Only bare / all-off / full are buildable without new wiring. | Three rungs now; +memory and +valence wait for typed builder flags (§Arms). |
-| AST import guard on the bare loop | Importing ANY `maxim.runtime.*` or `maxim.agents.*` submodule runs the eager package `__init__`s and loads about 200 modules, including memory, decisions, embodiment, harm and integration. The decomposed seams also import bio modules themselves (`loop_setup` → `bio_integration`, `tool_dispatch` → `decisions.causal_link`). The router reaches `runtime`/`agents` lazily at call time. An AST check on the loop's own files passes while the process loads the bio stack. | The bare loop takes no `runtime.*`/`agents.*` import; the guard is a layer rule **and** a subprocess `sys.modules` check; the root-cause fix is lazy package `__init__`s (§Guards, B2). |
+| AST import guard on the bare loop | Importing ANY `maxim.runtime.*` or `maxim.agents.*` submodule ran the eager package `__init__`s and loaded about 200 modules, including memory, decisions, embodiment, harm and integration (measured 2026-10-10). *Measured again 2026-11-21, fresh interpreter, after the lazy package `__init__`s (#1315 step 0a, V9) and B2 prerequisite 1: `maxim.runtime` and `maxim.agents` load 3 `maxim` modules each, `runtime.loop_state` 16, `runtime.loop_intake` 54 and `agents.llm_worker` 40, none from a bio package; bio now enters only through specific seams: `runtime.tool_dispatch` (#1150), `runtime.loop_setup` and `runtime.agent_loop` (101 modules: memory, decisions, integration, embodiment).* The decomposed seams also import bio modules themselves (`loop_setup` → `bio_integration`, `tool_dispatch` → `decisions.causal_link`). The router reaches `runtime`/`agents` lazily at call time. An AST check on the loop's own files passes while the process loads the bio stack. | The bare loop takes no `runtime.*`/`agents.*` import; the guard is a layer rule **and** a subprocess `sys.modules` check; the root-cause fix is lazy package `__init__`s (§Guards, B2). |
 
 ## Owner decisions (2026-10-10)
 
@@ -107,7 +107,7 @@ Every result row names exactly one arm. The row-level `arm` the harnesses alread
 | `full` | both | The current default | Whole-stack gain | Today |
 | `tabular_q` | substrate | Tabular Q-learner keyed on the live agent's EC cluster ids × action, exploration declared | The substrate-path floor | B1 |
 | `random` | substrate | Uniform over the selectable actions | Sanity floor | B1 |
-| `+memory`, `+valence` | LLM | Ladder rungs | One layer each | **Deferred**: typed `build_bio_stack` flags first, plus the overwrite fix (§Side findings 1) |
+| `+memory`, `+valence` | LLM | Ladder rungs | One layer each | **Deferred**: typed `build_bio_stack` flags first (the overwrite is a typed refusal since #1225, §Side findings 1) |
 
 `maxim_all_off`'s prompt must settle two sections that fire with zero bio signal: `pfc_preamble` (fires
 whenever `simulation.sim_logger._sim_active` is set; suppressed by the existing
@@ -259,7 +259,10 @@ B0 and B1 are done (2026-10-14). B2 → B3 → B4 are serial.
 1. **`create_full_agent` ignores `remembers`/`learns` when `with_bio_stack=True`.** It sets
    `instance.hippocampus = bio.hippocampus` and `instance.nac = bio.nac` whatever the config says (the
    "Full bio-stack if remembers=True and learns=True" docstring is `create_npc_agent`'s). A silent no-op of
-   the class CLAUDE.md says to push into the type. Blocks the `+memory` rung.
+   the class CLAUDE.md says to push into the type. Blocks the `+memory` rung. **#1225 (fixed by #1777):** the
+   contradiction is now refused where the config is built (`AgentConfig.__post_init__` and again in
+   `create_full_agent`, `AgentConfigContradiction`), so it is no longer silent; the `+memory` rung still waits on
+   typed `build_bio_stack` flags.
 2. **Four `MAXIM_DISABLE_*` vars have no reader in `src/` or `tests/`:** `MAXIM_DISABLE_PFC_PREAMBLE`,
    `MAXIM_DISABLE_ACTING_COACH`, `MAXIM_DISABLE_SIM_SANDBOX_TEXT`, `MAXIM_NO_DEFAULT_PERSONA`. They are kept
    on purpose in `scripts/run_v1_phases.sh` for the Exp 12 reproduction

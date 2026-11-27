@@ -403,7 +403,7 @@ class SupervisionPolicy:
         # Check sandbox/filesystem-specific policies
         params = action.get("params", {})
 
-        if tool_name == "write_file":
+        if tool_name in ("write_file", "edit_file"):  # both write a file (#1806 PR 0)
             path = str(params.get("path", ""))
             # Check if writing to sandbox (auto-approve) or CWD (requires approval)
             from maxim.utils.filesystem_policy import is_path_in_workspace

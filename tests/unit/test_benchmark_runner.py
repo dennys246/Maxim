@@ -1279,6 +1279,27 @@ class TestWritePaper:
         entries = (tmp_path / "experiments.jsonl").read_text(encoding="utf-8")
         assert "benchmark.hippo.exp_001" in entries and "actions=3.00" in entries
 
+    def test_a_refused_model_is_named_as_refused_never_logged_or_ranked(self, monkeypatch, tmp_path):
+        """Owner decision V26: a refused model is not scored, so the paper's experiment log holds no score for it and
+        the writer's goal names it as refused, never among the models tested."""
+        import maxim.simulation.research_agents as writer_agent
+
+        report = _paper_report()
+        report.models.append("cloud")
+        report.results["cloud"] = ModelResult(model="cloud", refused="router[build] refused: lane-large")
+        goals: list[str] = []
+        real_run = writer_agent.WriterAgent.run
+        monkeypatch.setattr(
+            writer_agent.WriterAgent, "run", lambda self, goal: (goals.append(goal), real_run(self, goal))[1]
+        )
+        self._runner(monkeypatch, _StubProseLLM()).write_paper(report, tmp_path)
+
+        entries = (tmp_path / "experiments.jsonl").read_text(encoding="utf-8")
+        assert "Model m1" in entries and "Model cloud" not in entries
+        (goal,) = goals
+        assert "Models tested: m1." in goal and "of 1 LLM models" in goal
+        assert "Refused and not scored (do not rank them): cloud (router[build] refused: lane-large)" in goal
+
     def test_a_defect_in_the_paper_path_raises_instead_of_reading_as_no_llm(self, monkeypatch, tmp_path):
         """#1680's TypeError was caught by a broad except and returned None, which the CLI reported as "LLM
         unavailable". None means only that no LLM is usable; anything else must surface."""

@@ -63,8 +63,36 @@ _UNSAFE_SEGMENT_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 _DOT_RUNS = re.compile(r"\.{2,}")
 
 
+# Moved verbatim from runtime/tool_dispatch.py (B2 prerequisite 1, after 1.3.6 slice 6): loop_controller needs them,
+# and importing tool_dispatch pulled its bio imports (#1150) into every loop leaf's closure.
+def safe_agent_name(agent: Any) -> str:
+    """Extract a filesystem-safe agent name from an agent object."""
+    raw = None
+    try:
+        raw = getattr(agent, "state_name", None) or getattr(agent, "agent_name", None) or getattr(agent, "name", None)
+    except (AttributeError, TypeError) as e:
+        log_swallowed_exception(e, operation="get_agent_name")
+        raw = None
+    if not raw:
+        raw = type(agent).__name__
+    name = str(raw).strip() or "agent"
+    name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
+    return name.strip("._-") or "agent"
+
+
+def tool_to_run(executor: Any, tool_name: str) -> Any:
+    """The registered tool a call to ``tool_name`` would RUN, resolved through the executor's one alias resolver (a
+    ``reflect`` runs as ``think``), or ``None``. Its class declarations (``untrusted_output``, ``ends_run``) are read
+    off this tool, never off the proposed name."""
+    resolve = getattr(executor, "resolve_tool_name", None)
+    registry = getattr(executor, "registry", None)
+    ran = resolve(tool_name) if callable(resolve) else tool_name
+    find = getattr(registry, "find", None)
+    return find(ran) if callable(find) else None
+
+
 def _run_id_segment(run_id: str) -> str:
-    """The run id as one safe filename segment, in the style of ``tool_dispatch.safe_agent_name``: any character
+    """The run id as one safe filename segment, in the style of ``safe_agent_name`` (above): any character
     outside ``[A-Za-z0-9._-]`` becomes ``_``, and a run of dots or a leading dot becomes underscores, so no run id
     can name a path outside the runtime directory. Only the FILENAME uses it; the raw run id is the one in the file's
     meta and everywhere else (the hippocampus and the bio-integration records persist it)."""
@@ -87,7 +115,7 @@ def loop_state_path(agent_name: str, run_id: str, *, root: str | os.PathLike[str
 
     The directory is ``utils/paths.loop_state_dir`` (the data home is ``MAXIM_DATA_HOME``, else ``~/.maxim``; never
     the working directory). ``root`` is a data-home-shaped root (``run_agentic_loop(state_home=...)``: a sim's
-    sandbox, a harness AUT's own home). ``agent_name`` is ``tool_dispatch.safe_agent_name(agent)``; the run id is
+    sandbox, a harness AUT's own home). ``agent_name`` is ``safe_agent_name(agent)``; the run id is
     unchanged and only its filename segment is sanitised (``_run_id_segment``); the token makes the name unique per
     call. Builds the path only: ``claim_state_path`` is what reserves it for a run."""
     name = f"state_{_run_id_segment(run_id)}_{_state_token()}.json"

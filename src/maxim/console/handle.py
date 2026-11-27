@@ -542,7 +542,7 @@ class MaximHandle:
         enrichment = getattr(bio_stack, "bio_enrichment_pipeline", None)
         thought_gate = getattr(bio_stack, "thought_gate", None)
 
-        agent = MaximAgent()
+        agent = MaximAgent(shared_router=worker.router)  # talk's own router, never a second, private one (#1228)
         if self.instance.memory_hub is not None:
             # Connects MemoryAgent → hippocampus, registers the promotion
             # source + deletion callback. The orchestrator does this for

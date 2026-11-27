@@ -28,7 +28,9 @@ uncovered statement count pinned with it.
   HEAD comparison against the committed pin, never to the pin rules below (the CHANGED cap's own
   ``K_MIN`` noise slack, M60a, is a separate, fixed allowance: see that rule), and pins never move
   with it — so any number of PRs together can drop at most k statements under an unchanged
-  floor, and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
+  floor (a split resets that bound: the SUM rules charge main's MEASURED ``missing`` at the base, see
+  SF-2, so erosion within k before a split is carried into its successors' pins, up to k per split),
+  and a PR that changes a floor is held to the measurement by the CHANGED/NEW rules. No
   HEAD rule compares measured ``missing`` with a pinned ``missing`` (those comparisons are pin
   rules), so none needed the tolerance (the "raise it to" HINT prints ``min(measured, pinned)``
   so that following it passes the pin rule, #1409; it gates nothing);
@@ -81,13 +83,22 @@ floor, independently, every run: a PR may have to edit both, and neither substit
   floor it did not have at the base is NEW (NEW rules), one it had follows the CHANGED rules; a smaller ADDED
   successor only joins the sum. SUM: the source's measured ``missing`` plus every successor's measured ``missing``
   may not exceed the source's base ``missing`` pin plus the base pin of every successor floored at the base, with no
-  tolerance (the package sum rule's code). This is STRICT by design: an existing successor with no floor at the base
-  brings no pin, so its WHOLE measured ``missing`` — old uncovered code included — is charged to the source's pin.
+  tolerance (the package sum rule's code). The source's base ``missing`` in that sum is ``max(base pin, main's
+  measured missing at the base)`` (:class:`BaseMeasured`, owner decision 2026-11-24, approach note
+  docs/plans/coverage_split_measured_base_approach.md): a pin goes stale (Known gaps), and a split must not pay for
+  drift it did not cause. The namespace pass's sum (packages, and file floors carried by a rename) takes the same
+  allowance, since it is the same no-tolerance budget: a rename must not refuse what a split of the same file
+  accepts. Only the SUM rules take it; LOWERING and the CHANGED cap keep the pin, so a split that moves covered code
+  out while the drift stays in the source is still refused by the source's LOWERING rule (cover the drift or re-pin
+  first). Every doubt about main's measurement charges the pin. This is STRICT by design: an existing successor
+  with no floor at the base brings no pin, so its WHOLE measured ``missing`` — old uncovered code included — is
+  charged to the source's pin.
   The remedy is to move code into NEW modules (or floor the destination in an earlier PR). It closes the shim trick
   (move everything to a new module, leave a re-export shim carrying the floor), the pre-created target (PR1 adds a
   one-line module, PR2 moves the code into it), padding (move code out, add as many trivial statements back) and
-  laundering test erosion through a move. Its costs, accepted: an unrelated module added (or an unrelated file grown
-  by S) in the same PR as a slice joins the group, so land it separately. With NO successor the sum is skipped
+  laundering test erosion through a move (beyond the k per split the measured base allows). Its costs, accepted:
+  an unrelated module added (or an unrelated file grown by S) in the same PR as a slice joins the group, so land
+  it separately. With NO successor the sum is skipped
   (owner decision 2026-10-13): the code went nowhere that grew by S, so an in-place rewrite of S or more statements
   is held by the source's own HEAD floor rule (k tolerance) and the CHANGED/LOWERING rules, not by a no-tolerance
   sum that thread noise would false-fail; code spread over several small files is the thin-slicing residual;
@@ -157,7 +168,8 @@ measurement ``m``; ``k = max(ceil(statements × 0.001), K_MIN)`` statements of r
 - a rename carry-over target follows the CHANGED rules against the removed package's floor;
   and a split may not lose the sum: over each group of removed packages that share targets,
   the targets' measured ``missing`` summed may not exceed the removed packages' pinned
-  ``missing`` summed (plus the pin of any target that already had a floor at base).
+  ``missing`` summed, each charged ``max(pin, main's measured missing at the base)`` (SF-2's
+  :class:`BaseMeasured`), plus the pin of any target that already had a floor at base.
 
 Why this shape: three review rounds each found a walk-down when floors were allowed a
 tolerance on the way DOWN (a floors-only lower; a high ``missing`` pin spent by the next PR;
@@ -291,8 +303,9 @@ coverage, so the numbers live in the CI log.
   the "N/M steps passed" line does not count it (it prints its own PASS/FAIL line);
 
 - the CHANGED cap's ``K_MIN`` slack (M60a): a re-pinned ``missing`` may sit up to ``K_MIN`` (5) statements above
-  the run it is verified on, and never above its base. LOWERING and the split and rename SUM rules read that pin, so
-  a later PR can absorb up to ``K_MIN`` per pin in the group. That is ``K_MIN`` for one scope and ``K_MIN`` × N for a
+  the run it is verified on, and never above its base. LOWERING reads that pin, and the split and rename SUM rules
+  read at least that pin (``max(pin, main's measured missing)``), so a later PR can absorb up to ``K_MIN`` per pin
+  in the group. That is ``K_MIN`` for one scope and ``K_MIN`` × N for a
   sum over N re-pinned scopes. It is bounded and does not accumulate across re-pins. It was accepted so that a pin
   taken from one CI run passes on the next (±2 statements of noise): the owner decision of 2026-10-27, "ship the safe
   half with a noise allowance", sized at ``K_MIN`` by review delta2 P1;
@@ -311,7 +324,8 @@ coverage, so the numbers live in the CI log.
   it in ``percent``; ``missing`` takes the lower run; see "Bootstrap");
 - the pinned ``missing`` goes stale between floor changes: it is verified only when its floor
   is new or changed, so a floor untouched for many PRs carries an old ``missing``, and the
-  drop rule then compares against that old number;
+  drop rule then compares against that old number (the two SUM rules charge main's measured ``missing`` at the
+  base instead, SF-2; LOWERING and CHANGED still read the pin);
 - deleting UNCOVERED code lowers measured ``missing`` below the pin, and that headroom can
   then be spent removing tests elsewhere in the scope without the floor rules noticing (the
   percent may still have to hold). It costs deleting real code; review reads it;
@@ -376,6 +390,7 @@ import tomllib
 import traceback
 import urllib.parse
 from collections.abc import Callable, Mapping
+from typing import Literal
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree
@@ -1073,10 +1088,13 @@ def floor_diff_rules(
     files: dict[str, ScopeCov],
     fd: FileDiff,
     excluded: set[str],
+    base_measured: BaseMeasured,
 ) -> list[str]:
     """The pin rules against the base, for ``overall``, the ``packages`` namespace and the ``files`` namespace
     (the same rules, run twice), plus the file-only rules: ``retired_files`` (SF-1) and the split rule (SF-2).
-    ``files``/``fd``/``excluded`` are required keyword arguments: a file rule must never be skipped by omission."""
+    ``files``/``fd``/``excluded`` are required keyword arguments: a file rule must never be skipped by omission.
+    ``base_measured`` (required too, :class:`BaseMeasured` below) is the SUM rules' source allowance; no other rule
+    reads it."""
     out: list[str] = []
     for attr, label in (("band", "band"), ("min_statements", "min_package_statements")):
         if getattr(base_fl, attr) != getattr(fl, attr):
@@ -1137,6 +1155,7 @@ def floor_diff_rules(
         renamed_to: Callable[[str], set[str]],
         still_there: str,
         vanished: Callable[[str], None],
+        kind: Literal["file", "package"],
     ) -> None:
         """One floor namespace (packages or files): removal only when gone, null-back, CHANGED/NEW verification,
         the rename carry and the sum rule. ``vanished`` is called for a removed floor with no detected rename."""
@@ -1179,7 +1198,7 @@ def floor_diff_rules(
         def budget(srcs: set[str], tgts: set[str]) -> int | None:
             if any(base_missing[s] is None for s in srcs):
                 return None
-            return sum(base_missing[s] or 0 for s in srcs) + sum(
+            return sum(base_measured.allowance(kind, s, base_missing[s] or 0) for s in srcs) + sum(
                 base_map[t].missing or 0 for t in tgts if t in base_map and t not in srcs
             )
 
@@ -1205,6 +1224,7 @@ def floor_diff_rules(
         lambda p: renames.get(p, set()),
         "directory still exists (a floor stays until the package is gone)",
         lambda p: None,  # packages >= N must carry a floor anyway; files are opt-in, hence SF-1 below
+        "package",
     )
 
     # SF-1: retired_files is append-only; a NEW entry is ref'd (parse), printed, and retires only a floor the base
@@ -1241,8 +1261,9 @@ def floor_diff_rules(
         lambda r: {fd.renames[r]} if r in fd.renames else set(),
         "file still exists (a file floor stays until the file is gone)",
         vanished_file,
+        "file",
     )
-    out += split_rule(root, base_fl, fl, files, fd, excluded, listing)
+    out += split_rule(root, base_fl, fl, files, fd, excluded, listing, base_measured=base_measured)
     return out
 
 
@@ -1254,6 +1275,8 @@ def split_rule(
     fd: FileDiff,
     excluded: set[str],
     listing: set[str],
+    *,
+    base_measured: BaseMeasured,
 ) -> list[str]:
     """SF-2 (owner decisions 2026-10-13): the floor follows the code. When a diff EDITS OR DELETES ``SPLIT_STATEMENTS`` or more
     of a floored file F's base statements (:func:`removed_statements` against F's ``-M`` rename target when one was
@@ -1262,7 +1285,8 @@ def split_rule(
     or more. Each successor of ``SPLIT_STATEMENTS`` or more statements needs its own file floor (NEW or CHANGED rules,
     by :func:`floor_diff_rules`' namespace pass), and F's measured ``missing`` plus every successor's may not exceed
     F's base ``missing`` pin plus the base pins of successors floored at the base (the shared sum rule, no tolerance;
-    an existing successor with no base floor is charged its whole ``missing``). With no successor the sum is skipped."""
+    an existing successor with no base floor is charged its whole ``missing``). F's charge is ``base_measured``'s
+    allowance, ``max(F's pin, main's measured missing of F at the base)``. With no successor the sum is skipped."""
     out: list[str] = []
     edges: dict[str, set[str]] = {}
     counts: dict[tuple[str, bool], int | None] = {}
@@ -1327,7 +1351,7 @@ def split_rule(
     _sum_rule(
         out,
         edges,
-        lambda srcs, tgts: sum(base_fl.files[s].missing or 0 for s in srcs)
+        lambda srcs, tgts: sum(base_measured.allowance("file", s, base_fl.files[s].missing or 0) for s in srcs)
         + sum(base_fl.files[t].missing or 0 for t in tgts if t in base_fl.files and t not in srcs),
         lambda t: files[t].missing if t in files else 0,
         f"split rule: a floored file that lost >= {SPLIT_STATEMENTS} statements keeps its pin across its successors; "
@@ -1623,6 +1647,11 @@ def ci_step_rules(root: Path) -> list[str]:
         out.append(f"{where}: needs exactly one step whose run is `{CI_LINT_RUN[5:]}` (no `|| true`)")
         return out
     g = steps[gate[0]]
+    if g.get("name") != RATCHET_STEP:
+        out.append(
+            f"{where}: the coverage-ratchet step must be named exactly {RATCHET_STEP!r} (found {g.get('name')!r}): "
+            "the split rule's base measurement requires that step passed, by name"
+        )
     if set(g) != {"name", "run"}:
         out.append(
             f"{where}: the coverage-ratchet step may carry only `name` and `run` (found {sorted(set(g) - {'name', 'run'})})"
@@ -2089,6 +2118,8 @@ def merge_floors(texts: list[str], committed: Floors | None) -> tuple[dict, list
 # ── --pins-from-run: CI's printed pins, applied in one command (M60a) ─────────────────────────────────────────────
 
 RUN_SUITE_STEP = "Run required fast suite"
+# The gate's own step, by name: ci_step_rules pins it, and BaseMeasured requires it passed in a base attempt.
+RATCHET_STEP = "Coverage ratchet (roadmap 1.3.2 item 5)"
 MEMORYHUB_STEP = "MemoryHub integration gate"
 COVERAGE_ARTIFACT = "coverage-json"
 # #1645: each shard's log, junit and collection record, for diagnosing a red run (never a measurement input).
@@ -2650,6 +2681,185 @@ def reuse_decision_main(
     return 0
 
 
+# ── the SUM rules' measured base (owner decision 2026-11-24; docs/plans/coverage_split_measured_base_approach.md) ──
+
+# The lookup's budget, checked BEFORE each API call and download: past it, the sum rules charge the pin. A call that
+# starts inside it can still run to its own timeout (60 s for gh api, 300 s for a download), so the worst case is
+# about this plus one download; the unit-tests job's 60-minute limit has room for that.
+BASE_MEASURED_DEADLINE_SECONDS = 300.0
+
+
+class NoBaseMeasurement(RuntimeError):
+    """Main's own measurement at the base cannot be used, so the SUM rules charge the pin (the stricter rule)."""
+
+
+def base_measurements(
+    root: Path,
+    base: str,
+    *,
+    api: Callable[[str], object],
+    download: Callable[[str, str, Path], Path],
+    tmp: Path,
+    clock: Callable[[], float],
+    deadline: float,
+) -> list[dict[str, FileCov]]:
+    """Every measurement main itself took of commit ``base``: one per (run, attempt) of a Tests ``push`` run on
+    ``main`` with ``head_sha == base`` whose ``unit-tests`` job passed BOTH :data:`RUN_SUITE_STEP` and
+    :data:`RATCHET_STEP` in that attempt, read from that attempt's own ``coverage-json-<attempt>`` (the upload runs on
+    ``always()``, so a failed attempt's artifact is partial; the unsuffixed legacy name is refused). A push run never
+    re-uses a measurement (``reuse_decision`` needs ``pull_request``), and a fork cannot create a push run on main.
+    Raises :class:`NoBaseMeasurement` when no attempt qualifies, when a qualifying attempt's artifact is gone (a
+    missing sample could have been the minimum), or past ``deadline``; API and download errors propagate (the caller
+    charges the pin for every one of them)."""
+
+    def in_budget() -> None:
+        if clock() > deadline:
+            raise NoBaseMeasurement(f"the {BASE_MEASURED_DEADLINE_SECONDS:.0f} s lookup budget passed")
+
+    prefix = "repos/{owner}/{repo}"
+    in_budget()
+    data = api(f"{prefix}/actions/workflows/test.yml/runs?event=push&branch=main&head_sha={base}&per_page=100")
+    listed = data.get("workflow_runs") if isinstance(data, dict) else None
+    if not isinstance(listed, list):
+        raise NoBaseMeasurement("the workflow-runs API gave an unexpected response")
+    samples: list[dict[str, FileCov]] = []
+    for run in listed:
+        rid = run.get("id") if isinstance(run, dict) else None
+        if not (
+            isinstance(run, dict)
+            and isinstance(rid, int)
+            and run.get("head_sha") == base
+            and run.get("event") == "push"
+            and run.get("head_branch") == "main"
+            and str(run.get("path", "")).endswith("workflows/test.yml")
+        ):
+            continue  # not a Tests push run of main at the base: never a sample
+        attempts = run.get("run_attempt")
+        if not isinstance(attempts, int) or attempts < 1:
+            raise NoBaseMeasurement(f"run {rid}: no run_attempt in the API response")
+        names: set[str] | None = None
+        for attempt in range(1, attempts + 1):
+            in_budget()
+            jobs = api(f"{prefix}/actions/runs/{rid}/attempts/{attempt}/jobs?per_page=100")
+            listed = jobs.get("jobs") if isinstance(jobs, dict) else None
+            if not isinstance(listed, list):  # a malformed listing may hide the minimum: never skip it silently
+                raise NoBaseMeasurement(f"run {rid} attempt {attempt}: the jobs API gave an unexpected response")
+            job = next((j for j in listed if isinstance(j, dict) and j.get("name") == CI_JOB), None)
+            if job is None or job.get("run_attempt", attempt) != attempt:
+                continue  # no unit-tests job in this attempt, or one carried over from an earlier attempt (sampled there)
+            steps = [s for s in job.get("steps") or [] if isinstance(s, dict)]
+            conclusion = {s.get("name"): s.get("conclusion") for s in steps}
+            if conclusion.get(RUN_SUITE_STEP) != "success" or conclusion.get(RATCHET_STEP) != "success":
+                continue  # a failed, skipped or unfinished attempt is not a whole measurement
+            if names is None:
+                names = _artifact_names(api, prefix, rid)
+            wanted = f"{COVERAGE_ARTIFACT}-{attempt}"
+            if wanted not in names:
+                raise NoBaseMeasurement(f"run {rid} attempt {attempt} passed, but its artifact {wanted!r} is gone")
+            in_budget()
+            dest = tmp / f"{rid}-{attempt}"
+            dest.mkdir(parents=True)
+            samples.append(load_coverage(root, download(str(rid), wanted, dest)))
+    if not samples:
+        raise NoBaseMeasurement(
+            f"no Tests push run of main at {base[:12]} has an attempt whose {RUN_SUITE_STEP!r} and {RATCHET_STEP!r} "
+            "steps both passed (in flight, cancelled, expired, or a base accepted without a green run)"
+        )
+    return samples
+
+
+def _min_missing(samples: list[dict[str, ScopeCov]]) -> dict[str, int]:
+    """Per scope, the LOWEST ``missing`` over every sample, for the scopes EVERY sample measured: a scope one sample
+    lacks gets no entry (the pin), because the missing sample could have been the minimum."""
+    keys = set.intersection(*(set(s) for s in samples)) if samples else set()
+    return {k: min(s[k].missing for s in samples) for k in keys}
+
+
+class BaseMeasured:
+    """The source allowance of the two SUM rules (SF-2 for files, the namespace pass's sum for packages and renamed
+    files): ``max(base pin, main's measured missing at the base)``, keyed on the source's BASE key. The lookup is
+    lazy (a PR with no split asks no API) and runs once. Every doubt charges the pin, which is stricter: no ``gh``
+    or ``--local`` (:meth:`pins_only`), :class:`NoBaseMeasurement`, and any error at all from the lookup, which is
+    printed and never reaches ``must_not_skip`` (a lookup failure is never a red job). LOWERING and the CHANGED cap
+    never read this."""
+
+    def __init__(self, load: Callable[[], list[dict[str, FileCov]]] | None, why_not: str = "") -> None:
+        self._load = load  # cleared before the one call: the lookup runs at most once, even when it fails
+        self._why_not = why_not
+        self._files: dict[str, int] = {}
+        self._packages: dict[str, int] = {}
+        self._charged: set[str] = set()
+
+    @classmethod
+    def pins_only(cls, why: str) -> BaseMeasured:
+        return cls(None, why)
+
+    def _ensure(self) -> None:
+        load, self._load = self._load, None
+        if load is None:
+            return
+        try:
+            samples = load()
+        except NoBaseMeasurement as e:
+            self._why_not = str(e)
+        except (GitUnavailable, MeasurementError, OSError, ValueError) as e:  # the API, gh, a download, the JSON
+            self._why_not = f"{type(e).__name__}: {e}"
+        except Exception as e:  # anything else is a bug: still the pin, never a red job, printed with its traceback
+            traceback.print_exc()
+            self._why_not = f"unexpected {type(e).__name__}: {e}"
+        else:
+            self._files = _min_missing([file_scopes(c) for c in samples])
+            self._packages = _min_missing([measure_scopes(c)[1] for c in samples])
+            print(f"coverage: split base measured by main ({len(samples)} sample(s); the minimum is charged)")
+            return
+        print(f"coverage: split base: main's measurement not used, the pin is charged ({self._why_not})")
+
+    def allowance(self, kind: Literal["file", "package"], key: str, pin: int) -> int:
+        """``key``'s charge in a SUM rule: its base ``pin``, or main's measured ``missing`` at the base when that is
+        higher. ``kind`` picks the namespace; any other value raises (a typo must not read the other map)."""
+        if kind not in ("file", "package"):  # the real guard: CI's mypy does not cover scripts/, so Literal is a doc
+            raise ValueError(f"BaseMeasured.allowance: kind {kind!r} is not 'file' or 'package'")
+        self._ensure()
+        measured = (self._files if kind == "file" else self._packages).get(key)
+        if measured is None or measured <= pin:
+            if measured is None and key not in self._charged:
+                self._charged.add(key)
+                why = self._why_not or "absent from at least one of main's samples at the base"
+                print(f"coverage: {key}: the split sum charges its pin {pin} ({why})")
+            return pin
+        if key not in self._charged:
+            self._charged.add(key)
+            print(
+                f"coverage: {key}: the split sum charges main's measured missing {measured} at the base, not its "
+                f"stale pin {pin}"
+            )
+        return measured
+
+
+def _base_measured(root: Path, base: str, *, local: bool) -> BaseMeasured:
+    """The SUM rules' :class:`BaseMeasured` for this run: CI only (a pull_request or push event under GitHub Actions);
+    ``--local``, ``prepr`` and ``suite_at_commit.sh`` charge the pin (stricter than CI, and printed when it matters)."""
+    if local:
+        return BaseMeasured.pins_only("--local reads no CI measurement")
+    if not os.environ.get("GITHUB_ACTIONS") or os.environ.get("GITHUB_EVENT_NAME") not in ("pull_request", "push"):
+        return BaseMeasured.pins_only("not a pull_request or push run in CI")
+
+    def load() -> list[dict[str, FileCov]]:
+        deadline = time.monotonic() + BASE_MEASURED_DEADLINE_SECONDS
+        with tempfile.TemporaryDirectory() as td:
+            return base_measurements(
+                root,
+                base,
+                api=lambda path: gh_api(path, cwd=root),
+                download=_download_artifact,
+                tmp=Path(td),
+                clock=time.monotonic,
+                deadline=deadline,
+            )
+
+    return BaseMeasured(load)
+
+
 # ── --missing-floors: failure 3 shifted left to prepr (#1640) ────────────────────────────────────────────────────
 
 
@@ -2763,7 +2973,7 @@ def main(argv: list[str] | None = None) -> int:
         return stamp_main(REPO_ROOT)
     if argv == ["--missing-floors"]:
         return missing_floors_main(REPO_ROOT)
-    # --local: the pre-push run scripts/suite_at_commit.sh makes on the exact commit to be pushed. Floors are measured
+    # --local: the run scripts/suite_at_commit.sh makes on the commit it tests (optional since M64). Floors are measured
     # in CI's environment (macOS reads 1-2 pt off Linux), so locally NO floor gates, in either direction (M60a, owner
     # decision 2026-10-27; it gated the touched packages' floors before, which gave false reds and false greens): every
     # floor result and a PR's own floor-pin edits are printed as notes -- except a pinned ``missing`` that rose above
@@ -2845,6 +3055,7 @@ def main(argv: list[str] | None = None) -> int:
                                 files=files,
                                 fd=fd,
                                 excluded=excluded,
+                                base_measured=_base_measured(root, base, local=local),
                             )
                             if local:  # a PR's floor edits are CI measurements: CI verifies them, not this box,
                                 # except the half that reads no measurement: a pinned missing that rose (#1270)
@@ -2862,7 +3073,16 @@ def main(argv: list[str] | None = None) -> int:
                         empty = Floors(fl.band, fl.min_statements, fl.version, Floor(None, None))
                         fd = file_diff(root, base) if fl.files else NO_FILE_DIFF
                         failures += floor_diff_rules(
-                            root, empty, fl, overall, pkgs, {}, files=files, fd=fd, excluded=excluded
+                            root,
+                            empty,
+                            fl,
+                            overall,
+                            pkgs,
+                            {},
+                            files=files,
+                            fd=fd,
+                            excluded=excluded,
+                            base_measured=BaseMeasured.pins_only("no floors at the base"),
                         )
                 if ex is not None:
                     base_text = show(root, base, EXCLUSIONS_REL)

@@ -14,6 +14,8 @@ from pathlib import Path
 
 import yaml
 
+from maxim.utils.cloud_redaction import text_shape
+
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
@@ -348,7 +350,7 @@ def _extract_json(raw: str) -> dict | None:
     try:
         return json.loads(json_str)
     except json.JSONDecodeError:
-        logger.debug("JSON extraction failed on: %s", json_str[:200])
+        logger.debug("JSON extraction failed on: %s", text_shape(json_str))  # #1775: shape only
         return None
 
 

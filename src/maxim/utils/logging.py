@@ -1,13 +1,252 @@
 from __future__ import annotations
 
 import logging
+import operator
 import os
 import sys
 import threading
-from typing import Callable, Optional
+from collections.abc import Mapping
+from decimal import Decimal
+from fractions import Fraction
+from typing import Any, Callable, Optional
+
+from maxim.utils.net import redact_urls
 
 DEFAULT_DATEFMT = "%H:%M:%S"
 DEFAULT_FORMAT = "%(asctime)s | %(levelname)s | %(message)s"
+
+
+# ─── The redacting record factory (#1801, approach note v28 §Shape, family 1 part a) ─────────────────────────────
+# Installed (chained) by ``configure_logging`` only (D1), so an embedding host's records are untouched until it
+# opts in. Every stdlib ``LogRecord`` the chain returns has its class swapped to ``_RedactingLogRecord``, whose
+# ``getMessage`` reduces URLs lazily, when a handler formats the record: each argument (but an exact pass-through
+# number type) is wrapped in ``_ReducedArg``, so a precision cut in the message (``%.50s``) cuts text that is already
+# reduced, and the formatted result is reduced again. ``msg`` and ``args`` stay untouched (R3), so tests that read
+# ``record.args`` keep their meaning. A record of a real ``LogRecord`` subclass is rendered eagerly instead. Gaps,
+# stated: records made before ``configure_logging``; ``handleError``'s stderr dump of a failed render; a record's
+# raw ``__dict__`` (``extra=`` keys, ``msg`` as an exception object; K1); ``makeLogRecord``'s dict update, whose
+# ``exc_text`` is reduced on read only (H2).
+
+_PASS_THROUGH_TYPES: frozenset[type] = frozenset({type(None), bool, int, float, complex, Decimal, Fraction})
+_NUMPY_NUMERIC_KINDS = frozenset("biufc")
+_numpy_numeric_cache: frozenset[type] | None = None
+_numpy_failure_logged = False
+
+
+def _numpy_numeric_types() -> frozenset[type]:
+    """numpy's own NUMERIC scalar types, by exact type, built lazily WITHOUT importing numpy (X5): an import inside
+    ``getMessage`` runs with the handler lock held and could deadlock against a thread part-way through importing
+    numpy that logs. Absent or part-way imported (``__spec__._initializing``): empty and NOT cached, since no numpy
+    scalar can exist yet (Y5, AB4). A build that raises for any other reason is cached as empty (AA5) and logged once
+    in the Stage-1 form, the flags set BEFORE logging, because the swallow log's own record goes through here too.
+    Empty only means numpy scalars are proxied, which is safe: the proxy forwards ``__float__``/``__int__``/
+    ``__index__``."""
+    global _numpy_numeric_cache, _numpy_failure_logged
+    if _numpy_numeric_cache is not None:
+        return _numpy_numeric_cache
+    np = sys.modules.get("numpy")
+    if np is None or getattr(getattr(np, "__spec__", None), "_initializing", False):
+        return frozenset()
+    try:
+        built = frozenset(t for t in set(np.sctypeDict.values()) if np.dtype(t).kind in _NUMPY_NUMERIC_KINDS)
+    except Exception:
+        if getattr(getattr(np, "__spec__", None), "_initializing", False):  # transient: neither cache nor log (AB4)
+            return frozenset()
+        _numpy_numeric_cache = frozenset()
+        if not _numpy_failure_logged:
+            _numpy_failure_logged = True
+            log_swallowed_exception(site="logging.py:_numpy_numeric_types:build")
+        return frozenset()
+    _numpy_numeric_cache = built
+    return built
+
+
+def _passes_through(value: Any) -> bool:
+    """An argument rendered raw: an EXACT number type (never ``isinstance``, T1: a subclass can carry its own
+    ``__str__``), a numpy numeric scalar by exact type, or a 1-character ``str`` (``%c``, Q4)."""
+    t = type(value)
+    if t in _PASS_THROUGH_TYPES:
+        return True
+    if t is str:
+        return len(value) == 1
+    return t in _numpy_numeric_types()
+
+
+class _ReducedArg:
+    """One logging argument whose text renders reduced (``%s``, ``%r``, ``%a``, ``str.format``), and whose number
+    protocol forwards to the wrapped value, as CPython would call it: ``type(o).__float__(o)`` (never ``float(o)``,
+    which would make ``%f`` accept a str), falling back to ``float(operator.index(o))``; ``__int__`` falling back to
+    ``operator.index(o)``. A value with neither raises ``TypeError``, as the unproxied value would (U4)."""
+
+    __slots__ = ("_o",)
+
+    def __init__(self, o: Any) -> None:
+        self._o: Any = o
+
+    def __str__(self) -> str:
+        return redact_urls(str(self._o))
+
+    def __repr__(self) -> str:
+        return redact_urls(repr(self._o))
+
+    def __format__(self, spec: str) -> str:
+        if spec and spec[-1] in "bcdoxXneEfFgG%" and hasattr(type(self._o), "__float__"):
+            return format(self._o, spec)  # a number rendered as a number holds no URL
+        return format(str(self), spec)
+
+    def __float__(self) -> float:
+        o = self._o
+        f = getattr(type(o), "__float__", None)
+        if f is not None:
+            return f(o)
+        return float(operator.index(o))
+
+    def __int__(self) -> int:
+        o = self._o
+        i = getattr(type(o), "__int__", None)
+        if i is not None:
+            return i(o)
+        return operator.index(o)
+
+    def __index__(self) -> int:
+        return operator.index(self._o)
+
+
+def _reduced_args(args: Any) -> Any:
+    if isinstance(args, Mapping):  # ``LogRecord.__init__`` unwrapped a single Mapping argument to a dict (``%(k).Ns``)
+        return {k: (v if _passes_through(v) else _ReducedArg(v)) for k, v in args.items()}
+    if isinstance(args, tuple):
+        return tuple(a if _passes_through(a) else _ReducedArg(a) for a in args)
+    return args if _passes_through(args) else _ReducedArg(args)
+
+
+class _ReducingField:
+    """A data descriptor for ``exc_text``/``stack_info``: ``__set__`` stores the REDUCED value in ``__dict__`` (which
+    ``SocketHandler.makePickle``, ``pickle`` and ``copy`` read), and ``__get__`` reduces too, for a ``__dict__``
+    written around it (``makeLogRecord``'s dict update, G3)."""
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Any:
+        if obj is None:
+            return self
+        value = obj.__dict__.get(self._name)
+        return redact_urls(value) if isinstance(value, str) else value
+
+    def __set__(self, obj: Any, value: Any) -> None:
+        obj.__dict__[self._name] = redact_urls(value) if isinstance(value, str) else value
+
+
+class _RedactingLogRecord(logging.LogRecord):
+    """A stock ``LogRecord`` whose rendering reduces URLs (#1801). Set by a ``__class__`` swap in the factory, never
+    constructed: a module-level class, so the record pickles (S3), with no closure or bound method in ``__dict__``
+    (F1)."""
+
+    exc_text = _ReducingField("exc_text")
+    stack_info = _ReducingField("stack_info")
+
+    def getMessage(self) -> str:  # noqa: N802 — the stdlib's name
+        msg = str(self.msg)
+        if self.args:
+            msg = msg % _reduced_args(self.args)
+        return redact_urls(msg)
+
+
+_chained_factory: Callable[..., logging.LogRecord] = logging.LogRecord
+_factory_reentry = threading.local()
+
+
+def _make_redacting(record: logging.LogRecord) -> None:
+    if type(record) is logging.LogRecord:
+        record.__class__ = _RedactingLogRecord
+        # ``LogRecord.__init__`` wrote these into ``__dict__`` before the swap: write them back through the
+        # descriptors so ``__dict__`` holds the reduced value (J1).
+        record.exc_text = record.__dict__.get("exc_text")
+        record.stack_info = record.__dict__.get("stack_info")
+        return
+    if isinstance(record, _RedactingLogRecord) or not isinstance(record, logging.LogRecord):
+        return
+    _render_subclass_record(record)
+
+
+def _render_subclass_record(record: logging.LogRecord) -> None:
+    """A real ``LogRecord`` subclass keeps its class (a swap would drop its own ``getMessage``, or raise on
+    ``__slots__``, H3): it is rendered eagerly. A bad format must not raise out of the ``logger`` call, where inside an
+    ``except`` it would mask the original exception, so a failed render leaves the record untouched and
+    ``handleError`` reports it at emit (the stated terminal-only gap). ANY exception counts, not only a bad format:
+    an argument whose ``__str__`` raises ``RuntimeError`` must not escape the ``logger`` call either (code review
+    SF2). The traceback fields are reduced OUTSIDE the render's ``try``, so a bad format cannot leave them raw (K5)."""
+    try:
+        rendered = redact_urls(record.getMessage())
+    except Exception:
+        log_swallowed_exception(site="logging.py:_render_subclass_record:render")
+    else:
+        record.msg = rendered
+        record.args = ()
+    if record.exc_info:
+        record.exc_text = redact_urls(logging.Formatter().formatException(record.exc_info))
+    if record.stack_info:
+        record.stack_info = redact_urls(record.stack_info)
+
+
+def _redacting_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+    """The installed factory: the chained factory's record, made to render reduced. A re-entry (a factory installed
+    over this one that calls back into it) builds a stock record, so the chain can never recurse."""
+    if getattr(_factory_reentry, "active", False):
+        return logging.LogRecord(*args, **kwargs)
+    _factory_reentry.active = True
+    try:
+        record = _chained_factory(*args, **kwargs)
+    finally:
+        _factory_reentry.active = False
+    _make_redacting(record)
+    return record
+
+
+_CHAIN_PROBE_SECRET = "maxim-chain-probe-1801"
+
+
+def _current_factory_reduces() -> bool:
+    """The behavioural chain check (R4): a record built through the CURRENT factory renders a credential URL
+    reduced. Identity alone is not trusted: a chaining wrapper over ours hides it (N2)."""
+    try:
+        record = logging.getLogRecordFactory()(
+            "maxim.chain_check", logging.INFO, __file__, 0, "probe %s", (f"https://u:{_CHAIN_PROBE_SECRET}@h/p",), None
+        )
+        return _CHAIN_PROBE_SECRET not in record.getMessage()
+    except Exception:
+        log_swallowed_exception(site="logging.py:_current_factory_reduces:probe")
+        return False
+
+
+_factory_installed_once = False
+# The check and the install are one step (code review SF1): two installs racing on different threads would both see
+# a chain that does not reduce, and the second would chain to the first's factory, dropping the host factory, and log
+# a false WARNING. An RLock, because the WARNING below is logged while it is held.
+_factory_install_lock = threading.RLock()
+
+
+def ensure_redacting_record_factory() -> bool:
+    """Install the redacting record factory over the current one, chained, unless the current chain already reduces.
+    Returns True when it (re-)installed. Called at the end of ``configure_logging`` and on each ``_LogBuffer``
+    install; a factory set by someone else after the last call that does not chain is caught here, re-wrapped and
+    reported with one WARNING. Never raises."""
+    global _chained_factory, _factory_installed_once
+    with _factory_install_lock:
+        if _current_factory_reduces():
+            return False
+        current = logging.getLogRecordFactory()
+        _chained_factory = logging.LogRecord if current is _redacting_record_factory else current
+        logging.setLogRecordFactory(_redacting_record_factory)
+        reinstalled = _factory_installed_once
+        _factory_installed_once = True
+        if reinstalled:
+            logging.getLogger("maxim").warning(
+                "log record factory %r does not chain to Maxim's URL-redacting factory; re-installed on top (#1801)",
+                getattr(current, "__qualname__", current),
+            )
+        return True
 
 
 def verbosity_to_level(verbosity: int) -> int:
@@ -160,6 +399,7 @@ def configure_logging(
             _ensure_file_handler(log_file)
         if jsonl_path:
             _ensure_jsonl_file_handler(jsonl_path)
+        ensure_redacting_record_factory()
         return
 
     # Keep existing handlers but align their levels with the requested
@@ -182,6 +422,7 @@ def configure_logging(
         _ensure_file_handler(log_file)
     if jsonl_path:
         _ensure_jsonl_file_handler(jsonl_path)
+    ensure_redacting_record_factory()
 
 
 def quiet_console_handlers(level: int = logging.WARNING) -> None:
@@ -239,11 +480,13 @@ def warn_unless_refusal(message: str, exc: BaseException, *, logger: Optional[lo
     For a broad ``except Exception`` around starting the LLM (``build_primary_router``,
     the agentic runtime): degrading to "run without the LLM" is right for an outage and
     wrong for a :class:`maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
-    llama-cpp-server), where carrying on leaves the proxy forwarding to what was refused.
+    llama-cpp-server), where carrying on leaves the proxy forwarding to what was refused, or for an
+    ``OfflineRefusal`` (a lane the offline latch refused), where carrying on runs without the LLM the operator
+    configured: both are :data:`maxim.exceptions.SECURITY_REFUSALS`.
     """
-    from maxim.exceptions import LeaderRefusal
+    from maxim.exceptions import SECURITY_REFUSALS
 
-    if isinstance(exc, LeaderRefusal):
+    if isinstance(exc, SECURITY_REFUSALS):
         raise exc
     warn(message, exc, logger=logger)
 

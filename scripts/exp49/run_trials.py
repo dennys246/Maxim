@@ -38,7 +38,6 @@ import argparse
 import json
 import logging
 import math
-import os
 import shutil
 import signal
 import subprocess
@@ -56,6 +55,9 @@ import _provenance  # noqa: E402  (scripts/_provenance.py — by path, same tree
 _GATED_OUT: Path | None = None  # set in main(): the trials JSONL (gated when under docs/experiments/data/)
 _ALLOW_DIRTY = False
 import exp49_common as common  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
 
 
 def _now_iso() -> str:
@@ -188,13 +190,16 @@ def run_scripted_trial(bearing_deg: float, seed: int, sandbox: Path, *, speech_d
 
 
 def _trial_env(arm: str, home: Path, jsonl: Path, *, min_confidence: float | None) -> dict:
-    env = os.environ.copy()
+    env = child_env()
     env["PYTHONPATH"] = str((REPO_ROOT / "src").resolve())
     env["MAXIM_DATA_HOME"] = str(home)
     env["MAXIM_LOG_FILE"] = str(jsonl)
     env["MAXIM_DISABLE_IMAGINATION"] = "1"
     env["MAXIM_MOTOR_CREDIT_TRACE"] = "1"
     env["MAXIM_ROBOT_TIMEOUT"] = "10"
+    # A trial child is never a named robot run (#1806 PR 0): an operator's $MAXIM_ROBOT_NAME would pick the
+    # daemon the child dials, so it is dropped rather than inherited.
+    env.pop("MAXIM_ROBOT_NAME", None)
     if arm == "C":
         env["MAXIM_SUBSTRATE_PATH"] = "1"
         env["MAXIM_LLM_ENABLED"] = "0"

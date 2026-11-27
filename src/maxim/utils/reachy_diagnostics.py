@@ -130,21 +130,29 @@ def diagnose_reachy(host: str) -> int:
         all_passed = False
 
     # Test 2: SDK control channel (WebSocket on the daemon port — SDK >= 1.5;
-    # the zenoh :7447 era ended in v1.5.0, see docs/embodiment/reachy_mini/README.md)
+    # the zenoh :7447 era ended in v1.5.0, see docs/embodiment/reachy_mini/README.md).
+    # One probe for doctor, this tool and the controller: hardware/reachy/probe.py (#1806).
     print_header("Test 2: Daemon Port (SDK Control Channel)")
-    success, message = test_port(host, 8000)
-    if success:
-        print_success(f"Port 8000 (FastAPI + /ws/sdk): {message}")
-        print_info("SDK control communication is available")
-        try:
-            from maxim.utils import http as maxim_http
+    from maxim.hardware.reachy import probe as reachy_probe
 
-            status = maxim_http.fetch_url(f"http://{host}:8000/api/daemon/status", timeout=3).json()
-            print_info(f"Daemon status: version={status.get('version', '?')} state={status.get('state', '?')}")
-        except Exception:
+    # 3 s per stage (lookup, TCP, status; #1806 review E2/D4); a typed --host gets the IPv6 check (review D1)
+    outcome = reachy_probe.probe_daemon(host, deadline_s=3.0, explicit_host=True)
+    if reachy_probe.connects_as_given(outcome):
+        print_warning(f"{host}: {outcome.error}")
+        print_info("This tool probes IPv4 only; use the robot's IPv4 address to diagnose it.")
+        all_passed = False
+    elif outcome.reachable:
+        print_success("Port 8000 (FastAPI + /ws/sdk): Port is open and accepting connections")
+        print_info("SDK control communication is available")
+        if outcome.status_read:
+            print_info(f"Daemon status: version={outcome.version or '?'} state={outcome.state or '?'}")
+            refused = reachy_probe.refusal(outcome, None)
+            if refused is not None:
+                print_warning(f"A connect check would refuse this daemon: {refused}")
+        else:
             print_info("(/api/daemon/status not readable — pre-1.5 daemon or endpoint moved)")
     else:
-        print_error(f"Port 8000 (daemon): {message}")
+        print_error(f"Port 8000 (daemon): {outcome.error or 'unreachable'}")
         print_info("Solution: Ensure the Reachy daemon is running")
         print_info(f"  SSH into Reachy: ssh pollen@{host}")
         print_info("  Check daemon: systemctl status reachy-mini-daemon")
@@ -157,7 +165,9 @@ def diagnose_reachy(host: str) -> int:
     try:
         from maxim.utils import http as maxim_http
 
-        resp = maxim_http.fetch_url(f"http://{host}:8000/docs", timeout=3)
+        resp = maxim_http.fetch_url(
+            f"http://{host}:8000/docs", timeout=3, address_policy="private", strict=True
+        )  # #1806 PR 0: every daemon read is dialled directly
         success = resp.status == 200
         message = "HTTP 200" if success else f"HTTP {resp.status}"
     except Exception as e:  # noqa: BLE001
@@ -201,6 +211,14 @@ def diagnose_reachy(host: str) -> int:
 
 def main() -> int:
     """Main entry point"""
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first, before any subprocess or socket (#1315 item 10a)
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(
         description="Diagnose Reachy Mini connection issues",
         formatter_class=argparse.RawDescriptionHelpFormatter,

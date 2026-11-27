@@ -17,15 +17,20 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from maxim.agents.llm_worker import LLMProposal
-from maxim.runtime.tool_dispatch import safe_agent_name as _safe_agent_name, tool_to_run
 from maxim.runtime.dn_controller import DefaultNetworkController
-from maxim.runtime.loop_state import no_person_to_ask, operational_mode
+from maxim.runtime.loop_state import (
+    no_person_to_ask,
+    operational_mode,
+    safe_agent_name as _safe_agent_name,
+    tool_to_run,
+)
 from maxim.runtime.loop_types import (
     ActionFollowup,
     PendingConfirmation,
     TimeoutRetry,
 )
 from maxim.utils.input_source import InputSource
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
@@ -806,8 +811,9 @@ class LoopController:
             "plan_awaiting_approval",
             {
                 "tool": action.get("tool_name"),
-                "params": _params_text(action)[:200],  # bounded: a write_file body must not flood the stream
-                "plan_preview": proposal.plan_text[:100] if proposal.plan_text else None,
+                # #1775: shapes only. The person reads the plan in full in _plan_prompt; this stream persists.
+                "params": text_shape(_params_text(action)),
+                "plan_preview": text_shape(proposal.plan_text) if proposal.plan_text else None,
             },
         )
         self.pending_plan_proposal = proposal

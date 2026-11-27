@@ -11,6 +11,7 @@ requests only lower; `--mode agentic` gets a definition and an unknown mode fail
 from __future__ import annotations
 
 import argparse
+import os
 import logging
 from unittest.mock import MagicMock
 
@@ -39,12 +40,25 @@ def _args(**overrides) -> argparse.Namespace:
 
 def _reexec_argv(monkeypatch, args, mode: str) -> list[str]:
     captured: list[list[str]] = []
-    monkeypatch.setattr("maxim.cli_utils.os.execv", lambda exe, argv: captured.append(list(argv)))
+    monkeypatch.setattr("maxim.cli_utils.os.execve", lambda exe, argv, env: captured.append(list(argv)))
     reexec_with_mode(args, mode=mode)
     assert captured, "reexec_with_mode did not exec"
     argv = captured[0]
     assert argv[1:3] == ["-m", "maxim.cli"]
     return argv[3:]
+
+
+def test_the_reexec_hands_over_child_env_not_a_pth_rewritten_pythonpath(monkeypatch) -> None:
+    """An execv would inherit a .pth hook's site-packages-first PYTHONPATH, so the re-exec'd process could import a
+    stray site-packages maxim (#1593). The re-exec passes child_env() instead."""
+    from maxim.utils.child_env import own_site_dirs
+
+    site_dir = own_site_dirs()[0]
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([site_dir, "/repo/src"]))
+    envs: list[dict[str, str]] = []
+    monkeypatch.setattr("maxim.cli_utils.os.execve", lambda exe, argv, env: envs.append(env))
+    reexec_with_mode(_args(), mode="passive")
+    assert envs and envs[0]["PYTHONPATH"] == "/repo/src"
 
 
 @pytest.mark.parametrize("requested", _RUNTIME_SWITCHABLE_MODES)
@@ -62,6 +76,39 @@ def test_a_run_mode_switch_keeps_the_operators_grant(monkeypatch) -> None:
     argv = _reexec_argv(monkeypatch, _args(mode="exploration", operational_mode="active"), "sleep")
     parsed = _build_parser().parse_args(argv)
     assert parsed.mode == "sleep" and parsed.operational_mode == "active"
+
+
+@pytest.mark.parametrize("typed", [["--robot-name", "alice"], ["--robot=alice"], ["--robot-name", "reachy_mini"]])
+def test_a_reexec_carries_the_typed_robot_name(monkeypatch, typed) -> None:
+    """#1806 PR 0: a parent that typed a robot flag hands the child that same name, typed."""
+    monkeypatch.delenv("MAXIM_ROBOT_NAME", raising=False)
+    parent = _build_parser().parse_args([*typed, "--mode", "exploration"])
+    argv = _reexec_argv(monkeypatch, parent, "sleep")
+    assert argv.count("--robot-name") == 1
+    assert _build_parser().parse_args(argv).robot_name == parent.robot_name
+
+
+def test_a_reexec_omits_an_untyped_robot_name(monkeypatch) -> None:
+    """``robot_name`` is None when nothing was typed: the child gets no robot flag, never ``--robot-name None``
+    (which would make the child dial ``None.local``)."""
+    monkeypatch.delenv("MAXIM_ROBOT_NAME", raising=False)
+    argv = _reexec_argv(monkeypatch, _args(mode="exploration"), "sleep")
+    assert "--robot-name" not in argv and "--robot" not in argv and "None" not in argv
+    assert _build_parser().parse_args(argv).robot_name is None
+
+
+def test_an_env_only_parent_reexecs_with_no_robot_flag(monkeypatch) -> None:
+    """An env-only parent (``MAXIM_ROBOT_NAME`` set, nothing typed) passes no robot flag: the child inherits the
+    variable through ``child_env()`` and resolves it the same way, so an env value never becomes a typed flag."""
+    monkeypatch.setenv("MAXIM_ROBOT_NAME", "alice")
+    parent = _build_parser().parse_args(["--mode", "exploration"])
+    assert parent.robot_name is None
+    captured: list[tuple[list[str], dict[str, str]]] = []
+    monkeypatch.setattr("maxim.cli_utils.os.execve", lambda exe, argv, env: captured.append((list(argv), env)))
+    reexec_with_mode(parent, mode="sleep")
+    argv, env = captured[0]
+    assert "--robot-name" not in argv and "alice" not in argv
+    assert env.get("MAXIM_ROBOT_NAME") == "alice"
 
 
 def test_the_launch_flag_accepts_the_three_operational_modes_only() -> None:

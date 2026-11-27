@@ -1,11 +1,13 @@
 """B2's prerequisite 1 (roadmap_1_3_x.md §1.3.6): the ``_llm_unavailable`` fallback leaves the loop's body for a
 module with no bio imports.
 
-Slice 6 moved it, with the rest of §2, into ``runtime/loop_intake.py``. Its OWN imports name no bio package (pinned
-below). Importing it still loads bio modules, only through ``loop_controller``'s import of ``safe_agent_name`` and
-``tool_to_run`` from ``tool_dispatch`` (whose own bio imports are #1150, B2's prerequisite 2). So the closure check is a
-strict red gate that flips when that import is cut: by the PR right after slice 6 that moves those two helpers to a
-bio-free leaf (owner decision 2026-11-21), or with #1150.
+Slice 6 moved it, with the rest of §2, into ``runtime/loop_intake.py``. Its OWN imports name no bio package, and since
+the PR right after slice 6 (owner decision 2026-11-21) neither does its import closure: ``loop_controller`` imported
+``safe_agent_name`` and ``tool_to_run`` from ``tool_dispatch`` (whose bio imports are #1150, B2's prerequisite 2), and
+both helpers moved verbatim to the bio-free ``loop_state``. Both checks below are now green; the closure check was a
+strict red gate until that move. What this gives B2: the roadmap's prerequisite as worded. B2 itself takes no
+``runtime.*`` import (baseline_floors.md §B2), so its first PR still pulls the shared form of the fallback out of this
+runtime leaf.
 """
 
 from __future__ import annotations
@@ -17,11 +19,26 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 LEAF = REPO / "src" / "maxim" / "runtime" / "loop_intake.py"
-BIO = ("maxim.memory", "maxim.decisions", "maxim.integration", "maxim.similarity", "maxim.hivemind")
+# B2's bio denylist: baseline_floors.md §Guards' PLANNED ``utils/audit.py::LAYER_RULES["baselines"]`` (not in the code
+# yet) minus ``runtime`` and ``agents``, which B2 itself may not import but this runtime leaf necessarily does; plus
+# ``similarity`` and ``hivemind``. When B2 adds that rule, derive this tuple from it so the two lists cannot drift.
+BIO = (
+    "maxim.memory",
+    "maxim.decisions",
+    "maxim.embodiment",
+    "maxim.harm",
+    "maxim.default_network",
+    "maxim.salience",
+    "maxim.imagination",
+    "maxim.integration",
+    "maxim.reactions",
+    "maxim.proprioception",
+    "maxim.similarity",
+    "maxim.hivemind",
+)
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -39,13 +56,6 @@ def test_the_intake_leaf_imports_no_bio_package_itself() -> None:
     assert bio == [], bio
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "loop_controller imports safe_agent_name/tool_to_run from tool_dispatch, which imports bio modules (#1150); "
-        "cut by the PR right after slice 6 (owner decision 2026-11-21)"
-    ),
-)
 def test_importing_the_intake_leaf_loads_no_bio_module() -> None:
     """A fresh interpreter (this process has the whole loop loaded), on this checkout's ``src``."""
     code = (

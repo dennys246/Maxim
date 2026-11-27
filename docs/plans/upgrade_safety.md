@@ -79,7 +79,7 @@ The one new artifact is a data file, kept append-only like the config schema fix
 ## Stated assumptions
 
 - `/v1/admin/install` cannot pin a pymaxim version (`_SAFE_PKG_RE` rejects specifiers), so it is not a bypass of the restart gate.
-- The admin `restart` re-execs in place (`os.execv`, same environment). That is why a cold restart must mean a restart outside the process.
+- The admin `restart` re-execs in place (`os.execve` with `child_env()`: the same environment minus any `PYTHONPATH` entries a `.pth` hook pointed into site-packages, #1593). That is why a cold restart must mean a restart outside the process.
 
 ## Design pass (2026-10-15), folded
 

@@ -31,6 +31,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
+from maxim import _offline
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -659,6 +661,7 @@ def ensure_available(
 
     if profile_has_local_file(profile_name):
         return True
+    _offline.refuse_if_offline("models.download.ensure_available", f"{profile_name} is not on disk")  # before consent
 
     if profile_name not in llm_models():
         msg = (
@@ -1085,6 +1088,9 @@ def ensure_tts_voice(
 
     if verified():
         return True
+    _offline.refuse_if_offline(
+        "models.download.ensure_tts_voice", f"{model_name} is not verified on disk"
+    )  # before consent
     ok, reason = can_download(float(info.get("size_mb", 0)) / 1024.0, headroom_gb=0.5, soft_budget_gb=_soft_budget_gb())
     if not ok:
         logger.warning("Cannot download TTS voice %s: %s", model_name, reason)
@@ -1315,17 +1321,12 @@ def enable_llm_config(
         # invariant: update the first existing discovery candidate; only
         # when none exists, create a MINIMAL user config carrying exactly
         # the keys this function writes.
-        from maxim.models.language.config import _llm_config_candidates
+        from maxim.models.language.config import llm_config_file
         from maxim.utils.paths import user_config
 
-        config_path = None
-        for candidate in _llm_config_candidates():
-            if candidate and Path(candidate).is_file():
-                config_path = Path(candidate)
-                break
-        allow_create = config_path is None
-        if config_path is None:
-            config_path = user_config() / "llm.json"
+        found = llm_config_file()  # the loader's own file (#1806 PR 0: one resolver, no CWD candidate)
+        allow_create = found is None
+        config_path = Path(found) if found else user_config() / "llm.json"
     else:
         # Explicit path keeps the historical contract: it must exist.
         allow_create = False
@@ -1370,6 +1371,14 @@ def enable_llm_config(
 
 def main() -> int:
     """CLI entry point."""
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_loader import engage_offline_if_configured
+
+    try:
+        engage_offline_if_configured()  # first, before any subprocess or socket (#1315 item 10b)
+    except ConfigurationError as e:  # an unreadable config.json may mean offline: refuse to start (V20)
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(
         description="Download models for Maxim (LLM, TTS, and Vision)",
         formatter_class=argparse.RawDescriptionHelpFormatter,

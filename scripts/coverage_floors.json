@@ -3,21 +3,21 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 74.6,
-    "missing": 26107
+    "percent": 75.6,
+    "missing": 25351
   },
   "packages": {
     "maxim/<root>": {
-      "percent": 74.8,
-      "missing": 1033
+      "percent": 76.0,
+      "missing": 1009
     },
     "maxim/advisor": {
       "percent": 98.9,
       "missing": 8
     },
     "maxim/agents": {
-      "percent": 74.7,
-      "missing": 1770
+      "percent": 75.8,
+      "missing": 1717
     },
     "maxim/analysis": {
       "percent": 86.9,
@@ -56,7 +56,7 @@
       "missing": 1068
     },
     "maxim/doctor": {
-      "percent": 73.6,
+      "percent": 74.6,
       "missing": 460
     },
     "maxim/embodied_runtime": {
@@ -72,8 +72,8 @@
       "missing": 96
     },
     "maxim/hardware": {
-      "percent": 85.4,
-      "missing": 344
+      "percent": 87.4,
+      "missing": 329
     },
     "maxim/harm": {
       "percent": 40.2,
@@ -88,8 +88,8 @@
       "missing": 60
     },
     "maxim/inference": {
-      "percent": 23.5,
-      "missing": 536
+      "percent": 26.0,
+      "missing": 525
     },
     "maxim/integration": {
       "percent": 76.3,
@@ -108,8 +108,8 @@
       "missing": 737
     },
     "maxim/models": {
-      "percent": 65.9,
-      "missing": 2178
+      "percent": 67.4,
+      "missing": 2110
     },
     "maxim/modes": {
       "percent": 80.6,
@@ -144,8 +144,8 @@
       "missing": 54
     },
     "maxim/runtime": {
-      "percent": 81.4,
-      "missing": 2773
+      "percent": 82.8,
+      "missing": 2607
     },
     "maxim/salience": {
       "percent": 71.0,
@@ -168,22 +168,26 @@
       "missing": 100
     },
     "maxim/tools": {
-      "percent": 71.3,
-      "missing": 1242
+      "percent": 72.3,
+      "missing": 1230
     },
     "maxim/tunnel": {
       "percent": 76.8,
       "missing": 190
     },
     "maxim/utils": {
-      "percent": 68.1,
-      "missing": 2095
+      "percent": 73.1,
+      "missing": 1888
     }
   },
   "files": {
+    "src/maxim/agents/exec_agent_router.py": {
+      "percent": 100.0,
+      "missing": 0
+    },
     "src/maxim/models/language/router.py": {
-      "percent": 78.8,
-      "missing": 233
+      "percent": 81.8,
+      "missing": 204
     },
     "src/maxim/simulation/orchestrator.py": {
       "percent": 76.8,

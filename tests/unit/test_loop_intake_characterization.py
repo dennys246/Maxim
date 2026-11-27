@@ -29,6 +29,8 @@ from typing import Any
 
 import pytest
 
+from maxim.utils.cloud_redaction import text_shape
+
 from tests.policy_helpers import TEST_POLICY
 
 PROBE = "probe_intake"  # the one registered tool
@@ -290,7 +292,13 @@ def test_a_fresh_proposal_is_installed_and_its_next_actions_run_one_per_pass(mon
     assert obs.events == [
         (
             "llm_response",
-            {"tool": PROBE, "confidence": 0.9, "reasoning": "because", "has_plan": False, "requires_approval": False},
+            {  # #1775: the model's reasoning is logged by its shape only
+                "tool": PROBE,
+                "confidence": 0.9,
+                "reasoning": text_shape("because"),
+                "has_plan": False,
+                "requires_approval": False,
+            },
         ),
         ("multi_step_queued", {"count": 2}),
     ]
@@ -307,7 +315,8 @@ def test_the_continuations_are_multi_step_proposals(monkeypatch, tmp_path):
     script = {0: _proposal(next_actions=[{"tool_name": PROBE, "params": {"n": 2}}])}
     obs = _run(monkeypatch, tmp_path, script, steps=4)
     proposed = [d for e, d in obs.events if e == "goal_proposed"]
-    assert [(d["reasoning"], d["confidence"]) for d in proposed] == [("because", 0.9), ("multi_step_continuation", 0.8)]
+    expected = [(text_shape("because"), 0.9), (text_shape("multi_step_continuation"), 0.8)]  # #1775: shapes only
+    assert [(d["reasoning"], d["confidence"]) for d in proposed] == expected
 
 
 def test_an_installed_proposal_records_the_surfaced_tools_it_did_not_choose(monkeypatch, tmp_path):

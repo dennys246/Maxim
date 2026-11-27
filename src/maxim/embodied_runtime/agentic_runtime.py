@@ -7,7 +7,7 @@ DefaultNetwork, CaptureManager, and all related subsystems.
 
 from __future__ import annotations
 
-import json
+import logging
 import os
 import threading
 import time
@@ -60,6 +60,10 @@ class AgenticRuntimeMixin:
     # Always None since the protocol system's deletion (#1436 removed its start-up block, the one
     # assignment that typed it); the readers that remain are #1467's to remove.
     _protocol_registry: Any
+    log: logging.Logger  # set by the host (Selfy.__init__)
+    # The robots.yaml entry the connect used (or None), set once by the host
+    # (selfy.Maxim._resolve_robot_connection, #1806 PR 0); read via getattr.
+    _resolved_robot_config: Any
 
     def _resolve_body_wiring(self, pain_bus: Any, nac: Any) -> "tuple[str | None, Any]":
         """Resolve an optional SEM body to wire into ``build_executor``.
@@ -73,39 +77,17 @@ class AgenticRuntimeMixin:
         ``hardware.config.resolve_body_ref``. A *declared but unresolvable*
         body is operator error — logged loudly — but does NOT crash the live
         robot: we fall back to bodiless so the runtime stays up.
-        """
-        try:
-            from maxim.hardware.config import load_robots_config, resolve_body_ref
 
-            robots_cfg = load_robots_config()
-            robot_id = getattr(self, "_robot_id", None) or getattr(self, "name", None)
-            robot_config = robots_cfg.get(robot_id)
-            if robot_config is None:
-                # No exact id match. Fall back to the primary ONLY when it is
-                # unambiguous — a single robot, or one explicitly marked
-                # primary. The runtime name (e.g. "reachy_mini") routinely
-                # differs from the yaml key (e.g. "primary"), so this fallback
-                # is load-bearing for the default single-robot config. But do
-                # NOT adopt the FIRST of several unmarked robots: in a genuine
-                # multi-robot file that would wire a *foreign* robot's body
-                # onto this runtime. Ambiguous → bodiless + warn.
-                has_explicit_primary = any(r.primary for r in robots_cfg.robots)
-                if len(robots_cfg.robots) == 1 or has_explicit_primary:
-                    robot_config = robots_cfg.get_primary()
-                elif robots_cfg.robots:
-                    self.log.warning(
-                        "robots.yaml has %d robots, none matching id=%r and none "
-                        "marked primary; not guessing a body. Running bodiless.",
-                        len(robots_cfg.robots),
-                        robot_id,
-                    )
-            # Stash for sibling gates that need the same free-form config
-            # dict (the DoA feed's audio_localization opt-out, Stage 2).
-            self._resolved_robot_config = robot_config
-            body_ref = resolve_body_ref(robot_config)
-        except Exception as e:  # config load is best-effort; never block startup
-            self.log.debug("body-ref resolution skipped: %s", e)
-            return None, None
+        The entry is the one the connect used: ``selfy.Maxim`` resolves it
+        once (``_resolve_robot_connection``) and hands it over as
+        ``self._resolved_robot_config``, which this and its sibling readers
+        (the DoA gate, motor binding, ``aut_mode``) read. Nothing here
+        reloads robots.yaml or re-applies the match rule (#1806 PR 0), so a
+        broken file has already raised ``RobotsConfigError`` at connect.
+        """
+        from maxim.hardware.config import resolve_body_ref
+
+        body_ref = resolve_body_ref(getattr(self, "_resolved_robot_config", None))
 
         if body_ref is None:
             return None, None
@@ -340,6 +322,38 @@ class AgenticRuntimeMixin:
             self._tool_pain_bridge = None
         return executor
 
+    def _robot_fear_gate(self, executor: Any) -> tuple[Any, Any]:
+        """The robot's FearAgent and ``executor`` wrapped by it (moved out of ``_start_agentic_runtime``, rule T, #1228
+        review); ``(None, executor)`` when the wiring fails, as before."""
+        # Create FearAgent for safety gating (both DN movement and tool calls)
+        fear_agent = None
+        try:
+            from maxim.agents.fear_agent import FearAgent
+            from maxim.runtime.fear_gate import FearGatedExecutor
+
+            # Pattern-only review, stated: the old getattr(agent, "_llm", None) read an attribute MaximAgent never has,
+            # so the robot's review has always run without an LLM. An LLM review on every robot tool call changes
+            # latency on hardware, so it waits on owner decision #1728 (#1228 review).
+            fear_agent = FearAgent(llm=None)
+            self.log.info("robot FearAgent: pattern-only review; LLM review awaits owner decision #1728")
+            self._fear_agent = fear_agent
+
+            # Wrap executor with FearAgent gating (independent of DefaultNetwork)
+            executor = FearGatedExecutor(executor, fear_agent)
+            self.log.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
+        except Exception as e:
+            warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
+        return fear_agent, executor
+
+    @staticmethod
+    def _share_llm_with_exec_agent(agent: Any, llm_router: Any, llm_worker: Any) -> None:
+        """Hand the runtime's late-built LLM to the agent's ExecAgent (``ExecAgent.adopt_router``, #1228; it used to set
+        ExecAgent's private fields from here). Moved out of ``_start_agentic_runtime`` (rule T)."""
+        # Share LLM backend with ExecAgent to avoid loading a second model
+        # (cleanup #3: double LLM load fix)
+        if llm_worker is not None and hasattr(agent, "exec_agent"):
+            agent.exec_agent.adopt_router(llm_router, llm_worker)
+
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
 
@@ -405,10 +419,11 @@ class AgenticRuntimeMixin:
                 capture_manager = None
 
         _t_mem = time.time()
-        agent = MaximAgent(
+        agent = MaximAgent(  # its LLM is built below and adopted (ExecAgent.adopt_router); none of its own (#1228)
             interests=list(getattr(self, "interests", []) or []),
             data_folder=str(getattr(self, "home_dir", "data") or "data"),
             capture_manager=capture_manager,
+            shared_router=None,
         )
         env = ReachyEnv(repo_root=os.getcwd(), data_dir=str(getattr(self, "home_dir", "data") or "data"))
         state = build_state(max_steps=1_000_000)
@@ -924,32 +939,9 @@ class AgenticRuntimeMixin:
         self._lane_backend_manager = lane_backend_manager
         self.log.info("Bootstrap: LLM worker ready (%.1fms)", (time.time() - _t_llm) * 1000)
 
-        # Share LLM backend with ExecAgent to avoid loading a second model
-        # (cleanup #3: double LLM load fix)
-        if llm_worker is not None and hasattr(agent, "exec_agent"):
-            exec_agent = agent.exec_agent
-            if exec_agent._router is None:
-                exec_agent._router = llm_router
-            if exec_agent._llm_worker is None:
-                exec_agent._llm_worker = llm_worker
-                exec_agent._owns_llm_worker = False
+        self._share_llm_with_exec_agent(agent, llm_router, llm_worker)
 
-        # Create FearAgent for safety gating (both DN movement and tool calls)
-        fear_agent = None
-        try:
-            from maxim.agents.fear_agent import FearAgent
-            from maxim.runtime.fear_gate import FearGatedExecutor
-
-            # Use LLM router if available for deeper code analysis
-            llm_for_fear = getattr(agent, "_llm", None)
-            fear_agent = FearAgent(llm=llm_for_fear)
-            self._fear_agent = fear_agent
-
-            # Wrap executor with FearAgent gating (independent of DefaultNetwork)
-            executor = FearGatedExecutor(executor, fear_agent)
-            self.log.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
-        except Exception as e:
-            warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
+        fear_agent, executor = self._robot_fear_gate(executor)
 
         # Build Default Network for reactive behaviors.
         # PainBus is already constructed inside build_bio_stack (Wave 3) —
@@ -1150,21 +1142,10 @@ class AgenticRuntimeMixin:
         if is_gpu_available():
             return
 
-        # Check whether the configured profile uses llama.cpp (Metal-friendly)
-        llm_config_path = os.path.join(str(getattr(self, "home_dir", "data") or "data"), "util", "llm.json")
-        using_llama_cpp = False
-        try:
-            if os.path.exists(llm_config_path):
-                with open(llm_config_path) as f:
-                    llm_cfg = json.load(f)
-                profile_name = llm_cfg.get("profile", "")
-                profiles = llm_cfg.get("profiles", {})
-                if profile_name in profiles:
-                    using_llama_cpp = profiles[profile_name].get("backend") == "llama_cpp"
-        except Exception as e:
-            self.log.debug("Could not inspect LLM config for backend fallback: %s", e)
+        # Whether the llm.json the loader reads declares a llama.cpp profile (Metal-friendly; #1806 PR 0 round 3)
+        from maxim.models.language.config import configured_profile_uses_llama_cpp
 
-        if using_llama_cpp:
+        if configured_profile_uses_llama_cpp():
             self.log.info("Using llama.cpp backend with native Metal GPU support")
             return
 
@@ -1174,8 +1155,13 @@ class AgenticRuntimeMixin:
         else:
             self.log.warning("No GPU available - agentic runtime will use CPU (slower)")
 
-        os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
         os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
+        if "MAXIM_LLM_PROFILE" in os.environ:  # the operator's profile stands; nothing to announce
+            return
+        # The served model here comes from build_run_router's load_llm_config fallback (a GPU-less box has no large
+        # lane), whose only input for this default is the env, so it reads as a pin: offline a missing default
+        # refuses by name (owner decision V31, fail closed; a GPU-less router from the lane system is #1737).
+        os.environ["MAXIM_LLM_PROFILE"] = "smollm-1.7b-instruct"
         self.log.info("Using CPU-friendly LLM: smollm-1.7b-instruct")
 
     def _stop_agentic_runtime(self, *, timeout: float = 10.0) -> None:

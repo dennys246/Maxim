@@ -105,6 +105,7 @@ from maxim.console.ui_bundle import (
 from maxim.exceptions import StopStillPending
 from maxim.utils.cancellation import clear_stop_request, current_stop, request_stop
 from maxim.utils.deadline import Deadline
+from maxim.utils.net import redact_urls, url_scrubbed
 
 logger = logging.getLogger(__name__)
 
@@ -847,6 +848,13 @@ def _finite(name: str, value: float | None) -> float | None:
     return value
 
 
+def _error_detail(e: BaseException, *, typed: bool = True, prefix: str = "") -> str:
+    """The one way an exception's text becomes an ``HTTPException`` detail or a run-failure event (#1801 S2): URLs
+    reduced, since httpx (and ``apply_mesh_setup(leader_url, ...)``) put the request URL in their errors."""
+    text = f"{type(e).__name__}: {e}" if typed else str(e)
+    return redact_urls(prefix + text)
+
+
 def _run_call(fn: Any, *args: Any, **kwargs: Any) -> Any:
     from maxim.console.run_store import BadCursor, RunNotFound
 
@@ -855,7 +863,7 @@ def _run_call(fn: Any, *args: Any, **kwargs: Any) -> Any:
     except RunNotFound as e:
         raise HTTPException(status_code=404, detail="No such run.") from e
     except BadCursor as e:
-        raise HTTPException(status_code=400, detail=f"Bad cursor: {e}") from e
+        raise HTTPException(status_code=400, detail=_error_detail(e, typed=False, prefix="Bad cursor: ")) from e
 
 
 @api.get(
@@ -1200,7 +1208,7 @@ def post_setup_mesh(body: MeshSetupRequest) -> SetupResult:
     try:
         secret_path, written = apply_mesh_setup(body.leader_url, body.api_key)
     except ConfigurationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail=_error_detail(e, typed=False)) from e
     return SetupResult(
         ok=True,
         placement="mesh",
@@ -1224,7 +1232,7 @@ def post_setup_cloud(body: CloudSetupRequest) -> SetupResult:
             body.provider, body.profile, body.api_key, monthly_budget_usd=body.monthly_budget_usd
         )
     except ConfigurationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail=_error_detail(e, typed=False)) from e
     return SetupResult(
         ok=True,
         placement="cloud",
@@ -1470,7 +1478,7 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: 
         _event_hub.publish(
             "run",
             f"run {run_id} failed",
-            {"run_id": run_id, "status": "failed", "error": f"{type(e).__name__}: {e}"},
+            {"run_id": run_id, "status": "failed", "error": _error_detail(e)},
         )
     finally:
         # After this, late emissions from the campaign's worker-pool threads
@@ -1521,7 +1529,7 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         raise
     except Exception as e:
         logger.exception("talk turn failed")
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+        raise HTTPException(status_code=500, detail=_error_detail(e)) from e
     finally:
         _talk_lock.release()
 
@@ -1568,7 +1576,7 @@ def _post_run_rest() -> RunAccepted:
         raise
     except Exception as e:
         logger.exception("rest failed")
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+        raise HTTPException(status_code=500, detail=_error_detail(e)) from e
     finally:
         _event_hub.set_run(prev_run)
 
@@ -1911,6 +1919,13 @@ class _EventHub:
 
     # ── fan-out (event loop side) ──
     def _fanout(self, subsystem: str, evt: dict[str, Any]) -> None:
+        from maxim.simulation.sim_logger import CONVERSATION_SUBSYSTEMS
+
+        # The one choke point both ``sink`` and ``publish`` reach (#1801 S2): every string in the event is
+        # URL-reduced before any connection sees it, except the conversation sim_log sends whole, so the person sees
+        # full links in the chat (owner, 2026-11-25).
+        if subsystem not in CONVERSATION_SUBSYSTEMS:
+            evt = url_scrubbed(evt)
         with self._lock:
             conns = list(self._conns)
         for conn in conns:

@@ -163,15 +163,7 @@ class ConsolidationMixin:
                 # Keep as full record
                 results["preserved"] += 1
 
-        # Perform compression
-        for memory_id in memories_to_compress:
-            self._compress_memory(memory_id)
-            results["compressed"] += 1
-
-        # Perform removal
-        for memory_id in memories_to_remove:
-            self._remove_memory(memory_id)
-            results["removed"] += 1
+        self._execute_disposals(memories_to_compress, memories_to_remove, results)
 
         # Update stats
         self._stats["consolidations"] = self._stats.get("consolidations", 0) + 1
@@ -217,6 +209,39 @@ class ConsolidationMixin:
                 log_swallowed_exception()
 
         return results
+
+    def _execute_disposals(self, to_compress: list[str], to_remove: list[str], results: dict[str, int]) -> None:
+        """Compress, then remove, the records a sleep pass chose (lock must be held), and count them.
+
+        A full record whose perception holds ``cli_input`` or ``transcript`` (what a person typed or said, and also a
+        tool follow-up the loop feeds back as input) is COMPRESSED instead of removed: #1137's design ages user words
+        through compression, and ``CompressedMemory.heard`` keeps them, bounded. Compression does not raise the
+        retention score, so the compressed record is removed at a later sleep unless something used it in between
+        (recall touches what it returns): one more stage, not a retention floor (#843 removed that for percepts).
+        It skips ``should_compress``'s age gate (the record was already chosen for removal), and a caller-passed
+        ``strategy`` cannot opt out: this is the one execution step every sleep path shares, so the rule lives here
+        rather than in each strategy or each of the four removal decisions. Behaviour tier: innate prior.
+
+        Without it an aged user-words record that scored below ``retention_threshold`` was deleted outright unless it
+        had been promoted to long-term at birth, and that depended on a race: the talk loop ticking before the words
+        arrived made them read as novelty 0 (#1710).
+        """
+        from maxim.memory.types import EpisodicMemory
+
+        compress = list(to_compress)
+        remove: list[str] = []
+        for memory_id in to_remove:
+            record = self._memories.get(memory_id)
+            if isinstance(record, EpisodicMemory) and (record.perception.cli_input or record.perception.transcript):
+                compress.append(memory_id)
+            else:
+                remove.append(memory_id)
+        for memory_id in compress:
+            self._compress_memory(memory_id)
+            results["compressed"] += 1
+        for memory_id in remove:
+            self._remove_memory(memory_id)
+            results["removed"] += 1
 
     def _compress_memory(self, memory_id: str) -> None:
         """Compress a full EpisodicMemory to CompressedMemory (lock must be held)."""
@@ -715,13 +740,7 @@ class ConsolidationMixin:
                 results["preserved"] += 1
 
         # Step 6: Execute compression and removal
-        for memory_id in memories_to_compress:
-            self._compress_memory(memory_id)
-            results["compressed"] += 1
-
-        for memory_id in memories_to_remove:
-            self._remove_memory(memory_id)
-            results["removed"] += 1
+        self._execute_disposals(memories_to_compress, memories_to_remove, results)
 
         # Update stats
         self._stats["consolidations"] = self._stats.get("consolidations", 0) + 1

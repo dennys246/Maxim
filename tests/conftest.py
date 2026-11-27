@@ -377,6 +377,26 @@ _SESSION_SIGINT_HANDLER = signal.getsignal(signal.SIGINT)
 
 
 @pytest.fixture(autouse=True)
+def _restore_log_record_factory():
+    """#1801 R6: ``configure_logging`` installs the URL-redacting record factory, and 14+ test files call it (or
+    ``cli.main``) without restoring it, so one test's factory would shape every later test's records. Save and
+    restore the process factory and the module's chain state around every test."""
+    import logging
+
+    from maxim.utils import logging as maxim_logging
+
+    saved = (
+        logging.getLogRecordFactory(),
+        maxim_logging._chained_factory,
+        maxim_logging._factory_installed_once,
+    )
+    yield
+    logging.setLogRecordFactory(saved[0])
+    maxim_logging._chained_factory = saved[1]
+    maxim_logging._factory_installed_once = saved[2]
+
+
+@pytest.fixture(autouse=True)
 def _clear_stop_request():
     """A process stop request is sticky (#1438): one test's `request_stop` must not make every later loop yield.
 
@@ -651,6 +671,18 @@ def _scrub_ci_event_env(monkeypatch):
     lint test running in that job would otherwise judge its fixture repo against the REAL push. Tests that want an
     event set it themselves (``tests/unit/_push_event_helpers.py::fake_push``)."""
     for name in ("GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_BASE_REF", "PR_TITLE", "PR_BODY"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _scrub_robot_selection_env(monkeypatch):
+    """A test never inherits the operator's robot-selection env (#1806 PR 0).
+
+    ``MAXIM_ROBOT_NAME`` picks the daemon name (and, until PR 1, the robots.yaml entry) on every robot run,
+    ``MAXIM_REACHY_HOST`` is ``maxim-diagnostics``' default host and ``MAXIM_ROBOT_TIMEOUT`` overrides the connect
+    timeout. A leaked value from the developer's shell would make CLI-gate, selfy and diagnostics tests resolve a
+    real robot name or host. Tests that want one set it themselves."""
+    for name in ("MAXIM_ROBOT_NAME", "MAXIM_REACHY_HOST", "MAXIM_ROBOT_TIMEOUT"):
         monkeypatch.delenv(name, raising=False)
 
 

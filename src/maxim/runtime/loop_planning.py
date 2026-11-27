@@ -58,6 +58,7 @@ from maxim.agents.autonomy import APPROVAL_BLOCKED, APPROVAL_NEEDS_PERSON, APPRO
 from maxim.runtime.loop_state import operational_mode
 from maxim.utils.input_source import InputSource
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import redact_urls
 from maxim.utils.structured_logging import log_agentic
 
 if TYPE_CHECKING:
@@ -307,7 +308,7 @@ def _abort_drain(queue: Any, exc: BaseException, *, refuser: _Refuser) -> None:
     while (entry := queue.pop_approved()) is not None:
         _reject(entry, DRAIN_ABORTED)
         rest.append(entry)
-    detail = f"an earlier approved action raised {type(exc).__name__}: {exc}"[:300]
+    detail = redact_urls(f"an earlier approved action raised {type(exc).__name__}: {exc}")[:300]  # reduce, then cut
     for entry in rest:
         try:
             refuser.report_and_book(entry, reason=DRAIN_ABORTED, detail=detail)

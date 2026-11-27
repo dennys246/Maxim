@@ -42,6 +42,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _provenance  # noqa: E402  (scripts/_provenance.py, loaded from THIS tree)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/: _child_env (#1593)
+from _child_env import child_env  # noqa: E402
+
 # Row schema. 2: rows carry record_kind/status, the nested `provenance` block, and `sims` (the echoed
 # evidence of the sim report the run wrote); failed runs are rows with status "failed" (M1b, #1003).
 HARNESS_SCHEMA = 2
@@ -176,7 +179,7 @@ def _run_real(
         except OSError:
             pass
 
-    env = os.environ.copy()
+    env = child_env()
     env["MAXIM_DATA_HOME"] = str(data_home)
     env["MAXIM_LLM_PROFILE"] = model
     env["MAXIM_AUTO_SPAWN_LLM_SERVER"] = "0"

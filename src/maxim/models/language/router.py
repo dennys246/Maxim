@@ -7,14 +7,16 @@ from dataclasses import replace
 from collections.abc import Callable
 from typing import Any
 
+from maxim import _offline
 from maxim.utils.logging import info, log_swallowed_exception, warn
+from maxim.utils.net import redact_urls
 from maxim.utils.optional_deps import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic, log_structured
 from maxim.models.language import call_accounting
 from maxim.models.language.cost_tracker import CostTracker
-from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch
+from maxim.utils.cloud_redaction import CloudRedactionFilter, RedactionResult, note_dispatch, text_shape
 from maxim.utils.cloud_audit import CloudAuditEntry, CloudAuditLogger
 
 # Internal imports — only symbols actually used by LLMRouter
@@ -158,6 +160,11 @@ def _neutralize_stray_frame_markers(text: str) -> str:
     return text
 
 
+# The in-process provider types: the only lanes that run under the offline latch (``_refuse_offline_lanes``).
+_TORCH_TYPES = ("pytorch", "torch", "transformers", "huggingface", "hf")
+_IN_PROCESS_TYPES = frozenset(LLAMA_CPP_PROVIDER_TYPES + _TORCH_TYPES)
+
+
 _segment_split_refused = 0  # tool prompts sent whole to the user message (logged once, then counted)
 
 
@@ -225,6 +232,7 @@ class LLMRouter:
         self._auto_drain_callback = auto_drain_callback
         self._pending_auto_drains: list[tuple[str, str]] = []
         self._providers = self._normalize_providers(self.cfg)
+        self._refuse_offline_lanes("router[build]")
         self._provider_states: dict[str, ProviderState] = {key: ProviderState() for key in self._providers.keys()}
         self._routing_policy = self._load_routing_policy(self.cfg.routing)
         self._cost_tracker = CostTracker(
@@ -409,6 +417,19 @@ class LLMRouter:
         provider_type = self._provider_type(provider_cfg)
         return provider_type in ("anthropic", "claude", "openai", "openai_compatible", "openai_compat")
 
+    def _provider_in_process(self, provider_cfg: dict[str, Any]) -> bool:
+        return self._provider_type(provider_cfg) in _IN_PROCESS_TYPES
+
+    def _refuse_offline_lanes(self, site: str) -> None:
+        """Under the offline latch only in-process lanes run (#1315 item 10, §6 layer 3; V8): a router with any lane
+        that has an endpoint, loopback or peer included, or a cloud SDK refuses. Checked at build and at every dispatch,
+        because a router built before ``engage()`` keeps its live backends."""
+        if not _offline.is_offline():
+            return
+        not_local = sorted(k for k, cfg in self._providers.items() if not self._provider_in_process(cfg))
+        if not_local:
+            _offline.refuse(site, "lanes that are not in-process: " + ", ".join(not_local))
+
     def _provider_n_ctx(self, provider_cfg: dict[str, Any]) -> int:
         try:
             return int(provider_cfg.get("n_ctx", self.cfg.n_ctx))
@@ -450,12 +471,14 @@ class LLMRouter:
 
         provider_cfg = self._providers.get(provider_key, {})
         provider_type = self._provider_type(provider_cfg)
+        if _offline.is_offline() and not self._provider_in_process(provider_cfg):
+            _offline.refuse("router[backend]", f"{provider_key} ({provider_type}) is not in-process")
 
         # Local backends
         if provider_type in LLAMA_CPP_PROVIDER_TYPES:
             cfg = self._build_provider_config(provider_cfg)
             backend = _LlamaCppBackend(cfg)
-        elif provider_type in ("pytorch", "torch", "transformers", "huggingface", "hf"):
+        elif provider_type in _TORCH_TYPES:
             from maxim.models.language.transformers_backend import _PyTorchTransformersBackend
 
             cfg = self._build_provider_config(provider_cfg)
@@ -740,7 +763,7 @@ class LLMRouter:
         if state is None:
             return
         state.consecutive_errors += 1
-        state.last_error = error[:200]
+        state.last_error = redact_urls(error)[:200]  # reduce, then cut (#1801): report.json's provider failures read it
         backoff = min(60.0, 1.0 * (2 ** max(state.consecutive_errors - 1, 0)))
         state.backoff_until = time.time() + backoff
 
@@ -1020,9 +1043,14 @@ class LLMRouter:
         if yield_requested():
             logger.info("LLM call refused: a process stop is requested")
             return "", None
+        self._refuse_offline_lanes("router[dispatch]")
         if abandons_on_stop():
-            return self._complete_text_dispatch(system, user, **kwargs)
-        return self._complete_text_abandonable(system, user, kwargs)
+            result = self._complete_text_dispatch(system, user, **kwargs)
+        else:
+            result = self._complete_text_abandonable(system, user, kwargs)
+        if result[0]:  # #1775: every reply is logged here, by its shape only (it can quote a PRIVATE tool's output)
+            logger.debug("LLM reply: %s", text_shape(result[0]))
+        return result
 
     def _complete_text_abandonable(
         self, system: str, user: str, kwargs: dict[str, Any]
@@ -1965,8 +1993,11 @@ class LLMRouter:
         Call this after other initialization is complete. The model loading
         happens in a background thread so it doesn't block startup.
 
-        Returns True if warmup was initiated, False if LLM is disabled or the router was unloaded.
+        Returns True if warmup was initiated, False if LLM is disabled or the router was unloaded. Under the offline
+        latch a router with a lane that is not in-process refuses here, in the caller's thread, not in the warmup
+        thread (#1315 item 10a).
         """
+        self._refuse_offline_lanes("router[warmup]")
         if not self.enabled():
             return False
         with self._backend_lock:
@@ -1977,12 +2008,21 @@ class LLMRouter:
         import threading
 
         def _warmup_thread():
+            from maxim.exceptions import SECURITY_REFUSALS
+
             try:
                 self._warm_default_backend()
+            except SECURITY_REFUSALS as refusal:
+                # A remembered offline refusal (a model it may not fetch, #1315 item 10b): booked once, said here;
+                # the next dispatch re-raises it typed. The finally still sets the ready event.
+                self._warmup_failed = True
+                warn("LLM warmup refused: %s", refusal)
             except Exception as e:  # a raising warmup is a failed one, never "ready" (it used to kill the thread)
                 self._warmup_failed = True
                 warn("LLM warmup failed: %s", e)
-                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+                log_agentic(
+                    "llm_router", "error", {"context": "warmup", "error": redact_urls(str(e))[:50]}, level="WARNING"
+                )
             finally:
                 with self._backend_lock:
                     self._warmups_running -= 1
@@ -2036,7 +2076,9 @@ class LLMRouter:
                 success = True
             except Exception as e:
                 warn("LLM warmup failed: %s", e)
-                log_agentic("llm_router", "error", {"context": "warmup", "error": str(e)[:50]}, level="WARNING")
+                log_agentic(
+                    "llm_router", "error", {"context": "warmup", "error": redact_urls(str(e))[:50]}, level="WARNING"
+                )
         self._warmup_failed = not success
         return backend
 
@@ -2205,7 +2247,8 @@ Return JSON exactly like:
 
         Raises:
             ModelInferenceError: the router is disabled, the dispatch raised, or it produced no text (every provider
-                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` propagates as itself.
+                failed, the session cost ceiling, a held inference lock). ``LeaderRefusal`` and ``OfflineRefusal``
+                propagate as themselves.
             LLMCallStopped: (a ``ModelInferenceError``) no text while a process stop is requested: the call was
                 refused or abandoned at the stop (#1438 PR 1c). A real failure that coincides with a stop reads as
                 one too; the process is stopping either way.
@@ -2223,7 +2266,7 @@ Return JSON exactly like:
                 max_tokens=int(max_tokens),
                 request_context=request_context,
             )
-        except LeaderRefusal:
+        except (LeaderRefusal, _offline.OfflineRefusal):
             raise
         except Exception as e:
             raise ModelInferenceError(f"LLM inference failed: {e}", model_name=self.model_name) from e
@@ -2316,16 +2359,13 @@ Return JSON exactly like:
             thinking=thinking,
             stream=stream,
         )
-        if text:
-            logger.debug("LLM raw response (first 200 chars): %s", text[:200] if len(text) > 200 else text)
-
         from maxim.utils.cancellation import yield_requested
 
         if not text and yield_requested():
             return None  # refused or abandoned at a process stop (logged by _complete_text), not a model failure
         obj = _extract_json_object(text)
         if not isinstance(obj, dict):
-            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text[:100] if text else "empty")
+            warn("LLM returned non-dict: %s (raw text was: %s)", type(obj), text_shape(text) if text else "empty")
             return None
 
         if usage:
@@ -2395,8 +2435,6 @@ Return JSON exactly like:
 
         # Note: Response length is controlled by max_tokens in config
         # No truncation here - let the full response through
-
-        logger.debug("LLM answer_only response: %s", answer[:500] if len(answer) > 500 else answer)
 
         # Stage 2: Wrap in JSON programmatically (no LLM needed)
         # Escape the answer for JSON
@@ -2491,9 +2529,6 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
             provider_hint=provider_hint,
             request_context=request_context,
         )
-        if text:
-            logger.debug("LLM tool_response raw (first 300 chars): %s", text[:300] if len(text) > 300 else text)
-
         if not text or not text.strip():
             warn("LLM returned empty tool response")
             return None
@@ -2528,7 +2563,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
                     # Extract and unescape the message
                     extracted_msg = msg_match.group(1).replace('\\"', '"')
                     if extracted_msg and len(extracted_msg) > 10:
-                        info("Salvaged message from failed JSON parse: %s", extracted_msg[:50])
+                        info("Salvaged message from failed JSON parse: %s", text_shape(extracted_msg))
                         return {
                             "action": {
                                 "tool_name": "respond",
@@ -2598,7 +2633,7 @@ Respond with ONLY a valid JSON object. No text before or after the JSON."""
                 synthetic_plan = f"I'd like to execute the '{tool_name}' action.\n\nMay I proceed?"
 
             if synthetic_plan:
-                info("Generated synthetic proposal for PLANNING mode: %s", synthetic_plan[:100])
+                info("Generated synthetic proposal for PLANNING mode: %s", text_shape(synthetic_plan))
                 obj["_plan_text"] = synthetic_plan
                 obj["_requires_approval"] = True
 

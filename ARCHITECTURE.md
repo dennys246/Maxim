@@ -265,10 +265,12 @@ list in `models/language/config.py::_llm_config_candidates`):
 1. `MAXIM_LLM_CONFIG` environment variable path
 2. `~/.maxim/config/llm.json` (the documented user location — the CLI,
    downloader, and docs all point here)
-3. `./data/util/llm.json` (current working directory)
-4. `./llm.json` (current working directory)
-5. Repo root `data/util/llm.json`
-6. Repo root `llm.json`
+3. Repo root `data/util/llm.json` (a source checkout only)
+4. Repo root `llm.json` (a source checkout only)
+
+No working-directory candidate since #1806: an agent working there could plant one to raise its own budget
+(`./llm.json` found there is ignored with a WARNING), and `<data home>/config/llm.json` is a control-plane file the
+agent's file tools cannot write.
 
 When the winning file shadows a lower-priority one that also exists, an
 INFO line says which file won (once per process). The downloader's

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from maxim.doctor.platform_detect import PlatformInfo, detect_wsl_ip
@@ -313,6 +314,32 @@ def check_llm_model_active() -> CheckResult:
 # ─── environment variable config ───────────────────────────────────────────
 
 
+def _role_row(cfg: Any, env_name: str) -> CheckResult:
+    """``check_resolved_config``'s ``role`` row (moved out for rule T, #1315 item 10a).
+
+    The role's real source, not the CLI's own startup export of it (which read as source=env in `maxim doctor` and
+    as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1)."""
+    import os as _os
+
+    from maxim.runtime.role import resolved_role
+
+    role_value, role_source = resolved_role()
+    cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
+    if cfg_role is not None and cfg_role != role_value:
+        # An exported role overriding config.json warns, like every other env-shadowed row.
+        return CheckResult(
+            name="role",
+            status="warn",
+            message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
+            fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
+        )
+    return CheckResult(
+        name="role",
+        status="info" if role_source == "default" else "ok",  # as every row: a default is info
+        message=f"{role_value}  [source={role_source}]",
+    )
+
+
 def check_resolved_config() -> list["CheckResult"]:
     """C5 of config_unification.md: "Resolved Config" doctor section.
 
@@ -341,6 +368,7 @@ def check_resolved_config() -> list["CheckResult"]:
     """
     from maxim.runtime.config_loader import (
         _FIELD_TO_ENV,
+        SETTABLE_FIELDS,
         _env_is_set,
         config_path,
         load_config,
@@ -384,34 +412,11 @@ def check_resolved_config() -> list["CheckResult"]:
     # Walk every absorbed field
     import os as _os
 
-    for field_path in sorted(_FIELD_TO_ENV.keys()):
-        env_name = _FIELD_TO_ENV[field_path]
-        env_present = _env_is_set(env_name)
+    for field_path in sorted(SETTABLE_FIELDS):
+        env_name = _FIELD_TO_ENV.get(field_path, "")  # "" for a config-only field (llm.offline): no env layer
+        env_present = bool(env_name) and _env_is_set(env_name)
         if field_path == "role":
-            # The role's real source, not the CLI's own startup export of it (which read as source=env in
-            # `maxim doctor` and as a default in `maxim.diagnose()` -- one question, two answers; 1.3.1).
-            from maxim.runtime.role import resolved_role
-
-            role_value, role_source = resolved_role()
-            cfg_role = _read_config_for_doctor(cfg, "role") if role_source == "env_var" else None
-            if cfg_role is not None and cfg_role != role_value:
-                # An exported role overriding config.json warns, like every other env-shadowed row.
-                results.append(
-                    CheckResult(
-                        name="role",
-                        status="warn",
-                        message=f"{role_value}  [source=env_var, shadows config.json={cfg_role}]",
-                        fix=_shadow_fix("role", env_name, _os.environ.get(env_name, "")),
-                    )
-                )
-            else:
-                results.append(
-                    CheckResult(
-                        name="role",
-                        status="info" if role_source == "default" else "ok",  # as every row: a default is info
-                        message=f"{role_value}  [source={role_source}]",
-                    )
-                )
+            results.append(_role_row(cfg, env_name))
             continue
 
         try:
@@ -2394,6 +2399,109 @@ def check_disk_space() -> CheckResult:
     )
 
 
+def _claimed_by_a_distribution(pkg_dir: Path) -> bool:
+    """True when an installed distribution's RECORD lists ``<pkg_dir>/__init__.py`` (a real, non-editable install)."""
+    from importlib import metadata
+
+    target = (pkg_dir / "__init__.py").resolve()
+    for dist in metadata.distributions():
+        for file in dist.files or ():
+            if file.name == "__init__.py" and file.parent.name == pkg_dir.name:
+                try:
+                    if Path(str(dist.locate_file(file))).resolve() == target:
+                        return True
+                except (OSError, RuntimeError, NotImplementedError):
+                    continue  # a distribution whose files cannot be located claims nothing
+    return False
+
+
+def _child_maxim_dir(timeout: float = 60.0) -> Path | str:
+    """Where a child started like Maxim's own spawns (``child_env()``) resolves ``maxim``; the error text on failure."""
+    import subprocess
+    import sys
+
+    from maxim._offline import OfflineRefusal
+    from maxim.utils.child_env import child_env
+
+    try:
+        out = subprocess.run(
+            [sys.executable, "-c", "import maxim, sys; sys.stdout.write(maxim.__file__)"],
+            env=child_env(),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired, OfflineRefusal) as e:
+        return f"{type(e).__name__}: {e}"
+    if out.returncode != 0 or not out.stdout.strip():
+        lines = (out.stderr or "").strip().splitlines()
+        return lines[-1][:200] if lines else f"exit {out.returncode}, no output"
+    return Path(out.stdout.strip()).resolve().parent
+
+
+def check_maxim_install(site_dirs: tuple[str, ...] | None = None) -> CheckResult:
+    """Fail when the ``maxim`` this process or its children import is not the one meant to run (#1593).
+
+    Two ways it goes wrong:
+    - **A stray copy in site-packages.** No distribution's RECORD claims it (a ``pip install`` once left one on
+      the rig), or it shadows an editable install. A path-style editable install appends its ``src`` AFTER
+      site-packages, so the stray copy wins even in the top-level process. That is how pymaxim 1.3.2 ran on the
+      rig from 2026-10-16 to 2026-11-03.
+    - **A checkout whose children import something else.** ``maxim`` runs from a checkout (a ``PYTHONPATH``), and
+      a child started the way Maxim's spawns start it (``child_env()``) resolves another copy.
+
+    A normal ``pip install``, which some distribution's RECORD claims, is fine.
+    """
+    from pathlib import Path
+
+    import maxim
+    from maxim.utils.child_env import own_site_dirs
+
+    name = "maxim install"
+    imported = Path(maxim.__file__).resolve().parent
+    roots = [Path(d) for d in (own_site_dirs() if site_dirs is None else site_dirs)]
+    if any(imported.is_relative_to(root) for root in roots):
+        if _claimed_by_a_distribution(imported):
+            return CheckResult(name=name, status="ok", message=f"installed package at {imported}")
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=(
+                f"maxim is imported from {imported}, which no installed package claims; a stray copy there "
+                "shadows any editable install or checkout"
+            ),
+            fix=f"Move it aside (`mv {imported} {imported}.stray`), then reinstall: `pip install -e .` in the checkout",
+        )
+    strays = [root / "maxim" for root in roots if (root / "maxim" / "__init__.py").is_file()]
+    if strays:
+        stray = strays[0]
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=(
+                f"maxim runs from {imported}, but another copy sits at {stray}; a child process or a restart "
+                "that inherits a .pth-rewritten PYTHONPATH would import that copy instead"
+            ),
+            fix=(
+                f"If `pip show pymaxim` lists a non-editable install, `pip uninstall pymaxim` and reinstall with "
+                f"`pip install -e .`; if no package claims {stray}, move it aside: `mv {stray} {stray}.stray`"
+            ),
+        )
+    child = _child_maxim_dir()
+    if isinstance(child, str):
+        return CheckResult(
+            name=name, status="warn", message=f"checkout at {imported}; a child could not import maxim: {child}"
+        )
+    if child != imported:
+        return CheckResult(
+            name=name,
+            status="fail",
+            message=f"maxim runs from {imported}, but a child process imports {child}",
+            fix="Make the checkout the venv's install (`pip install -e .` there), or export PYTHONPATH=<checkout>/src (absolute)",
+        )
+    return CheckResult(name=name, status="ok", message=f"checkout at {imported}; children import the same tree")
+
+
 def check_ram_headroom() -> CheckResult:
     """Report available system RAM."""
     try:
@@ -3446,99 +3554,83 @@ def check_user_profiles() -> CheckResult:
 # ─── robot checks (docs/plans/archive/doctor_robot_reachable.md) ────────────────────
 
 
-def _parse_major_minor(version: str) -> tuple[int, int] | None:
-    try:
-        parts = version.split(".")
-        return (int(parts[0]), int(parts[1]))
-    except (ValueError, IndexError, AttributeError):
-        return None
-
-
-def _robot_sdk_version() -> tuple[int, int] | None:
-    """(major, minor) of the locally installed reachy-mini SDK, or None.
-
-    Package metadata, not ``__version__`` — pre-1.5 (zenoh-era) SDKs have no
-    ``__version__`` attribute, so metadata is the only cross-era probe.
-    """
-    try:
-        from importlib.metadata import version
-
-        return _parse_major_minor(version("reachy-mini"))
-    except Exception:  # noqa: BLE001 - not installed / metadata unreadable
-        return None
-
-
 def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
-    """Reachability + era coherence for one configured robot.
+    """Reachability + era coherence for one configured robot, through the one daemon probe.
 
-    Probe order mirrors the hardware-validated sequence
-    (docs/embodiment/reachy_mini/troubleshooting.md): resolve → TCP :8000 →
-    GET /api/daemon/status → era/pin coherence.
+    ``hardware/reachy/probe.py::probe_daemon`` runs the hardware-validated sequence
+    (docs/embodiment/reachy_mini/troubleshooting.md): resolve -> TCP :8000 -> GET /api/daemon/status ->
+    era/pin coherence -> state. This function only grades its outcome into one row, and reports ``ok`` only when
+    ``refusal`` agrees nothing would refuse. Doctor never actuates and never starts a tunnel: a non-Reachy entry,
+    a ``tunnel:`` entry and a ``localhost_only`` entry are reported as info, checked at connect.
     """
-    import socket
+    from maxim.hardware.reachy import probe as reachy_probe
+
+    from maxim import _offline
 
     name = f"robot:{robot.robot_id}"
+    if _offline.is_offline():  # every probe below dials or resolves: say so per robot, before any of them
+        return CheckResult(name, "info", "refused (offline): the robot probe needs the network", retry_id="robot")
+    config = robot.config if isinstance(robot.config, dict) else {}
+    if robot.robot_type != "reachy_mini":
+        return CheckResult(name, "info", f"type {robot.robot_type!r}: not a networked Reachy Mini, so no daemon probe")
+    if config.get("tunnel"):
+        return CheckResult(name, "info", "tunnel entry: checked at connect (doctor does not start the SSH tunnel)")
+    if str(config.get("connection_mode", "")).lower() == "localhost_only":
+        return CheckResult(
+            name,
+            "info",
+            "localhost_only entry: checked at connect (onboard, or through a tunnel doctor does not start)",
+        )
 
-    # 1. Resolve — config host: verbatim; else IPv4-only gethostbyname of
-    # <robot_name>.local (sidesteps the getaddrinfo/IPv6-first flake).
-    host = robot.config.get("host")
-    if not host:
-        mdns_name = str(robot.config.get("robot_name", "reachy_mini")).replace("_", "-") + ".local"
-        old_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(2.0)
-        try:
-            host = socket.gethostbyname(mdns_name)
-        except OSError:
-            fix = f"set host: <robot-ip> in ~/.maxim/robots.yaml (DHCP reservation recommended); {mdns_name} did not resolve"
-            if info.os == "macos":
-                fix = (
-                    "grant this terminal Local Network permission (System Settings → "
-                    "Privacy & Security → Local Network) and/or " + fix
-                )
-            return CheckResult(name, "fail", f"{mdns_name} does not resolve", fix=fix, retry_id="robot")
-        finally:
-            socket.setdefaulttimeout(old_timeout)
+    # Address: config host: verbatim, else <robot_name>.local (PR 0 keeps doctor's own choice).
+    host = config.get("host")
+    target = str(host) if host else str(config.get("robot_name", "reachy_mini")).replace("_", "-") + ".local"
+    # per stage, as the old checks (review E2); the IPv6 lookup only for a typed host:, as the run (review D1)
+    outcome = reachy_probe.probe_daemon(target, deadline_s=2.0, explicit_host=bool(host))
 
-    # 2. TCP :8000 — the single WS-era control port (FastAPI + /ws/sdk).
-    try:
-        with socket.create_connection((host, 8000), timeout=2.0):
-            pass
-    except OSError:
+    if reachy_probe.connects_as_given(outcome):
+        return CheckResult(name, "info", f"{target}: {outcome.error}; the robot run still connects to it as given")
+    if outcome.failure == "resolve":
+        if host:
+            fix = f"check host: {target} in {_robots_yaml_path_text()} (an IP is more reliable than a name)"
+        else:
+            fix = f"set host: <robot-ip> in {_robots_yaml_path_text()} (DHCP reservation recommended); {target} did not resolve"
+        if info.os == "macos":
+            fix = (
+                "grant this terminal Local Network permission (System Settings → "
+                "Privacy & Security → Local Network) and/or " + fix
+            )
+        return CheckResult(name, "fail", f"{target} does not resolve", fix=fix, retry_id="robot")
+    shown = target if host else outcome.address
+    if outcome.failure == "tcp":
         return CheckResult(
             name,
             "fail",
-            f"daemon port {host}:8000 unreachable",
+            f"daemon port {shown}:8000 unreachable",
             fix=(
-                f"ssh pollen@{host} → systemctl status reachy-mini-daemon; after a Wi-Fi "
+                f"ssh pollen@{shown} → systemctl status reachy-mini-daemon; after a Wi-Fi "
                 "change, reboot the robot (the daemon binds at startup)"
                 + ("; on macOS also check Local Network permission" if info.os == "macos" else "")
             ),
             retry_id="robot",
         )
-
-    # 3. Daemon status (version + backend state).
-    daemon_version: str | None = None
-    daemon_state: str | None = None
-    try:
-        from maxim.utils import http as maxim_http
-
-        status = maxim_http.fetch_url(f"http://{host}:8000/api/daemon/status", timeout=2.0).json()
-        daemon_version = str(status.get("version", "")) or None
-        daemon_state = str(status.get("state", "")) or None
-    except Exception:  # noqa: BLE001
+    if outcome.failure == "status":
         return CheckResult(
             name,
             "warn",
-            f"{host}:8000 open but /api/daemon/status unreadable (pre-1.5 daemon or endpoint moved)",
+            f"{shown}:8000 open but /api/daemon/status unreadable (pre-1.5 daemon or endpoint moved)",
             fix="check the daemon era: docs/embodiment/reachy_mini/troubleshooting.md",
             retry_id="robot",
         )
+    return _grade_daemon(name, shown, outcome, reachy_probe.refusal(outcome, robot))
 
-    # 4. Era / pin coherence — daemon vs local SDK (v1.5.0 zenoh→WS pivot).
-    sdk_mm = _robot_sdk_version()
-    daemon_mm = _parse_major_minor(daemon_version or "")
-    state_note = f", state={daemon_state}" if daemon_state else ""
-    if sdk_mm is None:
+
+def _grade_daemon(name: str, shown: str | None, outcome: Any, refused: str | None) -> CheckResult:
+    """The era / minor / state rows for a daemon whose status was read; ``ok`` only when nothing refuses."""
+    daemon_version = outcome.version
+    state_note = f", state={outcome.state}" if outcome.state else ""
+    sdk_mm = outcome.sdk_version
+    if outcome.era == "sdk_missing":
         return CheckResult(
             name,
             "warn",
@@ -3546,7 +3638,7 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
             fix="pip install 'reachy-mini[gstreamer]>=1.8.3,<2.0' (in the interpreter you run Maxim from)",
             retry_id="robot",
         )
-    if daemon_mm is not None and ((sdk_mm < (1, 5)) != (daemon_mm < (1, 5)) or sdk_mm < (1, 5)):
+    if outcome.era == "era_mismatch":
         return CheckResult(
             name,
             "fail",
@@ -3555,7 +3647,7 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
             fix=(f'pip install "reachy_mini=={daemon_version}" — see docs/embodiment/reachy_mini/troubleshooting.md'),
             retry_id="robot",
         )
-    if daemon_mm is not None and daemon_mm != sdk_mm:
+    if outcome.era == "minor_drift":
         return CheckResult(
             name,
             "warn",
@@ -3563,38 +3655,70 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
             fix=f'pip install "reachy_mini=={daemon_version}" to match exactly',
             retry_id="robot",
         )
-    if daemon_state and daemon_state != "running":
+    if outcome.state and outcome.state != "running":
         return CheckResult(
             name,
             "warn",
-            f"daemon up (version {daemon_version}) but state={daemon_state} — WS connects will be refused (1013)",
-            fix=f"journalctl -u reachy-mini-daemon on the robot (ssh pollen@{host})",
+            f"daemon up (version {daemon_version}) but state={outcome.state} — WS connects will be refused (1013)",
+            fix=f"journalctl -u reachy-mini-daemon on the robot (ssh pollen@{shown})",
+            retry_id="robot",
+        )
+    if refused is not None:
+        return CheckResult(
+            name,
+            "warn",
+            f"reachable at {shown}:8000 but a strict connect would refuse it: {refused}",
+            fix="docs/embodiment/reachy_mini/troubleshooting.md",
             retry_id="robot",
         )
     return CheckResult(
         name,
         "ok",
-        f"reachable at {host}:8000 (daemon {daemon_version or '?'}{state_note}, SDK match)",
+        f"reachable at {shown}:8000 (daemon {daemon_version or '?'}{state_note}, SDK match)",
     )
 
 
+def _robots_yaml_path_text() -> str:
+    """The robots.yaml path this run reads (``<data_home>/robots.yaml``, so ``MAXIM_DATA_HOME`` is honoured), for
+    fix texts. When the data home itself cannot be resolved, the load row already names why, so the text stays
+    generic rather than naming a path the run would not read."""
+    from maxim.exceptions import RobotsConfigError
+    from maxim.hardware.config import ROBOTS_YAML_NAME, robots_yaml_data_home
+
+    try:
+        return str(robots_yaml_data_home() / ROBOTS_YAML_NAME)
+    except RobotsConfigError:  # reported by check_robot_reachable's load row; this is display text only
+        return f"<data home>/{ROBOTS_YAML_NAME}"
+
+
 def check_robot_reachable(info: PlatformInfo) -> list[CheckResult]:
-    """Per-robot reachability + era coherence for ~/.maxim/robots.yaml entries.
+    """Per-robot reachability + era coherence for the ``<data_home>/robots.yaml`` entries.
 
     Full spec: docs/plans/archive/doctor_robot_reachable.md. The gate NEVER fails —
     a machine without robots must not fail doctor because of this check.
     """
+    from maxim.exceptions import RobotsConfigError
+
     try:
         from maxim.hardware.config import load_robots_config
 
         cfg = load_robots_config()
-    except Exception as e:  # noqa: BLE001 - malformed yaml etc.
+    except RobotsConfigError as e:  # a malformed file, a relative or unresolvable data home (#1806 PR 0)
         return [
             CheckResult(
                 "robots.yaml",
                 "warn",
                 f"could not load robots config: {e}",
-                fix="fix ~/.maxim/robots.yaml (YAML syntax / schema)",
+                fix=f"{e.fix_hint} ({_robots_yaml_path_text()})",
+            )
+        ]
+    except Exception as e:  # noqa: BLE001 - anything else: reported as the row below
+        return [
+            CheckResult(
+                "robots.yaml",
+                "warn",
+                f"could not load robots config: {e}",
+                fix=f"fix {_robots_yaml_path_text()} (YAML syntax / schema)",
             )
         ]
     if not cfg.robots:
@@ -3602,10 +3726,25 @@ def check_robot_reachable(info: PlatformInfo) -> list[CheckResult]:
             CheckResult(
                 "robots",
                 "info",
-                "no robots configured — skipping robot checks (add ~/.maxim/robots.yaml to enable)",
+                f"no robots configured — skipping robot checks (add {_robots_yaml_path_text()} to enable)",
             )
         ]
-    return [_check_one_robot(info, robot) for robot in cfg.robots]
+    return [_check_one_robot_never_raises(info, robot) for robot in cfg.robots]
+
+
+def _check_one_robot_never_raises(info: PlatformInfo, robot: Any) -> CheckResult:
+    """One robot's row; an unexpected error becomes that robot's warn row, never a failed doctor run."""
+    try:
+        return _check_one_robot(info, robot)
+    except Exception as e:  # noqa: BLE001 - reported as the row below, never swallowed
+        logger.warning("robot check for %s raised: %s", getattr(robot, "robot_id", "?"), e, exc_info=True)
+        return CheckResult(
+            f"robot:{getattr(robot, 'robot_id', '?')}",
+            "warn",
+            f"robot check raised {type(e).__name__}: {e}",
+            fix="re-run with MAXIM_LOG_FILE set and report the traceback",
+            retry_id="robot",
+        )
 
 
 def _configured_peer_key_for(peer_url: str) -> str | None:
@@ -3671,6 +3810,7 @@ def run_all_checks(
         check_tier_effectiveness(),
         check_disk_space(),
         check_ram_headroom(),
+        check_maxim_install(),
         check_storage_footprint(),
         check_user_profiles(),
     ]
@@ -3803,6 +3943,7 @@ __all__ = [
     "check_loopback_lane_auth",
     "check_disk_space",
     "check_ram_headroom",
+    "check_maxim_install",
     "check_inference_coherence",
     "check_peer_url_reachable",
     "check_peer_key_set",
@@ -3818,3 +3959,66 @@ __all__ = [
     "check_mesh_nodes",
     "run_all_checks",
 ]
+
+
+# ─── offline (#1315 item 10a, owner decision V21) ──────────────────────────
+# Under the offline latch a check that reaches for a socket or a subprocess raises ``OfflineRefusal``. Every check
+# here is wrapped once, so that refusal becomes that check's own "refused (offline)" row and the rest of doctor
+# runs: the operator sees what offline blocks, instead of a traceback at the first network check.
+
+
+def _refused_offline_row(fn: Any) -> Any:
+    import dataclasses
+    import functools
+    import threading
+
+    from maxim import _offline
+
+    returns_list = str(getattr(fn, "__annotations__", {}).get("return", "")).startswith("list")
+    name = fn.__name__.removeprefix("check_").replace("_", " ")
+
+    def refused(detail: object) -> Any:
+        row = CheckResult(name=name, status="info", message=f"refused (offline): {detail}")
+        return [row] if returns_list else row
+
+    def mark(row: CheckResult, detail: str) -> CheckResult:
+        if row.status == "ok":
+            return row
+        return dataclasses.replace(row, status="info", message=f"refused (offline): {detail} — {row.message}")
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        booked = len(_offline.ledger())
+        try:
+            result = fn(*args, **kwargs)
+        except _offline.OfflineRefusal as e:
+            return refused(e)
+        # A check that caught the refusal itself reports it as its own verdict ("nothing responding", "probe
+        # failed"), which offline is not. The ledger (this thread's entries only) says the latch answered. A
+        # single-row check's row keeps its name and message, marked as refused rather than failed. A list check
+        # cannot say which of its rows the latch answered (one robot's probe, another's real failure), so its rows
+        # stand and one "refused (offline)" row is added; a per-item probe that knows (``_check_one_robot``) says
+        # so itself, by name.
+        mine = [r for r in _offline.ledger()[booked:] if r.thread == threading.get_ident()]
+        if not mine:
+            return result
+        detail = f"{mine[-1].event}: {mine[-1].detail}"
+        if isinstance(result, list):
+            return [*result, CheckResult(name=name, status="info", message=f"refused (offline): {detail}")]
+        return mark(result, detail) if isinstance(result, CheckResult) else result
+
+    return wrapper
+
+
+def _wrap_checks_for_offline() -> None:
+    import inspect
+
+    module = globals()
+    for attr, value in list(module.items()):
+        if not (inspect.isfunction(value) and value.__module__ == __name__):
+            continue
+        if attr.startswith("check_"):
+            module[attr] = _refused_offline_row(value)
+
+
+_wrap_checks_for_offline()

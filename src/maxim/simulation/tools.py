@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.tools.base import Effect, Tool, ToolErrorKind, ToolOutput, current_policy
 from maxim.tools.registry import EffectAdmission
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import redact_urls
 
 if TYPE_CHECKING:
     from maxim.simulation.introspection import Observer
@@ -1377,6 +1378,9 @@ class SpawnSubSimulationTool(Tool):
     returns a structured sub-report. The sub-AUT stays alive for potential
     extend_simulation follow-ups (lazy cleanup). The next spawn call tears
     down the previous sub-AUT.
+
+    ``llm_router`` is the router the sub-AUT runs on, all of it (its ExecAgent, FearAgent and LLMWorker): the
+    sub-AUT is an agent under test, so the orchestrator hands it the run's AUT router (owner decision A, #1228).
     """
 
     name = "spawn_sub_simulation"
@@ -1480,7 +1484,7 @@ class SpawnSubSimulationTool(Tool):
         except Exception as e:
             sub_report = {
                 "goal": goal,
-                "error": str(e),
+                "error": redact_urls(str(e)),  # returned inside a SUCCESSFUL ToolOutput, so outside D5 (#1801 F3)
                 "turns": 0,
                 "total_actions": 0,
                 "blocked_actions": 0,
@@ -1548,7 +1552,7 @@ class SpawnSubSimulationTool(Tool):
             response_output=sub_response_output,
         )
         sub_engine = build_decision_engine()
-        sub_agent = MaximAgent()
+        sub_agent = MaximAgent(shared_router=self._llm_router)  # the sub-AUT's router (#1228)
         sub_autonomy = AutonomyController(
             initial_level=AutonomyLevel.AUTONOMOUS,
             supervision_policy=SupervisionPolicy(

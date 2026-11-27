@@ -26,7 +26,9 @@ import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, ParamSpec, TypeVar
+from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import url_scrubbed
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,57 @@ def _ensure_sim_bridge_handlers() -> None:
     for handler_id, h in root_jsonl.items():
         if handler_id not in bridge_ids:
             _sim_bridge_logger.addHandler(h)
+
+
+# #1775 (owner, 2026-11-24): subsystems that carry model-written or incoming text, as ``data["text"]`` and, for
+# RESPONSE, SCENE and PERCEPT, as the message itself (DELIBERATION's message is a cycle counter; its text is the
+# reasoning parsed from the reply). SCENE is ``display_scene``: the narrator's prose, and the approval prompt's lines
+# quoting a proposal's reasoning and the agent's question. PERCEPT is the agent's incoming text (in its message only):
+# the narrator's prose arrives as a ``cli`` percept, like the person's typing, and NPC lines and comms messages are
+# percepts too; its ``data["source"]`` stays readable. The sim-session JSONL and the sinks (the console's Talk view, the web
+# ThinkingPanel, the Adventure view) keep the text; the MAXIM_LOG_FILE mirror carries only its shape, because the text
+# can quote a PRIVATE tool's output and the log file is not a display surface. A silent RESPONSE turn (``text`` None)
+# keeps its message: a tool-name summary, not a reply. Value: whether the message is the text.
+_REPLY_SUBSYSTEMS: dict[str, bool] = {"RESPONSE": True, "SCENE": True, "PERCEPT": True, "DELIBERATION": False}
+
+# #1801 (owner, 2026-11-25): the conversation, RESPONSE (the agent's reply) and USER (the person's input), reaches the
+# SINKS (the console's /ws chat) with its URLs whole, so the person sees the full link. Every persisted or logged
+# destination (the trail, the sim JSONL, ``_bridge_to_log_file``, the terminal) still gets the reduced record, and the
+# console's ``_EventHub._fanout`` does not re-reduce these subsystems.
+CONVERSATION_SUBSYSTEMS: frozenset[str] = frozenset({"RESPONSE", "USER"})
+
+
+def _bridge_to_log_file(
+    subsystem: str,
+    message: str,
+    data: dict[str, Any] | None,
+    *,
+    elapsed: float,
+    agent_id: str | None,
+    nickname: str | None,
+) -> None:
+    """Mirror one sim_log record into the unified ``MAXIM_LOG_FILE`` stream (reply text by shape only)."""
+    fields = dict(data or {})
+    if subsystem in _REPLY_SUBSYSTEMS:
+        if _REPLY_SUBSYSTEMS[subsystem] and fields.get("text", message) is not None:
+            message = text_shape(str(message))
+        if isinstance(fields.get("text"), str):
+            fields["text"] = text_shape(fields["text"])
+    _ensure_sim_bridge_handlers()
+    _sim_bridge_logger.info(
+        message,
+        extra={
+            "event": f"sim_{subsystem.lower()}",
+            "data": {
+                "subsystem": subsystem,
+                "message": message,
+                "elapsed_s": round(elapsed, 3),
+                "agent_id": agent_id,
+                "agent": nickname,
+                **fields,
+            },
+        },
+    )
 
 
 # ContextVar for implicit agent_id threading. The agent loop sets this
@@ -624,6 +677,13 @@ def unregister_sim_sink(sink: "Callable[[dict[str, Any]], None]") -> None:
                 break
 
 
+def _sink_record(record: dict[str, Any], raw_message: str, raw_data: dict[str, Any] | None) -> dict[str, Any]:
+    """The record the sinks get: the conversation whole (owner, 2026-11-25, #1801), everything else as reduced."""
+    if record["subsystem"] not in CONVERSATION_SUBSYSTEMS:
+        return record
+    return {**record, "message": raw_message, "data": raw_data or {}}
+
+
 def _dispatch_to_sinks(record: dict[str, Any]) -> None:
     with _sim_sinks_lock:
         sinks = list(_sim_sinks)
@@ -979,6 +1039,14 @@ def sim_log(
     if not _sim_active and not _sim_sinks:
         return
 
+    # #1801 (AB3): REBIND the locals to their URL-reduced values first, so every reader below gets them: the in-memory
+    # trail, the sim JSONL, ``_bridge_to_log_file`` (whose ``text_shape`` must not be computed over raw text, an oracle
+    # for it), the terminal render and the sinks, except the conversation (CONVERSATION_SUBSYSTEMS), which the sinks
+    # get whole (owner, 2026-11-25). ``url_scrubbed`` recurses and stringifies leaves such as an exception object (R8).
+    raw_message, raw_data = message, data
+    message = url_scrubbed(message)
+    data = url_scrubbed(data) if data else data
+
     # Resolve agent_id: explicit parameter > contextvar > None
     if agent_id is None:
         agent_id = _current_agent_id.get(None)
@@ -1012,7 +1080,7 @@ def sim_log(
         record["agent"] = nickname
 
     # Sinks FIRST and unconditionally — see the gate note above.
-    _dispatch_to_sinks(record)
+    _dispatch_to_sinks(_sink_record(record, raw_message, raw_data))
 
     # Everything below is the sim-session trail + terminal rendering, which
     # only exist while a sim owns the logger.
@@ -1049,21 +1117,7 @@ def sim_log(
     # picks up `event` + `data` from the `extra=` dict; we route through a
     # dedicated logger with propagate=False so stdout handlers never see
     # these emissions (they have their own terminal path below).
-    _ensure_sim_bridge_handlers()
-    _sim_bridge_logger.info(
-        message,
-        extra={
-            "event": f"sim_{subsystem.lower()}",
-            "data": {
-                "subsystem": subsystem,
-                "message": message,
-                "elapsed_s": round(elapsed, 3),
-                "agent_id": agent_id,
-                "agent": nickname,
-                **(data or {}),
-            },
-        },
-    )
+    _bridge_to_log_file(subsystem, message, data, elapsed=elapsed, agent_id=agent_id, nickname=nickname)
 
     # `_terminal=False`: record ONLY (sinks + JSONL + bridge, already done
     # above) and skip terminal rendering. Used by the display_* helpers, which
@@ -1122,8 +1176,13 @@ def sim_log(
 
 @_contained
 def sim_percept(source: str, summary: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
-    """Log an incoming percept."""
-    sim_log("PERCEPT", f"👁️ [{source}] {summary}", kwargs if kwargs else None, agent_id=agent_id)
+    """Log an incoming percept.
+
+    ``source`` rides in the data too (#1775), so the MAXIM_LOG_FILE mirror, which logs a PERCEPT's message by shape
+    only, still says where the percept came from. The text itself stays in the message alone: a ``text`` key would be
+    echoed a second time by the terminal renderer's details.
+    """
+    sim_log("PERCEPT", f"👁️ [{source}] {summary}", {"source": source, **kwargs}, agent_id=agent_id)
 
 
 @_contained

@@ -32,6 +32,8 @@ from typing import Any
 
 import numpy as np
 
+from maxim.utils.cloud_redaction import text_shape
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ class PiperTTS:
             cache_key = _cache_key(text, self.sample_rate)
             cached = self._cache.get(cache_key)
             if cached is not None:
-                logger.debug("TTS cache hit for: %s", text[:30])
+                logger.debug("TTS cache hit for: %s", text_shape(text))  # #1775: shape only
                 return cached.copy()  # Return copy to prevent mutation
 
         # Synthesize audio
