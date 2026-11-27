@@ -1991,15 +1991,23 @@ class TestCheckUserProfiles:
 # ─── robot reachability check (docs/plans/archive/doctor_robot_reachable.md) ─────────
 
 
+def _http_connection_error():
+    from maxim.utils.http import HTTPConnectionError
+
+    return HTTPConnectionError("unit test: refused")
+
+
 class TestCheckRobotReachable:
     """Offline matrix for check_robot_reachable — all network/process calls
-    mocked at the ORIGINAL module paths per the doctor testing rule."""
+    mocked at the ORIGINAL module paths per the doctor testing rule. The probe
+    itself is hardware/reachy/probe.py::probe_daemon (#1806): these patches sit
+    below it (socket, fetch_url, the SDK metadata read), so the probe runs."""
 
     @staticmethod
-    def _robots_cfg(host: str | None = "10.6.0.63"):
+    def _robots_cfg(host: str | None = "10.6.0.63", type_: str = "reachy_mini", **config):
         from maxim.hardware.config import RobotsConfig
 
-        cfg = {"robots": {"reachy": {"type": "reachy_mini", "config": {}}}}
+        cfg = {"robots": {"reachy": {"type": type_, "config": dict(config)}}}
         if host is not None:
             cfg["robots"]["reachy"]["config"]["host"] = host
         return RobotsConfig.from_dict(cfg)
@@ -2025,6 +2033,52 @@ class TestCheckRobotReachable:
         assert len(results) == 1
         assert results[0].status == "warn"
 
+    @pytest.fixture
+    def data_home(self, monkeypatch, tmp_path):
+        from maxim.utils import paths
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
+        paths._reset_caches()
+        yield tmp_path
+        paths._reset_caches()
+
+    def test_a_robots_config_error_shows_its_message_hint_and_the_data_home_path(self, data_home):
+        """#1806 PR 0: the loader's typed error reaches the row, and the fix names the file this run reads."""
+        from maxim.exceptions import RobotsConfigError
+
+        with patch("maxim.hardware.config.load_robots_config", side_effect=RobotsConfigError("line 3: bad indent")):
+            (r,) = self._run()
+        assert r.status == "warn" and "line 3: bad indent" in r.message
+        assert RobotsConfigError.fix_hint in r.fix
+        assert str(data_home / "robots.yaml") in r.fix
+        assert "~/.maxim" not in r.fix
+
+    def test_a_relative_data_home_is_a_warn_row_from_the_real_loader(self, monkeypatch):
+        from maxim.utils import paths
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", "relative/home")
+        paths._reset_caches()
+        try:
+            (r,) = self._run()
+        finally:
+            paths._reset_caches()
+        assert r.status == "warn" and "relative" in r.message
+        assert "<data home>/robots.yaml" in r.fix
+
+    def test_the_no_robots_row_names_the_data_home_path(self, data_home):
+        (r,) = self._run()
+        assert r.status == "info" and str(data_home / "robots.yaml") in r.message
+
+    def test_the_resolution_fix_names_the_data_home_path(self, data_home):
+        import socket as socket_mod
+
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg(host=None)),
+            patch("socket.gethostbyname", side_effect=socket_mod.gaierror),
+        ):
+            (r,) = self._run(info=_info(os="linux"))
+        assert str(data_home / "robots.yaml") in r.fix
+
     # ── happy path ────────────────────────────────────────────────────────
     def _status_resp(self, version="1.8.3", state="running"):
         class _R:
@@ -2038,7 +2092,7 @@ class TestCheckRobotReachable:
             patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
             patch("socket.create_connection"),
             patch("maxim.utils.http.fetch_url", return_value=self._status_resp()),
-            patch("maxim.doctor.checks._robot_sdk_version", return_value=(1, 8)),
+            patch("maxim.hardware.reachy.probe.installed_sdk_version", return_value=(1, 8)),
         ):
             (r,) = self._run()
         assert r.status == "ok"
@@ -2085,7 +2139,7 @@ class TestCheckRobotReachable:
         with (
             patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
             patch("socket.create_connection"),
-            patch("maxim.utils.http.fetch_url", side_effect=ConnectionError),
+            patch("maxim.utils.http.fetch_url", side_effect=_http_connection_error()),
         ):
             (r,) = self._run()
         assert r.status == "warn"
@@ -2106,7 +2160,7 @@ class TestCheckRobotReachable:
             patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
             patch("socket.create_connection"),
             patch("maxim.utils.http.fetch_url", return_value=self._status_resp(version=daemon)),
-            patch("maxim.doctor.checks._robot_sdk_version", return_value=sdk),
+            patch("maxim.hardware.reachy.probe.installed_sdk_version", return_value=sdk),
         ):
             (r,) = self._run()
         assert r.status == expected, r.message
@@ -2118,7 +2172,7 @@ class TestCheckRobotReachable:
             patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
             patch("socket.create_connection"),
             patch("maxim.utils.http.fetch_url", return_value=self._status_resp()),
-            patch("maxim.doctor.checks._robot_sdk_version", return_value=None),
+            patch("maxim.hardware.reachy.probe.installed_sdk_version", return_value=None),
         ):
             (r,) = self._run()
         assert r.status == "warn"
@@ -2130,11 +2184,68 @@ class TestCheckRobotReachable:
             patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
             patch("socket.create_connection"),
             patch("maxim.utils.http.fetch_url", return_value=self._status_resp(state="starting")),
-            patch("maxim.doctor.checks._robot_sdk_version", return_value=(1, 8)),
+            patch("maxim.hardware.reachy.probe.installed_sdk_version", return_value=(1, 8)),
         ):
             (r,) = self._run()
         assert r.status == "warn"
         assert "1013" in r.message
+
+    # ── entry kinds doctor does not probe (#1806 PR 0) ────────────────────
+    @pytest.mark.parametrize(
+        ("type_", "config", "needle"),
+        [
+            ("simulated", {}, "not a networked Reachy Mini"),
+            ("reachy_mini", {"tunnel": True}, "checked at connect"),
+            ("reachy_mini", {"connection_mode": "localhost_only"}, "checked at connect"),
+        ],
+    )
+    def test_unprobed_entry_kinds_are_info_and_dial_nothing(self, type_, config, needle):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg(type_=type_, **config)),
+            patch("socket.create_connection") as dial,
+            patch("socket.gethostbyname") as lookup,
+            patch("maxim.utils.http.fetch_url") as fetch,
+        ):
+            (r,) = self._run()
+        assert r.status == "info" and needle in r.message
+        dial.assert_not_called()
+        lookup.assert_not_called()
+        fetch.assert_not_called()
+
+    def test_the_status_read_is_direct_private_and_bounded(self):
+        """The probe reads the status with fetch_url(address_policy="private", strict=True, deadline_s=...)."""
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", return_value=self._status_resp()) as fetch,
+            patch("maxim.hardware.reachy.probe.installed_sdk_version", return_value=(1, 8)),
+        ):
+            (r,) = self._run()
+        assert r.status == "ok"
+        assert fetch.call_args.args[0] == "http://10.6.0.63:8000/api/daemon/status"
+        kw = fetch.call_args.kwargs
+        assert kw["address_policy"] == "private" and kw["strict"] is True
+        assert 0 < kw["deadline_s"] <= 4.0
+
+    def test_ok_needs_the_strict_refusal_to_agree(self):
+        """A daemon whose version is unreadable is not 'SDK match': refusal() says why, so the row warns."""
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", return_value=self._status_resp(version="garbage")),
+            patch("maxim.hardware.reachy.probe.installed_sdk_version", return_value=(1, 8)),
+        ):
+            (r,) = self._run()
+        assert r.status == "warn"
+        assert "version unreadable" in r.message
+
+    def test_an_unexpected_error_is_that_robots_warn_row_not_a_crash(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("maxim.hardware.reachy.probe.probe_daemon", side_effect=RuntimeError("boom")),
+        ):
+            (r,) = self._run()
+        assert r.status == "warn" and "RuntimeError" in r.message and r.retry_id == "robot"
 
     # ── retry contract ────────────────────────────────────────────────────
     def test_every_non_ok_result_carries_retry_id(self):

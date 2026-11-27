@@ -1,105 +1,96 @@
-"""Regression test for the CLI "no meaningful action" gate.
+"""Regression tests for the CLI quick-start gate: menu, server mode, or a run.
 
-The gate at cli.py:_has_action decides whether to enter the main loop or
-print the quick-start banner and exit. It used to check only:
-    --sim, --mode, --robot, MAXIM_ROLE=leader, MAXIM_LLM_ENABLED=1
+The gate decides whether ``maxim`` enters a run or shows the quick-start menu. ``maxim --llm qwen2.5-14b``
+used to exit silently because ``--llm`` set ``args.language_model`` but the gate only checked
+``MAXIM_LLM_ENABLED``. #1806 PR 0 made it read PARSED, EXPLICIT flags only: before, it compared the parsed
+``--robot-name`` (whose argparse default was ``$MAXIM_ROBOT_NAME``) against ``reachy_mini`` and grepped the raw
+argv for ``--robot``, so ``maxim --robot-name reachy_mini`` and ``maxim --robot=reachy_mini`` showed the menu
+while a bare ``maxim`` with ``MAXIM_ROBOT_NAME`` set entered the robot runtime.
 
-That meant `maxim --llm qwen2.5-14b` (without --sim or any other flag)
-silently exited because `--llm` sets args.language_model but not
-MAXIM_LLM_ENABLED. The user's explicit model choice wasn't counted as
-an action.
-
-This test isolates the gate logic so regressions produce a clear
-failure message rather than a behavioral change requiring an end-to-end
-CLI run.
+These tests call the real gate (``cli._quick_start_route`` / ``cli._requested_run_action``), not a copy of it.
 """
 
 from __future__ import annotations
 
+import pytest
 
-def _compute_has_action(argv: list[str]) -> bool:
-    """Re-implement the gate logic the way cli.py does, so we can assert
-    which argv combinations should/shouldn't trip the quick-start path
-    without actually calling main()."""
-    import os
+from maxim.cli import _quick_start_route, _requested_run_action
+from maxim.cli_parser import _build_parser
 
-    from maxim.cli_parser import _build_parser
 
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-    sim_path = getattr(args, "sim", None)
+@pytest.fixture(autouse=True)
+def _no_route_env(monkeypatch):
+    for name in ("MAXIM_ROLE", "MAXIM_LLM_ENABLED", "MAXIM_ROBOT_NAME"):
+        monkeypatch.delenv(name, raising=False)
 
-    _has_sim = sim_path is not None
-    _has_mode_override = "--mode" in argv
-    _has_robot = getattr(args, "robot_name", "reachy_mini") != "reachy_mini" or "--robot" in argv
-    _is_leader = os.environ.get("MAXIM_ROLE", "").strip().lower() == "leader"
-    _has_llm = os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1"
-    _has_llm_cli = bool(str(getattr(args, "language_model", "") or "").strip())
-    _has_action = _has_sim or _has_mode_override or _has_robot or _has_llm_cli
 
-    return bool(_has_action or _is_leader or _has_llm)
+def _route(argv: list[str]) -> str:
+    args = _build_parser().parse_args(argv)
+    return _quick_start_route(args, argv, sim_path=getattr(args, "sim", None))
 
 
 class TestActionGate:
     def test_llm_flag_short_form_is_action(self):
-        """`maxim --llm qwen2.5-14b` must count as a meaningful action.
-
-        Regression: used to print quick-start and exit because the gate
-        only checked MAXIM_LLM_ENABLED env, not args.language_model.
-        """
-        import os as _os
-
-        _saved = {k: _os.environ.pop(k) for k in ("MAXIM_ROLE", "MAXIM_LLM_ENABLED") if k in _os.environ}
-        try:
-            assert _compute_has_action(["--llm", "qwen2.5-14b"]) is True
-        finally:
-            _os.environ.update(_saved)
+        """`maxim --llm qwen2.5-14b` must count as a meaningful action (it used to print the menu and exit)."""
+        assert _route(["--llm", "qwen2.5-14b"]) == "run"
 
     def test_language_model_long_form_is_action(self):
-        """The long-form flag must behave identically."""
-        import os as _os
-
-        _saved = {k: _os.environ.pop(k) for k in ("MAXIM_ROLE", "MAXIM_LLM_ENABLED") if k in _os.environ}
-        try:
-            assert _compute_has_action(["--language-model", "mistral-7b"]) is True
-        finally:
-            _os.environ.update(_saved)
+        assert _route(["--language-model", "mistral-7b"]) == "run"
 
     def test_bare_maxim_is_not_action(self):
-        """Running bare `maxim` with no flags should still trip the
-        quick-start gate (the intended behavior). This is a negative
-        control for the fix above."""
-        import os as _os
-
-        _saved = {k: _os.environ.pop(k) for k in ("MAXIM_ROLE", "MAXIM_LLM_ENABLED") if k in _os.environ}
-        try:
-            assert _compute_has_action([]) is False
-        finally:
-            _os.environ.update(_saved)
+        """Negative control: a bare `maxim` shows the menu."""
+        assert _route([]) == "menu"
 
     def test_sim_flag_is_action(self):
-        """Positive control for the --sim path (unchanged behavior)."""
-        import os as _os
+        assert _route(["--sim", "test"]) == "run"
 
-        _saved = {k: _os.environ.pop(k) for k in ("MAXIM_ROLE", "MAXIM_LLM_ENABLED") if k in _os.environ}
-        try:
-            assert _compute_has_action(["--sim", "test"]) is True
-        finally:
-            _os.environ.update(_saved)
+    @pytest.mark.parametrize("argv", [["--mode", "live"], ["--mode=exploration"]])
+    def test_explicit_mode_is_action(self, argv):
+        """Even `--mode exploration`, the parser's default value, counts once typed."""
+        assert _route(argv) == "run"
 
-    def test_leader_env_is_action(self):
-        """Positive control for the leader role path."""
-        import os as _os
+    def test_leader_env_is_server_mode(self, monkeypatch):
+        """A leader without an explicit action serves instead of entering a run."""
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        assert _route([]) == "server"
 
-        _saved_role = _os.environ.get("MAXIM_ROLE")
-        _saved_enabled = _os.environ.pop("MAXIM_LLM_ENABLED", None)
-        _os.environ["MAXIM_ROLE"] = "leader"
-        try:
-            assert _compute_has_action([]) is True
-        finally:
-            if _saved_role is not None:
-                _os.environ["MAXIM_ROLE"] = _saved_role
-            else:
-                _os.environ.pop("MAXIM_ROLE", None)
-            if _saved_enabled is not None:
-                _os.environ["MAXIM_LLM_ENABLED"] = _saved_enabled
+    def test_llm_enabled_env_is_server_mode(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_LLM_ENABLED", "1")
+        assert _route([]) == "server"
+
+    def test_an_action_beats_the_leader_server(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        assert _route(["--sim", "test"]) == "run"
+
+
+class TestRobotFlagsGate:
+    """#1806 PR 0 (wire F4): a typed robot flag is an action whatever its value; the environment never is."""
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--robot-name", "reachy_mini"],
+            ["--robot-name=reachy_mini"],
+            ["--robot", "reachy_mini"],
+            ["--robot=reachy_mini"],
+            ["--robot", "alice"],
+        ],
+    )
+    def test_a_typed_robot_name_enters_the_run(self, argv):
+        """The pre-fix gate sent the default name, typed, to the menu (`!= "reachy_mini"` and an exact `--robot`
+        token), so `--robot-name reachy_mini` and `--robot=reachy_mini` never reached the robot runtime."""
+        assert _route(argv) == "run"
+
+    def test_maxim_robot_name_alone_shows_the_menu(self, monkeypatch):
+        """The pre-fix parser defaulted `--robot-name` to `$MAXIM_ROBOT_NAME`, so a bare `maxim` with it set (to
+        anything but `reachy_mini`) entered the robot runtime."""
+        monkeypatch.setenv("MAXIM_ROBOT_NAME", "alice")
+        assert _route([]) == "menu"
+        args = _build_parser().parse_args([])
+        assert args.robot_name is None
+        assert _requested_run_action(args, [], sim_path=None) is False
+
+    def test_maxim_robot_name_does_not_turn_a_leader_into_a_robot_run(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROBOT_NAME", "alice")
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+        assert _route([]) == "server"

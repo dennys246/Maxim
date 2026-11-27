@@ -13,7 +13,6 @@ import contextlib
 import dataclasses
 import logging
 import os
-import re
 import time
 from collections.abc import Callable, Mapping
 from types import SimpleNamespace
@@ -22,7 +21,7 @@ from typing import Any
 from maxim.decisions.causal_link import Valence as _V
 from maxim.modes.definitions import get_tool_followup_type
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
-from maxim.runtime.loop_state import no_person_to_ask, operational_mode
+from maxim.runtime.loop_state import no_person_to_ask, operational_mode, tool_to_run
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.tools.base import GATE_REFUSAL_KINDS, ToolErrorKind
 from maxim.utils.input_source import InputSource
@@ -144,21 +143,6 @@ def _operant_only_credit_enabled() -> bool:
     from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
 
     return annotation_disabled_via_env(os.environ.get("MAXIM_OPERANT_ONLY_CREDIT"))
-
-
-def safe_agent_name(agent: Any) -> str:
-    """Extract a filesystem-safe agent name from an agent object."""
-    raw = None
-    try:
-        raw = getattr(agent, "state_name", None) or getattr(agent, "agent_name", None) or getattr(agent, "name", None)
-    except (AttributeError, TypeError) as e:
-        log_swallowed_exception(e, operation="get_agent_name")
-        raw = None
-    if not raw:
-        raw = type(agent).__name__
-    name = str(raw).strip() or "agent"
-    name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
-    return name.strip("._-") or "agent"
 
 
 def build_tool_signature(tool_name: str, tool_params: dict[str, Any] | None = None) -> str:
@@ -982,7 +966,7 @@ def _followup_result_text(tool_name: str, output: Any, result: Any, limit: int) 
 
     Deliberately unframed: ``result_summary`` feeds ``record_outcome``, whose NAc outcome signature
     is its first 50 characters -- a frame header there would collapse every outcome of a tool into
-    one causal link (#823 review). Framing happens in ``_followup_synthetic_input``.
+    one causal link (#823 review). Framing happens in ``loop_submit._followup_synthetic_input``.
     """
     if output is not None:
         if tool_name == "internet_search" and isinstance(output, list):
@@ -1246,17 +1230,6 @@ class ExecutionOutcome:
     followup: ActionFollowup | None
 
 
-def tool_to_run(executor: Any, tool_name: str) -> Any:
-    """The registered tool a call to ``tool_name`` would RUN, resolved through the executor's one alias resolver (a
-    ``reflect`` runs as ``think``), or ``None``. Its class declarations (``untrusted_output``, ``ends_run``) are read
-    off this tool, never off the proposed name."""
-    resolve = getattr(executor, "resolve_tool_name", None)
-    registry = getattr(executor, "registry", None)
-    ran = resolve(tool_name) if callable(resolve) else tool_name
-    find = getattr(registry, "find", None)
-    return find(ran) if callable(find) else None
-
-
 def _tool_followup(
     executor: Any, tool_name: str, result_str: str | None, proposal: Any, followup_type: str, mode: str
 ) -> ActionFollowup:
@@ -1447,6 +1420,24 @@ def log_tool_failure(tool_name: str | None, error: Any) -> None:
     log_agentic("agent_loop", "goal_failed", {"tool": tool_name, "error": shown}, level="WARNING")
 
 
+_CACHE_INVALIDATING_TOOLS = frozenset({"write_file", "edit_file"})
+
+
+def _invalidate_cache_after_write(result_cache: Any, action: dict, success: bool) -> None:
+    """Drop cached reads of a path a successful file write just changed, so the next read is fresh.
+
+    ``edit_file`` changes a file exactly as ``write_file`` does; before #1806 PR 0 only ``write_file`` invalidated, so
+    a read after a successful edit could return the pre-edit content from the cache.
+    """
+    if not success or action.get("tool_name", "") not in _CACHE_INVALIDATING_TOOLS:
+        return
+    written_path = action.get("params", {}).get("path")
+    if written_path:
+        invalidated = result_cache.invalidate(path=written_path)
+        if invalidated > 0:
+            _loop_logger.debug("Invalidated %d cache entries for: %s", invalidated, written_path)
+
+
 def execute_and_learn(
     *,
     agent: Any,
@@ -1569,14 +1560,7 @@ def execute_and_learn(
         if action.get("_timeout_retry") and success:
             _stash_timeout_retry(action, sim, state)
 
-        # Invalidate cache for write operations to ensure fresh reads
-        tool_name = action.get("tool_name", "")
-        if tool_name == "write_file" and success:
-            written_path = action.get("params", {}).get("path")
-            if written_path:
-                invalidated = result_cache.invalidate(path=written_path)
-                if invalidated > 0:
-                    _loop_logger.debug("Invalidated %d cache entries for: %s", invalidated, written_path)
+        _invalidate_cache_after_write(result_cache, action, success)
 
         # Log tool execution
         log_agentic(

@@ -1321,17 +1321,12 @@ def enable_llm_config(
         # invariant: update the first existing discovery candidate; only
         # when none exists, create a MINIMAL user config carrying exactly
         # the keys this function writes.
-        from maxim.models.language.config import _llm_config_candidates
+        from maxim.models.language.config import llm_config_file
         from maxim.utils.paths import user_config
 
-        config_path = None
-        for candidate in _llm_config_candidates():
-            if candidate and Path(candidate).is_file():
-                config_path = Path(candidate)
-                break
-        allow_create = config_path is None
-        if config_path is None:
-            config_path = user_config() / "llm.json"
+        found = llm_config_file()  # the loader's own file (#1806 PR 0: one resolver, no CWD candidate)
+        allow_create = found is None
+        config_path = Path(found) if found else user_config() / "llm.json"
     else:
         # Explicit path keeps the historical contract: it must exist.
         allow_create = False

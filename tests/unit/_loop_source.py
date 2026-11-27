@@ -43,7 +43,7 @@ wrapper), and every pin below reads the body:
   - ``test_console_tool_allowlist.py::TestRosterAdvertisesOnlyPermittedTools::test_agent_loop_filters_the_advertised_roster_through_permits``,
     its ordering half (permits filter before ``last_surfaced_tools``) -- §6's request assembly (the slice that moves §6).
   - ``test_tool_output_framing.py`` and ``test_planning_liveness.py``: ``inspect.getsource`` of the
-    module-level helpers ``_followup_synthetic_input`` (whichever slice moves it), ``_drop_stale_proposal``
+    module-level helpers ``_followup_synthetic_input`` (read from ``loop_submit`` since slice 7a), ``_drop_stale_proposal``
     and ``_proposal_without_action_reason`` (read from ``loop_intake`` since slice 6; no re-export).
 
 Slice 6 (§2 -> ``loop_intake.take_llm_proposal``, 1.3.6) re-pointed the two §2 pins above and added none: its

@@ -321,7 +321,7 @@ def test_substrate_primary_keeps_the_booking_only():
 
 def test_the_refused_prompt_says_the_tool_did_not_run_outside_the_frame():
     from maxim.agents.prompt_builder import PromptBuilder
-    from maxim.runtime.agent_loop import _followup_synthetic_input
+    from maxim.runtime.loop_submit import _followup_synthetic_input
     from maxim.runtime.loop_types import ActionFollowup
 
     followup = ActionFollowup(

@@ -535,6 +535,8 @@ def test_the_cli_cpu_fallback_default_reads_as_a_pin(monkeypatch: pytest.MonkeyP
     from maxim.runtime import lane_backends
 
     _clear_env(monkeypatch, "MAXIM_LLM_PROFILE", "MAXIM_LLM_N_GPU_LAYERS")
+    # no llm.json declares llama.cpp (the checkout's own data/util/llm.json is not this test's input; #1806 PR 0)
+    monkeypatch.setattr("maxim.models.language.config.configured_profile_uses_llama_cpp", lambda: False)
     cli_utils.configure_cpu_fallback_model(logging.getLogger("test"), home_dir=str(tmp_path))
     assert os.environ["MAXIM_LLM_PROFILE"] == "smollm-1.7b-instruct"
     assert os.environ["MAXIM_LLM_N_GPU_LAYERS"] == "0"
@@ -549,6 +551,8 @@ def test_the_robot_cpu_fallback_default_reads_as_a_pin(monkeypatch: pytest.Monke
     from maxim.runtime import lane_backends
 
     _clear_env(monkeypatch, "MAXIM_LLM_PROFILE", "MAXIM_LLM_N_GPU_LAYERS", "CUDA_VISIBLE_DEVICES")
+    # no llm.json declares llama.cpp (the checkout's own data/util/llm.json is not this test's input; #1806 PR 0)
+    monkeypatch.setattr("maxim.models.language.config.configured_profile_uses_llama_cpp", lambda: False)
     monkeypatch.setattr(agentic_runtime, "is_gpu_available", lambda: False)
     runtime = types.SimpleNamespace(home_dir=str(tmp_path), log=logging.getLogger("test"))
     agentic_runtime.AgenticRuntimeMixin._apply_llm_backend_fallback(runtime)  # type: ignore[arg-type]
@@ -569,6 +573,8 @@ def test_an_operator_profile_survives_either_cpu_fallback_unannounced(
     from maxim.embodied_runtime import agentic_runtime
 
     _clear_env(monkeypatch, "MAXIM_LLM_N_GPU_LAYERS", "CUDA_VISIBLE_DEVICES")
+    # no llm.json declares llama.cpp (the checkout's own data/util/llm.json is not this test's input; #1806 PR 0)
+    monkeypatch.setattr("maxim.models.language.config.configured_profile_uses_llama_cpp", lambda: False)
     monkeypatch.setenv("MAXIM_LLM_PROFILE", "phi-2")
     monkeypatch.setattr(agentic_runtime, "is_gpu_available", lambda: False)
     with caplog.at_level(logging.INFO):

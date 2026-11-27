@@ -611,8 +611,15 @@ def _llm_config_candidates() -> list[str]:
     Was duplicated between ``list_llm_profiles`` and ``load_llm_config``,
     and neither copy consulted the DOCUMENTED user location
     (``~/.maxim/config/llm.json`` — cli_parser, the downloader, and the
-    docs all point there): env override → user config → CWD/repo-root
+    docs all point there): env override → user config → repo-root
     ``data/util`` legacy developer-checkout fallbacks.
+
+    No CWD candidate (#1806 PR 0 round 3, owner decision): ``./llm.json`` and ``./data/util/llm.json`` were read
+    when the data home had none, and an agent working in the launch directory could create either, outside the
+    control-plane write deny, to raise its own budget or enable cloud calls. The repo-root pair stays ONLY in a real
+    source checkout (:func:`_source_checkout_root`): on a wheel install the same arithmetic lands in
+    ``<venv>/lib/python3.X/``, an in-project ``.venv`` an agent can write (round 4 S1). The checkout pair is a
+    stated residual in ``docs/user/safety.md``.
     """
     candidates: list[str] = []
     env_path = str(os.getenv("MAXIM_LLM_CONFIG", "")).strip()
@@ -624,12 +631,98 @@ def _llm_config_candidates() -> list[str]:
         candidates.append(str(user_config() / "llm.json"))
     except (ImportError, OSError):
         pass
-    candidates.append(os.path.join(os.getcwd(), "data", "util", "llm.json"))
-    candidates.append(os.path.join(os.getcwd(), "llm.json"))
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-    candidates.append(os.path.join(repo_root, "data", "util", "llm.json"))
-    candidates.append(os.path.join(repo_root, "llm.json"))
+    candidates.extend(_repo_root_candidates())
     return candidates
+
+
+def _repo_root_candidates() -> list[str]:
+    """The source checkout's own ``data/util/llm.json`` and ``llm.json``; empty for an installed package."""
+    repo_root = _source_checkout_root()
+    if repo_root is None:
+        return []
+    return [os.path.join(repo_root, "data", "util", "llm.json"), os.path.join(repo_root, "llm.json")]
+
+
+def _source_checkout_root(package_file: str = __file__) -> str | None:
+    """The source checkout this module runs from, or None for an installed package (#1806 PR 0 round 4 S1).
+
+    A checkout is ``<root>/src/maxim/models/language/config.py`` with ``<root>/pyproject.toml``; an installed wheel's
+    ``site-packages/maxim/...`` has neither the ``src`` level nor the ``pyproject.toml``.
+    """
+    package_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(package_file))))  # .../maxim
+    src_dir = os.path.dirname(package_dir)
+    root = os.path.dirname(src_dir)
+    if os.path.basename(src_dir) != "src" or not os.path.isfile(os.path.join(root, "pyproject.toml")):
+        return None
+    return root
+
+
+def llm_config_file() -> str | None:
+    """The ``llm.json`` :func:`load_llm_config` reads: the first existing :func:`_llm_config_candidates` entry."""
+    return next((path for path in _llm_config_candidates() if path and os.path.isfile(path)), None)
+
+
+_ignored_cwd_warning_emitted = False
+
+
+def _warn_ignored_cwd_llm_json(winner: str | None, candidates: list[str]) -> None:
+    """One WARNING (per process) for a launch-directory ``llm.json`` Maxim no longer reads (#1806 PR 0 round 4 S2).
+
+    Before #1806 such a file was the config when the data home had none, and the docs said to put one there, so a
+    user's stricter ``routing`` caps there would otherwise drop to the defaults without a word. A file that is itself
+    a discovery candidate (a source checkout run from its root) is not "ignored", only shadowed, which
+    :func:`_log_shadowed_llm_configs` reports (round 5 S1). Nor is one the pre-#1806 order would also have skipped,
+    because an env-named or user-config file won.
+    """
+    global _ignored_cwd_warning_emitted
+    if _ignored_cwd_warning_emitted:
+        return
+    if winner is not None and winner not in _repo_root_candidates():
+        return  # an env or user-config file won: the old order read no launch-directory file here either (fold NIT)
+    try:
+        cwd = os.getcwd()
+    except OSError as exc:  # a deleted launch directory: nothing there to warn about, and loading must not fail (S2)
+        logger.debug("llm.json launch-directory check skipped: %s", exc)
+        return
+    known = {os.path.realpath(path) for path in candidates if path}
+    for path in (os.path.join(cwd, "data", "util", "llm.json"), os.path.join(cwd, "llm.json")):
+        if os.path.isfile(path) and os.path.realpath(path) not in known:
+            _ignored_cwd_warning_emitted = True
+            from maxim.utils.paths import data_home
+
+            logger.warning(
+                "%s is NOT read (since #1806 Maxim reads no llm.json from the launch directory); %s. "
+                "Move it to %s to use it.",
+                path,
+                f"using {winner}" if winner else "using the built-in defaults",
+                data_home() / "config" / "llm.json",
+            )
+            return
+
+
+def configured_profile_uses_llama_cpp() -> bool:
+    """Whether the ``llm.json`` :func:`load_llm_config` reads declares a llama.cpp profile (Metal-friendly).
+
+    The one reader for both CPU fallbacks (``cli_utils.configure_cpu_fallback_model`` and the robot runtime's
+    ``_apply_llm_backend_fallback``), which each read a ``<home_dir>/util/llm.json`` of their own, a file the
+    loader never reads (#1806 PR 0 round 3). Only an explicit file entry counts, as before: a missing or
+    unreadable file is False (logged), so the CPU fallback applies.
+    """
+    path = llm_config_file()
+    if path is None:
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as e:
+        logger.debug("Could not inspect %s for the CPU backend fallback: %s", path, e)
+        return False
+    profiles = raw.get("profiles") if isinstance(raw, dict) else None
+    name = raw.get("profile", "") if isinstance(raw, dict) else ""
+    if not isinstance(profiles, dict) or not isinstance(name, str):  # a non-string profile is no entry (round 4 N1)
+        return False
+    entry = profiles.get(name)
+    return isinstance(entry, dict) and entry.get("backend") == "llama_cpp"
 
 
 def get_profile(name: str) -> dict[str, Any] | None:
@@ -825,18 +918,31 @@ def _log_shadowed_llm_configs(winner: str, losers: list[str]) -> None:
         logger.info("llm.json loaded from %s (shadowing: %s)", winner, ", ".join(shadowed))
 
 
-def load_llm_config(profile_override: str | None = None) -> LLMConfig:
-    default = LLMConfig()
+def _read_discovered_llm_config() -> dict[str, Any]:
+    """The first existing :func:`_llm_config_candidates` file's JSON object (``{}`` when none, or not an object).
 
+    Logs the candidates it shadows and, once, an ignored launch-directory ``llm.json`` (#1806 PR 0; moved out of
+    :func:`load_llm_config` by the touch rule).
+    """
     raw: dict[str, Any] = {}
     candidates = _llm_config_candidates()
+    winner: str | None = None
     for i, path in enumerate(candidates):
         if path and os.path.isfile(path):
+            winner = path
             loaded = _read_json(path)
             if isinstance(loaded, dict):
                 raw = loaded
             _log_shadowed_llm_configs(path, candidates[i + 1 :])
             break
+    _warn_ignored_cwd_llm_json(winner, candidates)
+    return raw
+
+
+def load_llm_config(profile_override: str | None = None) -> LLMConfig:
+    default = LLMConfig()
+
+    raw = _read_discovered_llm_config()
 
     profile_raw = profile_override or os.getenv("MAXIM_LLM_PROFILE")
     if profile_raw is None:

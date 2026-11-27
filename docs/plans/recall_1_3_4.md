@@ -142,7 +142,7 @@ zero scores only.
 **Rule 1: frame at production.**
 - `_summarize_episode` renders the episode's input text (`cli_input`, else `transcript`, else the observation's
   text values).
-  - The text is NFKC-normalized and whitespace-collapsed, THEN bounded to 240 (now `memory/text.py::bounded_words`), so
+  - The text is NFKC-normalized and whitespace-collapsed, THEN bounded to 240 (now `utils/prompt_text.py::bounded_words`, moved from `memory/text.py` by B2 on 2026-11-24), so
     expansion cannot exceed the bound (F7).
   - It is framed with `frame_tool_output("recalled_input", text, external=True)` and labelled `earlier input:`.
     The label claims no speaker, because sim narration and room speech arrive on the same fields (F12).

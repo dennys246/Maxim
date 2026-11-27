@@ -38,6 +38,7 @@ from maxim.models.vision.registry import build_segmentation_model
 
 # Hardware abstraction layer for multi-robot support
 from maxim.hardware import RobotRegistry
+from maxim.hardware.config import resolve_daemon_name, resolve_robot_connection, robot_connect_timeout
 from maxim.hardware.reachy import ReachyMiniController
 from maxim.hardware.simulation import SimulatedController
 
@@ -102,7 +103,7 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
 
     def __init__(
         self,
-        robot_name: str = "reachy_mini",
+        robot_name: str | None = "reachy_mini",
         timeout: float = 30.0,
         media_backend: str = "default",  # avoid WebRTC/GStreamer if signalling is down
         home_dir: str = "",
@@ -149,18 +150,10 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self._robot_id = robot_id
         self._robot: ReachyMiniController | SimulatedController | None = None
 
-        self.name = robot_name or os.getenv("MAXIM_ROBOT_NAME", "reachy_mini")
+        self.name, _ = resolve_daemon_name(robot_name)  # the one legacy chain (#1806 PR 0)
         if _blackwell_detected:
             self.log.info("Blackwell GPU detected - GStreamer hardware acceleration disabled")
         self.log.info("Connecting to Reachy Mini '%s'...", self.name)
-        self._connect_kwargs = {
-            "robot_name": self.name,
-            "connection_mode": "network",
-            "spawn_daemon": False,
-            "use_sim": False,
-            "timeout": float(timeout),
-            "media_backend": media_backend,
-        }
         self._media_lock: threading.Lock | None = None
         self._reconnect_lock = threading.Lock()
         self._last_reconnect_ts = 0.0
@@ -242,69 +235,8 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self._capabilities.vram_gb = _vram_gb
         self._capabilities.ram_gb = _ram_gb
 
-        # Connect to robot using hardware abstraction layer.
-        # Supports both real Reachy Mini hardware and simulation mode.
-        robot_type = "simulated" if self._simulation else "reachy_mini"
-        effective_robot_id = self._robot_id or self.name
-
-        # Allow env var to override timeout for faster headless startup
-        effective_timeout = float(os.environ.get("MAXIM_ROBOT_TIMEOUT", str(timeout)))
-
-        self.log.info("Connecting to Reachy Mini '%s'...", effective_robot_id)
-
-        # Operator-declared connection config (host, connection_mode,
-        # tunnel, ...) comes from ~/.maxim/robots.yaml — the same file the
-        # body wiring already reads. Pre-fix (2026-07-31) this path built
-        # the config inline and silently ignored the file, so the connect
-        # error's own advice ("set host: <ip> in robots.yaml") did nothing:
-        # the controller fell back to mDNS and failed on hosts where .local
-        # resolution is blocked. Declared keys win over the inline defaults;
-        # wiring-layer keys (body, audio_localization) are filtered to the
-        # constructor's signature by connect_robot.
-        if not self._simulation:
-            _connect_config = {
-                "robot_name": self.name,
-                "media_backend": media_backend,
-            }
-            try:
-                from maxim.hardware.config import (
-                    load_robots_config,
-                    resolve_connection_config,
-                    resolve_robot_entry,
-                )
-
-                _robots_cfg = load_robots_config()
-                _connect_config = resolve_connection_config(
-                    _robots_cfg,
-                    effective_robot_id,
-                    defaults=_connect_config,
-                )
-                # Honor the operator's declared `type:` (Exp 49 seam,
-                # 2026-08-04): `type: simulated` runs the FULL live stack
-                # against SimulatedController, declaratively — previously
-                # the live path hardcoded reachy_mini and the `type` field
-                # was silently ignored (the registry registered "simulated"
-                # but nothing could ever select it without the internal
-                # simulation= constructor flag). Same match rule as the
-                # connection-config resolution, so type and config always
-                # come from the same entry.
-                _entry = resolve_robot_entry(_robots_cfg, effective_robot_id)
-                if _entry is not None and _entry.robot_type:
-                    if _entry.robot_type != robot_type:
-                        self.log.info(
-                            "robots.yaml declares type=%s for %r — overriding default %s",
-                            _entry.robot_type,
-                            effective_robot_id,
-                            robot_type,
-                        )
-                    robot_type = _entry.robot_type
-            except Exception as e:  # config load is best-effort; never block startup
-                self.log.debug("robots.yaml connection config not loaded: %s", e)
-        else:
-            _connect_config = {
-                "video_resolution": (640, 480),
-                "simulate_delays": False,
-            }
+        effective_robot_id, robot_type, _connect_config = self._resolve_robot_connection(media_backend)
+        effective_timeout = robot_connect_timeout(timeout)
 
         # Use the global registry to connect
         self._robot = _robot_registry.connect_robot(
@@ -412,6 +344,25 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
         self.motor_history: list[dict] = []
 
         atexit.register(self.shutdown)
+
+    def _resolve_robot_connection(self, media_backend: str) -> "tuple[str, str, dict[str, Any]]":
+        """Resolve this run's robot id, controller type and connect config, ONCE (#1806 PR 0).
+
+        Returns ``(robot_id, robot_type, connect_config)`` and stores the matched robots.yaml entry (or ``None``) as
+        ``self._resolved_robot_config``: the one entry the connect uses AND the agentic runtime's readers (body
+        wiring, the DoA gate, motor binding, aut_mode) see, so the two can never disagree on which robot the operator
+        meant. The resolution itself is :func:`maxim.hardware.config.resolve_robot_connection` (measured there; this
+        file is excluded from coverage). A broken robots.yaml raises :class:`~maxim.exceptions.RobotsConfigError` out
+        of here. Residual (wire W2-6): ``simulation=True`` (no ``src/`` caller passes it) resolves no entry.
+        """
+        robot_id = self._robot_id or self.name
+        self._resolved_robot_config = None
+        if self._simulation:
+            self.log.info("Connecting to Reachy Mini '%s'...", robot_id)
+            return robot_id, "simulated", {"video_resolution": (640, 480), "simulate_delays": False}
+        robot_type, connect_config, entry = resolve_robot_connection(robot_id, self.name, media_backend, log=self.log)
+        self._resolved_robot_config = entry
+        return robot_id, robot_type, connect_config
 
     # ─────────────────────────────────────────────────────────────────────────
     # Protocol dispatch (called by phrase_responses)

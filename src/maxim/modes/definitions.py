@@ -512,6 +512,22 @@ _LEGACY_NAME_MAP: dict[str, str] = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Run Modes (the CLI's ``--mode`` vocabulary)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The ONE list of run modes an operator can launch with ``--mode`` (#1806 PR 0); ``cli_parser`` builds its
+# ``choices`` from it. Not to be confused with DEFAULT_RUN_MODE above, which names the agent loop's default
+# OPERATIONAL mode. The internal ``server`` mode (a leader with no explicit action) is not launchable, so it
+# is not listed. This module imports nothing from cli/runtime/tools/agents, so a future ``maxim.devices``
+# package can read it without crossing a layer rule.
+RUN_MODES: tuple[str, ...] = ("live", "train", "reflection", "sleep", "agentic", "exploration")
+
+# The run modes that drive the robot runtime (``embodied_runtime.selfy.Maxim``). ``agentic`` is the CLI agent
+# loop and runs without a body, so it is excluded.
+EMBODIED_RUN_MODES: frozenset[str] = frozenset({"exploration", "live", "sleep", "train", "reflection"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Sleep Processing State Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
