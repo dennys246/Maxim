@@ -245,21 +245,27 @@ def _inject_head_yaw(monkeypatch, value):
 def test_a_bad_yaml_orient_delta_runs_bodiless_with_one_error(monkeypatch, caplog, value):
     import maxim.hardware.config as cfg_mod
     from maxim.embodied_runtime.agentic_runtime import AgenticRuntimeMixin
-    from maxim.hardware.config import RobotsConfig
+    from maxim.hardware.config import RobotsConfig, resolve_robot_entry
 
     declared = {"type": "reachy_mini", "primary": True, "config": {"body": "bodies/reachy_mini"}}
     cfg = RobotsConfig.from_dict({"robots": {"primary": declared}})
-    monkeypatch.setattr(cfg_mod, "load_robots_config", lambda *a, **k: cfg)
     _inject_head_yaw(monkeypatch, value)
+
+    def _no_reload(*a, **k):
+        raise AssertionError("_resolve_body_wiring must not reload robots.yaml (#1806 PR 0)")
+
+    monkeypatch.setattr(cfg_mod, "load_robots_config", _no_reload)
 
     class _Stub(AgenticRuntimeMixin):
         def __init__(self):
-            self._robot_id = None
-            self.name = "reachy_mini"
             self.log = logging.getLogger("test.resolve_body_wiring_1496")
+            # The entry the connect resolved (#1806 PR 0: handed over, not reloaded).
+            self._resolved_robot_config = resolve_robot_entry(cfg, "reachy_mini")
 
+    stub = _Stub()
+    assert stub._resolved_robot_config is not None  # the declared body is really in play
     with caplog.at_level(logging.DEBUG):
-        assert _Stub()._resolve_body_wiring(object(), object()) == (None, None)
+        assert stub._resolve_body_wiring(object(), object()) == (None, None)
     errors = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert len(errors) == 1 and "head_yaw" in errors[0].getMessage()
 

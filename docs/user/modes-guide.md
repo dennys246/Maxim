@@ -99,6 +99,15 @@ robot launched in a passive run mode (`sleep`, `train`, `reflection`) cannot res
 `agentic`, so launch it with `--operational-mode active` if it should. (The voice phrases below change the robot's
 state-manager mode, not what dispatch enforces.)
 
+**One limit holds in every mode, singularity included:** the agent's file tools cannot write Maxim's own
+control-plane files: the config directory (`~/.config/maxim/` or `$XDG_CONFIG_HOME/maxim/`), and `robots.yaml`,
+`robots.yaml.bak`, `util/device_state.json`, `util/internet_access.json`, `util/internet_policy.json`, `util/hive_release_sequence.json`, `util/cost_state.json` and `config/llm.json` in the data
+home, so an agent cannot grant itself internet access or raise its budget by editing a file. Singularity still has full file-tool access
+everywhere else. Its `bash`, `execute_file` and `run_tests` run code, and code can still write those files; see
+[Safety Guide](safety.md#maxims-own-control-plane-files) (#1806).
+
+In supervised autonomy, `edit_file` outside the workspace needs approval, like `write_file`.
+
 ### Voice Commands
 
 - "Maxim sleep" -- agent enters sleep

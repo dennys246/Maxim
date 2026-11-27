@@ -8,7 +8,6 @@ from __future__ import annotations
 import dataclasses
 import logging
 import math
-import socket
 import subprocess
 import threading
 import time
@@ -35,6 +34,7 @@ from maxim.hardware.controller import (
     require_finite,
 )
 from maxim.hardware.reachy import motion_path as mp
+from maxim.hardware.reachy import probe as reachy_probe
 from maxim.utils.logging import log_swallowed_exception
 from maxim.hardware.reachy.streams import ReachyAudioStream, ReachyVideoStream
 from maxim.hardware.streams import AudioStream, VideoStream
@@ -292,7 +292,8 @@ class ReachyMiniController(RobotController):
         self._robot_name = robot_name
         self._media_backend = media_backend
         self._connection_mode = connection_mode
-        self._host = host
+        # "" is unset, as doctor (`bool(host)`) and the tunnel check (`not self._host`) already read it (#1806 PR 0 N2)
+        self._host = host or None
         self._tunnel = tunnel
         self._ssh_user = ssh_user
         self._ssh_port = ssh_port
@@ -368,69 +369,65 @@ class ReachyMiniController(RobotController):
     # Connection Management
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _resolve_mdns(self, timeout: float = 5.0) -> str | None:
-        """Pre-resolve the robot's mDNS hostname to an IP address.
+    def _precheck_daemon(self, effective_mode: str, timeout: float) -> tuple[str | None, bool | None]:
+        """Reachability pre-check before ``ReachyMini(``: ``(host to dial, media_released before the connect)``.
 
-        Args:
-            timeout: DNS resolution timeout in seconds.
-
-        Returns:
-            Resolved IP address string, or None if resolution failed.
+        WS era (SDK >= 1.5): the single control port is the daemon's FastAPI :8000 (WebSocket ``/ws/sdk`` rides
+        it). A resolvable name / alive host is NOT enough -- the daemon can be down. When ``host`` is unset,
+        ``<robot-name>.local`` is resolved via the OS FIRST and the RESOLVED IP goes to the SDK (python's own
+        ``.local`` resolution is flaky on macOS even when the OS resolver works); an explicit ``host`` is handed to
+        the SDK verbatim, as before. ``None`` as the host: unreachable, already logged. The status read is
+        best-effort: an unreadable one only leaves ``media_released`` unknown (``None``), which the #1704
+        ownership rule reports rather than guesses.
         """
-        mdns_name = self._robot_name.replace("_", "-") + ".local"
-        try:
-            old_timeout = socket.getdefaulttimeout()
-            socket.setdefaulttimeout(timeout)
-            try:
-                ip = socket.gethostbyname(mdns_name)
-                logger.info("mDNS resolved %s -> %s", mdns_name, ip)
-                return ip
-            finally:
-                socket.setdefaulttimeout(old_timeout)
-        except socket.gaierror:
-            logger.warning("mDNS resolution failed for %s", mdns_name)
-            return None
-
-    @staticmethod
-    def _port_open(host: str, port: int, timeout: float = 3.0) -> bool:
-        """Single TCP reachability probe (fast-fail replacement for the mDNS gate)."""
-        try:
-            with socket.create_connection((host, port), timeout=timeout):
-                return True
-        except OSError:
-            return False
-
-    @staticmethod
-    def _installed_sdk_version() -> tuple[int, int] | None:
-        """(major, minor) of the installed reachy-mini SDK; None if unknown.
-
-        Uses importlib.metadata — pre-1.5 SDKs have no ``__version__``
-        attribute, so package metadata is the only era probe that works
-        across the pivot.
-        """
-        try:
-            from importlib.metadata import version
-
-            parts = version("reachy-mini").split(".")
-            return (int(parts[0]), int(parts[1]))
-        except Exception:  # noqa: BLE001
-            return None
-
-    @staticmethod
-    def _daemon_status(host: str, port: int = 8000, timeout: float = 3.0) -> dict | None:
-        """Best-effort ``GET /api/daemon/status`` (WS-era daemon). None on failure."""
-        from maxim.utils import http as maxim_http
-
-        try:
-            resp = maxim_http.fetch_url(f"http://{host}:{port}/api/daemon/status", timeout=timeout)
-            return resp.json() if hasattr(resp, "json") else None
-        except Exception:  # noqa: BLE001
-            return None
+        mdns = effective_mode != "localhost_only" and self._host is None
+        if effective_mode == "localhost_only":
+            target = "127.0.0.1"
+        elif self._host is not None:
+            target = self._host
+        else:
+            target = self._robot_name.replace("_", "-") + ".local"
+        stage_s = min(timeout, 5.0)
+        outcome = reachy_probe.probe_daemon(target, deadline_s=stage_s, explicit_host=self._host is not None)
+        if reachy_probe.connects_as_given(outcome):
+            # An explicit IPv6 host: the pre-check cannot probe it, so keep main's behaviour and let the SDK dial
+            # it as given (review E1); the IPv4-only rule for pinned entries is #1806 PR 1's.
+            logger.warning("%s: %s — pre-check skipped, connecting as given", target, outcome.error)
+            return target, None
+        if outcome.failure == "resolve":
+            if mdns:
+                logger.warning(
+                    "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection "
+                    "(set host: <ip> in robots.yaml; on macOS grant Local Network permission)",
+                    self._robot_name,
+                )
+            else:
+                logger.warning("%s — skipping SDK connection", outcome.error)
+            return None, None
+        if mdns:
+            logger.info("mDNS resolved %s -> %s", target, outcome.address)
+        if outcome.failure == "tcp":
+            logger.warning(
+                "daemon :8000 unreachable at %s — skipping SDK connection (daemon down, "
+                "wrong host, or on macOS grant Local Network permission)",
+                target if not mdns else outcome.address,
+            )
+            return None, None
+        if outcome.status_read:
+            logger.info(
+                "Reachy daemon at %s: version=%s state=%s",
+                outcome.address,
+                outcome.version or "?",
+                outcome.state or "?",
+            )
+        else:
+            logger.debug("Reachy daemon status unreadable at %s: %s (non-fatal)", outcome.address, outcome.error)
+        return (outcome.address if mdns else target), outcome.media_released
 
     def _wait_local_port(self, port: int, timeout: float) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self._port_open("127.0.0.1", port, timeout=1.0):
+            if reachy_probe.tcp_connect_error("127.0.0.1", port, timeout=1.0) is None:
                 return True
             time.sleep(0.3)
         return False
@@ -508,7 +505,7 @@ class ReachyMiniController(RobotController):
             # removed there; this controller speaks the WS transport). A
             # pre-pivot SDK would fail with a cryptic TypeError on host= —
             # fail loud with the fix instead.
-            sdk_version = self._installed_sdk_version()
+            sdk_version = reachy_probe.installed_sdk_version()
             if sdk_version is not None and sdk_version < (1, 5):
                 logger.error(
                     "reachy-mini SDK %s is pre-v1.5.0 (zenoh era) — this controller requires the "
@@ -536,47 +533,14 @@ class ReachyMiniController(RobotController):
                     return False
                 effective_mode = "localhost_only"
 
-            # Reachability pre-check (fast-fail so we don't wait on the SDK).
-            # WS era (SDK >= 1.5): the single control port is the daemon's
-            # FastAPI :8000 (WebSocket /ws/sdk rides it). A resolvable name /
-            # alive host is NOT enough — the daemon can be down. When host is
-            # unset, resolve <robot-name>.local via the OS FIRST and hand the
-            # RESOLVED IP to the SDK (python's own .local resolution is flaky
-            # on macOS even when the OS resolver works).
-            if effective_mode == "localhost_only":
-                probe_host: str | None = "127.0.0.1"
-            elif self._host is not None:
-                probe_host = self._host
-            else:  # no explicit host: resolve mDNS -> probe + connect via the IP
-                probe_host = self._resolve_mdns(timeout=min(timeout, 5.0))
-                if probe_host is None:
-                    logger.warning(
-                        "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection "
-                        "(set host: <ip> in robots.yaml; on macOS grant Local Network permission)",
-                        self._robot_name,
-                    )
-                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
-                    return False
-            if probe_host and not self._port_open(probe_host, 8000, timeout=min(timeout, 5.0)):
-                logger.warning(
-                    "daemon :8000 unreachable at %s — skipping SDK connection (daemon down, "
-                    "wrong host, or on macOS grant Local Network permission)",
-                    probe_host,
-                )
+            # Reachability pre-check (fast-fail so we don't wait on the SDK), through the one daemon probe
+            # (hardware/reachy/probe.py, #1806). A failed status read stays non-fatal here.
+            probe_host, media_released_before = self._precheck_daemon(effective_mode, timeout)
+            if probe_host is None:
                 self._stop_ssh_tunnel()
                 self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
                 return False
-            # Best-effort readiness + version visibility (never fatal).
-            status = self._daemon_status(probe_host) if probe_host else None
-            if status is not None:
-                logger.info(
-                    "Reachy daemon at %s: version=%s state=%s",
-                    probe_host,
-                    status.get("version", "?"),
-                    status.get("state", "?"),
-                )
-
-            self._warn_if_media_already_released(status, self._host or probe_host)
+            self._warn_if_media_already_released(media_released_before, self._host or probe_host)
             logger.info("Connecting to Reachy Mini: %s (mode=%s)", self._robot_name, effective_mode)
 
             connect_host = "127.0.0.1" if effective_mode == "localhost_only" else probe_host
@@ -592,7 +556,7 @@ class ReachyMiniController(RobotController):
                 # daemon from rotating the body behind the runtime.
                 automatic_body_yaw=False,
             )
-            self._media_released_by_connect = self._connect_released_media(status)
+            self._media_released_by_connect = self._connect_released_media(media_released_before)
             self._assert_auto_yaw_off()
             self._probe_state_shape()
             self._clear_latch_after_connect()
@@ -676,7 +640,7 @@ class ReachyMiniController(RobotController):
         """
         self._stop(by_sleep=True)
 
-    def _connect_released_media(self, status: dict | None) -> bool:
+    def _connect_released_media(self, media_released_before: bool | None) -> bool:
         """Whether the connect that just built ``self._mini`` released the daemon's media (#1704).
 
         SDK 1.8.3's ``no_media`` connect calls ``release_media()``, which is daemon-wide, and only the SDK's
@@ -689,7 +653,7 @@ class ReachyMiniController(RobotController):
         """
         if getattr(self._mini, "media_released", None) is not True:
             return False
-        before = status.get("media_released") if isinstance(status, dict) else None
+        before = media_released_before  # the pre-connect probe's typed read; None = unknown
         if before is False or (before is True and self._media_released_by_connect):
             return True
         if before is True:
@@ -745,14 +709,14 @@ class ReachyMiniController(RobotController):
             except Exception as e:  # noqa: BLE001 - any SDK/transport failure: report it; the handle is gone anyway
                 logger.warning("The SDK client's disconnect() raised: %s (#1712)", e)
 
-    def _warn_if_media_already_released(self, status: dict | None, host: str | None) -> None:
+    def _warn_if_media_already_released(self, media_released_before: bool | None, host: str | None) -> None:
         """Name the fix when the daemon's media is released before a connect that needs the camera (#1712).
 
         A ``no_media`` client that died without re-acquiring (SIGKILL, power loss on the client side) leaves
         the daemon released, and the SDK never re-acquires for a camera backend, so the media connect fails
         later with a bare ``Errno 61``. A ``no_media`` connect needs nothing and is not warned.
         """
-        if not isinstance(status, dict) or status.get("media_released") is not True:
+        if media_released_before is not True:
             return
         if str(self._media_backend).lower() == "no_media":
             return
@@ -973,7 +937,7 @@ class ReachyMiniController(RobotController):
     def _get_state_full(self) -> Any:
         """``GET /api/state/full`` from the daemon this controller connected to; JSON or ``MotionRefused``.
 
-        Through ``maxim_http.fetch_url`` (the ``_daemon_status`` pattern) with a
+        Through ``maxim_http.fetch_url`` (as ``reachy_probe.read_daemon_status`` does) with a
         private address policy. The deadline is the whole read's budget (#1706):
         httpx has no whole-request timeout, so every phase it does time (the pool
         wait, the connect, each write and each socket read) may use the whole
@@ -1002,6 +966,7 @@ class ReachyMiniController(RobotController):
                 f"http://{host}:8000/api/state/full?{_STATE_FULL_QUERY}",
                 timeout=maxim_http.TimeoutPolicy(connect_s=deadline, read_s=deadline, pool_s=deadline),
                 address_policy="private",
+                strict=True,  # #1806 PR 0: the reference every move starts from never travels through a proxy
             )
         except Exception as e:  # noqa: BLE001 - any transport failure is a missing reference
             raise MotionRefused("reference", f"fresh readback failed: {e}") from e
@@ -1530,7 +1495,7 @@ class ReachyMiniController(RobotController):
                 "The daemon's GET /api/state/full could not be read or did not parse (%s; reachy-mini SDK %s): "
                 "every motion will be refused with 'reference' until it can",
                 e.reason,
-                ".".join(str(x) for x in (self._installed_sdk_version() or ("?",))),
+                ".".join(str(x) for x in (reachy_probe.installed_sdk_version() or ("?",))),
             )
 
     def _wait_torque_on(self) -> bool:

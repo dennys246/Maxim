@@ -102,7 +102,16 @@ from maxim.utils.gpu_compat import env_flag as _env_flag
 
 from maxim.utils.content_safety import prepare_written_content
 
-from .base import Effect, Tool, ToolErrorKind, ToolResult, git_dir_write_refusal, host_tool_env, tool_workdir
+from .base import (
+    Effect,
+    Tool,
+    ToolErrorKind,
+    ToolResult,
+    control_plane_write_refusal,
+    git_dir_write_refusal,
+    host_tool_env,
+    tool_workdir,
+)
 
 
 def _rebase_relative(path: str, allowed_dirs: list[str] | None) -> str:
@@ -255,9 +264,10 @@ class WriteFileTool(Tool):
             if real_path.startswith(forbidden + os.sep) or real_path == forbidden:
                 return False, f"Writing to {forbidden} is not allowed"
 
-        git_refusal = git_dir_write_refusal(real_path)  # #957: git configuration is code execution
-        if git_refusal:
-            return False, git_refusal
+        # #957: git configuration is code execution; #1806 D14: Maxim's own control-plane files, in every mode
+        refusal = git_dir_write_refusal(real_path) or control_plane_write_refusal(real_path)
+        if refusal:
+            return False, refusal
 
         # Check against forbidden extensions
         suffix = path.suffix.lower()
@@ -564,9 +574,10 @@ class EditFileTool(Tool):
             if real_path.startswith(forbidden + os.sep) or real_path == forbidden:
                 return False, f"Writing to {forbidden} is not allowed"
 
-        git_refusal = git_dir_write_refusal(real_path)  # #957: git configuration is code execution
-        if git_refusal:
-            return False, git_refusal
+        # #957: git configuration is code execution; #1806 D14: Maxim's own control-plane files, in every mode
+        refusal = git_dir_write_refusal(real_path) or control_plane_write_refusal(real_path)
+        if refusal:
+            return False, refusal
 
         suffix = path.suffix.lower()
         if suffix in self.FORBIDDEN_EXTENSIONS:
