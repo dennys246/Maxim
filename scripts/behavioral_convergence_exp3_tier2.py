@@ -534,7 +534,6 @@ def run_experiment(persist_dir: str | None = None, tier1_only: bool = True) -> d
         results["tier2_fresh_choices"] = fresh_choices
 
         # Count selections per vial
-        vial_names = [c["name"] for c in CONSUMABLES]
         for condition, choices in [
             ("experienced", experienced_choices),
             ("fresh", fresh_choices),

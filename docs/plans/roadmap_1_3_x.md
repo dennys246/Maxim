@@ -1291,10 +1291,11 @@ they are ready, and the gate takes the next free number when it is done, still o
   *(2026-11-22, release_1_3_5.md D5: all three stay exit items of this line, but may start early, beside the
   orchestrator line. Session A keeps the loop line, including #1150 and the `_llm_unavailable` move; the lazy
   `__init__`s may go to whoever Session A grants)*:
-  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports (moved by slice 6 into
-    `runtime/loop_intake.py`, whose own imports are bio-free; its import closure still reaches bio through
-    `loop_controller` -> `tool_dispatch`, held by the strict red gate `tests/unit/test_loop_intake_bio_free.py`, cut by the follow-up PR that moves
-    `safe_agent_name` and `tool_to_run` to a bio-free leaf);
+  - the `_llm_unavailable` fallback leaves `run_agentic_loop` for a module with no bio imports — **met**: slice 6
+    moved it into `runtime/loop_intake.py`, and the PR after it moved `safe_agent_name` and `tool_to_run` from
+    `tool_dispatch` to the bio-free `loop_state`, so the leaf's import closure loads none of B2's denied bio packages
+    (guard: `tests/unit/test_loop_intake_bio_free.py`). B2 itself takes no `runtime.*` import (baseline_floors.md
+    §B2), so its first PR still pulls a shared form of the fallback out of `loop_intake`;
   - `tool_dispatch.execute_and_learn` becomes importable without bio modules (#1150), and callable with `nac`,
     `hippocampus` and `memory_hub` set to `None`;
   - the `runtime` and `agents` package `__init__`s become lazy.

@@ -8,8 +8,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
-from maxim.memory.text import Provenance
 from maxim.utils.cloud_redaction import text_shape
+from maxim.utils.prompt_text import Provenance
 from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
@@ -18,7 +18,6 @@ from maxim.utils.structured_logging import log_agentic
 # Extracted to tool_dispatch.py
 from maxim.runtime.tool_dispatch import (
     book_agent_fallback_failure,
-    safe_agent_name as _safe_agent_name,
     execute_parallel_actions as _execute_parallel,
     log_tool_result as _log_tool_result,
 )
@@ -82,6 +81,7 @@ logger = logging.getLogger(__name__)
 
 from maxim.runtime.loop_state import (
     loop_liveness_scope,
+    safe_agent_name as _safe_agent_name,
     operational_mode,
     seed_runtime_run_mode,
     start_run_state,

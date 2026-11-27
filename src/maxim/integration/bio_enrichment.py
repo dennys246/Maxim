@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from maxim.memory.text import RECALLED_WORDS_MAX_CHARS, frame_external
+from maxim.utils.prompt_text import RECALLED_WORDS_MAX_CHARS, frame_external
 from maxim.memory.types import record_success
 from maxim.utils.logging import log_swallowed_exception
 
@@ -1073,7 +1073,7 @@ class BioEnrichmentPipeline:
 
 
 # Recalled text is bounded AFTER normalization (design review F7: NFKC can expand a character up to ~18x):
-# ``memory/text.py::bounded_words``, whose ``RECALLED_WORDS_MAX_CHARS`` compression keeps too (#1137); 80 holds an
+# ``utils/prompt_text.py::bounded_words``, whose ``RECALLED_WORDS_MAX_CHARS`` compression keeps too (#1137); 80 holds an
 # outcome's gist.
 _RECALLED_RESULT_MAX_CHARS = 80
 _RECALLED_GOAL_MAX_CHARS = 40
@@ -1087,7 +1087,7 @@ def _input_text(mem: Any) -> str:
 
 
 def _bounded_text(text: str, limit: int) -> str:
-    from maxim.memory.text import bounded_words
+    from maxim.utils.prompt_text import bounded_words
 
     return bounded_words(text, limit)
 

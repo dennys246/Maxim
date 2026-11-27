@@ -13,7 +13,6 @@ import contextlib
 import dataclasses
 import logging
 import os
-import re
 import time
 from collections.abc import Callable, Mapping
 from types import SimpleNamespace
@@ -22,11 +21,12 @@ from typing import Any
 from maxim.decisions.causal_link import Valence as _V
 from maxim.modes.definitions import get_tool_followup_type
 from maxim.runtime.bio_integration import capture_loop_action, record_plan_outcome as _record_plan_outcome
-from maxim.runtime.loop_state import no_person_to_ask, operational_mode
+from maxim.runtime.loop_state import no_person_to_ask, operational_mode, tool_to_run
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.tools.base import GATE_REFUSAL_KINDS, ToolErrorKind
 from maxim.utils.input_source import InputSource
 from maxim.utils.logging import log_swallowed_exception
+from maxim.utils.net import redact_urls
 from maxim.utils.cloud_redaction import loggable_tool_text, text_shape, tool_text_is_loggable
 from maxim.utils.structured_logging import log_agentic
 
@@ -143,21 +143,6 @@ def _operant_only_credit_enabled() -> bool:
     from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
 
     return annotation_disabled_via_env(os.environ.get("MAXIM_OPERANT_ONLY_CREDIT"))
-
-
-def safe_agent_name(agent: Any) -> str:
-    """Extract a filesystem-safe agent name from an agent object."""
-    raw = None
-    try:
-        raw = getattr(agent, "state_name", None) or getattr(agent, "agent_name", None) or getattr(agent, "name", None)
-    except (AttributeError, TypeError) as e:
-        log_swallowed_exception(e, operation="get_agent_name")
-        raw = None
-    if not raw:
-        raw = type(agent).__name__
-    name = str(raw).strip() or "agent"
-    name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
-    return name.strip("._-") or "agent"
 
 
 def build_tool_signature(tool_name: str, tool_params: dict[str, Any] | None = None) -> str:
@@ -299,12 +284,8 @@ def record_outcome(
     the fail-soft NAc block — a degenerate key must be loud, not a
     silently-swallowed no-op.
     """
-    if not isinstance(agent_id, str) or not agent_id:
-        raise ValueError(
-            f"agent_id must be a non-empty string, got {agent_id!r}. "
-            "Tool outcome recording is per-agent — empty / missing values "
-            "would silently merge attribution across agents."
-        )
+    _require_agent_id(agent_id)
+    error = redact_urls(error) if error is not None else None  # one choke point for every sink below (#1801 S1)
     nac = _learning_nac(nac, refused)
     ts = time.time()
     entry = {"tool": tool_name, "success": success, "result": result_summary, "error": error, "timestamp": ts}
@@ -408,7 +389,7 @@ def record_outcome(
     # NAc causal learning: record tool → outcome so predictions improve
     if nac is not None:
         try:
-            outcome_summary = (result_summary or error or "")[:50]
+            outcome_summary = _nac_outcome_summary(result_summary, error)
             valence = learn_valence
             sig = build_tool_signature(tool_name, tool_params)
             # Tag every NAc observation with agent_id so cross-agent
@@ -612,6 +593,23 @@ def record_outcome(
     # Energy → NAc: learn which tools are expensive (metabolic budget)
     if nac is not None and elapsed_s > 0:
         _observe_energy_cost(nac, tool_name, elapsed_s, agent_id)
+
+
+def _nac_outcome_summary(result_summary: str | None, error: str | None) -> str:
+    """NAc's outcome text, its link key (moved out of ``record_outcome``, rule T, #1801). Only the error part is
+    reduced, before the cut (D5): a success summary is outside D5's error scope, so success-path keys are unchanged
+    (code review Wire SF1)."""
+    return result_summary[:50] if result_summary else redact_urls(error or "")[:50]
+
+
+def _require_agent_id(agent_id: object) -> None:
+    """``record_outcome``'s ``agent_id`` guard (moved out of it, rule T, #1801)."""
+    if not isinstance(agent_id, str) or not agent_id:
+        raise ValueError(
+            f"agent_id must be a non-empty string, got {agent_id!r}. "
+            "Tool outcome recording is per-agent — empty / missing values "
+            "would silently merge attribution across agents."
+        )
 
 
 def _learning_nac(nac: Any | None, refused: ToolErrorKind | None) -> Any | None:
@@ -871,7 +869,7 @@ def execute_parallel_actions(
                 {
                     "tool": tool_name,
                     "success": False,
-                    "error": str(e),
+                    "error": redact_urls(str(e)),  # combined_results, the LLM context, is built from these (#1801 F3)
                     "result": None,
                     "_failure_booked": getattr(result, "nac_failure_booked", None),
                 }
@@ -1230,17 +1228,6 @@ class ExecutionOutcome:
     error: str | None
     result_str: str | None
     followup: ActionFollowup | None
-
-
-def tool_to_run(executor: Any, tool_name: str) -> Any:
-    """The registered tool a call to ``tool_name`` would RUN, resolved through the executor's one alias resolver (a
-    ``reflect`` runs as ``think``), or ``None``. Its class declarations (``untrusted_output``, ``ends_run``) are read
-    off this tool, never off the proposed name."""
-    resolve = getattr(executor, "resolve_tool_name", None)
-    registry = getattr(executor, "registry", None)
-    ran = resolve(tool_name) if callable(resolve) else tool_name
-    find = getattr(registry, "find", None)
-    return find(ran) if callable(find) else None
 
 
 def _tool_followup(
