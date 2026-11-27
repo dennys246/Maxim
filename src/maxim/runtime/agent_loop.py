@@ -9,8 +9,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
-from maxim.memory.text import Provenance
 from maxim.utils.cloud_redaction import text_shape
+from maxim.utils.prompt_text import Provenance
 from maxim.utils.content_safety import safe_tool_name
 from maxim.utils.cancellation import stop_event_registered, yield_requested
 from maxim.utils.logging import log_swallowed_exception, warn
@@ -19,7 +19,6 @@ from maxim.utils.structured_logging import log_agentic
 # Extracted to tool_dispatch.py
 from maxim.runtime.tool_dispatch import (
     book_agent_fallback_failure,
-    safe_agent_name as _safe_agent_name,
     execute_parallel_actions as _execute_parallel,
     log_tool_result as _log_tool_result,
 )
@@ -32,6 +31,7 @@ from maxim.runtime.bio_integration import (
 )
 from maxim.runtime.loop_gates import GateOutcome, pre_tick_gate
 from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
+from maxim.runtime.loop_submit import prepare_submission
 from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
@@ -40,7 +40,6 @@ from maxim.runtime.loop_external import (
     submit_tick_context,
 )
 from maxim.runtime.loop_controller import (
-    is_unread_input,
     note_system_outcome,
     set_aside_run_end,
     take_replan_inputs,
@@ -48,7 +47,6 @@ from maxim.runtime.loop_controller import (
 from maxim.runtime.loop_substrate import substrate_tick
 from maxim.runtime.loop_planning import annotate_tool_variance, drain_approved
 from maxim.runtime.loop_perception import (
-    context_addresses_the_llm,
     is_tool_followup,
     perceive,
     percept_enrichment_context,
@@ -96,6 +94,7 @@ _WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to fa
 
 from maxim.runtime.loop_state import (
     loop_liveness_scope,
+    safe_agent_name as _safe_agent_name,
     operational_mode,
     seed_runtime_run_mode,
     start_run_state,
@@ -394,7 +393,7 @@ def _wait_for_proposal(
 def _planning_submit_in_flight(llm_worker: Any, liveness_on: bool) -> bool:
     """Whether this loop's previous planning job can still publish a proposal (one planning request in flight per
     narrator, #1048). Only loops with planning liveness (the sim narrator) wait; the AUT is unaffected. Inputs that
-    arrive meanwhile ride the next submit (``_take_deferred_inputs``)."""
+    arrive meanwhile ride the next submit (``loop_submit._take_deferred_inputs``)."""
     attempt_state = getattr(llm_worker, "latest_attempt_state", None)
     held = bool(liveness_on and callable(attempt_state) and _planning_attempt_is_active(attempt_state()))
     if callable(attempt_state) and held != _PLANNING_HELD.get(id(llm_worker), False):  # on a change: asked every tick
@@ -465,20 +464,6 @@ def _submit_held_or_stopped(llm_worker: Any, liveness_on: bool, stop_event: Any)
 # Each worker's last planning-held state, for the change-only log above. Keyed by id(): a run builds a handful of
 # workers, and an id reused after one is collected costs at most one missing or extra DEBUG line.
 _PLANNING_HELD: dict[int, bool] = {}
-
-
-def _take_deferred_inputs(context: Any, processed_cli_inputs: Any, liveness_on: bool) -> list[str]:
-    """The inputs held back while a planning job was in flight, taken alongside the follow-up that is now being
-    submitted (#1048): without this the follow-up branch would drop them, or they would preempt the follow-up.
-    Marks them processed. Empty for a loop without planning liveness."""
-    if not liveness_on or context is None:
-        return []
-    taken = [c for c in (context.cli_inputs or []) if is_unread_input(c, processed_cli_inputs)]
-    for c in taken:
-        processed_cli_inputs.append(c)
-    if taken:
-        logger.debug("Deferred inputs ride the follow-up: %s", [c[:60] for c in taken])
-    return taken
 
 
 def _jaccard_similarity(keywords_a: set[str], keywords_b: set[str]) -> float:
@@ -1003,25 +988,6 @@ def _fallback_rejected(
     if found is not None:
         tool_call_id, refuse = found
         refuse(tool_call_id, f"Rejected by autonomy: {reason}")
-
-
-def _followup_synthetic_input(followup: Any) -> str:
-    """The follow-up input the LLM receives, with the tool result FRAMED as data (#823).
-
-    The single consumer every ``ActionFollowup`` producer converges on (the loop's result paths,
-    the batched-exploration path, and ``LoopController``'s human-confirmed path), so no producer
-    can bypass the frame. ``batched_exploration`` may contain fetched pages, so it is framed as
-    external, and so is a tool that declares ``untrusted_output`` (recalled or stored text). The query
-    is quoted so it cannot shift the parser's ``']: `` split.
-    """
-    from maxim.modes.definitions import output_is_external
-    from maxim.utils.content_safety import frame_tool_output
-
-    tool = followup.tool
-    external = output_is_external(tool, untrusted_output=followup.untrusted_output)
-    result = frame_tool_output(tool, followup.result or "", external=external)
-    query = str(followup.original_query or "").replace("'", "\u2019")
-    return f"[ACTION_FOLLOWUP type={followup.followup_type} tool={tool} mode={followup.mode} query='{query}']: {result}"
 
 
 class _LoopOwner:
@@ -2177,343 +2143,23 @@ def _run_agentic_loop_body(
 
                 # Build context for LLM
                 try:
-                    context = None
-                    if hasattr(memory, "build_context"):
-                        context = memory.build_context()
-
-                    # CRITICAL: If there's a pending action followup but no context,
-                    # create a minimal context to ensure the followup gets processed.
-                    # This fixes the bug where search results were returned but not
-                    # processed because memory.build_context() returned None.
-                    if (ctrl.pending_action_followup or state.data.get("pending_modification")) and context is None:
-                        from maxim.agents.bus import StructuredContext
-
-                        context = StructuredContext(
-                            timestamp=time.time(),
-                            mode=operational_mode(executor, state),
-                            autonomy_level=state.data.get("autonomy_level", "supervised"),
-                            internet_access=state.data.get("internet_access", False),
-                        )
-                        logger.info("Created minimal context for pending action followup")
-
-                    # §1.16 B1: a salient audio percept escalated this tick but
-                    # carries no text, so memory may have built no context — mint
-                    # a minimal one to carry the auto_sense_context (the azimuth
-                    # line) into the submission.
-                    if _audio_escalate_this_tick and context is None:
-                        from maxim.agents.bus import StructuredContext
-
-                        context = StructuredContext(
-                            timestamp=time.time(),
-                            mode=operational_mode(executor, state),
-                            autonomy_level=state.data.get("autonomy_level", "supervised"),
-                            internet_access=state.data.get("internet_access", False),
-                        )
-                        logger.debug("Created minimal context for audio-orient escalation")
-
-                    # Inject bio-enrichment context if percept passed novelty gate
-                    if context is not None and _percept_enrichment_text:
-                        context.bio_enrichment_context = _percept_enrichment_text
-
-                    # Auto-sense context (section 1.15) — passive perception
-                    if context is not None and _auto_sense_text:
-                        context.auto_sense_context = _auto_sense_text
-
-                    # Wire-A (release_0_9_1.md Stage 2): cluster-bias annotation.
-                    # Surface NAc agent-wide tool-bias to the LLM proposer so it
-                    # can read substrate-acquired signal across percept regimes
-                    # the substrate didn't directly drill (Roy-2c finding).
-                    #
-                    # The env var MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1 disables
-                    # the read for the Roy-3 ablation; absence → on by default.
-                    # Truthy-value parsing is shared with the conftest scrub +
-                    # test suite via ``annotation_disabled_via_env`` so a future
-                    # divergence here trips the test layer.
-                    #
-                    # ValueError narrowing per pre-merge review (architecture
-                    # lens): a misconfigured per-agent stash (empty agent_id)
-                    # MUST surface loudly via the WARNING log so the Roy-3
-                    # measurement arm doesn't silently degrade to
-                    # annotation-off behavior. Other exceptions propagate —
-                    # the producer is on the LLM-submission hot path; a real
-                    # bug here is correctness-critical (Roy-3 evidence
-                    # integrity), not a recoverable nuisance.
-                    #
-                    # NOTE: the deliberation cycle re-submits the same context
-                    # object without re-running this hook, so biases captured
-                    # here are the snapshot at first submission. Bias change
-                    # within a 1-tick deliberation cycle is bounded by
-                    # ``reward_bias_alpha`` per call (~0.15); the stale-by-one-
-                    # tick read is acceptable, and avoiding per-cycle re-reads
-                    # keeps NAc lock contention bounded.
-                    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
-
-                    if (
-                        context is not None
-                        and _loop_nac is not None
-                        and not annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION"))
-                    ):
-                        try:
-                            context.cluster_bias_annotations = _loop_nac.get_agent_tool_biases(
-                                agent_id=_loop_agent_id,
-                                top_n=5,
-                            )
-                            # S1 credit-source provenance: same agent-wide
-                            # aggregation, keyed by RAW tool signature so the
-                            # composer can join before the prefix strip.
-                            # Pre-S1 persisted state has no sources — the
-                            # empty dict renders the pre-S1 format.
-                            context.cluster_bias_sources = _loop_nac.get_cluster_reward_sources(
-                                agent_id=_loop_agent_id,
-                            )
-                        except ValueError as e:
-                            logger.warning(
-                                "Wire-A annotation skipped due to invalid agent_id (%s); "
-                                "Roy-3 measurement integrity may be affected.",
-                                e,
-                            )
-                            context.cluster_bias_annotations = None
-                            context.cluster_bias_sources = None
-
-                    # W1 sense_tool_registry MVP (grayscale visibility).
-                    # Surfaces SEM-derived tools the substrate has a
-                    # non-zero reward bias for but that are NOT in the
-                    # active scene roster — the Roy-3a-retry gap. The
-                    # full filter (strip ``tool:`` prefix, exclude
-                    # active, require SEM kind, cap at top-N) lives in
-                    # ``prompts/grayscale_tools_annotation.py`` so it
-                    # can be unit-tested against realistic NAc-shaped
-                    # input — the pre-merge bio-fidelity review caught
-                    # a silent prefix mismatch the in-line producer
-                    # would have hidden in production.
-                    #
-                    # Reuses ``cluster_bias_annotations`` populated by
-                    # the Wire-A block above so the producer makes ONE
-                    # NAc call per submission, not two.
-                    #
-                    # Shares Wire-A's env-var kill switch
-                    # (MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1). The two
-                    # sections are different surfaces of the same
-                    # substrate signal; disabling one without the other
-                    # leaks the signal under a different header and
-                    # pollutes Roy ablation evidence.
-                    if (
-                        context is not None
-                        and _loop_nac is not None
-                        and executor is not None
-                        and not annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION"))
-                    ):
-                        try:
-                            _gs_registry = getattr(executor, "_registry", None) or getattr(executor, "registry", None)
-                            # Reuse Wire-A's biases when present; the
-                            # env-var gate above means the only way
-                            # ``cluster_bias_annotations`` is None here
-                            # is the Wire-A ValueError branch (invalid
-                            # agent_id), in which case grayscale would
-                            # hit the same error — skip rather than
-                            # double-log.
-                            _gs_biases = context.cluster_bias_annotations
-                            if _gs_biases:
-                                from maxim.prompts.grayscale_tools_annotation import (
-                                    build_grayscale_annotations,
-                                )
-
-                                _gs_annotations = build_grayscale_annotations(
-                                    _gs_biases,
-                                    _gs_registry,
-                                    top_n=5,
-                                )
-                                if _gs_annotations:
-                                    context.grayscale_tool_annotations = _gs_annotations
-                        except (AttributeError, ValueError) as e:
-                            # Narrowed per architecture-lens review:
-                            # AttributeError catches broken executor /
-                            # registry shape (out-of-tree subclass
-                            # without the new helpers); ValueError
-                            # mirrors Wire-A's discipline. Other
-                            # exceptions propagate — the producer is on
-                            # the LLM-submission hot path and a real
-                            # bug here is correctness-critical, not a
-                            # recoverable nuisance.
-                            logger.warning("Grayscale tools annotation skipped: %s", e)
-                            context.grayscale_tool_annotations = None
-
-                    # Check if there's something meaningful to react to
-                    # Only submit to LLM if we have:
-                    # 1. New CLI input with "maxim" keyword - not already processed
-                    # 2. New speech detected (transcription with "maxim" keyword)
-                    # 3. Direct address via maxim keyword in recent percepts
-                    # 4. Hard override commands
-                    # 5. Exploration mode with high novelty detection (periodic checks)
-                    #
-                    # SLEEP STATE: Skip LLM processing unless wake keyword detected
-                    is_sleeping = state.data.get("processing_state", "awake") == "sleep"
-                    has_meaningful_input = False
-                    new_cli_input = None
-                    _deferred_inputs: list[str] = []
-
-                    # If a fresh percept arrived THIS iteration (cli_input from
-                    # observation), it must be processed even if the same text was
-                    # seen before.  The context.cli_inputs dedup below catches
-                    # stale entries from the MemoryAgent deque, but a fresh percept
-                    # is a new turn — e.g., the orchestrator sending the same probe
-                    # twice is intentional and each must reach the LLM.
-                    if cli_input and not is_sleeping:
-                        new_cli_input = str(cli_input)
-                        has_meaningful_input = True
-                    # §1.16 B1: a salient audio percept escalated this tick — it
-                    # must reach the LLM even with no text input, or the folded
-                    # azimuth line is discarded at the `context = None` gate below.
-                    if _audio_escalate_this_tick and not is_sleeping:
-                        has_meaningful_input = True
-                    # Track original query from followups for conversation history
-                    # This ensures followup responses are saved with the original user question
-                    followup_original_query = ""
-                    if context:
-                        # Known commands that should NOT be sent to LLM
-                        # These are handled by Selfy's phrase response system
-                        SKIP_LLM_COMMANDS = frozenset(
-                            {
-                                # System commands
-                                "maxim shutdown",
-                                "shutdown maxim",
-                                "maxim stop",
-                                "stop maxim",
-                                "maxim pause",
-                                "pause maxim",
-                                "maxim resume",
-                                "resume maxim",
-                                # Sleep/wake (processing state)
-                                "maxim sleep",
-                                "sleep maxim",
-                                "maxim nap",
-                                "maxim rest",
-                                "maxim wake",
-                                "wake maxim",
-                                "maxim wake up",
-                                "wake up maxim",
-                                # Strategy switching
-                                "maxim observe",
-                                "observe maxim",
-                                "maxim watch",
-                                "maxim explore",
-                                "explore maxim",
-                                "maxim research",
-                                "research maxim",
-                                "maxim assist",
-                                "maxim help",
-                                "maxim reflect",
-                                "maxim reflection",
-                                "maxim learn",
-                                "maxim train",
-                                # Mode switching
-                                "maxim passive",
-                                "maxim active",
-                                "maxim singularity",
-                            }
-                        )
-
-                        # Check for NEW CLI input (not already processed)
-                        # CLI input always goes to LLM (maxim prefix presumed)
-                        # Voice input still requires "maxim" wake word
-                        input_source = state.data.get("pending_user_input_source", "CLI")
-                        if context.cli_inputs:
-                            for cli_input in context.cli_inputs:
-                                if cli_input and cli_input not in processed_cli_inputs:
-                                    cli_lower = cli_input.lower().strip()
-                                    # CLI source: always process (prefix presumed)
-                                    # Voice source: require "maxim" or "reachy" wake word
-                                    should_process = (
-                                        (input_source == "CLI") or ("maxim" in cli_lower) or ("reachy" in cli_lower)
-                                    )
-                                    if should_process:
-                                        # Skip LLM for known commands (handled by Selfy)
-                                        if cli_lower in SKIP_LLM_COMMANDS:
-                                            logger.info("Skipping LLM for command: %s", cli_input)
-                                            processed_cli_inputs.append(cli_input)
-                                            continue
-                                        new_cli_input = cli_input
-                                        has_meaningful_input = True
-                                        break
-                                    else:
-                                        # Mark voice inputs without wake word as processed
-                                        processed_cli_inputs.append(cli_input)
-
-                        # Speech or a percept naming the agent, a hard override, or a requested change (#1185)
-                        if context_addresses_the_llm(context, state):
-                            has_meaningful_input = True
-
-                        # Check for pending action followup (tools that need LLM processing)
-                        if ctrl.pending_action_followup:
-                            has_meaningful_input = True
-                            # Inject the action result into CLI inputs so LLM can process
-                            followup_query = ctrl.pending_action_followup.original_query
-                            followup_result = ctrl.pending_action_followup.result or ""
-                            followup_tool = ctrl.pending_action_followup.tool
-                            followup_type = ctrl.pending_action_followup.followup_type
-                            followup_mode = ctrl.pending_action_followup.mode
-
-                            # Preserve original query for conversation history tracking
-                            # This ensures followup responses are saved with the original user question
-                            followup_original_query = followup_query
-
-                            # Create a synthetic input with followup metadata
-                            # Format: [ACTION_FOLLOWUP type=X tool=Y query='Z']: result
-                            synthetic_input = _followup_synthetic_input(ctrl.pending_action_followup)
-                            if context.cli_inputs:
-                                context.cli_inputs.append(synthetic_input)
-                            else:
-                                context.cli_inputs = [synthetic_input]
-                            _deferred_inputs = _take_deferred_inputs(
-                                context, processed_cli_inputs, _planning_liveness_on
-                            )
-                            # A fold submits the follow-up as itself (the trim keeps it); its original query stays
-                            # the request's triggering input. The held inputs are already marked processed.
-                            new_cli_input = None if _deferred_inputs else new_cli_input
-                            logger.info(
-                                "Injected action followup into context: type=%s, tool=%s, result_len=%d",
-                                followup_type,
-                                followup_tool,
-                                len(followup_result),
-                            )
-                            # Clear the followup after processing
-                            ctrl.pending_action_followup = None
-
-                    # Skip LLM if nothing to react to
-                    if not has_meaningful_input:
-                        if sim.is_sim_mode and context and context.cli_inputs:
-                            _unprocessed = [c for c in context.cli_inputs if c not in processed_cli_inputs]
-                            if _unprocessed:
-                                sim.log(
-                                    "PIPELINE",
-                                    f"LLM skip: has_meaningful=False but {len(_unprocessed)} unprocessed cli_inputs (all already processed)",
-                                )
-                        context = None  # Skip this submission
-
-                    # Sleep state: Skip LLM unless wake keyword detected
-                    # This allows background processing while monitoring for activation
-                    if is_sleeping and context:
-                        from maxim.modes.definitions import is_wake_keyword
-
-                        has_wake_keyword = False
-                        if context.cli_inputs:
-                            for cli in context.cli_inputs:
-                                if cli and is_wake_keyword(cli):
-                                    has_wake_keyword = True
-                                    break
-                        if not has_wake_keyword and context.detected_speech:
-                            for speech in context.detected_speech:
-                                if speech and is_wake_keyword(speech):
-                                    has_wake_keyword = True
-                                    break
-                        if not has_wake_keyword:
-                            logger.debug("Sleep state: skipping LLM (no wake keyword)")
-                            context = None
-
-                    # Mark new CLI input as processed to prevent duplicate submissions
-                    # deque(maxlen=20) auto-evicts oldest on overflow — no manual check needed
-                    if new_cli_input:
-                        processed_cli_inputs.append(new_cli_input)
+                    _submit = prepare_submission(  # §6's first half, runtime/loop_submit.py (slice 7a)
+                        memory=memory,
+                        ctrl=ctrl,
+                        executor=executor,
+                        state=state,
+                        sim=sim,
+                        cli_input=cli_input,
+                        processed_cli_inputs=processed_cli_inputs,
+                        _audio_escalate_this_tick=_audio_escalate_this_tick,
+                        _percept_enrichment_text=_percept_enrichment_text,
+                        _auto_sense_text=_auto_sense_text,
+                        _loop_nac=_loop_nac,
+                        _loop_agent_id=_loop_agent_id,
+                        _planning_liveness_on=_planning_liveness_on,
+                    )
+                    context, new_cli_input, is_sleeping = _submit.context, _submit.new_cli_input, _submit.is_sleeping
+                    followup_original_query, _deferred_inputs = _submit.followup_original_query, _submit.deferred_inputs
 
                     if context:
                         # Get mode info -- the operator's grant wins, as at dispatch (#829; one reader, #963)

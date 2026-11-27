@@ -232,7 +232,7 @@ def test_the_re_plan_takes_every_held_input_once() -> None:
 def test_the_follow_up_fold_and_the_re_plan_share_one_unread_test() -> None:
     from types import SimpleNamespace
 
-    from maxim.runtime.agent_loop import _take_deferred_inputs
+    from maxim.runtime.loop_submit import _take_deferred_inputs
     from maxim.runtime.loop_controller import _unread_inputs, is_unread_input
 
     lines = ["", "seen", "[ACTION_FOLLOWUP type=x]: r", "new"]
@@ -245,7 +245,7 @@ def test_the_follow_up_fold_and_the_re_plan_share_one_unread_test() -> None:
 def test_the_tool_a_call_would_run_is_resolved_through_its_alias() -> None:
     from types import SimpleNamespace
 
-    from maxim.runtime.tool_dispatch import tool_to_run
+    from maxim.runtime.loop_state import tool_to_run
     from maxim.simulation.tools import FinishSimulationTool
 
     executor = SimpleNamespace(

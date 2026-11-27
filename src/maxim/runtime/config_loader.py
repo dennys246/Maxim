@@ -5,7 +5,7 @@ Reads ``~/.config/maxim/config.json`` and exposes a typed
 precedence chain that absorbs ~22 daily-use ``MAXIM_*`` env vars onto
 a single source of truth.
 
-Path convention mirrors :func:`maxim.peer.config.peer_config_path` —
+The directory comes from :func:`maxim.utils.paths.maxim_config_dir` —
 XDG on POSIX, ``%APPDATA%\\maxim\\`` on Windows. Same directory as
 ``peer.yml`` / ``mesh.yml`` / ``profiles.yml`` per CLAUDE.md's
 "declarative config layer" invariant.
@@ -44,13 +44,13 @@ import json
 import logging
 import math
 import os
-import platform
 import threading
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal
 
 from maxim.exceptions import ConfigDirUnreadable, ConfigurationError
+from maxim.utils.paths import maxim_config_dir
 
 logger = logging.getLogger(__name__)
 
@@ -624,17 +624,11 @@ to keep the log from spamming per-lane-resolution dispatch."""
 def config_path() -> Path:
     """Return the platform-appropriate ``config.json`` path.
 
-    Mirrors :func:`maxim.peer.config.peer_config_path` so all four
-    declarative config files (``peer.yml``, ``mesh.yml``,
-    ``profiles.yml``, ``config.json``) live in the same directory.
+    Resolved through :func:`maxim.utils.paths.maxim_config_dir`, the one
+    resolver, so all four declarative config files (``peer.yml``,
+    ``mesh.yml``, ``profiles.yml``, ``config.json``) live in the same directory.
     """
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return base / "maxim" / "config.json"
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "maxim" / "config.json"
+    return maxim_config_dir() / "config.json"
 
 
 def engage_offline_if_configured() -> bool:

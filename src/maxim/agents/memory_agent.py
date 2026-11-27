@@ -54,7 +54,8 @@ from maxim.memory.types import (
     record_success,
 )
 from maxim.memory.association_index import AssociationIndex
-from maxim.memory.text import Provenance, normalize_tokens, provenance_of
+from maxim.memory.text import normalize_tokens
+from maxim.utils.prompt_text import Provenance, provenance_of
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import get_abstraction_buffer
 

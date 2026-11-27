@@ -67,8 +67,9 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from maxim.peer.config import peer_config_path, read_peer_config
+from maxim.peer.config import read_peer_config
 from maxim.utils.atomic_io import atomic_write_secret
+from maxim.utils.paths import maxim_config_dir
 
 logger = logging.getLogger(__name__)
 
@@ -312,8 +313,8 @@ class MeshConfig:
 
 
 def mesh_config_path() -> Path:
-    """Return the platform-appropriate mesh config path (next to peer.yml)."""
-    return peer_config_path().parent / "mesh.yml"
+    """Return the platform-appropriate mesh config path (in :func:`maxim.utils.paths.maxim_config_dir`, next to peer.yml)."""
+    return maxim_config_dir() / "mesh.yml"
 
 
 # ─── parser ─────────────────────────────────────────────────────────────

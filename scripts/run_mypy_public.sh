@@ -31,10 +31,12 @@ FILES=(
     src/maxim/runtime/loop_planning.py
     src/maxim/runtime/loop_perception.py
     src/maxim/runtime/loop_intake.py
+    src/maxim/runtime/loop_submit.py
     src/maxim/runtime/loop_controller.py
     src/maxim/runtime/loop_state.py
     src/maxim/runtime/tool_dispatch.py
     src/maxim/runtime/loop_types.py
+    src/maxim/utils/prompt_text.py
     src/maxim/simulation/tty_stdin.py
     src/maxim/simulation/stall_detector.py
     src/maxim/simulation/stdin_lines.py

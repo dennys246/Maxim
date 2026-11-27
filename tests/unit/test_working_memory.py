@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 from maxim.agents.working_memory import WMEntry, WorkingMemoryKind, WorkingMemorySet
-from maxim.memory.text import Provenance
+from maxim.utils.prompt_text import Provenance
 
 
 # ─────────────────────────────────────────────────────────────────────────────

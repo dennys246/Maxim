@@ -18,7 +18,19 @@ import sys
 from unittest.mock import MagicMock, patch
 
 
+from maxim.hardware.reachy import probe as reachy_probe
 from maxim.hardware.reachy.controller import ReachyMiniController
+
+
+def _status_or_unreadable(status: dict | None):
+    """The probe's status-read seam (#1806): the daemon's JSON object, or an unreadable status for ``None``."""
+
+    def read(*_a, **_k):
+        if status is None:
+            raise reachy_probe.DaemonStatusUnreadable("unit test: no status")
+        return dict(status)
+
+    return read
 
 
 def _sdk_mini(*, released_by_connect: bool, acquire_works: bool = True) -> MagicMock:
@@ -39,8 +51,8 @@ def _sdk_mini(*, released_by_connect: bool, acquire_works: bool = True) -> Magic
 def _connect(
     monkeypatch, mini: MagicMock, status: dict | None, *, c: ReachyMiniController | None = None, expect: bool = True
 ) -> ReachyMiniController:
-    monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: status))
-    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    monkeypatch.setattr(reachy_probe, "read_daemon_status", _status_or_unreadable(status))
+    monkeypatch.setattr(reachy_probe, "installed_sdk_version", lambda: (1, 8))
     # connect's one REST readback (GET /api/state/full) is not what these tests are about: no network.
     monkeypatch.setattr(ReachyMiniController, "_probe_state_shape", lambda self: None)
     mod = MagicMock()
@@ -49,7 +61,7 @@ def _connect(
         c = ReachyMiniController(host="10.42.0.1", connection_mode="network", media_backend="no_media")
     with (
         patch.dict(sys.modules, {"reachy_mini": mod}),
-        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch.object(reachy_probe, "tcp_connect_error", return_value=None),
     ):
         assert c.connect(timeout=2.0) is expect
     return c

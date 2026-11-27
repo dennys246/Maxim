@@ -267,7 +267,7 @@ The router enforces budget limits at multiple levels:
 | Monthly | $100.00 | Downgrades model, falls back to local |
 | **Session ceiling** | **$5.00** | **Hard reject -- ALL requests blocked** |
 
-The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Override limits via an `llm.json` file in the working directory (or pointed at by `MAXIM_LLM_CONFIG`):
+The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Override limits in `~/.maxim/config/llm.json` (or a file pointed at by `MAXIM_LLM_CONFIG`). Maxim no longer reads an `llm.json` from the working directory (#1806); it logs a warning if it finds one there:
 
 ```json
 {
@@ -291,7 +291,7 @@ maxim config set llm.profile mistral-7b
 maxim config set llm.n_ctx 8192
 ```
 
-A legacy `llm.json` file (found via `MAXIM_LLM_CONFIG` env var or in the working directory) is still supported for profile and routing config, but `~/.config/maxim/config.json` is the canonical 1.0 configuration path for role, lane routing, and LLM settings.
+A legacy `llm.json` file (`~/.maxim/config/llm.json`, or the file `MAXIM_LLM_CONFIG` names) is still supported for profile and routing config, but `~/.config/maxim/config.json` is the canonical 1.0 configuration path for role, lane routing, and LLM settings.
 
 ### Per-Mode Response Tuning
 

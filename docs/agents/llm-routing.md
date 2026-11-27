@@ -59,6 +59,13 @@ Probe timers are separate and short: `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` 1.5s /
 **[engineering] An address rule is checked on the address actually DIALLED, never on an earlier lookup (#824, #921).** A check that resolves and a connect that resolves again can disagree (DNS rebinding), and a redirect is a new connection. So every address policy (`utils/net.py::AddressPolicy`: `"public"`, `"private"` or `"any"`) lives in the connection pool's network backend, an `_AddressCheckingBackend`, which resolves once at connect time and dials the address it checked.
 - **One classifier.** `utils/net.py::is_public_address` serves `validate_base_url` and every connect check.
 - **Model-chosen fetches:** `fetch_url(public_only=True)`, strict, and never through a proxy (#824).
+- **A LAN robot daemon:** `fetch_url(address_policy="private", strict=True)` (#1806 PR 0, on #1782's strict
+  endpoints), the `_external_policy_private_strict` endpoint, which has no proxy mounts, `trust_env=False` (the env
+  CA is still honoured), and the #1715 deadline. The users are every Reachy daemon read: the
+  `hardware/reachy/probe.py::probe_daemon` status read (doctor, `maxim-diagnostics`, the controller pre-check),
+  `maxim-diagnostics`' own `/docs` read, the controller's fresh `/api/state/full` readback, and the REST DoA reader.
+  Guards: `tests/unit/test_1806_pr0_http_strict_private.py` + `tests/unit/test_1806_pr0_daemon_reads_direct.py` +
+  `tests/unit/test_motion_path_1499.py::test_the_fresh_read_is_private_and_bounded` (the controller readback).
 - **Downloads:** one `_StartClassBackend` per download. The class of the first dial holds for every hop, and a public start stays public (owner decision).
 - **Operator URLs:** backends via `base_url_address_policy` (`validate_base_url`'s own rules):
   - `_MaximPeerBackend` through `HTTPEndpoint.address_policy`, and its probes through `fetch_url(address_policy=...)`;

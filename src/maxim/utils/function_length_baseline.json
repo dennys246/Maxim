@@ -6,12 +6,12 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1116
+      "lines": 1098
     },
     {
       "file": "src/maxim/cli_parser.py",
       "qualname": "_build_parser",
-      "lines": 593
+      "lines": 559
     },
     {
       "file": "src/maxim/console/server.py",
@@ -56,7 +56,7 @@
     {
       "file": "src/maxim/embodied_runtime/selfy.py",
       "qualname": "Maxim.__init__",
-      "lines": 312
+      "lines": 243
     },
     {
       "file": "src/maxim/embodiment/body.py",
@@ -101,7 +101,7 @@
     {
       "file": "src/maxim/models/language/config.py",
       "qualname": "load_llm_config",
-      "lines": 269
+      "lines": 261
     },
     {
       "file": "src/maxim/models/language/router.py",
@@ -126,7 +126,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1773
+      "lines": 1453
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -161,7 +161,7 @@
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
       "qualname": "execute_and_learn",
-      "lines": 311
+      "lines": 304
     },
     {
       "file": "src/maxim/runtime/tool_dispatch.py",
@@ -414,9 +414,12 @@
     "#1519 re-merged onto slice 6 (2026-11-23): _run_agentic_loop_body 1927 -> 1913, the same 14 lines #1519 moved out on the branch (2140 -> 2126).",
     "#1519 re-merged onto #1751 (#1776) on 2026-11-23: _run_agentic_loop_body 1917 -> 1903 and execute_and_learn 325 -> 311, the same 14 lines each that #1519 moved out on the branch.",
     "#1519 re-merged onto #1185 (#1779) on 2026-11-24: _run_agentic_loop_body 1795 -> 1781, the same 14 lines #1519 moved out on the branch.",
+    "_run_agentic_loop_body tightened 1934 -> 1603 on 2026-11-21 (1.3.6 loop phase 2, slice 7a) when section 6's submit, first half (the tick's context build, the Wire-A and W1 annotations and the meaningful-input gate), moved verbatim to runtime/loop_submit.py in pieces of 200 lines or fewer (owner decision 2026-11-21): build_tick_context (173), gate_submission (100), _scan_context_inputs (135), behind prepare_submission (38); the module-level _take_deferred_inputs and _followup_synthetic_input moved with it by rule (a). Characterized first by tests/unit/test_loop_submit_gate_characterization.py, kept green unchanged.",
+    "slice 7a re-merged onto main (#1185, #1414, #1519, #1751; 2026-11-24): _run_agentic_loop_body 1781 -> 1461, slice 7a's 331 lines less the 11 that #1185 had already moved out of the same gate (the speech, maxim-keyword and hard-override checks to loop_perception.context_addresses_the_llm), so main's two edits inside the moved text (that call, and the pending_modification minimal-context trigger) land in loop_submit.py, where _scan_context_inputs measures 124 (was 135); _followup_synthetic_input carries #1519's output_is_external there.",
     "#1228 re-merged onto #1519 (#1778) and #1185 (#1779) on 2026-11-24: _main_impl 1131 -> 1118 and start_simulation_mode 1832 -> 1816 (the same 13 and 16 lines #1228 moved out); report.py::build_report stays under the threshold with both sides' extractions (_router_cost/_run_costs and _tool_usage).",
     "#1315 item 10b merged with main (2026-11-25): 10b's V29 `MaximAgent(llm_router=)` was dropped for main's #1228 `shared_router=` (the same rule), so the re-measured pins are main's: AgenticRuntimeMixin._start_agentic_runtime 774 and start_simulation_mode 1816; _main_impl stays 1116.",
     "#1775 (2026-11-24, rule T; Session A's grant): _run_agentic_loop_body 1781 -> 1773, section 4's goal_proposed event moved to agent_loop._log_goal_proposed, paying for its reasoning now logged by text_shape.",
+    "slice 7a re-merged onto #1775 (2026-11-25): _run_agentic_loop_body 1773 -> 1453. That is slice 7a's pin on the earlier main (1461) less the 8 lines #1775 moved out of section 4.",
     "#1801 (2026-11-25, rule T, no exemption): record_outcome 385 -> 381: its agent_id guard moved to tool_dispatch._require_agent_id, paying for the URL reduction of error at its top and before the NAc summary cut."
   ],
   "touch_exemptions": [

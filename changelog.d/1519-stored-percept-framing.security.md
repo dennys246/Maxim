@@ -10,7 +10,7 @@
     external or internal) and `WMEntry.prompt_text()` renders by it. Only `cli` (typed input, the sim narrator too)
     counts as the operator, shown defanged. Stored room-mic `voice` (any room-mic line naming the wake word) and
     `transcript` (owner decision 2026-11-21: anyone in the room or on a speakerphone can produce either) and every
-    `comms:*` source are external, shown framed. One helper renders it all: `memory/text.py::frame_external`.
+    `comms:*` source are external, shown framed. One helper renders it all: `utils/prompt_text.py::frame_external`.
   - A live voice request stays the turn's request, so voice still commands the robot. On the FIRST prompt of a voice
     turn, its `=== User Request ===` is labelled as heard on the room microphone from an unverified speaker, not
     typed by the operator. The loop carries the source with the request (`LLMRequest.triggering_input_source`) and

@@ -519,7 +519,7 @@ class FakeRouter:
             return None
         call = _describe(prompt)
         if self.arm in _HELD_INPUT_ARMS and call["kind"] == "followup":
-            # The inputs that rode this follow-up (``agent_loop._take_deferred_inputs``, #1048): what the narrator was
+            # The inputs that rode this follow-up (``loop_submit._take_deferred_inputs``, #1048): what the narrator was
             # handed beside the tool result. Recorded only for these arms, so the slice-0 traces stay byte-identical.
             m = _NEW_INSTRUCTIONS.search(prompt)
             call["held_inputs"] = _mask_stall(m.group(1).strip())[:120] if m else None  # masked before the cut

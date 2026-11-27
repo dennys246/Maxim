@@ -290,7 +290,7 @@ def test_a_process_stop_request_holds_the_submit_of_a_loop_given_no_stop_event_1
 
 
 def test_an_input_held_behind_a_job_in_flight_rides_the_next_follow_up() -> None:
-    from maxim.runtime.agent_loop import _take_deferred_inputs
+    from maxim.runtime.loop_submit import _take_deferred_inputs
 
     checkpoint = "DIVERSITY CHECKPOINT (turn 3): vary your probes"
     context = SimpleNamespace(cli_inputs=[FOLLOWUP, checkpoint])
@@ -324,9 +324,15 @@ def test_the_loop_folds_held_inputs_into_the_follow_up_it_submits() -> None:
         "_deferred_inputs=_take_deferred_inputs(context,processed_cli_inputs,_planning_liveness_on)",
         "new_cli_input=Noneif_deferred_inputselsenew_cli_input",  # the follow-up keeps its original query
         "_release_unsent_deferred_inputs(processed_cli_inputs,_deferred_inputs,submitted)",
-        "deferred_inputs=_deferred_inputs,",
     ):
         assert line in src, line
+    # The consumer, anchored to the submit itself: since slice 7a, loop_submit's own keyword
+    # (``deferred_inputs=_deferred_inputs,``) would also satisfy a whole-loop scan.
+    import inspect
+
+    from maxim.runtime.loop_external import submit_tick_context
+
+    assert "deferred_inputs=_deferred_inputs," in "".join(inspect.getsource(submit_tick_context).split())
 
 
 def test_the_worker_carries_held_inputs_into_the_follow_up_prompt() -> None:

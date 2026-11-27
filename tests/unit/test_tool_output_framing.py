@@ -3,7 +3,7 @@
 A fetched page used to be pasted raw between "Results from X:" and "=== Instructions ===", so a
 page carrying its own instructions block was indistinguishable from the prompt's. The frame is
 applied at the single consumer every `ActionFollowup` producer converges on
-(`agent_loop._followup_synthetic_input`), and NEVER on the raw summary NAc learns from.
+(`loop_submit._followup_synthetic_input`), and NEVER on the raw summary NAc learns from.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
-from maxim.runtime.agent_loop import _followup_synthetic_input
+from maxim.runtime.loop_submit import _followup_synthetic_input
 from maxim.runtime.tool_dispatch import _followup_result_text
 from maxim.runtime.loop_types import ActionFollowup
 from maxim.utils.content_safety import TOOL_OUTPUT_RULE, frame_tool_output
@@ -157,14 +157,18 @@ def test_the_loop_builds_its_follow_up_only_through_the_consumer() -> None:
     """Catches the regression the file-list guard missed: an inline f-string put back in the loop."""
     import inspect
 
-    from maxim.runtime import agent_loop
+    from maxim.runtime import loop_submit
 
     from tests.unit._loop_source import loop_source
 
     source = loop_source()  # the loop's modules (1.3.2 decomposition)
     assert source.count("[ACTION_FOLLOWUP type={") == 1
-    assert "[ACTION_FOLLOWUP type={" in inspect.getsource(agent_loop._followup_synthetic_input)
+    assert "[ACTION_FOLLOWUP type={" in inspect.getsource(loop_submit._followup_synthetic_input)
     assert "_followup_synthetic_input(ctrl.pending_action_followup)" in source
+    # One "is this output external" predicate (#1519): the consumer asks the shared one, never an inline tool list.
+    assert "output_is_external(tool, untrusted_output=followup.untrusted_output)" in inspect.getsource(
+        loop_submit._followup_synthetic_input
+    )
 
 
 def test_every_control_character_except_tab_and_newline_is_stripped() -> None:
