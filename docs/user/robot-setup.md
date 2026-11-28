@@ -46,6 +46,23 @@ maxim --robot-name my_reachy
 maxim --timeout 60
 ```
 
+### `robots.yaml` entries
+
+Robots are declared in `<data home>/robots.yaml` (`~/.maxim/robots.yaml` unless `MAXIM_DATA_HOME` is set). Each
+entry may use only these keys: `type`, `primary`, `config`, `kind`, `hardware_id`, `hostname` and `launch`. Any
+other key, or a mistyped value, stops the run with an error naming the entry; nothing is silently dropped.
+
+- `primary:` is an unquoted `true` or `false`, and at most one entry is primary.
+- For a networked Reachy (any `connection_mode` except `localhost_only`, or a `tunnel: true` entry), use
+  `media_backend: default` (WebRTC from the robot) or `no_media`. `local` and its aliases read *this* machine's
+  camera and microphones, so they are refused there. They are meant only for Maxim running on the robot itself;
+  this build cannot yet tell that apart from a hand-run SSH tunnel written as `localhost_only`, and a `tunnel: true`
+  entry with `default` media can still pick this machine's camera, so use `media_backend: no_media` on a tunnel
+  entry for now. A later release closes both.
+- `hardware_id:` is the robot's identity pin, for a later release to verify on connect. This build parses it but
+  cannot verify it yet, so it **refuses to connect a pinned entry**. Use `hardware_id: unpinned`, or leave the line
+  out.
+
 ## Headless Mode (No Robot)
 Maxim works without a robot connected. The agent runtime, LLM, planning, and coding tools all work headless. Robot-specific tools (MoveTool, TrackTargetTool) return stub responses.
 

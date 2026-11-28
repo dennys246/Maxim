@@ -2283,3 +2283,19 @@ def _isolate_maxim_console_sandbox_env():
             os.environ.pop(name, None)
             if value is not None:
                 os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _reset_robot_registry_singleton():
+    """Drop the process-wide ``RobotRegistry`` singleton after every test.
+
+    A test that connected a robot left it in the singleton, so a later test asking the registry to connect the same
+    id took the "already connected" reuse branch instead of its own path (2026-11-27:
+    ``test_robots_yaml_connect_config`` left ``r1``/``r2`` behind, and ``test_motion_path_1499``'s
+    ``automatic_body_yaw`` refusal and broadcast tests then failed in that order). Only reset when the module was
+    imported, so tests that never touch hardware pay nothing.
+    """
+    yield
+    registry = sys.modules.get("maxim.hardware.registry")
+    if registry is not None:
+        registry.RobotRegistry.reset_instance()

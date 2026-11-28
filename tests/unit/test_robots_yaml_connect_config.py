@@ -65,9 +65,9 @@ class TestResolveConnectionConfig:
         assert "host" not in merged  # defaults only — a foreign robot's host must not leak in
 
     def test_declared_keys_win_over_defaults(self):
-        cfg = _cfg({"r": {"type": "reachy_mini", "primary": True, "config": {"media_backend": "gstreamer"}}})
+        cfg = _cfg({"r": {"type": "reachy_mini", "primary": True, "config": {"media_backend": "no_media"}}})
         merged = resolve_connection_config(cfg, "r", defaults=_DEFAULTS)
-        assert merged["media_backend"] == "gstreamer"
+        assert merged["media_backend"] == "no_media"
 
     def test_empty_config_returns_defaults(self):
         merged = resolve_connection_config(RobotsConfig(), "reachy_mini", defaults=_DEFAULTS)

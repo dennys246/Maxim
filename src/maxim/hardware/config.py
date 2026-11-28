@@ -9,14 +9,18 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
+from collections.abc import Hashable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from maxim.exceptions import InvalidConfigError, RobotsConfigError
+from maxim.exceptions import ConfigurationError, InvalidConfigError, RobotPinUnverifiable, RobotsConfigError
+from maxim.hardware.devices_types import HARDWARE_ID_PATTERN, UNPINNED_LITERAL, DevicePin
 from maxim.hardware.registry import RobotRegistry
+from maxim.utils.format_version import check_format_version
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +53,236 @@ def resolve_daemon_name(typed: str | None) -> tuple[str, str]:
     return DEFAULT_ROBOT_NAME, "default"
 
 
+# The robots.yaml format this build reads and (from #1806 PR 2) writes. A file with a root ``_format_version`` is
+# writer-managed: every entry must then carry ``hardware_id:`` (``unpinned`` when it has no pin).
+ROBOTS_FORMAT_VERSION = "1.0"
+
+# The entry-level keys, exactly (#1806 §4.1). Anything else, a typo such as ``hardware_idd:`` included, is a
+# RobotsConfigError, so a typo can never yield a silently unpinned entry.
+ROOT_KEYS = frozenset({"robots", "_format_version"})
+ENTRY_KEYS = frozenset({"type", "primary", "config", "kind", "hardware_id", "hostname", "launch"})
+_ENTRY_ONLY_KEYS = ("hardware_id", "hostname")  # refused under ``config:``, where nothing would read them
+ENTRY_KINDS = frozenset({"robot"})  # reserved; one kind exists today (§1)
+# ``launch:`` holds the run defaults ``maxim embody`` uses (#1806 PR 2b); never ``operational_mode`` (D8).
+_LAUNCH_KEYS: dict[str, type] = {"mode": str, "llm": str, "interactive": bool}
+
+# The Reachy Mini SDK's own vocabularies, matched on ``value.lower()`` exactly as the SDK normalises them
+# (ReachyMini._normalize_connection_mode and _configure_mediamanager), so Maxim's classification and the SDK's
+# can never disagree.
+REACHY_CONNECTION_MODES = frozenset({"auto", "localhost_only", "network"})
+# Every backend the SDK resolves to LOCAL: it reads the Maxim HOST's camera IPC socket and host audio, whatever the
+# connection mode. On a networked robot that is always the wrong body.
+REACHY_LOCAL_MEDIA = frozenset(
+    {"local", "gstreamer", "gstreamer_no_video", "sounddevice_no_video", "sounddevice_opencv"}
+)
+REACHY_REMOTE_MEDIA = frozenset({"default", "auto", "webrtc", "no_media"})
+
+
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+
+
+class _NoDuplicateKeysLoader(yaml.SafeLoader):
+    """``yaml.SafeLoader`` that refuses a duplicate mapping key (#1806 PR 1a review E1).
+
+    PyYAML keeps the LAST duplicate silently, so a second ``hardware_id: unpinned`` line under an entry, or a second
+    entry with the same id, would replace the first without a word. The check runs in the COMPOSER, where PyYAML
+    builds each mapping node exactly once (an inline merge value included) before any merge flattening or
+    construction: two constructor-level attempts each broke a legitimate merge, because ``flatten_mapping`` rewrites
+    nodes in place (delta rounds 3 and 4). Merge keys are skipped, so ``<<: *base`` followed by an explicit key stays
+    a standard override; a second merge key in one mapping is refused, since its precedence would depend on the
+    spelling. Construction is SafeLoader's own, unchanged.
+    """
+
+    def construct_object(self, node: yaml.Node, deep: bool = False) -> Any:
+        """SafeLoader's construction, with its raw scalar errors typed (round 6 J1).
+
+        SafeLoader's scalar constructors raise bare ``KeyError`` (``!!bool maybe``), ``AttributeError``
+        (``!!timestamp abc``), ``IndexError`` (``!!int ''``) and ``ValueError`` (``!!int abc``); each becomes a
+        ``ConstructorError`` at the node, so :meth:`RobotsConfig.from_yaml` reports it as a ``RobotsConfigError``.
+        """
+        try:
+            return super().construct_object(node, deep=deep)
+        except (KeyError, AttributeError, IndexError, ValueError, TypeError) as e:
+            raise yaml.constructor.ConstructorError(
+                None, None, f"cannot construct {node.tag} value {getattr(node, 'value', '')!r}: {e}", node.start_mark
+            ) from e
+
+    def compose_mapping_node(self, anchor: Any) -> yaml.MappingNode:
+        node = super().compose_mapping_node(anchor)
+        seen: set[Any] = set()
+        merge_seen = False
+        for key_node, _value_node in node.value:
+            if key_node.tag == _MERGE_TAG:
+                if merge_seen:
+                    raise yaml.composer.ComposerError(
+                        "while composing a mapping",
+                        node.start_mark,
+                        "found a second merge key '<<'",
+                        key_node.start_mark,
+                    )
+                merge_seen = True
+                continue
+            if not isinstance(key_node, yaml.ScalarNode):
+                continue  # a collection key: SafeLoader refuses it as unhashable at construction
+            key = self.construct_object(key_node)
+            if not isinstance(key, Hashable):
+                # A collection-tagged scalar key (``!!set q:``). Checked explicitly, as SafeLoader does: ``set() in
+                # seen`` does not raise (sets are looked up as frozensets), but ``seen.add`` would, untyped.
+                raise yaml.composer.ComposerError(
+                    "while composing a mapping",
+                    node.start_mark,
+                    f"found an unhashable key {key!r}",
+                    key_node.start_mark,
+                )
+            if key in seen:
+                raise yaml.composer.ComposerError(
+                    "while composing a mapping", node.start_mark, f"found duplicate key {key!r}", key_node.start_mark
+                )
+            seen.add(key)
+        return node
+
+
+def _entry_error(robot_id: str, message: str) -> RobotsConfigError:
+    return RobotsConfigError(f"robots.yaml entry {robot_id!r}: {message}")
+
+
+def _parse_pin(robot_id: str, data: dict[str, Any], *, managed: bool) -> DevicePin:
+    """The entry's ``hardware_id:`` as a :class:`DevicePin`. Absent means unpinned only in a hand-written file."""
+    if "hardware_id" not in data:
+        if managed:
+            raise _entry_error(
+                robot_id,
+                "'hardware_id' is required in a writer-managed robots.yaml (one with _format_version); "
+                f"write 'hardware_id: {UNPINNED_LITERAL}' for an entry with no pin",
+            )
+        return DevicePin.UNPINNED
+    raw = data["hardware_id"]
+    if not isinstance(raw, str):
+        # An unquoted all-digit id loads as an int (as octal with a leading 0); never coerce it.
+        raise _entry_error(
+            robot_id, f"'hardware_id' must be a quoted string, got {type(raw).__name__} {raw!r} (quote it)"
+        )
+    if raw == UNPINNED_LITERAL:
+        return DevicePin.UNPINNED
+    if HARDWARE_ID_PATTERN.fullmatch(raw) is None:
+        raise _entry_error(
+            robot_id, f"'hardware_id' must be 16 lowercase hex characters or {UNPINNED_LITERAL!r}, got {raw!r}"
+        )
+    return DevicePin(raw)
+
+
+def _parse_launch(robot_id: str, raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise _entry_error(robot_id, f"'launch' must be a mapping, got {type(raw).__name__}")
+    if "operational_mode" in raw:
+        raise _entry_error(
+            robot_id,
+            "'launch' never holds operational_mode (#1806 D8): the operational mode is chosen at launch, not stored",
+        )
+    unknown = sorted(str(k) for k in raw if k not in _LAUNCH_KEYS)
+    if unknown:
+        raise _entry_error(robot_id, f"unknown 'launch' key(s) {unknown}; allowed: {sorted(_LAUNCH_KEYS)}")
+    for key, value in raw.items():
+        if type(value) is not _LAUNCH_KEYS[key]:
+            raise _entry_error(robot_id, f"'launch.{key}' must be a {_LAUNCH_KEYS[key].__name__}, got {value!r}")
+    return dict(raw)
+
+
+def check_reachy_media(
+    config: dict[str, Any], *, where: str, error: type[ConfigurationError] = RobotsConfigError
+) -> dict[str, Any]:
+    """A copy of a Reachy connect config with ``connection_mode``/``media_backend`` canonical, or a typed refusal.
+
+    Owner rule (#1806, 2026-11-25): a LOCAL media backend (``local`` or any alias the SDK resolves to LOCAL) reads
+    the Maxim host's camera and audio, so it is allowed only when the lowercased ``connection_mode`` is exactly
+    ``localhost_only`` and the entry is not ``tunnel: true``. Everything else counts as networked: an absent mode
+    (``network``), ``auto`` (the SDK falls back to the network and opens the camera in the same call), and a
+    tunnel. Unknown values and non-strings are refused rather than left to the SDK, which falls back to
+    auto-detect on an unknown backend. ``tunnel`` must be a real bool: the controller branches on truthiness, so a
+    quoted ``"true"`` would open the tunnel while a bool check called the entry "not a tunnel". ``where`` names
+    the source in the error.
+
+    The ONE copy of this rule: PR 1b's controller-side check (approach note §4.2, "in the controller") calls this
+    function and never re-implements the sets. Two residuals remain until PR 1b's controller work: a
+    ``tunnel: true`` entry with ``default``/``auto`` media is forced to ``localhost_only`` by the controller, so the
+    SDK may still pick LOCAL; and a manual SSH tunnel written as ``localhost_only`` passes here (the onboard proof is
+    1b's).
+    """
+    out = dict(config)
+    tunnel = out.get("tunnel", False)
+    if type(tunnel) is not bool:
+        raise error(f"{where}: 'tunnel' must be true or false (unquoted), got {tunnel!r}")
+    mode = out.get("connection_mode")
+    if "connection_mode" in out:  # a present null is refused too: the SDK would call None.lower()
+        if not isinstance(mode, str) or mode.lower() not in REACHY_CONNECTION_MODES:
+            raise error(f"{where}: 'connection_mode' must be one of {sorted(REACHY_CONNECTION_MODES)}, got {mode!r}")
+        out["connection_mode"] = mode.lower()
+    media = out.get("media_backend")
+    if "media_backend" in out:
+        known = REACHY_LOCAL_MEDIA | REACHY_REMOTE_MEDIA
+        if not isinstance(media, str) or media.lower() not in known:
+            # YAML ``no`` parses as a bool, so ``media_backend: no`` lands here rather than meaning no_media.
+            raise error(f"{where}: 'media_backend' must be one of {sorted(known)}, got {media!r}")
+        out["media_backend"] = media.lower()
+        if out["media_backend"] in REACHY_LOCAL_MEDIA and (out.get("connection_mode") != "localhost_only" or tunnel):
+            raise error(
+                f"{where}: media_backend {media!r} reads THIS machine's camera and audio, so it is allowed only "
+                "for connection_mode: localhost_only without tunnel: true (Maxim running on the robot itself). "
+                "For a networked robot use media_backend: default (WebRTC from the robot) or no_media"
+            )
+    return out
+
+
 @dataclass
 class RobotConfig:
-    """Configuration for a single robot."""
+    """Configuration for a single robot.
+
+    ``hardware_id`` is the entry's identity pin (never ``None``; :attr:`DevicePin.UNPINNED` when it has none),
+    ``hostname`` the name to re-resolve when ``config.host`` is absent, and ``launch`` the stored run defaults
+    (#1806 §4.1). ``kind`` is reserved and is ``"robot"`` today.
+    """
 
     robot_id: str
     robot_type: str
     primary: bool = False
     config: dict[str, Any] = field(default_factory=dict)
+    hardware_id: DevicePin = field(default_factory=lambda: DevicePin.UNPINNED)
+    hostname: str | None = None
+    launch: dict[str, Any] = field(default_factory=dict)
+    kind: str = "robot"
+
+    def __post_init__(self) -> None:
+        """The typed-field invariants, on EVERY construction (#1806 PR 1a review W1).
+
+        In the constructor rather than :meth:`from_dict`, so a ``RobotConfig`` built directly (the public
+        ``maxim.hardware`` export, the bulk connect) cannot bypass them: a str ``hardware_id`` or a LOCAL media
+        backend on a networked Reachy is refused here too. ``config`` is replaced by its canonical copy. The checks
+        hold at construction only: the class stays mutable, and no ``src/`` caller mutates an entry after it.
+        """
+        if not isinstance(self.robot_id, str) or not self.robot_id:
+            raise RobotsConfigError(f"robots.yaml: a robot id must be a non-empty name, got {self.robot_id!r}")
+        rid = self.robot_id
+        if not isinstance(self.robot_type, str) or not self.robot_type:
+            raise _entry_error(rid, f"'type' must be a non-empty string, got {self.robot_type!r}")
+        if type(self.primary) is not bool:
+            # ``primary: 1`` or a quoted "false" (truthy) would otherwise pick the robot.
+            raise _entry_error(rid, f"'primary' must be true or false (unquoted), got {self.primary!r}")
+        if not isinstance(self.kind, str) or self.kind not in ENTRY_KINDS:
+            raise _entry_error(rid, f"'kind' must be one of {sorted(ENTRY_KINDS)}, got {self.kind!r}")
+        if not isinstance(self.hardware_id, DevicePin):
+            raise _entry_error(rid, f"'hardware_id' must be a DevicePin, got {type(self.hardware_id).__name__}")
+        hostname = self.hostname
+        if hostname is not None and (not isinstance(hostname, str) or not hostname or hostname != hostname.strip()):
+            raise _entry_error(rid, f"'hostname' must be a non-empty name, got {hostname!r}")
+        if not isinstance(self.config, dict):
+            raise _entry_error(rid, f"'config' must be a mapping, got {type(self.config).__name__}")
+        if self.robot_type == "reachy_mini":
+            self.config = check_reachy_media(self.config, where=f"robots.yaml entry {rid!r}")
 
     @classmethod
-    def from_dict(cls, robot_id: str, data: dict[str, Any]) -> RobotConfig:
+    def from_dict(cls, robot_id: str, data: dict[str, Any], *, managed: bool = False) -> RobotConfig:
         """Create from configuration dict.
 
         ``type`` defaults to ``"reachy_mini"`` for legacy reasons (Reachy Mini
@@ -68,20 +291,65 @@ class RobotConfig:
         :class:`~maxim.hardware.registry.RobotRegistry` auto-discovers
         controllers via the ``maxim.robots`` entry-point group, so any installed
         plugin can be referenced by its registered name.
+
+        Strict (#1806 PR 1a): the entry keys are exactly :data:`ENTRY_KEYS`, ``primary`` is a real bool,
+        ``hardware_id`` is a quoted 16-hex id or ``unpinned`` (required when ``managed``, i.e. the file has a
+        ``_format_version``), and a ``reachy_mini`` entry's ``config`` passes :func:`check_reachy_media`. Every
+        violation is a :class:`~maxim.exceptions.RobotsConfigError`; nothing is coerced.
         """
+        unknown = sorted(str(k) for k in data if k not in ENTRY_KEYS)
+        if unknown:
+            raise _entry_error(robot_id, f"unknown key(s) {unknown}; allowed: {sorted(ENTRY_KEYS)}")
         if "config" in data and not isinstance(data["config"], dict):
             # ``config: null`` (an empty ``config:`` line) or a scalar would
             # otherwise TypeError in dict() or silently drop every key.
-            raise RobotsConfigError(
-                f"robots.yaml entry {robot_id!r}: 'config' must be a mapping, got "
-                f"{type(data['config']).__name__} (an empty 'config:' line is null; remove it or give it keys)"
+            raise _entry_error(
+                robot_id,
+                f"'config' must be a mapping, got {type(data['config']).__name__} "
+                "(an empty 'config:' line is null; remove it or give it keys)",
             )
+        config = dict(data.get("config", {}))
+        misplaced = [k for k in _ENTRY_ONLY_KEYS if k in config]
+        if misplaced:
+            raise _entry_error(robot_id, f"{misplaced} belong at the entry level, not under 'config:'")
         return cls(
             robot_id=robot_id,
-            robot_type=str(data.get("type", "reachy_mini")),
-            primary=bool(data.get("primary", False)),
-            config=dict(data.get("config", {})),
+            robot_type=data.get("type", "reachy_mini"),
+            primary=data.get("primary", False),
+            config=config,
+            hardware_id=_parse_pin(robot_id, data, managed=managed),
+            hostname=data.get("hostname"),
+            launch=_parse_launch(robot_id, data.get("launch")),
+            kind=data.get("kind", "robot"),
         )
+
+
+def _is_writer_managed(data: dict[str, Any]) -> bool:
+    """Whether the file is writer-managed (has a ``_format_version``); refuses a malformed or newer one.
+
+    Absent means a hand-written legacy file, accepted without :func:`check_format_version`'s "re-save" warning,
+    which it always emits for an absent key. A present value must be a quoted string (an unquoted ``2.0`` is a
+    float, and must not read as legacy). A newer version is refused, modelled on
+    ``config_writer._refuse_if_newer``: this build cannot know what the newer keys mean.
+    """
+    if "_format_version" not in data:
+        return False
+    raw = data["_format_version"]
+    if not isinstance(raw, str) or not raw:
+        raise RobotsConfigError(f"robots.yaml: _format_version must be a quoted string, got {raw!r} (quote it)")
+    if re.fullmatch(r"[0-9]+\.[0-9]+", raw) is None:
+        raise RobotsConfigError(f"robots.yaml: _format_version {raw!r} is not a major.minor version such as '1.0'")
+    major, minor = (int(p) for p in raw.split("."))
+    known = tuple(int(p) for p in ROBOTS_FORMAT_VERSION.split("."))
+    if (major, minor) > known:
+        raise RobotsConfigError(
+            f"robots.yaml was written by a newer Maxim (_format_version {raw!r}; this build reads "
+            f"{ROBOTS_FORMAT_VERSION}). Upgrade Maxim: this build cannot know what the newer keys mean"
+        )
+    if major < known[0]:
+        raise RobotsConfigError(f"robots.yaml: _format_version {raw!r} is not a version any Maxim wrote")
+    check_format_version(data, "robots_yaml", log=logger)
+    return True
 
 
 @dataclass
@@ -89,6 +357,17 @@ class RobotsConfig:
     """Configuration for all robots."""
 
     robots: list[RobotConfig] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """At most one primary and unique ids, on every construction (#1806 PR 1a review W1)."""
+        ids = [r.robot_id for r in self.robots]
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        if duplicates:
+            raise RobotsConfigError(f"robots.yaml has more than one entry with the id {duplicates}")
+        primaries = [r.robot_id for r in self.robots if r.primary]
+        if len(primaries) > 1:
+            # Pre-fix the first one silently won, so reordering the file switched robots.
+            raise RobotsConfigError(f"robots.yaml marks more than one entry primary: {primaries}; keep one")
 
     @classmethod
     def from_dict(cls, data: Any) -> RobotsConfig:
@@ -102,6 +381,13 @@ class RobotsConfig:
         """
         if not isinstance(data, dict):
             raise RobotsConfigError(f"robots.yaml must be a mapping with a 'robots:' key, got {type(data).__name__}")
+        unknown_root = sorted(str(k) for k in data if k not in ROOT_KEYS)
+        if unknown_root:
+            # A ``robotz:`` typo would otherwise mean no robots, and the run would connect with defaults.
+            raise RobotsConfigError(
+                f"robots.yaml: unknown top-level key(s) {unknown_root}; allowed: {sorted(ROOT_KEYS)}"
+            )
+        managed = _is_writer_managed(data)
         robots_data = data.get("robots")
         if robots_data is None:  # absent, or an empty ``robots:`` line: no entries
             robots_data = {}
@@ -111,11 +397,14 @@ class RobotsConfig:
             )
         robots = []
         for robot_id, robot_config in robots_data.items():
+            if not isinstance(robot_id, str) or not robot_id:
+                # YAML would make ``yes:`` the id 'True' and ``1:`` collide with ``'1':``; never coerce an id.
+                raise RobotsConfigError(f"robots.yaml: a robot id must be a non-empty quoted name, got {robot_id!r}")
             if not isinstance(robot_config, dict):
                 raise RobotsConfigError(
                     f"robots.yaml entry {robot_id!r} must be a mapping, got {type(robot_config).__name__}"
                 )
-            robots.append(RobotConfig.from_dict(str(robot_id), robot_config))
+            robots.append(RobotConfig.from_dict(robot_id, robot_config, managed=managed))
         return cls(robots=robots)
 
     @classmethod
@@ -137,8 +426,9 @@ class RobotsConfig:
 
         try:
             with open(path, "r") as f:
-                data = yaml.safe_load(f)
-        except (OSError, yaml.YAMLError) as e:
+                data = yaml.load(f, Loader=_NoDuplicateKeysLoader)  # noqa: S506 - a SafeLoader subclass
+        except (OSError, yaml.YAMLError, ValueError) as e:
+            # ValueError: a file that is not UTF-8 (UnicodeDecodeError); scalar errors are typed by the loader.
             raise RobotsConfigError(f"cannot read robot config {path}: {e}") from e
         if data is None:  # an empty file: no entries
             return cls()
@@ -320,6 +610,25 @@ def load_robots_config(
     return RobotsConfig()
 
 
+def pinned_connect_refusal(entry: RobotConfig | None) -> RobotPinUnverifiable | None:
+    """The refusal for connecting ``entry`` in this build, or ``None`` when it may connect (#1806 PR 1a, interim).
+
+    PR 1a parses ``hardware_id:`` but does not yet verify it on connect; that check is PR 1b's. Until then a
+    pinned entry is refused rather than connected unverified, so no build trusts a pin it has not checked. The
+    live resolver, the bulk connect and ``maxim doctor`` all read this one message, so doctor never reports a
+    robot ready that the run would refuse. Nothing writes ``hardware_id:`` before #1806 PR 2.
+    """
+    if entry is None or not entry.hardware_id.is_pinned:
+        return None
+    from maxim import __version__
+
+    return RobotPinUnverifiable(
+        f"robots.yaml entry {entry.robot_id!r} pins hardware_id {entry.hardware_id}, and this build (Maxim "
+        f"{__version__}) cannot yet verify a pin on connect (#1806 PR 1b), so it refuses rather than connect "
+        "unverified"
+    )
+
+
 def robot_connect_timeout(default: float) -> float:
     """The robot connect timeout: ``MAXIM_ROBOT_TIMEOUT`` when set (faster headless startup), else ``default``.
 
@@ -378,6 +687,13 @@ def resolve_robot_connection(
                 "robots.yaml declares type=%s for %r — overriding default %s", entry.robot_type, robot_id, robot_type
             )
         robot_type = entry.robot_type
+    refusal = pinned_connect_refusal(entry)
+    if refusal is not None:
+        raise refusal
+    if robot_type == "reachy_mini":
+        # The file's own values passed at load; this covers the run's media_backend default when the entry does
+        # not set one (or there is no entry), so a LOCAL backend never reaches a networked connect.
+        connect_config = check_reachy_media(connect_config, where="the run's media_backend", error=InvalidConfigError)
     return robot_type, connect_config, entry
 
 
@@ -408,6 +724,13 @@ def connect_configured_robots(
     results = {}
 
     for robot_config in config.robots:
+        refusal = pinned_connect_refusal(robot_config)
+        if refusal is not None:
+            logger.error("Not connecting robot %s: %s (%s)", robot_config.robot_id, refusal, refusal.fix_hint)
+            results[robot_config.robot_id] = False
+            if not skip_on_failure:
+                break
+            continue
         try:
             robot = registry.connect_robot(
                 robot_id=robot_config.robot_id,

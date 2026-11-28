@@ -3762,6 +3762,11 @@ def check_robot_reachable(info: PlatformInfo) -> list[CheckResult]:
 
 def _check_one_robot_never_raises(info: PlatformInfo, robot: Any) -> CheckResult:
     """One robot's row; an unexpected error becomes that robot's warn row, never a failed doctor run."""
+    from maxim.hardware.config import pinned_connect_refusal
+
+    refusal = pinned_connect_refusal(robot)
+    if refusal is not None:  # the run would refuse it, so doctor must not report it reachable (#1806 PR 1a)
+        return CheckResult(f"robot:{robot.robot_id}", "warn", str(refusal), fix=refusal.fix_hint, retry_id="robot")
     try:
         return _check_one_robot(info, robot)
     except Exception as e:  # noqa: BLE001 - reported as the row below, never swallowed
