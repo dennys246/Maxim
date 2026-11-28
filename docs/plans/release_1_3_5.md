@@ -222,7 +222,11 @@ Line 3 does not gate the 1.3.5 cut.
   - #1093, #1123 and #1455 (from the 1.3.4 carry list) ride here. #1093 and #1123 are the same class: the
     orchestrator prompt names parts or sensors the body lacks.
   - The first new slice waits until the line 1 branches that edit `orchestrator.py` have merged: #1185, 10a, 10b,
-    #1228 and #1680.
+    #1228 and #1680. **All five have merged.** The line runs as session maxim-e6.
+  - **The approach is settled** in [orchestrator_simrun_approach.md](orchestrator_simrun_approach.md): staged frozen
+    run-state bundles (`SimRun`, `SimAut`, `SimOrch`, `SimAutLate`), each unpacked into the original local names, under
+    strict rule (d). The owner decided it on 2026-11-27, after three review rounds. The #863 orchestrator fixes
+    land before the builder moves.
 - **B2's prerequisites, beside it (D5).**
 - **The known trap is settled by D10.**
 
