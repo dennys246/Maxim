@@ -1,0 +1,25 @@
+- **An action-less answer from the PFC deliberation no longer wedges the loop** (#1743): a cycle-1 "ready" answer, or
+  the answer cycles 2+ settled on, was installed as the pending proposal past §2's intake checks, so one with no
+  action stayed pending forever and the loop never submitted again, not even for a fresh input. Every answer the
+  deliberation consumes now goes through §2's one intake (`loop_intake.accept_llm_proposal`): only an answer with an
+  action is installed, a stale answer (one an early-stopped deliberation fell back to) or a sim-skipped fallback is
+  dropped, the turn is counted for the stall detector, the pending user input is cleared on an answer with an action
+  or an error, and the answer's `next_actions` are queued (they were silently dropped). The deliberation's wait now
+  also resets the planning transport-failure streak, as §2's poll does, and a wait that brings nothing back closes
+  the submit's `inference_start` event.
+  - A planning retry budget spent anywhere now aborts the run on the next pass (`loop_gates.pre_tick_gate` reads the
+    latch), so a budget spent in the deliberation's intake cannot leave the loop idling. Under planning liveness a
+    declined deliberation turn is dropped, not retried; no shipped loop combines liveness with a deliberation today.
+  - When the sim's no-op marker (`_deliberation_noop`) is recorded: a turn that answers a fresh input and ends with
+    nothing done and nothing retried. That is a declined deliberation, or, with planning liveness off, an
+    action-less answer, an error answer or a stale drop. The bridge then ends the turn after its settle window
+    instead of waiting out the 120 s response timeout. An answer to a tool follow-up (deliberated or not) or to a
+    deliberation continuation records nothing, so it cannot end the next turn early. The marker existed since 0.8,
+    but nothing recorded it.
+  - What the person sees: the turn still reports `timed_out` and counts no action, but the console says why instead
+    of "timed out": the model chose not to act, its answer failed (with the error, every URL in it reduced to its
+    origin before it is cut), or its answer came too late. The planning-failure reason (logs, the liveness abort
+    message) and the error lines the loop and the planning worker log are reduced the same way.
+  - The Exp 41/42 action loaders and the sub-simulation report's `total_actions` leave the loop's markers out, as the
+    other counters already did. No recorded run changes: both experiments ran substrate-primary, which records no
+    marker.
