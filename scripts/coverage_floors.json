@@ -3,8 +3,8 @@
   "band": 1.0,
   "min_package_statements": 200,
   "overall": {
-    "percent": 75.6,
-    "missing": 25351
+    "percent": 76.6,
+    "missing": 24635
   },
   "packages": {
     "maxim/<root>": {
@@ -156,8 +156,8 @@
       "missing": 292
     },
     "maxim/simulation": {
-      "percent": 79.3,
-      "missing": 2258
+      "percent": 80.4,
+      "missing": 2153
     },
     "maxim/spatial": {
       "percent": 40.1,
@@ -190,8 +190,8 @@
       "missing": 204
     },
     "src/maxim/simulation/orchestrator.py": {
-      "percent": 76.8,
-      "missing": 241
+      "percent": 78.3,
+      "missing": 229
     },
     "src/maxim/simulation/sim_teardown.py": {
       "percent": 88.7,
