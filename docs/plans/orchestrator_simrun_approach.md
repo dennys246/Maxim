@@ -317,29 +317,28 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
     reported as a construction failure. The same PR drops the six other such wraps in `simulation/` and holds the
     package at zero (`tests/unit/test_sim_trace_unwrapped_863.py`). The step-2 move still records where each site
     went, since the gate's `site` stays `orchestrator.py::start_simulation_mode`.
-- **Setup-abort teardown** (#1839; #1838 review; owner decision 2026-11-27). A raise anywhere between the workspace
-  opening (P0) and the main `try` leaks what setup has started. That means the open sim log and both `LLMWorker`s'
-  lanes, plan loggers and concept extractors (10 threads, measured after a P2b raise). From P3 on it also means the
-  AUT thread, the stdin reader, the DM worker and the stall thread. Nothing tears them down, because `end_run` is
-  reached only from the main `try`. This predates the slices. The slices fix it in the seam they create:
-  - **One abort stack, from the start of setup.** The caller opens a `contextlib.ExitStack` (`setup_abort`) right
-    after the workspace opens and registers `disable_sim_logging` on it first. Each builder takes it as an explicit
-    keyword (rule (d)). It registers each resource it starts **on the line after that resource starts**, so a builder
-    that raises partway (`build_aut` after `aut_llm_worker.start()`, `build_orchestrator` after
-    `orch_llm_worker.start()`) is still covered. The inline P3–P6 code registers its threads the same way. Once the
-    main `try` is entered, `setup_abort.pop_all()` drops the stack, and `end_run` owns teardown from there.
-  - **A subset of `end_run`, not `end_run` itself.** `end_run` takes a `SimTail` whose fields are required run-time
-    results (W-S6), and it runs the report save and `run_roundup`, an LLM call that an aborted setup must not make.
-    The abort runs only the registered callbacks, in reverse order: set the stop event, join the started threads
-    (bounded, as `_wait_for_run` does), stop each started `LLMWorker`, release the sandbox and the safety lease (the
-    matching parts of `release_run_resources`), then `disable_sim_logging`. It reads only the bundles' own fields,
-    never a partial `SimTail`. Then it re-raises.
-  - **Where it lands.** The `try` that drives the stack wraps the setup region only once that region is calls (the
-    builders, and the §10 and §9 slices' functions), so it re-indents no moved text. That is the `wire_aut_late` PR,
-    the last slice. Until `SimRun` merges (last, under D7), the log opens in inline P0. So each earlier PR's test
-    covers its own builder's partial-failure registration and relies on the global `disable_sim_logging`. The landing
-    PR tests a raise at each phase boundary (P1, P2a, P2b, P3, P6) and asserts no new thread is alive and sim logging
-    is off.
+- **Setup-abort teardown** (#1839; owner decision 2026-11-27: built into the slices). A raise anywhere between the
+  workspace opening (P0) and the main `try` (about line 2709) leaks what setup has started. That means the open sim
+  log and both `LLMWorker`s' lanes, plan loggers and concept extractors (10 threads, measured after a P2b raise).
+  Later in setup it also means the AUT thread (P3), the DM thread (P4), the stdin reader (P6) and the stall thread
+  (P7 head). Nothing tears them down, because `end_run` is reached only from the main `try`. This predates the
+  slices. **Its design is owed as its own approach-note section, adversarially reviewed, before the §10 slice** (the
+  first slice that moves a thread start). It must meet the constraints #1838's review rounds found:
+  - It covers the whole window, including a builder or slice function that raises partway, after it has started
+    a worker but before it returns its bundle.
+  - It runs a subset of `end_run`, never `end_run` itself. `end_run` needs a full `SimTail` (W-S6) and makes the
+    `run_roundup` LLM call. The subset includes every resource step of `release_run_resources`, including the
+    DefaultNetwork's pain-bus unsubscribe from an adopted agent's persistent bus (or a duplicate pain learner
+    accumulates per campaign) and the imagination session end. Best done by factoring those steps into
+    per-resource callables that both paths call, so the two teardown lists cannot drift.
+  - It names the PR that first introduces it, and how the §10, §9 and builder PRs take part under strict rule (d).
+  - Its registration lines are not verbatim move text. They go in a commit after each verbatim-move commit (D7), and
+    any that land in still-inline code (P0's tail, P3, P5, the P7 head) are rule-T touches with a stated cost.
+  - It states how much setup text a wrapping `try` re-indents at the landing point (P3, P5 and the P7 head stay
+    inline after `wire_aut_late`, and so does P0 until `SimRun` merges), or it picks a shape that re-indents
+    nothing.
+  - It tests a raise at each phase boundary (P1, P2a, P2b, P3, P4, P6, P7) and asserts that no new thread is alive
+    and sim logging is off.
 - **World-clock census** (W-N3): `world_clock_census.py` fences `simulation/orchestrator.py`. The new modules get
   the same `_FENCED` rule in the PR that creates them, and the line-2 lane hears about it, since M72 is "absolute
   from birth".
@@ -358,8 +357,8 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
 > 4. re-scope the last slice into `build_orchestrator` + `wire_aut_late`;
 > 5. roadmap order, the #863 fixes first, and `SimRun` merging last under D7.
 >
-> **ADDED 2026-11-27 (owner, the #1838 review):** 6. the setup-abort teardown (§6) is built into the staged-builder
-> caller in the slices, not as a separate fix before them.
+> **ADDED 2026-11-27 (owner, the #1838 review):** 6. the setup-abort teardown (§6, #1839) is built into the slices,
+> not as a separate fix before them. Its design is owed before the §10 slice.
 >
 > The text below is the question as it was asked.
 

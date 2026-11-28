@@ -89,7 +89,9 @@ def _silent_emitter_wraps(scope: Path, root: Path = _ROOT) -> Counter[tuple[str,
 
     The emitter names are ``sim_logger``'s ``@_contained`` functions plus any alias a module imports one under. The
     walk stops at the enclosing function (a caller's ``try`` is out of reach of a static per-function scan), and an
-    emit inside a handler, ``else`` or ``finally`` is not protected by that ``try``."""
+    emit inside a handler, ``else`` or ``finally`` is not protected by that ``try``. Blind spots: a relative
+    ``from .sim_logger import ...`` alias, ``try``/``except*`` (``ast.TryStar``), and emits through a local wrapper
+    (none in ``src/maxim/`` at #1838)."""
     contained = _contained_emitters()
     hits: Counter[tuple[str, str]] = Counter()
     for path in sorted(scope.rglob("*.py")):
