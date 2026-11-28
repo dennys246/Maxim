@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.environment.filesystem_env import FileSystemEnv
 from maxim.evaluation.agent_eval import AgentEvaluator
@@ -887,7 +887,7 @@ def build_default_network(
 # less capable loop (the ``build_executor(pain_bus=...)`` lesson). RUN parameters are run configuration and keep the
 # loop's own defaults. ``tests/unit/test_run_loop_stack.py`` asserts the keys equal the loop's signature exactly, so a
 # new loop parameter fails CI until it is classified here.
-LOOP_PARAMETERS: dict[str, str] = {
+LOOP_PARAMETERS: dict[str, Literal["stack", "run"]] = {
     "agent": "stack",
     "environment": "stack",
     "state": "stack",
@@ -994,7 +994,7 @@ def run_loop_stack(
 
     ``run_agentic_loop`` is looked up on its module when called (imported here for import cost; there is no cycle),
     so a test that patches ``agent_loop.run_agentic_loop`` still reaches its stub. Every argument is passed through
-    unchanged. Design and owner decisions: ``docs/plans/loop_stack_builder.md``.
+    unchanged, BY KEYWORD (the six positionals too), so a ``def run_agentic_loop(**kwargs)`` stub works. Design and owner decisions: ``docs/plans/loop_stack_builder.md``.
     """
     if agent.memory_hub is not memory_hub:
         raise ValueError(
@@ -1020,13 +1020,13 @@ def run_loop_stack(
 
     from maxim.runtime import agent_loop
 
-    agent_loop.run_agentic_loop(
-        agent,
-        environment,
-        state,
-        memory,
-        decision_engine,
-        executor,
+    agent_loop.run_agentic_loop(  # every argument by keyword, the positionals too: a keyword-only stub still works
+        agent=agent,
+        environment=environment,
+        state=state,
+        memory=memory,
+        decision_engine=decision_engine,
+        executor=executor,
         autonomy_controller=autonomy_controller,
         llm_worker=llm_worker,
         default_network=default_network,

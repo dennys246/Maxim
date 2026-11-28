@@ -36,6 +36,9 @@ def run_agent_loop():
     pass
 """
 _BOOTSTRAP = """
+LOOP_PARAMETERS = {"agent": "stack", "pain_bus": "stack", "thought_gate": "stack", "max_steps": "run"}
+
+
 def run_loop_stack(**k):
     from maxim.runtime import agent_loop
 
@@ -198,6 +201,58 @@ def test_any_other_use_of_run_loop_stack_is_a_finding(tmp_path: Path, label: str
     sites, builder = _sites(tmp_path, src)
     assert builder == ["src/maxim/site.py::f"], label
     assert sites == []
+
+
+# ── a wrapper that defaults a stack component (review round, exec SF) ─────────────────────────────────
+
+
+_CALL = "    run_loop_stack(agent=1, pain_bus=pain_bus, max_steps=3)\n"
+
+
+@pytest.mark.parametrize(
+    ("label", "src"),
+    [
+        ("a positional default", "from b import run_loop_stack\ndef f(a, pain_bus=None):\n" + _CALL),
+        ("a keyword-only default", "from b import run_loop_stack\ndef f(*, pain_bus=None):\n" + _CALL),
+        (
+            "a nested def's outer default",
+            "from b import run_loop_stack\ndef f(pain_bus=None):\n    def inner():\n    " + _CALL + "    inner()\n",
+        ),
+        ("a positional-only default", "from b import run_loop_stack\ndef f(pain_bus=None, /):\n" + _CALL),
+    ],
+)
+def test_a_stack_value_from_a_defaulted_parameter_is_a_finding(tmp_path: Path, label: str, src: str) -> None:
+    sites, builder = _sites(tmp_path, src)
+    assert sites == []
+    assert builder, f"{label}: a wrapper defaulting pain_bus passed"
+
+
+@pytest.mark.parametrize(
+    ("label", "src"),
+    [
+        ("no default: the requirement moves up", "from b import run_loop_stack\ndef f(pain_bus):\n" + _CALL),
+        (
+            "a RUN keyword from a default",
+            "from b import run_loop_stack\ndef f(pain_bus, max_steps=3):\n    run_loop_stack(agent=1, pain_bus=pain_bus, max_steps=max_steps)\n",
+        ),
+        (
+            "an inner rebinding parameter without a default shadows the outer default",
+            "from b import run_loop_stack\ndef f(pain_bus=None):\n    def inner(pain_bus):\n    " + _CALL,
+        ),
+        ("a local, not a parameter", "from b import run_loop_stack\ndef f():\n    pain_bus = None\n" + _CALL),
+    ],
+)
+def test_a_stack_value_not_from_a_default_is_allowed(tmp_path: Path, label: str, src: str) -> None:
+    assert _sites(tmp_path, src) == ([], []), label
+
+
+def test_the_stack_names_are_read_from_bootstraps_loop_parameters() -> None:
+    from maxim.runtime.bootstrap import LOOP_PARAMETERS
+
+    bootstrap = L._parse_rel(REPO, L.BOOTSTRAP)
+    expected = {k for k, v in LOOP_PARAMETERS.items() if v == "stack"} | {"acting_coach", "is_embodied"}
+    assert L.stack_names(bootstrap) == expected
+    assert L._STATEMENTS == ("acting_coach", "is_embodied")
 
 
 # ── the ledger: rules 1, 2 and 6 (HEAD) ──────────────────────────────────────────────────────────────────
@@ -381,8 +436,31 @@ def test_no_base_ref_skips_locally_and_fails_on_a_pull_request(tmp_path: Path, m
     failures, report = L.check(root)
     assert failures == [] and any("skipped locally" in r for r in report)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
-    failures, _ = L.check(root)
-    assert any("cannot run" in f for f in failures)
+    with pytest.raises(L.NoVerdict):  # no verdict: exit 2, as the sibling diff-scoped lints (review round, arch SF)
+        L.check(root)
+    monkeypatch.setattr(L, "REPO_ROOT", root)
+    assert L.main() == 2
+
+
+def test_git_failing_in_rule_5_is_no_verdict_on_a_pull_request_and_a_skip_locally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _repo(tmp_path, ledger_at_base=None)
+    (root / L.LEDGER).write_text("[]")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "add the ledger")
+
+    def _boom(*_a: Any, **_k: Any) -> str:
+        raise L.GitUnavailable("diff failed")
+
+    monkeypatch.setattr(L, "git", _boom)
+    failures, report = L.check(root)
+    assert failures == [] and any("skipped locally" in r for r in report)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    with pytest.raises(L.NoVerdict):
+        L.check(root)
+    monkeypatch.setattr(L, "REPO_ROOT", root)
+    assert L.main() == 2  # never a traceback
 
 
 def test_the_head_rules_run_even_without_a_base(tmp_path: Path) -> None:
@@ -395,7 +473,9 @@ def test_the_head_rules_run_even_without_a_base(tmp_path: Path) -> None:
     assert any("unlisted" in f for f in failures)
 
 
-@pytest.mark.parametrize("breakage", ["no ledger", "bad ledger", "no agent_loop", "no bootstrap def", "no scripts"])
+@pytest.mark.parametrize(
+    "breakage", ["no ledger", "bad ledger", "no agent_loop", "no bootstrap def", "no scripts", "no LOOP_PARAMETERS"]
+)
 def test_exit_2_cases(tmp_path: Path, breakage: str) -> None:
     root = _tree(tmp_path)
     (root / L.LEDGER).write_text("[]")
@@ -406,7 +486,9 @@ def test_exit_2_cases(tmp_path: Path, breakage: str) -> None:
     elif breakage == "no agent_loop":
         (root / "src/maxim/runtime/agent_loop.py").unlink()
     elif breakage == "no bootstrap def":
-        (root / "src/maxim/runtime/bootstrap.py").write_text("x = 1\n")
+        (root / "src/maxim/runtime/bootstrap.py").write_text('LOOP_PARAMETERS = {"agent": "stack"}\n')
+    elif breakage == "no LOOP_PARAMETERS":
+        (root / "src/maxim/runtime/bootstrap.py").write_text("def run_loop_stack(**k):\n    pass\n")
     else:
         shutil.rmtree(root / "scripts")
     with pytest.raises((L.ScopeError, L.LedgerError)):

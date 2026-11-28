@@ -201,7 +201,12 @@ exempt, keyed by qualname:
   - Every other load in the lint counts, including a module-level lambda and an `if __name__ == "__main__":` call.
 
 **`run_loop_stack` is called only directly and without a splat (design delta 1, 7; widened by design delta 2,
-F1).** ANY load of `run_loop_stack` is a finding unless it is the callee of a `Call` with no `**` argument. That covers:
+F1).** ANY load of `run_loop_stack` is a finding unless it is the callee of a `Call` with no `**` argument and no
+`*` argument (a `*args` splat is a finding too, built in PR 1). And a STACK keyword's value may not be a parameter
+WITH A DEFAULT of any enclosing def (review round, exec SF): `def easy_loop(pain_bus=None):
+run_loop_stack(pain_bus=pain_bus, ...)` reintroduces the silent omission. A parameter with no default is fine, since
+it pushes the requirement up to the wrapper's callers. The STACK names are read by parsing `bootstrap.LOOP_PARAMETERS`
+from its AST (plus the two worker statements); an unparsable table exits 2. That covers:
 - an alias (`f = run_loop_stack; f(**kw)`);
 - `partial(run_loop_stack, **kw)()`;
 - `Thread(target=run_loop_stack)`;
@@ -217,13 +222,17 @@ migrates it must expand the dict into explicit keywords.
 **The ledger: `scripts/loop_stack_ledger.json`.** It is a JSON list in `swallow_moves.json`'s shape. Each entry is
 `{file, qualname, count, ref, reason, permanent, moved_from?}`, keyed by `file::qualname`, never by line. It starts
 with:
-- the 8 unmigrated sites;
+- the 7 sites to migrate (owner decision 2's "8 unmigrated" counted the orchestrator's own loop, which is permanent);
 - `src/maxim/runtime/__init__.py::<module>`, permanent, as ONE entry with count 2 (design delta 1, 8). The two strings
   are the `_LAZY` key and the `__all__` entry for `run_agent_loop`. `__getattr__` loads neither name, so it measures
   0 and has no entry.
 - the orchestrator's own loop, permanent (open question 2).
 
+So the ledger holds 7 sites to migrate, plus 2 permanent entries (the orchestrator's narrator loop and the runtime/__init__ re-export), all citing the migration tracking issue #1840.
+
 Each run prints every entry with its measured count, and permanent entries are marked `non-shrinking`.
+`permanent` is a print label and a rule-3/4 invariant (it never changes), not a lock: a permanent entry can still be
+deleted, and its still-measured site then fails as unlisted (rule 2).
 
 **Rules (design delta 1, 3 and 6).** Rules 1, 2 and 6 read HEAD only and **always run**. Rules 3 to 5 compare with
 the base, the merge-base from `_lint_git.base_ref`. Only rules 3 to 5 may skip, and only when there is no base ref and
@@ -234,7 +243,9 @@ error.
    is how a migrated site must delete its entry.
 2. **Unlisted fails.** A counted site with no HEAD entry fails.
 3. **Shrink only.** HEAD's ledger is a subset of base's, keyed by `file::qualname`, except for entries carrying a
-   valid `moved_from` (rule 4). No count may rise above its base pin. This rule is written for this lint.
+   valid `moved_from` (rule 4). No count may rise above its base pin, and `permanent` never changes on an entry that
+   is at base (built in PR 1, stricter than v4's move-only wording). `moved_from` is checked only on an entry NEW to
+   the branch: an entry that landed as a move keeps the field, and the next branch judges it by this rule alone. This rule is written for this lint.
    `_lint_allowance.append_only_problem` forbids removals, which is the opposite of what this ledger needs.
 4. **Moves.** A HEAD entry not at base is legal only if its `moved_from: {file, qualname}` meets all three of these:
    - it names a base entry whose key is absent at HEAD;
@@ -285,6 +296,8 @@ error.
 | a computed string (`"run_" + x`), `exec` / `eval` | invisible to the AST | **accepted blind spot**, named in the lint's docstring |
 | `**kwargs` at a call | a hidden hand-assembled stack | irrelevant: any counted site outside the sanctioned caller is a finding |
 | a new wrapper `def my_loop(**kw)` | the stack moves into its callers | caught: the wrapper's load is a new, unlisted site |
+| a wrapper `def easy_loop(pain_bus=None, ...)` calling `run_loop_stack(pain_bus=pain_bus, ...)` | a default re-hides the omission | caught: a STACK value that is a defaulted parameter of any enclosing def is a finding (positional or keyword-only default, or a nested def's outer parameter); a parameter with no default is allowed |
+| `loop_setup.build_loop_run` | builds a run's setup outside the guarded names | **accepted blind spot**: running the loop still needs `_run_agentic_loop_body`, which is guarded |
 | a new caller of an allow-listed wrapper (`_run_scenario_turn`, `_loop_kwargs`) | the old entry stays | **accepted blind spot** until that wrapper migrates; its `reason` says so |
 | a line-keyed ledger | lines drift | not used: keyed by `file::qualname` |
 | a renamed file or function | the entry no longer matches | caught: the old entry measures 0, an orphan, and the new key is unlisted. The fix is a `moved_from` entry, which the reviewer sees |
@@ -296,7 +309,7 @@ error.
 | `partial(run_loop_stack, **kw)()` | the splat moves into `partial` | caught: the load is an argument, not a callee |
 | `Thread(target=run_loop_stack, kwargs=kw)` | the call happens in the thread | caught: the load is an argument |
 | `getattr(bootstrap, "run_loop_stack")`, a string constant | a dynamic lookup | caught: a non-docstring constant equal to the name is a finding |
-| no base ref (shallow CI checkout) | a vacuous pass | caught: `must_not_skip` errors on a pull request or push |
+| no base ref (shallow CI checkout), or git failing in rule 5 | a vacuous pass | caught: on a pull request or push the lint exits 2 (no verdict), as the sibling diff-scoped lints do |
 | the sanctioned qualname, `NAMES`, roots or exclusions edited | the lint widens itself | pinned in `test_lint_loop_stack.py`. **Residual:** the same PR can edit the pin and the lint together; review is the guard |
 | `tests/` and `docs/` | excluded scopes | by design |
 
@@ -349,6 +362,12 @@ Regression guard line: `scripts/lint_loop_stack.py` + `tests/unit/test_lint_loop
       `.memory_hub` is a child `Mock`, so the hub check raises in the thread. Meanwhile the test's assertions come
       from the patched `send_and_wait`, so they still pass. That migration must give the fake agent `memory_hub=None`
       and assert the loop stub was reached.
+  - **Test fakes the later migrations must fix** (also listed on #1840): the atonia `MagicMock(spec=[...])` agent for
+    api (`test_atonia_red_gates_effect_policy.py`), `test_noop_bridge.py` for the sub-simulation, and
+    `test_agent_router_slots_1228.py` ~:298. Each needs a real `memory_hub` attribute and a fake worker with
+    `acting_coach=None`, `is_embodied=False`, plus an assertion that the loop stub was reached.
+  - **Docs left for the migration PRs:** `docs/simulation.md` and `docs/memory-system-interactions.md` show direct
+    `run_agentic_loop` calls; each site's migration PR updates its example.
   - **`test_talk_never_asks_1658.py`** patches `_launch_talk_loop` away entirely, so it is unaffected.
   - The remaining grep hits read `agent_loop`'s own defs and are unaffected: `test_loop_setup`,
     `test_loop_setup_characterization` and `test_lint_release_gates`.
@@ -368,8 +387,8 @@ Regression guard line: `scripts/lint_loop_stack.py` + `tests/unit/test_lint_loop
    - **Talk's own gap, named here (design delta 1, 9).** The handle advertises `body="bodies/reachy_mini"`
      (`console/handle.py`, module and `MaximHandle` docstrings). Talk never sets `is_embodied`, so its call says
      `is_embodied=False`.
-   - This PR keeps that and files it as a gap. Whether an embodied handle's talk is prompted as embodied is a
-     behaviour decision.
+   - This PR keeps that and files it as a gap, #1841. Whether an embodied handle's talk is prompted as embodied is
+     a behaviour decision.
 2. **The orchestrator's own loop.** *Rec: a permanent ledger entry with its reason*, printed as non-shrinking. It is a
    narrator, not an agent stack.
 3. **`run_agent_loop`.** *Rec: include it in the guarded names.* It is public API (`maxim.runtime.__all__`), so
@@ -462,3 +481,8 @@ Delta round 2 closed SF1, SF2, SF3, SF6 and the four NITs. Its folds:
   orchestrator sources each move whole, so it is not blocked.
 
 **Design rounds:** round 1 (architecture + adversarial gate) and delta rounds 1-4 on 2026-11-27. Delta 4 met the stop rule; its two wording NITs are folded. Owner decisions 2026-11-27: (1)-(5) above.
+
+**Built (PR 1) and its review round, 2026-11-27.** Stricter than v4 in four places, now written above: a `*args`
+splat is a finding; `permanent` cannot change on any base entry; `moved_from` is checked only on new entries;
+`permanent` is a print label, not a lock. The review round added the defaulted-parameter rule, the exit 2 for no
+verdict, the keyword-only forwarding of every argument, and the #1840 / #1841 refs.

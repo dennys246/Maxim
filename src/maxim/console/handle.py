@@ -585,7 +585,7 @@ class MaximHandle:
                     # full consolidation, never the sim default.
                     consolidation="full",
                     # Talk never sets the worker's coach or embodiment, though the handle advertises a body: a
-                    # known gap (loop_stack_builder.md, open question 1), stated here rather than changed.
+                    # known gap (#1841; loop_stack_builder.md, open question 1), stated here rather than changed.
                     acting_coach=None,
                     is_embodied=False,
                     max_steps=0,  # unlimited — ends on bridge.finish()/stop_event

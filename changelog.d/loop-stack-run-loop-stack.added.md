@@ -7,5 +7,5 @@
   embodiment. The console's talk loop is the first caller; the arguments its loop receives are unchanged.
   - `MaximAgent.memory_hub`, a read-only property: the hub `wire_memory_hub` connected, or `None`.
   - A new CI lint, `scripts/lint_loop_stack.py`, fails any other `run_agentic_loop` entry point outside its ledger
-    of the 8 sites not yet migrated (plus two permanent entries), and any call of `run_loop_stack` through an alias,
-    a `partial` or a splat.
+    of 7 sites to migrate, plus 2 permanent entries (the orchestrator's narrator loop and the runtime/__init__ re-export), and any call of `run_loop_stack` through an alias, a `partial`
+    or a splat, or with a stack component taken from a wrapper's defaulted parameter.

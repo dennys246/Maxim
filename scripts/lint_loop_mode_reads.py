@@ -238,6 +238,8 @@ class Module:
     funcs: dict[ast.AST, ast.AST | None]  # every node -> its innermost enclosing def/lambda (None at module level)
 
 
+# ``_parse`` (with its ``Module``/``ScopeError``) and ``_is_docstring`` are imported by ``scripts/lint_loop_stack.py``,
+# which reuses this visitor's qualname convention: change their behaviour and both lints change (its tests pin it).
 def _parse(root: Path, rel: str, pkg: str = PKG) -> Module:
     """Parse ``<root>/<pkg>/<rel>`` and map every node to its qualname and innermost def. ``pkg`` defaults to the
     package this lint scans; ``lint_loop_stack.py`` reuses the visitor over ``src/maxim`` and ``scripts``."""

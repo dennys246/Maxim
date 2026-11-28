@@ -80,14 +80,32 @@ def test_every_argument_reaches_the_loop_unchanged(recorded: list[Any]) -> None:
     kw = _stack_kwargs(max_steps=7, run_id="r", target_hz=2.0, end_bound=object(), planning_liveness=True)
     run_loop_stack(**kw)
     [(args, got)] = recorded
-    positional = ("agent", "environment", "state", "memory", "decision_engine", "executor")
-    assert args == tuple(kw[n] for n in positional)
+    assert args == ()  # every argument by keyword, the six positionals too (review round, wire SF)
     for name in LOOP_PARAMETERS:
-        if name in positional:
-            continue
         expected = kw.get(name, inspect.signature(run_loop_stack).parameters[name].default)
         assert got[name] is expected or got[name] == expected, name
-    assert set(got) == set(LOOP_PARAMETERS) - set(positional)  # the worker statements are not forwarded
+    assert set(got) == set(LOOP_PARAMETERS)  # the worker statements are not forwarded
+
+
+def test_a_keyword_only_loop_stub_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``test_api_core``'s ``def run_agentic_loop(**kwargs)`` and the atonia lambda take keywords only: a migrated site
+    must still reach them."""
+    seen: list[dict[str, Any]] = []
+
+    def run_agentic_loop(**kwargs: Any) -> None:
+        seen.append(kwargs)
+
+    monkeypatch.setattr(agent_loop, "run_agentic_loop", run_agentic_loop)
+    kw = _stack_kwargs()
+    run_loop_stack(**kw)
+    [got] = seen
+    assert got["agent"] is kw["agent"] and got["executor"] is kw["executor"]
+    assert set(got) == set(LOOP_PARAMETERS)
+
+
+def test_loop_parameters_is_typed_with_the_two_literals() -> None:
+    # the stored annotation string is unparsed, so Python normalizes its quotes
+    assert bootstrap.__annotations__["LOOP_PARAMETERS"].replace("'", '"') == 'dict[str, Literal["stack", "run"]]'
 
 
 def test_a_hub_handed_to_the_loop_but_not_wired_raises(recorded: list[Any]) -> None:

@@ -17,7 +17,11 @@ assignments. Every counted site needs an entry in ``scripts/loop_stack_ledger.js
 **The builder is called directly, without a splat.** Any load of ``run_loop_stack`` (``BUILDER_NAME``, same
 definition of a load) is a finding unless it is the callee of a Call with no ``*``/``**`` argument. A splat-free
 direct call through an alias or an attribute is allowed. So every site writes out each STACK keyword, and a reviewer
-sees every ``None`` at the call.
+sees every ``None`` at the call. And a STACK keyword's value may not be a parameter WITH A DEFAULT of an enclosing
+def (any enclosing function scope): ``def easy_loop(pain_bus=None): run_loop_stack(pain_bus=pain_bus, ...)`` would
+reintroduce the silent omission. A parameter with no default is fine: it pushes the requirement up to the wrapper's
+callers. The STACK names are read from ``bootstrap.LOOP_PARAMETERS`` by parsing its AST (plus ``run_loop_stack``'s
+two worker statements, ``acting_coach`` and ``is_embodied``); an unparsable table exits 2.
 
 **The ledger** (``{file, qualname, count, ref, reason, permanent, moved_from?}``, keyed by ``file::qualname``):
 
@@ -32,7 +36,8 @@ sees every ``None`` at the call.
 6. a readable HEAD ledger: missing, unparsable or malformed exits 2.
 
 Rules 1, 2 and 6 read HEAD and always run. Rules 3-5 need the base; with no base ref they skip on a local run and
-fail on a pull request or push (``_lint_git.must_not_skip``). A broken scope exits 2.
+exit 2 on a pull request or push (``_lint_git.must_not_skip``; no verdict, as the sibling diff-scoped lints). A broken
+scope exits 2.
 
 **Accepted blind spots:** a computed string (``"run_" + x``), ``exec``/``eval``, and a new caller of a wrapper that is
 already allow-listed (its entry's ``reason`` names it). **Residual:** the same PR can widen this file's constants and
@@ -69,6 +74,8 @@ BUILDER_NAME = "run_loop_stack"
 SANCTIONED_QUALNAME = "src/maxim/runtime/bootstrap.py::run_loop_stack"
 _SELF_CONSTANTS = frozenset({"NAMES", "BUILDER_NAME", "SANCTIONED_QUALNAME"})
 
+_STATEMENTS = ("acting_coach", "is_embodied")  # run_loop_stack's required worker statements, not loop parameters
+
 _ENTRY_KEYS = frozenset({"file", "qualname", "count", "ref", "reason", "permanent"})
 
 
@@ -86,6 +93,11 @@ class Site:
 
 class LedgerError(RuntimeError):
     """The HEAD ledger cannot be read or is malformed -- exit 2, never a pass."""
+
+
+class NoVerdict(RuntimeError):
+    """Git cannot answer the base-comparing rules on a pull request or push (``_lint_git.must_not_skip``) -- exit 2,
+    as the sibling diff-scoped lints do: no verdict, never a pass and never a finding."""
 
 
 # ── scanning ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -161,7 +173,56 @@ def _splat_free_callee(m: Module, node: ast.AST) -> bool:
     )
 
 
-def scan_module(rel: str, m: Module) -> tuple[list[Site], list[Site]]:
+def stack_names(bootstrap: Module) -> frozenset[str]:
+    """The STACK keywords: ``LOOP_PARAMETERS``' "stack" entries, read from bootstrap's AST (never imported, so the lint
+    needs no ``src`` import), plus the two worker statements. A missing or non-literal table is a broken scope."""
+    for stmt in bootstrap.tree.body:
+        target = (
+            stmt.target
+            if isinstance(stmt, ast.AnnAssign)
+            else (stmt.targets[0] if isinstance(stmt, ast.Assign) else None)
+        )
+        if isinstance(target, ast.Name) and target.id == "LOOP_PARAMETERS":
+            value = stmt.value
+            try:
+                table = ast.literal_eval(value) if value is not None else None
+            except ValueError as e:
+                raise ScopeError(f"{BOOTSTRAP}::LOOP_PARAMETERS is not a literal dict ({e})") from e
+            if not isinstance(table, dict) or not table:
+                raise ScopeError(f"{BOOTSTRAP}::LOOP_PARAMETERS is not a non-empty dict")
+            return frozenset(k for k, v in table.items() if v == "stack") | frozenset(_STATEMENTS)
+    raise ScopeError(f"{BOOTSTRAP}::LOOP_PARAMETERS is missing")
+
+
+def _defaulted_params(fn: ast.AST) -> tuple[set[str], set[str]]:
+    """(every parameter name, the ones with a default) of a def or lambda."""
+    a = fn.args  # type: ignore[attr-defined]
+    positional = [*a.posonlyargs, *a.args]
+    with_default = {p.arg for p in positional[len(positional) - len(a.defaults) :]} if a.defaults else set()
+    with_default |= {p.arg for p, d in zip(a.kwonlyargs, a.kw_defaults, strict=True) if d is not None}
+    names = {p.arg for p in [*positional, *a.kwonlyargs]}
+    names |= {x.arg for x in (a.vararg, a.kwarg) if x is not None}
+    return names, with_default
+
+
+def _defaulted_stack_values(m: Module, call: ast.Call, stack: frozenset[str]) -> list[str]:
+    """The STACK keywords of a ``run_loop_stack`` call whose value is a defaulted parameter of an enclosing def."""
+    out: list[str] = []
+    for kw in call.keywords:
+        if kw.arg not in stack or not isinstance(kw.value, ast.Name):
+            continue
+        scope: ast.AST | None = m.funcs.get(call)
+        while scope is not None:
+            names, defaulted = _defaulted_params(scope)
+            if kw.value.id in names:
+                if kw.value.id in defaulted:
+                    out.append(kw.arg)
+                break
+            scope = m.funcs.get(scope)
+    return out
+
+
+def scan_module(rel: str, m: Module, stack: frozenset[str] = frozenset()) -> tuple[list[Site], list[Site]]:
     """(counted sites of a guarded name, builder findings) in one module."""
     loop_aliases = _aliases(m.tree, NAMES)
     builder_aliases = _aliases(m.tree, (BUILDER_NAME,))
@@ -187,10 +248,23 @@ def scan_module(rel: str, m: Module) -> tuple[list[Site], list[Site]]:
                 continue  # run_agentic_loop's own call to its body
             sites.append(Site(rel, qual, getattr(node, "lineno", 0), f"a load of {name}"))
             continue
-        if _loaded_name(node, builder_aliases, (BUILDER_NAME,)) is not None and not _splat_free_callee(m, node):
-            builder.append(
-                Site(rel, qual, getattr(node, "lineno", 0), f"{BUILDER_NAME} used other than as a splat-free callee")
-            )
+        if _loaded_name(node, builder_aliases, (BUILDER_NAME,)) is not None:
+            line = getattr(node, "lineno", 0)
+            if not _splat_free_callee(m, node):
+                builder.append(Site(rel, qual, line, f"{BUILDER_NAME} used other than as a splat-free callee"))
+                continue
+            call = m.parents[node]
+            assert isinstance(call, ast.Call)
+            for name in _defaulted_stack_values(m, call, stack):
+                builder.append(
+                    Site(
+                        rel,
+                        qual,
+                        line,
+                        f"{BUILDER_NAME}({name}=...) takes a parameter WITH A DEFAULT of an enclosing def: a wrapper "
+                        "that defaults a stack component reintroduces the silent omission",
+                    )
+                )
     return sites, builder
 
 
@@ -198,11 +272,12 @@ def measure(root: Path) -> tuple[list[Site], list[Site]]:
     sites: list[Site] = []
     builder: list[Site] = []
     files = scan_files(root)
+    bootstrap = _parse_rel(root, BOOTSTRAP)
+    stack = stack_names(bootstrap)
     for rel in files:
-        s, b = scan_module(rel, _parse_rel(root, rel))
+        s, b = scan_module(rel, _parse_rel(root, rel), stack)
         sites += s
         builder += b
-    bootstrap = _parse_rel(root, BOOTSTRAP)
     if not any(
         isinstance(n, ast.FunctionDef) and n.name == BUILDER_NAME for n in bootstrap.tree.body
     ):  # the sanctioned caller must exist, or every migrated site is calling nothing
@@ -322,7 +397,7 @@ def _added_on_branch(root: Path, base: str, rel: str) -> bool:
 
 
 def check(root: Path) -> tuple[list[str], list[str]]:
-    """(failures, report). Raises ScopeError / LedgerError for exit 2."""
+    """(failures, report). Raises ScopeError / LedgerError / NoVerdict for exit 2."""
     sites, builder = measure(root)
     path = root / LEDGER
     try:
@@ -335,14 +410,14 @@ def check(root: Path) -> tuple[list[str], list[str]]:
     try:
         base = base_ref(root)
         base_text = show(root, base, LEDGER)
+        added = not base_text and _added_on_branch(root, base, LEDGER)
     except GitUnavailable as e:
-        if must_not_skip(f"no base ref: {e}"):
-            failures.append(f"rules 3-5 cannot run: no base ref ({e})")
-        else:
-            report.append(f"rules 3-5 skipped locally: no base ref ({e})")
+        if must_not_skip(f"git cannot answer rules 3-5: {e}"):
+            raise NoVerdict(f"rules 3-5 cannot run: {e}") from e
+        report.append(f"rules 3-5 skipped locally: git cannot answer ({e})")
         return failures, report
     if not base_text:
-        if _added_on_branch(root, base, LEDGER):
+        if added:
             report.append(f"{LEDGER} is added by this branch: rules 3-4 have no base to compare (rule 5)")
         else:
             failures.append(f"{LEDGER} is absent at the merge-base but not added by this branch (rule 5)")
@@ -355,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     del argv
     try:
         failures, report = check(REPO_ROOT)
-    except (ScopeError, LedgerError) as e:
+    except (ScopeError, LedgerError, NoVerdict) as e:
         print(f"lint_loop_stack: ERROR: {e}", file=sys.stderr)
         return 2
     print("\n".join(report))
