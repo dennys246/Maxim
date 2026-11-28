@@ -246,6 +246,12 @@ def test_a_stack_value_not_from_a_default_is_allowed(tmp_path: Path, label: str,
     assert _sites(tmp_path, src) == ([], []), label
 
 
+def test_scan_module_takes_the_stack_names_as_a_required_argument() -> None:
+    import inspect
+
+    assert inspect.signature(L.scan_module).parameters["stack"].default is inspect.Parameter.empty
+
+
 def test_the_stack_names_are_read_from_bootstraps_loop_parameters() -> None:
     from maxim.runtime.bootstrap import LOOP_PARAMETERS
 
@@ -474,7 +480,16 @@ def test_the_head_rules_run_even_without_a_base(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "breakage", ["no ledger", "bad ledger", "no agent_loop", "no bootstrap def", "no scripts", "no LOOP_PARAMETERS"]
+    "breakage",
+    [
+        "no ledger",
+        "bad ledger",
+        "no agent_loop",
+        "no bootstrap def",
+        "no scripts",
+        "no LOOP_PARAMETERS",
+        "unhashable LOOP_PARAMETERS key",
+    ],
 )
 def test_exit_2_cases(tmp_path: Path, breakage: str) -> None:
     root = _tree(tmp_path)
@@ -487,6 +502,8 @@ def test_exit_2_cases(tmp_path: Path, breakage: str) -> None:
         (root / "src/maxim/runtime/agent_loop.py").unlink()
     elif breakage == "no bootstrap def":
         (root / "src/maxim/runtime/bootstrap.py").write_text('LOOP_PARAMETERS = {"agent": "stack"}\n')
+    elif breakage == "unhashable LOOP_PARAMETERS key":
+        (root / "src/maxim/runtime/bootstrap.py").write_text('LOOP_PARAMETERS = {["agent"]: "stack"}\n')
     elif breakage == "no LOOP_PARAMETERS":
         (root / "src/maxim/runtime/bootstrap.py").write_text("def run_loop_stack(**k):\n    pass\n")
     else:

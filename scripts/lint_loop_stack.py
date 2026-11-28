@@ -39,8 +39,12 @@ Rules 1, 2 and 6 read HEAD and always run. Rules 3-5 need the base; with no base
 exit 2 on a pull request or push (``_lint_git.must_not_skip``; no verdict, as the sibling diff-scoped lints). A broken
 scope exits 2.
 
-**Accepted blind spots:** a computed string (``"run_" + x``), ``exec``/``eval``, and a new caller of a wrapper that is
-already allow-listed (its entry's ``reason`` names it). **Residual:** the same PR can widen this file's constants and
+**Accepted blind spots:** a computed string (``"run_" + x``), ``exec``/``eval``, a new caller of a wrapper that is
+already allow-listed (its entry's ``reason`` names it), and, for the defaulted-parameter rule, which sees only a
+bare Name value: local reassignment (``p = pain_bus; run_loop_stack(pain_bus=p)``), a dataclass or NamedTuple field default
+(``cfg.pain_bus``, the plausible accidental route), ``kw.get("pain_bus")``, ``pain_bus or None``, and a walrus. The rule's scope walk ignores non-parameter bindings, which fails closed: a
+defaulted parameter rebound before the call, a comprehension variable, or an inner def's local that shadows the
+parameter is still flagged. The answer is to rename. **Residual:** the same PR can widen this file's constants and
 their pins in ``tests/unit/test_lint_loop_stack.py`` together; review is the guard.
 
 Positive control: ``tests/unit/test_lint_loop_stack.py``.
@@ -186,7 +190,7 @@ def stack_names(bootstrap: Module) -> frozenset[str]:
             value = stmt.value
             try:
                 table = ast.literal_eval(value) if value is not None else None
-            except ValueError as e:
+            except (ValueError, TypeError) as e:  # TypeError: an unhashable literal key
                 raise ScopeError(f"{BOOTSTRAP}::LOOP_PARAMETERS is not a literal dict ({e})") from e
             if not isinstance(table, dict) or not table:
                 raise ScopeError(f"{BOOTSTRAP}::LOOP_PARAMETERS is not a non-empty dict")
@@ -222,8 +226,9 @@ def _defaulted_stack_values(m: Module, call: ast.Call, stack: frozenset[str]) ->
     return out
 
 
-def scan_module(rel: str, m: Module, stack: frozenset[str] = frozenset()) -> tuple[list[Site], list[Site]]:
-    """(counted sites of a guarded name, builder findings) in one module."""
+def scan_module(rel: str, m: Module, stack: frozenset[str]) -> tuple[list[Site], list[Site]]:
+    """(counted sites of a guarded name, builder findings) in one module. ``stack`` is required, never defaulted:
+    an empty default would switch the defaulted-parameter rule off silently."""
     loop_aliases = _aliases(m.tree, NAMES)
     builder_aliases = _aliases(m.tree, (BUILDER_NAME,))
     exempt_consts = _self_constant_nodes(m.tree) if rel == SELF else set()
