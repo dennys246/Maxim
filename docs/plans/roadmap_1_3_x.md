@@ -648,7 +648,7 @@ recorded-but-unused memory system. That is 1.4's work ([roadmap_1_4.md](roadmap_
    2026-10-15).** They do not gate the 1.3.2 cut, where the function-length ratchet records the ceiling (Sizing,
    below); 1.4.0 cannot pass CI until `start_simulation_mode` (2,889 lines) reaches 1,000 or fewer, with
    everything split out of it (the bound was 200 until #1323, owner decision 2026-10-16) (§The 1.4.0 gate, below). Order, tail first: report/result (§14) → teardown (§13) →
-   stall detector (§11) → stdin (§10) → campaign dispatch (§9) → `build_aut` → `build_orchestrator`. Each owes
+   stall detector (§11) → stdin (§10) → campaign dispatch (§9) → `build_aut` → `build_orchestrator` → `wire_aut_late` (the last slice re-scoped 2026-11-27, owner decision: the old "`build_orchestrator`" span is mostly late AUT wiring, so the narrator build and `wire_aut_late` are separate builders over frozen bundles; [orchestrator_simrun_approach.md](orchestrator_simrun_approach.md)). Each owes
    the characterization arms listed below before it moves.
 3. **`_main_impl`** (`cli.py`, 1,696) — only if 1 and 2 land; it is CLI glue, the least valuable of the three.
 
