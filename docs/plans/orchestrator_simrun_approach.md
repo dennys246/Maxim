@@ -235,9 +235,10 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
 - **Helpers move with their only caller** (rule (a)). Eighteen module-level helpers are called only from P0–P2b,
   for example `_build_run_llms`, `_setup_sim_sandbox`, `_restore_aut_from_session`, `_fear_gate_aut_executor`,
   `_aut_agent_config` and `_register_research_tools`. Two of the eighteen came with #1838 (the #863 fixes, §6):
-  `_trace_sem_tools` (P1) and `_sem_trace` (P1 and P2b). Both go to `sim_aut_build.py`. If an emit that stays in
-  `orchestrator.py` (the scene-manifest SEM_TRACE lines) is ever routed through `_sem_trace`, the helper still lives in
-  `sim_aut_build.py`, and `orchestrator.py` imports it from there (the allowed direction).
+  `_trace_sem_tools` (P1) and `_sem_trace` (P1 and P2b). Both go to `sim_aut_build.py`. (The scene-manifest
+  SEM_TRACE lines are P2b too, so they move to `wire_aut_late` and can use `_sem_trace` there. If an emit that stays
+  in `orchestrator.py` is ever routed through it, the helper still lives in `sim_aut_build.py`, and `orchestrator.py`
+  imports it from there, which is the allowed direction.)
 - **v1's "tests that patch `orchestrator.<x>` keep working" was false** (W-S1, E-S3). With no re-export, a patch
   fails loudly. With one, it silently stops intercepting. For example, `test_bounded_stop_sim_1438`'s guard
   "no provenance capture under a stop" would pass dead. **Each step's PR re-points the patch targets of the
@@ -263,7 +264,8 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
     strings would make the string pins vacuous;
   - every new module joins `EXTRACTION_MODULES`;
   - the `PARTS` entries already filed under `orchestrator.py` (`_build_run_llms`, `_warm_aut_router`,
-    `_build_*_router`, `_register_narrator_sim_tools`) are re-pointed.
+    `_build_*_router`, `_register_narrator_sim_tools`, and #1838's `_trace_sem_tools` and `_sem_trace`) are
+    re-pointed.
 - **Pins that move with P0 at step 1, and are re-pointed on purpose:**
   - the provenance order, `capture_start_provenance` before `_build_run_llms` (`test_report_provenance_m1.py`,
     `test_config_sparse_1_2.py`). Both calls go into `build_sim_run`, and the pin follows them there.
@@ -315,13 +317,29 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
     reported as a construction failure. The same PR drops the six other such wraps in `simulation/` and holds the
     package at zero (`tests/unit/test_sim_trace_unwrapped_863.py`). The step-2 move still records where each site
     went, since the gate's `site` stays `orchestrator.py::start_simulation_mode`.
-- **Setup-abort teardown** (#1838 review; owner decision 2026-11-27). A raise anywhere between the workspace opening
-  and the main `try` leaks the open sim log and the threads setup started (both `LLMWorker`s' lanes, plan loggers
-  and concept extractors: 10 threads measured). Nothing tears them down, because `end_run` is reached only from the
-  main `try`. This predates the slices. The slices fix it in the seam they create: **the caller of the staged
-  builders tears down what the earlier bundles built when a later builder raises** (the sim log, then each built
-  bundle's workers), through the same teardown `end_run` uses, and re-raises. Each builder PR adds a test of
-  that path. Tracked in #1839.
+- **Setup-abort teardown** (#1839; #1838 review; owner decision 2026-11-27). A raise anywhere between the workspace
+  opening (P0) and the main `try` leaks what setup has started. That means the open sim log and both `LLMWorker`s'
+  lanes, plan loggers and concept extractors (10 threads, measured after a P2b raise). From P3 on it also means the
+  AUT thread, the stdin reader, the DM worker and the stall thread. Nothing tears them down, because `end_run` is
+  reached only from the main `try`. This predates the slices. The slices fix it in the seam they create:
+  - **One abort stack, from the start of setup.** The caller opens a `contextlib.ExitStack` (`setup_abort`) right
+    after the workspace opens and registers `disable_sim_logging` on it first. Each builder takes it as an explicit
+    keyword (rule (d)). It registers each resource it starts **on the line after that resource starts**, so a builder
+    that raises partway (`build_aut` after `aut_llm_worker.start()`, `build_orchestrator` after
+    `orch_llm_worker.start()`) is still covered. The inline P3–P6 code registers its threads the same way. Once the
+    main `try` is entered, `setup_abort.pop_all()` drops the stack, and `end_run` owns teardown from there.
+  - **A subset of `end_run`, not `end_run` itself.** `end_run` takes a `SimTail` whose fields are required run-time
+    results (W-S6), and it runs the report save and `run_roundup`, an LLM call that an aborted setup must not make.
+    The abort runs only the registered callbacks, in reverse order: set the stop event, join the started threads
+    (bounded, as `_wait_for_run` does), stop each started `LLMWorker`, release the sandbox and the safety lease (the
+    matching parts of `release_run_resources`), then `disable_sim_logging`. It reads only the bundles' own fields,
+    never a partial `SimTail`. Then it re-raises.
+  - **Where it lands.** The `try` that drives the stack wraps the setup region only once that region is calls (the
+    builders, and the §10 and §9 slices' functions), so it re-indents no moved text. That is the `wire_aut_late` PR,
+    the last slice. Until `SimRun` merges (last, under D7), the log opens in inline P0. So each earlier PR's test
+    covers its own builder's partial-failure registration and relies on the global `disable_sim_logging`. The landing
+    PR tests a raise at each phase boundary (P1, P2a, P2b, P3, P6) and asserts no new thread is alive and sim logging
+    is off.
 - **World-clock census** (W-N3): `world_clock_census.py` fences `simulation/orchestrator.py`. The new modules get
   the same `_FENCED` rule in the PR that creates them, and the line-2 lane hears about it, since M72 is "absolute
   from birth".

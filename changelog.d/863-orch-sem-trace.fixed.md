@@ -4,6 +4,7 @@
   the fixture pre-trigger's failure trace, the reactive mother's per-turn line, and the damage, actor and sensor tool
   traces. `sim_log` has never raised since #868, so each wrap only hid faults in the caller's own argument
   construction. The wraps are dropped, and such a fault now raises from the trace line. The mother's line sits inside its tick's own
-  handler, so its fault is logged there. A fault in a setup-time trace
+  handler, so its fault is logged there at DEBUG. The fixture pre-trigger's line sits in its fail-soft handler, so a
+  fault building it now ends the fixture run. A fault in a setup-time trace
   now stops the run before the AUT starts, where before only the line was lost. A test holds `maxim.simulation` at zero
-  such wraps.
+  such wraps and ratchets the rest of `src/maxim/` (#863's remaining sites).
