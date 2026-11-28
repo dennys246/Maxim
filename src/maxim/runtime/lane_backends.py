@@ -2209,7 +2209,7 @@ def _require_valid_llm_routing() -> None:
     require_valid_llm_routing()
 
 
-def _apply_llm_json_tiers(lane_configs: dict[str, Any], capabilities: Any, *, profile: str) -> tuple[dict, dict]:
+def _apply_llm_json_tiers(lane_configs: dict[str, Any], capabilities: Any, *, profile: str | None) -> tuple[dict, dict]:
     """The llm.json ``tiers`` overlay on the detected lanes, and the ``functions`` section, which
     ``require_valid_llm_routing`` has already refused unless it is empty (#1601).
 

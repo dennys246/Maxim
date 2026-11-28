@@ -3183,7 +3183,10 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
 
             event = "user_profiles_invalid" if isinstance(e, UserProfilesInvalid) else "llm_routing_invalid"
             logging.getLogger(__name__).debug("model config invalid", exc_info=True)
-            user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event=event)
+            fix = getattr(
+                e, "fix_hint", "Run `maxim doctor` to check it."
+            )  # both classes define it; the tuple is untyped
+            user_warn(f"{type(e).__name__}: {e}\n    → {fix}", source="config", event=event)
             return 2
         if isinstance(e, LLMServerPortBusy):  # a port held by a server this process must not kill (#1344 PR 3a)
             from maxim.utils.logging import user_warn
