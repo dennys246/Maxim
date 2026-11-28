@@ -821,7 +821,10 @@ def test_no_backstop_once_a_proposal_arrived_after_the_submit(monkeypatch, tmp_p
 
 
 def test_no_backstop_once_planning_is_exhausted(monkeypatch, tmp_path):
+    """A latched budget aborts on the next pass, with no backstop retry (#1743: the gate reads the latch, so a budget
+    spent where no section breaks, the deliberation's intake, cannot idle the loop; it used to idle here)."""
     from maxim.agents.llm_worker import LLMAttemptState
+    from maxim.runtime.loop_controller import PlanningLivenessExhausted
 
     def _exhausted(r: Any) -> None:
         _submitted(r)
@@ -829,7 +832,7 @@ def test_no_backstop_once_planning_is_exhausted(monkeypatch, tmp_path):
 
     run, _ = _liveness_run(monkeypatch, tmp_path, [LLMAttemptState.FAILED], steps=4, hooks={0: _exhausted})
     assert not any(e[0].startswith("requeue") for e in run.ev)
-    assert _slept(run.ev) == [1, 2, 3] and run.error is None
+    assert _slept(run.ev) == [] and isinstance(run.error, PlanningLivenessExhausted)
 
 
 def test_an_active_job_after_a_submit_is_not_failed_by_the_backstop(monkeypatch, tmp_path):
