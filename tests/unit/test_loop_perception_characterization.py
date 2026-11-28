@@ -244,8 +244,8 @@ def _run(
 ) -> Any:
     """Run the real loop (slice 2's driver) for ``steps`` passes on a scripted adapter, or on a sim run's
     percept source with ``sim_percepts``. ``worker`` submits on every pass that has something to submit;
-    ``no_memory_context`` makes ``memory.build_context()`` return None (the B1 arm); ``sim_log`` raises for
-    once for the first message starting with ``sim_log_raises_once_on``
+    ``no_memory_context`` makes ``memory.build_context()`` return None (the B1 arm); ``sim_log`` raises
+    once, for the first message starting with ``sim_log_raises_once_on``
     (``_SiteFault``: one site's emit, as the #863 red gates need; two sites share the PERCEPTION category)."""
     import maxim.embodiment.audio_localization as audio_localization
     import maxim.simulation.sim_logger as sim_logger
@@ -320,10 +320,6 @@ def _run(
 
 def _kinds(ev: list[tuple]) -> list[str]:
     return [e[0] for e in ev]
-
-
-def _swallowed(caplog: Any, operation: str) -> list[str]:
-    return [r.getMessage() for r in caplog.records if f" in {operation}:" in r.getMessage()]
 
 
 def _site_reports(caplog: Any, site: str) -> list[tuple[str, str]]:
@@ -458,9 +454,9 @@ def test_a_raising_trigger_is_reported_and_the_loop_goes_on(monkeypatch, tmp_pat
             bio_enrichment_pipeline=pipe,
         )
     assert [c[0] for c in trig.calls] == ["x", "y"]
-    assert _site_reports(caplog, "loop_perception.py:imagine:trigger") == [
-        ("designer down", "swallowed_exception site=loop_perception.py:imagine:trigger [step=0]"),
-        ("designer down", "swallowed_exception site=loop_perception.py:imagine:trigger [step=1]"),
+    assert _site_reports(caplog, "loop_perception.py:imagine:section") == [
+        ("designer down", "swallowed_exception site=loop_perception.py:imagine:section [step=0]"),
+        ("designer down", "swallowed_exception site=loop_perception.py:imagine:section [step=1]"),
     ]
     # The failed pass hands §1.2 no resolved entities.
     assert [ctx.resolved_entities for _, ctx in pipe.calls] == [(), ()]
@@ -578,8 +574,8 @@ def test_failed_empty_and_raising_tools_are_skipped_and_the_rest_still_run(monke
         ctx, _ = _auto_sense_submitted(monkeypatch, tmp_path, *tools)
     assert [e[1] for e in ev] == ["fails", "empty", "raises", "works"]
     assert ctx.auto_sense_context == "a quiet room"
-    assert _swallowed(caplog, "auto_fire:raises") == [
-        "Swallowed RuntimeError in auto_fire:raises: raises broke [step=0]"
+    assert _site_reports(caplog, "loop_perception.py:auto_sense:auto_fire") == [
+        ("raises broke", "swallowed_exception site=loop_perception.py:auto_sense:auto_fire [step=0, tool='raises']")
     ]
 
 
@@ -618,7 +614,9 @@ def test_a_raising_entity_map_is_reported_and_keeps_the_exteroception(monkeypatc
     with caplog.at_level(logging.DEBUG, logger="maxim"):
         ctx, _ = _auto_sense_submitted(monkeypatch, tmp_path, tool, _Sense({}))
     assert ctx.auto_sense_context == "here"
-    assert _swallowed(caplog, "auto_sense_self") == ["Swallowed RuntimeError in auto_sense_self: map gone [step=0]"]
+    assert _site_reports(caplog, "loop_perception.py:auto_sense:self_sense") == [
+        ("map gone", "swallowed_exception site=loop_perception.py:auto_sense:self_sense [step=0]")
+    ]
 
 
 def test_interoception_without_an_entity_map_logs_a_debug_line(monkeypatch, tmp_path, caplog):
@@ -673,8 +671,8 @@ def test_a_registry_that_breaks_is_reported_as_auto_sense(monkeypatch, tmp_path,
     with caplog.at_level(logging.DEBUG, logger="maxim"):
         ctx, _ = _auto_sense_submitted(monkeypatch, tmp_path, registry=_Broken())
     assert ctx.auto_sense_context == ""
-    assert _site_reports(caplog, "loop_perception.py:auto_sense") == [
-        ("registry broke", "swallowed_exception site=loop_perception.py:auto_sense [step=0]")
+    assert _site_reports(caplog, "loop_perception.py:auto_sense:section") == [
+        ("registry broke", "swallowed_exception site=loop_perception.py:auto_sense:section [step=0]")
     ]
 
 
@@ -954,9 +952,9 @@ def test_a_raise_inside_section_1_16_is_reported_and_the_loop_goes_on(monkeypatc
     monkeypatch.setattr(audio_localization, "resolve_orienting_profile", _boom)
     with caplog.at_level(logging.DEBUG, logger="maxim"):
         o = _run(monkeypatch, tmp_path, obs=[{}, {}], percepts={0: _audio(0.6), 1: _audio(0.1)}, steps=2)
-    assert _site_reports(caplog, "loop_perception.py:orient_to_audio") == [
-        ("profile broke", "swallowed_exception site=loop_perception.py:orient_to_audio [step=0]"),
-        ("profile broke", "swallowed_exception site=loop_perception.py:orient_to_audio [step=1]"),
+    assert _site_reports(caplog, "loop_perception.py:orient_to_audio:section") == [
+        ("profile broke", "swallowed_exception site=loop_perception.py:orient_to_audio:section [step=0]"),
+        ("profile broke", "swallowed_exception site=loop_perception.py:orient_to_audio:section [step=1]"),
     ]
     assert _kinds(o.ev).count("observe") == 2
 
@@ -1003,7 +1001,10 @@ def test_a_voice_question_from_the_mailbox_is_enriched_recall_only(monkeypatch, 
 
 
 def _raised_at(excinfo: Any, marker: str) -> bool:
-    return any(marker in str(e.statement) for e in excinfo.traceback)
+    """Whether a frame IN ``loop_perception.py`` is the statement carrying ``marker`` (the site's own emit). The
+    test's own ``_run(..., sim_log_raises_once_on=marker)`` line carries the marker too, so only source frames count
+    (#1843 review)."""
+    return any(Path(str(e.path)).name == "loop_perception.py" and marker in str(e.statement) for e in excinfo.traceback)
 
 
 def test_a_fault_at_the_imagination_skipped_trace_ends_the_run_863(monkeypatch, tmp_path):

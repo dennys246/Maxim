@@ -327,7 +327,7 @@ def imagine(*, step_num: int, observation: Any, state: Any, imagination_trigger:
                     text, scene_context=scene_ctx, scene_id=scene_id
                 )
         except Exception:
-            log_swallowed_exception(site="loop_perception.py:imagine:trigger", context={"step": step_num})
+            log_swallowed_exception(site="loop_perception.py:imagine:section", context={"step": step_num})
         else:
             # Outside the try (#863, owner 2026-11-27: fail loud): sim_log never raises (#868), so a fault here is
             # the caller's own and must not be reported as an imagination failure, or swallowed.
@@ -404,11 +404,10 @@ def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
                         _af_result = _checked_call(executor, _af_tool)
                         if _af_result.success and _af_result.output:
                             _auto_sense_parts.append(str(_af_result.output))
-                    except Exception as _exc:
+                    except Exception:
                         log_swallowed_exception(
-                            _exc,
-                            operation=f"auto_fire:{_af_tool.name}",
-                            context={"step": step_num},
+                            site="loop_perception.py:auto_sense:auto_fire",
+                            context={"step": step_num, "tool": _af_tool.name},
                         )
                     # Capture an entity-map source so the
                     # interoception block below can reuse the same
@@ -449,11 +448,9 @@ def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
                                 _sense_result = _sense.execute(entity_name=_se.name)
                                 if _sense_result.success and _sense_result.output:
                                     _auto_sense_parts.append(f"Body state ({_se.name}): {_sense_result.output}")
-                    except Exception as _exc:
+                    except Exception:
                         log_swallowed_exception(
-                            _exc,
-                            operation="auto_sense_self",
-                            context={"step": step_num},
+                            site="loop_perception.py:auto_sense:self_sense", context={"step": step_num}
                         )
                 elif _sense is not None and _presence_tool is None and _auto_fire_tools:
                     # Observable signal that interoception was
@@ -469,7 +466,7 @@ def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
                 if _auto_sense_parts:
                     _auto_sense_text = "\n".join(_auto_sense_parts)
         except Exception:
-            log_swallowed_exception(site="loop_perception.py:auto_sense", context={"step": step_num})
+            log_swallowed_exception(site="loop_perception.py:auto_sense:section", context={"step": step_num})
         else:
             # Outside the try (#863, owner 2026-11-27: fail loud): a fault building the trace is the caller's own.
             if _auto_sense_text:
@@ -601,7 +598,7 @@ def orient_to_audio(
                         _trace["escalated"] = _escalates
                         _orient_line = _audio_line  # traced after the try (#863)
         except Exception:
-            log_swallowed_exception(site="loop_perception.py:orient_to_audio", context={"step": step_num})
+            log_swallowed_exception(site="loop_perception.py:orient_to_audio:section", context={"step": step_num})
         else:
             # Outside the try (#863, owner 2026-11-27: fail loud): sim_log never raises (#868), so a fault here is
             # the caller's own (float(_az) included) and must not be reported as an orientation failure, or swallowed.

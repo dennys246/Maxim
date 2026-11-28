@@ -1622,6 +1622,10 @@ class SpawnSubSimulationTool(Tool):
                     state_home=self._sim_tmpdir,  # the parent sim's sandbox: the state file goes with it (#1264)
                 )
             except Exception as e:
+                # The sub-AUT's loop died. Say so, loudly and in the sub-report: the narrator would otherwise see only
+                # a timeout from send_and_wait below (the main AUT worker's aut_died, 2026-08-19; #1843 review: a
+                # loop that fails loud, #863, must not end silently here).
+                logger.error("Sub-simulation AUT loop failed: %s", e, exc_info=True)
                 sub_error.append(e)
 
         sub_thread = threading.Thread(target=_sub_aut, name="sim.sub_aut", daemon=True)
@@ -1638,7 +1642,7 @@ class SpawnSubSimulationTool(Tool):
         # Build sub-report
         action_summaries = [_action_summary(a) for a in result["actions"]]
 
-        return {
+        report = {
             "goal": goal,
             "turn": result["turn"],
             "response": result["response"],
@@ -1647,6 +1651,11 @@ class SpawnSubSimulationTool(Tool):
             "blocked_actions": len(result["blocked"]),
             "timed_out": result["timed_out"],
         }
+        if sub_error:  # the sub-AUT died before (or while) answering: not a slow agent
+            report["aut_error"] = redact_urls(
+                f"{type(sub_error[0]).__name__}: {sub_error[0]}"
+            )  # reaches the LLM (#1801 F3)
+        return report
 
 
 class FinishSimulationTool(Tool):
