@@ -197,6 +197,10 @@ NEW_PRE_SLICE_MODULE_FUNCTIONS: dict[tuple[str, str], str] = {
         "#1261: the narrator-facing per-action summary, factored out of SendMessageTool, ExtendSimulationTool and "
         "SpawnSubSimulationTool (three identical copies) to add the utterance; not orchestrator run code"
     ),
+    ("tools.py", "_aut_error_text"): (
+        "#1843 (#863's fail-loud loop): a dead sub-AUT's exception, reduced and cut for the narrator, shared by "
+        "SpawnSubSimulationTool's sub-report and ExtendSimulationTool's output; tool output, not orchestrator run code"
+    ),
     ("report.py", "_offline_stamp"): (
         "#1315 item 10b (owner decision V27): an offline run's provenance lists its refusals and degraded "
         "fallbacks; report assembly, not orchestrator run code"

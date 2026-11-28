@@ -1351,24 +1351,49 @@ class ExtendSimulationTool(Tool):
         if self._spawn_tool and getattr(self._spawn_tool, "active_sub_bridge", None):
             bridge = self._spawn_tool.active_sub_bridge
             is_sub = True
+            dead = self._spawn_tool.sub_aut_error()
+            if dead is not None:
+                # The sub-AUT's loop has exited (#1843 delta review): nothing will answer, so say so now rather than
+                # wait out the response timeout and report a slow agent.
+                return ToolOutput(
+                    success=True,
+                    output={
+                        "goal": goal,
+                        "extended_sub_simulation": True,
+                        "turn": None,
+                        "response": None,
+                        "actions": [],
+                        "blocked_count": 0,
+                        "timed_out": False,
+                        "duration_ms": 0,
+                        "aut_error": dead,
+                    },
+                )
 
         result = bridge.send_and_wait(f"New objective: {goal}")
 
         action_summaries = [_action_summary(a) for a in result["actions"]]
 
-        return ToolOutput(
-            success=True,
-            output={
-                "goal": goal,
-                "extended_sub_simulation": is_sub,
-                "turn": result["turn"],
-                "response": result["response"],
-                "actions": action_summaries,
-                "blocked_count": len(result["blocked"]),
-                "timed_out": result["timed_out"],
-                "duration_ms": round(result["duration_ms"]),
-            },
-        )
+        output = {
+            "goal": goal,
+            "extended_sub_simulation": is_sub,
+            "turn": result["turn"],
+            "response": result["response"],
+            "actions": action_summaries,
+            "blocked_count": len(result["blocked"]),
+            "timed_out": result["timed_out"],
+            "duration_ms": round(result["duration_ms"]),
+        }
+        if is_sub and self._spawn_tool is not None:
+            died = self._spawn_tool.sub_aut_error()  # died while answering this objective
+            if died is not None:
+                output["aut_error"] = died
+        return ToolOutput(success=True, output=output)
+
+
+def _aut_error_text(e: Exception) -> str:
+    """A dead sub-AUT's exception as the narrator sees it: it reaches the LLM, so reduce, then cut (#1801 F3)."""
+    return redact_urls(f"{type(e).__name__}: {e}")[:300]
 
 
 class SpawnSubSimulationTool(Tool):
@@ -1416,6 +1441,12 @@ class SpawnSubSimulationTool(Tool):
         self.active_sub_bridge: Any = None
         self._sub_worker: Any = None
         self._sub_thread: Any = None
+        self._sub_error: list[Exception] = []  # appended by the sub-AUT thread when its loop dies (#1843)
+
+    def sub_aut_error(self) -> str | None:
+        """The current sub-AUT's loop failure, as the text the narrator sees, or None while it is alive (#1843).
+        Only the sub-AUT thread appends, and only once its loop has exited, so a non-empty list means a dead loop."""
+        return _aut_error_text(self._sub_error[0]) if self._sub_error else None
 
     def _teardown_sub(self) -> None:
         """Tear down the current sub-AUT if one exists."""
@@ -1437,6 +1468,7 @@ class SpawnSubSimulationTool(Tool):
         self.active_sub_bridge = None
         self._sub_worker = None
         self._sub_thread = None
+        self._sub_error = []
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         import sys
@@ -1622,6 +1654,10 @@ class SpawnSubSimulationTool(Tool):
                     state_home=self._sim_tmpdir,  # the parent sim's sandbox: the state file goes with it (#1264)
                 )
             except Exception as e:
+                # The sub-AUT's loop died. Say so, loudly and in the sub-report: the narrator would otherwise see only
+                # a timeout from send_and_wait below (the main AUT worker's aut_died, 2026-08-19; #1843 review: a
+                # loop that fails loud, #863, must not end silently here).
+                logger.error("Sub-simulation AUT loop failed: %s", e, exc_info=True)
                 sub_error.append(e)
 
         sub_thread = threading.Thread(target=_sub_aut, name="sim.sub_aut", daemon=True)
@@ -1634,11 +1670,12 @@ class SpawnSubSimulationTool(Tool):
         self.active_sub_bridge = sub_bridge
         self._sub_worker = sub_worker
         self._sub_thread = sub_thread
+        self._sub_error = sub_error  # extend_simulation reads it: a dead sub-AUT is not a slow one there either
 
         # Build sub-report
         action_summaries = [_action_summary(a) for a in result["actions"]]
 
-        return {
+        report = {
             "goal": goal,
             "turn": result["turn"],
             "response": result["response"],
@@ -1647,6 +1684,9 @@ class SpawnSubSimulationTool(Tool):
             "blocked_actions": len(result["blocked"]),
             "timed_out": result["timed_out"],
         }
+        if sub_error:  # the sub-AUT died before (or while) answering: not a slow agent
+            report["aut_error"] = _aut_error_text(sub_error[0])
+        return report
 
 
 class FinishSimulationTool(Tool):
