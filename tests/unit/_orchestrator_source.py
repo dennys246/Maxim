@@ -141,6 +141,10 @@ PARTS: tuple[tuple[str, str], ...] = (
     ("orchestrator.py", "_display_status_counts"),
     ("orchestrator.py", "_aut_percept_source_for"),
     ("orchestrator.py", "_record_liveness_abort"),
+    # #863 step 2 (#1838, rule T): the SEM discovery trace and the unwrapped SEM_TRACE emit (P1 and P2b; both move
+    # with build_aut / wire_aut_late to sim_aut_build.py, docs/plans/orchestrator_simrun_approach.md §5)
+    ("orchestrator.py", "_trace_sem_tools"),
+    ("orchestrator.py", "_sem_trace"),
 )
 
 # Every module a slice moved ``start_simulation_mode`` code into, as a dotted name. The slice that creates one

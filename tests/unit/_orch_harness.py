@@ -897,6 +897,10 @@ class _GlobalState:
             dict(SL._agent_nicknames),
             dict(SL._sensor_last_logged),
         )
+        # Sim logging (on, its open JSONL file, the in-memory records). A completed run's teardown turns it off; a
+        # run that RAISES in setup does not (no teardown runs before the main try: #1839, which the SimRun slices
+        # fix), so restore closes what the run opened rather than leaving it on for later tests.
+        self.sim_logging = (SL._sim_active, SL._log_file, SL._log_records, len(SL._log_records))
         self.json_stats = (json_parser._json_first_try, json_parser._json_total, json_parser._json_repaired)
         self.shutdown = cancellation.is_shutdown_requested()
         from maxim.utils import seeding
@@ -932,6 +936,13 @@ class _GlobalState:
         SL._agent_nicknames.update(nick)
         SL._sensor_last_logged.clear()
         SL._sensor_last_logged.update(sensors)
+        active, log_file, records, n_records = self.sim_logging
+        if SL._log_file is not log_file:
+            SL.disable_sim_logging()  # closes the run's file (a no-op once its teardown already did)
+            SL._log_file = log_file
+        SL._sim_active = active
+        del records[n_records:]  # what the run appended to the caller's list, if it never rebound it
+        SL._log_records = records  # enable_sim_logging rebinds the list: put the caller's object back
         with json_parser._json_lock:
             json_parser._json_first_try, json_parser._json_total, json_parser._json_repaired = self.json_stats
         (cancellation.request_shutdown if self.shutdown else cancellation.reset_shutdown)()

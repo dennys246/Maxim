@@ -226,7 +226,7 @@ Line 3 does not gate the 1.3.5 cut.
   - **The approach is settled** in [orchestrator_simrun_approach.md](orchestrator_simrun_approach.md): staged frozen
     run-state bundles (`SimRun`, `SimAut`, `SimOrch`, `SimAutLate`), each unpacked into the original local names, under
     strict rule (d). The owner decided it on 2026-11-27, after three review rounds. The #863 orchestrator fixes
-    land before the builder moves.
+    land before the builder moves (#1838). The slices also build in the setup-abort teardown (owner, 2026-11-27).
 - **B2's prerequisites, beside it (D5).**
 - **The known trap is settled by D10.**
 

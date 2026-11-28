@@ -485,11 +485,7 @@ class FixtureDrivenOrchestrator:
             # Fail-soft: pre-trigger failure must NOT abort the fixture run.
             # The S1 contract (drive percepts → snapshot state) is preserved.
             logger.warning("Fix B fixture pre-trigger failed: %s", e, exc_info=True)
-            try:
-                sim_log("SEM_TRACE", f"Fix B fixture pre-trigger: failed ({type(e).__name__}: {e})")
-            except Exception:
-                # Don't let the trace emission itself break fail-soft.
-                pass
+            sim_log("SEM_TRACE", f"Fix B fixture pre-trigger: failed ({type(e).__name__}: {e})")
             return ()
 
     def _collect_substrate_state(

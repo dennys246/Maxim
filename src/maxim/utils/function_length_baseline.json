@@ -176,7 +176,7 @@
     {
       "file": "src/maxim/simulation/generative_runner.py",
       "qualname": "run_generative_campaign",
-      "lines": 308
+      "lines": 299
     },
     {
       "file": "src/maxim/simulation/interactive.py",
@@ -186,7 +186,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1816
+      "lines": 1786
     },
     {
       "file": "src/maxim/simulation/research_orchestrator.py",

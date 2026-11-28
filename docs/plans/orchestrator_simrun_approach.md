@@ -232,9 +232,13 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
 - **No re-exports, and no extracted module imports `orchestrator.py`, transitively** (A-S6). The test walks the
   import closure like `test_loop_setup.py::loop_import_closure`, because `curriculum_runner.py` lazily imports
   `orchestrator` and a direct-only check would miss it.
-- **Helpers move with their only caller** (rule (a)). Sixteen module-level helpers are called only from P0–P2b,
+- **Helpers move with their only caller** (rule (a)). Eighteen module-level helpers are called only from P0–P2b,
   for example `_build_run_llms`, `_setup_sim_sandbox`, `_restore_aut_from_session`, `_fear_gate_aut_executor`,
-  `_aut_agent_config` and `_register_research_tools`.
+  `_aut_agent_config` and `_register_research_tools`. Two of the eighteen came with #1838 (the #863 fixes, §6):
+  `_trace_sem_tools` (P1) and `_sem_trace` (P1 and P2b). Both go to `sim_aut_build.py`. (The scene-manifest
+  SEM_TRACE lines are P2b too, so they move to `wire_aut_late` and can use `_sem_trace` there. If an emit that stays
+  in `orchestrator.py` is ever routed through it, the helper still lives in `sim_aut_build.py`, and `orchestrator.py`
+  imports it from there, which is the allowed direction.)
 - **v1's "tests that patch `orchestrator.<x>` keep working" was false** (W-S1, E-S3). With no re-export, a patch
   fails loudly. With one, it silently stops intercepting. For example, `test_bounded_stop_sim_1438`'s guard
   "no provenance capture under a stop" would pass dead. **Each step's PR re-points the patch targets of the
@@ -260,7 +264,8 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
     strings would make the string pins vacuous;
   - every new module joins `EXTRACTION_MODULES`;
   - the `PARTS` entries already filed under `orchestrator.py` (`_build_run_llms`, `_warm_aut_router`,
-    `_build_*_router`, `_register_narrator_sim_tools`) are re-pointed.
+    `_build_*_router`, `_register_narrator_sim_tools`, and #1838's `_trace_sem_tools` and `_sem_trace`) are
+    re-pointed.
 - **Pins that move with P0 at step 1, and are re-pointed on purpose:**
   - the provenance order, `capture_start_provenance` before `_build_run_llms` (`test_report_provenance_m1.py`,
     `test_config_sparse_1_2.py`). Both calls go into `build_sim_run`, and the pin follows them there.
@@ -307,8 +312,33 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
   - Every PR inside the pinned function must shrink it by the lines it touches. So **each #863 fix extracts its
     SEM_TRACE block into a module-level helper in the same edit**, and pays for itself. A `touch_exemptions`
     record is not used.
-  - If the fixes wait instead, the move PR records where each site went, and the evidence test cites the new
-    `file::symbol`.
+  - **Landed in #1838** (2026-11-27). The tool listing is `_trace_sem_tools`, and every emit goes through
+    `_sem_trace`. The ACTIVE line sits in the construction `try`'s `else:`, so a fault there raises and is not
+    reported as a construction failure. The same PR drops the six other such wraps in `simulation/` and holds the
+    package at zero (`tests/unit/test_sim_trace_unwrapped_863.py`). The step-2 move still records where each site
+    went, since the gate's `site` stays `orchestrator.py::start_simulation_mode`.
+- **Setup-abort teardown** (#1839; owner decision 2026-11-27: built into the slices). A raise anywhere between the
+  workspace opening (P0) and the main `try` (about line 2709) leaks what setup has started. That means the open sim
+  log and both `LLMWorker`s' lanes, plan loggers and concept extractors (10 threads, measured after a P2b raise).
+  Later in setup it also means the AUT thread (P3), the DM thread (P4), the stdin reader (P6) and the stall thread
+  (P7 head). Nothing tears them down, because `end_run` is reached only from the main `try`. This predates the
+  slices. **Its design is owed as its own approach-note section, adversarially reviewed, before the §10 slice** (the
+  first slice that moves a thread start). It must meet the constraints #1838's review rounds found:
+  - It covers the whole window, including a builder or slice function that raises partway, after it has started
+    a worker but before it returns its bundle.
+  - It runs a subset of `end_run`, never `end_run` itself. `end_run` needs a full `SimTail` (W-S6) and makes the
+    `run_roundup` LLM call. The subset includes every resource step of `release_run_resources`, including the
+    DefaultNetwork's pain-bus unsubscribe from an adopted agent's persistent bus (or a duplicate pain learner
+    accumulates per campaign) and the imagination session end. Best done by factoring those steps into
+    per-resource callables that both paths call, so the two teardown lists cannot drift.
+  - It names the PR that first introduces it, and how the §10, §9 and builder PRs take part under strict rule (d).
+  - Its registration lines are not verbatim move text. They go in a commit after each verbatim-move commit (D7), and
+    any that land in still-inline code (P0's tail, P3, P5, the P7 head) are rule-T touches with a stated cost.
+  - It states how much setup text a wrapping `try` re-indents at the landing point (P3, P5 and the P7 head stay
+    inline after `wire_aut_late`, and so does P0 until `SimRun` merges), or it picks a shape that re-indents
+    nothing.
+  - It tests a raise at each phase boundary (P1, P2a, P2b, P3, P4, P6, P7) and asserts that no new thread is alive
+    and sim logging is off.
 - **World-clock census** (W-N3): `world_clock_census.py` fences `simulation/orchestrator.py`. The new modules get
   the same `_FENCED` rule in the PR that creates them, and the line-2 lane hears about it, since M72 is "absolute
   from birth".
@@ -326,6 +356,9 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
 >    `accepted_new_debt`;
 > 4. re-scope the last slice into `build_orchestrator` + `wire_aut_late`;
 > 5. roadmap order, the #863 fixes first, and `SimRun` merging last under D7.
+>
+> **ADDED 2026-11-27 (owner, the #1838 review):** 6. the setup-abort teardown (§6, #1839) is built into the slices,
+> not as a separate fix before them. Its design is owed before the §10 slice.
 >
 > The text below is the question as it was asked.
 

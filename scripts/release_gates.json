@@ -448,8 +448,13 @@
           "id": "863.orch.sem_trace_tools",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_orch_sem_trace_863.py::test_a_fault_building_the_sem_tool_trace_surfaces_863"
+          ],
+          "red_gate": {
+            "commit": "22b126b85573872e3d6945c9e513db932d65b526",
+            "nodeid": "tests/unit/test_orch_sem_trace_863.py::test_a_fault_building_the_sem_tool_trace_surfaces_863"
+          },
           "site": {
             "file": "src/maxim/simulation/orchestrator.py",
             "symbol": "start_simulation_mode",
@@ -461,8 +466,13 @@
           "id": "863.orch.sem_trace_imagination_active",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_orch_sem_trace_863.py::test_a_fault_building_the_imagination_active_trace_surfaces_863"
+          ],
+          "red_gate": {
+            "commit": "22b126b85573872e3d6945c9e513db932d65b526",
+            "nodeid": "tests/unit/test_orch_sem_trace_863.py::test_a_fault_building_the_imagination_active_trace_surfaces_863"
+          },
           "site": {
             "file": "src/maxim/simulation/orchestrator.py",
             "symbol": "start_simulation_mode",
@@ -474,8 +484,13 @@
           "id": "863.orch.sem_trace_imagination_failed",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_orch_sem_trace_863.py::test_a_fault_building_the_imagination_failed_trace_surfaces_863"
+          ],
+          "red_gate": {
+            "commit": "22b126b85573872e3d6945c9e513db932d65b526",
+            "nodeid": "tests/unit/test_orch_sem_trace_863.py::test_a_fault_building_the_imagination_failed_trace_surfaces_863"
+          },
           "site": {
             "file": "src/maxim/simulation/orchestrator.py",
             "symbol": "start_simulation_mode",
