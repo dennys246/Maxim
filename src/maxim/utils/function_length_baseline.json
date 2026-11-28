@@ -126,7 +126,7 @@
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1078
+      "lines": 942
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",
@@ -422,6 +422,7 @@
     "slice 7a re-merged onto #1775 (2026-11-25): _run_agentic_loop_body 1773 -> 1453. That is slice 7a's pin on the earlier main (1461) less the 8 lines #1775 moved out of section 4.",
     "_run_agentic_loop_body tightened 1461 -> 1086 on 2026-11-24 (1.3.6 loop phase 2, slice 7b, merged onto slice 7a's re-merge with main) when the rest of section 6's submit (submit_tick and its SubmitCarry, the mode info, the tool surface and its descriptions, the request, the PFC deliberation) moved verbatim to runtime/loop_request.py in pieces of 200 lines or fewer, and _advertisable_tools to loop_state; by rule (a) _triggering (main's #1519 form of _triggering_input), _describe_tools_for_prompt, _thaw and _WIRE3_PHRASE_RE moved with it. On the branch before the re-merge it measured 1603 -> 1226 (377 lines); on main the moved text is 2 lines shorter (#1519's one-line **_triggering(..., state) splat), so 375 lines move. Characterized first by tests/unit/test_loop_submit_request_characterization.py.",
     "slice 7b re-merged onto slice 7a's #1775 re-merge (2026-11-25): _run_agentic_loop_body 1453 -> 1078, the same 375 lines slice 7b moved out on 7a's earlier pin (1461 -> 1086).",
+    "_run_agentic_loop_body tightened 1078 -> 942 on 2026-11-27 (1.3.6 loop phase 2, slice 8) when section 4, the pending-action execution (the #1451 set-aside, the live-situation stamp, the consecutive same-tool cap, the parallel batch, the plan gate and the autonomy dispatch), moved verbatim to runtime/loop_execute.py as execute_pending_tick (173 lines) and _same_tool_cap (76); by rule (a) _log_goal_proposed and _log_autonomy_check moved with it, and the body's _MAX_CONSECUTIVE_SAME_TOOL local became the module's constant. Characterized first by tests/unit/test_loop_execute_characterization.py.",
     "#1801 (2026-11-25, rule T, no exemption): record_outcome 385 -> 381: its agent_id guard moved to tool_dispatch._require_agent_id, paying for the URL reduction of error at its top and before the NAc summary cut."
   ],
   "touch_exemptions": [

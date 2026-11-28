@@ -44,11 +44,14 @@ wrapper), and every pin below reads the body:
     its ordering half (SEM union, then Wire 3, then the permits filter, before ``last_surfaced_tools`` and the
     descriptions): reads ``loop_request._surface_tools`` and ``loop_request.submit_tick`` since slice 7b.
   - ``test_talk_roster_1412.py::test_both_roster_sites_in_the_loop_use_the_one_filter`` (two ``_advertisable_tools(``
-    calls, no inline ``executor.permits(t)``): reads ``_run_agentic_loop_body`` (§4's loop-cap message) plus
-    ``loop_request._surface_tools`` (§6's roster) since slice 7b.
+    calls, no inline ``executor.permits(t)``): reads ``loop_execute._same_tool_cap`` (§4's loop-cap message) since
+    slice 8, plus ``loop_request._surface_tools`` (§6's roster) since slice 7b.
   - ``test_tool_output_framing.py`` and ``test_planning_liveness.py``: ``inspect.getsource`` of the
     module-level helpers ``_followup_synthetic_input`` (read from ``loop_submit`` since slice 7a), ``_drop_stale_proposal``
     and ``_proposal_without_action_reason`` (read from ``loop_intake`` since slice 6; no re-export).
+
+Slice 8 (§4's pending-action execution -> ``loop_execute.execute_pending_tick``, 1.3.6) re-pointed the roster pin's
+loop-cap half; its characterization, ``test_loop_execute_characterization.py``, is behavioural through the public entry.
 
 Slice 7b (§6's request assembly and deliberation -> ``loop_request.submit_tick``, 1.3.6) re-pointed the two roster
 pins above; its characterization, ``test_loop_submit_request_characterization.py``, is behavioural through the public
