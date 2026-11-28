@@ -91,10 +91,10 @@ _VALID_REDACTION_POLICIES: frozenset[str] = frozenset({"standard", "relaxed", "s
 # with the strategy itself -- a name accepted here but unimplemented in the store would be taken
 # and then crash at the first consolidation.
 _VALID_MEMORY_STRATEGIES: frozenset[str] = frozenset({"access_based", "importance_based", "composite", "strength"})
-# The frozen lane tiers have one owner, ``lane_models.LANE_TIER_NAMES`` (#1601). lane_models imports no config module.
-from maxim.runtime.lane_models import LANE_TIER_NAMES as _LANE_TIER_NAMES  # noqa: E402
-
-_VALID_TIER_NAMES: frozenset[str] = frozenset(_LANE_TIER_NAMES)
+LANE_TIER_NAMES: tuple[str, ...] = ("large", "medium", "small")
+"""The lane tiers, largest first. FROZEN (the removed ``infer``/``review``/``record`` names stay removed). Defined in
+this leaf module, which ``runtime/lane_models.py`` (the llm.json ``tiers`` validation) imports it from (#1601)."""
+_VALID_TIER_NAMES: frozenset[str] = frozenset(LANE_TIER_NAMES)
 
 # C-2 fold: canonical truthy/falsy sets. Match the existing
 # MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION parser + the leader-UX PR's

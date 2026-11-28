@@ -6,7 +6,7 @@
     {
       "file": "src/maxim/cli.py",
       "qualname": "_main_impl",
-      "lines": 1098
+      "lines": 1094
     },
     {
       "file": "src/maxim/cli_parser.py",
@@ -420,7 +420,8 @@
     "#1315 item 10b merged with main (2026-11-25): 10b's V29 `MaximAgent(llm_router=)` was dropped for main's #1228 `shared_router=` (the same rule), so the re-measured pins are main's: AgenticRuntimeMixin._start_agentic_runtime 774 and start_simulation_mode 1816; _main_impl stays 1116.",
     "#1775 (2026-11-24, rule T; Session A's grant): _run_agentic_loop_body 1781 -> 1773, section 4's goal_proposed event moved to agent_loop._log_goal_proposed, paying for its reasoning now logged by text_shape.",
     "slice 7a re-merged onto #1775 (2026-11-25): _run_agentic_loop_body 1773 -> 1453. That is slice 7a's pin on the earlier main (1461) less the 8 lines #1775 moved out of section 4.",
-    "#1801 (2026-11-25, rule T, no exemption): record_outcome 385 -> 381: its agent_id guard moved to tool_dispatch._require_agent_id, paying for the URL reduction of error at its top and before the NAc summary cut."
+    "#1801 (2026-11-25, rule T, no exemption): record_outcome 385 -> 381: its agent_id guard moved to tool_dispatch._require_agent_id, paying for the URL reduction of error at its top and before the NAc summary cut.",
+    "#1601 (2026-11-27, rule T, no exemption): _main_impl 1098 -> 1094: its profiles.yml check and the new llm.json routing check moved together to cli._require_valid_model_config, paying for the llm.json check added beside it."
   ],
   "touch_exemptions": [
     {

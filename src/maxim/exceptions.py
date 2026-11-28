@@ -658,7 +658,7 @@ class LLMRoutingConfigInvalid(InvalidConfigError):
     - ``runtime/lane_models.py::require_valid_llm_routing``: a malformed ``tiers`` entry, a field no lane reads yet
       (``device``, ``max_workers``), or any ``functions`` entry (the function router routes nothing yet, #1833);
     - ``runtime/lane_backends.py``'s tier overlay: a lane's ``tiers`` ``model_profile`` that differs from the session's
-      model, which every local lane serves instead (owner decision 2026-11-27: the conflict refuses).
+      model, which every lane the build starts serves instead (owner decision 2026-11-27: the conflict refuses).
 
     Refused up front at run start like :class:`UserProfilesInvalid`, and in :data:`CONFIG_REFUSALS`, so no broad
     handler turns it into a run without the LLM. ``maxim doctor`` still runs and reports it.
@@ -805,9 +805,14 @@ class AgentLoopError(MaximRuntimeError):
 
 
 CONFIG_REFUSALS: tuple[type[BaseException], ...] = (UserProfilesInvalid, LLMRoutingConfigInvalid)
-"""What a broad ``except Exception`` around starting or building the LLM must re-raise beside
-:data:`SECURITY_REFUSALS`: a model config that cannot be applied as written (#1601). It is not an outage, so it never
-degrades to "run without the LLM"."""
+"""A model config that cannot be applied as written (#1601). It is not an outage, so it never degrades to "run
+without the LLM": a broad handler around starting or building the LLM re-raises it through :data:`RUN_REFUSALS`."""
+
+RUN_REFUSALS: tuple[type[BaseException], ...] = (*SECURITY_REFUSALS, *CONFIG_REFUSALS)
+"""The one tuple a broad ``except Exception`` around starting or building the LLM re-raises: every refusal
+(:data:`SECURITY_REFUSALS`) and every model config that cannot be applied as written (:data:`CONFIG_REFUSALS`). A
+build-wrapping handler names this, not either half, so a refusal added to one half reaches every such site (#1601
+review). Handlers around a running model's calls, where no config refusal can fire, keep :data:`SECURITY_REFUSALS`."""
 
 
 __all__ = [
@@ -872,6 +877,7 @@ __all__ = [
     "InvalidConfigError",
     "LLMRoutingConfigInvalid",
     "CONFIG_REFUSALS",
+    "RUN_REFUSALS",
     "InvalidAgentIdError",
     "AgentConfigContradiction",
     # Hardware

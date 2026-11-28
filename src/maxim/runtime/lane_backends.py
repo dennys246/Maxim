@@ -2222,13 +2222,20 @@ def _apply_llm_json_tiers(lane_configs: dict[str, Any], capabilities: Any, *, pr
 
     tiers, functions = require_valid_llm_routing()
     session = _build_profile(profile)
+    # Where the session model came from, for the message: a build handed its profile (--llm, a dual-LLM run's
+    # --aut-model, a benchmarked model) or the process's (review W/E: the AUT build named the wrong source).
+    source = (
+        "this build's requested model (--llm, --aut-model or a benchmarked model)"
+        if profile
+        else "MAXIM_LLM_PROFILE, config.json llm.profile or the persisted --llm choice"
+    )
     for lane, entry in tiers.items():
         chosen = entry.get("model_profile")
         if session and chosen and chosen != session:
             raise LLMRoutingConfigInvalid(
-                f"llm.json tiers.{lane}.model_profile is {chosen!r}, but this session serves {session!r} on every local "
-                "lane (from --llm, MAXIM_LLM_PROFILE, config.json llm.profile or the persisted --llm choice). Remove "
-                "the tiers model_profile, or set the session model to the same profile",
+                f"llm.json tiers.{lane}.model_profile is {chosen!r}, but this build serves {session!r} on every lane "
+                f"it starts (from {source}), so the tier's model would never run. Remove the tiers model_profile, or "
+                "use the same profile for the session",
                 context={"lane": lane, "tiers_profile": chosen, "session_profile": session},
             )
     if tiers:

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 from maxim.runtime.capabilities import RuntimeCapabilities
+from maxim.runtime.config_loader import LANE_TIER_NAMES
 from maxim.runtime.worker_pool import LaneConfig
 
 ProfileAvailabilityCheck = Callable[[str], bool]
@@ -582,10 +583,6 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
         )
     return out
 
-
-LANE_TIER_NAMES: tuple[str, ...] = ("large", "medium", "small")
-"""The lane tiers, largest first. FROZEN (the removed ``infer``/``review``/``record`` names stay removed); the one owner
-of the list that ``config_loader._VALID_TIER_NAMES`` and the llm.json validation read (#1601)."""
 
 # The llm.json ``tiers`` fields a lane reads (#1601). ``device`` and ``max_workers`` are LaneConfig attributes no spawn
 # or backend path consults yet, so they refuse rather than change only what the banner says (owner, 2026-11-27).

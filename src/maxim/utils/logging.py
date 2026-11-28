@@ -484,10 +484,11 @@ def warn_unless_refusal(message: str, exc: BaseException, *, logger: Optional[lo
     ``OfflineRefusal`` (a lane the offline latch refused), where carrying on runs without the LLM the operator
     configured: both are :data:`maxim.exceptions.SECURITY_REFUSALS`. Nor for a model config that cannot be applied as
     written (``profiles.yml``, llm.json routing): :data:`maxim.exceptions.CONFIG_REFUSALS`, re-raised too (#1601).
+    Together they are :data:`maxim.exceptions.RUN_REFUSALS`.
     """
-    from maxim.exceptions import CONFIG_REFUSALS, SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
 
-    if isinstance(exc, (*SECURITY_REFUSALS, *CONFIG_REFUSALS)):
+    if isinstance(exc, RUN_REFUSALS):
         raise exc
     warn(message, exc, logger=logger)
 

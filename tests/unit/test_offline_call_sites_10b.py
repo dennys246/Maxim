@@ -305,12 +305,12 @@ def test_the_benchmark_loop_records_a_refusal_and_continues() -> None:
         if (
             isinstance(node, ast.ExceptHandler)
             and isinstance(node.type, ast.Name)
-            and node.type.id == "SECURITY_REFUSALS"
+            and node.type.id == "RUN_REFUSALS"  # SECURITY_REFUSALS + CONFIG_REFUSALS (#1601)
         ):
             assert not any(isinstance(n, ast.Raise) for n in ast.walk(node)), "a refusal must not abort the benchmark"
             break
     else:
-        raise AssertionError("the scenario loop has no SECURITY_REFUSALS handler")
+        raise AssertionError("the scenario loop has no RUN_REFUSALS handler")
 
 
 def test_server_mode_says_refusing_to_serve_on_an_offline_refusal(

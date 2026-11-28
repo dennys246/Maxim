@@ -665,7 +665,7 @@ def _run_menu_sim(action: str) -> None:
     from pathlib import Path
 
     from maxim import cli_signals
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
     from maxim.utils.cancellation import interruptible
 
     cli_signals.entered_sim_mode()  # a stop from here on exits 4 (#1344)
@@ -726,7 +726,7 @@ def _run_menu_sim(action: str) -> None:
             )
         except KeyboardInterrupt:
             raise
-        except SECURITY_REFUSALS:  # a leader/offline refusal reaches _main_guarded's refusal, not "failed to load"
+        except RUN_REFUSALS:  # a refusal or a broken model config reaches _main_guarded, not "failed to load"
             raise
         except Exception as e:
             print(f"  Failed to load campaign: {e}")
@@ -987,13 +987,27 @@ def _runtime_mode_switch_allowed(requested: str, *, current_operational: str, gr
     return True
 
 
+def _require_valid_model_config() -> None:
+    """Refuse a broken model config before any run mode starts (``CONFIG_REFUSALS``; ``_main_guarded`` exits 2).
+
+    Every run mode reads profiles.yml, many through fallbacks that would hide a broken file: refuse it here (#1315
+    step 0a; owner decision 2026-10-30). llm.json's ``tiers``/``functions`` are refused the same way (#1601). The
+    repair commands (doctor, config, model, ...) dispatch before this, so they still run against a broken file."""
+    from maxim.models.language.config import require_valid_user_profiles
+    from maxim.runtime.lane_models import require_valid_llm_routing
+
+    require_valid_user_profiles()
+    require_valid_llm_routing()
+
+
 def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     """A robot/agentic run stopped on ``error``: the run loop's exit code (#1468, owner decisions 2026-10-26).
 
     A typed backend error, a leader refusal or a spoken-response refusal (``--tts`` that cannot play, #1437)
     is RE-RAISED to :func:`main`, which renders its fix hint (or the refusal's reason) and exits 2, so a
     supervisor can tell "the operator must act" from a crash; a refusal is never absorbed by a broad handler
-    (``exceptions.SECURITY_REFUSALS``: a leader or an offline refusal). Anything else is logged as before and is a
+    (``exceptions.RUN_REFUSALS``: a leader or an offline refusal, or a model config that cannot be applied, #1601,
+    which ``_main_guarded`` renders as the exit-2 config refusal). Anything else is logged as before and is a
     crash: 1. The loop's ``finally`` (``_end_robot_run``) runs either way.
 
     A robot configuration the operator must fix (#1806 PR 0) is rendered here, message and ``fix_hint``, and exits 2
@@ -1001,11 +1015,11 @@ def _run_stopped_on(error: Exception, logger: Any, *, verbosity: int) -> int:
     configuration value such as ``MAXIM_ROBOT_TIMEOUT`` (``InvalidConfigError``), both raised out of the runtime's
     ``Maxim(...)``. It is handled here, not in ``_main_guarded``, so only a run's ``InvalidConfigError`` changes
     meaning (exit 2, not a crash), not one raised anywhere else in the CLI."""
-    from maxim.exceptions import SECURITY_REFUSALS, InvalidConfigError, RobotsConfigError
+    from maxim.exceptions import RUN_REFUSALS, InvalidConfigError, RobotsConfigError
     from maxim.models.language.types import BackendError
     from maxim.utils.response_output import SpeechOutputUnavailable
 
-    if isinstance(error, (BackendError, *SECURITY_REFUSALS, SpeechOutputUnavailable)):
+    if isinstance(error, (BackendError, *RUN_REFUSALS, SpeechOutputUnavailable)):
         raise error
     # Exactly these two, not InvalidConfigError subclasses (InvalidAgentIdError, AgentConfigContradiction): those
     # keep their pre-#1806 exit 1 and logged traceback (review E3).
@@ -1537,9 +1551,10 @@ def _early_leader_boot() -> int | None:
 def _start_server_llm(logger: logging.Logger) -> str | None:
     """Server mode's LLM: ``None`` once it is ready, else why it is not (#1338: never "ready" when it is not).
 
-    A ``LeaderRefusal`` propagates: a security refusal is not "run without the LLM".
+    A refusal (``RUN_REFUSALS``: a leader or offline refusal, or an llm.json the build cannot apply, #1601) propagates:
+    neither is "run without the LLM".
     """
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
 
     try:
         from maxim.runtime.lane_backends import build_primary_router
@@ -1550,7 +1565,7 @@ def _start_server_llm(logger: logging.Logger) -> str | None:
         _srv_router.warmup()
         if not _srv_router.wait_ready(timeout=180.0):
             return "the LLM did not become ready within 180s"
-    except SECURITY_REFUSALS:
+    except RUN_REFUSALS:
         raise
     except Exception as _srv_err:
         logger.error("LLM server init failed: %s", _srv_err)
@@ -1580,15 +1595,16 @@ def _report_server_not_ready(logger: logging.Logger, reason: str) -> int | None:
 def _run_server_mode(logger: logging.Logger) -> int:
     """``--mode server``: the LLM server + proxy, no agent loop, until Ctrl+C. An LLM that never becomes ready is
     reported NOT READY: the process stays up behind a LeaderProxy, and exits 1 without one (#1338)."""
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
 
     print("Maxim — server mode")
     try:
         try:
             _not_ready = _start_server_llm(logger)
-        except SECURITY_REFUSALS as _refusal:
+        except RUN_REFUSALS as _refusal:
             # A server mode that kept going would leave the proxy forwarding to what it refused.
-            print(f"\n  ✗ Refusing to serve: {_refusal}\n", file=sys.stderr)
+            _fix = getattr(_refusal, "fix_hint", None)
+            print(f"\n  ✗ Refusing to serve: {_refusal}\n" + (f"    → {_fix}\n" if _fix else ""), file=sys.stderr)
             logger.error("server mode refused: %s", _refusal)
             return 2
         if _not_ready is not None:
@@ -1747,7 +1763,7 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
     (#1657), so the curation model is not still resident while the sim loads its own. It waits for the warmed router
     like foundry does; one that is not ready in time is not handed to the runners (template fallback)."""
 
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
 
     def build() -> Any | None:
         router = None
@@ -1760,7 +1776,7 @@ def _curate_router_factory(profile: str, built: list[Any]) -> Callable[[], Any |
             if not router.wait_ready(timeout=_LOCAL_ROUTER_READY_TIMEOUT_S):
                 print("  WARNING: LLM failed to load — curation will use template fallback.")
                 return None
-        except SECURITY_REFUSALS:
+        except RUN_REFUSALS:
             raise  # an offline refusal is not a template fallback (#1315 item 10b)
         except Exception as _llm_err:
             logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
@@ -1773,7 +1789,7 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
     """E3: pre-sim auto-curation (``--auto-curate``). Moved out of ``_main_impl`` (rule T) by #1396, which routes its
     ``--llm`` router through :func:`_cli_local_router`, so a missing model is asked about before warmup, and builds
     it only once ``auto_curate`` finds a gap (:func:`_curate_router_factory`)."""
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
 
     _auto_curate = bool(getattr(args, "auto_curate", False))
     _no_curate = bool(getattr(args, "no_curate", False))
@@ -1824,7 +1840,7 @@ def _auto_curate_before_sim(args: Any, _sim_entity_ref: str | None) -> None:
                 print("  Coverage OK — no curation needed")
             else:
                 print(f"  Generated {_curate_report.total_generated} candidates, none promoted (below score threshold)")
-        except SECURITY_REFUSALS:
+        except RUN_REFUSALS:
             raise  # the run refuses, exit 2 (cli.main), not "Auto-curation failed" (#1315 item 10b)
         except Exception as _cur_err:
             logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
@@ -1843,7 +1859,7 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
     # Build a lightweight LLM router for generation when --llm is set.
     # The foundry dispatches before the full agent stack, so it creates
     # its own router from the profile name (same pattern as ExecAgent).
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import RUN_REFUSALS
 
     _foundry_llm = None
     _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
@@ -1859,7 +1875,7 @@ def _handle_foundry(args: Any, _foundry_theme: str) -> int:
                     _foundry_llm = None
                 else:
                     print(f"  LLM ready: {_foundry_profile}")
-        except SECURITY_REFUSALS:
+        except RUN_REFUSALS:
             raise  # the foundry refuses, exit 2 (cli.main), never a template run that reports success (#1315 item 10b)
         except Exception as e:
             print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
@@ -2163,13 +2179,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     if clear_memory is not None:
         return _handle_clear_memory(clear_memory, args, raw_argv)
 
-    # Every run mode below reads profiles.yml, many through fallbacks that would hide a broken file: refuse it HERE
-    # (#1315 step 0a; owner decision 2026-10-30). The repair commands (doctor, config, model, ...) dispatch above.
-    from maxim.models.language.config import require_valid_user_profiles
-    from maxim.runtime.lane_models import require_valid_llm_routing
-
-    require_valid_user_profiles()
-    require_valid_llm_routing()  # llm.json tiers/functions, refused the same way (#1601)
+    _require_valid_model_config()  # profiles.yml + llm.json refuse HERE; the repair commands dispatched above
 
     # ── Asset Foundry dispatch ──────────────────────────────────────────
     _foundry_theme = getattr(args, "foundry", None)

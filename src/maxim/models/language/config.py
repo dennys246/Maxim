@@ -939,14 +939,6 @@ def _read_discovered_llm_config() -> dict[str, Any]:
     return raw
 
 
-def _discovered_llm_json_path() -> str | None:
-    """The file :func:`_read_discovered_llm_config` reads: the first existing :func:`_llm_config_candidates` path."""
-    for path in _llm_config_candidates():
-        if path and os.path.isfile(path):
-            return path
-    return None
-
-
 def llm_json_routing_sections() -> tuple[dict[str, Any], dict[str, Any]]:
     """llm.json's ``tiers`` and ``functions`` sections (``{}`` when absent or when there is no llm.json), read strictly
     from the file :func:`load_llm_config` discovers (#1601).
@@ -961,13 +953,13 @@ def llm_json_routing_sections() -> tuple[dict[str, Any], dict[str, Any]]:
     """
     from maxim.exceptions import LLMRoutingConfigInvalid
 
-    path = _discovered_llm_json_path()
+    path = llm_config_file()  # the one llm.json resolver (#1806 PR 0)
     if path is None:
         return {}, {}
     try:
         with open(path, encoding="utf-8") as fp:
             raw = json.load(fp)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:  # ValueError: JSONDecodeError, UnicodeDecodeError, int limit
         raise LLMRoutingConfigInvalid(f"{path} cannot be read as JSON: {exc}", context={"path": path}) from exc
     if not isinstance(raw, dict):
         raise LLMRoutingConfigInvalid(

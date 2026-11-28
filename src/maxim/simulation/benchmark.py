@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from maxim.exceptions import SECURITY_REFUSALS
+from maxim.exceptions import RUN_REFUSALS
 from maxim.simulation.sim_types import is_simulation_run_failure
 
 # The one list of metrics where lower is better: the composite inverts them, rankings sort them ascending,
@@ -70,8 +70,9 @@ class RunResult:
     duration_s: float = 0.0
     turns: int = 0
     error: str | None = None
-    #: The run was refused (``SECURITY_REFUSALS``: the offline latch, a leader refusal), not failed: ``error`` says
-    #: why, and the run is never scored (#1315 item 10b, owner decision V26).
+    #: The run was refused (``RUN_REFUSALS``: the offline latch, a leader refusal, or an llm.json the model's build
+    #: cannot apply, #1601), not failed: ``error`` says why, and the run is never scored (#1315 item 10b, owner
+    #: decision V26).
     refused: bool = False
 
 
@@ -491,7 +492,7 @@ class BenchmarkRunner:
                         total = run_result.expectations_total
                         display_status(f"  OK {duration:.1f}s — {turns} turns — {passed}/{total} expectations")
 
-                    except SECURITY_REFUSALS as refusal:
+                    except RUN_REFUSALS as refusal:
                         # A refused model is not a failed scenario: recorded as refused, never scored, and the other
                         # models still run (#1315 item 10b, owner decision V26).
                         model_runs.append(
@@ -999,8 +1000,8 @@ class BenchmarkRunner:
         ``cause`` is ``consented_router``'s (``LLM_DISABLED`` or one of ``LocalModelUnavailable.CAUSES``), or
         :data:`PAPER_NO_TEXT` (the router returned no text for any section). Any other failure raises: a broad
         except here once turned a constructor ``TypeError`` into a None the CLI reported as "LLM unavailable", so
-        the paper step never worked and nothing said why (#1680). A refusal (``SECURITY_REFUSALS``: the offline
-        latch, a leader refusal) raises too, at the router build or at a section call, so the run exits 2 like any
+        the paper step never worked and nothing said why (#1680). A refusal (``RUN_REFUSALS``: the offline
+        latch, a leader refusal, a model config) raises too, at the router build or at a section call, so the run exits 2 like any
         other refusal (V26; owner decision 2026-11-23); the build-time one is logged first and, offline, marked
         degraded, which logs a WARNING (the benchmark report is already saved and has no offline block).
         """
@@ -1015,7 +1016,7 @@ class BenchmarkRunner:
         # usable LLM leaves no experiment log behind.
         try:
             router, cause = consented_router(load_llm_config(), logger=logger)
-        except SECURITY_REFUSALS as refusal:  # said as what it is, then raised: a refusal exits 2 (V26, 2026-11-23)
+        except RUN_REFUSALS as refusal:  # said as what it is, then raised: a refusal exits 2 (V26, 2026-11-23)
             from maxim import _offline
 
             if isinstance(refusal, _offline.OfflineRefusal):

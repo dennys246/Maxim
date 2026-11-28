@@ -98,6 +98,22 @@ def test_an_llm_json_that_does_not_parse_refuses_the_build(tmp_path, monkeypatch
         _build()
 
 
+@pytest.mark.parametrize(
+    "text",
+    ['{"tiers": ' + "9" * 5000 + "}", "[" * 100_000 + "]" * 100_000],
+    ids=["int-digit-limit", "nesting-depth"],
+)
+def test_an_llm_json_the_parser_cannot_hold_refuses_typed(tmp_path, llm_json, text) -> None:
+    """json.load raises a plain ValueError past the int-digit limit and RecursionError on deep nesting: both used to
+    escape untyped, crashing doctor's row and skipping the exit-2 refusal (#1601 delta review)."""
+    (tmp_path / "llm.json").write_text(text, encoding="utf-8")
+    from maxim.doctor.checks import check_llm_routing
+
+    with pytest.raises(LLMRoutingConfigInvalid, match="cannot be read as JSON"):
+        _build()
+    assert check_llm_routing().status == "fail"
+
+
 def test_the_refusal_comes_before_any_download_or_spawn(llm_json) -> None:
     """The preflight refuses before tier detection, so a bad functions entry never downloads or spawns a model."""
     llm_json({"functions": {"agent_inference": {"tier": "small"}}})
@@ -111,7 +127,7 @@ def test_a_tiers_profile_that_differs_from_the_session_model_refuses(llm_json, m
     served; it refuses instead (owner decision 2026-11-27)."""
     monkeypatch.setenv("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
     llm_json({"tiers": {"small": {"model_profile": "qwen2.5-0.5b-instruct"}}})
-    with pytest.raises(LLMRoutingConfigInvalid, match="this session serves 'smollm-1.7b-instruct'"):
+    with pytest.raises(LLMRoutingConfigInvalid, match="this build serves 'smollm-1.7b-instruct'"):
         _build()
 
 
@@ -147,10 +163,53 @@ def test_another_lanes_miss_keeps_this_lanes_override(monkeypatch) -> None:
     assert out["small"].model_profile == "user-small"
 
 
-@pytest.mark.parametrize("site", ["warn_unless_refusal", "research"])
-def test_a_config_refusal_is_not_turned_into_a_run_without_the_llm(site, monkeypatch) -> None:
-    """The broad LLM-start handlers re-raise CONFIG_REFUSALS beside SECURITY_REFUSALS (#1601 review)."""
+def test_run_refusals_is_both_halves() -> None:
+    from maxim.exceptions import CONFIG_REFUSALS, RUN_REFUSALS, SECURITY_REFUSALS
+
+    assert set(RUN_REFUSALS) == set(SECURITY_REFUSALS) | set(CONFIG_REFUSALS)
+    assert LLMRoutingConfigInvalid in CONFIG_REFUSALS
+
+
+@pytest.mark.parametrize(
+    "site", ["warn_unless_refusal", "research", "server_llm", "server_mode", "robot_run", "aut_router"]
+)
+def test_a_config_refusal_is_not_turned_into_a_run_without_the_llm(site, monkeypatch, capsys) -> None:
+    """Every broad LLM-start handler re-raises RUN_REFUSALS (SECURITY_REFUSALS + CONFIG_REFUSALS). The session-model
+    conflict first fires inside a router build, so the run-start check cannot catch it for these (#1601 reviews)."""
+    from unittest.mock import MagicMock
+
     err = LLMRoutingConfigInvalid("llm.json tiers.large: bad")
+
+    def _raise(*a, **k):
+        raise err
+
+    if site == "server_llm":  # was the string "LLM server init failed", so server mode stayed up NOT READY
+        from maxim import cli
+
+        monkeypatch.setattr("maxim.runtime.lane_backends.build_primary_router", _raise)
+        with pytest.raises(LLMRoutingConfigInvalid):
+            cli._start_server_llm(MagicMock())
+        return
+    if site == "server_mode":  # refused with the fix hint and exit 2
+        from maxim import cli
+
+        monkeypatch.setattr(cli, "_start_server_llm", _raise)
+        assert cli._run_server_mode(MagicMock()) == 2
+        assert "Refusing to serve" in capsys.readouterr().err
+        return
+    if site == "robot_run":  # was exit 1 with a traceback: the subclass missed `type(error) is InvalidConfigError`
+        from maxim import cli
+
+        with pytest.raises(LLMRoutingConfigInvalid):
+            cli._run_stopped_on(err, MagicMock(), verbosity=0)
+        return
+    if site == "aut_router":  # was wrapped as AutRouterUnavailable with the AUT's fix hint
+        from maxim.simulation import orchestrator
+
+        monkeypatch.setattr("maxim.runtime.lane_backends.build_run_router", _raise)
+        with pytest.raises(LLMRoutingConfigInvalid):
+            orchestrator._build_aut_router("aut-model", None, warm=False)
+        return
     if site == "warn_unless_refusal":
         from maxim.utils.logging import warn_unless_refusal
 
@@ -158,9 +217,6 @@ def test_a_config_refusal_is_not_turned_into_a_run_without_the_llm(site, monkeyp
             warn_unless_refusal("Failed to create LLM worker: %s", err)
     else:
         from maxim.simulation import research_orchestrator
-
-        def _raise(*a, **k):
-            raise err
 
         monkeypatch.setattr("maxim.runtime.lane_backends.build_run_router", _raise)
         with pytest.raises(LLMRoutingConfigInvalid):

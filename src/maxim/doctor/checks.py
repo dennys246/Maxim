@@ -3559,10 +3559,10 @@ def check_llm_routing() -> CheckResult:
     reports the error instead of raising. It cannot see the session-model conflict, which needs the run's ``--llm``.
     """
     from maxim.exceptions import LLMRoutingConfigInvalid
-    from maxim.models.language.config import _discovered_llm_json_path
+    from maxim.models.language.config import llm_config_file
     from maxim.runtime.lane_models import require_valid_llm_routing
 
-    path = _discovered_llm_json_path()
+    path = llm_config_file()
     try:
         tiers, _functions = require_valid_llm_routing()
     except LLMRoutingConfigInvalid as exc:
