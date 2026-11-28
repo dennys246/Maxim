@@ -274,14 +274,17 @@ last push whose ``unit-tests`` job passed (``_lint_git.push_base``, #1089).
 
 **Pinning a rise in one command (M60a, owner decisions 2026-10-27).** ``--pins-from-run RUN_ID`` writes the pins the
 "raise it to" hint prints, for every floored scope more than ``band`` above its floor, from CI run ``RUN_ID``'s own
-measurement. It binds the run before reading anything: a Tests (``test.yml``) run of a ``pull_request`` or
+measurement, and, for a floor this branch changed against the ratchet's base (``base_ref``; a stacked branch
+inherits its parent's), the pin :func:`changed_floor_problems` (the CHANGED rule CI gates) accepts when that rule
+refuses the current one, even within the band. It binds the run before reading anything: a Tests (``test.yml``) run of a ``pull_request`` or
 ``push``, whose ``head_sha`` is this checkout's ``HEAD`` (or differs from it only in the floors file, #1640), whose latest attempt's ``unit-tests`` job ran
 ``RUN_SUITE_STEP`` to ``success`` (a ``-x`` failure leaves partial data). It then reads that attempt's
 ``coverage-json-<attempt>`` artifact; the unsuffixed legacy name is accepted only on attempt 1. A PR run measures the
 merge with main, so files this branch lacks are accepted: the pins are for that merge, and CI re-measures it on the
 pin commit. Falls, null floors, unmeasured scopes and committed pins more than ``K_MIN`` above the run are reported,
 never written. It needs ``gh`` (it calls ``gh api`` and ``gh run download`` from the repo root), and fails closed
-(exit 2) when ``gh`` cannot answer. It refuses to run inside GitHub Actions. Every pin it writes is verified again
+(exit 2) when ``gh`` cannot answer. It exits 1 when a floor this branch changed is refused by the CHANGED rule and
+no pin from the run fixes it (the pins that do fix are still written). It refuses to run inside GitHub Actions. Every pin it writes is verified again
 by the CHANGED rules on the pin commit's own run, so the mode is a convenience, not an authority.
 
 **When rules run:** every event runs 1, 3 and the head half of 4. On ``pull_request`` the
@@ -1059,7 +1062,7 @@ def pin_rises(base_fl: Floors, fl: Floors, measured: Callable[[str], ScopeCov | 
     It compares the two floor files only, so ``--local`` gates it exactly as CI does (#1270: #1268 raised
     maxim/console 173 -> 207 and its local run printed that as a note). Renames and splits stay CI's: their pins carry
     across keys and are verified against measurements. ``measured`` (a key's measurement, when the run has one) only
-    sharpens the printed pin to ``min(measured, base)``, the cap ``changed_entry`` enforces; it never changes what
+    sharpens the printed pin to ``min(measured, base)``, the cap ``changed_floor_problems`` enforces; it never changes what
     fails."""
     pairs = [("overall", base_fl.overall, fl.overall)]
     pairs += [(k, base_fl.packages.get(k), h) for k, h in fl.packages.items()]
@@ -1073,6 +1076,54 @@ def pin_rises(base_fl: Floors, fl: Floors, measured: Callable[[str], ScopeCov | 
         out.append(
             f"{name}: floor pins missing {h.missing} above the base's pinned {b.missing} — a pinned missing never rises;"
             f" cover {h.missing - b.missing} statement(s) and pin {cap}"
+        )
+    return out
+
+
+def changed_floor_problems(name: str, b: Floor | None, h: Floor, m: ScopeCov | None) -> list[str]:
+    """NEW entry (``b`` None): the measurement within k statements, ``missing`` <= measured. CHANGED entry:
+    ``missing`` never rises (<= min(measured + K_MIN, base), M60a); LOWERING needs measured missing <= base missing AND
+    percent >= round_down(measured), no tolerance; raising (or unchanged percent) keeps the k tolerance.
+    The one rule ``floor_diff_rules`` gates and ``pins_from_measurement`` pins to (a changed floor's pin)."""
+    out: list[str] = []
+    if m is None or h.percent is None or h.missing is None:
+        return out
+    based = b is not None and b.percent is not None and b.missing is not None
+    if based and (b.percent, b.missing) == (h.percent, h.missing):
+        return out
+    k = missing_slack(m)
+    lowest = round_down(100.0 * (m.covered - k) / m.statements) if m.statements else 0.0
+    # M60a: a CHANGED pin may sit up to K_MIN (the absolute noise, never the size-scaled k) above this run's
+    # measured missing, because a pin taken from one CI run is verified on the pin commit's own run (+-2
+    # statements). The base side stays exact: a pinned missing never rises. NEW floors stay exact (two runs).
+    cap = min(m.missing + K_MIN, b.missing) if based else m.missing
+    if h.missing > cap:
+        pin = min(m.missing, b.missing) if based else m.missing
+        out.append(
+            f"{name}: floor pins missing {h.missing} above "
+            + (
+                f"min(measured {m.missing} + {K_MIN} of noise, base {b.missing})"
+                if based
+                else f"the measured {m.missing}"
+            )
+            + f" — a pinned missing never rises; pin {pin}"
+        )
+    if based and h.percent < b.percent - 1e-9:
+        if m.missing > b.missing:
+            out.append(
+                f"{name}: floor lowered {b.percent}% -> {h.percent}% but measured missing {m.missing} > the base's "
+                f"pinned missing {b.missing} — cover {m.missing - b.missing} statement(s) first: a floor drops "
+                "only when covered code is deleted, not when uncovered code is added or tests are removed"
+            )
+        if h.percent + 1e-9 < round_down(m.percent):
+            out.append(
+                f"{name}: floor lowered to {h.percent}%, below the measurement {_fmt_pct(m.percent)} — a lowered "
+                f"floor goes exactly to round_down(measured) = {round_down(m.percent)} (no tolerance)"
+            )
+    elif h.percent + 1e-9 < lowest:
+        out.append(
+            f"{name}: {'new' if not based else 'changed'} floor {h.percent}% is below the measured "
+            f"{_fmt_pct(m.percent)} less {k} statement(s) of run-to-run noise ({lowest}%) — pin {round_down(m.percent)}"
         )
     return out
 
@@ -1104,48 +1155,7 @@ def floor_diff_rules(
         out.append(f"floors_format_version changed {base_fl.version!r} -> {fl.version!r}: it is fixed (only 1 -> 2)")
 
     def changed_entry(name: str, b: Floor | None, h: Floor, m: ScopeCov | None) -> None:
-        """NEW entry (``b`` None): the measurement within k statements, ``missing`` <= measured. CHANGED entry:
-        ``missing`` never rises (<= min(measured + K_MIN, base), M60a); LOWERING needs measured missing <= base missing AND
-        percent >= round_down(measured), no tolerance; raising (or unchanged percent) keeps the k tolerance."""
-        if m is None or h.percent is None or h.missing is None:
-            return
-        based = b is not None and b.percent is not None and b.missing is not None
-        if based and (b.percent, b.missing) == (h.percent, h.missing):
-            return
-        k = missing_slack(m)
-        lowest = round_down(100.0 * (m.covered - k) / m.statements) if m.statements else 0.0
-        # M60a: a CHANGED pin may sit up to K_MIN (the absolute noise, never the size-scaled k) above this run's
-        # measured missing, because a pin taken from one CI run is verified on the pin commit's own run (+-2
-        # statements). The base side stays exact: a pinned missing never rises. NEW floors stay exact (two runs).
-        cap = min(m.missing + K_MIN, b.missing) if based else m.missing
-        if h.missing > cap:
-            pin = min(m.missing, b.missing) if based else m.missing
-            out.append(
-                f"{name}: floor pins missing {h.missing} above "
-                + (
-                    f"min(measured {m.missing} + {K_MIN} of noise, base {b.missing})"
-                    if based
-                    else f"the measured {m.missing}"
-                )
-                + f" — a pinned missing never rises; pin {pin}"
-            )
-        if based and h.percent < b.percent - 1e-9:
-            if m.missing > b.missing:
-                out.append(
-                    f"{name}: floor lowered {b.percent}% -> {h.percent}% but measured missing {m.missing} > the base's "
-                    f"pinned missing {b.missing} — cover {m.missing - b.missing} statement(s) first: a floor drops "
-                    "only when covered code is deleted, not when uncovered code is added or tests are removed"
-                )
-            if h.percent + 1e-9 < round_down(m.percent):
-                out.append(
-                    f"{name}: floor lowered to {h.percent}%, below the measurement {_fmt_pct(m.percent)} — a lowered "
-                    f"floor goes exactly to round_down(measured) = {round_down(m.percent)} (no tolerance)"
-                )
-        elif h.percent + 1e-9 < lowest:
-            out.append(
-                f"{name}: {'new' if not based else 'changed'} floor {h.percent}% is below the measured "
-                f"{_fmt_pct(m.percent)} less {k} statement(s) of run-to-run noise ({lowest}%) — pin {round_down(m.percent)}"
-            )
+        out.extend(changed_floor_problems(name, b, h, m))
 
     def namespace(
         base_map: dict[str, Floor],
@@ -2232,25 +2242,75 @@ def run_measurement(
 
 
 def pins_from_measurement(
-    fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov], files: dict[str, ScopeCov]
-) -> tuple[dict[str, Floor], list[str]]:
+    fl: Floors, overall: ScopeCov, pkgs: dict[str, ScopeCov], files: dict[str, ScopeCov], *, base_fl: Floors | None
+) -> tuple[dict[str, Floor], list[str], list[str]]:
     """The pins the CI hint prints for every floored scope more than ``band`` above its floor (``round_down`` of the
     measurement, ``missing`` capped by the current pin: a pinned missing never rises), and notes for what is left
     alone: a scope below its floor (a fall is fixed by covering code, never by a pin), a null floor (NEW floors come
-    from two runs, ``--merge-floors``), an unmeasured scope."""
+    from two runs, ``--merge-floors``), an unmeasured scope.
+
+    ``base_fl`` (required: the floors at the ratchet's base, ``None`` when no base is known) decides which floors THIS
+    branch changed. CI verifies a changed floor by :func:`changed_floor_problems`, which is stricter than the band (a
+    stacked branch inherits its parent's changed pin, so a run within ``band`` of it can still be refused), so every
+    changed floor goes through that rule and nothing else:
+
+    - a floor with a base pin, risen past the band or refused by the rule, is pinned to ``round_down`` of the
+      measurement with ``missing`` capped by the base pin (and the current one), only when that pin passes the same
+      rule; otherwise the rule's problems are noted and nothing is written. Such a pin may LOWER the branch's own
+      floor toward the base where CI's lowering rule allows it (measured missing at or below the base's): the one
+      carve-out from "a pin cannot fix a fall", and a lowering against the base always costs a full run (#1640 is
+      raise-only);
+    - a floor absent at the base (or null there) is NEW, or a rename target CI checks against the floor it carries:
+      it is never pinned from one run, and is noted when it rose or the rule refuses it.
+
+    Returns ``(pins, notes, refused)``: ``refused`` names every floor with a base pin that CI's changed-floor rule
+    refuses and no pin from this run fixes (a lowering past the base's missing), so the caller never reports "nothing
+    to pin" over it. A floor absent at the base is only noted: CI judges it by the NEW rule or, for a rename target,
+    against the floor it carries (``floor_diff_rules``' namespace carry), which this tool does not reproduce."""
     pins: dict[str, Floor] = {}
     notes: list[str] = []
+    refused: list[str] = []
+    base_of: dict[str, Floor] = {}
+    if base_fl is not None:
+        base_of = {"overall": base_fl.overall, **base_fl.packages, **base_fl.files}
     scopes = [("overall", fl.overall, overall)]
     scopes += [(k, f, pkgs.get(k)) for k, f in sorted(fl.packages.items())]
     scopes += [(k, f, files.get(k)) for k, f in sorted(fl.files.items())]
     for name, f, m in scopes:
+        b = base_of.get(name)
+        changed = base_fl is not None and (b is None or (b.percent, b.missing) != (f.percent, f.missing))
         if m is None or m.statements == 0:
             notes.append(f"{name}: not measured by the run — left alone")
-        elif f.percent is None:
+            continue
+        if f.percent is None:
             notes.append(f"{name}: null floor — a NEW floor is pinned from two runs (--merge-floors), left alone")
-        elif m.percent > f.percent + BAND + 1e-9:
+            continue
+        rose = m.percent > f.percent + BAND + 1e-9
+        if changed:
+            problems = changed_floor_problems(name, b, f, m)
+            if b is None or b.percent is None or b.missing is None:
+                if rose or problems:
+                    notes.append(
+                        f"{name}: absent at the base, so a NEW floor (pinned from two runs, --merge-floors) or a "
+                        "rename target (CI checks it against the floor it carries): left alone"
+                    )
+                    notes += [f"{p} (CI's NEW-rule check, for reference only)" for p in problems]  # never refused
+                continue
+            if rose or problems:
+                caps = [m.missing, b.missing] + ([f.missing] if f.missing is not None else [])
+                pin = Floor(round_down(m.percent), min(caps))
+                if again := changed_floor_problems(name, b, pin, m):
+                    notes += [f"{p} (left alone: no pin passes CI's changed-floor rule)" for p in again]
+                    refused.append(name)
+                else:
+                    pins[name] = pin
+                continue
+            # accepted by the changed rule and not risen: still a fall is a fall (the rule never refuses a floor
+            # that sits ABOVE the measurement), so it reaches the fall note below
+        elif rose:
             pins[name] = Floor(round_down(m.percent), m.missing if f.missing is None else min(m.missing, f.missing))
-        elif f.missing is not None and f.missing > m.missing + K_MIN:
+            continue
+        if base_fl is None and f.missing is not None and f.missing > m.missing + K_MIN:
             notes.append(
                 f"{name}: its pinned missing {f.missing} is more than {K_MIN} above the run's {m.missing}; if this "
                 f"branch changed that pin, CI refuses it: pin {min(m.missing, f.missing)}"
@@ -2259,7 +2319,37 @@ def pins_from_measurement(
             notes.append(
                 f"{name}: {_fmt_pct(m.percent)} is below its floor {f.percent}% — cover code; a pin cannot fix a fall"
             )
-    return pins, notes
+    return pins, notes, refused
+
+
+def pin_base(root: Path) -> tuple[Floors | None, str | None]:
+    """The floors at the ratchet's base for ``--pins-from-run``, or ``None`` and why. A PR run measured the merge with
+    main's tip, so CI's base IS that tip: a branch that lacks ``origin/main`` (main not merged yet) would judge floors
+    against an older main, and the tool falls back to the band-only pins rather than guess. It cannot see a STALE
+    ``origin/main`` this branch already holds (fetch first; the brief says so), and CI re-verifies every pin. No
+    ``origin/main``/``main`` at all falls back the same way (it used to work there). Raises :class:`FileFormatError`
+    for a malformed base floors file."""
+    try:
+        base = base_ref(root)
+    except GitUnavailable as e:
+        return None, f"no base to tell which floors this branch changed ({e}); band-only pins"
+    failed: list[str] = []
+    for ref in ("origin/main", "main"):  # base_ref's own order
+        try:
+            behind = int(git(root, "rev-list", "--count", f"HEAD..{ref}").strip() or "0")
+        except (GitUnavailable, ValueError) as e:
+            failed.append(f"{ref}: {e}")
+            continue
+        if behind:
+            return None, (
+                f"HEAD lacks {behind} commit(s) of {ref}, CI's base for a PR run: changed floors are judged only "
+                f"after `git fetch` and a merge of {ref} (pin from that commit's run); band-only pins"
+            )
+        break
+    else:
+        return None, f"could not tell whether HEAD holds main's tip ({'; '.join(failed)}); band-only pins"
+    text = show(root, base, FLOORS_REL)
+    return (parse_floors(text) if text else None), None
 
 
 def apply_pins(text: str, pins: dict[str, Floor]) -> str:
@@ -2285,6 +2375,7 @@ def pins_from_run_main(root: Path, run_id: str) -> int:
     try:
         text = (root / FLOORS_REL).read_text(encoding="utf-8")
         fl = parse_floors(text)
+        base_fl, no_base = pin_base(root)  # the ratchet's own base: which floors this branch changed
         with tempfile.TemporaryDirectory() as td:
             cov = run_measurement(root, run_id, tmp=Path(td))
     except (OSError, FileFormatError, GitUnavailable) as e:
@@ -2293,20 +2384,32 @@ def pins_from_run_main(root: Path, run_id: str) -> int:
     except MeasurementError as e:
         print(f"coverage: --pins-from-run REFUSED: {e}", file=sys.stderr)
         return 1
+    if no_base:
+        print(f"coverage: --pins-from-run: {no_base}")
     overall, pkgs = measure_scopes(cov)
-    pins, notes = pins_from_measurement(fl, overall, pkgs, file_scopes(cov))
+    pins, notes, refused = pins_from_measurement(fl, overall, pkgs, file_scopes(cov), base_fl=base_fl)
     for n in notes:
         print(f"coverage: --pins-from-run: {n}")
-    if not pins:
+    if not pins and not refused:
+        see = " (the notes above say what is left alone)" if notes else ""
         print(
-            f"coverage: --pins-from-run: run {run_id} puts no scope more than {BAND} pt above its floor; nothing to pin"
+            f"coverage: --pins-from-run: run {run_id} puts no scope more than {BAND} pt above its floor; nothing to pin from this run{see}"
         )
         return 0
     old = {"overall": fl.overall, **fl.packages, **fl.files}
     for name, f in pins.items():
         print(f"coverage: pin {name}: {old[name].percent}%/{old[name].missing} -> {f.percent}%/{f.missing}")
     (root / FLOORS_REL).write_text(apply_pins(text, pins), encoding="utf-8")  # a tracked file: git is the undo
-    print(f"coverage: wrote {len(pins)} pin(s) to {FLOORS_REL} from run {run_id}; commit them, and CI verifies them")
+    if pins:
+        print(
+            f"coverage: wrote {len(pins)} pin(s) to {FLOORS_REL} from run {run_id}; commit them, and CI verifies them"
+        )
+    if refused:
+        print(
+            f"coverage: --pins-from-run: CI refuses {len(refused)} floor(s) this branch changed that no pin from run "
+            f"{run_id} fixes ({', '.join(refused)}): see the notes above (cover code, or --merge-floors for a NEW floor)"
+        )
+        return 1
     return 0
 
 
