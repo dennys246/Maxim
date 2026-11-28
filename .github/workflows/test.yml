@@ -1576,6 +1576,16 @@ jobs:
         run: |
           python3 scripts/lint_loop_mode_reads.py
 
+      - name: One sanctioned agent-loop caller (loop_stack_builder.md)
+        # Every run_agentic_loop entry point goes through bootstrap.run_loop_stack, whose stack keywords are
+        # all required: any other load of run_agentic_loop / _run_agentic_loop_body / run_agent_loop in
+        # src/maxim or scripts needs an entry in scripts/loop_stack_ledger.json (strict counts, shrink-only
+        # against the merge-base, moved_from for a relocated site), and run_loop_stack is only ever called
+        # directly, without a splat. Prints the ledger every run; a broken scope or ledger exits 2.
+        # Positive control: tests/unit/test_lint_loop_stack.py.
+        run: |
+          python3 scripts/lint_loop_stack.py
+
       - name: Body rest-at-neutral lint (L11 range principle; Exp 60 saturation lesson)
         # Every A4-gained sensor must declare where it RESTS (`rest:` or a
         # homeostatic set_point) and that rest must be its range midpoint —

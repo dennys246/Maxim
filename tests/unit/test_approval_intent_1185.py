@@ -868,7 +868,9 @@ def test_each_bridge_sim_passes_its_bridges_policy(rel: str, bridge: str) -> Non
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Call)
-            and getattr(node.func, "id", getattr(node.func, "attr", "")) == "run_agentic_loop"
+            # a migrated site calls the loop through bootstrap.run_loop_stack (docs/plans/loop_stack_builder.md;
+            # talk since its first PR), the others still call run_agentic_loop until they migrate
+            and getattr(node.func, "id", getattr(node.func, "attr", "")) in ("run_agentic_loop", "run_loop_stack")
         ):
             kw = {k.arg: k.value for k in node.keywords}
             value = kw.get("response_policy")
@@ -879,7 +881,7 @@ def test_each_bridge_sim_passes_its_bridges_policy(rel: str, bridge: str) -> Non
                 and value.value.id == bridge
             ):
                 passed.append(node.lineno)
-    assert len(passed) == 1, f"{rel}: run_agentic_loop must take response_policy={bridge}.response_policy"
+    assert len(passed) == 1, f"{rel}: its loop call must take response_policy={bridge}.response_policy"
 
 
 def test_a_sim_that_does_not_say_its_policy_is_refused() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.environment.filesystem_env import FileSystemEnv
 from maxim.evaluation.agent_eval import AgentEvaluator
@@ -878,3 +878,186 @@ def build_default_network(
             dn._behaviors.append(behavior)
 
     return dn
+
+
+# ── The one sanctioned caller of the agent loop (docs/plans/loop_stack_builder.md) ───────────────────────────────────
+
+# Every ``run_agentic_loop`` parameter, classified. STACK parameters are the entry point's capability and identity:
+# ``run_loop_stack`` takes each as a REQUIRED keyword, so a site that forgets one gets a TypeError, never a silently
+# less capable loop (the ``build_executor(pain_bus=...)`` lesson). RUN parameters are run configuration and keep the
+# loop's own defaults. ``tests/unit/test_run_loop_stack.py`` asserts the keys equal the loop's signature exactly, so a
+# new loop parameter fails CI until it is classified here.
+LOOP_PARAMETERS: dict[str, Literal["stack", "run"]] = {
+    "agent": "stack",
+    "environment": "stack",
+    "state": "stack",
+    "memory": "stack",
+    "decision_engine": "stack",
+    "executor": "stack",
+    "autonomy_controller": "stack",
+    "llm_worker": "stack",
+    "default_network": "stack",
+    "hippocampus": "stack",
+    "memory_hub": "stack",
+    "evaluators": "stack",
+    "max_steps": "run",
+    "run_id": "run",
+    "stop_event": "run",
+    "on_step": "run",
+    "on_event": "run",
+    "idle_sleep_s": "run",
+    "persist_every_n_steps": "run",
+    "target_hz": "run",
+    "context_pool_config": "run",
+    "use_tool_prompting": "run",
+    "protocol_registry": "stack",
+    "percept_source": "stack",
+    "response_policy": "stack",
+    "action_sink": "stack",
+    "pain_bus": "stack",
+    "imagination_trigger": "stack",
+    "bio_enrichment_pipeline": "stack",
+    "thought_gate": "stack",
+    "aut_mode": "stack",
+    "substrate_telemetry": "stack",
+    "substrate_policy": "stack",
+    "substrate_action_gate": "stack",
+    "consolidation": "stack",
+    "planning_liveness": "run",
+    "sim_adapter": "stack",
+    "end_bound": "run",
+    "state_home": "stack",
+}
+
+
+def run_loop_stack(
+    *,
+    agent: Any,
+    environment: Any,
+    state: Any,
+    memory: Any,
+    decision_engine: Any,
+    executor: Any,
+    autonomy_controller: Any,
+    llm_worker: Any,
+    hippocampus: Any,
+    memory_hub: Any,
+    pain_bus: Any,
+    bio_enrichment_pipeline: Any,
+    thought_gate: Any,
+    default_network: Any,
+    imagination_trigger: Any,
+    evaluators: Any,
+    protocol_registry: Any,
+    sim_adapter: Any,
+    aut_mode: str,
+    substrate_telemetry: Any,
+    substrate_policy: Any,
+    substrate_action_gate: Any,
+    percept_source: Any,
+    action_sink: Any,
+    response_policy: Any,
+    state_home: Any,
+    consolidation: Any,
+    acting_coach: Any,
+    is_embodied: bool,
+    max_steps: int = 0,
+    run_id: str | None = None,
+    stop_event: Any | None = None,
+    on_step: Any | None = None,
+    on_event: Any | None = None,
+    idle_sleep_s: float = 0.05,
+    persist_every_n_steps: int = 10,
+    target_hz: float = 30.0,
+    context_pool_config: dict[str, Any] | None = None,
+    use_tool_prompting: bool = True,
+    planning_liveness: bool = False,
+    end_bound: Any | None = None,
+) -> None:
+    """Run the agent loop with a stack the caller states in full: the ONE sanctioned ``run_agentic_loop`` caller.
+
+    Every STACK keyword in ``LOOP_PARAMETERS`` is required, with no default: a site states each subsystem it wires,
+    and each one it leaves out (``None``), so a forgotten component is a TypeError, not a silently less capable entry
+    point. RUN keywords keep the loop's defaults. ``scripts/lint_loop_stack.py`` fails any other ``run_agentic_loop``
+    reference outside its ledger of unmigrated sites, and any call of this function through an alias, a ``partial``
+    or a ``**`` splat, so a reviewer sees every stated ``None`` at the call.
+
+    It builds nothing and mutates nothing: each site keeps constructing its own agent, worker and per-run objects, on
+    the thread and at the time it always has. Before the loop it checks, raising ``ValueError`` on a mismatch:
+
+    - **the hub, both ways:** ``agent.memory_hub is memory_hub`` (``None``/``None`` passes). A hub handed to the loop
+      but never wired, or a wired agent handed ``memory_hub=None``, raises. This one detects a real wiring mismatch.
+    - **the acting coach and embodiment:** ``acting_coach`` must be ``llm_worker.acting_coach`` (by identity) and
+      ``is_embodied`` must equal ``llm_worker.is_embodied``; with ``llm_worker=None`` they must be ``None`` and
+      ``False``. These are STATEMENTS, not detection: they make a site write down the worker state it built, and
+      cannot tell whether it should be embodied.
+
+    ``run_agentic_loop`` is looked up on its module when called (imported here for import cost; there is no cycle),
+    so a test that patches ``agent_loop.run_agentic_loop`` still reaches its stub. Every argument is passed through
+    unchanged, BY KEYWORD (the six positionals too), so a ``def run_agentic_loop(**kwargs)`` stub works. Design and owner decisions: ``docs/plans/loop_stack_builder.md``.
+    """
+    if agent.memory_hub is not memory_hub:
+        raise ValueError(
+            "run_loop_stack: the agent's memory hub is not the hub handed to the loop "
+            f"(agent holds {type(agent.memory_hub).__name__}, the loop gets {type(memory_hub).__name__}); "
+            "wire the agent with wire_memory_hub(hub) before the call, or pass the hub it holds"
+        )
+    if llm_worker is None:
+        if acting_coach is not None or is_embodied is not False:
+            raise ValueError(
+                "run_loop_stack: llm_worker=None has no coach and is not embodied: pass acting_coach=None, "
+                "is_embodied=False"
+            )
+    else:
+        if llm_worker.acting_coach is not acting_coach:
+            raise ValueError(
+                "run_loop_stack: acting_coach= is not the coach the worker holds (llm_worker.acting_coach)"
+            )
+        if llm_worker.is_embodied != is_embodied:
+            raise ValueError(
+                f"run_loop_stack: is_embodied={is_embodied!r}, but the worker says {llm_worker.is_embodied!r}"
+            )
+
+    from maxim.runtime import agent_loop
+
+    agent_loop.run_agentic_loop(  # every argument by keyword, the positionals too: a keyword-only stub still works
+        agent=agent,
+        environment=environment,
+        state=state,
+        memory=memory,
+        decision_engine=decision_engine,
+        executor=executor,
+        autonomy_controller=autonomy_controller,
+        llm_worker=llm_worker,
+        default_network=default_network,
+        hippocampus=hippocampus,
+        memory_hub=memory_hub,
+        evaluators=evaluators,
+        max_steps=max_steps,
+        run_id=run_id,
+        stop_event=stop_event,
+        on_step=on_step,
+        on_event=on_event,
+        idle_sleep_s=idle_sleep_s,
+        persist_every_n_steps=persist_every_n_steps,
+        target_hz=target_hz,
+        context_pool_config=context_pool_config,
+        use_tool_prompting=use_tool_prompting,
+        protocol_registry=protocol_registry,
+        percept_source=percept_source,
+        response_policy=response_policy,
+        action_sink=action_sink,
+        pain_bus=pain_bus,
+        imagination_trigger=imagination_trigger,
+        bio_enrichment_pipeline=bio_enrichment_pipeline,
+        thought_gate=thought_gate,
+        aut_mode=aut_mode,
+        substrate_telemetry=substrate_telemetry,
+        substrate_policy=substrate_policy,
+        substrate_action_gate=substrate_action_gate,
+        consolidation=consolidation,
+        planning_liveness=planning_liveness,
+        sim_adapter=sim_adapter,
+        end_bound=end_bound,
+        state_home=state_home,
+    )

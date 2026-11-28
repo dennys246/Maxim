@@ -490,8 +490,7 @@ class MaximHandle:
         """
         from maxim.agents.maxim_agent import MaximAgent
         from maxim.environment.filesystem_env import FileSystemEnv
-        from maxim.runtime.agent_loop import run_agentic_loop
-        from maxim.runtime.bootstrap import build_decision_engine, build_memory
+        from maxim.runtime.bootstrap import build_decision_engine, build_memory, run_loop_stack
         from maxim.runtime.state import RuntimeState
         from maxim.simulation.bridge import SimulationBridge
 
@@ -553,29 +552,45 @@ class MaximHandle:
 
         def _worker() -> None:
             try:
-                run_agentic_loop(
-                    agent,
-                    FileSystemEnv(str(workspace)),
-                    state,
-                    build_memory(),
-                    build_decision_engine(),
-                    self.instance.executor,
+                # The one sanctioned loop caller (docs/plans/loop_stack_builder.md): every stack component is
+                # stated, so what talk leaves out is written down here, not silently absent.
+                run_loop_stack(
+                    agent=agent,
+                    environment=FileSystemEnv(str(workspace)),
+                    state=state,
+                    memory=build_memory(),
+                    decision_engine=build_decision_engine(),
+                    executor=self.instance.executor,
                     autonomy_controller=autonomy,
                     llm_worker=worker,
                     hippocampus=self.instance.hippocampus,
                     memory_hub=self.instance.memory_hub,
+                    pain_bus=self.instance.pain_bus,
                     bio_enrichment_pipeline=enrichment,
                     thought_gate=thought_gate,
-                    max_steps=0,  # unlimited — ends on bridge.finish()/stop_event
-                    stop_event=stop_event,
-                    target_hz=2.0,
+                    default_network=None,  # headless: no reactive behaviours
+                    imagination_trigger=None,
+                    evaluators=None,
+                    protocol_registry=None,
+                    sim_adapter=None,
+                    aut_mode="llm-primary",
+                    substrate_telemetry=None,
+                    substrate_policy=None,
+                    substrate_action_gate=None,
                     percept_source=bridge.percept_source,
-                    response_policy=bridge.response_policy,  # the sim's answers to gating prompts (#1185)
                     action_sink=bridge.action_sink,
-                    pain_bus=self.instance.pain_bus,
+                    response_policy=bridge.response_policy,  # the sim's answers to gating prompts (#1185)
+                    state_home=None,
                     # Persistent agent: its session-end is the explicit
                     # full consolidation, never the sim default.
                     consolidation="full",
+                    # Talk never sets the worker's coach or embodiment, though the handle advertises a body: a
+                    # known gap (#1841; loop_stack_builder.md, open question 1), stated here rather than changed.
+                    acting_coach=None,
+                    is_embodied=False,
+                    max_steps=0,  # unlimited — ends on bridge.finish()/stop_event
+                    stop_event=stop_event,
+                    target_hz=2.0,
                     end_bound=end_bound,
                 )
             except Exception:

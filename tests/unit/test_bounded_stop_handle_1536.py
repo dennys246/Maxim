@@ -321,7 +321,9 @@ def test_the_wrapper_hands_its_end_bound_to_the_runs_bio_session() -> None:
 def test_the_talk_loop_is_built_with_its_own_end_bound_and_publishes_it() -> None:
     from maxim.console.handle import MaximHandle
 
-    [call] = _calls_in(MaximHandle._launch_talk_loop, "run_agentic_loop")
+    [call] = _calls_in(
+        MaximHandle._launch_talk_loop, "run_loop_stack"
+    )  # talk's loop caller since loop_stack_builder.md PR 1
     kw = {k.arg: getattr(k.value, "id", None) for k in call.keywords}
     assert kw.get("end_bound") == "end_bound", "the talk loop is built without its EndBound"
     [stop_call] = _calls_in(MaximHandle.stop, "_stop_talk_loop")
@@ -368,7 +370,10 @@ def test_the_shipped_path_handle_stop_bounds_a_live_talk_loops_consolidation(
     h = _handle()
     h.instance = inst
     with h._talk_lock:
-        h._launch_talk_loop(MagicMock(), tmp_path / "ws")
+        # a started worker as talk receives it: LLMWorker's defaults for the two attributes run_loop_stack checks
+        worker = MagicMock()
+        worker.acting_coach, worker.is_embodied = None, False
+        h._launch_talk_loop(worker, tmp_path / "ws")
     assert opened.wait(5.0), "the talk loop never opened its session"
     started = time.monotonic()
     assert h.stop(deadline=Deadline.after(3.0)) is True
