@@ -15,10 +15,15 @@ import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from maxim.runtime.function_router import FunctionSpec
 
 logger = logging.getLogger(__name__)
 
 from maxim.runtime.capabilities import RuntimeCapabilities
+from maxim.runtime.config_loader import LANE_TIER_NAMES
 from maxim.runtime.worker_pool import LaneConfig
 
 ProfileAvailabilityCheck = Callable[[str], bool]
@@ -349,6 +354,18 @@ def _lookup_fallback_nctx(profile_name: str, vram_gb: float) -> int:
     return 0
 
 
+def _ctx_for_profile(profile: str, vram_gb: float) -> int:
+    """The context window a named profile gets on this VRAM: :func:`estimate_max_ctx`, else the measured-safe fallback
+    table, else 0 (the spawner picks its default). Shared by :func:`detect_tiers` and the llm.json tier overlay, so a
+    lane whose profile llm.json swaps is sized for the model it serves, not the one detection picked (#1601)."""
+    from maxim.models.language.config import get_profile
+
+    n_ctx = estimate_max_ctx((get_profile(profile) or {}), vram_gb)
+    if n_ctx <= 0:
+        n_ctx = _lookup_fallback_nctx(profile, vram_gb)
+    return n_ctx
+
+
 def _pick_infer_profile(
     vram_gb: float,
     profile_available: ProfileAvailabilityCheck | None = None,
@@ -470,12 +487,8 @@ def detect_tiers(
         # respects the user's hardware. The "with_ctx" picker is only used
         # for auto-selection.
         if env_profile:
-            from maxim.models.language.config import get_profile
-
             profile = env_profile
-            n_ctx = estimate_max_ctx((get_profile(profile) or {}), caps.vram_gb)
-            if n_ctx <= 0:
-                n_ctx = _lookup_fallback_nctx(profile, caps.vram_gb)
+            n_ctx = _ctx_for_profile(profile, caps.vram_gb)
         else:
             profile, n_ctx = _pick_infer_profile_with_ctx(caps.vram_gb, profile_available=profile_available)
         # MPS uses `device="auto"` so llama.cpp's Metal backend picks the
@@ -571,37 +584,113 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
     return out
 
 
+# The llm.json ``tiers`` fields a lane reads (#1601). ``device`` and ``max_workers`` are LaneConfig attributes no spawn
+# or backend path consults yet, so they refuse rather than change only what the banner says (owner, 2026-11-27).
+_TIER_FIELDS: frozenset[str] = frozenset({"model_profile", "n_gpu_layers", "kv_quant_mode"})
+_UNREAD_TIER_FIELDS: frozenset[str] = frozenset({"device", "max_workers"})
+_KV_QUANT_MODES: frozenset[str] = frozenset({"f16", "q8_0", "q4_0"})  # what local_server_spawner honours
+_FUNCTION_FIELDS: frozenset[str] = frozenset({"tier", "fallback", "description"})
+
+
+def _invalid(where: str, problem: str) -> Exception:
+    from maxim.exceptions import LLMRoutingConfigInvalid
+
+    return LLMRoutingConfigInvalid(f"llm.json {where}: {problem}", context={"where": where})
+
+
+def _tier_name(where: str, name: object) -> str:
+    if not isinstance(name, str) or name not in LANE_TIER_NAMES:
+        raise _invalid(where, f"{name!r} is not a tier (valid: {', '.join(LANE_TIER_NAMES)})")
+    return name
+
+
+def _int_field(where: str, value: object, *, minimum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise _invalid(where, f"must be an integer of at least {minimum}, not {value!r}")
+    return value
+
+
+def _tier_replacements(name: str, overrides: object) -> dict:
+    """One ``tiers`` entry, validated, as ``dataclasses.replace`` keywords (#1601: nothing malformed is skipped)."""
+    where = f"tiers.{name}"
+    if not isinstance(overrides, dict):
+        raise _invalid(where, f"must be an object, not {type(overrides).__name__}")
+    unread = sorted(set(overrides) & _UNREAD_TIER_FIELDS)
+    if unread:
+        raise _invalid(where, f"{unread} would change only what the lane reports: no lane reads it yet, so remove it")
+    unknown = sorted(set(overrides) - _TIER_FIELDS)
+    if unknown:
+        raise _invalid(where, f"unknown field(s) {unknown} (valid: {sorted(_TIER_FIELDS)})")
+    replacements: dict = {}
+    if "model_profile" in overrides:
+        profile = overrides["model_profile"]
+        if not isinstance(profile, str) or not profile.strip():
+            raise _invalid(f"{where}.model_profile", f"must be a non-empty string, not {profile!r}")
+        replacements["model_profile"] = profile
+    if "n_gpu_layers" in overrides:
+        replacements["n_gpu_layers"] = _int_field(f"{where}.n_gpu_layers", overrides["n_gpu_layers"], minimum=-1)
+    if "kv_quant_mode" in overrides:
+        mode = overrides["kv_quant_mode"]
+        if mode not in _KV_QUANT_MODES:
+            raise _invalid(f"{where}.kv_quant_mode", f"must be one of {sorted(_KV_QUANT_MODES)}, not {mode!r}")
+        replacements["kv_quant_mode"] = mode
+    return replacements
+
+
+def require_valid_llm_routing() -> tuple[dict[str, dict], dict[str, dict]]:
+    """A run's fail-fast check of llm.json's routing sections (#1601; owner decisions 2026-11-24 and 2026-11-27),
+    returning the ``tiers`` and ``functions`` it checked.
+
+    Raises :class:`~maxim.exceptions.LLMRoutingConfigInvalid` for an llm.json that does not parse, a malformed
+    ``tiers`` entry, a field no lane reads yet, and any ``functions`` entry: no production code asks the function
+    router for a route (#1833), so an entry there would change nothing. Its callers are the run entry points, like
+    ``config.require_valid_user_profiles``: ``cli._main_impl`` before its mode dispatch, and
+    ``lane_backends._router_build_preflight``. ``maxim doctor`` reports it instead (``doctor/checks.py``).
+    """
+    from maxim.models.language.config import llm_json_routing_sections
+
+    tiers, functions = llm_json_routing_sections()
+    if functions:
+        raise _invalid(
+            "functions",
+            f"{sorted(functions)} cannot route anything yet: no code asks the function router for a route (#1833). "
+            "Remove the section",
+        )
+    for name, overrides in tiers.items():
+        _tier_replacements(_tier_name(f"tiers.{name}", name), overrides)
+    return tiers, functions
+
+
 def apply_tier_config_overrides(
     tiers: dict[str, LaneConfig],
     tier_config: dict[str, dict],
+    *,
+    vram_gb: float | None = None,
 ) -> dict[str, LaneConfig]:
     """Apply tier overrides from llm.json ``"tiers"`` section.
 
-    Each key in ``tier_config`` is a tier name (``large``, ``medium``, ``small``).
-    Values are dicts with optional keys: ``model_profile``, ``device``,
-    ``max_workers``, ``n_gpu_layers``.
+    Each key in ``tier_config`` is a tier name (``large``, ``medium``, ``small``). Values are dicts with optional keys:
+    ``model_profile``, ``n_gpu_layers``, ``kv_quant_mode``.
 
-    Only overrides fields that are present in the config — missing fields
-    keep their hardware-detected defaults. Creates new tiers if the key
-    doesn't exist yet (e.g., adding a ``medium`` tier via config on a
-    two-tier deployment).
+    Only overrides fields that are present in the config — missing fields keep their hardware-detected defaults.
+    Creates new tiers if the key doesn't exist yet (e.g., adding a ``medium`` tier via config on a two-tier
+    deployment). A lane whose ``model_profile`` changes and that detection sized (``n_ctx`` set) is re-sized for the
+    new profile on ``vram_gb`` (:func:`_ctx_for_profile`); without ``vram_gb`` its ``n_ctx`` is cleared, so the
+    spawner picks its default rather than a window sized for another model (#1601 review round).
+
+    A malformed entry raises :class:`~maxim.exceptions.LLMRoutingConfigInvalid` naming it; until #1601 such an entry
+    was skipped, and the whole section never reached this function at all.
 
     Returns a new dict — does not mutate the input.
     """
     out = dict(tiers)
     for name, overrides in tier_config.items():
-        if not isinstance(overrides, dict):
-            continue
+        replacements = _tier_replacements(_tier_name(f"tiers.{name}", name), overrides)
         base = out.get(name) or LaneConfig(name=name, max_workers=1)
-        replacements = {}
-        if "model_profile" in overrides:
-            replacements["model_profile"] = overrides["model_profile"]
-        if "device" in overrides:
-            replacements["device"] = overrides["device"]
-        if "max_workers" in overrides:
-            replacements["max_workers"] = int(overrides["max_workers"])
-        if "n_gpu_layers" in overrides:
-            replacements["n_gpu_layers"] = int(overrides["n_gpu_layers"])
+        swapped = replacements.get("model_profile")
+        if swapped and swapped != base.model_profile and base.n_ctx is not None:
+            n_ctx = _ctx_for_profile(swapped, vram_gb) if vram_gb is not None else 0
+            replacements["n_ctx"] = n_ctx if n_ctx > 0 else None
         if replacements:
             out[name] = dataclasses.replace(base, **replacements)
         elif name not in out:
@@ -609,39 +698,49 @@ def apply_tier_config_overrides(
     return out
 
 
+def _function_spec(name: object, cfg: object) -> FunctionSpec:
+    """One ``functions`` entry, validated, as a ``FunctionSpec`` (#1601: nothing malformed is skipped)."""
+    from maxim.runtime.function_router import FunctionSpec
+
+    where = f"functions.{name}"
+    if not isinstance(name, str) or not name.strip():
+        raise _invalid(where, "a function name must be a non-empty string")
+    if not isinstance(cfg, dict):
+        raise _invalid(where, f"must be an object, not {type(cfg).__name__}")
+    unknown = sorted(set(cfg) - _FUNCTION_FIELDS)
+    if unknown:
+        raise _invalid(where, f"unknown field(s) {unknown} (valid: {sorted(_FUNCTION_FIELDS)})")
+    if "tier" not in cfg:
+        raise _invalid(where, "needs a 'tier'")
+    tier = _tier_name(f"{where}.tier", cfg["tier"])
+    fallback_raw = cfg.get("fallback", [])
+    if not isinstance(fallback_raw, (list, tuple)):
+        raise _invalid(f"{where}.fallback", f"must be a list of tiers, not {type(fallback_raw).__name__}")
+    fallback = tuple(_tier_name(f"{where}.fallback", t) for t in fallback_raw)
+    description = cfg.get("description", "")
+    if not isinstance(description, str):
+        raise _invalid(f"{where}.description", f"must be a string, not {type(description).__name__}")
+    return FunctionSpec(name=name, tier=tier, fallback=fallback, description=description)
+
+
 def load_function_overrides(
     function_config: dict[str, dict],
-) -> dict:
+) -> dict[str, FunctionSpec]:
     """Load function routing overrides from llm.json ``"functions"`` section.
 
     Returns a dict of function name → FunctionSpec. Merged with
-    DEFAULT_FUNCTIONS by the caller (overrides take precedence).
+    DEFAULT_FUNCTIONS by the caller (overrides take precedence). A malformed entry (no ``tier``, an unknown tier or
+    field, a non-object entry) raises :class:`~maxim.exceptions.InvalidConfigError` naming it (#1601).
     """
-    from maxim.runtime.function_router import FunctionSpec
-
-    overrides: dict[str, FunctionSpec] = {}
-    for name, cfg in function_config.items():
-        if not isinstance(cfg, dict):
-            continue
-        tier = cfg.get("tier")
-        if not tier:
-            continue
-        fallback_raw = cfg.get("fallback", ())
-        if isinstance(fallback_raw, list):
-            fallback_raw = tuple(fallback_raw)
-        overrides[name] = FunctionSpec(
-            name=name,
-            tier=tier,
-            fallback=fallback_raw if isinstance(fallback_raw, tuple) else (),
-            description=cfg.get("description", ""),
-        )
-    return overrides
+    return {name: _function_spec(name, cfg) for name, cfg in function_config.items()}
 
 
 __all__ = [
     "LaneModelConfig",
     "apply_lane_env_overrides",
+    "LANE_TIER_NAMES",
     "apply_tier_config_overrides",
     "detect_tiers",
     "load_function_overrides",
+    "require_valid_llm_routing",
 ]

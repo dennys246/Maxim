@@ -3551,6 +3551,34 @@ def check_user_profiles() -> CheckResult:
     )
 
 
+def check_llm_routing() -> CheckResult:
+    """llm.json's ``tiers``/``functions`` sections, checked the way every run checks them (#1601).
+
+    A run refuses up front (``lane_models.require_valid_llm_routing``, raising ``LLMRoutingConfigInvalid``) when
+    llm.json does not parse or a routing entry is malformed; doctor is the repair command, so it runs that same check and
+    reports the error instead of raising. It cannot see the session-model conflict, which needs the run's ``--llm``.
+    """
+    from maxim.exceptions import LLMRoutingConfigInvalid
+    from maxim.models.language.config import llm_config_file
+    from maxim.runtime.lane_models import require_valid_llm_routing
+
+    path = llm_config_file()
+    try:
+        tiers, _functions = require_valid_llm_routing()
+    except LLMRoutingConfigInvalid as exc:
+        return CheckResult(
+            name="llm.json routing",
+            status="fail",
+            message=str(exc),
+            fix=f"{exc.fix_hint} Every `maxim` run stops with this error until it is fixed.",
+        )
+    if not tiers:
+        where = f"in {path}" if path else "(no llm.json)"
+        return CheckResult(name="llm.json routing", status="info", message=f"no tier overrides {where}")
+    shown = ", ".join(f"{lane}: {sorted(entry)}" for lane, entry in sorted(tiers.items()))
+    return CheckResult(name="llm.json routing", status="ok", message=f"tier overrides from {path}: {shown}")
+
+
 # ─── robot checks (docs/plans/archive/doctor_robot_reachable.md) ────────────────────
 
 
@@ -3818,6 +3846,7 @@ def run_all_checks(
         check_maxim_install(),
         check_storage_footprint(),
         check_user_profiles(),
+        check_llm_routing(),
     ]
     # Splice env-var checks in after the hardware checks so operators see
     # misconfigurations right alongside the hardware context.
@@ -3961,6 +3990,7 @@ __all__ = [
     "check_remote_reachability",
     "check_storage_footprint",
     "check_user_profiles",
+    "check_llm_routing",
     "check_mesh_nodes",
     "run_all_checks",
 ]

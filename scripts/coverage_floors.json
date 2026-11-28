@@ -4,7 +4,7 @@
   "min_package_statements": 200,
   "overall": {
     "percent": 76.6,
-    "missing": 24661
+    "missing": 24653
   },
   "packages": {
     "maxim/<root>": {
@@ -72,8 +72,8 @@
       "missing": 96
     },
     "maxim/hardware": {
-      "percent": 88.6,
-      "missing": 322
+      "percent": 87.4,
+      "missing": 329
     },
     "maxim/harm": {
       "percent": 40.2,

@@ -67,7 +67,7 @@ class FunctionSpec:
 
 # ─── Default function table ─────────────────────────────────────────────────
 
-# Configurable via llm.json "functions" key or MAXIM_FUNCTION_*_TIER env vars.
+# Not configurable yet: nothing asks this router for a route (#1833), so llm.json "functions" refuses the build (#1601).
 # Keep this table minimal (~13 entries). Custom functions go in config.
 
 DEFAULT_FUNCTIONS: dict[str, FunctionSpec] = {

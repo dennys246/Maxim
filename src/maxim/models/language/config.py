@@ -939,6 +939,45 @@ def _read_discovered_llm_config() -> dict[str, Any]:
     return raw
 
 
+def llm_json_routing_sections() -> tuple[dict[str, Any], dict[str, Any]]:
+    """llm.json's ``tiers`` and ``functions`` sections (``{}`` when absent or when there is no llm.json), read strictly
+    from the file :func:`load_llm_config` discovers (#1601).
+
+    ``LLMConfig`` carries neither: they are lane routing, and :func:`load_llm_config` drops them. The two readers,
+    ``lane_backends.build_primary_router`` and ``lane_backends._profile_is_pinned``, used to look for them on the
+    config's ``_raw`` attribute, which the frozen, slotted ``LLMConfig`` never had, so both sections silently applied
+    nothing. Unlike :func:`load_llm_config` (which reads a broken file as empty), this refuses with
+    :class:`~maxim.exceptions.LLMRoutingConfigInvalid` an llm.json that exists but does not parse, a root that is not an
+    object, and a section that is not an object. The entries are checked by
+    ``runtime/lane_models.py::require_valid_llm_routing``.
+    """
+    from maxim.exceptions import LLMRoutingConfigInvalid
+
+    path = llm_config_file()  # the one llm.json resolver (#1806 PR 0)
+    if path is None:
+        return {}, {}
+    try:
+        with open(path, encoding="utf-8") as fp:
+            raw = json.load(fp)
+    except (OSError, ValueError, RecursionError) as exc:  # ValueError: JSONDecodeError, UnicodeDecodeError, int limit
+        raise LLMRoutingConfigInvalid(f"{path} cannot be read as JSON: {exc}", context={"path": path}) from exc
+    if not isinstance(raw, dict):
+        raise LLMRoutingConfigInvalid(
+            f"{path} must hold a JSON object, not {type(raw).__name__}", context={"path": path}
+        )
+    sections: list[dict[str, Any]] = []
+    for key in ("tiers", "functions"):
+        section = raw.get(key)
+        if section is None:
+            section = {}
+        if not isinstance(section, dict):
+            raise LLMRoutingConfigInvalid(
+                f"{path}: {key!r} must be an object, not {type(section).__name__}", context={"path": path}
+            )
+        sections.append(section)
+    return sections[0], sections[1]
+
+
 def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     default = LLMConfig()
 
