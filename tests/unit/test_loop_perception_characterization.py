@@ -96,6 +96,10 @@ class _Percepts:
         return False
 
 
+class _SiteFault(Exception):
+    """A one-shot fault at one #863 site's emit (``_run(sim_log_raises_once_on=...)``)."""
+
+
 class _Trigger:
     """``imagination_trigger``: records each ``process_percept`` call; returns ``results`` or raises."""
 
@@ -236,18 +240,21 @@ def _run(
     no_memory_context: bool = False,
     state_data: dict[str, Any] | None = None,
     sim_log_raises: tuple[str, ...] = (),
+    sim_log_raises_once_on: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Run the real loop (slice 2's driver) for ``steps`` passes on a scripted adapter, or on a sim run's
     percept source with ``sim_percepts``. ``worker`` submits on every pass that has something to submit;
     ``no_memory_context`` makes ``memory.build_context()`` return None (the B1 arm); ``sim_log`` raises for
-    the categories in ``sim_log_raises``."""
+    the categories in ``sim_log_raises``, and once for the first message starting with ``sim_log_raises_once_on``
+    (``_SiteFault``: one site's emit, as the #863 red gates need; two sites share the PERCEPTION category)."""
     import maxim.embodiment.audio_localization as audio_localization
     import maxim.simulation.sim_logger as sim_logger
     from maxim.runtime.state import RuntimeState
 
     ev: list[tuple] = []
     sim_logs: list[tuple] = []
+    site_fired: list[str] = []
     world_sets: list[float] = []
 
     real_update = RuntimeState.update
@@ -262,6 +269,9 @@ def _run(
         sim_logs.append((category, msg, data, kw))
         if category in sim_log_raises:
             raise RuntimeError("sim log down")
+        if sim_log_raises_once_on is not None and msg.startswith(sim_log_raises_once_on) and not site_fired:
+            site_fired.append(msg)
+            raise _SiteFault(sim_log_raises_once_on)
 
     monkeypatch.setattr(sim_logger, "sim_log", _sim_log)
     real_world_set = audio_localization.world_set_azimuth
@@ -1018,3 +1028,71 @@ def test_a_voice_question_from_the_mailbox_is_enriched_recall_only(monkeypatch, 
     )
     assert [c[0] for c in pipe.calls] == ["maxim, what is my favourite colour?"]
     assert pipe.calls[0][1].user_input == "maxim, what is my favourite colour?"
+
+
+# ── #863 step 2: the four loop SEM_TRACE sites (release_gates.json 863.loop.*) ─────────────────────────────────
+#
+# Each site wrapped its emit in an inner ``try`` that reported through ``log_swallowed_exception()``, inside its
+# function's outer broad ``try``. ``sim_log`` is contained since #868, so the inner wrap could only catch the caller's
+# own fault, and the run went on. Owner decision 2026-11-27 (fail loud): each emit is hoisted out of every handler, so
+# a fault there ends the run. The fault is injected once, at the site's own emit (matched by its message prefix), and
+# the raise must come FROM that site's statement.
+
+
+def _raised_at(excinfo: Any, marker: str) -> bool:
+    return any(marker in str(e.statement) for e in excinfo.traceback)
+
+
+@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
+def test_a_fault_at_the_imagination_skipped_trace_ends_the_run_863(monkeypatch, tmp_path):
+    with pytest.raises(_SiteFault) as excinfo:
+        _run(
+            monkeypatch,
+            tmp_path,
+            obs=[{"source": "world", "transcript": ""}],
+            imagination_trigger=_Trigger([]),
+            sim_log_raises_once_on="Imagination skipped",
+        )
+    assert _raised_at(excinfo, "Imagination skipped"), excinfo.traceback
+
+
+@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
+def test_a_fault_at_the_auto_sense_trace_ends_the_run_863(monkeypatch, tmp_path):
+    with pytest.raises(_SiteFault) as excinfo:
+        _run(
+            monkeypatch,
+            tmp_path,
+            obs=[{"cli_input": "x"}],
+            executor=_executor(_AutoFire([], "scan", out="[SCENE] a hall")),
+            sim_log_raises_once_on="auto-sense:",
+        )
+    assert _raised_at(excinfo, "auto-sense:"), excinfo.traceback
+
+
+@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
+def test_a_fault_at_the_audio_orient_trace_ends_the_run_863(monkeypatch, tmp_path):
+    with pytest.raises(_SiteFault) as excinfo:
+        _run(
+            monkeypatch,
+            tmp_path,
+            obs=[{"cli_input": "x"}],
+            percepts={0: _audio(-0.6)},
+            worker=_Worker(),
+            sim_log_raises_once_on="audio-orient:",
+        )
+    assert _raised_at(excinfo, "audio-orient:"), excinfo.traceback
+
+
+@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
+def test_a_fault_at_the_orienting_reflex_trace_ends_the_run_863(monkeypatch, tmp_path):
+    with pytest.raises(_SiteFault) as excinfo:
+        _run(
+            monkeypatch,
+            tmp_path,
+            sim_percepts=[_audio(0.7, salience=0.95, novelty=0.95)],
+            body=_infant_body(),
+            worker=_Worker(),
+            no_memory_context=True,
+            sim_log_raises_once_on="orienting reflex",
+        )
+    assert _raised_at(excinfo, "orienting reflex"), excinfo.traceback
