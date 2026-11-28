@@ -933,7 +933,7 @@ def test_a_model_proposed_tool_name_is_cleaned_before_any_system_note():
     import ast
     import inspect
 
-    from maxim.runtime import agent_loop, loop_controller
+    from maxim.runtime import loop_controller, loop_execute  # the cap's note moved with §4 (slice 8)
     from maxim.runtime.loop_controller import note_system_outcome
     from maxim.utils.content_safety import safe_tool_name
 
@@ -947,7 +947,7 @@ def test_a_model_proposed_tool_name_is_cleaned_before_any_system_note():
         )
 
     # Both callers build their note from the cleaned name: every name in the note's f-string goes through it.
-    for module, needle in ((agent_loop, "was called"), (loop_controller, "new input(s) to read before finishing")):
+    for module, needle in ((loop_execute, "was called"), (loop_controller, "new input(s) to read before finishing")):
         tree = ast.parse(inspect.getsource(module))
         notes = [
             n
@@ -1116,11 +1116,11 @@ def test_safe_tool_name_is_capped_and_the_cap_lists_only_real_names():
     import ast
     import inspect
 
-    from maxim.runtime import agent_loop
+    from maxim.runtime import loop_execute  # the cap's message moved with §4 (slice 8)
     from maxim.utils.content_safety import safe_tool_name
 
     assert len(safe_tool_name("x" * 500)) == 64
-    src = inspect.getsource(agent_loop)
+    src = inspect.getsource(loop_execute)
     assert "[t for t in _other_tools if safe_tool_name(t) == t][:8]" in src
     assert "map(safe_tool_name, _other_tools" not in src
     ast.parse(src)
