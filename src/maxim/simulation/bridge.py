@@ -196,12 +196,9 @@ class SimulationBridge:
         # Trace: send_and_wait entry — if this doesn't fire but the
         # orchestrator's LLM produced a send_message action, the tool
         # isn't being executed by the orch's agent loop.
-        try:
-            from maxim.simulation.sim_logger import sim_log
+        from maxim.simulation.sim_logger import sim_log
 
-            sim_log("EXEC", f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} text_len={len(text)}")
-        except Exception:
-            pass
+        sim_log("EXEC", f"Bridge.send_and_wait ENTER turn={self._turn_count + 1} text_len={len(text)}")
         self._spinner.set_planning_window(False)
         self._spinner.start(f'Turn {self._turn_count + 1}: Sending to AUT — "{short_text}"')
 

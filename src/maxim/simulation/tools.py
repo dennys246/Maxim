@@ -706,16 +706,13 @@ class DamageComponentTool(Tool):
         failures = self._embodiment.evaluate_failures()
 
         # Log
-        try:
-            from maxim.simulation.sim_logger import sim_log
+        from maxim.simulation.sim_logger import sim_log
 
-            sim_log(
-                "SEM_DAMAGE",
-                f"component damage: {component_name}.integrity → {new_integrity:.2f} "
-                f"(source={source}, amount={amount:.2f}" + (f", type={damage_type}" if damage_type else "") + ")",
-            )
-        except Exception:
-            pass
+        sim_log(
+            "SEM_DAMAGE",
+            f"component damage: {component_name}.integrity → {new_integrity:.2f} "
+            f"(source={source}, amount={amount:.2f}" + (f", type={damage_type}" if damage_type else "") + ")",
+        )
 
         output: dict[str, Any] = {
             "component": component_name,
@@ -942,21 +939,18 @@ class OrchestratorActorTool(Tool):
         output["target"] = target_entity.name
         output["aut_failures"] = aut_failures
 
-        try:
-            from maxim.simulation.sim_logger import sim_log
+        from maxim.simulation.sim_logger import sim_log
 
-            sim_log(
-                "ACTOR",
-                f"{entity_name}.{affordance_name} → {target_entity.name} (pain_triggered={bool(aut_failures)})",
-                {
-                    "entity": entity_name,
-                    "affordance": affordance_name,
-                    "target": target_entity.name,
-                    "aut_failures": aut_failures,
-                },
-            )
-        except Exception:
-            pass
+        sim_log(
+            "ACTOR",
+            f"{entity_name}.{affordance_name} → {target_entity.name} (pain_triggered={bool(aut_failures)})",
+            {
+                "entity": entity_name,
+                "affordance": affordance_name,
+                "target": target_entity.name,
+                "aut_failures": aut_failures,
+            },
+        )
 
         return ToolOutput(
             success=True,
@@ -1062,17 +1056,14 @@ class SetEntitySensorTool(Tool):
         # Evaluate failure modes (recovery detection)
         self._embodiment.evaluate_failures()
 
-        try:
-            from maxim.simulation.sim_logger import sim_log
+        from maxim.simulation.sim_logger import sim_log
 
-            direction = "↑" if new_val > old_val else "↓" if new_val < old_val else "="
-            sim_log(
-                "SEM_SENSOR",
-                f"sensor set: {sensor} {old_val:.2f} → {new_val:.2f} {direction} (source={source})",
-                {"sensor": sensor, "old": old_val, "new": new_val, "source": source},
-            )
-        except Exception:
-            pass
+        direction = "↑" if new_val > old_val else "↓" if new_val < old_val else "="
+        sim_log(
+            "SEM_SENSOR",
+            f"sensor set: {sensor} {old_val:.2f} → {new_val:.2f} {direction} (source={source})",
+            {"sensor": sensor, "old": old_val, "new": new_val, "source": source},
+        )
 
         return ToolOutput(
             success=True,

@@ -176,7 +176,7 @@
     {
       "file": "src/maxim/simulation/generative_runner.py",
       "qualname": "run_generative_campaign",
-      "lines": 308
+      "lines": 299
     },
     {
       "file": "src/maxim/simulation/interactive.py",

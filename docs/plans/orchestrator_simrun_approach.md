@@ -232,9 +232,12 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
 - **No re-exports, and no extracted module imports `orchestrator.py`, transitively** (A-S6). The test walks the
   import closure like `test_loop_setup.py::loop_import_closure`, because `curriculum_runner.py` lazily imports
   `orchestrator` and a direct-only check would miss it.
-- **Helpers move with their only caller** (rule (a)). Sixteen module-level helpers are called only from P0–P2b,
+- **Helpers move with their only caller** (rule (a)). Eighteen module-level helpers are called only from P0–P2b,
   for example `_build_run_llms`, `_setup_sim_sandbox`, `_restore_aut_from_session`, `_fear_gate_aut_executor`,
-  `_aut_agent_config` and `_register_research_tools`.
+  `_aut_agent_config` and `_register_research_tools`. Two of the eighteen came with #1838 (the #863 fixes, §6):
+  `_trace_sem_tools` (P1) and `_sem_trace` (P1 and P2b). Both go to `sim_aut_build.py`. If an emit that stays in
+  `orchestrator.py` (the scene-manifest SEM_TRACE lines) is ever routed through `_sem_trace`, the helper still lives in
+  `sim_aut_build.py`, and `orchestrator.py` imports it from there (the allowed direction).
 - **v1's "tests that patch `orchestrator.<x>` keep working" was false** (W-S1, E-S3). With no re-export, a patch
   fails loudly. With one, it silently stops intercepting. For example, `test_bounded_stop_sim_1438`'s guard
   "no provenance capture under a stop" would pass dead. **Each step's PR re-points the patch targets of the
@@ -307,8 +310,18 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
   - Every PR inside the pinned function must shrink it by the lines it touches. So **each #863 fix extracts its
     SEM_TRACE block into a module-level helper in the same edit**, and pays for itself. A `touch_exemptions`
     record is not used.
-  - If the fixes wait instead, the move PR records where each site went, and the evidence test cites the new
-    `file::symbol`.
+  - **Landed in #1838** (2026-11-27). The tool listing is `_trace_sem_tools`, and every emit goes through
+    `_sem_trace`. The ACTIVE line sits in the construction `try`'s `else:`, so a fault there raises and is not
+    reported as a construction failure. The same PR drops the six other such wraps in `simulation/` and holds the
+    package at zero (`tests/unit/test_sim_trace_unwrapped_863.py`). The step-2 move still records where each site
+    went, since the gate's `site` stays `orchestrator.py::start_simulation_mode`.
+- **Setup-abort teardown** (#1838 review; owner decision 2026-11-27). A raise anywhere between the workspace opening
+  and the main `try` leaks the open sim log and the threads setup started (both `LLMWorker`s' lanes, plan loggers
+  and concept extractors: 10 threads measured). Nothing tears them down, because `end_run` is reached only from the
+  main `try`. This predates the slices. The slices fix it in the seam they create: **the caller of the staged
+  builders tears down what the earlier bundles built when a later builder raises** (the sim log, then each built
+  bundle's workers), through the same teardown `end_run` uses, and re-raises. Each builder PR adds a test of
+  that path. Tracked in #1839.
 - **World-clock census** (W-N3): `world_clock_census.py` fences `simulation/orchestrator.py`. The new modules get
   the same `_FENCED` rule in the PR that creates them, and the line-2 lane hears about it, since M72 is "absolute
   from birth".
@@ -326,6 +339,9 @@ It would walk nested defs and lambdas, and would come to about 60 lines (A-DNB1)
 >    `accepted_new_debt`;
 > 4. re-scope the last slice into `build_orchestrator` + `wire_aut_late`;
 > 5. roadmap order, the #863 fixes first, and `SimRun` merging last under D7.
+>
+> **ADDED 2026-11-27 (owner, the #1838 review):** 6. the setup-abort teardown (§6) is built into the staged-builder
+> caller in the slices, not as a separate fix before them.
 >
 > The text below is the question as it was asked.
 

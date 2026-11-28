@@ -11,18 +11,19 @@ argument construction, raising ``_SiteFault``, which nothing else in the run rai
 - ``sem_trace_tools``: the trace's first read of an entity's ``name`` (``EntityMap.list_entities`` is armed only
   after ``mark_goal_selected``, the last call before the trace, so the tool selection above it reads real entities).
 - ``sem_trace_imagination_active``: the trace's read of ``ImaginationTrigger._enabled`` (armed once the trigger's
-  ``__init__`` has returned; nothing reads it between construction and the trace). That site sits inside the
-  trigger's construction ``try``, so the fault surfaces as that handler's WARNING, not as a raise.
+  ``__init__`` has returned; nothing reads it between construction and the trace). The trace sits in the
+  construction ``try``'s ``else:`` (a review fold), so the fault raises; it is not reported as a construction failure.
 - ``sem_trace_imagination_failed``: the f-string ``{e}`` over the construction failure (the trigger's ``__init__``
   raises an exception whose ``__format__`` raises; its ``__str__``, which the handler's ``logger.warning`` uses,
   does not).
 
-Before the fix each fault is swallowed and the run completes, so each test failed (its red gate).
+Before the fix each fault is swallowed and the run completes, so each test failed (its red gate, 22b126b8). Each
+test also asserts the raise comes FROM its site's trace statement (``_raised_at``), so a later read of the faulted
+object elsewhere cannot satisfy it.
 """
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,18 @@ from tests.unit._orch_harness import run_arm
 
 class _SiteFault(Exception):
     """The injected caller-side fault (nothing else in a run raises it)."""
+
+
+def _assert_sim_logging_restored() -> None:
+    """The run raised in setup, before any teardown: the harness must still close the sim log it opened (#1839)."""
+    from maxim.simulation import sim_logger as SL
+
+    assert (SL._sim_active, SL._log_file) == (False, None)
+
+
+def _raised_at(excinfo: pytest.ExceptionInfo[Any], marker: str) -> bool:
+    """Whether a frame of the raise is the statement carrying ``marker`` (the site's own trace line)."""
+    return any(marker in str(e.statement) for e in excinfo.traceback)
 
 
 def test_a_fault_building_the_sem_tool_trace_surfaces_863(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -60,13 +73,15 @@ def test_a_fault_building_the_sem_tool_trace_surfaces_863(tmp_path: Path, monkey
         return out
 
     monkeypatch.setattr(discovery, "mark_goal_selected", mark)
-    with pytest.raises(_SiteFault, match="sem_trace_tools"):
+    with pytest.raises(_SiteFault, match="sem_trace_tools") as excinfo:
         run_arm("imagination", tmp_path)
     assert fired == [True]
+    assert _raised_at(excinfo, "Entities:"), excinfo.traceback
+    _assert_sim_logging_restored()
 
 
 def test_a_fault_building_the_imagination_active_trace_surfaces_863(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from maxim.imagination.trigger import ImaginationTrigger
 
@@ -93,15 +108,11 @@ def test_a_fault_building_the_imagination_active_trace_surfaces_863(
 
     monkeypatch.setattr(ImaginationTrigger, "_enabled", _OneShotEnabled(), raising=False)
     monkeypatch.setattr(ImaginationTrigger, "__init__", init)
-    with caplog.at_level(logging.WARNING, logger="maxim.simulation.orchestrator"):
+    with pytest.raises(_SiteFault, match="sem_trace_imagination_active") as excinfo:
         run_arm("imagination", tmp_path)
     assert state["fired"] == 1
-    assert any(
-        r.name == "maxim.simulation.orchestrator"
-        and r.getMessage().startswith("ImaginationTrigger construction failed")
-        and "sem_trace_imagination_active" in r.getMessage()
-        for r in caplog.records
-    ), [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert _raised_at(excinfo, "ImaginationTrigger ACTIVE"), excinfo.traceback
+    _assert_sim_logging_restored()
 
 
 def test_a_fault_building_the_imagination_failed_trace_surfaces_863(
@@ -120,5 +131,7 @@ def test_a_fault_building_the_imagination_failed_trace_surfaces_863(
         raise _Unformattable()
 
     monkeypatch.setattr(ImaginationTrigger, "__init__", init)
-    with pytest.raises(_SiteFault, match="sem_trace_imagination_failed"):
+    with pytest.raises(_SiteFault, match="sem_trace_imagination_failed") as excinfo:
         run_arm("imagination", tmp_path)
+    assert _raised_at(excinfo, "ImaginationTrigger FAILED"), excinfo.traceback
+    _assert_sim_logging_restored()

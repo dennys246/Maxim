@@ -2063,12 +2063,12 @@ def start_simulation_mode(
 
                 for _self_entity in _aut_entity_map.list_self_entities():
                     encode_entity_affordances(_self_entity, _aut_encoder, agent_id=_aut_agent_id)
-
-            logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
-            _sem_trace(f"ImaginationTrigger ACTIVE — enabled={aut_imagination_trigger._enabled}")
         except Exception as e:
             logger.warning("ImaginationTrigger construction failed: %s", e)
             _sem_trace(f"ImaginationTrigger FAILED: {e}")
+        else:  # outside the try: a fault building the ACTIVE trace is not a construction failure (#863)
+            logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
+            _sem_trace(f"ImaginationTrigger ACTIVE — enabled={aut_imagination_trigger._enabled}")
 
     # ── Scene manifest pre-trigger (Phase 1: SEM World Enrichment) ───────
     # Before the first turn, generate a scene entity inventory from the

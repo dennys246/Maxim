@@ -363,6 +363,19 @@ def _narrate_turn(
     return narrative, decision, None
 
 
+def _log_mother_tick(act: str | None, mtel: dict[str, Any]) -> None:
+    """The reactive mother's per-turn ``mother`` trace line. Unwrapped (#863): ``sim_log`` never raises (#868),
+    so a missing telemetry key is the caller's defect and surfaces (this was a ``try: ... except Exception: pass``
+    inside ``run_generative_campaign``, under the tick's own ``except`` that logs at DEBUG)."""
+    sim_log(
+        "mother",
+        f"act={act or '?'} fed={mtel['fed']} credited={mtel['credited']} "
+        f"credit={mtel.get('credit_mode')} relief={mtel.get('relief')} reward={mtel.get('reward')} "
+        f"guided={mtel['guided']} progress={mtel['progress']} "
+        f"az_prior={mtel['az_prior']} az_stimulus={mtel['az_stimulus']} az_guided={mtel['az_guided']}",
+    )
+
+
 def run_generative_campaign(
     goal: str,
     bridge: Any,
@@ -576,16 +589,7 @@ def run_generative_campaign(
                 # Feed this turn's sound back as next turn's shaping reference.
                 if mtel.get("az_stimulus") is not None:
                     _mother_prev_stimulus = float(mtel["az_stimulus"])
-                try:
-                    sim_log(
-                        "mother",
-                        f"act={_phase.act or '?'} fed={mtel['fed']} credited={mtel['credited']} "
-                        f"credit={mtel.get('credit_mode')} relief={mtel.get('relief')} reward={mtel.get('reward')} "
-                        f"guided={mtel['guided']} progress={mtel['progress']} "
-                        f"az_prior={mtel['az_prior']} az_stimulus={mtel['az_stimulus']} az_guided={mtel['az_guided']}",
-                    )
-                except Exception:
-                    pass
+                _log_mother_tick(_phase.act, mtel)
             except Exception:
                 log.debug("reactive mother tick failed at turn %d", turn_idx, exc_info=True)
 
