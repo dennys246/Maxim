@@ -482,11 +482,12 @@ def warn_unless_refusal(message: str, exc: BaseException, *, logger: Optional[lo
     wrong for a :class:`maxim.exceptions.LeaderRefusal` (a leader with no key, an exposed
     llama-cpp-server), where carrying on leaves the proxy forwarding to what was refused, or for an
     ``OfflineRefusal`` (a lane the offline latch refused), where carrying on runs without the LLM the operator
-    configured: both are :data:`maxim.exceptions.SECURITY_REFUSALS`.
+    configured: both are :data:`maxim.exceptions.SECURITY_REFUSALS`. Nor for a model config that cannot be applied as
+    written (``profiles.yml``, llm.json routing): :data:`maxim.exceptions.CONFIG_REFUSALS`, re-raised too (#1601).
     """
-    from maxim.exceptions import SECURITY_REFUSALS
+    from maxim.exceptions import CONFIG_REFUSALS, SECURITY_REFUSALS
 
-    if isinstance(exc, SECURITY_REFUSALS):
+    if isinstance(exc, (*SECURITY_REFUSALS, *CONFIG_REFUSALS)):
         raise exc
     warn(message, exc, logger=logger)
 

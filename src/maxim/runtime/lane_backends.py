@@ -2001,6 +2001,10 @@ def _ensure_lane_profiles_available(
             if existing is None:
                 out[new_name] = new_cfg
                 continue
+            if new_name != lane_name:
+                # Only the lane whose model is missing is re-picked. Another lane keeps what the stages above gave it:
+                # an llm.json tier override or a MAXIM_LANE_* setting is not undone by a different lane's miss (#1601).
+                continue
             out[new_name] = dataclasses.replace(
                 existing,
                 model_profile=new_cfg.model_profile,
@@ -2198,16 +2202,52 @@ def _require_valid_user_profiles() -> None:
     require_valid_user_profiles()
 
 
+def _require_valid_llm_routing() -> None:
+    """``build_primary_router``'s first step: :func:`maxim.runtime.lane_models.require_valid_llm_routing` (#1601)."""
+    from maxim.runtime.lane_models import require_valid_llm_routing
+
+    require_valid_llm_routing()
+
+
+def _apply_llm_json_tiers(lane_configs: dict[str, Any], capabilities: Any, *, profile: str) -> tuple[dict, dict]:
+    """The llm.json ``tiers`` overlay on the detected lanes, and the ``functions`` section, which
+    ``require_valid_llm_routing`` has already refused unless it is empty (#1601).
+
+    Every local lane's backend serves the session's model when one is set (``_build_local_backend`` resolves
+    ``build_profile`` first: ``--llm``, ``MAXIM_LLM_PROFILE``, config.json ``llm.profile`` or the persisted choice). So a
+    ``tiers`` ``model_profile`` that names another model would be reported, preflighted and pinned, but never served:
+    it refuses instead (owner decision 2026-11-27)."""
+    from maxim.exceptions import LLMRoutingConfigInvalid
+    from maxim.runtime.lane_models import apply_tier_config_overrides, require_valid_llm_routing
+
+    tiers, functions = require_valid_llm_routing()
+    session = _build_profile(profile)
+    for lane, entry in tiers.items():
+        chosen = entry.get("model_profile")
+        if session and chosen and chosen != session:
+            raise LLMRoutingConfigInvalid(
+                f"llm.json tiers.{lane}.model_profile is {chosen!r}, but this session serves {session!r} on every local "
+                "lane (from --llm, MAXIM_LLM_PROFILE, config.json llm.profile or the persisted --llm choice). Remove "
+                "the tiers model_profile, or set the session model to the same profile",
+                context={"lane": lane, "tiers_profile": chosen, "session_profile": session},
+            )
+    if tiers:
+        lane_configs = apply_tier_config_overrides(lane_configs, tiers, vram_gb=getattr(capabilities, "vram_gb", None))
+    return lane_configs, functions
+
+
 def _router_build_preflight(logger: Any | None) -> None:
     """``build_primary_router``'s first step: engage the offline latch from ``llm.offline`` (#1315 item 10a; before
     the process services, capability detection, a URL probe or auto-spawn can spawn or dial, and for a library caller
-    such as ``maxim.create.router()`` that never ran ``cli.main``), then :func:`_start_process_services` (#1610) and
-    :func:`_require_valid_user_profiles`."""
+    such as ``maxim.create.router()`` that never ran ``cli.main``), then :func:`_start_process_services` (#1610),
+    :func:`_require_valid_user_profiles` and :func:`_require_valid_llm_routing` (#1601: before a model is downloaded or a
+    server spawned)."""
     from maxim.runtime.config_loader import engage_offline_if_configured
 
     engage_offline_if_configured()
     _start_process_services(logger)
     _require_valid_user_profiles()
+    _require_valid_llm_routing()
 
 
 def _capabilities_or_detected(capabilities: Any | None) -> Any:
@@ -2346,7 +2386,6 @@ def build_primary_router(
     """
     from maxim.runtime.lane_models import (
         apply_lane_env_overrides,
-        apply_tier_config_overrides,
         detect_tiers,
     )
 
@@ -2426,12 +2465,7 @@ def build_primary_router(
 
     _add_remote_large_placeholder(lane_configs)
 
-    # Apply tier/function config from llm.json if present; a malformed entry raises InvalidConfigError (#1601)
-    from maxim.models.language.config import llm_json_routing_sections
-
-    _llm_json_tier_config, _llm_json_func_config = llm_json_routing_sections()
-    if _llm_json_tier_config:
-        lane_configs = apply_tier_config_overrides(lane_configs, _llm_json_tier_config)
+    lane_configs, _llm_json_func_config = _apply_llm_json_tiers(lane_configs, capabilities, profile=profile)
 
     lane_configs = apply_lane_env_overrides(lane_configs)
     # lane_capability_placement_split.md Phase 3c: apply the declarative

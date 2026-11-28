@@ -649,6 +649,24 @@ class InvalidConfigError(ConfigurationError):
     pass
 
 
+class LLMRoutingConfigInvalid(InvalidConfigError):
+    """llm.json's routing sections cannot be applied as written, so no run can know which model a lane serves (#1601).
+
+    Raised, naming the file or the entry, by:
+    - ``models/language/config.py::llm_json_routing_sections``: an llm.json that exists but does not parse, a root
+      that is not an object, or a ``tiers``/``functions`` section that is not an object;
+    - ``runtime/lane_models.py::require_valid_llm_routing``: a malformed ``tiers`` entry, a field no lane reads yet
+      (``device``, ``max_workers``), or any ``functions`` entry (the function router routes nothing yet, #1833);
+    - ``runtime/lane_backends.py``'s tier overlay: a lane's ``tiers`` ``model_profile`` that differs from the session's
+      model, which every local lane serves instead (owner decision 2026-11-27: the conflict refuses).
+
+    Refused up front at run start like :class:`UserProfilesInvalid`, and in :data:`CONFIG_REFUSALS`, so no broad
+    handler turns it into a run without the LLM. ``maxim doctor`` still runs and reports it.
+    """
+
+    fix_hint = "Fix llm.json (or move it aside), then run `maxim doctor` to check it."
+
+
 class InvalidAgentIdError(InvalidConfigError, ValueError):
     """An agent id that the memory keys cannot hold.
 
@@ -786,6 +804,12 @@ class AgentLoopError(MaximRuntimeError):
     pass
 
 
+CONFIG_REFUSALS: tuple[type[BaseException], ...] = (UserProfilesInvalid, LLMRoutingConfigInvalid)
+"""What a broad ``except Exception`` around starting or building the LLM must re-raise beside
+:data:`SECURITY_REFUSALS`: a model config that cannot be applied as written (#1601). It is not an outage, so it never
+degrades to "run without the LLM"."""
+
+
 __all__ = [
     # Base
     "MaximError",
@@ -846,6 +870,8 @@ __all__ = [
     "ComponentNotFoundError",
     "MissingConfigError",
     "InvalidConfigError",
+    "LLMRoutingConfigInvalid",
+    "CONFIG_REFUSALS",
     "InvalidAgentIdError",
     "AgentConfigContradiction",
     # Hardware

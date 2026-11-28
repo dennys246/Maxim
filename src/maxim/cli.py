@@ -2166,8 +2166,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     # Every run mode below reads profiles.yml, many through fallbacks that would hide a broken file: refuse it HERE
     # (#1315 step 0a; owner decision 2026-10-30). The repair commands (doctor, config, model, ...) dispatch above.
     from maxim.models.language.config import require_valid_user_profiles
+    from maxim.runtime.lane_models import require_valid_llm_routing
 
     require_valid_user_profiles()
+    require_valid_llm_routing()  # llm.json tiers/functions, refused the same way (#1601)
 
     # ── Asset Foundry dispatch ──────────────────────────────────────────
     _foundry_theme = getattr(args, "foundry", None)
@@ -3147,6 +3149,7 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
         return 2
     except Exception as e:
         from maxim.exceptions import (
+            CONFIG_REFUSALS,
             CampaignUnloadable,
             CliOptionsRefused,
             ConfigDirUnreadable,
@@ -3165,11 +3168,12 @@ def _main_guarded(argv: Sequence[str] | None = None) -> int:
             logging.getLogger(__name__).debug("research campaign unloadable", exc_info=True)
             user_warn(f"{e}\n    → {e.fix_hint}", source="research", event="campaign_unloadable")
             return 2
-        if isinstance(e, UserProfilesInvalid):  # a malformed profiles.yml, refused at run start (#1315 step 0a)
+        if isinstance(e, CONFIG_REFUSALS):  # profiles.yml (#1315 step 0a) or llm.json routing (#1601), refused at start
             from maxim.utils.logging import user_warn
 
-            logging.getLogger(__name__).debug("user profiles invalid", exc_info=True)
-            user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event="user_profiles_invalid")
+            event = "user_profiles_invalid" if isinstance(e, UserProfilesInvalid) else "llm_routing_invalid"
+            logging.getLogger(__name__).debug("model config invalid", exc_info=True)
+            user_warn(f"{type(e).__name__}: {e}\n    → {e.fix_hint}", source="config", event=event)
             return 2
         if isinstance(e, LLMServerPortBusy):  # a port held by a server this process must not kill (#1344 PR 3a)
             from maxim.utils.logging import user_warn

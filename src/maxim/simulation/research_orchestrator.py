@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from maxim.exceptions import SECURITY_REFUSALS
+from maxim.exceptions import CONFIG_REFUSALS, SECURITY_REFUSALS
 from maxim.mesh.bus import LocalMessageBus
 
 if TYPE_CHECKING:
@@ -104,7 +104,8 @@ def _build_research_llm(language_model: str | None = None) -> Any:
     A :data:`~maxim.exceptions.SECURITY_REFUSALS` refusal (a leader with no key, an exposed
     llama-cpp-server, a lane the offline latch refused) propagates: a security refusal is not an
     availability fallback. So does ``LocalModelUnavailable``: a named ``language_model`` that is
-    missing and not downloaded refuses the run (owner decision OD2, #1396 bullet 2).
+    missing and not downloaded refuses the run (owner decision OD2, #1396 bullet 2). And so does a
+    :data:`~maxim.exceptions.CONFIG_REFUSALS` refusal: a model config that cannot be applied as written (#1601).
     """
     from maxim.models.language.types import LocalModelUnavailable
 
@@ -117,6 +118,8 @@ def _build_research_llm(language_model: str | None = None) -> Any:
             research_llm.warmup()
             research_llm.wait_ready(timeout=120.0)
     except SECURITY_REFUSALS:
+        raise
+    except CONFIG_REFUSALS:  # a malformed profiles.yml or llm.json is not an outage (#1601)
         raise
     except LocalModelUnavailable:
         raise

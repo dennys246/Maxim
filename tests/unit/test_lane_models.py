@@ -391,20 +391,30 @@ class TestApplyTierConfigOverrides:
         assert tiers["large"].model_profile == "qwen2.5-14b"
         assert tiers["large"].device == "gpu"  # Unchanged
 
-    def test_override_max_workers(self):
-        tiers = apply_tier_config_overrides(
-            self._base_tiers(),
-            {
-                "small": {"max_workers": 3},
-            },
+    def test_override_kv_quant_mode(self):
+        tiers = apply_tier_config_overrides(self._base_tiers(), {"large": {"kv_quant_mode": "q8_0"}})
+        assert tiers["large"].kv_quant_mode == "q8_0"
+
+    def test_a_profile_swap_resizes_a_sized_lane(self, monkeypatch):
+        """A detected large lane carries n_ctx for its own model; a tiers swap re-sizes it for the new one."""
+        from maxim.runtime import lane_models
+
+        monkeypatch.setattr(
+            lane_models, "_ctx_for_profile", lambda profile, vram: {"qwen2.5-32b": 4096}.get(profile, 0)
         )
-        assert tiers["small"].max_workers == 3
+        base = {"large": LaneConfig(name="large", max_workers=1, model_profile="mistral-7b", n_ctx=32768)}
+        swapped = apply_tier_config_overrides(base, {"large": {"model_profile": "qwen2.5-32b"}}, vram_gb=16.0)
+        assert swapped["large"].n_ctx == 4096
+        cleared = apply_tier_config_overrides(base, {"large": {"model_profile": "qwen2.5-32b"}})  # no VRAM known
+        assert cleared["large"].n_ctx is None
+        same = apply_tier_config_overrides(base, {"large": {"model_profile": "mistral-7b"}}, vram_gb=16.0)
+        assert same["large"].n_ctx == 32768
 
     def test_add_new_tier(self):
         tiers = apply_tier_config_overrides(
             self._base_tiers(),
             {
-                "medium": {"model_profile": "mistral-7b", "device": "cpu"},
+                "medium": {"model_profile": "mistral-7b"},
             },
         )
         assert "medium" in tiers
@@ -428,18 +438,21 @@ class TestApplyTierConfigOverrides:
             ({"infer": {"model_profile": "x"}}, "'infer' is not a tier"),
             ({"large": {"model": "x"}}, "unknown field"),
             ({"large": {"model_profile": ""}}, "tiers.large.model_profile"),
-            ({"large": {"device": "tpu"}}, "tiers.large.device"),
-            ({"small": {"max_workers": 0}}, "tiers.small.max_workers"),
-            ({"small": {"max_workers": True}}, "tiers.small.max_workers"),
-            ({"small": {"max_workers": "3"}}, "tiers.small.max_workers"),
+            ({"large": {"device": "cpu"}}, "no lane reads it yet"),
+            ({"small": {"max_workers": 3}}, "no lane reads it yet"),
+            ({"large": {"kv_quant_mode": "q2"}}, "tiers.large.kv_quant_mode"),
+            ({"large": {"n_ctx": 4096}}, "unknown field"),
             ({"large": {"n_gpu_layers": -2}}, "tiers.large.n_gpu_layers"),
         ],
     )
     def test_malformed_entry_raises(self, config, names):
-        from maxim.exceptions import InvalidConfigError
+        from maxim.exceptions import LLMRoutingConfigInvalid
 
-        with pytest.raises(InvalidConfigError, match=re.escape(names)):
+        with pytest.raises(LLMRoutingConfigInvalid, match=re.escape(names)):
             apply_tier_config_overrides(self._base_tiers(), config)
+
+    def test_an_empty_entry_adds_a_detected_default_lane(self):
+        assert apply_tier_config_overrides(self._base_tiers(), {"medium": {}})["medium"].name == "medium"
 
     def test_all_gpu_layers_is_accepted(self):
         assert (
@@ -482,6 +495,7 @@ class TestLoadFunctionOverrides:
             ({"f": {"tier": "small", "fallback": ["huge"]}}, "functions.f.fallback"),
             ({"f": {"tier": "small", "priority": 3}}, "unknown field"),
             ({"f": {"tier": "small", "description": 7}}, "functions.f.description"),
+            ({"": {"tier": "small"}}, "a function name must be a non-empty string"),
         ],
     )
     def test_malformed_entry_raises(self, config, names):
