@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import functools
 import logging
 import os
 import time
@@ -33,7 +34,7 @@ from maxim.runtime.loop_intake import take_llm_proposal, take_queued_next_action
 
 # Module reference: §4 reaches the roster filter through its home, the one binding a patch must hit.
 from maxim.runtime import loop_state as _lstate
-from maxim.runtime.loop_request import submit_tick
+from maxim.runtime.loop_request import log_submit_blocked, submit_tick
 from maxim.runtime.loop_setup import RESPONSE_POLICY_UNSET, build_loop_run
 from maxim.runtime.loop_external import (
     ExternalInbox,
@@ -345,6 +346,24 @@ def run_agent_loop(
 # ─────────────────────────────────────────────────────────────────────────
 
 
+def _end_deliberation(
+    cycle: int, log_text: str, summary: str, *, max_cycles: int, thought_gate: Any, step_num: int
+) -> None:
+    """One exit of ``_run_deliberation_cycles`` (each of its three, verbatim but for the names, #1743's rule-T carry):
+    the contemplation and end events, the sim log line, and the thought gate's refractory reset."""
+    from maxim.simulation.sim_logger import sim_contemplation, sim_deliberation_end, sim_log
+
+    sim_contemplation(
+        gate_passed=True,
+        refined=True,
+        score=0.0,
+    )
+    sim_log("DELIBERATION", log_text)
+    sim_deliberation_end(cycle=cycle, max_cycles=max_cycles, summary=summary)
+    if thought_gate is not None:
+        thought_gate.reset_refractory(step_num)
+
+
 def _wait_for_proposal(
     llm_worker: Any,
     stop_event: Any,
@@ -369,8 +388,9 @@ def _wait_for_proposal(
             return None
         proposal = llm_worker.get_latest_proposal()
         if proposal is not None:
-            if ctrl is not None:
+            if ctrl is not None:  # as §2's poll does on ANY proposal (#1743: one intake, both halves)
                 ctrl.last_proposal_time = time.time()
+                ctrl.reset_planning_transport_failures()
             return proposal
         time.sleep(0.1)
     logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
@@ -513,7 +533,7 @@ def _run_deliberation_cycles(
     step_num: int,
     max_cycles: int = 3,
     ctrl: Any | None = None,
-) -> Any | None:
+) -> Any:
     """PFC deliberation cycles 2+ — recurrence after first proposal.
 
     Called from the LLM submission point (section 6) when cycle 1 returned
@@ -538,15 +558,11 @@ def _run_deliberation_cycles(
         max_cycles: Hard cap including cycle 1 (default 3).
 
     Returns:
-        LLMProposal or None.
+        The last answer consumed, never None: one with no action is a declined turn, which §2's intake drops (#1743).
     """
-    from maxim.simulation.sim_logger import (
-        sim_log,
-        sim_pre_deliberation,
-        sim_contemplation,
-        sim_deliberation_update,
-        sim_deliberation_end,
-    )
+    from maxim.simulation.sim_logger import sim_deliberation_update, sim_log, sim_pre_deliberation
+
+    _end = functools.partial(_end_deliberation, max_cycles=max_cycles, thought_gate=thought_gate, step_num=step_num)
 
     recent_keywords: list[set[str]] = []
     last_proposal = first_proposal
@@ -671,15 +687,11 @@ def _run_deliberation_cycles(
 
         # 6. Check ready_to_act
         if proposal.ready_to_act:
-            sim_contemplation(
-                gate_passed=True,
-                refined=True,
-                score=0.0,
+            _end(
+                cycle,
+                f"deliberation converged: ready_to_act after {cycle} cycles",
+                f"Ready to act after {cycle} cycles",
             )
-            sim_log("DELIBERATION", f"deliberation converged: ready_to_act after {cycle} cycles")
-            sim_deliberation_end(cycle=cycle, max_cycles=max_cycles, summary=f"Ready to act after {cycle} cycles")
-            if thought_gate is not None:
-                thought_gate.reset_refractory(step_num)
             return proposal
 
         # 7. Not ready — check convergence before looping
@@ -689,40 +701,21 @@ def _run_deliberation_cycles(
 
         if len(recent_keywords) >= 2 and _jaccard_convergence(recent_keywords[-1], recent_keywords[-2]):
             logger.info("Deliberation converged after %d cycles (Jaccard >= 0.8)", cycle)
-            sim_contemplation(
-                gate_passed=True,
-                refined=True,
-                score=0.0,
+            _end(
+                cycle,
+                f"deliberation converged (Jaccard) after {cycle} cycles",
+                f"Converged (Jaccard) after {cycle} cycles",
             )
-            sim_log("DELIBERATION", f"deliberation converged (Jaccard) after {cycle} cycles")
-            sim_deliberation_end(
-                cycle=cycle, max_cycles=max_cycles, summary=f"Converged (Jaccard) after {cycle} cycles"
-            )
-            if thought_gate is not None:
-                thought_gate.reset_refractory(step_num)
-            return proposal if proposal.action else None
+            return proposal  # one with no action is a declined turn: the intake drops it (#1743)
 
         # 8. Feed reasoning back for next enrichment
         enrich_text = reasoning
         logger.debug("Deliberation cycle %d: reasoning fed back for enrichment (%d chars)", cycle, len(reasoning))
 
     # Max cycles reached without ready_to_act
-    sim_contemplation(
-        gate_passed=True,
-        refined=True,
-        score=0.0,
-    )
-    sim_log("DELIBERATION", f"max cycles ({max_cycles}) reached, forcing action")
-    sim_deliberation_end(
-        cycle=max_cycles, max_cycles=max_cycles, summary=f"Max cycles ({max_cycles}) reached, forcing action"
-    )
-    if thought_gate is not None:
-        thought_gate.reset_refractory(step_num)
-
-    # Return last proposal if it has an action, otherwise None (IDLE)
-    if last_proposal is not None and last_proposal.action:
-        return last_proposal
-    return None
+    _forced = "forcing action" if last_proposal.action else "no action"  # #1743: the intake drops an action-less one
+    _end(max_cycles, f"max cycles ({max_cycles}) reached, {_forced}", f"Max cycles ({max_cycles}) reached, {_forced}")
+    return last_proposal  # as above: the intake (loop_intake.accept_llm_proposal) drops one with no action (#1743)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1995,16 +1988,7 @@ def _run_agentic_loop_body(
         # 6. SUBMIT NEW CONTEXT TO LLM (non-blocking, event-driven)
         # Only trigger LLM when there's something meaningful to respond to
         # ─────────────────────────────────────────────────────────────────
-        # Diagnostic: trace why LLM submission is skipped
-        if llm_worker and ctrl.pending_proposal is not None and cli_input and sim.is_sim_mode:
-            _pp_tool = (
-                ctrl.pending_proposal.action.get("tool_name", "?")
-                if isinstance(ctrl.pending_proposal.action, dict)
-                else "?"
-            )
-            sim.log(
-                "PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}"
-            )
+        log_submit_blocked(llm_worker=llm_worker, ctrl=ctrl, cli_input=cli_input, sim=sim)  # runtime/loop_request.py
 
         # ─────────────────────────────────────────────────────────────────
         # Substrate-primary action generation (Phase -1 of grounded
@@ -2080,8 +2064,11 @@ def _run_agentic_loop_body(
                     _wait_for_proposal=_wait_for_proposal,
                     last_surfaced_tools=last_surfaced_tools,
                     pending_prefetch=pending_prefetch,
+                    action_sink=action_sink,
+                    _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
                 )
                 last_surfaced_tools, pending_prefetch = _carry.last_surfaced_tools, _carry.pending_prefetch
+                _consecutive_llm_fallbacks = _carry.consecutive_llm_fallbacks  # #1743; its exhaustion: the gate's latch
 
         # ─────────────────────────────────────────────────────────────────
         # 7. CALL STEP CALLBACK
@@ -2121,7 +2108,7 @@ def _run_agentic_loop_body(
     # D13 planning liveness: RETURNED, and raised by run_agentic_loop AFTER its bio_session ends (#1438 PR 0), so
     # state persistence and the bio session end ran, but the sim still aborts loudly (the orchestrator converts this
     # into a typed finish report) instead of having idled forever on a silently-dropped planning turn.
-    return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted else None
+    return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted or ctrl.planning_exhausted else None
 
 
 def _planning_liveness_abort(ctrl: Any) -> Exception:
