@@ -186,6 +186,12 @@ class MaximAgent(Agent):
         self._last_log_time = 0.0
         self._log_interval = 1.0  # Log at most once per second
 
+    @property
+    def memory_hub(self) -> Any:
+        """The MemoryHub this agent's MemoryAgent is wired to (``wire_memory_hub``), or None. Read-only: wire it with
+        ``wire_memory_hub``. ``runtime/bootstrap.py::run_loop_stack`` checks it against the hub handed to the loop."""
+        return self.memory._memory_hub
+
     def wire_memory_hub(self, memory_hub: Any) -> None:
         """Wire MemoryHub for multi-layer knowledge queries and promotion.
 

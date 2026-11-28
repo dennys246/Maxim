@@ -238,12 +238,14 @@ class Module:
     funcs: dict[ast.AST, ast.AST | None]  # every node -> its innermost enclosing def/lambda (None at module level)
 
 
-def _parse(root: Path, rel: str) -> Module:
-    path = root / PKG / rel
+def _parse(root: Path, rel: str, pkg: str = PKG) -> Module:
+    """Parse ``<root>/<pkg>/<rel>`` and map every node to its qualname and innermost def. ``pkg`` defaults to the
+    package this lint scans; ``lint_loop_stack.py`` reuses the visitor over ``src/maxim`` and ``scripts``."""
+    path = root / pkg / rel
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
     except (OSError, SyntaxError, UnicodeDecodeError, ValueError) as e:
-        raise ScopeError(f"{PKG}/{rel}: cannot parse ({e})") from e
+        raise ScopeError(f"{pkg}/{rel}: cannot parse ({e})") from e
     parents: dict[ast.AST, ast.AST] = {}
     quals: dict[ast.AST, str] = {}
     funcs: dict[ast.AST, ast.AST | None] = {}

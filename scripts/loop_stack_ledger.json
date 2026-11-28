@@ -1,0 +1,74 @@
+[
+  {
+    "file": "src/maxim/api.py",
+    "qualname": "run",
+    "count": 1,
+    "ref": "#610",
+    "reason": "headless api.run, unmigrated (loop_stack_builder.md: api/cli migrate next); passes no enrichment pipeline or thought gate today, a gap its migration names",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/cli.py",
+    "qualname": "_main_impl",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the CLI agent, unmigrated (loop_stack_builder.md: api/cli migrate next)",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/embodied_runtime/agentic_runtime.py",
+    "qualname": "AgenticRuntimeMixin._start_agentic_runtime.<locals>._worker",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the embodied (Reachy) runtime, unmigrated; no AgentInstance, its own bio-stack, no pain bus today",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/simulation/interactive.py",
+    "qualname": "_run_scenario_turn",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the interactive scenario turn, unmigrated; forwards **kwargs, so a new caller of this wrapper is an accepted blind spot until it migrates",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/simulation/minecraft_harness.py",
+    "qualname": "run_minecraft_aut",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the Minecraft AUT, unmigrated; its _loop_kwargs dict must be expanded into explicit keywords when it migrates",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/simulation/orchestrator.py",
+    "qualname": "start_simulation_mode",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the orchestrator's own narrator loop: not an agent stack (no bio-stack, planning_liveness=True), so it keeps its direct call (loop_stack_builder.md, open question 2)",
+    "permanent": true
+  },
+  {
+    "file": "src/maxim/simulation/orchestrator.py",
+    "qualname": "start_simulation_mode.<locals>._aut_worker",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the sim AUT, unmigrated; migrates last, after 1.3.5 (owner decision 1, 2026-11-27)",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/simulation/tools.py",
+    "qualname": "SpawnSubSimulationTool._run_sub_simulation.<locals>._sub_aut",
+    "count": 1,
+    "ref": "#610",
+    "reason": "the sub-simulation AUT, unmigrated; no hippocampus, hub or pain bus today (test_noop_bridge fails open on its migration: see the note)",
+    "permanent": false
+  },
+  {
+    "file": "src/maxim/runtime/__init__.py",
+    "qualname": "<module>",
+    "count": 2,
+    "ref": "#610",
+    "reason": "the public re-export of run_agent_loop (its _LAZY key and its __all__ entry): public API, so deleting it is a separate decision (open question 3)",
+    "permanent": true
+  }
+]
