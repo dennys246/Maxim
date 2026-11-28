@@ -4,6 +4,9 @@
 clock, a stepped world such as Overdrive's, a replay) got wall time mixed in on its first tick. Each test passes 0.0
 and checks the work was done at 0.0; each is red on the `or` form.
 
+The CostTracker sites were later superseded by D-WC5 (#1769): cost windows run on the wall, and a caller clock is
+ignored with a ``DeprecationWarning`` (see the CostTracker tests below).
+
 `SalienceMap` also read `last_visited == 0` as "never visited", so a visit at 0.0 was forgotten as soon as it was
 recorded. The visit count is the visited flag now (`test_a_visit_at_zero_still_inhibits_return`).
 """
@@ -11,6 +14,8 @@ recorded. The visit count is the visited flag now (`test_a_visit_at_zero_still_i
 from __future__ import annotations
 
 from pathlib import Path
+
+import pytest
 
 from maxim.attention.salience_map import SalienceMap
 from maxim.models.language.cost_tracker import CostTracker, CostTrackerConfig, ModelPricing
@@ -68,23 +73,32 @@ def test_salience_network_detections_seen_at_zero() -> None:
     assert obj["last_seen"] == 0.0
 
 
-def test_cost_tracker_records_at_zero(tmp_path: Path) -> None:
+# The CostTracker half of #1684 is superseded by D-WC5 (#1769, world clock A-pre): cost windows run on the wall,
+# so a caller's clock, 0.0 included, is ignored with a DeprecationWarning rather than honoured. A caller on a clock
+# starting at 0.0 used to reset the month and prune its own spend; these pin that it can no longer reach the windows.
+
+
+def test_cost_tracker_ignores_a_caller_timestamp_of_zero(tmp_path: Path) -> None:
     tracker = _tracker(tmp_path)
-    assert _record(tracker, 0.0) > 0
-    assert [ts for ts, _ in tracker._hourly.events] == [0.0]
+    with pytest.warns(DeprecationWarning, match=r"record\(timestamp=\.\.\.\) is deprecated and ignored"):
+        assert _record(tracker, 0.0) > 0
+    (stamp,) = [ts for ts, _ in tracker._hourly.events]
+    assert stamp > 1_000_000_000.0, f"booked on the caller's clock, not the wall: {stamp}"
 
 
-def test_cost_tracker_totals_at_zero(tmp_path: Path) -> None:
+def test_cost_tracker_totals_ignore_a_caller_now(tmp_path: Path) -> None:
     tracker = _tracker(tmp_path)
-    cost = _record(tracker, 1.0)
-    # Read at 0.0, the call at 1.0 is inside the hour. Read at the wall clock, it was pruned as decades old.
-    assert tracker.get_totals(now=0.0)["hourly"] == cost
+    cost = tracker.record(provider="p", model=_MODEL, input_tokens=1, output_tokens=0)
+    # Read at a far-future caller clock, the call would be pruned as decades old if the clock were honoured.
+    with pytest.warns(DeprecationWarning, match=r"get_totals\(now=\.\.\.\)"):
+        assert tracker.get_totals(now=4_000_000_000.0)["hourly"] == cost
 
 
-def test_cost_tracker_per_provider_totals_at_zero(tmp_path: Path) -> None:
+def test_cost_tracker_per_provider_totals_ignore_a_caller_now(tmp_path: Path) -> None:
     tracker = _tracker(tmp_path)
-    cost = _record(tracker, 1.0)
-    assert tracker.get_per_provider_totals("p", now=0.0)["hourly"] == cost
+    cost = tracker.record(provider="p", model=_MODEL, input_tokens=1, output_tokens=0)
+    with pytest.warns(DeprecationWarning, match=r"get_per_provider_totals\(now=\.\.\.\)"):
+        assert tracker.get_per_provider_totals("p", now=4_000_000_000.0)["hourly"] == cost
 
 
 def test_none_still_means_the_wall_clock(tmp_path: Path) -> None:
