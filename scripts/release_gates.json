@@ -487,8 +487,13 @@
           "id": "863.loop.imagine",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_imagination_skipped_trace_ends_the_run_863"
+          ],
+          "red_gate": {
+            "commit": "718b104333c337e4c8243be9417240afe55358f0",
+            "nodeid": "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_imagination_skipped_trace_ends_the_run_863"
+          },
           "site": {
             "file": "src/maxim/runtime/loop_perception.py",
             "symbol": "imagine",
@@ -500,8 +505,13 @@
           "id": "863.loop.auto_sense",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_auto_sense_trace_ends_the_run_863"
+          ],
+          "red_gate": {
+            "commit": "718b104333c337e4c8243be9417240afe55358f0",
+            "nodeid": "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_auto_sense_trace_ends_the_run_863"
+          },
           "site": {
             "file": "src/maxim/runtime/loop_perception.py",
             "symbol": "auto_sense",
@@ -513,8 +523,13 @@
           "id": "863.loop.orient_to_audio.reflex",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_orienting_reflex_trace_ends_the_run_863"
+          ],
+          "red_gate": {
+            "commit": "718b104333c337e4c8243be9417240afe55358f0",
+            "nodeid": "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_orienting_reflex_trace_ends_the_run_863"
+          },
           "site": {
             "file": "src/maxim/runtime/loop_perception.py",
             "symbol": "orient_to_audio",
@@ -526,8 +541,13 @@
           "id": "863.loop.orient_to_audio.percept",
           "ref": "#863",
           "scope": "#863 step 2 at this site: the broad except no longer swallows caller logic around the sim_logger call. The wrap is dropped where the call cannot raise, narrowed to the fallible expression, or the argument construction is hoisted out of it, and a caller-side fault introduced at the site surfaces in the evidence test.",
-          "evidence": [],
-          "red_gate": null,
+          "evidence": [
+            "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_audio_orient_trace_ends_the_run_863"
+          ],
+          "red_gate": {
+            "commit": "718b104333c337e4c8243be9417240afe55358f0",
+            "nodeid": "tests/unit/test_loop_perception_characterization.py::test_a_fault_at_the_audio_orient_trace_ends_the_run_863"
+          },
           "site": {
             "file": "src/maxim/runtime/loop_perception.py",
             "symbol": "orient_to_audio",

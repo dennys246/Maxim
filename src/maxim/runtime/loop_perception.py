@@ -326,20 +326,20 @@ def imagine(*, step_num: int, observation: Any, state: Any, imagination_trigger:
                 _imagination_results = imagination_trigger.process_percept(
                     text, scene_context=scene_ctx, scene_id=scene_id
                 )
-            else:
-                try:
-                    from maxim.simulation.sim_logger import sim_log
+        except Exception:
+            log_swallowed_exception(site="loop_perception.py:imagine:trigger", context={"step": step_num})
+        else:
+            # Outside the try (#863, owner 2026-11-27: fail loud): sim_log never raises (#868), so a fault here is
+            # the caller's own and must not be reported as an imagination failure, or swallowed.
+            if not text:
+                from maxim.simulation.sim_logger import sim_log
 
-                    _obs_keys = list(observation.keys()) if hasattr(observation, "keys") else type(observation).__name__
-                    sim_log(
-                        "SEM_TRACE",
-                        f"Imagination skipped: no percept_text (obs keys: {_obs_keys})",
-                        _force_debug=True,
-                    )
-                except Exception:
-                    log_swallowed_exception()
-        except Exception as e:
-            log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
+                _obs_keys = list(observation.keys()) if hasattr(observation, "keys") else type(observation).__name__
+                sim_log(
+                    "SEM_TRACE",
+                    f"Imagination skipped: no percept_text (obs keys: {_obs_keys})",
+                    _force_debug=True,
+                )
     return _imagination_results
 
 
@@ -468,16 +468,15 @@ def auto_sense(*, step_num: int, observation: Any, executor: Any) -> str:
 
                 if _auto_sense_parts:
                     _auto_sense_text = "\n".join(_auto_sense_parts)
+        except Exception:
+            log_swallowed_exception(site="loop_perception.py:auto_sense", context={"step": step_num})
+        else:
+            # Outside the try (#863, owner 2026-11-27: fail loud): a fault building the trace is the caller's own.
+            if _auto_sense_text:
+                from maxim.simulation.sim_logger import sim_log
 
-                    try:
-                        from maxim.simulation.sim_logger import sim_log
-
-                        _n_entities = _auto_sense_text.count("[SCENE]") + _auto_sense_text.count("[YOU]")
-                        sim_log("PERCEPTION", f"auto-sense: {_n_entities} entities, body state updated")
-                    except Exception:
-                        log_swallowed_exception()
-        except Exception as _ase:
-            log_swallowed_exception(_ase, operation="auto_sense", context={"step": step_num})
+                _n_entities = _auto_sense_text.count("[SCENE]") + _auto_sense_text.count("[YOU]")
+                sim_log("PERCEPTION", f"auto-sense: {_n_entities} entities, body state updated")
     return _auto_sense_text
 
 
@@ -508,6 +507,8 @@ def orient_to_audio(
     # substrate-primary stays excluded: the drive/EC path reads the sensor
     # directly and §1.16 would double-write (S1).
     if getattr(sim, "current_percept", None) is not None and aut_mode != "substrate-primary":
+        _reflex_turn: tuple[Any, float] | None = None  # (raw azimuth, oriented): the reflex tier's trace, if it fired
+        _orient_line: str | None = None  # the deliberative tier's delivered line, if any
         try:
             from maxim.embodiment.audio_localization import (
                 audio_attention_profile,
@@ -574,17 +575,7 @@ def orient_to_audio(
                     _audio_escalate_this_tick = True
                     _trace["reflex"] = True
                     _trace["escalated"] = True
-                    try:
-                        from maxim.simulation.sim_logger import sim_log
-
-                        sim_log(
-                            "REACTION",
-                            f"orienting reflex: turned toward a loud, sudden sound "
-                            f"(was {float(_az):+.2f}, now {_oriented:+.2f})",
-                            data=_trace,
-                        )
-                    except Exception:
-                        log_swallowed_exception()
+                    _reflex_turn = (_az, _oriented)  # traced after the try (#863)
                 elif should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
                     # DELIBERATIVE tier: the agent CHOOSES to attend. Change-
                     # gate skips an unchanged direction (prompt noise — the
@@ -608,12 +599,21 @@ def orient_to_audio(
                             _audio_escalate_this_tick = True
                         _trace["reflex"] = False
                         _trace["escalated"] = _escalates
-                        try:
-                            from maxim.simulation.sim_logger import sim_log
+                        _orient_line = _audio_line  # traced after the try (#863)
+        except Exception:
+            log_swallowed_exception(site="loop_perception.py:orient_to_audio", context={"step": step_num})
+        else:
+            # Outside the try (#863, owner 2026-11-27: fail loud): sim_log never raises (#868), so a fault here is
+            # the caller's own (float(_az) included) and must not be reported as an orientation failure, or swallowed.
+            from maxim.simulation.sim_logger import sim_log
 
-                            sim_log("PERCEPTION", f"audio-orient: {_audio_line}", data=_trace)
-                        except Exception:
-                            log_swallowed_exception()
-        except Exception as _aoe:
-            log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
+            if _reflex_turn is not None:
+                _was, _now = _reflex_turn
+                sim_log(
+                    "REACTION",
+                    f"orienting reflex: turned toward a loud, sudden sound (was {float(_was):+.2f}, now {_now:+.2f})",
+                    data=_trace,
+                )
+            elif _orient_line is not None:
+                sim_log("PERCEPTION", f"audio-orient: {_orient_line}", data=_trace)
     return _auto_sense_text, _audio_escalate_this_tick

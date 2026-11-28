@@ -239,14 +239,13 @@ def _run(
     worker: Any = None,
     no_memory_context: bool = False,
     state_data: dict[str, Any] | None = None,
-    sim_log_raises: tuple[str, ...] = (),
     sim_log_raises_once_on: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Run the real loop (slice 2's driver) for ``steps`` passes on a scripted adapter, or on a sim run's
     percept source with ``sim_percepts``. ``worker`` submits on every pass that has something to submit;
     ``no_memory_context`` makes ``memory.build_context()`` return None (the B1 arm); ``sim_log`` raises for
-    the categories in ``sim_log_raises``, and once for the first message starting with ``sim_log_raises_once_on``
+    once for the first message starting with ``sim_log_raises_once_on``
     (``_SiteFault``: one site's emit, as the #863 red gates need; two sites share the PERCEPTION category)."""
     import maxim.embodiment.audio_localization as audio_localization
     import maxim.simulation.sim_logger as sim_logger
@@ -267,8 +266,6 @@ def _run(
 
     def _sim_log(category: str, msg: str, data: Any = None, **kw: Any) -> None:
         sim_logs.append((category, msg, data, kw))
-        if category in sim_log_raises:
-            raise RuntimeError("sim log down")
         if sim_log_raises_once_on is not None and msg.startswith(sim_log_raises_once_on) and not site_fired:
             site_fired.append(msg)
             raise _SiteFault(sim_log_raises_once_on)
@@ -327,6 +324,17 @@ def _kinds(ev: list[tuple]) -> list[str]:
 
 def _swallowed(caplog: Any, operation: str) -> list[str]:
     return [r.getMessage() for r in caplog.records if f" in {operation}:" in r.getMessage()]
+
+
+def _site_reports(caplog: Any, site: str) -> list[tuple[str, str]]:
+    """The structured (Stage-1) reports of one ``site=`` handler: (the exception's text, the message). Since #863
+    step 2 the three section handlers report this way (owner decision 2026-11-27), so a failure is an event, not a
+    content-free DEBUG line."""
+    return [
+        ((getattr(r, "data", None) or {}).get("exc"), r.getMessage())
+        for r in caplog.records
+        if getattr(r, "event", None) == "swallowed_exception" and (getattr(r, "data", None) or {}).get("site") == site
+    ]
 
 
 # ── §1 order ─────────────────────────────────────────────────────────────────
@@ -450,9 +458,9 @@ def test_a_raising_trigger_is_reported_and_the_loop_goes_on(monkeypatch, tmp_pat
             bio_enrichment_pipeline=pipe,
         )
     assert [c[0] for c in trig.calls] == ["x", "y"]
-    assert _swallowed(caplog, "imagination_trigger") == [
-        "Swallowed RuntimeError in imagination_trigger: designer down [step=0]",
-        "Swallowed RuntimeError in imagination_trigger: designer down [step=1]",
+    assert _site_reports(caplog, "loop_perception.py:imagine:trigger") == [
+        ("designer down", "swallowed_exception site=loop_perception.py:imagine:trigger [step=0]"),
+        ("designer down", "swallowed_exception site=loop_perception.py:imagine:trigger [step=1]"),
     ]
     # The failed pass hands §1.2 no resolved entities.
     assert [ctx.resolved_entities for _, ctx in pipe.calls] == [(), ()]
@@ -665,7 +673,9 @@ def test_a_registry_that_breaks_is_reported_as_auto_sense(monkeypatch, tmp_path,
     with caplog.at_level(logging.DEBUG, logger="maxim"):
         ctx, _ = _auto_sense_submitted(monkeypatch, tmp_path, registry=_Broken())
     assert ctx.auto_sense_context == ""
-    assert _swallowed(caplog, "auto_sense") == ["Swallowed RuntimeError in auto_sense: registry broke [step=0]"]
+    assert _site_reports(caplog, "loop_perception.py:auto_sense") == [
+        ("registry broke", "swallowed_exception site=loop_perception.py:auto_sense [step=0]")
+    ]
 
 
 # ── §1.16 audio orientation ──────────────────────────────────────────────────
@@ -944,9 +954,9 @@ def test_a_raise_inside_section_1_16_is_reported_and_the_loop_goes_on(monkeypatc
     monkeypatch.setattr(audio_localization, "resolve_orienting_profile", _boom)
     with caplog.at_level(logging.DEBUG, logger="maxim"):
         o = _run(monkeypatch, tmp_path, obs=[{}, {}], percepts={0: _audio(0.6), 1: _audio(0.1)}, steps=2)
-    assert _swallowed(caplog, "audio_orientation") == [
-        "Swallowed RuntimeError in audio_orientation: profile broke [step=0]",
-        "Swallowed RuntimeError in audio_orientation: profile broke [step=1]",
+    assert _site_reports(caplog, "loop_perception.py:orient_to_audio") == [
+        ("profile broke", "swallowed_exception site=loop_perception.py:orient_to_audio [step=0]"),
+        ("profile broke", "swallowed_exception site=loop_perception.py:orient_to_audio [step=1]"),
     ]
     assert _kinds(o.ev).count("observe") == 2
 
@@ -963,53 +973,6 @@ def test_a_none_in_the_auto_fire_roster_is_skipped(monkeypatch, tmp_path):
 
     ctx, _ = _auto_sense_submitted(monkeypatch, tmp_path, registry=_Gappy())
     assert tool.kwargs == [{}] and ctx.auto_sense_context == "after the gap"
-
-
-def _stage1_reports(caplog: Any, exc: str) -> int:
-    return sum(
-        1
-        for r in caplog.records
-        if getattr(r, "event", None) == "swallowed_exception" and (getattr(r, "data", None) or {}).get("exc") == exc
-    )
-
-
-def test_a_raising_sim_log_is_reported_and_perception_still_reaches_the_submission(monkeypatch, tmp_path, caplog):
-    worker = _Worker()
-    with caplog.at_level(logging.DEBUG, logger="maxim"):
-        _run(
-            monkeypatch,
-            tmp_path,
-            obs=[{}, {"cli_input": "x"}],
-            percepts={1: _audio(-0.6)},
-            steps=2,
-            executor=_executor(_AutoFire([], "scan", out="[SCENE] a hall")),
-            worker=worker,
-            imagination_trigger=_Trigger([]),
-            sim_log_raises=("SEM_TRACE", "PERCEPTION", "REACTION"),
-        )
-    # §1.1's SEM_TRACE (pass 0), §1.15's and §1.16's PERCEPTION lines (pass 1): three Stage-1 reports.
-    assert _stage1_reports(caplog, "sim log down") == 3
-    assert (
-        worker.contexts[-1].auto_sense_context == "[SCENE] a hall\nYou hear a sound well to your left (azimuth -0.60)."
-    )
-
-
-def test_a_raising_sim_log_in_the_reflex_tier_is_reported_and_the_reflex_still_escalates(monkeypatch, tmp_path, caplog):
-    worker = _Worker()
-    with caplog.at_level(logging.DEBUG, logger="maxim"):
-        o = _run(
-            monkeypatch,
-            tmp_path,
-            sim_percepts=[_audio(0.7, salience=0.95, novelty=0.95)],
-            body=_infant_body(),
-            worker=worker,
-            no_memory_context=True,
-            sim_log_raises=("REACTION",),
-        )
-    assert _stage1_reports(caplog, "sim log down") == 1
-    assert o.state.data["_last_audio_orient_az"] == 0.0
-    [ctx] = worker.contexts
-    assert ctx.auto_sense_context == "A loud, sudden sound made you orient toward it (it was at azimuth +0.70)."
 
 
 def test_a_voice_question_from_the_mailbox_is_enriched_recall_only(monkeypatch, tmp_path):
@@ -1043,7 +1006,6 @@ def _raised_at(excinfo: Any, marker: str) -> bool:
     return any(marker in str(e.statement) for e in excinfo.traceback)
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
 def test_a_fault_at_the_imagination_skipped_trace_ends_the_run_863(monkeypatch, tmp_path):
     with pytest.raises(_SiteFault) as excinfo:
         _run(
@@ -1056,7 +1018,6 @@ def test_a_fault_at_the_imagination_skipped_trace_ends_the_run_863(monkeypatch, 
     assert _raised_at(excinfo, "Imagination skipped"), excinfo.traceback
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
 def test_a_fault_at_the_auto_sense_trace_ends_the_run_863(monkeypatch, tmp_path):
     with pytest.raises(_SiteFault) as excinfo:
         _run(
@@ -1069,7 +1030,6 @@ def test_a_fault_at_the_auto_sense_trace_ends_the_run_863(monkeypatch, tmp_path)
     assert _raised_at(excinfo, "auto-sense:"), excinfo.traceback
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
 def test_a_fault_at_the_audio_orient_trace_ends_the_run_863(monkeypatch, tmp_path):
     with pytest.raises(_SiteFault) as excinfo:
         _run(
@@ -1083,7 +1043,6 @@ def test_a_fault_at_the_audio_orient_trace_ends_the_run_863(monkeypatch, tmp_pat
     assert _raised_at(excinfo, "audio-orient:"), excinfo.traceback
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the inner wrap still catches the fault and the run goes on")
 def test_a_fault_at_the_orienting_reflex_trace_ends_the_run_863(monkeypatch, tmp_path):
     with pytest.raises(_SiteFault) as excinfo:
         _run(
