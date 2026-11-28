@@ -41,6 +41,13 @@ input through ``ctrl.clear_pending_user_input()`` (the same three keys), the sta
 instead of resetting the stall counter. ``note_llm_turn`` lives here (moved verbatim from ``tool_dispatch``, its
 only caller being the intake): a timeout or parse-failure turn counts as failed, and any other turn resets the
 counter and pops ``state.data["machine_timeout_retries"]``, a state write the inline block never made.
+
+**One intake since #1743.** Everything after the poll is ``accept_llm_proposal``, which §6's PFC deliberation
+(``loop_request._deliberate``) calls too: it used to install its answers on ``ctrl`` itself, so an action-less one
+(installed past every check here) blocked every later submit, and its ``next_actions`` were dropped. The split
+changed no line of the moved text except the one ``declined_is_failure`` gate (``accept_llm_proposal``'s docstring)
+and the D13 comment naming the install sites, and added one statement at its end: a turn that ends with no action and
+no retry records the sim sink's no-op marker (``_record_declined_turn``).
 """
 
 from __future__ import annotations
@@ -53,6 +60,7 @@ from typing import Any
 from maxim.agents.bus import StreamEvent
 from maxim.agents.llm_types import LLMProposal
 from maxim.runtime.loop_controller import _handle_planning_failure
+from maxim.runtime.loop_perception import is_tool_followup
 from maxim.utils.cloud_redaction import text_shape
 from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
@@ -108,11 +116,33 @@ def _drop_stale_proposal(proposal: Any, *, ctrl: Any, llm_worker: Any, sim: Any,
         ctrl,
         llm_worker,
         sim,
-        reason="stale_proposal_dropped",
+        reason=_stale_reason(),
         original_request=proposal.original_request,
         exhausted_status="planning_failed",
     )
     return None, bool(exhausted)
+
+
+def _stale_reason() -> str:
+    """``sinks.NOOP_STALE``, read lazily: the no-op vocabulary this module writes and the console reads (#1743)."""
+    from maxim.simulation.sinks import NOOP_STALE
+
+    return NOOP_STALE
+
+
+def _error_reason(error: Any) -> str:
+    """An error answer's reason, ``sinks.noop_error_reason``: URLs reduced to their origin before the cut (#997)."""
+    from maxim.simulation.sinks import noop_error_reason
+
+    return noop_error_reason(error)
+
+
+def _redacted(error: Any) -> str:
+    """An error's text with every URL reduced to its origin, for the logs (an LLM error can carry ``user:pw@`` or a
+    private path, #997); cut AFTER this, never before."""
+    from maxim.utils.http import redact_urls
+
+    return redact_urls(str(error))
 
 
 def _proposal_without_action_reason(proposal: Any) -> str | None:
@@ -271,128 +301,237 @@ def take_llm_proposal(
                 "EXEC",
                 f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}",
             )
+        return accept_llm_proposal(
+            new_proposal,
+            llm_worker=llm_worker,
+            ctrl=ctrl,
+            sim=sim,
+            state=state,
+            executor=executor,
+            action_sink=action_sink,
+            on_event=on_event,
+            last_surfaced_tools=last_surfaced_tools,
+            pending_next_actions=pending_next_actions,
+            _planning_liveness_on=_planning_liveness_on,
+            _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
+            declined_is_failure=True,  # §2's rule: an action-less answer is a planning failure, retried
+            ends_turn=answers_a_fresh_input(new_proposal),
+        )
+    return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
 
-            new_proposal, _stale_exhausted = _drop_stale_proposal(
-                new_proposal, ctrl=ctrl, llm_worker=llm_worker, sim=sim, liveness_on=_planning_liveness_on
+
+def accept_llm_proposal(
+    new_proposal: Any,
+    *,
+    llm_worker: Any,
+    ctrl: Any,
+    sim: Any,
+    state: Any,
+    executor: Any,
+    action_sink: Any,
+    on_event: Any,
+    last_surfaced_tools: list[str],
+    pending_next_actions: list[dict[str, Any]],
+    _planning_liveness_on: bool,
+    _consecutive_llm_fallbacks: int,
+    declined_is_failure: bool,
+    ends_turn: bool,
+) -> IntakeOutcome:
+    """The ONE intake of a worker's answer (#1743): §2 calls it with what it polled, ``loop_request._deliberate``
+    with each answer the PFC deliberation consumed outside §2's poll. A stale answer and a sim-skipped fallback are
+    dropped, the turn is counted (#1185), and only an answer with an action is installed (its ``next_actions``
+    queued); an error is a planning failure. ``new_proposal`` may be None (nothing polled): nothing happens.
+
+    ``declined_is_failure``: with planning liveness on, whether an answer with no action and no error is a planning
+    failure, retried boundedly (§2's rule, the default), or a turn deliberately declined, dropped with no retry (the
+    deliberation path, owner decision 2026-11-24: actions per turn is a measured quantity, executor F3 on
+    ``agent_loop._wait_for_proposal``). Either way it is never installed: an installed action-less proposal blocks
+    §6's ``pending_proposal is None`` guard and nothing ever clears it. It is required, so a caller states its policy.
+    No shipped loop runs planning liveness with a deliberation today (the narrator has no enrichment pipeline; the
+    AUT and the CLI have liveness off), so the False branch guards a future one; with liveness off both callers drop
+    the answer alike, and leave the pending user input for ``has_pending_llm_input``'s own 30 s expiry.
+
+    ``ends_turn``: whether this answer ends the sim bridge's current turn, so that, when the turn ends with nothing
+    done and nothing retried, ``_record_declined_turn`` tells the bridge (owner decision 2026-11-24). Both callers
+    pass ``answers_a_fresh_input``: §2 of the answer it polled, the deliberation of its cycle-1 answer (its
+    continuations carry no triggering input), so an answer to a tool follow-up or to a deliberation's continuation,
+    which can land after the bridge has moved on, never ends the next turn early.
+
+    For the deliberation the stale rule bites in one case: when cycles 2+ stop early (a wait timed out), the answer
+    they return is an earlier cycle's, possibly older than ``_STALE_PROPOSAL_AGE_S``, and it is dropped, not run.
+    """
+    _planning_liveness_exhausted = False
+    if new_proposal:
+        new_proposal, _stale_exhausted = _drop_stale_proposal(
+            new_proposal, ctrl=ctrl, llm_worker=llm_worker, sim=sim, liveness_on=_planning_liveness_on
+        )
+        _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
+        if new_proposal is None and ends_turn and not _planning_liveness_on:  # dropped, not retried: the turn is over
+            _record_declined_turn(action_sink, _stale_reason())
+    # In simulation mode, skip fallback proposals — wait for real LLM
+    if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
+        _dropped = _drop_skipped_fallback(
+            new_proposal=new_proposal,
+            sim=sim,
+            ctrl=ctrl,
+            state=state,
+            executor=executor,
+            llm_worker=llm_worker,
+            action_sink=action_sink,
+            _planning_liveness_on=_planning_liveness_on,
+            _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
+        )
+        new_proposal = None  # dropped: the helper's own ``new_proposal = None`` is its local
+        _consecutive_llm_fallbacks = _dropped.consecutive_llm_fallbacks
+        _planning_liveness_exhausted = _planning_liveness_exhausted or _dropped.exhausted
+    if new_proposal:
+        _consecutive_llm_fallbacks = note_llm_turn(new_proposal, state, _consecutive_llm_fallbacks)  # #1185
+        if callable(on_event):
+            try:
+                on_event(StreamEvent("inference_end", {"has_proposal": True}))
+            except Exception as e:
+                log_swallowed_exception(e, operation="on_event:inference_end")
+        if new_proposal.action:
+            tool_name = new_proposal.action.get("tool_name", "unknown")
+            logger.info("LLM proposal received: tool=%s, confidence=%.2f", tool_name, new_proposal.confidence)
+            sim.log("EXEC", f"LLM proposes: {tool_name} (confidence={new_proposal.confidence:.2f})")
+            # Log to agentic stream
+            log_agentic(
+                "agent_loop",
+                "llm_response",
+                {
+                    "tool": tool_name,
+                    "confidence": round(new_proposal.confidence, 2),
+                    "reasoning": text_shape(new_proposal.reasoning)
+                    if new_proposal.reasoning
+                    else None,  # #1775: shape only
+                    "has_plan": bool(getattr(new_proposal, "plan_text", None)),
+                    "requires_approval": getattr(new_proposal, "requires_approval", False),
+                },
             )
-            _planning_liveness_exhausted = _planning_liveness_exhausted or _stale_exhausted
-        # In simulation mode, skip fallback proposals — wait for real LLM
-        if new_proposal and sim.should_skip_fallback_proposal(new_proposal):
-            _dropped = _drop_skipped_fallback(
-                new_proposal=new_proposal,
-                sim=sim,
-                ctrl=ctrl,
-                state=state,
-                executor=executor,
-                llm_worker=llm_worker,
-                action_sink=action_sink,
-                _planning_liveness_on=_planning_liveness_on,
-                _consecutive_llm_fallbacks=_consecutive_llm_fallbacks,
-            )
-            new_proposal = None  # dropped: the helper's own ``new_proposal = None`` is its local
-            _consecutive_llm_fallbacks = _dropped.consecutive_llm_fallbacks
-            _planning_liveness_exhausted = _planning_liveness_exhausted or _dropped.exhausted
-        if new_proposal:
-            _consecutive_llm_fallbacks = note_llm_turn(new_proposal, state, _consecutive_llm_fallbacks)  # #1185
-            if callable(on_event):
-                try:
-                    on_event(StreamEvent("inference_end", {"has_proposal": True}))
-                except Exception as e:
-                    log_swallowed_exception(e, operation="on_event:inference_end")
-            if new_proposal.action:
-                tool_name = new_proposal.action.get("tool_name", "unknown")
-                logger.info("LLM proposal received: tool=%s, confidence=%.2f", tool_name, new_proposal.confidence)
-                sim.log("EXEC", f"LLM proposes: {tool_name} (confidence={new_proposal.confidence:.2f})")
-                # Log to agentic stream
+            # D13: installing an executable proposal resets the
+            # planning-failure streak — enforced by the property
+            # setter on LoopController, so every install site
+            # (including the multi-step path; the deliberation
+            # installs through here since #1743) recovers.
+            ctrl.pending_proposal = new_proposal
+            # Record surfaced-but-unused signal for learned tool index
+            _bridge = getattr(executor, "_tool_pain_bridge", None)
+            _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
+            if _tidx and last_surfaced_tools:
+                _goal = state.data.get("active_goal", "") or ""
+                if _goal:
+                    _tidx.record_surfaced_but_unused(_goal, last_surfaced_tools, tool_name)
+            # Clear pending user input now that LLM has responded
+            state.data.pop("pending_user_input", None)
+            state.data.pop("pending_user_input_time", None)
+            state.data.pop("pending_user_input_source", None)
+            # Queue any next_actions for sequential execution
+            if new_proposal.next_actions:
+                pending_next_actions.extend(new_proposal.next_actions)
                 log_agentic(
                     "agent_loop",
-                    "llm_response",
-                    {
-                        "tool": tool_name,
-                        "confidence": round(new_proposal.confidence, 2),
-                        "reasoning": text_shape(new_proposal.reasoning)
-                        if new_proposal.reasoning
-                        else None,  # #1775: shape only
-                        "has_plan": bool(getattr(new_proposal, "plan_text", None)),
-                        "requires_approval": getattr(new_proposal, "requires_approval", False),
-                    },
+                    "multi_step_queued",
+                    {"count": len(new_proposal.next_actions)},
                 )
-                # D13: installing an executable proposal resets the
-                # planning-failure streak — enforced by the property
-                # setter on LoopController, so every install site
-                # (including the multi-step and deliberation paths)
-                # recovers, not just this one.
-                ctrl.pending_proposal = new_proposal
-                # Record surfaced-but-unused signal for learned tool index
-                _bridge = getattr(executor, "_tool_pain_bridge", None)
-                _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
-                if _tidx and last_surfaced_tools:
-                    _goal = state.data.get("active_goal", "") or ""
-                    if _goal:
-                        _tidx.record_surfaced_but_unused(_goal, last_surfaced_tools, tool_name)
-                # Clear pending user input now that LLM has responded
+        elif new_proposal.error:
+            # Clear pending user input on error too
+            state.data.pop("pending_user_input", None)
+            state.data.pop("pending_user_input_time", None)
+            state.data.pop("pending_user_input_source", None)
+            logger.warning("LLM proposal error: %s", _redacted(new_proposal.error))
+            sim.log("EXEC", f"DROPPED: proposal error — {_redacted(new_proposal.error)}")
+            log_agentic(
+                "agent_loop",
+                "error",
+                {"context": "llm_proposal", "error": _redacted(new_proposal.error)[:100]},
+                level="WARNING",
+            )
+            # D13: an error proposal is also a consumed planning turn
+            # with nothing executed. Shutdown is deliberate, not a
+            # liveness failure.
+            if (
+                _planning_liveness_on
+                and new_proposal.error != "shutdown"
+                and _handle_planning_failure(
+                    ctrl,
+                    llm_worker,
+                    sim,
+                    reason=_error_reason(new_proposal.error),  # URLs reduced before the cut (#997, #1743)
+                    original_request=new_proposal.original_request,
+                )
+            ):
+                _planning_liveness_exhausted = True
+        elif _planning_liveness_on:
+            # A syntactically valid response can still contain no
+            # action and no error. Pre-fix this was stamped as
+            # received and then ignored forever, permanently
+            # disabling the idle backstop. Treat it as an explicit
+            # non-executable planning outcome and retry boundedly.
+            _no_action_reason = _proposal_without_action_reason(new_proposal)
+            if _no_action_reason is not None:
                 state.data.pop("pending_user_input", None)
                 state.data.pop("pending_user_input_time", None)
                 state.data.pop("pending_user_input_source", None)
-                # Queue any next_actions for sequential execution
-                if new_proposal.next_actions:
-                    pending_next_actions.extend(new_proposal.next_actions)
-                    log_agentic(
-                        "agent_loop",
-                        "multi_step_queued",
-                        {"count": len(new_proposal.next_actions)},
-                    )
-            elif new_proposal.error:
-                # Clear pending user input on error too
-                state.data.pop("pending_user_input", None)
-                state.data.pop("pending_user_input_time", None)
-                state.data.pop("pending_user_input_source", None)
-                logger.warning("LLM proposal error: %s", new_proposal.error)
-                sim.log("EXEC", f"DROPPED: proposal error — {new_proposal.error}")
-                log_agentic(
-                    "agent_loop",
-                    "error",
-                    {"context": "llm_proposal", "error": str(new_proposal.error)[:100]},
-                    level="WARNING",
-                )
-                # D13: an error proposal is also a consumed planning turn
-                # with nothing executed. Shutdown is deliberate, not a
-                # liveness failure.
-                if (
-                    _planning_liveness_on
-                    and new_proposal.error != "shutdown"
-                    and _handle_planning_failure(
-                        ctrl,
-                        llm_worker,
-                        sim,
-                        reason=f"proposal_error:{str(new_proposal.error)[:60]}",
-                        original_request=new_proposal.original_request,
-                    )
+                logger.warning("LLM proposal had no executable action: %s", _no_action_reason)
+                sim.log("EXEC", f"DROPPED: {_no_action_reason}")
+                if declined_is_failure and _handle_planning_failure(
+                    ctrl,
+                    llm_worker,
+                    sim,
+                    reason=_no_action_reason,
+                    original_request=new_proposal.original_request,
+                    exhausted_status="planning_failed",
                 ):
                     _planning_liveness_exhausted = True
-            elif _planning_liveness_on:
-                # A syntactically valid response can still contain no
-                # action and no error. Pre-fix this was stamped as
-                # received and then ignored forever, permanently
-                # disabling the idle backstop. Treat it as an explicit
-                # non-executable planning outcome and retry boundedly.
-                _no_action_reason = _proposal_without_action_reason(new_proposal)
-                if _no_action_reason is not None:
-                    state.data.pop("pending_user_input", None)
-                    state.data.pop("pending_user_input_time", None)
-                    state.data.pop("pending_user_input_source", None)
-                    logger.warning("LLM proposal had no executable action: %s", _no_action_reason)
-                    sim.log("EXEC", f"DROPPED: {_no_action_reason}")
-                    if _handle_planning_failure(
-                        ctrl,
-                        llm_worker,
-                        sim,
-                        reason=_no_action_reason,
-                        original_request=new_proposal.original_request,
-                        exhausted_status="planning_failed",
-                    ):
-                        _planning_liveness_exhausted = True
+        if ends_turn and _turn_is_over(new_proposal, liveness_on=_planning_liveness_on, retries=declined_is_failure):
+            _record_declined_turn(
+                action_sink,
+                _proposal_without_action_reason(new_proposal) or _error_reason(new_proposal.error),
+            )
     return IntakeOutcome(exhausted=_planning_liveness_exhausted, consecutive_llm_fallbacks=_consecutive_llm_fallbacks)
+
+
+def answers_a_fresh_input(proposal: Any) -> bool:
+    """Whether §2's answer answers a fresh input (a person's words or a plan modification), the thing the sim bridge's
+    current turn waits on: its request had a triggering input and no tool follow-up among its inputs. A deliberation
+    continuation (no triggering input) and a tool follow-up's answer do not: they can arrive after the bridge settled
+    on an earlier record and moved on (#1743 delta round).
+
+    A proxy, not a turn binding: the bridge has no turn token (it counts any growth of the sink), so a fresh input's
+    answer that lands after the bridge's response timeout still falls in the next turn, exactly as a late action
+    always has."""
+    request = getattr(proposal, "original_request", None)
+    if request is None or not getattr(request, "triggering_input", ""):
+        return False
+    inputs = getattr(getattr(request, "context", None), "cli_inputs", None) or []
+    return not any(is_tool_followup(text) for text in inputs)
+
+
+def _turn_is_over(proposal: Any, *, liveness_on: bool, retries: bool) -> bool:
+    """An answer with no action that nothing retries: an error (but shutdown, which ends the run) is retried only under
+    planning liveness; an action-less answer only under liveness with ``declined_is_failure``."""
+    if proposal.action:
+        return False
+    if proposal.error:
+        return proposal.error != "shutdown" and not liveness_on
+    return not (liveness_on and retries)
+
+
+def _record_declined_turn(action_sink: Any, reason: str) -> None:
+    """A turn that ended with nothing done and nothing retried records the sink's no-op marker
+    (``sinks.DELIBERATION_NOOP``): the deliberation's declined turns and §2's (an action-less answer, an error or a
+    stale drop, all with planning liveness off). The sim bridge then sees the AUT answered and settles instead of
+    waiting out its response timeout; it counts the marker as ``noop_count``, never as an action, so ``timed_out``
+    and the action cap are unchanged. Built in 0.8 (Stage 4, F2), first recorded by #1743 (owner decision
+    2026-11-24), through the ``ActionSink`` protocol's ``record`` as ``_drop_skipped_fallback``'s marker is."""
+    if action_sink is None:
+        return
+    from maxim.simulation.sinks import DELIBERATION_NOOP, ActionRecord
+
+    action_sink.record(
+        ActionRecord(timestamp=time.time(), tool_name=DELIBERATION_NOOP, result_success=True, result_output=reason)
+    )
 
 
 def take_queued_next_action(*, ctrl: Any, pending_next_actions: list[dict[str, Any]]) -> None:

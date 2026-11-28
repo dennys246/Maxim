@@ -468,3 +468,19 @@ def test_exp42_asks_for_research_only_where_it_is_substrate_telemetry(
         aut_model=aut_model,
     )
     assert cmds == [expected]
+
+
+@pytest.mark.parametrize("harness", ["exp41", "exp42"])
+def test_action_loaders_leave_out_the_loops_markers(harness, request, tmp_path):
+    """The loop's own markers (``sinks.SYNTHETIC_TOOL_NAMES``) are not executed tools: since #1743 a declined turn
+    records ``_deliberation_noop`` in production, and an llm-primary run (Exp 44) would count it as an action."""
+    module = request.getfixturevalue(harness)
+    rows = [
+        {"_record_kind": "header"},
+        {"tool": "respond"},
+        {"tool": "_deliberation_noop"},
+        {"tool": "_llm_unavailable"},
+        {"action": {"tool_name": "bash"}},
+    ]
+    (tmp_path / "actions.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert module._load_action_tools(tmp_path) == ["respond", "bash"]
