@@ -140,7 +140,7 @@
       "missing": 43
     },
     "maxim/retrieval": {
-      "percent": 79.3,
+      "percent": 80.4,
       "missing": 54
     },
     "maxim/runtime": {
@@ -164,8 +164,8 @@
       "missing": 317
     },
     "maxim/time": {
-      "percent": 84.2,
-      "missing": 100
+      "percent": 86.6,
+      "missing": 90
     },
     "maxim/tools": {
       "percent": 72.3,
