@@ -1767,7 +1767,7 @@ def _run_agentic_loop_body(
         # ─────────────────────────────────────────────────────────────────
         # 4. EXECUTE PENDING LLM ACTION (if autonomy allows)
         # ─────────────────────────────────────────────────────────────────
-        _exec = execute_pending_tick(  # §4, runtime/loop_execute.py (slice 8)
+        _exec_out = execute_pending_tick(  # §4, runtime/loop_execute.py (slice 8)
             ctrl=ctrl,
             memory=memory,
             executor=executor,
@@ -1793,10 +1793,10 @@ def _run_agentic_loop_body(
             _consecutive_same_tool_count=_consecutive_same_tool_count,
             _consecutive_same_content_hash=_consecutive_same_content_hash,
         )
-        _consecutive_same_tool = _exec.consecutive_same_tool  # read on the next pass's §4
-        _consecutive_same_tool_count = _exec.consecutive_same_tool_count
-        _consecutive_same_content_hash = _exec.consecutive_same_content_hash
-        if _exec.skip_rest_of_pass:
+        _consecutive_same_tool = _exec_out.consecutive_same_tool  # read on the next pass's §4
+        _consecutive_same_tool_count = _exec_out.consecutive_same_tool_count
+        _consecutive_same_content_hash = _exec_out.consecutive_same_content_hash
+        if _exec_out.skip_rest_of_pass:
             continue
 
         # ─────────────────────────────────────────────────────────────────

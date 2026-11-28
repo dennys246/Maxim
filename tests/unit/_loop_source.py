@@ -46,12 +46,16 @@ wrapper), and every pin below reads the body:
   - ``test_talk_roster_1412.py::test_both_roster_sites_in_the_loop_use_the_one_filter`` (two ``_advertisable_tools(``
     calls, no inline ``executor.permits(t)``): reads ``loop_execute._same_tool_cap`` (§4's loop-cap message) since
     slice 8, plus ``loop_request._surface_tools`` (§6's roster) since slice 7b.
+  - ``test_wm_percept_framing_1519.py::test_a_model_proposed_tool_name_is_cleaned_before_any_system_note`` (every
+    name in the cap note's f-string goes through ``safe_tool_name``) and
+    ``::test_safe_tool_name_is_capped_and_the_cap_lists_only_real_names`` (the cap lists only real names): read the
+    whole ``loop_execute`` module since slice 8, where the cap's note now lives.
   - ``test_tool_output_framing.py`` and ``test_planning_liveness.py``: ``inspect.getsource`` of the
     module-level helpers ``_followup_synthetic_input`` (read from ``loop_submit`` since slice 7a), ``_drop_stale_proposal``
     and ``_proposal_without_action_reason`` (read from ``loop_intake`` since slice 6; no re-export).
 
 Slice 8 (§4's pending-action execution -> ``loop_execute.execute_pending_tick``, 1.3.6) re-pointed the roster pin's
-loop-cap half; its characterization, ``test_loop_execute_characterization.py``, is behavioural through the public entry.
+loop-cap half and the two #1519 cap-note pins (whole-module ``inspect.getsource``); its characterization, ``test_loop_execute_characterization.py``, is behavioural through the public entry.
 
 Slice 7b (§6's request assembly and deliberation -> ``loop_request.submit_tick``, 1.3.6) re-pointed the two roster
 pins above; its characterization, ``test_loop_submit_request_characterization.py``, is behavioural through the public

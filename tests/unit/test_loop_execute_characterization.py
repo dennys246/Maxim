@@ -34,7 +34,7 @@ from tests.policy_helpers import TEST_POLICY
 PROBE = "probe_execute"  # the main registered tool
 OTHER = "probe_execute_other"  # a second one, for "another tool resets the count"
 FINISH = "probe_execute_finish"  # a tool that ends the run (``Tool.ends_run``), for #1451's re-plan rule
-CAP = 5  # agent_loop's ``_MAX_CONSECUTIVE_SAME_TOOL``
+CAP = 5  # ``loop_execute._MAX_CONSECUTIVE_SAME_TOOL``
 
 
 def _proposal(
