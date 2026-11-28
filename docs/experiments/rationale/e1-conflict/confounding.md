@@ -203,7 +203,7 @@ does, and B1's FEAR arm logged 13–14 shore `escape_water` calls per seed. In E
 - **(a)** Extra escape successes between episodes inflate the causal race behind WANT (D1).
 - **(b)** With bread in hand and an eat link of +0.64, MAXIM can eat on the shore between `prepare` and the teleport.
   It then probes with fewer bread or a food level out of band, after the read-back has passed.
-- **(c)** Shore calls count toward the consecutive same-tool cap (`agent_loop.py::_MAX_CONSECUTIVE_SAME_TOOL` = 5,
+- **(c)** Shore calls count toward the consecutive same-tool cap (`loop_execute.py::_MAX_CONSECUTIVE_SAME_TOOL` = 5 (in `agent_loop.py` before slice 8),
   identical params), which can cap MAXIM's first in-water escape. Nothing resets the cap at arming.
 
 **Fix:**

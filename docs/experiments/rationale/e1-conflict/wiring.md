@@ -319,4 +319,4 @@ Put this table in the prereg.
 - **Session-end decay.** `on_session_end` runs `decay_all(0.95)` and a full sleep consolidation once per loop window, so once per episode, because `consolidation="full"`. Measured: no toy cell changes. Disclose it.
 - **Temporal credit.** It can raise `reward_bias` on `tool:X`: ToolPainBridge temporal events, then the reaction distributor, then `credit_node`, positive-only, ≤ 0.2. Unmodelled. `score_components.reward_bias` already carries it, so report it.
 - **The replay's variant roster.** It appends item 4's verbs and guesses the prefix. The live variant roster must be stamped (B1's `tool_sets`). RANDOM's pain rate depends on roster size: 26 tools versus 34.
-- **The same-tool cap.** It has no substrate exemption (`agent_loop._MAX_CONSECUTIVE_SAME_TOOL` 5). A greedy MAXIM's repeated failing `eat` loses every sixth tick. Record those drops (SF-5).
+- **The same-tool cap.** It has no substrate exemption (`loop_execute._MAX_CONSECUTIVE_SAME_TOOL` 5, in `agent_loop` before slice 8). A greedy MAXIM's repeated failing `eat` loses every sixth tick. Record those drops (SF-5).

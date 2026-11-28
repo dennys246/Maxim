@@ -43,12 +43,10 @@ def test_the_forbid_check_is_static_not_the_moment() -> None:
 
 def test_both_roster_sites_in_the_loop_use_the_one_filter() -> None:
     """The prompt roster and the loop-cap message's "available tools" list: both advertise tools to the model."""
-    from maxim.runtime import agent_loop
+    from maxim.runtime import loop_execute, loop_request
 
-    from maxim.runtime import loop_request
-
-    # The loop-cap message stays in the body (§4); the prompt roster moved with §6 (slice 7b).
-    src = inspect.getsource(agent_loop._run_agentic_loop_body) + inspect.getsource(loop_request._surface_tools)
+    # The loop-cap message moved with §4 (slice 8, ``_same_tool_cap``); the prompt roster moved with §6 (slice 7b).
+    src = inspect.getsource(loop_execute._same_tool_cap) + inspect.getsource(loop_request._surface_tools)
     assert src.count("_advertisable_tools(") == 2
     assert "executor.permits(t)" not in src
 
