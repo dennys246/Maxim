@@ -19,6 +19,7 @@ Nothing patches ``agent_loop`` or the module §2 moves to.
 
 from __future__ import annotations
 
+import re
 import logging
 import sys
 import threading
@@ -37,6 +38,12 @@ PROBE = "probe_intake"  # the one registered tool
 UNKNOWN = "no_such_tool_intake"  # a name no registry carries
 EVENTS = ("llm_response", "multi_step_queued", "error", "planning_retry", "planning_liveness_exhausted")
 PENDING_KEYS = ("pending_user_input", "pending_user_input_time", "pending_user_input_source")
+
+
+def _has_origin(text: str) -> bool:
+    """The reduced origin appears WHOLE: no more host or port characters follow it, so a lookalike such as
+    ``https://llm.internal:8100.evil`` does not count (an exact check, not a substring one)."""
+    return re.search(re.escape("https://llm.internal:8100") + r"(?![A-Za-z0-9.:-])", text) is not None
 
 
 def _proposal(
@@ -386,7 +393,7 @@ def test_an_error_proposal_with_a_url_logs_only_its_origin(monkeypatch, tmp_path
     obs = _run(monkeypatch, tmp_path, {0: _proposal(None, error=err)}, steps=3)
     logged = [r.getMessage() for r in caplog.records if "LLM proposal error" in r.getMessage()]
     dropped = [m for m in sim_lines if m.startswith("DROPPED: proposal error")]
-    assert logged and dropped and all("https://llm.internal:8100" in m for m in logged + dropped)
+    assert logged and dropped and all(_has_origin(m) for m in logged + dropped)
     texts = logged + dropped + [str(data) for _, data in obs.events]
     assert obs.events and not any(s in t for t in texts for s in ("hunter2", "user:", "/v1/chat", "SECRET"))
 

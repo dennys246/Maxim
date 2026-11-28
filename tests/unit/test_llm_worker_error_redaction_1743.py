@@ -6,6 +6,7 @@ which reduces it at each of its sinks (``tests/unit/test_loop_intake_characteriz
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -17,6 +18,12 @@ ERR = "connect failed: https://user:hunter2@llm.internal:8100/v1/chat?key=SECRET
 class _UnusedLLM:
     def generate_json(self, *_a: Any, **_k: Any) -> dict[str, Any] | None:
         raise AssertionError("the planning call is not reached: the prompt build raises first")
+
+
+def _has_origin(text: str) -> bool:
+    """The reduced origin appears WHOLE: no more host or port characters follow it, so a lookalike such as
+    ``https://llm.internal:8100.evil`` does not count (an exact check, not a substring one)."""
+    return re.search(re.escape("https://llm.internal:8100") + r"(?![A-Za-z0-9.:-])", text) is not None
 
 
 def _request() -> Any:
@@ -54,5 +61,5 @@ def test_the_exception_sim_log_line_keeps_only_the_origin(monkeypatch: pytest.Mo
     proposal = worker._process_request(_request())
     assert proposal is not None and proposal.error  # the error proposal the loop's intake reads
     logged = [m for m in lines if m.startswith("LLMProposal EXCEPTION")]
-    assert logged and all("https://llm.internal:8100" in m for m in logged)
+    assert logged and all(_has_origin(m) for m in logged)
     assert not any(s in m for m in logged for s in ("hunter2", "user:", "/v1/chat", "SECRET"))
