@@ -500,7 +500,7 @@ def test_security_refusals_are_not_degraded_to_running_without_the_llm(monkeypat
         ro._build_research_llm()
     cli_src = (REPO / "src/maxim/cli.py").read_text()
     server_mode = cli_src[cli_src.index("def _start_server_llm(") :]  # server mode's LLM start (#1338 moved it)
-    assert server_mode.index("except SECURITY_REFUSALS") < server_mode.index("except Exception as _srv_err")
+    assert server_mode.index("except RUN_REFUSALS") < server_mode.index("except Exception as _srv_err")  # #1601
 
 
 def test_an_offline_refusal_is_a_security_refusal_too() -> None:
