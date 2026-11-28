@@ -409,7 +409,7 @@ def test_state_home_puts_the_state_file_in_the_given_root_only_1264(monkeypatch,
 
 
 def _state_home_args(rel: str) -> list[str | None]:
-    """Per ``run_agentic_loop(...)`` call in ``src/maxim/<rel>``, in source order: its ``state_home=`` argument as
+    """Per ``run_agentic_loop(...)`` or ``run_loop_stack(...)`` call in ``src/maxim/<rel>``, in source order: its ``state_home=`` argument as
     source text, or None when it passes none (the data home)."""
     import ast
 
@@ -418,7 +418,7 @@ def _state_home_args(rel: str) -> list[str | None]:
     for node in ast.walk(ast.parse(src)):
         if isinstance(node, ast.Call):
             name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
-            if name == "run_agentic_loop":
+            if name in ("run_agentic_loop", "run_loop_stack"):  # a migrated site calls the loop through run_loop_stack
                 kw = {k.arg: ast.unparse(k.value) for k in node.keywords if k.arg}
                 found.append((node.lineno, kw.get("state_home")))
     return [arg for _, arg in sorted(found)]
@@ -433,7 +433,8 @@ def _state_home_args(rel: str) -> list[str | None]:
         ("simulation/tools.py", ["self._sim_tmpdir"]),  # the sub-AUT: its parent sim's sandbox
         ("simulation/interactive.py", ["run_tmpdir"]),
         # the data home (minecraft_harness passes it through _loop_kwargs, pinned in test_minecraft_harness)
-        ("console/handle.py", [None]),
+        # talk states it explicitly since it calls run_loop_stack (loop_stack_builder.md PR 1): still the data home
+        ("console/handle.py", ["None"]),
         # home_dir, else the data home (_api_home): D15's home_dir half, owner decision 2026-11-18
         ("api.py", ["effective_home"]),
         ("embodied_runtime/agentic_runtime.py", [None]),

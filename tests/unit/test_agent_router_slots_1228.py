@@ -239,16 +239,21 @@ def test_the_console_talk_agent_is_handed_the_talk_router(tmp_path: Path, monkey
         return real(*a, **kw)
 
     monkeypatch.setattr(MA, "MaximAgent", _spy)
-    monkeypatch.setattr(agent_loop, "run_agentic_loop", lambda *a, **k: None)
+    reached: list[Any] = []
+    monkeypatch.setattr(agent_loop, "run_agentic_loop", lambda *a, **k: reached.append(k.get("llm_worker")))
     h = _handle()
     talk = _Router("talk")
     worker = MagicMock(name="worker")
     worker.router = talk
+    worker.acting_coach, worker.is_embodied = None, False  # LLMWorker's defaults: run_loop_stack checks both
     with h._talk_lock:
         h._launch_talk_loop(worker, tmp_path / "ws")
     if h._talk_thread is not None:
         h._talk_thread.join(timeout=10)
     assert held == [talk], held
+    # the loop was really reached: a raise inside the talk thread is swallowed into logger.exception, so without
+    # this the router assertion above would pass with the loop never run (loop_stack_builder.md, delta 2 F3)
+    assert reached == [worker], reached
 
 
 # ── a spawned sub-simulation's agent (owner decision A) ───────────────────────
