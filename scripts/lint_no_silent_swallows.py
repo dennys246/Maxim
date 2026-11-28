@@ -113,6 +113,7 @@ MEASUREMENT_PATH = [
     "src/maxim/runtime/loop_intake.py",  # the LLM proposal intake (section 2), from agent_loop.py (slice 6, 1.3.6)
     "src/maxim/runtime/loop_submit.py",  # section 6's submit gate (context, gate), from agent_loop.py (slice 7a)
     "src/maxim/runtime/loop_request.py",  # section 6's request assembly + deliberation, from agent_loop.py (slice 7b)
+    "src/maxim/runtime/loop_execute.py",  # section 4, the pending-action execution, from agent_loop.py (slice 8)
     "src/maxim/runtime/loop_controller.py",  # the controller's phase handlers (1.3.2 slice 2), fail-loud Stage 3 (#1134)
     "src/maxim/runtime/loop_state.py",  # loop state + wake predicates (1.3.2 slice 2), fail-loud Stage 3 (#1134)
     "src/maxim/similarity/encoder.py",
