@@ -511,7 +511,11 @@ class TestLoopWiringPins:
         assert "fallback_proposal_dropped" in loop_text
 
     def test_error_drop_calls_handler_and_excludes_shutdown(self, loop_text):
-        assert "proposal_error:" in loop_text
+        from maxim.runtime.loop_intake import _error_reason
+
+        # The reason is built by one helper since #1743 (URLs reduced before the cut).
+        assert "_error_reason(new_proposal.error)" in loop_text
+        assert _error_reason("boom").startswith("proposal_error:")
         assert 'new_proposal.error != "shutdown"' in loop_text
 
     def test_stale_drop_calls_handler(self, loop_text):
@@ -520,7 +524,9 @@ class TestLoopWiringPins:
         from tests.unit._loop_source import loop_call_count
 
         assert loop_call_count("_drop_stale_proposal") >= 1  # a call, not the def
-        assert "stale_proposal_dropped" in inspect.getsource(loop_intake._drop_stale_proposal)  # §2's leaf (slice 6)
+        # §2's leaf (slice 6); the reason value lives in sinks since #1743.
+        assert "reason=_stale_reason()" in inspect.getsource(loop_intake._drop_stale_proposal)
+        assert loop_intake._stale_reason() == "stale_proposal_dropped"
 
     def test_idle_gate_has_terminal_job_backstop(self, loop_text):
         assert "planning_job_completed_without_proposal" in loop_text
@@ -583,7 +589,10 @@ class TestLoopWiringPins:
         from maxim.runtime import agent_loop
 
         # The body returns the abort its module-level builder makes (#1438 PR 0's mypy fold), never raises it.
-        assert "return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted else None" in loop_src
+        assert (  # #1743: the latch too, for a budget spent on the run's last pass
+            "return _planning_liveness_abort(ctrl) if _planning_liveness_exhausted or ctrl.planning_exhausted else None"
+            in loop_src
+        )
         assert "raise PlanningLivenessExhausted(" not in loop_src
         assert "return PlanningLivenessExhausted(" in inspect.getsource(agent_loop._planning_liveness_abort)
         wrapper = ast.parse(textwrap.dedent(inspect.getsource(agent_loop.run_agentic_loop))).body[0]

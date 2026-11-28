@@ -1534,6 +1534,8 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         _talk_lock.release()
 
     timed_out = bool(result.get("timed_out"))
+    from maxim.console.handle import nothing_done_text  # the wording's one home (#1743)
+
     return RunAccepted(
         # Per-turn id so a client can correlate a turn with its event burst;
         # events during the turn carry run_id=_TALK_RUN_ID (the scope), while
@@ -1543,7 +1545,9 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         status="completed",
         reply=result.get("response"),
         detail=(
-            "Turn timed out before a reply — the response may still arrive on /ws."
+            f"No reply: {nothing_done_text(result.get('actions'))}."  # the loop's no-op marker settled it (#1743)
+            if timed_out and result.get("noop_count")
+            else "Turn timed out before a reply — the response may still arrive on /ws."
             if timed_out
             else f"Turn complete ({len(result.get('actions') or [])} action(s)); also on /ws as kind='response'."
         ),

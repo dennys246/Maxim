@@ -23,6 +23,12 @@ those two aliases became their ``ctrl.`` fields; nothing else changed but its ex
 before. The loop-alive heartbeat and the ``loop_iteration`` event before section 0 stay in the loop (they
 never exit a pass).
 
+**Not verbatim since #1743.** Right after the stop checks the gate returns ``EXHAUSTED`` when planning liveness is on
+and ``ctrl.planning_exhausted`` is latched: the exhaustion DECISION is read from the latch, so a budget spent where
+no section breaks (§6's deliberation intake) cannot leave the loop idling, and the backstop's own ``not
+ctrl.planning_exhausted`` test, which that return made unreachable, was removed. Every latch writer is a D13
+handler, each run only under planning liveness.
+
 **Helpers.** The four that only this block called moved here with it, bodies verbatim (rule (a)):
 ``tick_embodiment_drift``, ``_loop_live_tick``, ``_maybe_auto_revert_display``, ``_loop_is_idle``. The ones the
 loop's body also calls live in leaves both import: ``loop_state`` (``operational_mode`` and the wake predicates
@@ -118,6 +124,11 @@ def pre_tick_gate(
     if shutdown_requested(state):
         log_agentic("agent_loop", "shutdown", {"reason": "shutdown_mode"})
         return GateOutcome.BREAK
+
+    # D13: a spent planning budget aborts the run wherever it was spent. §6's deliberation intake can spend it after
+    # §2's break check, and on an idle pass §2 never runs, so the latch, not one section's flag, decides (#1743).
+    if planning_liveness_on and ctrl.planning_exhausted:
+        return GateOutcome.EXHAUSTED
 
     # Configure Default Network for the operational mode (the operator's grant wins, #829; never empty, #963)
     ctrl.configure_dn_for_mode(operational_mode(executor, state))
@@ -236,7 +247,6 @@ def pre_tick_gate(
         # through to idle or retry forever.
         if (
             planning_liveness_on
-            and not ctrl.planning_exhausted
             and ctrl.last_llm_submit_time > 0
             and ctrl.last_proposal_time < ctrl.last_llm_submit_time
         ):

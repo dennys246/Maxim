@@ -40,8 +40,40 @@ from typing import Any, Protocol, runtime_checkable
 # The loop's own records, not actions the agent took (``ActionRecord.is_synthetic``, #1185).
 GATING_PROMPT = "_gating_prompt"  # a gating prompt shown to a simulated person (``SimulationAdapter.emit_prompt``)
 LLM_UNAVAILABLE = "_llm_unavailable"  # the agent loop's LLM-stall marker (it breaks the bridge's settle loop)
-DELIBERATION_NOOP = "_deliberation_noop"  # ``RecordingSink.record_noop``'s marker
+DELIBERATION_NOOP = "_deliberation_noop"  # a turn over with nothing done (loop_intake._record_declined_turn, #1743)
 SYNTHETIC_TOOL_NAMES: frozenset[str] = frozenset({GATING_PROMPT, LLM_UNAVAILABLE, DELIBERATION_NOOP})
+
+
+# The no-op marker's reasons the console words (#1743): the one vocabulary its producer (``loop_intake``) and its
+# readers share. Any other reason is an answer with no action, which the model chose.
+NOOP_STALE = "stale_proposal_dropped"
+NOOP_ERROR = "proposal_error"
+
+
+def noop_error_reason(error: Any) -> str:
+    """The reason an error answer carries (``proposal_error:<text>``): the error's text with every URL reduced to its
+    origin BEFORE the 60-character cut (a cut first can keep ``user:pw@`` or a path, #997), since it reaches the
+    narrator's tool results, the console stream and the HTTP detail; as §2's liveness reason it also reaches the logs
+    and the abort message (not the retry prompt: ``proposal_error`` is no ``PLANNING_CORRECTIONS`` key)."""
+    from maxim.utils.http import redact_urls
+
+    return f"{NOOP_ERROR}:{redact_urls(str(error))[:60]}"
+
+
+def nothing_done_kind(actions: Any) -> tuple[str, str] | None:
+    """Why a turn settled on a ``DELIBERATION_NOOP`` marker, from the LAST one in its records (the turn's final
+    word): ``("error", <text>)``, ``("stale", "")`` or ``("declined", "")``; None when it carries none. The console
+    owns the words (``console.handle.nothing_done_text``)."""
+    for record in reversed(list(actions or [])):
+        if getattr(record, "tool_name", None) != DELIBERATION_NOOP:
+            continue
+        reason = str(getattr(record, "result_output", "") or "")
+        if reason.split(":", 1)[0] == NOOP_ERROR:
+            return "error", reason.partition(":")[2].strip()
+        if reason == NOOP_STALE:
+            return "stale", ""
+        return "declined", ""
+    return None
 
 
 @dataclass(frozen=True)
@@ -220,7 +252,8 @@ class RecordingSink:
         return results
 
     def record_noop(self, reason: str = "") -> None:
-        """Record a deliberation NoOp marker (Stage 4, F2 fix).
+        """Record a deliberation NoOp marker (Stage 4, F2 fix). The loop records the same marker through ``record``
+        (``loop_intake._record_declined_turn``, #1743), for any turn over with nothing done, not only a deliberation's.
 
         The bridge watches ``len(self.actions)`` for growth.  A NoOp
         deliberation tick records this marker so the bridge sees
