@@ -6,6 +6,26 @@
 >   run (BD-14.2), which supersedes the draft's `sys.setprofile` tripwire (draft §3.3).
 > - **Revised** after the plan's three-lens review on `1e1eed8d`. The review corrected four claims: the dynamic half's
 >   reach, the resolver this note cited, the ratchet's semantics and the scope list.
+> - **Built 2026-11-26 in PR 1b, amended by the owner at its start.** Each amendment is stricter than the
+>   design below, which stays as written:
+>   - **Absolute from birth.** Every in-scope read got an allowlist entry, so every file was at zero on day one and
+>     the migration ratchet (§1 "Migration") would never have run. It is not built; a read without an entry fails.
+>     The "swaps at an equal count" row below no longer has a ratchet to fool.
+>   - **Each entry pins its function's exact read count**, as a map from category to count (`reads`). A read added
+>     to an allowlisted function fails, closing the blind spot a `file::function` key alone leaves (a leak hidden
+>     beside an allowlisted read); a read removed fails too, so the "stale entry" rule covers a partly stale one.
+>     What is left of "swaps at an equal count": inside one function, an allowlisted read replaced by a leak at the
+>     same count. *Stated blind spot.*
+>   - **A `pending:` read names a stage this plan has** (`lint_wall_clock_reads.py::PENDING_STAGES`: PR 2 to PR 5,
+>     A-post, OD-A7), so "a pending entry names the PR that removes it" is checked, not attended to.
+>   - **`TemporalSignature.now` is counted by name** (in `_clock_refs.CALENDAR`), as are `time.clock_gettime(_ns)`
+>     and `time.asctime`. The "transitive reads" row keeps every other helper.
+>   - **The census places a counted in-scope site by the JSON**, the one source of truth; its rules keep ids,
+>     randomness, files outside the scopes, and the stamp readers and SCN callers in functions without an entry.
+>   - **`proprioception/focus_learner.py` joins the machinery scope, whole.** M72's original row names its
+>     `_apply_decay`; PR 0's `_clock_refs.MACHINERY_SCOPE` had omitted it.
+>   - The allowlist is [`scripts/wall_clock_allowlist.json`](../../scripts/wall_clock_allowlist.json); the categories
+>     are defined in experience_clock_decay.md §(g).
 
 ## What the guard is
 
@@ -100,8 +120,10 @@ Each planted case is red before it goes green, in `tests/unit/test_lint_wall_clo
 - `fromtimestamp`;
 - `strftime`;
 - a stale allowlist entry;
-- a count raised above `origin/main`;
-- a pinned file going from zero to one.
+- a count raised above `origin/main` (built instead, absolute from birth, as
+  `test_a_read_added_to_an_allowlisted_function_fails` and `test_a_read_removed_from_an_allowlisted_function_fails`);
+- a pinned file going from zero to one (built instead as `test_each_banned_form_without_an_entry_fails`: every file
+  is pinned at birth).
 
 `uuid4` is checked as a warning, not a failure.
 
@@ -111,6 +133,8 @@ digest differ.
 ## What it does not claim
 
 - No failure on ids or randomness (D-WC1). Their sites are `pending:OD-A7`.
-- No guard on the hot and fenced files beyond the ratchet. Their sites are `pending:A-post`, and G-long's full-loop
-  half stays strict red until A-post.
+- No guard on the fenced files (`runtime/agent_loop.py`, `simulation/orchestrator.py`, `runtime/tool_dispatch.py`)
+  or on the hot files outside both scopes (`models/language/router.py`, `cli.py`, `runtime/loop_setup.py`): none is
+  scanned. The one hot file in scope, `agents/exec_agent.py` (prompt scope), is held absolutely, its reads
+  `pending:A-post`. G-long's full-loop half stays strict red until A-post. *(Amended at PR 1b: there is no ratchet.)*
 - No guard on threads the host owns (OD-A12), or on the C-level and import-bound reads at run time (§2).

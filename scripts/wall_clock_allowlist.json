@@ -1,0 +1,1185 @@
+{
+  "_format_version": "1.0",
+  "_comment": "M72's allowlist (scripts/lint_wall_clock_reads.py). Categories: docs/plans/experience_clock_decay.md §(g). Each entry maps category to the exact number of wall-clock reads in its function; a pending:<stage> read leaves in that stage's PR.",
+  "entries": [
+    {
+      "site": "agents/context_pool.py::AbstractionEntry",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::AgentStateEntry",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::ContextPool._entries_to_text",
+      "reads": {
+        "pending:PR 2 (OD-A3)": 2
+      },
+      "reason": "context stamps render through perceive, omitted under NO_CALENDAR"
+    },
+    {
+      "site": "agents/context_pool.py::ContextPool._summarize_old_entries",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::ContextPool.add_outcome",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::ContextPool.add_raw",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::ContextPool.get_context_text",
+      "reads": {
+        "pending:PR 2 (OD-A3)": 2
+      },
+      "reason": "context stamps render through perceive, omitted under NO_CALENDAR"
+    },
+    {
+      "site": "agents/context_pool.py::ContextPool.save",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::ConversationTurn",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/context_pool.py::ConversationTurn.from_dict",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/exec_agent.py::ExecAgent._build_llm_context",
+      "reads": {
+        "real-world-io": 1
+      },
+      "reason": "the real workspace's file mtimes (OD-A17)"
+    },
+    {
+      "site": "agents/exec_agent.py::ExecAgent._enforce_rate_limit",
+      "reads": {
+        "pending:A-post, hot file (D-WC7)": 2
+      },
+      "reason": "a hot file A-pre stays out of"
+    },
+    {
+      "site": "agents/exec_agent.py::ExecAgent._evaluate_staging",
+      "reads": {
+        "pending:A-post, hot file (D-WC7)": 2
+      },
+      "reason": "a hot file A-pre stays out of: a wall read and the SCN phase dict from TemporalSignature.now (§Placements)"
+    },
+    {
+      "site": "agents/exec_agent.py::ExecAgent._on_goal_completed",
+      "reads": {
+        "pending:A-post, hot file (D-WC7)": 2
+      },
+      "reason": "a hot file A-pre stays out of"
+    },
+    {
+      "site": "agents/exec_agent.py::ExecAgent._record_contemplation_meta",
+      "reads": {
+        "pending:A-post, hot file (D-WC7)": 1
+      },
+      "reason": "a hot file A-pre stays out of"
+    },
+    {
+      "site": "agents/llm_fallback.py::FallbackBehavior.get_fallback_proposal",
+      "reads": {
+        "pending:OD-A7, after the 1.4.0 cut (ids, D-WC1)": 1
+      },
+      "reason": "a time_ns request id"
+    },
+    {
+      "site": "agents/llm_fallback.py::ReasoningEntry",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent.__init__",
+      "reads": {
+        "pending:A-post, decay on the experience clock (#1361)": 1,
+        "scheduling": 1
+      },
+      "reason": "_last_decay_time is _apply_decay's baseline (decays by elapsed wall time); _last_promotion_time is the promotion cadence's baseline"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._apply_decay",
+      "reads": {
+        "pending:A-post, decay on the experience clock (#1361)": 1
+      },
+      "reason": "salience decays by elapsed wall time (M72's original row); converts when decay moves to the experience clock"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._begin_memory_formation",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._check_promotions",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "one read gates the 10 s promotion cadence and is written as consolidated_at on each record it promotes: the stamp moves with the stamp half, and the cadence with it"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._get_relevant_memories",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._on_goal_completed",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._on_tool_result",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/memory_agent.py::MemoryAgent._snapshot_sync_fields",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/prompt_builder.py::PromptBuilder._build_engage_prompt",
+      "reads": {
+        "pending:PR 2 (OD-A3)": 1
+      },
+      "reason": "the prompt's date and time render from the port"
+    },
+    {
+      "site": "agents/prompt_builder.py::PromptBuilder.build_prompt",
+      "reads": {
+        "pending:PR 2 (OD-A3)": 1
+      },
+      "reason": "the prompt's date and time render from the port"
+    },
+    {
+      "site": "agents/statistician_agent.py::StatisticianAgent._assess_with_temporal_context",
+      "reads": {
+        "pending:PR 3 (D-WC2)": 1
+      },
+      "reason": "the [TEMPORAL] render's TemporalSignature.now: emits nothing under NO_CALENDAR"
+    },
+    {
+      "site": "agents/statistician_agent.py::StatisticianAgent._build_insight",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/statistician_agent.py::StatisticianAgent._escalate_to_angular_gyrus",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "agents/statistician_agent.py::StatisticianAgent.on_step",
+      "reads": {
+        "scheduling": 1
+      },
+      "reason": "the analysis interval"
+    },
+    {
+      "site": "agents/statistician_agent.py::StatisticianAgent.save",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.get_dwell_time",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.get_next_target",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.get_reachability",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.get_visit_salience",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.query",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.record_gaze",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/attention_network.py::AttentionNetwork.should_move",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/gaze_controller.py::GazeController.__init__",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/gaze_controller.py::GazeController.get_stats",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/gaze_controller.py::GazeController.note_activity",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/gaze_controller.py::GazeController.reset",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 2
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/gaze_controller.py::GazeController.update",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/gaze_history.py::GazeHistory.get_salience",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/gaze_history.py::GazeHistory.note_move_commanded",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/gaze_history.py::GazeHistory.should_move",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/gaze_history.py::GazeHistory.time_since_last_move",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/gaze_history.py::GazePosition",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/salience_map.py::SalienceMap.record_tracking_target",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/salience_map.py::SalienceMap.update",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "attention/scene_context.py::SceneContextDetector.force_scene_change",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/scene_context.py::SceneContextDetector.get_scene_age",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "attention/scene_context.py::SceneContextDetector.update",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "gaze and attention timing, owned and fed by DefaultNetwork"
+    },
+    {
+      "site": "bridges/salience_bridge.py::SalienceMemoryBridge.enrich_salience",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "bridges/salience_bridge.py::SalienceMemoryBridge.record_interaction",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "bridges/spatial_bridge.py::SpatialMemoryBridge.record_success",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "decisions/causal_link.py::CausalLink",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "decisions/ learning stamps (last_observed, promoted_at and its age reader, credit timestamps)"
+    },
+    {
+      "site": "decisions/causal_link.py::CausalLink._record_observation_unlocked",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "decisions/ learning stamps (last_observed, promoted_at and its age reader, credit timestamps)"
+    },
+    {
+      "site": "decisions/causal_link.py::CausalLink.from_dict",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "decisions/ learning stamps (last_observed, promoted_at and its age reader, credit timestamps)"
+    },
+    {
+      "site": "decisions/nac.py::NAc._load_file",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "NAc's stamps and anchors"
+    },
+    {
+      "site": "decisions/nac.py::NAc._record_outcome_impl",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "NAc's stamps and anchors"
+    },
+    {
+      "site": "decisions/nac.py::NAc.decay_eligibility",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "NAc's stamps and anchors"
+    },
+    {
+      "site": "decisions/nac.py::NAc.distribute_reward",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "NAc's anchor signature from TemporalSignature.now (host calendar for credit, D-WC2 revised)"
+    },
+    {
+      "site": "decisions/nac.py::NAc.record_event",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 2
+      },
+      "reason": "NAc's stamps and anchors"
+    },
+    {
+      "site": "decisions/nac.py::NAc.save",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "NAc's stamps and anchors"
+    },
+    {
+      "site": "decisions/nac.py::_emit_recommend_action_event",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "NAc's stamps and anchors"
+    },
+    {
+      "site": "decisions/nac_tracer.py::_ts",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a log-only trace line's timestamp or elapsed time; reaches no state"
+    },
+    {
+      "site": "decisions/significance.py::SignificanceWeightLearner.harvest_utility",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "decisions/ learning stamps (last_observed, promoted_at and its age reader, credit timestamps)"
+    },
+    {
+      "site": "decisions/significance.py::SignificanceWeightLearner.track_promotion",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "decisions/ learning stamps (last_observed, promoted_at and its age reader, credit timestamps)"
+    },
+    {
+      "site": "decisions/temporal_credit.py::TemporalCreditDistributor.anticipatory_pre_activate",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "the SCN anticipatory query's signature from TemporalSignature.now (host calendar for credit, D-WC2 revised)"
+    },
+    {
+      "site": "decisions/temporal_credit.py::TemporalCreditDistributor.distribute",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "credit distribution's signature from TemporalSignature.now (host calendar for credit, D-WC2 revised)"
+    },
+    {
+      "site": "decisions/valence_signal.py::ValenceSignal.from_credit",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "decisions/ learning stamps (last_observed, promoted_at and its age reader, credit timestamps)"
+    },
+    {
+      "site": "default_network/network.py::DefaultNetwork._init_core_state",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "default_network/network.py::DefaultNetwork._process_tick",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "default_network/network.py::DefaultNetwork._publish_action",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "default_network/network.py::DefaultNetwork._run_loop",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 2
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "default_network/network.py::DefaultNetwork._update_head_position_for_behaviors",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "default_network/network.py::DefaultNetwork.imagination_allowed",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "embodiment/body.py::Embodiment._emit_drive_temporal_event",
+      "reads": {
+        "pending:A-post (OD-A8) with #1361 S4": 1
+      },
+      "reason": "the drive event's TemporalSignature.now: the body's clocks move with OD-A8"
+    },
+    {
+      "site": "embodiment/body.py::Embodiment._publish_drive_pain",
+      "reads": {
+        "pending:A-post (OD-A8) with #1361 S4": 1
+      },
+      "reason": "the body's energy and fatigue clocks"
+    },
+    {
+      "site": "embodiment/body.py::Embodiment._publish_pain",
+      "reads": {
+        "pending:A-post (OD-A8) with #1361 S4": 1
+      },
+      "reason": "the body's energy and fatigue clocks"
+    },
+    {
+      "site": "embodiment/body.py::Embodiment.evaluate_failures",
+      "reads": {
+        "pending:A-post (OD-A8) with #1361 S4": 1
+      },
+      "reason": "the body's energy and fatigue clocks"
+    },
+    {
+      "site": "embodiment/body.py::FailureEvent",
+      "reads": {
+        "pending:A-post (OD-A8) with #1361 S4": 1
+      },
+      "reason": "the body's energy and fatigue clocks"
+    },
+    {
+      "site": "embodiment/spec.py::SpecSensor.read",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "SensorReading stamps move with their readers"
+    },
+    {
+      "site": "integration/memory_hub.py::MemoryHub._end",
+      "reads": {
+        "process": 1
+      },
+      "reason": "session_duration_seconds in the session-end report; reaches no learning"
+    },
+    {
+      "site": "integration/memory_hub.py::MemoryHub._on_memory_captured_scn",
+      "reads": {
+        "pending:A-post, with the stamp half (SCN registration)": 1
+      },
+      "reason": "SCN registration bins on the host calendar (D-WC2 revised)"
+    },
+    {
+      "site": "integration/memory_hub.py::MemoryHub.on_session_start",
+      "reads": {
+        "process": 1
+      },
+      "reason": "session_duration_seconds in the session-end report; reaches no learning"
+    },
+    {
+      "site": "memory/atl.py::ATL._evict_one",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/atl.py::ATL.activate_substrate_node",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/atl.py::ATL.consolidate",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/atl.py::ATL.find_or_create",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/atl_tracer.py::_ts",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a log-only trace line's timestamp or elapsed time; reaches no state"
+    },
+    {
+      "site": "memory/base.py::InMemoryMemory.build_context",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/base.py::SimpleRecord.__init__",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/concept_context.py::ConceptContextBuilder.build",
+      "reads": {
+        "process": 2
+      },
+      "reason": "the grounding time budget (ms), a latency bound like an LLM timeout; it decides whether ground_concept runs this turn, not what it learns"
+    },
+    {
+      "site": "memory/concept_extractor.py::ConceptExtractor._process_capture",
+      "reads": {
+        "pending:A-post, with the stamp half (SCN registration)": 1
+      },
+      "reason": "SCN registration bins on the host calendar (D-WC2 revised)"
+    },
+    {
+      "site": "memory/concept_extractor.py::ConceptExtractor.flush",
+      "reads": {
+        "pending:A-post, with the stamp half (SCN registration)": 2
+      },
+      "reason": "SCN registration bins on the host calendar (D-WC2 revised)"
+    },
+    {
+      "site": "memory/concept_extractor.py::ConceptExtractor.rebuild_reverse_index",
+      "reads": {
+        "pending:A-post, with the stamp half (SCN registration)": 2
+      },
+      "reason": "SCN registration bins on the host calendar (D-WC2 revised)"
+    },
+    {
+      "site": "memory/concept_grounder.py::ConceptGrounder._enqueue_background_work",
+      "reads": {
+        "scheduling": 2,
+        "pending:OD-A7, after the 1.4.0 cut (ids, D-WC1)": 1
+      },
+      "reason": "the review cooldown (two monotonic reads) and a monotonic_ns job id"
+    },
+    {
+      "site": "memory/concept_grounder.py::ConceptGrounder._review_concept",
+      "reads": {
+        "pending:OD-A7, after the 1.4.0 cut (ids, D-WC1)": 1
+      },
+      "reason": "a monotonic_ns job id"
+    },
+    {
+      "site": "memory/concept_grounder.py::ConceptGrounder._store_quantifications",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/concept_grounder.py::ConceptGrounder._store_single_quantification",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/concept_grounder.py::ConceptGrounder.ground_concept",
+      "reads": {
+        "scheduling": 2
+      },
+      "reason": "the grounding stats cache TTL"
+    },
+    {
+      "site": "memory/hippo_tracer.py::HippocampusTracer.__init__",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a log-only trace line's timestamp or elapsed time; reaches no state"
+    },
+    {
+      "site": "memory/hippo_tracer.py::HippocampusTracer._elapsed",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a log-only trace line's timestamp or elapsed time; reaches no state"
+    },
+    {
+      "site": "memory/hippo_tracer.py::HippocampusTracer.summary",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a log-only trace line's timestamp or elapsed time; reaches no state"
+    },
+    {
+      "site": "memory/hippo_tracer.py::_ts",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a log-only trace line's timestamp or elapsed time; reaches no state"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus._build_capture_record",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus._evict_one",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus._insert_and_index_locked",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus._process_capture",
+      "reads": {
+        "process": 1
+      },
+      "reason": "queued_at feeds only the capture queue-latency debug log"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus._touch_internal",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus.capture_from_loop_async",
+      "reads": {
+        "process": 1
+      },
+      "reason": "queued_at feeds only the capture queue-latency debug log"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus.get",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus.stop_capture_worker",
+      "reads": {
+        "process": 2
+      },
+      "reason": "a worker-shutdown deadline"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus.stop_capture_workers",
+      "reads": {
+        "process": 2
+      },
+      "reason": "a worker-shutdown deadline"
+    },
+    {
+      "site": "memory/hippocampus.py::Hippocampus.store_observation",
+      "reads": {
+        "pending:PR 4 (OD-A5)": 1
+      },
+      "reason": "the Hippocampus de-duplication window reads machinery_clock.now_s() (closed pair)"
+    },
+    {
+      "site": "memory/hippocampus_consolidation.py::ConsolidationMixin._consolidate",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus_consolidation.py::ConsolidationMixin._score_and_maybe_promote_batch",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus_consolidation.py::ConsolidationMixin._sleep",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus_consolidation.py::ConsolidationMixin._sleep_with_clustering",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp or a forgetting reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/hippocampus_persistence.py::PersistenceMixin._dump_locked",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/percept_trace_buffer.py::PerceptTraceBuffer.record",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/types.py::MemoryRecord",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 2
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "memory/types.py::MemoryRecord.touch",
+      "reads": {
+        "pending:A-post, OD-A4 stamp half (D-WC6)": 1
+      },
+      "reason": "a capture/access stamp, a saved_at stamp a loader can read back, or a reader of one; stamps move as whole reader sets"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker.__init__",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._current_month_key",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._load_provider_state",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._load_state",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._mark_corrupt",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._maybe_persist",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._persist_state",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker._serialize_per_provider",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker.get_per_provider_totals",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker.get_totals",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "models/language/cost_tracker.py::CostTracker.record",
+      "reads": {
+        "cost": 1
+      },
+      "reason": "CostTracker runs on the wall: spend is real money and its windows are the bill's (D-WC5, #1769)"
+    },
+    {
+      "site": "proprioception/focus_learner.py::FocusLearner.__init__",
+      "reads": {
+        "pending:A-post, decay on the experience clock (#1361)": 1,
+        "scheduling": 1
+      },
+      "reason": "_last_update_time is _apply_decay's baseline; _last_save_time is the auto-save cadence's baseline"
+    },
+    {
+      "site": "proprioception/focus_learner.py::FocusLearner._apply_decay",
+      "reads": {
+        "pending:A-post, decay on the experience clock (#1361)": 1
+      },
+      "reason": "gain decays toward the initial gain by elapsed wall time (M72's original row)"
+    },
+    {
+      "site": "proprioception/focus_learner.py::FocusLearner._maybe_save",
+      "reads": {
+        "scheduling": 1
+      },
+      "reason": "the auto-save interval"
+    },
+    {
+      "site": "proprioception/focus_learner.py::FocusLearner._report_to_nac",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "hands NAc.observe the movement's delta_seconds from the sample stamp; the stamp moves with every reader (I4), so the robot-only settle reader is resolved with NAc's stamps, not split from them"
+    },
+    {
+      "site": "proprioception/focus_learner.py::FocusLearner.record_intent",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "writes FocusSample.timestamp, the stamp record_result's settle wait and _report_to_nac's delta_seconds both read; the stamp moves with every reader (I4), so the robot-only settle reader is resolved with NAc's stamps, not split from them"
+    },
+    {
+      "site": "proprioception/focus_learner.py::FocusLearner.record_result",
+      "reads": {
+        "pending:A-post, after #1361 S3b (NAc stamps and anchors)": 1
+      },
+      "reason": "reads the sample stamp for the head's settle wait (min_result_delay, real servo seconds); the stamp moves with every reader (I4), so the robot-only settle reader is resolved with NAc's stamps, not split from them"
+    },
+    {
+      "site": "proprioception/pain.py::PainDetector._check_for_pain",
+      "reads": {
+        "motor-io": 1
+      },
+      "reason": "motion pain's cooldown, and the PainSignal stamp of the same motion pain: both stay on the wall with the motion pain types (D-WC3)"
+    },
+    {
+      "site": "proprioception/pain.py::PainDetector._check_movement_failure",
+      "reads": {
+        "motor-io": 1
+      },
+      "reason": "motion pain's cooldown, and the PainSignal stamp of the same motion pain: both stay on the wall with the motion pain types (D-WC3)"
+    },
+    {
+      "site": "proprioception/pain.py::PainDetector.record_tool_error",
+      "reads": {
+        "pending:PR 5, 1.3.6 (D-WC3)": 1
+      },
+      "reason": "PainDetector's refractory pair: tool pain types move to the machinery clock"
+    },
+    {
+      "site": "proprioception/pain.py::PainDetector.record_tool_running",
+      "reads": {
+        "pending:PR 5, 1.3.6 (D-WC3)": 1
+      },
+      "reason": "the TOOL_SUSTAINED signal's stamp, which _emit_pain writes into the refractory map"
+    },
+    {
+      "site": "proprioception/pain.py::PainDetector.set_movement_target",
+      "reads": {
+        "motor-io": 1
+      },
+      "reason": "motion pain's cooldown: motion pain types stay on the wall (D-WC3)"
+    },
+    {
+      "site": "proprioception/pain_bus.py::PainBus.publish",
+      "reads": {
+        "pending:PR 5, 1.3.6 (D-WC3)": 1
+      },
+      "reason": "the bus refractory window moves to MachineryClock.monotonic_s"
+    },
+    {
+      "site": "reactions/bus.py::ReactionBus.publish",
+      "reads": {
+        "pending:PR 5, 1.3.6 (D-WC3)": 1
+      },
+      "reason": "the bus refractory window moves to MachineryClock.monotonic_s"
+    },
+    {
+      "site": "retrieval/temporal_signal.py::TemporalReferenceSignal.__init__",
+      "reads": {
+        "pending:PR 3 (D-WC2)": 1
+      },
+      "reason": "an SCN-derived or relative-date render that emits nothing under NO_CALENDAR"
+    },
+    {
+      "site": "retrieval/temporal_signal.py::TemporalReferenceSignal._parse_recurring_patterns",
+      "reads": {
+        "pending:PR 3 (D-WC2)": 1
+      },
+      "reason": "an SCN-derived or relative-date render that emits nothing under NO_CALENDAR"
+    },
+    {
+      "site": "retrieval/temporal_signal.py::TemporalReferenceSignal._parse_temporal_references",
+      "reads": {
+        "pending:PR 3 (D-WC2)": 1
+      },
+      "reason": "an SCN-derived or relative-date render that emits nothing under NO_CALENDAR"
+    },
+    {
+      "site": "retrieval/temporal_signal.py::TemporalReferenceSignal._parse_with_regex",
+      "reads": {
+        "pending:PR 3 (D-WC2)": 1
+      },
+      "reason": "an SCN-derived or relative-date render that emits nothing under NO_CALENDAR"
+    },
+    {
+      "site": "salience/movement_detector.py::MovementDetector.update",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "salience/salience_network.py::SalienceNetwork.get_novelty",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "salience/salience_network.py::SalienceNetwork.get_objects_at_position",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "salience/salience_network.py::SalienceNetwork.get_salience",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "salience/salience_network.py::SalienceNetwork.get_top_salient",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "salience/salience_network.py::SalienceNetwork.query",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "salience/salience_network.py::SalienceNetwork.update_from_detections",
+      "reads": {
+        "pending:A-post with OD-A9 (DefaultNetwork.step(now))": 1
+      },
+      "reason": "salience and gaze are fed by DefaultNetwork's wall now"
+    },
+    {
+      "site": "similarity/signature.py::SituationSignature.from_memory",
+      "reads": {
+        "pending:A-post, with the stamp half (SituationSignature binning)": 1
+      },
+      "reason": "situation signatures bin by the host calendar"
+    },
+    {
+      "site": "simulation/introspection.py::Observer.temporal_patterns",
+      "reads": {
+        "pending:PR 3 (D-WC2)": 1
+      },
+      "reason": "current_phase from TemporalSignature.now: emits nothing under NO_CALENDAR"
+    },
+    {
+      "site": "tools/http_fetch.py::HttpFetchTool.execute",
+      "reads": {
+        "real-world-io": 4
+      },
+      "reason": "a real web fetch's accessed_at (OD-A11; not on the embedded roster)"
+    },
+    {
+      "site": "tools/http_fetch.py::RobotsCache.get_disallowed",
+      "reads": {
+        "real-world-io": 1
+      },
+      "reason": "the real web's robots.txt cache TTL"
+    },
+    {
+      "site": "tools/http_fetch.py::RobotsCache.set_disallowed",
+      "reads": {
+        "real-world-io": 1
+      },
+      "reason": "the real web's robots.txt cache TTL"
+    },
+    {
+      "site": "tools/http_fetch.py::_remaining_s",
+      "reads": {
+        "process": 1
+      },
+      "reason": "a fetch deadline"
+    },
+    {
+      "site": "tools/introspection.py::SceneSummaryTool.execute",
+      "reads": {
+        "pending:PR 2 (OD-A3)": 1
+      },
+      "reason": "SceneSummaryTool's raw epoch is omitted under NO_CALENDAR"
+    }
+  ]
+}

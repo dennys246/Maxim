@@ -291,7 +291,25 @@ regime (S0); decided time-based (Q3). `decay_imagined_links(0.5)` stays at sessi
 
 `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` are
 out of scope here. They are in scope of the enforcement lint below, which either converts them or
-allowlists them with a reason.
+allowlists them with a reason. **Built 2026-11-26** (world clock A-pre PR 1b): both are allowlisted as
+`pending:A-post`, since each decays by elapsed wall time. No slice of this plan converts them yet, so world clock
+A-post owns them until one does.
+
+**The allowlist itself** (amended 2026-11-26, [world_clock_a_pre.md](world_clock_a_pre.md) D-WC4 and PR 1's
+decisions): M72's lint, `scripts/lint_wall_clock_reads.py`, reads its entries from
+[`scripts/wall_clock_allowlist.json`](../../scripts/wall_clock_allowlist.json), one per `file::function`. Each entry
+maps each category to the exact number of wall-clock reads in its function with that category (a function whose reads
+serve two categories says so) and carries a reason. The table above says why each family
+stays on the wall; the JSON is where each site is placed, and this section defines its categories:
+
+| Category | Means |
+|---|---|
+| `process` | watches the process or bounds a wait: heartbeats, timeouts, deadlines, latency logs, log-only tracer timestamps, worker-shutdown deadlines |
+| `scheduling` | when work runs, not what it learns: intervals, cadences, cooldowns before re-submitting work, cache TTLs |
+| `motor-io` | motor and IO rate limits and settle times, in real servo seconds (D-WC3, I3) |
+| `real-world-io` | a stamp of the real world the agent touched: a web fetch's `accessed_at`, the workspace's mtimes, robots.txt TTLs |
+| `cost` | `CostTracker`, which runs on the wall in every window (D-WC5) |
+| `pending:<stage>` | a read the plan moves. `<stage>` opens with one of the stages the lint accepts (`PR 2` to `PR 5`, `A-post`, `OD-A7`; `lint_wall_clock_reads.py::PENDING_STAGES`) and says what moves it; the read leaves the entry in that stage's PR. A `saved_at` stamp a loader can read back is `pending:` with the stamp half, and a read that both gates a cadence and writes a stamp is `pending:` with the stamp |
 
 ## Tau conversion and recalibration
 
@@ -449,5 +467,5 @@ owner at the start of the slice that finds them.
 | No NAc forgetting while switched off | G1 (default arm vs opt-in arm) |
 | Body drift excludes pause and latency, and stays netted in GL2a | G4 + the netting guard |
 | No wall clock or pass count in the NAc decay/age path or `Embodiment.advance` | AST test in `test_experience_clock_decay.py`: no `time.time` / `time.monotonic` / `time_ns` in the named functions |
-| Every remaining wall-clock timer in a learning path is on §(g)'s allowlist | **no check yet.** Mechanization backlog M72 in [outstanding.md](outstanding.md), added in the S0 PR: a lint over `decisions/`, `memory/`, `embodiment/body.py`, `agents/memory_agent.py::_apply_decay` and `proprioception/focus_learner.py::_apply_decay` that refuses a wall-clock read outside an allowlist |
+| Every remaining wall-clock timer in a learning path is on §(g)'s allowlist | `scripts/lint_wall_clock_reads.py` in CI (M72, built in world clock A-pre PR 1b, absolute from birth): refuses a wall-clock or calendar read in M72's machinery and prompt scopes (`scripts/_clock_refs.py`) outside [`scripts/wall_clock_allowlist.json`](../../scripts/wall_clock_allowlist.json), each entry pinning its function's read count; positive control `tests/unit/test_lint_wall_clock_reads.py` |
 | Permanent fear is revisited on its trigger (Risk 2) | **no check yet.** Mechanization backlog M73 in [outstanding.md](outstanding.md), added in the S1 PR: a report-stamp check that fails a survival report lacking fear count/mass, plus the #1072 follow-up issue carrying the trigger |

@@ -244,12 +244,23 @@ def test_temporal_callers_record_input_and_output_use() -> None:
         # Ids and randomness are OD-A7's wherever they sit, even inside a fenced file (D-WC1).
         ("src/maxim/runtime/agent_loop.py", "run", "id", "OD-A7, after the 1.4.0 cut (D-WC1)"),
         ("src/maxim/runtime/agent_loop.py", "run", "wall", "A-post: fenced file (OD-A8)"),
-        ("src/maxim/agents/prompt_builder.py", "PromptBuilder.build_prompt", "calendar", "PR 2: the port (OD-A3)"),
-        ("src/maxim/memory/hippocampus.py", "Hippocampus.store_observation", "wall", "PR 4"),
-        ("src/maxim/proprioception/pain.py", "PainDetector._check_for_pain", "wall", "allow: motor-io"),
-        ("src/maxim/integration/memory_hub.py", "MemoryHub._on_memory_captured_scn", "wall", "with the stamp half"),
-        ("src/maxim/memory/hippocampus_consolidation.py", "ConsolidationMixin.sleep", "wall", "A-post: OD-A4 stamp"),
+        ("src/maxim/agents/prompt_builder.py", "PromptBuilder.build_prompt", "calendar", "allowlist: pending:PR 2"),
+        ("src/maxim/memory/hippocampus.py", "Hippocampus.store_observation", "wall", "allowlist: pending:PR 4"),
+        ("src/maxim/proprioception/pain.py", "PainDetector._check_for_pain", "wall", "allowlist: motor-io"),
+        (
+            "src/maxim/integration/memory_hub.py",
+            "MemoryHub._on_memory_captured_scn",
+            "wall",
+            "allowlist: pending:A-post, with the stamp half",
+        ),
+        (
+            "src/maxim/memory/hippocampus_consolidation.py",
+            "ConsolidationMixin._sleep",
+            "wall",
+            "allowlist: pending:A-post, OD-A4",
+        ),
         ("src/maxim/memory/hippocampus.py", "Hippocampus.unnamed_reader", "wall", "UNPLACED"),
+        ("src/maxim/memory/hippo_tracer.py", "_ts", "calendar", "allowlist: process"),
         ("src/maxim/peer/client.py", "Client.ping", "wall", "outside M72's scopes"),
     ],
 )
@@ -257,11 +268,34 @@ def test_placement_rules(path: str, function: str, kind: str, expected: str) -> 
     assert census_mod.placement_of(path, function, kind).startswith(expected)
 
 
+def test_an_unreadable_allowlist_prints_unplaced_not_a_guess(tmp_path: Path) -> None:
+    assert census_mod.load_allowlist(tmp_path) == {}
+    assert census_mod.placement_of("src/maxim/memory/hippo_tracer.py", "_ts", "calendar", {}) == "UNPLACED"
+
+
+def test_the_census_reads_the_scanned_tree_s_own_allowlist(tmp_path: Path) -> None:
+    """``census --root`` places the other tree's sites by that tree's allowlist, as the lint judges it."""
+    (tmp_path / "scripts").mkdir()
+    entry = {"site": "memory/x.py::f", "reads": {"pending:PR 4 (OD-A5)": 1}, "reason": "planted"}
+    (tmp_path / census_mod.ALLOWLIST_REL).write_text(
+        json.dumps({"_format_version": "1.0", "entries": [entry]}), encoding="utf-8"
+    )
+    table = census_mod.load_allowlist(tmp_path)
+    assert census_mod.placement_of("src/maxim/memory/x.py", "f", "wall", table) == "allowlist: pending:PR 4 (OD-A5)"
+    # An id is OD-A7's whatever the allowlist says, and a file outside the scopes is never the allowlist's.
+    assert census_mod.placement_of("src/maxim/memory/x.py", "f", "id", table).startswith("OD-A7")
+    assert census_mod.placement_of("src/maxim/peer/x.py", "f", "wall", {"peer/x.py::f": "process"}) == (
+        "outside M72's scopes"
+    )
+
+
 def test_scopes_follow_the_guard_note() -> None:
     assert census_mod.scope_of("src/maxim/agents/context_pool.py") == "machinery+prompt"
     assert census_mod.scope_of("src/maxim/memory/atl.py") == "machinery"
     assert census_mod.scope_of("src/maxim/tools/introspection.py") == "prompt"
     assert census_mod.scope_of("src/maxim/peer/client.py") == "-"
+    # M72's original row names focus_learner's _apply_decay (added in PR 1b).
+    assert census_mod.scope_of("src/maxim/proprioception/focus_learner.py") == "machinery"
     # A directory prefix needs its slash: decisions_extra.py is not under decisions/.
     assert census_mod.scope_of("src/maxim/decisions_extra.py") == "-"
 
@@ -320,6 +354,19 @@ def test_only_tracked_files_are_scanned(tmp_path: Path) -> None:
     assert [s.path for s in census_mod.census(tmp_path).sites] == ["src/maxim/tracked.py"]
 
 
+def test_census_root_places_by_that_tree_s_allowlist(tmp_path: Path) -> None:
+    """End to end: ``census(root)`` reads *root*'s allowlist, not this checkout's, as the lint does."""
+    src = tmp_path / "src" / "maxim" / "memory"
+    src.mkdir(parents=True)
+    (src / "x.py").write_text("import time\n\ndef f():\n    return time.time()\n")
+    (tmp_path / "scripts").mkdir()
+    entry = {"site": "memory/x.py::f", "reads": {"pending:PR 4 (OD-A5)": 1}, "reason": "planted"}
+    (tmp_path / census_mod.ALLOWLIST_REL).write_text(json.dumps({"_format_version": "1.0", "entries": [entry]}))
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    assert [s.placement for s in census_mod.census(tmp_path).sites] == ["allowlist: pending:PR 4 (OD-A5)"]
+
+
 def test_the_census_of_this_checkout_sees_the_named_families() -> None:
     result = census_mod.census(REPO)
     placed = {(s.path, s.function, s.placement) for s in result.sites}
@@ -327,11 +374,11 @@ def test_the_census_of_this_checkout_sees_the_named_families() -> None:
     def has(path: str, function: str, placement_prefix: str) -> bool:
         return any(p == path and f == function and pl.startswith(placement_prefix) for p, f, pl in placed)
 
-    assert has("src/maxim/agents/prompt_builder.py", "PromptBuilder.build_prompt", "PR 2")
-    assert has("src/maxim/agents/prompt_builder.py", "PromptBuilder._build_engage_prompt", "PR 2")
-    assert has("src/maxim/memory/hippocampus.py", "Hippocampus.store_observation", "PR 4")
+    assert has("src/maxim/agents/prompt_builder.py", "PromptBuilder.build_prompt", "allowlist: pending:PR 2")
+    assert has("src/maxim/agents/prompt_builder.py", "PromptBuilder._build_engage_prompt", "allowlist: pending:PR 2")
+    assert has("src/maxim/memory/hippocampus.py", "Hippocampus.store_observation", "allowlist: pending:PR 4")
     assert has("src/maxim/runtime/tool_dispatch.py", "execute_and_learn", "A-post with B2")
-    assert has("src/maxim/proprioception/pain_bus.py", "PainBus.publish", "PR 5")
+    assert has("src/maxim/proprioception/pain_bus.py", "PainBus.publish", "allowlist: pending:PR 5")
     assert any(s.path == "src/maxim/models/language/cost_tracker.py" and s.kind == "wall" for s in result.sites)
     # Every section is populated on today's tree, and the loader of every persisted Hippocampus stamp is a writer.
     assert result.writers and result.subtractions and result.temporal
