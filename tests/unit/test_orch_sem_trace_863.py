@@ -35,7 +35,6 @@ class _SiteFault(Exception):
     """The injected caller-side fault (nothing else in a run raises it)."""
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the SEM_TRACE wrap still swallows the caller-side fault")
 def test_a_fault_building_the_sem_tool_trace_surfaces_863(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import maxim.tools.discovery as discovery
     from maxim.embodiment.entity_map import EntityMap
@@ -66,7 +65,6 @@ def test_a_fault_building_the_sem_tool_trace_surfaces_863(tmp_path: Path, monkey
     assert fired == [True]
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the SEM_TRACE wrap still swallows the caller-side fault")
 def test_a_fault_building_the_imagination_active_trace_surfaces_863(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -106,7 +104,6 @@ def test_a_fault_building_the_imagination_active_trace_surfaces_863(
     ), [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-@pytest.mark.xfail(strict=True, reason="#863: the SEM_TRACE wrap still swallows the caller-side fault")
 def test_a_fault_building_the_imagination_failed_trace_surfaces_863(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

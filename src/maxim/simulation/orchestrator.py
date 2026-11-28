@@ -998,6 +998,31 @@ def _register_research_tools(orch_registry: Any, experiment_log: Any, sim_tmpdir
     return experiment_log
 
 
+def _sem_trace(message: str) -> None:
+    """Emit one ``SEM_TRACE`` line. Unwrapped on purpose (#863): ``sim_log`` is contained since #868 (it never
+    raises), so a ``try`` here could only swallow a fault in the CALLER's construction of ``message``."""
+    from maxim.simulation.sim_logger import sim_log
+
+    sim_log("SEM_TRACE", message)
+
+
+def _trace_sem_tools(all_tools: list[str], active_tools: list[str], keep_active: set[str], entity_map: Any) -> None:
+    """The SEM discovery trace: the registered, active and goal-selected tools, then each entity and its
+    modulators' affordances. Every read is typed (tool-name lists, ``EntityMap.list_entities()``, ``Entity.name`` /
+    ``entity_type`` / ``modulators``, ``Modulator.affordances``), so a fault here is a defect and surfaces (#863;
+    this was a ``try: ... except Exception: pass`` in ``start_simulation_mode``)."""
+    _sem_trace(f"All registered tools ({len(all_tools)}): {', '.join(sorted(all_tools))}")
+    _sem_trace(f"Active tools ({len(active_tools)}): {', '.join(sorted(active_tools))}")
+    _sem_trace(f"Goal-selected (top-k): {', '.join(sorted(keep_active))}")
+    _sem_trace(f"Entities: {', '.join(e.name + '(' + e.entity_type + ')' for e in entity_map.list_entities())}")
+    # Log affordances per entity
+    for ent in entity_map.list_entities():
+        for mod_name, mod in ent.modulators.items():
+            aff_names = list(mod.affordances.keys())
+            if aff_names:
+                _sem_trace(f"  {ent.name}.{mod_name}: affordances={', '.join(aff_names)}")
+
+
 def start_simulation_mode(
     goal: str,
     mode: str = "generative",
@@ -1635,27 +1660,7 @@ def start_simulation_mode(
             _deactivated_count,
         )
         # Trace: log all registered tools for debugging SEM availability
-        try:
-            from maxim.simulation.sim_logger import sim_log
-
-            sim_log("SEM_TRACE", f"All registered tools ({len(_all_tools)}): {', '.join(sorted(_all_tools))}")
-            sim_log("SEM_TRACE", f"Active tools ({len(_active_tools)}): {', '.join(sorted(_active_tools))}")
-            sim_log("SEM_TRACE", f"Goal-selected (top-k): {', '.join(sorted(_keep_active))}")
-            sim_log(
-                "SEM_TRACE",
-                f"Entities: {', '.join(e.name + '(' + e.entity_type + ')' for e in _aut_entity_map.list_entities())}",
-            )
-            # Log affordances per entity
-            for _ent in _aut_entity_map.list_entities():
-                for _mod_name, _mod in _ent.modulators.items():
-                    _aff_names = list(_mod.affordances.keys())
-                    if _aff_names:
-                        sim_log(
-                            "SEM_TRACE",
-                            f"  {_ent.name}.{_mod_name}: affordances={', '.join(_aff_names)}",
-                        )
-        except Exception:
-            pass
+        _trace_sem_tools(_all_tools, _active_tools, _keep_active, _aut_entity_map)
 
     # AUT PainBus subscriptions are now handled by build_bio_stack above
     # (Wave 3: pre-built pain_bus= parameter subscribes standard learners).
@@ -2060,20 +2065,10 @@ def start_simulation_mode(
                     encode_entity_affordances(_self_entity, _aut_encoder, agent_id=_aut_agent_id)
 
             logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
-            try:
-                from maxim.simulation.sim_logger import sim_log
-
-                sim_log("SEM_TRACE", f"ImaginationTrigger ACTIVE — enabled={aut_imagination_trigger._enabled}")
-            except Exception:
-                pass
+            _sem_trace(f"ImaginationTrigger ACTIVE — enabled={aut_imagination_trigger._enabled}")
         except Exception as e:
             logger.warning("ImaginationTrigger construction failed: %s", e)
-            try:
-                from maxim.simulation.sim_logger import sim_log
-
-                sim_log("SEM_TRACE", f"ImaginationTrigger FAILED: {e}")
-            except Exception:
-                pass
+            _sem_trace(f"ImaginationTrigger FAILED: {e}")
 
     # ── Scene manifest pre-trigger (Phase 1: SEM World Enrichment) ───────
     # Before the first turn, generate a scene entity inventory from the

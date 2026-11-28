@@ -191,7 +191,7 @@
     {
       "file": "src/maxim/simulation/orchestrator.py",
       "qualname": "start_simulation_mode",
-      "lines": 1816
+      "lines": 1786
     },
     {
       "file": "src/maxim/simulation/research_orchestrator.py",
