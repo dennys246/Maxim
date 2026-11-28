@@ -115,18 +115,13 @@
     },
     {
       "file": "src/maxim/runtime/agent_loop.py",
-      "qualname": "_run_deliberation_cycles",
-      "lines": 224
-    },
-    {
-      "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "run_agent_loop",
       "lines": 230
     },
     {
       "file": "src/maxim/runtime/agent_loop.py",
       "qualname": "_run_agentic_loop_body",
-      "lines": 1078
+      "lines": 1072
     },
     {
       "file": "src/maxim/runtime/bio_stack.py",

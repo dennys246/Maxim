@@ -208,8 +208,10 @@ class TestDeliberationCycles:
         assert len(submit_calls) == 2
         assert gate.refractory_resets == [10]
 
-    def test_max_cycles_no_action_returns_none(self, bio, wms, ctx, gate):
-        """When max cycles reached without action on any proposal, returns None."""
+    def test_max_cycles_no_action_returns_the_last_answer(self, bio, wms, ctx, gate):
+        """When max cycles are reached without an action on any proposal, the last answer is returned: it was
+        consumed, so it goes to §2's intake, which drops it as a declined turn (#1743; it returned None, past the
+        intake)."""
         not_ready = _make_proposal(ready_to_act=False, reasoning="still thinking but no plan", action=None)
         llm_worker = MagicMock()
         llm_worker.get_latest_proposal.return_value = not_ready
@@ -218,7 +220,7 @@ class TestDeliberationCycles:
         first = _make_proposal(ready_to_act=False, reasoning="initial thoughts no action", action=None)
 
         with (
-            patch("maxim.simulation.sim_logger.sim_log"),
+            patch("maxim.simulation.sim_logger.sim_log") as sim_log,
             patch("maxim.simulation.sim_logger.sim_pre_deliberation"),
             patch("maxim.simulation.sim_logger.sim_contemplation"),
         ):
@@ -236,7 +238,8 @@ class TestDeliberationCycles:
                 max_cycles=2,
             )
 
-        assert result is None
+        assert result is not None and not result.action
+        sim_log.assert_any_call("DELIBERATION", "max cycles (2) reached, no action")  # not "forcing action"
 
     def test_convergence_detection(self, bio, wms, ctx, gate):
         """When reasoning converges (Jaccard >= 0.8), returns proposal."""
@@ -276,6 +279,68 @@ class TestDeliberationCycles:
 
         # Should return the proposal (convergence detected) since it has action
         assert result is not None
+
+    def test_max_cycles_with_an_action_says_forcing_action(self, bio, wms, ctx, gate):
+        """Distinct not-ready answers (no convergence) reach the cap; the last has an action, so the log says so."""
+        answers = [
+            _make_proposal(ready_to_act=False, reasoning="alpha bravo charlie", action=None),
+            _make_proposal(ready_to_act=False, reasoning="delta echo foxtrot", action={"tool_name": "m", "params": {}}),
+        ]
+        llm_worker = MagicMock()
+        llm_worker.get_latest_proposal.side_effect = answers
+        first = _make_proposal(ready_to_act=False, reasoning="golf hotel india", action=None)
+
+        with (
+            patch("maxim.simulation.sim_logger.sim_log") as sim_log,
+            patch("maxim.simulation.sim_logger.sim_pre_deliberation"),
+            patch("maxim.simulation.sim_logger.sim_contemplation"),
+        ):
+            result = _run_cycles(
+                first_proposal=first,
+                bio_enrichment=bio,
+                working_memory=wms,
+                context=ctx,
+                submit_fn=lambda c: True,
+                llm_worker=llm_worker,
+                stop_event=None,
+                thought_gate=gate,
+                active_goal=None,
+                step_num=4,
+                max_cycles=3,
+            )
+
+        assert result is answers[1]
+        sim_log.assert_any_call("DELIBERATION", "max cycles (3) reached, forcing action")
+
+    def test_convergence_without_an_action_returns_the_answer(self, bio, wms, ctx, gate):
+        """A converged answer with no action is returned, not None: §2's intake drops it as a declined turn (#1743)."""
+        converged = _make_proposal(ready_to_act=False, reasoning="the guard is sleeping and I should wait", action=None)
+        llm_worker = MagicMock()
+        llm_worker.get_latest_proposal.return_value = converged
+        first = _make_proposal(
+            ready_to_act=False, reasoning="the guard is sleeping and I should wait here", action=None
+        )
+
+        with (
+            patch("maxim.simulation.sim_logger.sim_log"),
+            patch("maxim.simulation.sim_logger.sim_pre_deliberation"),
+            patch("maxim.simulation.sim_logger.sim_contemplation"),
+        ):
+            result = _run_cycles(
+                first_proposal=first,
+                bio_enrichment=bio,
+                working_memory=wms,
+                context=ctx,
+                submit_fn=lambda c: True,
+                llm_worker=llm_worker,
+                stop_event=None,
+                thought_gate=gate,
+                active_goal=None,
+                step_num=3,
+                max_cycles=3,
+            )
+
+        assert result is converged and gate.refractory_resets == [3]
 
     def test_stop_event_cancellation(self, bio, wms, ctx, gate):
         """When stop_event is set, returns last proposal or None."""
