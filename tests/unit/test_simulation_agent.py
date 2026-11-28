@@ -444,6 +444,9 @@ class TestExtendSimulationTool:
         class MockSpawn:
             active_sub_bridge = sub_bridge
 
+            def sub_aut_error(self) -> None:  # a live sub-AUT (#1843)
+                return None
+
         tool = ExtendSimulationTool(main_bridge=main_bridge, spawn_tool=MockSpawn())
         result = tool.run(goal="go deeper on sub")
         t.join(timeout=2)

@@ -8,4 +8,6 @@
   before it was a DEBUG line with no event.
 - **A sub-simulation whose AUT loop dies now says so**: `spawn_sub_simulation` logs the failure at ERROR and names it
   in the sub-report as `aut_error`, where before the exception went to a list nothing read and the narrator saw only
-  a timeout.
+  a timeout. `extend_simulation` on a dead sub-AUT now returns that `aut_error` at once instead of waiting out the
+  response timeout, and names a sub-AUT that dies while answering. The text reaches the LLM, so it is URL-reduced and
+  cut to 300 characters.
