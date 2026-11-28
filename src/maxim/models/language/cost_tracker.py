@@ -2,6 +2,13 @@
 
 Tracks rolling hourly/daily spend, calendar-month spend, per-provider totals,
 and simple EMA spend rates for long-horizon budget visibility.
+
+Every window runs on the wall clock (world clock A-pre D-WC5, #1769): spend is real
+money, and its windows are the bill's. A caller's ``timestamp=`` (``record``) or
+``now=`` (``get_totals``, ``get_per_provider_totals``) is deprecated and ignored, with
+a ``DeprecationWarning``. Honouring it let one caller on another clock (a stepped
+world starting near 0.0) reset the month and drop its spend out of the rolling
+windows, so the cost ceiling stopped protecting the session.
 """
 
 from __future__ import annotations
@@ -9,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -32,6 +40,16 @@ class ModelPricing:
     input_price: float
     output_price: float
     cached_input_price: float = 0.0
+
+
+def _ignore_caller_clock(method: str, keyword: str) -> None:
+    """Warn that a caller clock was passed: it is ignored, and the wall clock is used (D-WC5, #1769)."""
+    warnings.warn(
+        f"CostTracker.{method}({keyword}=...) is deprecated and ignored: cost windows run on the wall clock "
+        "(world clock A-pre D-WC5, #1769)",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 @dataclass
@@ -374,7 +392,9 @@ class CostTracker:
         timestamp: float | None = None,
         pricing_required: bool = True,
     ) -> float:
-        now = timestamp if timestamp is not None else time.time()
+        if timestamp is not None:
+            _ignore_caller_clock("record", "timestamp")
+        now = time.time()
         pricing = self.get_pricing(model)
         # Token accounting runs REGARDLESS of pricing (2026-08-03 fix):
         # pre-fix the missing-pricing raise fired BEFORE these counters, so
@@ -467,7 +487,9 @@ class CostTracker:
         return round(input_cost + output_cost, 6)
 
     def get_totals(self, now: float | None = None) -> dict[str, float]:
-        now_ts = now if now is not None else time.time()
+        if now is not None:
+            _ignore_caller_clock("get_totals", "now")
+        now_ts = time.time()
         self._hourly.prune(now_ts)
         self._daily.prune(now_ts)
         return {
@@ -478,7 +500,9 @@ class CostTracker:
         }
 
     def get_per_provider_totals(self, provider: str, now: float | None = None) -> dict[str, float]:
-        now_ts = now if now is not None else time.time()
+        if now is not None:
+            _ignore_caller_clock("get_per_provider_totals", "now")
+        now_ts = time.time()
         state = self._per_provider.get(provider)
         if state is None:
             return {"hourly": 0.0, "daily": 0.0, "monthly": 0.0}
